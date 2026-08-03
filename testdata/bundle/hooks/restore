@@ -1,0 +1,18 @@
+#!/bin/sh
+# Restore hook. Destructive by nature: the manager has already verified the
+# backup, stopped writers, and obtained an explicit confirmation before this
+# runs.
+set -eu
+
+dir="${DEMO_BACKUP_DIR:?DEMO_BACKUP_DIR is required}"
+data="${DEMO_DATA_DIR:?DEMO_DATA_DIR is required}"
+
+mkdir -p "$data"
+
+echo "restoring files"
+[ -f "$dir/files.tar" ] && tar -xf "$dir/files.tar" -C "$data"
+
+echo "restoring database"
+[ -f "$dir/database.sql" ] && cp "$dir/database.sql" "$data/.schema"
+
+printf '{"message":"restore complete"}' >&"${DEMO_RESULT_FD:-3}"

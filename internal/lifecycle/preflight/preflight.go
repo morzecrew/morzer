@@ -1,0 +1,512 @@
+// Package preflight holds the checks that run before any mutation.
+//
+// Every check here answers a question that is cheaper to answer now than to
+// discover halfway through an operation. A missing tool, a full disk, or an
+// occupied port are all knowable before the deployment lock is even taken --
+// and finding them at step nine of `apply`, after images have been pulled and
+// migrations run, is the difference between a message and an incident.
+package preflight
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"os"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/infra/tools"
+)
+
+// Check is one preflight question.
+type Check struct {
+	ID          string
+	Category    string
+	Description string
+
+	// Fatal marks a check whose failure stops the operation. A non-fatal
+	// failure becomes a warning: not every requirement a release states is
+	// one the manager should refuse to proceed without.
+	Fatal bool
+
+	Run func(context.Context) events.CheckResult
+}
+
+// Report is the outcome of a preflight run.
+type Report struct {
+	Results []events.CheckResult `json:"results"`
+	Worst   events.CheckStatus   `json:"worst"`
+}
+
+// Failed reports whether any fatal check failed.
+func (r Report) Failed() bool { return r.Worst == events.CheckFail }
+
+// Err converts a failed report into a typed preflight error listing every
+// blocker, so an operator fixing one does not discover the next on the retry.
+func (r Report) Err() error {
+	if !r.Failed() {
+		return nil
+	}
+	var problems []string
+	for _, res := range r.Results {
+		if res.Status == events.CheckFail {
+			line := res.Description + ": " + res.Message
+			if res.Remedy != "" {
+				line += "\n      " + res.Remedy
+			}
+			problems = append(problems, line)
+		}
+	}
+	return domain.Preflight(nil, "preflight checks failed:\n  - %s", strings.Join(problems, "\n  - ")).
+		WithHint("run `morzer doctor` for the full diagnostic")
+}
+
+// Runner executes a set of checks.
+type Runner struct {
+	bus *events.Bus
+}
+
+func NewRunner(bus *events.Bus) *Runner { return &Runner{bus: bus} }
+
+// Run executes checks in order, publishing each result.
+//
+// All checks run even after one fails: an operator wants the full list of what
+// is wrong, not the first thing the manager happened to notice.
+func (r *Runner) Run(ctx context.Context, checks []Check) Report {
+	report := Report{Worst: events.CheckOK}
+
+	for _, check := range checks {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+
+		started := time.Now()
+		result := check.Run(ctx)
+		result.ID = check.ID
+		result.Category = check.Category
+		if result.Description == "" {
+			result.Description = check.Description
+		}
+		result.Duration = time.Since(started)
+
+		// A non-fatal check that failed is a warning: the release said
+		// it wanted something, the machine does not have it, and the
+		// operator gets to decide.
+		if result.Status == events.CheckFail && !check.Fatal {
+			result.Status = events.CheckWarn
+		}
+
+		report.Results = append(report.Results, result)
+		report.Worst = report.Worst.Worse(result.Status)
+
+		if r.bus != nil {
+			r.bus.Publish(events.Check(result))
+		}
+	}
+	return report
+}
+
+// Result constructors, so a check body reads as a statement rather than a
+// struct literal.
+
+func OK(format string, args ...any) events.CheckResult {
+	return events.CheckResult{Status: events.CheckOK, Message: fmt.Sprintf(format, args...)}
+}
+
+func Warn(remedy string, format string, args ...any) events.CheckResult {
+	return events.CheckResult{
+		Status: events.CheckWarn, Message: fmt.Sprintf(format, args...), Remedy: remedy,
+	}
+}
+
+func Fail(remedy string, format string, args ...any) events.CheckResult {
+	return events.CheckResult{
+		Status: events.CheckFail, Message: fmt.Sprintf(format, args...), Remedy: remedy,
+	}
+}
+
+// Categories group results in the doctor view.
+const (
+	CategorySystem  = "system"
+	CategoryTools   = "tools"
+	CategoryStorage = "storage"
+	CategoryNetwork = "network"
+	CategoryConfig  = "configuration"
+	CategorySecrets = "secrets"
+	CategoryRuntime = "runtime"
+	CategoryBackup  = "backup"
+)
+
+// Architecture checks that the release supports this CPU architecture.
+func Architecture(req domain.Requirements) Check {
+	return Check{
+		ID:          "system.architecture",
+		Category:    CategorySystem,
+		Description: "CPU architecture is supported by the release",
+		Fatal:       true,
+		Run: func(context.Context) events.CheckResult {
+			if len(req.Architectures) == 0 {
+				return OK("the release states no architecture requirement")
+			}
+			for _, a := range req.Architectures {
+				if a == runtime.GOARCH {
+					return OK("%s", runtime.GOARCH)
+				}
+			}
+			return Fail(
+				"obtain a bundle built for "+runtime.GOARCH+", or run on a supported architecture",
+				"this machine is %s; the release supports %s",
+				runtime.GOARCH, strings.Join(req.Architectures, ", "))
+		},
+	}
+}
+
+// OperatingSystem checks the host distribution against the release.
+//
+// A mismatch is a warning rather than a failure: the OS list in a manifest is
+// what the vendor tested, not a hard technical bound, and refusing to run on
+// an untested-but-compatible distribution would be the manager overreaching.
+func OperatingSystem(req domain.Requirements) Check {
+	return Check{
+		ID:          "system.os",
+		Category:    CategorySystem,
+		Description: "host OS is one the release was tested against",
+		Fatal:       false,
+		Run: func(context.Context) events.CheckResult {
+			if len(req.OS) == 0 {
+				return OK("the release states no OS requirement")
+			}
+
+			id, version := hostOS()
+			if id == "" {
+				return Warn("", "cannot identify the host OS from /etc/os-release")
+			}
+
+			var wanted []string
+			for _, spec := range req.OS {
+				wanted = append(wanted, spec.ID)
+				if !strings.EqualFold(spec.ID, id) {
+					continue
+				}
+				if spec.Version.IsZero() {
+					return OK("%s %s", id, version)
+				}
+				v, err := domain.ParseVersion(normaliseOSVersion(version))
+				if err != nil {
+					return Warn("", "%s %s (version not comparable)", id, version)
+				}
+				if spec.Version.Allows(v) {
+					return OK("%s %s", id, version)
+				}
+				return Warn(
+					"the release was tested against "+spec.ID+" "+spec.Version.String(),
+					"%s %s is outside the tested range %s", id, version, spec.Version)
+			}
+			return Warn(
+				"the release was tested on "+strings.Join(wanted, ", "),
+				"%s %s is not in the release's tested OS list", id, version)
+		},
+	}
+}
+
+// hostOS reads /etc/os-release.
+func hostOS() (id, version string) {
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return "", ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		v = strings.Trim(v, `"'`)
+		switch k {
+		case "ID":
+			id = v
+		case "VERSION_ID":
+			version = v
+		}
+	}
+	return id, version
+}
+
+// normaliseOSVersion turns "22.04" into "22.04.0" so semver can compare it.
+func normaliseOSVersion(v string) string {
+	if v == "" {
+		return "0.0.0"
+	}
+	parts := strings.Split(v, ".")
+	for len(parts) < 3 {
+		parts = append(parts, "0")
+	}
+	return strings.Join(parts[:3], ".")
+}
+
+// Tool checks one required binary and its version.
+func Tool(registry *tools.Registry, name string, constraint domain.Constraint) Check {
+	desc := "required tool: " + name
+	if !constraint.IsZero() {
+		desc = fmt.Sprintf("required tool: %s %s", name, constraint)
+	}
+	return Check{
+		ID:          "tools." + name,
+		Category:    CategoryTools,
+		Description: desc,
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			info, err := registry.Require(ctx, name, constraint)
+			if err != nil {
+				e := domain.AsError(err)
+				return Fail(e.Hint, "%s", e.Message)
+			}
+			return OK("%s", info.Version)
+		},
+	}
+}
+
+// Tools builds a check per entry in requirements.tools, in a stable order.
+func Tools(registry *tools.Registry, req domain.Requirements) []Check {
+	names := make([]string, 0, len(req.Tools))
+	for name := range req.Tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	checks := make([]Check, 0, len(names))
+	for _, name := range names {
+		checks = append(checks, Tool(registry, name, req.Tools[name]))
+	}
+	return checks
+}
+
+// Disk checks free space on the filesystem holding a path.
+func Disk(path string, required domain.ByteSize) Check {
+	return Check{
+		ID:          "storage.disk",
+		Category:    CategoryStorage,
+		Description: "free disk space",
+		Fatal:       true,
+		Run: func(context.Context) events.CheckResult {
+			if required <= 0 {
+				return OK("the release states no disk requirement")
+			}
+
+			free, err := FreeSpace(path)
+			if err != nil {
+				return Warn("", "cannot determine free space on %s: %v", path, err)
+			}
+			if free < required.Bytes() {
+				return Fail(
+					"free up space, or move the data directory to a larger filesystem",
+					"%s has %s free, the release needs %s",
+					path, domain.ByteSize(free), required)
+			}
+			return OK("%s free on %s", domain.ByteSize(free), path)
+		},
+	}
+}
+
+// FreeSpace returns the bytes available to an unprivileged process.
+//
+// Bavail rather than Bfree: the difference is the reserved blocks only root
+// may use, and reporting those as available would let a non-root operation
+// pass preflight and then fail on ENOSPC.
+func FreeSpace(path string) (int64, error) {
+	var stat syscall.Statfs_t
+	target := path
+	for {
+		if err := syscall.Statfs(target, &stat); err == nil {
+			break
+		}
+		// The path may not exist yet on a fresh install; walk up to the
+		// nearest existing ancestor, which is on the same filesystem
+		// the directory will be created on.
+		parent := parentDir(target)
+		if parent == target {
+			return 0, fmt.Errorf("cannot stat any ancestor of %s", path)
+		}
+		target = parent
+	}
+	//nolint:gosec // Bavail and Bsize are non-negative in practice.
+	return int64(stat.Bavail) * stat.Bsize, nil
+}
+
+func parentDir(p string) string {
+	if i := strings.LastIndexByte(strings.TrimSuffix(p, "/"), '/'); i > 0 {
+		return p[:i]
+	}
+	return "/"
+}
+
+// Ports checks that the ports a release needs are free.
+//
+// A port held by the product's own containers is not a conflict -- `apply` on
+// a running deployment must not report its own listener as a blocker -- so
+// this check is only applied when the project is not already up.
+func Ports(required []int) Check {
+	return Check{
+		ID:          "network.ports",
+		Category:    CategoryNetwork,
+		Description: "required ports are available",
+		Fatal:       true,
+		Run: func(context.Context) events.CheckResult {
+			if len(required) == 0 {
+				return OK("the release requires no specific ports")
+			}
+
+			var occupied []string
+			for _, port := range required {
+				if !portFree(port) {
+					occupied = append(occupied, strconv.Itoa(port))
+				}
+			}
+			if len(occupied) > 0 {
+				return Fail(
+					"stop whatever is listening (`ss -tlnp`), or change the release's port mapping",
+					"port %s already in use", strings.Join(occupied, ", "))
+			}
+			return OK("%d port(s) available", len(required))
+		},
+	}
+}
+
+func portFree(port int) bool {
+	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		return false
+	}
+	_ = ln.Close()
+	return true
+}
+
+// Directories checks that the managed directories exist with the right modes.
+func Directories(paths domain.Paths) Check {
+	return Check{
+		ID:          "storage.directories",
+		Category:    CategoryStorage,
+		Description: "managed directories exist with correct permissions",
+		Fatal:       false,
+		Run: func(context.Context) events.CheckResult {
+			var problems []string
+			for _, dir := range paths.ManagedDirs() {
+				info, err := os.Stat(dir.Path)
+				if err != nil {
+					problems = append(problems, dir.Path+": missing")
+					continue
+				}
+				if !info.IsDir() {
+					problems = append(problems, dir.Path+": not a directory")
+					continue
+				}
+				if got := uint32(info.Mode().Perm()); got != dir.Mode {
+					problems = append(problems,
+						fmt.Sprintf("%s: mode %04o, expected %04o", dir.Path, got, dir.Mode))
+				}
+			}
+			if len(problems) > 0 {
+				return Warn(
+					"run `morzer init --repair` to restore the expected layout",
+					"%s", strings.Join(problems, "; "))
+			}
+			return OK("all %d managed directories are correct", len(paths.ManagedDirs()))
+		},
+	}
+}
+
+// SecretsPresent checks that every required secret is set.
+func SecretsPresent(schema domain.SecretSchema, set domain.SecretSet) Check {
+	return Check{
+		ID:          "secrets.required",
+		Category:    CategorySecrets,
+		Description: "all required secrets are set",
+		Fatal:       true,
+		Run: func(context.Context) events.CheckResult {
+			missing := schema.Missing(set)
+			if len(missing) == 0 {
+				return OK("%d secret(s) present", set.Len())
+			}
+			return Fail(
+				"run `morzer secret set <name>`, or `morzer secret generate <name>` "+
+					"for secrets the release can generate",
+				"missing required secret(s): %s", strings.Join(missing, ", "))
+		},
+	}
+}
+
+// Memory checks total system memory against the release requirement.
+//
+// A warning rather than a failure: the check reads total RAM, which says
+// nothing about swap or about how much the product actually needs at rest.
+// Refusing to start on it would be the manager guessing.
+func Memory(required domain.ByteSize) Check {
+	return Check{
+		ID:          "system.memory",
+		Category:    CategorySystem,
+		Description: "system memory meets the release requirement",
+		Fatal:       false,
+		Run: func(context.Context) events.CheckResult {
+			if required <= 0 {
+				return OK("the release states no memory requirement")
+			}
+			total, err := totalMemory()
+			if err != nil {
+				return Warn("", "cannot determine system memory: %v", err)
+			}
+			if total < required.Bytes() {
+				return Warn(
+					"the product may be unstable or fail to start under memory pressure",
+					"this machine has %s, the release recommends %s",
+					domain.ByteSize(total), required)
+			}
+			return OK("%s", domain.ByteSize(total))
+		},
+	}
+}
+
+func totalMemory() (int64, error) {
+	var info syscall.Sysinfo_t
+	if err := syscall.Sysinfo(&info); err != nil {
+		return 0, err
+	}
+	//nolint:gosec // Totalram and Unit are non-negative.
+	return int64(info.Totalram) * int64(info.Unit), nil
+}
+
+// NoUnfinishedOperation refuses to start while a previous operation is still
+// flagged.
+//
+// Proceeding over an unfinished operation would layer new changes on a state
+// nobody has confirmed, which is exactly how a recoverable failure becomes an
+// unrecoverable one.
+func NoUnfinishedOperation(records []domain.OperationRecord) Check {
+	return Check{
+		ID:          "config.unfinished-operation",
+		Category:    CategoryConfig,
+		Description: "no previous operation needs attention",
+		Fatal:       true,
+		Run: func(context.Context) events.CheckResult {
+			if len(records) == 0 {
+				return OK("no unfinished operations")
+			}
+
+			rec := records[0]
+			if rec.Status.NeedsAttention() {
+				return Fail(
+					"run `morzer doctor` to see what happened, repair the system, "+
+						"then clear the flag with `morzer status --clear-intervention`",
+					"operation %s (%s) requires manual intervention", rec.ID, rec.Type)
+			}
+			return Fail(
+				fmt.Sprintf("resume it with `morzer %s --resume`, "+
+					"or investigate with `morzer doctor`", rec.Type),
+				"operation %s (%s) did not finish", rec.ID, rec.Type)
+		},
+	}
+}

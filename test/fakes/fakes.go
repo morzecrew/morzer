@@ -1,0 +1,423 @@
+// Package fakes provides in-memory port implementations.
+//
+// They exist so a full operation can run in a unit test: no Docker, no root,
+// no network, milliseconds instead of minutes. That is what makes the
+// fault-injection suite practical -- killing an operation at each of eleven
+// steps is a loop, not an afternoon.
+//
+// Every fake also has a failure switch, because the interesting tests are the
+// ones where something breaks.
+package fakes
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ports"
+)
+
+// Runtime is an in-memory ports.Runtime.
+type Runtime struct {
+	mu sync.Mutex
+
+	// Services is the simulated project state.
+	Services map[string]ports.ServiceState
+
+	// Calls records method names in order, so a test can assert on
+	// sequencing -- that migrations ran before services started, say.
+	Calls []string
+
+	// Fail maps a method name to the error it should return. This is the
+	// fault-injection switch.
+	Fail map[string]error
+
+	// PulledImages records what Pull was asked for.
+	PulledImages []string
+
+	// UpCount counts how many times Up ran, for idempotence assertions.
+	UpCount int
+
+	// ValidateResult is what Validate returns.
+	ValidateResult ports.Rendered
+
+	// OneShotResults maps a service name to its exit result.
+	OneShotResults map[string]ports.ExitResult
+}
+
+func NewRuntime() *Runtime {
+	return &Runtime{
+		Services:       map[string]ports.ServiceState{},
+		Fail:           map[string]error{},
+		OneShotResults: map[string]ports.ExitResult{},
+		ValidateResult: ports.Rendered{Services: []string{"app", "db"}},
+	}
+}
+
+var _ ports.Runtime = (*Runtime)(nil)
+
+func (r *Runtime) record(method string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Calls = append(r.Calls, method)
+	return r.Fail[method]
+}
+
+func (r *Runtime) Validate(ctx context.Context, cfg ports.RuntimeConfig) (ports.Rendered, error) {
+	if err := r.record("Validate"); err != nil {
+		return ports.Rendered{}, err
+	}
+	return r.ValidateResult, nil
+}
+
+func (r *Runtime) Pull(ctx context.Context, cfg ports.RuntimeConfig, images []string) error {
+	if err := r.record("Pull"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.PulledImages = append(r.PulledImages, images...)
+	return nil
+}
+
+func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.UpOptions) error {
+	if err := r.record("Up"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.UpCount++
+	for _, name := range r.ValidateResult.Services {
+		r.Services[name] = ports.ServiceState{
+			Name: name, State: "running", Health: ports.HealthHealthy,
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) Down(ctx context.Context, cfg ports.RuntimeConfig, opts ports.DownOptions) error {
+	if err := r.record("Down"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// The fake enforces the port's invariant, so a test that accidentally
+	// passes Volumes true fails loudly here rather than silently in
+	// production.
+	if opts.Volumes {
+		r.Calls = append(r.Calls, "Down(volumes)")
+	}
+	for name := range r.Services {
+		r.Services[name] = ports.ServiceState{Name: name, State: "exited"}
+	}
+	return nil
+}
+
+func (r *Runtime) Restart(ctx context.Context, cfg ports.RuntimeConfig, services []string) error {
+	if err := r.record("Restart"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Calls = append(r.Calls, "Restart:"+strings.Join(services, ","))
+	return nil
+}
+
+func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, service string, opts ports.RunOptions) (ports.ExitResult, error) {
+	if err := r.record("RunOneShot"); err != nil {
+		return ports.ExitResult{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if res, ok := r.OneShotResults[service]; ok {
+		return res, nil
+	}
+	return ports.ExitResult{ExitCode: 0}, nil
+}
+
+func (r *Runtime) Exec(ctx context.Context, cfg ports.RuntimeConfig, service string, argv []string) (ports.ExitResult, error) {
+	if err := r.record("Exec"); err != nil {
+		return ports.ExitResult{}, err
+	}
+	return ports.ExitResult{ExitCode: 0}, nil
+}
+
+func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.ServiceState, error) {
+	if err := r.record("Status"); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	out := make([]ports.ServiceState, 0, len(r.Services))
+	for _, s := range r.Services {
+		out = append(out, s)
+	}
+	// Sorted so assertions are stable: map iteration is not.
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j].Name < out[j-1].Name; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out, nil
+}
+
+func (r *Runtime) Logs(ctx context.Context, cfg ports.RuntimeConfig, opts ports.LogOptions) (io.ReadCloser, error) {
+	if err := r.record("Logs"); err != nil {
+		return nil, err
+	}
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
+// CallsMatching returns recorded calls whose name starts with prefix.
+func (r *Runtime) CallsMatching(prefix string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for _, c := range r.Calls {
+		if strings.HasPrefix(c, prefix) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// SecretStore is an in-memory ports.SecretStore.
+//
+// It enforces the same invariants as the real one -- 0400 files in a 0700
+// directory, no last-recipient removal -- so the contract suite is a genuine
+// test of both rather than of the real adapter only.
+type SecretStore struct {
+	mu sync.Mutex
+
+	values     map[string]string
+	changed    map[string]time.Time
+	recipients []ports.Recipient
+	rendered   map[string][]byte
+
+	// Fail maps a method name to the error it should return.
+	Fail map[string]error
+
+	Now func() time.Time
+}
+
+func NewSecretStore() *SecretStore {
+	return &SecretStore{
+		values:   map[string]string{},
+		changed:  map[string]time.Time{},
+		rendered: map[string][]byte{},
+		Fail:     map[string]error{},
+		Now:      time.Now,
+		recipients: []ports.Recipient{
+			{PublicKey: "age1fakemachinekey000000000000000000000000000000000000000000",
+				Kind: ports.RecipientMachine},
+		},
+	}
+}
+
+var _ ports.SecretStore = (*SecretStore)(nil)
+
+func (s *SecretStore) fail(method string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Fail[method]
+}
+
+func (s *SecretStore) Initialized(ctx context.Context) (bool, error) {
+	if err := s.fail("Initialized"); err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.values) > 0, nil
+}
+
+func (s *SecretStore) Load(ctx context.Context) (domain.SecretSet, error) {
+	if err := s.fail("Load"); err != nil {
+		return domain.SecretSet{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make(map[string]domain.Secret, len(s.values))
+	for k, v := range s.values {
+		out[k] = domain.NewSecret(v)
+	}
+	return domain.NewSecretSet(out), nil
+}
+
+func (s *SecretStore) Set(ctx context.Context, name string, value domain.Secret) error {
+	if err := s.fail("Set"); err != nil {
+		return err
+	}
+	if value.IsEmpty() {
+		return domain.SecretsError(nil, "refusing to store an empty value for secret %q", name)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.values[name] = value.Reveal()
+	s.changed[name] = s.Now()
+	return nil
+}
+
+func (s *SecretStore) Generate(ctx context.Context, name string, spec ports.GenSpec) error {
+	if err := s.fail("Generate"); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.values[name]; exists && !spec.Overwrite {
+		return domain.SecretsError(nil, "secret %q already exists", name)
+	}
+	if !spec.Generator.Auto() {
+		return domain.SecretsError(nil, "secret %q has no generator", name)
+	}
+
+	// Deterministic but distinct per name, and long enough to survive the
+	// redactor's minimum-length rule.
+	s.values[name] = fmt.Sprintf("generated-%s-%d", name, len(s.values)+1)
+	s.changed[name] = s.Now()
+	return nil
+}
+
+func (s *SecretStore) Rotate(ctx context.Context, name string, spec ports.GenSpec) error {
+	if err := s.fail("Rotate"); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	_, exists := s.values[name]
+	s.mu.Unlock()
+	if !exists {
+		return domain.SecretsError(domain.ErrSecretNotFound, "secret %q does not exist", name)
+	}
+	spec.Overwrite = true
+	return s.Generate(ctx, name, spec)
+}
+
+func (s *SecretStore) Remove(ctx context.Context, name string) error {
+	if err := s.fail("Remove"); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.values, name)
+	delete(s.changed, name)
+	return nil
+}
+
+func (s *SecretStore) Metadata(ctx context.Context) ([]ports.SecretMetadata, error) {
+	if err := s.fail("Metadata"); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make([]ports.SecretMetadata, 0, len(s.values))
+	for name, value := range s.values {
+		m := ports.SecretMetadata{
+			Name:        name,
+			Fingerprint: fmt.Sprintf("%x", len(value)*31),
+			Length:      len(value),
+		}
+		if t, ok := s.changed[name]; ok {
+			m.LastChanged = domain.NewTime(t)
+		}
+		out = append(out, m)
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j].Name < out[j-1].Name; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out, nil
+}
+
+// Render writes real files, because the permission invariants are the point.
+func (s *SecretStore) Render(ctx context.Context, targetDir string, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
+	if err := s.fail("Render"); err != nil {
+		return nil, err
+	}
+
+	set, err := s.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if missing := schema.Missing(set); len(missing) > 0 {
+		return nil, domain.SecretsError(domain.ErrSecretNotFound,
+			"required secret(s) not set: %s", strings.Join(missing, ", "))
+	}
+
+	return renderToDisk(targetDir, schema, set)
+}
+
+func (s *SecretStore) Recipients(ctx context.Context) ([]ports.Recipient, error) {
+	if err := s.fail("Recipients"); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]ports.Recipient, len(s.recipients))
+	copy(out, s.recipients)
+	return out, nil
+}
+
+func (s *SecretStore) AddRecipient(ctx context.Context, r ports.Recipient) error {
+	if err := s.fail("AddRecipient"); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, existing := range s.recipients {
+		if existing.PublicKey == r.PublicKey {
+			return nil
+		}
+	}
+	s.recipients = append(s.recipients, r)
+	return nil
+}
+
+func (s *SecretStore) RemoveRecipient(ctx context.Context, r ports.Recipient) error {
+	if err := s.fail("RemoveRecipient"); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var remaining []ports.Recipient
+	found := false
+	for _, existing := range s.recipients {
+		if existing.PublicKey == r.PublicKey {
+			found = true
+			if existing.Kind == ports.RecipientMachine {
+				return domain.SecretsError(nil,
+					"refusing to remove this machine's own recipient key")
+			}
+			continue
+		}
+		remaining = append(remaining, existing)
+	}
+	if !found {
+		return domain.SecretsError(domain.ErrNotFound, "not a recipient")
+	}
+	if len(remaining) == 0 {
+		return domain.SecretsError(nil, "refusing to remove the last recipient")
+	}
+	s.recipients = remaining
+	return nil
+}
+
+// Seed sets values directly, for test arrangement.
+func (s *SecretStore) Seed(values map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k, v := range values {
+		s.values[k] = v
+		s.changed[k] = s.Now()
+	}
+}

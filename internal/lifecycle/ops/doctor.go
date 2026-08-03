@@ -1,0 +1,596 @@
+package ops
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
+	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/infra/tools"
+	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
+	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
+)
+
+// DoctorReport is the result of a diagnostic run. `doctor --json` is a
+// supported monitoring contract, so this shape is stable.
+type DoctorReport struct {
+	Results []events.CheckResult `json:"results"`
+	Worst   events.CheckStatus   `json:"worst"`
+
+	Summary struct {
+		OK   int `json:"ok"`
+		Warn int `json:"warn"`
+		Fail int `json:"fail"`
+	} `json:"summary"`
+}
+
+// ExitCode maps the worst result onto the process exit status.
+//
+// A warning exits zero: warnings are advisory, and a monitoring system that
+// paged on every "the release was tested on a different Ubuntu" would be
+// turned off within a week.
+func (r DoctorReport) ExitCode() int {
+	if r.Worst == events.CheckFail {
+		return domain.ExitPreflight
+	}
+	return domain.ExitSuccess
+}
+
+// Doctor runs read-only diagnostics.
+//
+// Nothing here mutates and nothing takes the lock: doctor must work while an
+// operation is running, and must work when the installation is too broken for
+// any other command to load it. Every check that cannot run reports itself as
+// a failed check rather than aborting the run.
+func Doctor(ctx context.Context, d *Deps) (DoctorReport, error) {
+	runner := preflight.NewRunner(d.Bus)
+	checks := d.doctorChecks(ctx)
+
+	report := runner.Run(ctx, checks)
+
+	out := DoctorReport{Results: report.Results, Worst: report.Worst}
+	for _, res := range report.Results {
+		switch res.Status {
+		case events.CheckOK:
+			out.Summary.OK++
+		case events.CheckWarn:
+			out.Summary.Warn++
+		case events.CheckFail:
+			out.Summary.Fail++
+		}
+	}
+	return out, nil
+}
+
+// doctorChecks assembles the check list, adapting to how much of the
+// installation is readable.
+func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
+	checks := []preflight.Check{
+		d.checkInstallationReadable(),
+	}
+
+	inst, instErr := d.loadInstallation(ctx)
+	if instErr != nil {
+		// Without an installation there is nothing else worth checking:
+		// every remaining question is about a deployment that does not
+		// exist yet. Tool availability is still useful, though, because
+		// it is what `init` will need next.
+		return append(checks,
+			preflight.Tool(d.Tools, tools.Docker, domain.Constraint{}),
+			preflight.Tool(d.Tools, tools.SOPS, domain.Constraint{}),
+		)
+	}
+
+	checks = append(checks,
+		d.checkUnfinishedOperations(),
+		preflight.Directories(d.Paths),
+		d.checkIdentity(),
+		d.checkSecretsDecryptable(),
+		d.checkRecoveryRecipient(),
+		d.checkDiskSpace(),
+	)
+
+	current, _ := d.State.CurrentRelease(ctx)
+	if current.IsZero() {
+		checks = append(checks, d.checkNoReleaseInstalled())
+	} else if rel, err := d.resolveCurrentRelease(ctx, current); err != nil {
+		checks = append(checks, d.checkReleaseBroken(current, err))
+	} else {
+		checks = append(checks, preflight.Architecture(rel.Manifest.Requirements))
+		checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
+		checks = append(checks,
+			d.checkRequiredSecrets(rel),
+			d.checkRegistryReachable(rel),
+			d.checkServices(inst, rel),
+			d.checkHealth(inst, rel),
+		)
+	}
+
+	if d.Supervisor != nil {
+		checks = append(checks, d.checkUnits(inst))
+	}
+	if d.Backup != nil {
+		checks = append(checks, d.checkLastBackup(inst))
+	}
+
+	return checks
+}
+
+func (d *Deps) checkInstallationReadable() preflight.Check {
+	return preflight.Check{
+		ID:          "config.installation",
+		Category:    preflight.CategoryConfig,
+		Description: "installation configuration is valid",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			exists, err := d.State.InstallationExists(ctx)
+			if err != nil {
+				return preflight.Fail("check the permissions on "+d.Paths.ManagerDir(),
+					"cannot read the installation state: %v", domain.AsError(err).Message)
+			}
+			if !exists {
+				return preflight.Fail("run `morzer init` to create an installation",
+					"no installation at %s", d.Paths.EtcDir)
+			}
+			inst, err := d.State.LoadInstallation(ctx)
+			if err != nil {
+				e := domain.AsError(err)
+				return preflight.Fail(e.Hint, "%s", e.Message)
+			}
+			return preflight.OK("%s (%s)", inst.Product, inst.ID)
+		},
+	}
+}
+
+func (d *Deps) checkUnfinishedOperations() preflight.Check {
+	return preflight.Check{
+		ID:          "config.operations",
+		Category:    preflight.CategoryConfig,
+		Description: "no operation is unfinished or awaiting intervention",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			unfinished, err := d.State.UnfinishedOperations(ctx)
+			if err != nil {
+				return preflight.Warn("", "cannot read the operation journal: %v",
+					domain.AsError(err).Message)
+			}
+			if len(unfinished) == 0 {
+				return preflight.OK("no unfinished operations")
+			}
+
+			var needsAttention, incomplete []string
+			for _, rec := range unfinished {
+				label := fmt.Sprintf("%s (%s)", rec.ID, rec.Type)
+				if rec.Status.NeedsAttention() {
+					needsAttention = append(needsAttention, label)
+				} else {
+					incomplete = append(incomplete, label)
+				}
+			}
+
+			if len(needsAttention) > 0 {
+				return preflight.Fail(
+					"investigate, repair the system, then run "+
+						"`morzer status --clear-intervention` to acknowledge",
+					"operation(s) require manual intervention: %s",
+					strings.Join(needsAttention, ", "))
+			}
+			return preflight.Fail(
+				"resume with `morzer <command> --resume`, or start a fresh operation",
+				"operation(s) did not finish: %s", strings.Join(incomplete, ", "))
+		},
+	}
+}
+
+func (d *Deps) checkIdentity() preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.identity",
+		Category:    preflight.CategorySecrets,
+		Description: "machine age identity is present and protected",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			path := d.Paths.AgeIdentityFile()
+
+			info, err := os.Stat(path)
+			if err != nil {
+				return preflight.Fail(
+					"restore it from your backup; without it the secret state cannot be read",
+					"the age identity at %s is missing", path)
+			}
+			if mode := info.Mode().Perm(); mode != 0o400 {
+				return preflight.Warn(
+					fmt.Sprintf("run `chmod 400 %s`", path),
+					"the age identity is mode %04o, expected 0400", mode)
+			}
+
+			pub, err := sopsage.PublicKeyFromIdentityFile(path)
+			if err != nil {
+				e := domain.AsError(err)
+				return preflight.Fail(e.Hint, "%s", e.Message)
+			}
+			return preflight.OK("%s", pub)
+		},
+	}
+}
+
+func (d *Deps) checkSecretsDecryptable() preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.decryptable",
+		Category:    preflight.CategorySecrets,
+		Description: "secret state can be decrypted",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			initialised, err := d.Secrets.Initialized(ctx)
+			if err != nil {
+				return preflight.Fail("", "%s", domain.AsError(err).Message)
+			}
+			if !initialised {
+				return preflight.Warn(
+					"secrets are created by `morzer init` or `morzer secret set`",
+					"no secret state exists yet")
+			}
+
+			set, err := d.Secrets.Load(ctx)
+			if err != nil {
+				e := domain.AsError(err)
+				return preflight.Fail(e.Hint, "%s", e.Message)
+			}
+			return preflight.OK("%d secret(s) decrypted", set.Len())
+		},
+	}
+}
+
+// checkRecoveryRecipient is the check that matters most on a machine that has
+// not failed yet.
+//
+// Without an offline recipient, losing the VM means losing every secret in it.
+// That is discoverable only in advance, which is exactly why doctor asks.
+func (d *Deps) checkRecoveryRecipient() preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.recovery-recipient",
+		Category:    preflight.CategorySecrets,
+		Description: "an offline recovery recipient is configured",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			recipients, err := d.Secrets.Recipients(ctx)
+			if err != nil {
+				return preflight.Warn("", "cannot read recipients: %v", domain.AsError(err).Message)
+			}
+			if len(recipients) == 0 {
+				return preflight.Warn(
+					"secrets have not been initialised yet",
+					"no recipients are configured")
+			}
+
+			var recovery, machine int
+			for _, r := range recipients {
+				switch r.Kind {
+				case ports.RecipientRecovery:
+					recovery++
+				case ports.RecipientMachine:
+					machine++
+				}
+			}
+
+			if machine == 0 {
+				return preflight.Fail(
+					"this machine cannot decrypt its own secret state; "+
+						"re-encrypt using the offline recovery key",
+					"this machine's identity is not among the %d recipient(s)", len(recipients))
+			}
+			if recovery == 0 {
+				return preflight.Warn(
+					"add one with `morzer secret recipients add <age1...> --kind recovery`, "+
+						"and keep the private key off this machine",
+					"no offline recovery recipient: if this VM is lost, its secrets are lost")
+			}
+			return preflight.OK("%d recipient(s), %d for recovery", len(recipients), recovery)
+		},
+	}
+}
+
+func (d *Deps) checkDiskSpace() preflight.Check {
+	return preflight.Check{
+		ID:          "storage.free-space",
+		Category:    preflight.CategoryStorage,
+		Description: "sufficient free disk space",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			free, err := preflight.FreeSpace(d.Paths.VarDir)
+			if err != nil {
+				return preflight.Warn("", "cannot determine free space: %v", err)
+			}
+
+			// Thresholds the manager sets for itself, independent of
+			// what a release asks for: below a couple of gigabytes,
+			// a backup or an image pull will fail, and it is better
+			// to say so before it does.
+			const (
+				critical = 2 * domain.GiB
+				low      = 10 * domain.GiB
+			)
+			switch {
+			case free < int64(critical):
+				return preflight.Fail(
+					"free space before the next update or backup; both will fail below this",
+					"only %s free on %s", domain.ByteSize(free), d.Paths.VarDir)
+			case free < int64(low):
+				return preflight.Warn(
+					"consider pruning old releases (`morzer release prune`) or backups",
+					"%s free on %s", domain.ByteSize(free), d.Paths.VarDir)
+			default:
+				return preflight.OK("%s free on %s", domain.ByteSize(free), d.Paths.VarDir)
+			}
+		},
+	}
+}
+
+func (d *Deps) checkNoReleaseInstalled() preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.release",
+		Category:    preflight.CategoryRuntime,
+		Description: "a release is installed",
+		Fatal:       false,
+		Run: func(context.Context) events.CheckResult {
+			return preflight.Warn(
+				"install one with `morzer update <bundle>`",
+				"no release is installed yet")
+		},
+	}
+}
+
+func (d *Deps) checkReleaseBroken(record domain.ReleaseRecord, cause error) preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.release",
+		Category:    preflight.CategoryRuntime,
+		Description: "the installed release is readable",
+		Fatal:       true,
+		Run: func(context.Context) events.CheckResult {
+			e := domain.AsError(cause)
+			return preflight.Fail(e.Hint, "release %s at %s: %s",
+				record.Version, record.Root, e.Message)
+		},
+	}
+}
+
+func (d *Deps) checkRequiredSecrets(rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.required",
+		Category:    preflight.CategorySecrets,
+		Description: "all required secrets are set",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			schema, err := release.LoadSecretSchema(rel)
+			if err != nil {
+				return preflight.Fail("", "%s", domain.AsError(err).Message)
+			}
+			if len(schema.Secrets) == 0 {
+				return preflight.OK("the release declares no secrets")
+			}
+
+			set, err := d.Secrets.Load(ctx)
+			if err != nil {
+				return preflight.Fail("", "cannot read secrets: %s", domain.AsError(err).Message)
+			}
+			return preflight.SecretsPresent(schema, set).Run(ctx)
+		},
+	}
+}
+
+// checkRegistryReachable verifies the registry is reachable without pulling.
+func (d *Deps) checkRegistryReachable(rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "network.registry",
+		Category:    preflight.CategoryNetwork,
+		Description: "container registry is reachable",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			refs := rel.Manifest.ImageRefs()
+			if len(refs) == 0 {
+				return preflight.OK("the release declares no images")
+			}
+
+			probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			// A manifest inspect touches the registry without
+			// transferring layers, so this stays cheap enough to run
+			// on every doctor invocation.
+			prober, ok := d.Runtime.(ports.RegistryProber)
+			if !ok {
+				return preflight.OK("the configured runtime cannot probe registries")
+			}
+
+			if err := prober.ProbeRegistry(probeCtx, refs[0]); err != nil {
+				return preflight.Warn(
+					"check network access and registry credentials (`docker login`); "+
+						"updates will fail while this is unreachable",
+					"cannot reach the registry for %s: %s",
+					shortRef(refs[0]), domain.AsError(err).Message)
+			}
+			return preflight.OK("reachable")
+		},
+	}
+}
+
+func shortRef(ref string) string {
+	if i := strings.Index(ref, "@"); i > 0 {
+		return ref[:i]
+	}
+	return ref
+}
+
+func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.services",
+		Category:    preflight.CategoryRuntime,
+		Description: "all services are running",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			cfg, err := d.runtimeConfig(rel, inst, "")
+			if err != nil {
+				return preflight.Fail("", "%s", domain.AsError(err).Message)
+			}
+
+			services, err := d.Runtime.Status(ctx, cfg)
+			if err != nil {
+				return preflight.Fail(
+					"check that the Docker daemon is running: `docker info`",
+					"cannot read service status: %s", domain.AsError(err).Message)
+			}
+			if len(services) == 0 {
+				return preflight.Warn(
+					"run `morzer apply` to start the product",
+					"no containers exist for project %q", cfg.Project)
+			}
+
+			var down []string
+			for _, s := range services {
+				if s.State == "exited" && s.ExitCode == 0 {
+					continue // a completed one-shot job
+				}
+				if !s.Running() {
+					down = append(down, fmt.Sprintf("%s (%s)", s.Name, s.State))
+				}
+			}
+			if len(down) > 0 {
+				return preflight.Fail(
+					"inspect with `docker compose logs`, then `morzer apply` to reconverge",
+					"service(s) not running: %s", strings.Join(down, ", "))
+			}
+			return preflight.OK("%d service(s) running", len(services))
+		},
+	}
+}
+
+func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.health",
+		Category:    preflight.CategoryRuntime,
+		Description: "health endpoints respond",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			if len(rel.Manifest.Health.Checks) == 0 {
+				return preflight.OK("the release declares no health checks")
+			}
+
+			// Probing a project that is not running would report a
+			// wall of connection refusals, and a remedy ("check its
+			// logs") that contradicts the service check directly
+			// above. The service check already said what is wrong.
+			cfg, err := d.runtimeConfig(rel, inst, "")
+			if err == nil {
+				if services, err := d.Runtime.Status(ctx, cfg); err == nil && !anyRunning(services) {
+					return preflight.Warn(
+						"run `morzer apply` to start the product",
+						"not probed: no services are running")
+				}
+			}
+
+			probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			results, err := d.Health.CheckOnce(probeCtx, d.checkSpecs(inst, rel, "", domain.OpTypeApply))
+			if err != nil {
+				return preflight.Warn("", "%s", domain.AsError(err).Message)
+			}
+
+			var failed []string
+			for _, r := range results {
+				if !r.OK {
+					failed = append(failed, fmt.Sprintf("%s (%s)", r.Name, r.Message))
+				}
+			}
+			if len(failed) > 0 {
+				return preflight.Fail(
+					"the containers are up but the application is not ready; check its logs",
+					"health check(s) failing: %s", strings.Join(failed, ", "))
+			}
+			return preflight.OK("%d check(s) passing", len(results))
+		},
+	}
+}
+
+func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "system.units",
+		Category:    preflight.CategorySystem,
+		Description: "systemd units are installed and enabled",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			if !d.Supervisor.Available(ctx) {
+				return preflight.OK("systemd is not in use on this host")
+			}
+
+			var problems []string
+			for _, name := range systemd.UnitNames(inst.Product) {
+				state, err := d.Supervisor.Status(ctx, name)
+				if err != nil {
+					problems = append(problems, name+": cannot query")
+					continue
+				}
+				if !state.Loaded {
+					problems = append(problems, name+": not installed")
+					continue
+				}
+				if state.Failed() {
+					// Exit 12 through systemd is the
+					// requires-manual-intervention path, and
+					// naming it here saves an operator from
+					// decoding the number.
+					detail := name + ": failed"
+					if state.ExitCode == domain.ExitManualIntervention {
+						detail += " (exit 12: manual intervention required)"
+					}
+					problems = append(problems, detail)
+				}
+			}
+
+			if len(problems) > 0 {
+				return preflight.Warn(
+					"run `morzer init --repair --install-units`, or inspect with `systemctl status`",
+					"%s", strings.Join(problems, "; "))
+			}
+			return preflight.OK("all units loaded")
+		},
+	}
+}
+
+func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "backup.freshness",
+		Category:    preflight.CategoryBackup,
+		Description: "a recent backup exists",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			backups, err := d.Backup.List(ctx)
+			if err != nil {
+				return preflight.Warn("", "cannot list backups: %s", domain.AsError(err).Message)
+			}
+			if len(backups) == 0 {
+				return preflight.Warn(
+					"take one with `morzer backup`, and enable the backup timer",
+					"no backups exist")
+			}
+
+			latest := backups[0]
+			age := d.now().Sub(latest.At.Time)
+			stale := inst.Policy.StaleBackupAfter.Or(48 * time.Hour)
+
+			if age > stale {
+				return preflight.Warn(
+					"run `morzer backup`, and check that the backup timer is active "+
+						"(`systemctl list-timers`)",
+					"the most recent backup is %s old (threshold %s)",
+					age.Round(time.Hour), stale)
+			}
+			return preflight.OK("%s, %s old", latest.ID, age.Round(time.Minute))
+		},
+	}
+}

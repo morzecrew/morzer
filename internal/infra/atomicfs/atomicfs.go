@@ -1,0 +1,292 @@
+// Package atomicfs provides crash-safe file writes and traversal-proof
+// filesystem access.
+//
+// Two guarantees matter here. First, a write either happens completely or not
+// at all: a half-written installation.yaml would make every subsequent command
+// fail on a parse error rather than on the original problem. Second, paths
+// derived from release-supplied input cannot escape the directory they are
+// meant to stay in -- enforced through os.Root, so containment is the kernel's
+// job rather than a string-comparison the next refactor might weaken.
+package atomicfs
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/google/renameio/v2"
+	"github.com/morzecrew/morzer/internal/domain"
+)
+
+// WriteFile writes data to path atomically: a temporary file in the same
+// directory, fsync, rename, then fsync of the directory.
+//
+// The temp file is created in the destination directory rather than /tmp
+// because rename is only atomic within a filesystem, and /tmp is frequently a
+// different one.
+func WriteFile(path string, data []byte, mode fs.FileMode) error {
+	if err := MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+
+	t, err := renameio.TempFile("", path)
+	if err != nil {
+		return domain.Internal(err, "cannot create temporary file next to %s", path)
+	}
+	defer func() { _ = t.Cleanup() }()
+
+	// Chmod before the rename: a file that exists briefly with default
+	// permissions is a file that could be read in that window, and secret
+	// state passes through here.
+	if err := t.Chmod(mode); err != nil {
+		return domain.Internal(err, "cannot set mode %04o on temporary file for %s", mode.Perm(), path)
+	}
+	if _, err := t.Write(data); err != nil {
+		return domain.Internal(err, "cannot write %s", path)
+	}
+	if err := t.CloseAtomicallyReplace(); err != nil {
+		return domain.Internal(err, "cannot atomically replace %s", path)
+	}
+	return nil
+}
+
+// WriteFileIn writes atomically inside a root, refusing paths that escape it.
+// rel is interpreted relative to the root.
+//
+// os.Root resolves every component while refusing to traverse a symlink out of
+// the tree, so a bundle whose manifest points a config target at
+// ../../etc/shadow fails at the syscall rather than at a check someone
+// remembered to write.
+func WriteFileIn(root *os.Root, rel string, data []byte, mode fs.FileMode) error {
+	rel, err := cleanRel(rel)
+	if err != nil {
+		return err
+	}
+	if dir := filepath.Dir(rel); dir != "." {
+		if err := mkdirAllIn(root, dir, 0o755); err != nil {
+			return err
+		}
+	}
+
+	// os.Root has no atomic-replace helper, so the temp-then-rename dance
+	// is done by hand against the root's own Create and Rename.
+	tmp := rel + ".tmp-" + randomSuffix()
+	f, err := root.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		return domain.Internal(err, "cannot create %s inside %s", tmp, root.Name())
+	}
+	cleanup := func() { _ = f.Close(); _ = root.Remove(tmp) }
+
+	if _, err := f.Write(data); err != nil {
+		cleanup()
+		return domain.Internal(err, "cannot write %s", rel)
+	}
+	if err := f.Sync(); err != nil {
+		cleanup()
+		return domain.Internal(err, "cannot fsync %s", rel)
+	}
+	// Create honours mode only modulo umask, so set it explicitly.
+	if err := f.Chmod(mode); err != nil {
+		cleanup()
+		return domain.Internal(err, "cannot set mode on %s", rel)
+	}
+	if err := f.Close(); err != nil {
+		_ = root.Remove(tmp)
+		return domain.Internal(err, "cannot close %s", rel)
+	}
+	if err := root.Rename(tmp, rel); err != nil {
+		_ = root.Remove(tmp)
+		return domain.Internal(err, "cannot rename %s into place", rel)
+	}
+	return syncDirIn(root, filepath.Dir(rel))
+}
+
+// MkdirAll creates a directory tree, applying mode to the directories it
+// creates. Existing directories keep their permissions: `init` sets them, and
+// a later `apply` has no business widening what an operator narrowed.
+func MkdirAll(path string, mode fs.FileMode) error {
+	if err := os.MkdirAll(path, mode); err != nil {
+		return domain.Internal(err, "cannot create directory %s", path)
+	}
+	return nil
+}
+
+// MkdirExact creates a directory and enforces its mode even if it already
+// exists. Used for the directories whose permissions are a security property:
+// the 0700 secret render directory above all.
+func MkdirExact(path string, mode fs.FileMode) error {
+	if err := os.MkdirAll(path, mode); err != nil {
+		return domain.Internal(err, "cannot create directory %s", path)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return domain.Internal(err, "cannot set mode %04o on %s", mode.Perm(), path)
+	}
+	return nil
+}
+
+func mkdirAllIn(root *os.Root, rel string, mode fs.FileMode) error {
+	parts := strings.Split(filepath.Clean(rel), string(filepath.Separator))
+	cur := ""
+	for _, p := range parts {
+		if p == "" || p == "." {
+			continue
+		}
+		cur = filepath.Join(cur, p)
+		if err := root.Mkdir(cur, mode); err != nil && !errors.Is(err, fs.ErrExist) {
+			return domain.Internal(err, "cannot create directory %s inside %s", cur, root.Name())
+		}
+	}
+	return nil
+}
+
+// syncDirIn fsyncs a directory so a rename survives a power loss. Without it,
+// the file contents are durable but the directory entry pointing at them may
+// not be.
+func syncDirIn(root *os.Root, rel string) error {
+	if rel == "" {
+		rel = "."
+	}
+	d, err := root.Open(rel)
+	if err != nil {
+		// Not fatal: the data is written, only the ordering guarantee is
+		// weakened, and failing the operation here would be worse.
+		return nil
+	}
+	defer func() { _ = d.Close() }()
+	_ = d.Sync()
+	return nil
+}
+
+// OpenRoot opens a directory as a traversal-proof root.
+func OpenRoot(dir string) (*os.Root, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, domain.Internal(err, "cannot open %s as a root directory", dir)
+	}
+	return root, nil
+}
+
+// ReadFileIn reads a file from inside a root.
+func ReadFileIn(root *os.Root, rel string) ([]byte, error) {
+	rel, err := cleanRel(rel)
+	if err != nil {
+		return nil, err
+	}
+	f, err := root.Open(rel)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, domain.ValidationError(domain.ErrNotFound, "%s does not exist in %s", rel, root.Name())
+		}
+		return nil, domain.Internal(err, "cannot open %s in %s", rel, root.Name())
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, domain.Internal(err, "cannot read %s", rel)
+	}
+	return data, nil
+}
+
+// cleanRel validates a root-relative path. os.Root would reject an escape
+// anyway; catching it here produces a domain error naming the offending path
+// instead of a syscall error naming a file descriptor.
+func cleanRel(rel string) (string, error) {
+	if rel == "" {
+		return "", domain.ValidationError(domain.ErrPathEscape, "empty path")
+	}
+	if filepath.IsAbs(rel) {
+		return "", domain.ValidationError(domain.ErrPathEscape,
+			"path %q must be relative to the root", rel)
+	}
+	clean := filepath.Clean(rel)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", domain.ValidationError(domain.ErrPathEscape, "path %q escapes the root", rel)
+	}
+	return clean, nil
+}
+
+// Exists reports whether a path exists, distinguishing "no" from "cannot
+// tell". A permission error must not be reported as absence: `init` would then
+// happily overwrite an installation it merely could not read.
+func Exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, domain.Internal(err, "cannot stat %s", path)
+	}
+}
+
+// ReplaceSymlink atomically points link at target.
+//
+// A symlink cannot be rewritten in place, so it is created under a temporary
+// name and renamed over the old one -- the swap that makes promoting a release
+// atomic. At no instant does the link fail to exist.
+func ReplaceSymlink(target, link string) error {
+	dir := filepath.Dir(link)
+	if err := MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir, "."+filepath.Base(link)+".tmp-"+randomSuffix())
+	if err := os.Symlink(target, tmp); err != nil {
+		return domain.Internal(err, "cannot create symlink %s -> %s", tmp, target)
+	}
+	if err := os.Rename(tmp, link); err != nil {
+		_ = os.Remove(tmp)
+		return domain.Internal(err, "cannot move symlink %s into place", link)
+	}
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
+}
+
+// ReadSymlink returns a symlink's target, or empty when the link is absent.
+func ReadSymlink(link string) (string, error) {
+	target, err := os.Readlink(link)
+	switch {
+	case err == nil:
+		return target, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return "", nil
+	default:
+		return "", domain.Internal(err, "cannot read symlink %s", link)
+	}
+}
+
+// CheckMode verifies a path's permission bits, returning a description of the
+// mismatch rather than an error -- `doctor` reports these as findings, not as
+// failures of `doctor` itself.
+func CheckMode(path string, want fs.FileMode) (ok bool, detail string, err error) {
+	info, statErr := os.Stat(path)
+	if statErr != nil {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			return false, "does not exist", nil
+		}
+		return false, "", domain.Internal(statErr, "cannot stat %s", path)
+	}
+	if !info.IsDir() && want.IsDir() {
+		return false, "is not a directory", nil
+	}
+	got := info.Mode().Perm()
+	if got != want.Perm() {
+		return false, fmt.Sprintf("mode is %04o, expected %04o", got, want.Perm()), nil
+	}
+	return true, "", nil
+}
+
+// RemoveAll deletes a tree, tolerating absence.
+func RemoveAll(path string) error {
+	if err := os.RemoveAll(path); err != nil {
+		return domain.Internal(err, "cannot remove %s", path)
+	}
+	return nil
+}

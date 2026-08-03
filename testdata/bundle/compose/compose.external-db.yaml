@@ -1,0 +1,6 @@
+# The external-db profile expects a database the operator manages elsewhere,
+# so it only points the application at it.
+services:
+  app:
+    environment:
+      DEMO_DB_HOST: ${DEMO_DB_HOST:-db.internal}

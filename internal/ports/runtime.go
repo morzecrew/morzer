@@ -1,0 +1,193 @@
+// Package ports declares the interfaces the lifecycle layer speaks to.
+//
+// Interfaces are declared here by the consumer, not by the implementation:
+// adapters satisfy them implicitly. The lifecycle layer imports only this
+// package, so replacing Compose with another runtime never touches lifecycle
+// logic.
+//
+// Every method takes a context as its first argument, and no method may block
+// indefinitely -- cancellation must always reach the external tool.
+package ports
+
+import (
+	"context"
+	"io"
+	"time"
+
+	"github.com/morzecrew/morzer/internal/domain"
+)
+
+// Runtime is the container runtime: bringing services up, running one-shot
+// jobs, and reporting what is running.
+//
+// v1 is compose. Later: podman-compose, systemd-quadlet, single-node k3s.
+type Runtime interface {
+	// Validate parses and checks the runtime configuration without any
+	// side effects, returning the fully resolved form for the plan view.
+	Validate(ctx context.Context, cfg RuntimeConfig) (Rendered, error)
+
+	// Pull fetches images. References are digests, so a successful pull is
+	// reproducible.
+	Pull(ctx context.Context, cfg RuntimeConfig, images []string) error
+
+	// Up converges the project to running and waits for health. It is
+	// idempotent: calling it on an already-converged project is a no-op.
+	Up(ctx context.Context, cfg RuntimeConfig, opts UpOptions) error
+
+	// Down stops the project. It never removes volumes unless
+	// DownOptions.Volumes is set, and that flag may only originate at the
+	// CLI layer behind an explicit operator confirmation.
+	Down(ctx context.Context, cfg RuntimeConfig, opts DownOptions) error
+
+	// Restart restarts the named services, or all of them when empty.
+	Restart(ctx context.Context, cfg RuntimeConfig, services []string) error
+
+	// RunOneShot runs a service to completion -- migrations, admin jobs.
+	RunOneShot(ctx context.Context, cfg RuntimeConfig, service string, opts RunOptions) (ExitResult, error)
+
+	// Exec runs a command inside an already-running service.
+	Exec(ctx context.Context, cfg RuntimeConfig, service string, argv []string) (ExitResult, error)
+
+	// Status reports the state of every service in the project.
+	Status(ctx context.Context, cfg RuntimeConfig) ([]ServiceState, error)
+
+	// Logs streams service logs. The caller closes the reader.
+	Logs(ctx context.Context, cfg RuntimeConfig, opts LogOptions) (io.ReadCloser, error)
+}
+
+// RuntimeConfig identifies which project the operation acts on. It is passed
+// per call rather than held in the adapter so one adapter instance can serve
+// several projects, and so the adapter holds no mutable state.
+type RuntimeConfig struct {
+	// Project is the Compose project name -- the namespace for containers,
+	// networks and volumes.
+	Project string
+
+	// Files are absolute paths to the Compose files, in merge order.
+	Files []string
+
+	// WorkingDir is the release root. Relative paths inside Compose files
+	// resolve against it.
+	WorkingDir string
+
+	// Env is passed to the runtime process, typically carrying the
+	// variables Compose files interpolate. It never contains secret
+	// values: secrets reach containers as files, not environment.
+	Env map[string]string
+
+	// Profiles are runtime-level service profiles, distinct from the
+	// manifest's deployment profiles (which select files, not services).
+	Profiles []string
+}
+
+// Rendered is the resolved configuration Validate produces.
+type Rendered struct {
+	// Config is the merged configuration in canonical form, used for the
+	// dry-run diff.
+	Config []byte
+
+	// Services are the service names the merged configuration defines.
+	Services []string
+}
+
+type UpOptions struct {
+	// Services limits the operation; empty means the whole project.
+	Services []string
+
+	// Wait blocks until containers report healthy.
+	Wait bool
+
+	// WaitTimeout bounds that wait. Zero means the context's deadline
+	// governs.
+	WaitTimeout time.Duration
+
+	// RemoveOrphans deletes containers belonging to the project but no
+	// longer declared -- normal after a release changes its service list.
+	RemoveOrphans bool
+}
+
+type DownOptions struct {
+	// Volumes destroys named volumes. This deletes application data, so
+	// the flag must trace back to an explicit operator confirmation.
+	Volumes bool
+
+	RemoveOrphans bool
+	Timeout       time.Duration
+}
+
+type RunOptions struct {
+	Argv    []string
+	Env     map[string]string
+	Timeout time.Duration
+
+	// Remove deletes the container after it exits. Off when the caller
+	// wants to inspect a failed job.
+	Remove bool
+}
+
+type LogOptions struct {
+	Services []string
+	Follow   bool
+	Tail     int
+	Since    time.Time
+}
+
+// ExitResult is the outcome of a process the runtime ran on the caller's
+// behalf. A non-zero ExitCode is data, not an error: the caller decides
+// whether it means failure.
+type ExitResult struct {
+	ExitCode int
+	Stdout   string
+	Stderr   string
+	Duration time.Duration
+}
+
+func (r ExitResult) OK() bool { return r.ExitCode == 0 }
+
+// ServiceHealth is the health a runtime reports for a container.
+type ServiceHealth string
+
+const (
+	HealthUnknown   ServiceHealth = "unknown"
+	HealthStarting  ServiceHealth = "starting"
+	HealthHealthy   ServiceHealth = "healthy"
+	HealthUnhealthy ServiceHealth = "unhealthy"
+	HealthNone      ServiceHealth = "none" // no healthcheck declared
+)
+
+type ServiceState struct {
+	Name     string        `json:"name"`
+	Image    string        `json:"image,omitempty"`
+	State    string        `json:"state"` // running, exited, created, ...
+	Health   ServiceHealth `json:"health"`
+	ExitCode int           `json:"exit_code,omitempty"`
+	Status   string        `json:"status,omitempty"` // human-readable, e.g. "Up 3 hours"
+}
+
+// Running reports whether the service is up and not unhealthy. A service with
+// no healthcheck counts as running when its state says so -- absence of a
+// probe is not evidence of illness.
+func (s ServiceState) Running() bool {
+	return s.State == "running" && s.Health != HealthUnhealthy
+}
+
+// RegistryProber is an optional capability a Runtime may implement: checking
+// that an image's registry is reachable without transferring any layers.
+//
+// It is a separate interface rather than a Runtime method because not every
+// runtime has a registry to probe, and a mandatory method would force every
+// adapter to implement a stub. Callers type-assert and degrade gracefully when
+// the assertion fails.
+type RegistryProber interface {
+	ProbeRegistry(ctx context.Context, imageRef string) error
+}
+
+// ToolInfo is a resolved external binary. The lifecycle layer uses it for
+// preflight and doctor; adapters expose it so version checks are not
+// re-implemented per adapter.
+type ToolInfo struct {
+	Name    string         `json:"name"`
+	Path    string         `json:"path"`
+	Version domain.Version `json:"version"`
+	Raw     string         `json:"raw,omitempty"` // unparsed version output
+}

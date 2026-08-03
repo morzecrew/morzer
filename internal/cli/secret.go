@@ -1,0 +1,479 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"golang.org/x/term"
+
+	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
+)
+
+func newSecretCommand(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "secret",
+		Short: "Manage the encrypted secret state",
+		Long: "Secrets live encrypted in secrets.sops.yaml and are rendered to tmpfs\n" +
+			"for the product to read. Values are never printed, never passed in argv,\n" +
+			"and never written to the journal.",
+	}
+
+	cmd.AddCommand(
+		newSecretListCommand(app),
+		newSecretSetCommand(app),
+		newSecretGenerateCommand(app),
+		newSecretRemoveCommand(app),
+		newSecretRotateCommand(app),
+		newSecretRenderCommand(app),
+		newSecretRecipientsCommand(app),
+	)
+	return cmd
+}
+
+func newSecretListCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List secret names, fingerprints and metadata — never values",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			metadata, err := app.Deps.Secrets.Metadata(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			if app.json != nil {
+				app.jsonData = metadata
+				return nil
+			}
+			if len(metadata) == 0 {
+				fmt.Fprintln(app.Stream.Out, "no secrets are set")
+				return nil
+			}
+
+			fmt.Fprintf(app.Stream.Out, "%-28s %-14s %6s  %s\n",
+				"NAME", "FINGERPRINT", "LENGTH", "LAST CHANGED")
+			for _, m := range metadata {
+				changed := "unknown"
+				if !m.LastChanged.IsZero() {
+					changed = m.LastChanged.Format("2006-01-02 15:04:05Z")
+				}
+				fmt.Fprintf(app.Stream.Out, "%-28s %-14s %6d  %s\n",
+					m.Name, m.Fingerprint, m.Length, changed)
+			}
+			return nil
+		},
+	}
+}
+
+func newSecretSetCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "set <name>",
+		Short: "Set a secret, reading the value from the terminal or stdin",
+		Long: "The value is read without echo from the terminal, or from stdin when it\n" +
+			"is piped. There is no flag for the value: argv is world-readable through\n" +
+			"/proc, so a credential passed that way is a credential published.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			value, err := readSecretValue(fmt.Sprintf("value for %s: ", name))
+			if err != nil {
+				return err
+			}
+			if value.IsEmpty() {
+				return domain.Usage("the value is empty").
+					WithHint("use `morzer secret remove %s` to delete a secret", name)
+			}
+
+			if err := app.Deps.Secrets.Set(cmd.Context(), name, value); err != nil {
+				return err
+			}
+
+			// Only the services that declare a dependency on this
+			// secret are restarted. Restarting the whole project
+			// would turn a credential rotation into a full outage.
+			restarted, err := app.restartDependents(cmd.Context(), []string{name})
+			if err != nil {
+				return err
+			}
+
+			app.finish(ops.Result{Summary: secretChangeSummary("set", name, restarted)})
+			return nil
+		},
+	}
+}
+
+func newSecretGenerateCommand(app *App) *cobra.Command {
+	var (
+		length   int
+		kind     string
+		alphabet string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "generate <name>",
+		Short: "Generate a secret using the release's declared generator",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			gen, err := app.generatorFor(cmd.Context(), name, kind, length, alphabet)
+			if err != nil {
+				return err
+			}
+
+			if err := app.Deps.Secrets.Generate(cmd.Context(), name,
+				ports.GenSpec{Generator: gen}); err != nil {
+				return err
+			}
+
+			restarted, err := app.restartDependents(cmd.Context(), []string{name})
+			if err != nil {
+				return err
+			}
+
+			app.finish(ops.Result{Summary: secretChangeSummary("generated", name, restarted)})
+			return nil
+		},
+	}
+
+	f := cmd.Flags()
+	f.IntVar(&length, "length", 0, "override the declared length")
+	f.StringVar(&kind, "kind", "", "override the generator: password, hex, base64, uuid, age-key")
+	f.StringVar(&alphabet, "alphabet", "", "override the password alphabet")
+
+	return cmd
+}
+
+func newSecretRotateCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rotate <name>",
+		Short: "Replace a secret with a freshly generated value",
+		Long: "Generates a new value of the same shape and restarts only the services\n" +
+			"the release declares as depending on it.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			gen, err := app.generatorFor(cmd.Context(), name, "", 0, "")
+			if err != nil {
+				return err
+			}
+
+			if err := app.Deps.Secrets.Rotate(cmd.Context(), name,
+				ports.GenSpec{Generator: gen, Overwrite: true}); err != nil {
+				return err
+			}
+
+			restarted, err := app.restartDependents(cmd.Context(), []string{name})
+			if err != nil {
+				return err
+			}
+
+			app.finish(ops.Result{Summary: secretChangeSummary("rotated", name, restarted)})
+			return nil
+		},
+	}
+}
+
+func newSecretRemoveCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Delete a secret",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			// Removing a secret the release requires would make the
+			// next `apply` fail, so it needs an explicit --force.
+			schema, err := app.secretSchema(cmd.Context())
+			if err == nil {
+				if decl, ok := schema.Declaration(name); ok && decl.Required && !app.Flags.force {
+					return domain.Usage(
+						"secret %q is required by the installed release", name).
+						WithHint("removing it will make the next `apply` fail; pass --force if you mean to")
+				}
+			}
+
+			if err := app.Deps.Secrets.Remove(cmd.Context(), name); err != nil {
+				return err
+			}
+			app.finish(ops.Result{Summary: "removed secret " + name})
+			return nil
+		},
+	}
+}
+
+func newSecretRenderCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "render",
+		Short: "Render secrets to the tmpfs directory the product reads",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			schema, err := app.secretSchema(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			files, err := app.Deps.Secrets.Render(cmd.Context(),
+				app.Deps.Paths.SecretsRenderDir(), schema)
+			if err != nil {
+				return err
+			}
+
+			if app.json != nil {
+				app.jsonData = files
+				return nil
+			}
+			for _, f := range files {
+				fmt.Fprintf(app.Stream.Out, "%-28s %s (%04o)\n", f.Name, f.Path, f.Mode)
+			}
+			return nil
+		},
+	}
+}
+
+func newSecretRecipientsCommand(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "recipients",
+		Short: "Manage who can decrypt the secret state",
+	}
+
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List recipients",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			recipients, err := app.Deps.Secrets.Recipients(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			if app.json != nil {
+				app.jsonData = recipients
+				return nil
+			}
+			if len(recipients) == 0 {
+				fmt.Fprintln(app.Stream.Out, "no recipients; the secret state has not been created yet")
+				return nil
+			}
+			for _, r := range recipients {
+				line := fmt.Sprintf("%-10s %s", r.Kind, r.PublicKey)
+				if r.Comment != "" {
+					line += "  # " + r.Comment
+				}
+				fmt.Fprintln(app.Stream.Out, line)
+			}
+			return nil
+		},
+	}
+
+	var (
+		kind    string
+		comment string
+	)
+	add := &cobra.Command{
+		Use:   "add <age-public-key>",
+		Short: "Add a recipient and re-encrypt the state for it",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			recipientKind := ports.RecipientKind(kind)
+			switch recipientKind {
+			case ports.RecipientRecovery, ports.RecipientOperator:
+			case "":
+				recipientKind = ports.RecipientOperator
+			case ports.RecipientMachine:
+				return domain.Usage("the machine recipient is managed by `morzer init`").
+					WithHint("use --kind recovery or --kind operator")
+			default:
+				return domain.Usage("unknown recipient kind %q", kind).
+					WithHint("valid kinds: recovery, operator")
+			}
+
+			if err := app.Deps.Secrets.AddRecipient(cmd.Context(), ports.Recipient{
+				PublicKey: strings.TrimSpace(args[0]),
+				Kind:      recipientKind,
+				Comment:   comment,
+			}); err != nil {
+				return err
+			}
+
+			app.finish(ops.Result{Summary: "added " + string(recipientKind) + " recipient"})
+			return nil
+		},
+	}
+	add.Flags().StringVar(&kind, "kind", "operator", "recipient kind: recovery or operator")
+	add.Flags().StringVar(&comment, "comment", "", "note recorded alongside the key")
+
+	remove := &cobra.Command{
+		Use:   "remove <age-public-key>",
+		Short: "Remove a recipient and re-encrypt without it",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := app.Deps.Secrets.RemoveRecipient(cmd.Context(),
+				ports.Recipient{PublicKey: strings.TrimSpace(args[0])}); err != nil {
+				return err
+			}
+			app.finish(ops.Result{Summary: "removed recipient"})
+			return nil
+		},
+	}
+
+	keygen := &cobra.Command{
+		Use:   "generate-recovery-key <path>",
+		Short: "Generate an offline recovery identity and print its public key",
+		Long: "Writes a new age identity to <path> with 0400 permissions and prints its\n" +
+			"public key. Move the file off this machine: a recovery key stored on the\n" +
+			"machine it is meant to recover protects nothing.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := args[0]
+			if _, err := os.Stat(path); err == nil {
+				return domain.Usage("%s already exists", path).
+					WithHint("refusing to overwrite an existing identity")
+			}
+
+			pub, err := sopsage.GenerateIdentity(path)
+			if err != nil {
+				return err
+			}
+
+			if app.json != nil {
+				app.jsonData = map[string]string{"public_key": pub, "path": path}
+				return nil
+			}
+			fmt.Fprintf(app.Stream.Out, "%s\n", pub)
+			fmt.Fprintf(app.Stream.Err,
+				"\nprivate key written to %s (0400)\n"+
+					"move it off this machine and store it somewhere you can reach if this VM is lost\n", path)
+			return nil
+		},
+	}
+
+	cmd.AddCommand(list, add, remove, keygen)
+	return cmd
+}
+
+// generatorFor resolves the generator for a secret: the release's declaration,
+// overridden by any flags.
+func (a *App) generatorFor(ctx context.Context, name, kind string, length int, alphabet string) (domain.Generator, error) {
+	gen := domain.Generator{Kind: domain.GeneratorPassword}
+
+	if schema, err := a.secretSchema(ctx); err == nil {
+		if decl, ok := schema.Declaration(name); ok {
+			gen = decl.Generator
+			if !decl.Generator.Auto() && kind == "" {
+				return domain.Generator{}, domain.Usage(
+					"the release declares no generator for secret %q", name).
+					WithHint("supply the value with `morzer secret set %s`, "+
+						"or pass --kind to generate one anyway", name)
+			}
+		}
+	}
+
+	if kind != "" {
+		gen.Kind = domain.GeneratorKind(kind)
+	}
+	if length > 0 {
+		gen.Length = length
+	}
+	if alphabet != "" {
+		gen.Alphabet = alphabet
+	}
+	return gen, nil
+}
+
+// secretSchema loads the installed release's secret declarations.
+func (a *App) secretSchema(ctx context.Context) (domain.SecretSchema, error) {
+	current, err := a.Deps.State.CurrentRelease(ctx)
+	if err != nil || current.IsZero() {
+		return domain.SecretSchema{}, domain.InstallationError(domain.ErrReleaseNotFound,
+			"no release is installed, so no secret schema is known")
+	}
+	rel, err := release.Load(current.Root)
+	if err != nil {
+		return domain.SecretSchema{}, err
+	}
+	return release.LoadSecretSchema(rel)
+}
+
+// restartDependents restarts only the services that declare a dependency on
+// the changed secrets.
+//
+// The alternative -- restarting everything -- turns a credential rotation into
+// a full outage, which is why the release declares the dependency in the first
+// place.
+func (a *App) restartDependents(ctx context.Context, names []string) ([]string, error) {
+	schema, err := a.secretSchema(ctx)
+	if err != nil {
+		// No release installed: nothing is running to restart.
+		return nil, nil
+	}
+
+	services := schema.ServicesFor(names)
+	if len(services) == 0 {
+		return nil, nil
+	}
+
+	current, err := a.Deps.State.CurrentRelease(ctx)
+	if err != nil || current.IsZero() {
+		return nil, nil
+	}
+	rel, err := release.Load(current.Root)
+	if err != nil {
+		return nil, err
+	}
+	inst, err := a.Deps.State.LoadInstallation(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// The rendered files must be updated before the restart, or the
+	// services would come back holding the old value.
+	if _, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema); err != nil {
+		return nil, err
+	}
+
+	cfg, err := a.Deps.RuntimeConfigFor(rel, inst)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.Deps.Runtime.Restart(ctx, cfg, services); err != nil {
+		return nil, err
+	}
+	return services, nil
+}
+
+func secretChangeSummary(verb, name string, restarted []string) string {
+	summary := verb + " secret " + name
+	switch len(restarted) {
+	case 0:
+		return summary
+	default:
+		return summary + "; restarted " + strings.Join(restarted, ", ")
+	}
+}
+
+// readPassword reads from the terminal without echo.
+func readPassword(prompt string) (string, error) {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return "", domain.Usage("no terminal available to read the value").
+			WithHint("pipe the value on stdin instead: `printf %%s 'value' | morzer secret set <name>`")
+	}
+
+	fmt.Fprint(os.Stderr, prompt)
+	value, err := term.ReadPassword(fd)
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		return "", domain.Internal(err, "cannot read the value")
+	}
+	return strings.TrimSpace(string(value)), nil
+}

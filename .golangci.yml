@@ -1,0 +1,127 @@
+version: "2"
+
+# The linter configuration is part of the architecture, not decoration.
+#
+# depguard is the reason this file matters: it enforces the layering rules
+# mechanically rather than by discipline. Without it, "the lifecycle layer
+# speaks only to ports" is a sentence in a document that the next refactor
+# quietly violates.
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosec
+    - bodyclose
+    - contextcheck
+    - depguard
+    - misspell
+    - unconvert
+    - nakedret
+    - revive
+
+  settings:
+    depguard:
+      rules:
+        # The domain layer is pure: stdlib and semver, nothing else. A YAML
+        # decoder or an HTTP client in here would mean the rules the whole
+        # system rests on could not be unit-tested in isolation.
+        domain:
+          files:
+            - "**/internal/domain/**"
+          allow:
+            - $gostd
+            - github.com/Masterminds/semver/v3
+          deny:
+            - pkg: github.com/morzecrew/morzer/internal
+              desc: >-
+                domain imports nothing from this repository. It is the layer
+                every other layer depends on, so a dependency here would make
+                the graph cyclic in spirit if not in fact.
+
+        # The lifecycle layer composes ports. It must not know that Docker
+        # exists. Adapters are named in exactly one place: internal/cli.
+        lifecycle:
+          files:
+            - "**/internal/lifecycle/engine/**"
+            - "**/internal/lifecycle/preflight/**"
+          allow:
+            - $gostd
+            - $gomod
+          deny:
+            - pkg: github.com/morzecrew/morzer/internal/adapters
+              desc: >-
+                the lifecycle layer speaks only to ports. Reaching for an
+                adapter here is the boundary being wrong -- add a port method,
+                or an optional capability interface.
+
+        # Ports declare interfaces. An implementation detail leaking in here
+        # would make every adapter depend on whichever tool got there first.
+        ports:
+          files:
+            - "**/internal/ports/**"
+          allow:
+            - $gostd
+            - github.com/morzecrew/morzer/internal/domain
+            - github.com/morzecrew/morzer/internal/events
+          deny:
+            - pkg: github.com/morzecrew/morzer/internal/adapters
+              desc: interfaces are declared by the consumer, never by the implementation.
+            - pkg: github.com/morzecrew/morzer/internal/lifecycle
+              desc: >-
+                ports sit below lifecycle. An import here would point a
+                dependency arrow upward.
+
+    errcheck:
+      # Deliberate discards are written as `_ =` and are always accompanied by
+      # a comment saying why the error cannot matter.
+      check-type-assertions: true
+      check-blank: false
+
+    gosec:
+      excludes:
+        # File permissions are a first-class concern here and are asserted by
+        # the contract suite. The linter cannot see that 0400 and 0700 are
+        # chosen deliberately, and flags every constant.
+        - G302
+        - G306
+        # Subprocess execution with variable arguments is the entire point of
+        # internal/infra/exec. It is confined to one reviewed package.
+        - G204
+
+    revive:
+      rules:
+        - name: exported
+          disabled: true # doc comments are enforced by review, not by count
+        - name: package-comments
+
+    staticcheck:
+      checks:
+        - all
+
+  exclusions:
+    rules:
+      # Test files construct adapters directly on purpose: that is what the
+      # contract suites are for.
+      - path: _test\.go
+        linters:
+          - depguard
+          - gosec
+      - path: test/
+        linters:
+          - depguard
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/morzecrew/morzer

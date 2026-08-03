@@ -1,0 +1,91 @@
+# Example release bundle exercised by the test suite.
+#
+# It is a real, valid bundle: the manifest loader, the step engine and the
+# contract suites all run against it, so a change that breaks the release
+# contract fails a test rather than a deployment.
+api_version: selfhost/v1alpha1
+kind: application-release
+
+metadata:
+  name: demo
+  version: 1.2.0
+  description: Demo self-hosted bundle used by the test suite
+  vendor: example
+
+providers:
+  runtime: {name: compose, version: ">=2.30"}
+  secrets: {name: sops-age}
+  backup: {name: hooks}
+  health: {name: http}
+
+runtime:
+  project: demo
+  files:
+    - compose/compose.yaml
+  profiles:
+    embedded: [compose/compose.embedded.yaml]
+    external-db: [compose/compose.external-db.yaml]
+
+requirements:
+  architectures: [amd64, arm64]
+  os:
+    - {id: ubuntu, version: ">=22.04"}
+    - {id: debian, version: ">=12"}
+  tools:
+    docker: ">=24"
+    compose: ">=2.30"
+  memory: 2GiB
+  disk: 5GiB
+  ports: []
+
+images:
+  app: registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001
+  db: registry.example/demo/db@sha256:0000000000000000000000000000000000000000000000000000000000000002
+
+configuration:
+  - template: templates/application.yaml
+    target: /etc/demo/application.yaml
+    mode: "0640"
+
+secrets:
+  source: /etc/demo/secrets.sops.yaml
+  render_to: /run/demo/secrets
+  schema: templates/secrets.yaml
+
+operations:
+  migrate:
+    kind: hook
+    command: ["hooks/migrate"]
+    timeout: 10m
+  smoke_test:
+    kind: hook
+    command: ["hooks/smoke-test"]
+    timeout: 5m
+  backup:
+    kind: hook
+    command: ["hooks/backup"]
+    timeout: 60m
+  restore:
+    kind: hook
+    command: ["hooks/restore"]
+    timeout: 120m
+
+health:
+  checks:
+    - {name: api, type: http, url: "http://127.0.0.1:18080/health/ready", timeout: 30s}
+    - {name: db, type: command, command: ["hooks/check-db"], timeout: 15s}
+
+compatibility:
+  database_schema_min: 10
+  database_schema_max: 12
+  rollback_safe: true
+  min_manager_version: "0.0.0"
+  upgrade_from: ">=1.0.0 <2.0.0"
+
+retention:
+  releases: 3
+  backups: 7
+
+extensions:
+  example.com/telemetry:
+    endpoint: https://telemetry.example/ingest
