@@ -4,7 +4,7 @@
   Twenty-three pages across five Diátaxis sections, drift-gated by
   `just docs-check`, published `dev` from main and `<minor>` plus `latest` from
   a tag. The README is 76 lines. Two design changes are recorded as amendments
-  in §5.1 and §5.5.
+  in §5.1 and §5.5; a defect found in the published site is recorded in §12.
 - **Scope:** Moves operator- and vendor-facing documentation out of the 287-line
   README into a `pages/` site built with zensical, structured by Diátaxis and
   deployed to GitHub Pages — versioned, so an operator running 1.2.0 reads the
@@ -176,10 +176,10 @@ drift from a bundle that is under test.
 
 Two workflows, ported in shape from forze:
 
-| Trigger | Publishes to | Alias |
-| --- | --- | --- |
-| push to `main` | `/dev/` | — |
-| push tag `v*` | `/<version>/` | `latest` |
+| Trigger | Publishes to | Alias | Site root |
+| --- | --- | --- | --- |
+| push to `main` | `/dev/` | — | `dev`, but only while nothing is released — see §12 |
+| push tag `v*` | `/<version>/` | `latest` | `latest`, when this is the newest released minor |
 
 A version selector lets an operator on 1.2.0 read 1.2.0. `latest` is what the
 README and the repository link to. `dev` is explicitly labelled as unreleased in
@@ -378,3 +378,40 @@ land page by page afterwards.
 is a tag, so the versioning is built and unexercised. `overrides/` does not
 exist, so there is no "you are reading unreleased docs" banner on `dev` yet —
 decision 4 is designed and unshipped.
+
+## 12. Amendment: the site root was never written
+
+Recorded 2026-08-04, after the published site was found serving
+`https://morzecrew.github.io/morzer/dev/` correctly and
+`https://morzecrew.github.io/morzer/` as a **404**.
+
+The deployment table in §5.6 described which version each trigger publishes and
+which alias moves, and said nothing about the site root. `mike` writes the root
+redirect only on `set-default`, and the only caller was `docs-release.yaml`,
+which runs on a `v*` tag. No tag has shipped, so nothing had ever written
+`gh-pages:index.html`:
+
+```text
+$ git ls-tree --name-only origin/gh-pages
+.nojekyll
+dev
+versions.json
+```
+
+The site was built correctly throughout — `pages/site/index.html` is produced by
+every local build. The gap was entirely in the gh-pages layout, which is why no
+check caught it: `just docs-check` reads the sources, and `just build-docs`
+builds one version into a directory. Neither can see a branch that only CI
+writes.
+
+`docs-dev.yaml` now points the root at `dev` when, and only when, no root
+exists. The guard is `git cat-file -e FETCH_HEAD:index.html` against a freshly
+fetched `gh-pages`, so the first release moving the root onto `latest` is
+permanent and `dev` never takes it back. Verified both ways against a scratch
+clone of the real branch with a local bare remote, rather than by pushing to
+find out.
+
+This does not change decision 3 or 18: `dev` still carries no alias, and the
+root belongs to `latest` from the first tag onward. It only fills the window
+before that tag exists, which the RFC did not consider because it reasoned about
+the steady state.

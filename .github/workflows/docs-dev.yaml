@@ -1,9 +1,14 @@
 # Publish main's in-progress documentation to the `dev` version.
 #
-# `dev` is never the default and never carries the `latest` alias, so this can
-# never disturb released docs. Released versions arrive with the tag-driven
-# deployment in RFC 0006 P6; until then `dev` is the only published version and
-# the site's version selector shows exactly that.
+# `dev` never carries the `latest` alias, so this can never disturb released
+# docs. It is also not the default once anything is released: docs-release.yaml
+# moves the site root onto `latest` when a release ships, and the last step here
+# then does nothing for the rest of the repository's life.
+#
+# Before the first release there is nothing for the root to point at, and mike
+# writes that redirect only on `set-default`. The result was a published site
+# where /morzer/dev/ served fine and /morzer/ returned 404 -- so the last step
+# bootstraps the root and steps aside the moment a release owns it.
 #
 # The build itself is `just deploy-docs`, so the generator and its pins live in
 # one place and a contributor can reproduce what CI does.
@@ -55,3 +60,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - run: just deploy-docs dev
+
+      # Only while no release owns the root. `git cat-file -e` asks the
+      # published branch itself rather than trusting a local ref, because mike
+      # has just rewritten it.
+      - name: Point the site root at dev until a release owns it
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin gh-pages
+          if git cat-file -e FETCH_HEAD:index.html 2>/dev/null; then
+            echo "the site root already points at a version; leaving it alone"
+            exit 0
+          fi
+          echo "no site root yet, and nothing is released; pointing it at dev"
+          just default-docs dev
