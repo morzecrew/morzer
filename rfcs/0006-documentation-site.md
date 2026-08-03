@@ -1,9 +1,10 @@
 # RFC 0006 — Documentation site
 
-- **Status:** 🚧 In progress — P1–P3 shipped 2026-08-03. The site is live with
-  its reference section, and `just docs-check` gates drift in CI. §5.5 check 3
-  shipped amended; see the note there and decision 11. P4–P6 (prose, vendor
-  section, diagrams, versioned release deployment) remain.
+- **Status:** ✅ Complete — P1–P3 shipped 2026-08-03, P4–P6 the same day.
+  Twenty-three pages across five Diátaxis sections, drift-gated by
+  `just docs-check`, published `dev` from main and `<minor>` plus `latest` from
+  a tag. The README is 76 lines. Two design changes are recorded as amendments
+  in §5.1 and §5.5.
 - **Scope:** Moves operator- and vendor-facing documentation out of the 287-line
   README into a `pages/` site built with zensical, structured by Diátaxis and
   deployed to GitHub Pages — versioned, so an operator running 1.2.0 reads the
@@ -119,6 +120,23 @@ pages/
 └── overrides/
 ```
 
+> **Amendment, P6 (2026-08-03).** No `diagrams/`, no `overrides/`, and no d2.
+>
+> Diagrams are **mermaid in fenced code blocks**, which the theme already
+> renders and already themes for light and dark. The d2 plan -- ported from
+> forze, which needs it -- would have meant a binary installed in CI, a build
+> step before every deploy, light and dark SVG variants, and a `_diagrams/`
+> tree gitignored and kept in step with its sources. For flowcharts of six
+> boxes that is a lot of machinery to maintain.
+>
+> The trade, stated rather than glossed: mermaid renders client-side from a CDN,
+> so a reader who is offline or behind a blocker sees the diagram source instead
+> of a picture. Every diagram on the site is a supplement to prose that stands
+> without it, which is the condition that makes the trade acceptable.
+>
+> `overrides/` is unused because nothing needed a template override yet. It
+> arrives with the version banner, if the version banner is ever wanted.
+
 ### 5.2 Diátaxis split, and where the README goes
 
 The four sections are not decoration: each has a different contract with the
@@ -197,6 +215,12 @@ schema are things the README already claims are stable contracts, and a stable
 contract that drifts from its documentation silently is worse than an undocumented
 one.
 
+> **Amendment, P4–P6 (2026-08-03).** The drift gate grew with the site rather
+> than being outgrown by it: 7 pages and 13 checks at P3, 23 pages and 29 checks
+> now, still green and still catching things — every forward reference written
+> while the sections were half-built was caught by the link check within
+> seconds of being written.
+>
 > **Amendment, P3 (2026-08-03).** Check 3 shipped without the port-method
 > clause, and with two surfaces the draft did not name. The clause contradicted
 > **decision 8**: `internal/ports` holds 14 interfaces and about 60 methods,
@@ -288,6 +312,9 @@ that, the floors in §5.5 become a chore to satisfy rather than a guide.
 | 14 | `mike` is squidfunk's zensical-aware fork, pinned by commit SHA. Upstream `mike` drives mkdocs and cannot build a `zensical.toml` site at all — verified, not assumed. A git dependency on a branch would be arbitrary code execution at whatever time a deploy happens to run. |
 | 15 | The README shrinks in two steps, not one. P2 removed only the sections whose replacement pages exist; deleting architecture, the step engine and secrets before P4 and P6 have written their replacements would be losing content rather than relocating it. |
 | 16 | Decision 10 is not yet satisfied and is not claimed to be. The manifest page is hand-written; what `docs-check` enforces is that its *field list* matches the Go structs. Generation from RFC 0004's JSON Schema is still the target, and the gate means a drifting page fails in the meantime. |
+| 17 | Diagrams are mermaid, not d2. The theme renders and themes them already; d2 would add a CI binary, a pre-deploy build step, light/dark variants and a gitignored SVG tree. Every diagram supplements prose that stands without it, which is what makes client-side rendering acceptable. See §5.1. |
+| 18 | Docs are versioned by *minor*, not by patch. A patch release rarely changes documentation, and three near-identical entries in a version selector help nobody. `latest` moves only for the newest released minor, so a backport refreshes its own line without sending every reader to older docs. |
+| 19 | The README keeps a "Try it" section rather than linking straight out. It is what a visitor with thirty seconds actually wants, and three commands is cheaper to read than a page load. Everything else links. |
 
 ## 11. Phasing
 
@@ -326,7 +353,28 @@ land page by page afterwards.
   go. Its stale status line — which still said `update` and `rollback` did not
   exist — was corrected in passing.
 
-**Not** done, and worth naming: `pages/docs/` has no `get-started/`,
-`operating/`, `authoring/` or `explanation/` directory yet, so the Diátaxis
-split in §5.2 exists as a plan and a nav shape rather than as pages. An operator
-who wants to know how to update still reads the reference page for `update`.
+### What P4–P6 shipped
+
+- **`get-started/`** — a verified download with both checks explained, and a
+  first deployment that runs under `--root` so a reader can follow it on a
+  laptop and delete it with `rm -rf`.
+- **`operating/`** — updating, rolling back, secrets and backups, joining the
+  offline install and recovery pages from earlier phases. Six task pages.
+- **`authoring/`** — the section that did not exist in any form. Four pages,
+  with every example extracted from `testdata/bundle/` at build time, so a
+  vendor is reading something the acceptance run installs against real Docker
+  on every push.
+- **`explanation/`** — architecture, the step engine and the secrets model,
+  with mermaid diagrams. This is where the README's long-form arguments went.
+- **Versioned release deployment** — `docs-release.yaml` and
+  `resolve-docs-version.sh`, verified against a synthetic tag history including
+  the case that catches lexical sorting: `1.10` is newer than `1.4`.
+- **The README is 76 lines**, from 290. Decision 9 said roughly 60 and measured
+  success as "adding a feature no longer adds a README section", which holds:
+  what is left is orientation, three demo commands, a table of links, and the
+  status paragraph.
+
+**Not** done, and worth naming: the version selector has one entry until there
+is a tag, so the versioning is built and unexercised. `overrides/` does not
+exist, so there is no "you are reading unreleased docs" banner on `dev` yet —
+decision 4 is designed and unshipped.

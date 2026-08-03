@@ -82,6 +82,45 @@ before matching, so an example that happens to contain a new field is not
 documentation of it. Adding a page means adding it to the nav in the same
 change.
 
+## The testing levels
+
+| Level | What it covers |
+| --- | --- |
+| Unit | manifest validation, version and compatibility rules, scalars, redaction |
+| Contract | one shared suite per port, run against **both** the fake and the real adapter |
+| Fake-adapter integration | full `apply`, `update`, `rollback`, `backup`, `restore`, `doctor` runs — no Docker, no root, milliseconds |
+| Fault injection | every step of an operation failed in turn; compensation order, journal state and exit codes asserted |
+| Acceptance | the whole lifecycle against real Docker, real Compose, a real registry and real sops — about forty seconds |
+
+```sh
+just test          # everything
+just contract      # the shared port contract suites
+just contract-strict  # and fail if any of them skipped
+just test-race     # the bus and the engine under -race
+just acceptance    # real Docker; needs docker, sops and jq
+```
+
+**The contract suites are the load-bearing ones.**
+`TestSecretStoreContract_SOPSAge` runs the *same* tests as the fake against the
+real sops+age adapter, so a fake that passes tests the real thing would fail
+cannot exist — which is what keeps the fast integration tests honest.
+
+`just contract-strict` fails when one of them *skips*. A skipped real-adapter
+suite means the fake carried the run alone and CI was greener than the code.
+
+**The acceptance run is what fakes cannot answer.** It found, on its first
+execution, that the manifest's digest-pinned images decided nothing at all: the
+pull ignored the list it was given and the Compose file's image references were
+never substituted. Every fake-backed test had passed throughout.
+
+Two rules learned the hard way:
+
+- **A new adapter passes the existing contract suite.** That is what stops a
+  fake from passing tests the real implementation would fail.
+- **Assert what the code *should* do, not what it does.** These tests are often
+  the first time a function has ever run, and transcribing current behaviour
+  just freezes its bugs. The first run of the compatibility suite found two.
+
 ## Architecture rules, and how they are enforced
 
 ```text
@@ -100,40 +139,21 @@ it objects, the boundary is usually wrong — add a port method or an optional
 capability interface rather than widening the rule. It has already caught three
 real violations that had been described as compliant.
 
-## Tests
-
-| Level | What it is for |
-| --- | --- |
-| Unit | domain rules — validation, compatibility, scalars |
-| Contract | one shared suite per port, run against **both** the fake and the real adapter |
-| Fake-adapter integration | whole operations, no Docker, no root, milliseconds |
-| Fault injection | fail each step in turn; assert compensation and final state |
-
-Two rules learned the hard way:
-
-- **A new adapter passes the existing contract suite.** That is what stops a
-  fake from passing tests the real implementation would fail.
-- **Assert what the code *should* do, not what it does.** These tests are often
-  the first time a function has ever run; transcribing current behaviour just
-  freezes its bugs. The first run of the compatibility suite found two.
-
-`just contract-strict` fails if a contract suite *skips*. A skipped
-real-adapter suite means the production code went unexercised and the fake
-carried the run alone.
-
 ## Coverage
 
-`just coverage-gate` enforces a floor, currently 45%. It is a floor, not a
+`just coverage-gate` enforces a floor, currently 50%. It is a floor, not a
 target: raise it deliberately, and if a change genuinely lowers it, lower
-`COVERAGE_FLOOR` in the same pull request so the decision is reviewable.
+`COVERAGE_FLOOR` in `.github/workflows/ci.yml` in the same pull request, so the
+decision is reviewable rather than silent.
 
 Coverage is measured with `-coverpkg=./internal/...` so the integration suite
-gets credit for the packages it exercises. Without that the total reads 8.7%
-instead of 45%.
+gets credit for the packages it exercises. Without that the total read 8.7%
+instead of 45% when the floor was first set — it was measuring where tests live
+rather than what they cover.
 
 ## Go version
 
 The floor is whatever `go.mod` declares — currently 1.25.0, driven by
 `golang.org/x/term`, `golang.org/x/sys` and `renameio/v2`. CI tests that floor
-and `stable`. If you raise it, move `go.mod`, the CI matrix and the README's
-install note together.
+and `stable`. If you raise it, move `go.mod`, the CI matrix and
+`pages/docs/get-started/installation.md` together.

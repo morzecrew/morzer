@@ -1,0 +1,66 @@
+# Publish a released minor's documentation.
+#
+# A tag publishes `<major>.<minor>` and, when it is the newest released minor,
+# moves the `latest` alias and the root redirect onto it. `dev` is main's
+# in-progress docs and is handled by docs-dev.yaml; it never carries an alias
+# and is never the default.
+#
+# Versioned because the manifest schema, the state schema and the manager are
+# each versioned independently. A tool whose entire job is careful version
+# transitions cannot document only its newest self.
+name: Deploy released documentation
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Shared with docs-dev.yaml: every deploy rewrites the gh-pages branch, and two
+# racing would corrupt the version index. Never cancelled mid-push -- a
+# half-finished deploy is how an alias ends up pointing at nothing.
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Publish released docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # mike pushes the built site to gh-pages
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0    # mike reads and rewrites gh-pages
+          fetch-tags: true  # every tag, to find the newest released minor
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve the docs version
+        id: ver
+        run: .github/scripts/resolve-docs-version.sh
+
+      - name: Publish
+        env:
+          MINOR: ${{ steps.ver.outputs.minor }}
+          MOVE_LATEST: ${{ steps.ver.outputs.move_latest }}
+        run: |
+          set -euo pipefail
+          if [ "$MOVE_LATEST" = "true" ]; then
+            just deploy-docs "$MINOR" latest
+            just default-docs latest
+          else
+            just deploy-docs "$MINOR"
+          fi

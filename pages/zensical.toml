@@ -25,16 +25,33 @@ repo_name = "morzecrew/morzer"
 # ....................... #
 # Navigation
 #
-# Diátaxis: get-started (tutorial), operating and authoring (how-to), reference,
-# explanation. Only Reference exists so far -- it is the material that was pure
-# relocation out of the README, and the section a running operator reaches for
-# most. The prose sections land page by page; see rfcs/0006.
+# Diátaxis, and by audience. Get started is the tutorial; Operating is the
+# operator's task index and Authoring is the bundle vendor's; Reference is what
+# either reaches for mid-task; Explanation is why the thing is shaped this way.
+#
+# The two audiences have their own sections because they are different people
+# with different tasks -- an operator wanting to know what `doctor` reports
+# should not have to scroll past a dependency-inversion argument.
 
 nav = [
     { "Home" = "index.md" },
+    { "Get started" = [
+        "get-started/installation.md",
+        "get-started/first-deployment.md",
+    ] },
     { "Operating" = [
+        "operating/updating.md",
+        "operating/rolling-back.md",
+        "operating/secrets.md",
+        "operating/backups.md",
         "operating/installing-offline.md",
         "operating/recovering-a-lost-machine.md",
+    ] },
+    { "Authoring" = [
+        "authoring/index.md",
+        "authoring/your-first-bundle.md",
+        "authoring/hooks.md",
+        "authoring/publishing.md",
     ] },
     { "Reference" = [
         "reference/commands.md",
@@ -44,6 +61,11 @@ nav = [
         "reference/exit-codes.md",
         "reference/manifest.md",
         "reference/hooks.md",
+    ] },
+    { "Explanation" = [
+        "explanation/architecture.md",
+        "explanation/the-step-engine.md",
+        "explanation/secrets.md",
     ] },
 ]
 
@@ -107,7 +129,19 @@ auto_append = ["_includes/abbreviations.md"]
 [project.markdown_extensions.md_in_html]
 [project.markdown_extensions.tables]
 [project.markdown_extensions.pymdownx.details]
+# Diagrams are mermaid in fenced blocks, rendered by the theme.
+#
+# The design called for d2 sources rendered to SVG at build time, ported from
+# forze. Mermaid needs no binary in CI, no build step before every deploy, and
+# no gitignored SVGs kept in step with their sources -- and the theme already
+# themes it for light and dark. The trade is that it renders client-side, so a
+# reader with no network sees the source text rather than a picture.
 [project.markdown_extensions.pymdownx.superfences]
+
+[[project.markdown_extensions.pymdownx.superfences.custom_fences]]
+name = "mermaid"
+class = "mermaid"
+format = "pymdownx.superfences.fence_code_format"
 [project.markdown_extensions.pymdownx.highlight]
 [project.markdown_extensions.pymdownx.inlinehilite]
 

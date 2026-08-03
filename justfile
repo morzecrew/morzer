@@ -292,6 +292,12 @@ deploy-docs version alias="":
     uvx --from "{{mike}}" --with zensical=={{zensical}} mike deploy \
         --push --branch gh-pages --update-aliases {{version}} {{alias}}
 
+# Point the site root at a version. `latest` after a release; never `dev`.
+[working-directory("pages")]
+default-docs version:
+    uvx --from "{{mike}}" --with zensical=={{zensical}} mike set-default \
+        --push --branch gh-pages {{version}}
+
 # Remove build artifacts, the demo installation and the built site.
 clean:
     rm -rf {{binary}} {{dist}} coverage.out tmp pages/site pages/.cache
