@@ -39,3 +39,12 @@ go.work.sum
 # Documentation site build output and generator cache
 /pages/site/
 /pages/.cache/
+
+# Private keys, by class rather than by name. The release signing key, an age
+# recovery key generated while trying something out, a key a future recipe
+# writes under a name nobody has thought of yet -- committing any of them is the
+# one mistake here that cannot be undone by deleting the file afterwards.
+#
+# Public halves are not matched: morzer.pub is committed deliberately, and a
+# bundle's SHA256SUMS.minisig is a signature rather than a secret.
+*.key

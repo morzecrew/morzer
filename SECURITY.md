@@ -17,6 +17,26 @@ there is no paid response team and no bounty.
 Nothing has been released yet, so `main` is the only supported version. This
 section will name a supported range once there is a tag.
 
+## Verifying a release
+
+Released binaries ship a `SHA256SUMS` signed with minisign. The public key is
+[`morzer.pub`](morzer.pub) in this repository:
+
+```sh
+minisign -Vm SHA256SUMS -p morzer.pub
+sha256sum -c SHA256SUMS
+```
+
+**Keep your own copy of the key.** Published here, it is only as trustworthy as
+this repository: anyone who could replace a release artifact could replace the
+key beside it. What it does give you is continuity — a release signed by a
+different key than the one you verified last time is worth stopping over. The
+key does not change between releases.
+
+This is a different key from the one an installation configures in
+`policy.signing_keys`. That one belongs to whoever publishes the release bundles
+you deploy, and is theirs to rotate.
+
 ## What is in the threat model
 
 morzer is a deployment tool that runs as root, holds an installation's secrets,
