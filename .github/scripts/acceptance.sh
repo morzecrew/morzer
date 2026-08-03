@@ -31,6 +31,12 @@ WORK="${ACCEPTANCE_WORK:-$(mktemp -d -t morzer-acceptance-XXXXXX)}"
 mkdir -p "${WORK}"
 ROOT="${WORK}/root"
 
+# Deliberately not the bundle's default of 18080. The whole point of the
+# parameter stages below is that a port the operator chose is the one that gets
+# published, checked for conflicts and probed -- and a test that used the
+# default would pass whether or not any of that worked.
+HTTP_PORT="${ACCEPTANCE_HTTP_PORT:-18099}"
+
 # Whether this script started the registry, and so owns stopping it.
 STARTED_REGISTRY=0
 
@@ -211,11 +217,39 @@ info "recovery recipient ${RECOVERY}"
 	--profile embedded \
 	--domain acceptance.example \
 	--recovery-recipient "${RECOVERY}" \
-	--install-units=false
+	--install-units=false \
+	--set http_port="${HTTP_PORT}" \
+	--set log_level=debug
+
+step "an undeclared parameter is refused"
+if "${MORZER}" --root "${WORK}/reject" --plain init \
+	--release "${WORK}/bundle-1.2.0" --no-recovery-recipient \
+	--install-units=false --set htpp_port=9000 >/dev/null 2>&1; then
+	fail "a parameter the release does not declare was accepted"
+fi
+info "a typo in --set is refused"
 
 step "apply"
 "${MORZER}" --root "${ROOT}" apply
 assert_running 2
+
+# The reason parameters exist. Compose publishes the port, preflight checks the
+# port, and the manager's health probe asks the port -- all from one value. Get
+# any of the three wrong and apply above would already have failed at "wait for
+# health checks", but assert the published port directly so the failure names
+# the cause rather than the symptom.
+step "the deployment is published on the port that was set"
+published=$(docker compose -p demo port app 18080 2>/dev/null | sed 's/.*://')
+[ "${published}" = "${HTTP_PORT}" ] ||
+	fail "published on ${published:-nothing}, expected ${HTTP_PORT}"
+curl -fsS "http://127.0.0.1:${HTTP_PORT}/health/ready" >/dev/null ||
+	fail "nothing answers on the port the parameter set"
+info "app is published and answering on ${HTTP_PORT}"
+
+step "an operator value reaches the container, a default fills the rest"
+docker compose -p demo exec -T app printenv DEMO_LOG_LEVEL 2>/dev/null | grep -qx debug ||
+	fail "the log_level parameter did not reach the container"
+info "DEMO_LOG_LEVEL=debug inside the container"
 
 step "the rendered configuration holds paths, never values"
 config="${ROOT}/etc/demo/application.yaml"

@@ -59,7 +59,11 @@ type InitOptions struct {
 	// instead of refusing.
 	Repair bool
 
-	Settings map[string]any
+	// Parameters are `--set name=value` assignments, validated against the
+	// release's declarations before anything is created. A typo fails
+	// before a directory exists rather than after a deployment is running
+	// on a default the operator did not intend.
+	Parameters map[string]string
 }
 
 // Init creates a new installation.
@@ -92,6 +96,16 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 			"--require-signature needs at least one --signing-key").
 			WithHint("no bundle could satisfy the policy otherwise; " +
 				"pass the vendor's minisign public key")
+	}
+
+	// A parameter can only be checked against a release that declares it,
+	// and the whole value of declaring one is that setting it wrong is
+	// caught. Accepting `--set` unverified would be a free-form map with a
+	// flag in front of it.
+	if len(opts.Parameters) > 0 && opts.ReleasePath == "" {
+		return Result{}, domain.Usage("--set needs a release to validate against").
+			WithHint("pass --release <bundle>, whose manifest declares which " +
+				"parameters exist and what they accept")
 	}
 
 	if !opts.NoRecoveryKey && opts.RecoveryRecipient == "" {
@@ -303,7 +317,7 @@ func (d *Deps) buildInstallation(ctx context.Context, opts InitOptions) (domain.
 		Profile:       opts.Profile,
 		Domains:       opts.Domains,
 		Policy:        domain.DefaultPolicy(),
-		Settings:      opts.Settings,
+		Parameters:    opts.Parameters,
 	}
 	inst.Policy.RequireSignature = opts.RequireSignature
 	inst.Policy.SigningKeys = opts.SigningKeys
@@ -366,6 +380,16 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			if err != nil {
 				return err
 			}
+
+			// Before the release is adopted: a `--set` the manifest
+			// does not declare fails here, and the engine unwinds
+			// the installation written by the previous step rather
+			// than leaving one configured with a value that decides
+			// nothing.
+			if _, err := domain.ResolveParameters(rel.Manifest.Parameters, opts.Parameters); err != nil {
+				return err
+			}
+
 			st.Set(engine.KeyRelease, rel)
 
 			if err := atomicfs.ReplaceSymlink(dest, d.Paths.CurrentLink()); err != nil {

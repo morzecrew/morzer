@@ -95,9 +95,12 @@ func (r *Runtime) args(cfg ports.RuntimeConfig, rest ...string) []string {
 
 func (r *Runtime) command(cfg ports.RuntimeConfig, timeout time.Duration, argv ...string) exec.Command {
 	return exec.Command{
-		Argv:          argv,
-		Dir:           cfg.WorkingDir,
-		Env:           exec.BaseEnv(cfg.Env),
+		Argv: argv,
+		Dir:  cfg.WorkingDir,
+		// Filtered, not inherited: a declared parameter is the only
+		// way an operator value reaches a Compose file. See
+		// exec.FilteredEnv.
+		Env:           exec.FilteredEnv(exec.PassthroughEnv, cfg.Env),
 		Timeout:       timeout,
 		Redact:        r.redact,
 		OnLine:        r.onLine,

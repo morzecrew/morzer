@@ -38,6 +38,7 @@ published version stays readable until it is explicitly deprecated.
 | `providers` | table | | Which port implementation to use for each capability. |
 | `runtime` | table | ✅ | The Compose project and its files. |
 | `requirements` | table | | What the machine must provide. |
+| `parameters` | map | | Knobs an operator may set, typed and defaulted. See [Parameters](parameters.md). |
 | `images` | map | ✅ | Container images, pinned by digest. |
 | `configuration` | list | | Templates rendered to absolute paths on the host. |
 | `secrets` | table | | Where the encrypted state lives and where it renders. |
@@ -91,7 +92,55 @@ Checked in preflight and reported by `doctor`.
 | `tools` | map | Version constraints for external tools, e.g. `docker: ">=24"`. |
 | `memory` | size | Minimum RAM, e.g. `2GiB`. |
 | `disk` | size | Minimum free disk, e.g. `5GiB`. |
-| `ports` | list | TCP ports the release binds, checked for conflicts. |
+| `ports` | list | TCP ports the release binds, checked for conflicts. A literal number, or `"{{ .Parameters.<name> }}"` so the check follows the port the deployment actually publishes. |
+
+## parameters
+
+What an operator may change, and nothing else. Each entry declares a `type`, an
+optional `default`, and — for an enum — the `values` it accepts.
+
+```yaml
+parameters:
+  http_port:
+    type: port
+    default: 18080
+    description: Port the application is published on
+    services: [app]
+  log_level:
+    type: enum
+    values: [debug, info, warn, error]
+    default: info
+    services: [app]
+```
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `type` | string | ✅ | One of `port`, `int`, `bool`, `string`, `enum`, `duration`, `bytes`. |
+| `default` | string | | Used when the operator sets nothing. Validated against `type` at `release verify`. |
+| `description` | string | | Shown when a value is refused, so the operator learns what is accepted. |
+| `values` | list | | The permitted set. Required for `enum`, an error for anything else. |
+| `services` | list | | Services to restart when the value changes. Empty means the change needs a full `apply`. |
+
+A declared parameter reaches three places, all under the same name:
+
+| Consumer | Form |
+| --- | --- |
+| Compose files | `<PRODUCT>_PARAM_<NAME>` |
+| Configuration templates | `.Parameters.<name>` |
+| Hooks | `<PRODUCT>_PARAM_<NAME>` |
+
+Every declared parameter is always exported, holding its default when the
+operator has set nothing — so a Compose file's `:-` fallback is belt-and-braces
+rather than the actual source of the value.
+
+!!! danger "Parameters are not secrets"
+
+    A parameter's value is visible in `docker inspect`, in `status --json`, in
+    the journal, and in `installation.yaml` in the clear. Anything that must
+    not be is a [secret](../authoring/index.md), which has its own declared,
+    audited path and is rendered to tmpfs as a file.
+
+See [Parameters](parameters.md) for the operator's side.
 
 ## images
 

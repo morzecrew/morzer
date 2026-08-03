@@ -1,10 +1,12 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -40,6 +42,7 @@ type Manifest struct {
 	Providers     Providers                 `yaml:"providers" json:"providers"`
 	Runtime       RuntimeSpec               `yaml:"runtime" json:"runtime"`
 	Requirements  Requirements              `yaml:"requirements" json:"requirements"`
+	Parameters    map[string]ParameterSpec  `yaml:"parameters" json:"parameters,omitempty"`
 	Images        map[string]string         `yaml:"images" json:"images"`
 	Configuration []ConfigurationFile       `yaml:"configuration" json:"configuration"`
 	Secrets       SecretsSpec               `yaml:"secrets" json:"secrets"`
@@ -118,7 +121,49 @@ type Requirements struct {
 	Tools         map[string]Constraint `yaml:"tools" json:"tools,omitempty"`
 	Memory        ByteSize              `yaml:"memory" json:"memory,omitempty"`
 	Disk          ByteSize              `yaml:"disk" json:"disk,omitempty"`
-	Ports         []int                 `yaml:"ports" json:"ports,omitempty"`
+
+	// Ports are strings so one field covers both a literal `18080` and a
+	// `"{{ .Parameters.http_port }}"`. Resolve them with
+	// Manifest.ResolvePorts; reading them raw gives a template, not a
+	// number.
+	Ports []PortSpec `yaml:"ports" json:"ports,omitempty"`
+}
+
+// PortSpec is a port requirement: a literal, or a parameter reference.
+//
+// A distinct type rather than a bare string so YAML's `[18080]` decodes without
+// quoting -- an existing manifest keeps working, and a vendor does not have to
+// learn that a number must now be a string.
+type PortSpec string
+
+func (p *PortSpec) UnmarshalYAML(unmarshal func(any) error) error {
+	var n int
+	if err := unmarshal(&n); err == nil {
+		*p = PortSpec(strconv.Itoa(n))
+		return nil
+	}
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return fmt.Errorf("must be a port number or a {{ .Parameters.<name> }} reference")
+	}
+	*p = PortSpec(s)
+	return nil
+}
+
+func (p PortSpec) MarshalJSON() ([]byte, error) { return json.Marshal(string(p)) }
+
+func (p *PortSpec) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		*p = PortSpec(s)
+		return nil
+	}
+	var n int
+	if err := json.Unmarshal(b, &n); err != nil {
+		return fmt.Errorf("must be a port number or a {{ .Parameters.<name> }} reference")
+	}
+	*p = PortSpec(strconv.Itoa(n))
+	return nil
 }
 
 type ConfigurationFile struct {
@@ -294,6 +339,33 @@ func (m *Manifest) Validate() error {
 		}
 		for i, f := range files {
 			v.checkRelPath(fmt.Sprintf("runtime.profiles.%s[%d]", profile, i), f)
+		}
+	}
+
+	// parameters
+	ValidateParameters(m.Parameters, &v)
+
+	// requirements.ports -- literal or a parameter reference, never junk
+	for i, port := range m.Requirements.Ports {
+		field := fmt.Sprintf("requirements.ports[%d]", i)
+		text := strings.TrimSpace(string(port))
+		switch {
+		case text == "":
+			v.add(field, "is empty")
+		case strings.Contains(text, "{{"):
+			// Resolvability is checked against the installation's
+			// values; here only that it parses at all, so a
+			// malformed template fails at `release verify` rather
+			// than midway through an apply.
+			empty := Parameters{}
+			_, err := empty.Resolve(field, text)
+			if err != nil && strings.Contains(AsError(err).Message, "not a valid template") {
+				v.add(field, "%s", AsError(err).Message)
+			}
+		default:
+			if n, err := strconv.Atoi(text); err != nil || n < 1 || n > 65535 {
+				v.add(field, "must be a port number (1-65535) or a parameter reference, got %q", text)
+			}
 		}
 	}
 

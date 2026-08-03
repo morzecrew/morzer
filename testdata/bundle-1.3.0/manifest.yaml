@@ -38,7 +38,26 @@ requirements:
     compose: ">=2.30"
   memory: 2GiB
   disk: 5GiB
-  ports: [18080]
+  # Follows the parameter rather than restating it: preflight has to check the
+  # port this deployment will actually publish, not the one the vendor chose.
+  ports: ["{{ .Parameters.http_port }}"]
+
+# What an operator may change, and nothing else. Each reaches Compose as
+# <PRODUCT>_PARAM_<NAME>, templates as .Parameters.<name>, and hooks the same
+# way as Compose. Parameters are not secrets: their values are visible in
+# `docker inspect` and in `status --json`.
+parameters:
+  http_port:
+    type: port
+    default: 18080
+    description: Port the application is published on
+    services: [app]
+  log_level:
+    type: enum
+    values: [debug, info, warn, error]
+    default: info
+    description: Application log verbosity
+    services: [app]
 
 images:
   app: registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001
@@ -74,7 +93,10 @@ operations:
 
 health:
   checks:
-    - {name: api, type: http, url: "http://127.0.0.1:18080/health/ready", timeout: 30s}
+    # Follows the parameter too. A probe on a port the deployment does not
+    # publish is an `apply` that fails at "wait for health" on a system that
+    # is working.
+    - {name: api, type: http, url: "http://127.0.0.1:{{ .Parameters.http_port }}/health/ready", timeout: 30s}
     - {name: db, type: command, command: ["hooks/check-db"], timeout: 15s}
 
 compatibility:

@@ -145,7 +145,19 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 			// already running: on a converged system the product's
 			// own listeners would be reported as conflicts.
 			if !d.projectRunning(ctx, inst, rel, opts) {
-				checks = append(checks, preflight.Ports(rel.Manifest.Requirements.Ports))
+				// Resolved, not read raw: `requirements.ports`
+				// may name a parameter, and checking 18080
+				// while the deployment publishes 9000 is the
+				// incoherence this closes.
+				params, err := d.parameters(rel, inst)
+				if err != nil {
+					return err
+				}
+				required, err := rel.Manifest.ResolvePorts(params)
+				if err != nil {
+					return err
+				}
+				checks = append(checks, preflight.Ports(required))
 			}
 
 			report := preflight.NewRunner(d.Bus).Run(ctx, checks)
@@ -293,7 +305,10 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 				return nil, err
 			}
 		}
-		data := d.templateData(inst, rel, opts.Profile, schema)
+		data, err := d.templateData(inst, rel, opts.Profile, schema)
+		if err != nil {
+			return nil, err
+		}
 
 		out := make(map[string][]byte, len(rel.Manifest.Configuration))
 		for _, cfg := range rel.Manifest.Configuration {
@@ -591,7 +606,10 @@ func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) eng
 			return len(rel.Manifest.Health.Checks) == 0, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			specs := d.checkSpecs(inst, rel, st.OpID, domain.OpTypeApply)
+			specs, err := d.checkSpecs(inst, rel, st.OpID, domain.OpTypeApply)
+			if err != nil {
+				return err
+			}
 
 			results, err := d.Health.WaitReady(ctx, specs)
 			st.Set(engine.KeyHealthResults, results)
@@ -605,18 +623,33 @@ func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) eng
 }
 
 // checkSpecs resolves manifest health checks into runnable specs.
-func (d *Deps) checkSpecs(inst domain.Installation, rel domain.Release, opID string, opType domain.OperationType) []ports.CheckSpec {
+//
+// The URL is rendered against the parameters, so a probe follows the port the
+// deployment actually publishes. Without this a changed port produces a
+// deployment that works and an `apply` that fails at "wait for health".
+func (d *Deps) checkSpecs(
+	inst domain.Installation, rel domain.Release, opID string, opType domain.OperationType,
+) ([]ports.CheckSpec, error) {
 	env := d.hookEnv(inst, rel, domain.Version{}, opID, opType, ports.PhaseHealthCheck, false)
 
-	specs := make([]ports.CheckSpec, 0, len(rel.Manifest.Health.Checks))
-	for _, check := range rel.Manifest.Health.Checks {
+	params, err := d.parameters(rel, inst)
+	if err != nil {
+		return nil, err
+	}
+	checks, err := rel.Manifest.ResolveHealthChecks(params)
+	if err != nil {
+		return nil, err
+	}
+
+	specs := make([]ports.CheckSpec, 0, len(checks))
+	for _, check := range checks {
 		specs = append(specs, ports.CheckSpec{
 			Check:      check,
 			WorkingDir: rel.Root,
 			Env:        ports.HookEnvVars(env),
 		})
 	}
-	return specs
+	return specs, nil
 }
 
 // stepSmokeTest runs the release's end-to-end check.

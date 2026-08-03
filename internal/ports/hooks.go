@@ -62,6 +62,12 @@ type HookEnv struct {
 	DryRun   bool
 	LogLevel string
 
+	// Parameters are the release's declared knobs, resolved for this
+	// installation. Delivered as <PRODUCT>_PARAM_<NAME>, the same names the
+	// Compose files interpolate, so a hook and a topology file refer to a
+	// port the same way.
+	Parameters map[string]string
+
 	// Extra carries operation-specific variables, already fully named.
 	Extra map[string]string
 }
@@ -111,6 +117,10 @@ func HookEnvVars(e HookEnv) map[string]string {
 	set("CONFIG_FILE", e.ConfigFile)
 	set("COMPOSE_PROJECT", e.ComposeProject)
 	set("LOG_LEVEL", e.LogLevel)
+
+	for name, value := range e.Parameters {
+		set("PARAM_"+strings.ToUpper(name), value)
+	}
 
 	// DRY_RUN is always present, including as "0". A hook testing for the
 	// variable's existence rather than its value would otherwise mutate

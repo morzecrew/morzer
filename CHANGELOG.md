@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release bundle contract under manifest version `selfhost/v1alpha1`, covering providers, runtime topology, requirements, images, configuration templates, operations, health checks, compatibility and retention. Decoding is strict, so an unknown or misspelled field is an error rather than a silent fall back to a default.
 
+- Release parameters: a manifest declares the knobs an operator may set, each with a type, an optional default and the services to restart when it changes. Set them with repeated `--set name=value` on init. A value the release does not declare, or does not accept, is refused by name before anything is created.
+
+- A parameter's value reaches Compose files and hooks as a namespaced environment variable and configuration templates as a template field, always under the same name. Every declared parameter is exported, holding the release's default when the operator set nothing.
+
+- A release's port requirements and health-check URLs can follow a parameter, so changing a published port moves the conflict check and the health probe with it. Previously the two were fixed in the manifest, and changing a port produced a deployment that worked and a converge that failed waiting for health.
+
 - Container images must be pinned by digest. A bare tag is rejected at load time, because an unpinned image makes a release mutable and a mutable release makes rollback meaningless.
 
 - Releases are identified by name and version together with the content digest of the bundle. The same version appearing with a different digest is reported as an error rather than a warning.
@@ -90,6 +96,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generated systemd units for boot-time convergence and scheduled backups. The main unit will not restart on the exit code meaning manual intervention is required, so a system needing a human stops instead of looping.
 
 - Reporting of measured sizes such as free disk space in readable units, while values declared in a manifest keep their exact written form.
+
+### Changed
+
+- The container runtime no longer inherits the whole environment of whoever invoked the manager. It receives an allow-list of what a tool needs to run, plus the release's declared parameters. Any product-prefixed variable set in a shell used to interpolate into Compose files unvalidated and unrecorded.
+
+- The free-form `settings` block on an installation is replaced by declared parameters. It reached configuration templates but nothing could set it, so no deployment can depend on it.
 
 ### Fixed
 

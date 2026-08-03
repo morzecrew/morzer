@@ -33,6 +33,7 @@ func newInitCommand(app *App) *cobra.Command {
 		repair         bool
 		requireSig     bool
 		signingKeys    []string
+		set            []string
 	)
 
 	cmd := &cobra.Command{
@@ -90,6 +91,15 @@ func newInitCommand(app *App) *cobra.Command {
 				Repair:            repair,
 			}
 
+			// Parsed before anything is created, so a typo fails
+			// with nothing on disk rather than after a deployment
+			// is running on a default the operator did not intend.
+			params, err := domain.ParseAssignments(set)
+			if err != nil {
+				return err
+			}
+			opts.Parameters = params
+
 			// Only at a terminal, only without --yes, and only when
 			// something it collects is actually missing. Everything
 			// else -- CI, a systemd unit, a provisioning script --
@@ -124,6 +134,8 @@ func newInitCommand(app *App) *cobra.Command {
 	}
 
 	f := cmd.Flags()
+	f.StringArrayVar(&set, "set", nil,
+		"set a release parameter, as name=value; repeat for several")
 	f.StringVar(&product, "product", "", "product name; taken from the release manifest when --release is given")
 	f.StringVar(&releasePath, "release", "", "release bundle to stage during init")
 	f.StringVar(&profile, "profile", "", "deployment profile from the release manifest")

@@ -1,6 +1,12 @@
 # RFC 0007 — Operator parameters
 
-- **Status:** 📝 Draft — analysis complete, scope decisions open. Not scheduled.
+- **Status:** 🚧 In progress — P1 and P2 shipped 2026-08-04. A release declares
+  typed parameters, `init --set` records them, values reach Compose, templates
+  and hooks as `<PRODUCT>_PARAM_<NAME>`, `requirements.ports` and health URLs
+  follow them, and the Compose subprocess no longer inherits the operator's
+  environment. P3 (`morzer config`), P4 (the three-tier example) and P5 (the
+  remaining docs and the Compose-variable gate) are open. Divergences are in
+  §13.
 - **Scope:** Gives a release a declared set of knobs an operator may set — ports
   above all — and gives the operator a supported way to set them. Covers the
   manifest's `parameters` block, typed validation, delivery to Compose,
@@ -470,8 +476,10 @@ against for exactly this reason.
 - **P3** — `morzer config list/get/set/unset`, and the `doctor` check for
   `installation.yaml` drift.
 - **P4** — the three-tier `testdata/bundle-web/` and its acceptance stage.
-- **P5** — documentation: the two reference pages, the authoring and operating
-  pages, and extending `docs-check` to gate the Compose variable set.
+- **P5** — documentation: the remaining authoring and operating pages, and
+  extending `docs-check` to gate **both** undocumented ABIs — the Compose
+  interpolation set and the configuration-template render context — plus a
+  decision on `.Env`. See §13.
 
 P1 and P2 are one pull request in practice: shipping P1 without P2 means an
 operator can set a port and still break `apply`, which is the current state with
@@ -491,3 +499,93 @@ extra steps.
    value with nothing to bind to. Refuse the update, warn, or silently drop?
    Leaning warn, on the grounds that a dropped parameter is the vendor's
    decision and blocking an update over it helps nobody.
+
+## 13. Amendments
+
+Recorded on shipping P1 and P2, 2026-08-04.
+
+### `--set` is validated against the staged manifest, not before the run
+
+§5.5 implied `--set` could be checked before anything is created, alongside the
+recovery-key and signing-policy checks. It cannot: those validate a value
+against itself, while a parameter validates against declarations that live in a
+manifest the manager has not fetched yet — and the reference may be an OCI or
+HTTPS one it should not fetch twice.
+
+So `init` refuses `--set` without `--release` up front, and validates the values
+inside the `stage-release` step, before the release is adopted. A refusal there
+compensates the installation written by the previous step, so nothing survives:
+
+```text
+[3/6] write installation configuration
+        ok (0s)
+[4/6] stage release bundle
+        failed: parameter "log_level"
+        hint: log_level accepts debug, info, warn, error; default info -- Application log verbosity
+warning: rolling back: stage release bundle
+warning: rolling back: write installation configuration
+```
+
+Verified by running it: no installation file is left behind.
+
+### `requirements.ports` needed a type, not a string
+
+§5.4 said `ports` "becomes `[]string`". A bare `[]string` would have broken
+every existing manifest, because `ports: [18080]` is a YAML *number* and would
+no longer decode. It is a named `PortSpec` with a YAML and a JSON unmarshaler
+that accept either form, so a vendor does not have to learn that a number is now
+a string. `TestALiteralPortStillWorks` pins it.
+
+### The template has two guards, and both are load-bearing
+
+§5.4 relied on `missingkey=error`. That alone does not catch a miss on a *map*
+context in every Go version, so `Resolve` also refuses output containing
+`<no value>`. Perturbation confirmed each catches
+`{{ .Parameters.htpp_port }}` independently, and that removing both fails the
+test — so the test pins the behaviour rather than one implementation of it.
+
+### Closing the inherited environment needed an allow-list, not a deny
+
+Decision 10 said the Compose subprocess stops inheriting the parent
+environment. Taken literally that breaks `docker`, which needs `PATH`, its own
+client configuration and, on a remote host, `SSH_AUTH_SOCK`. `exec.FilteredEnv`
+therefore passes an explicit list — `PATH`, `HOME`, `TMPDIR`, the `XDG_*`
+directories, `DOCKER_*`, `SSH_AUTH_SOCK` and the proxy variables — plus the
+declared parameters, and drops everything else.
+
+The risk in §9 stands: anyone who was relying on the undocumented inherited path
+loses it. The `doctor` warning proposed there is **not** built; it belongs with
+P3, where `config` gives the operator somewhere to move the value to. Until
+then the failure is a parameter that stops taking effect, which is visible but
+unexplained. Stated here rather than discovered.
+
+### The acceptance run asserts the port, not just the outcome
+
+§5.7 put the three-tier bundle in P4 and the port assertion with it. P2 needs
+that assertion now, so the existing acceptance run installs on **18099** —
+deliberately not the bundle's default — and checks that Compose published it,
+that the health endpoint answers on it, and that a second parameter reached the
+container's environment. A run using the default would pass whether or not any
+of this worked.
+
+`--set htpp_port=9000` being refused is asserted there too, because a validation
+that only unit tests exercise is a validation the CLI can quietly stop calling.
+
+### Decision 10 was applied to Compose only, and the template context is a third ABI
+
+Closing the inherited environment fixed the Compose path. The **configuration
+template** context still exposes `.Env`, built by `productEnvOverrides` from
+`os.Environ()` — so a `<PRODUCT>_*` variable in a shell still reaches a rendered
+configuration file, unvalidated and unrecorded, exactly as it used to reach a
+Compose file.
+
+It was left because closing it is a behaviour change for templates rather than
+for the runtime, and because the render context turns out to be a *third*
+undocumented ABI: `.Installation`, `.Release`, `.Profile`, `.Paths`,
+`.Secrets`, `.Domains`, `.Parameters` and `.Env` appear nowhere in `pages/`, and
+`docs-check` reads neither this nor the Compose variable set (§2.4).
+
+So P5 grows: documenting and gating the render context, not just the Compose
+variables, and deciding `.Env`'s fate in the same change. Recorded here rather
+than left for someone to rediscover, and it is why the P2 work should not be
+read as "the undeclared channels are closed" — one of three is.

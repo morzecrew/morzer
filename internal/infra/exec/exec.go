@@ -408,6 +408,54 @@ func BaseEnv(overrides map[string]string) []string {
 	return MergeEnv(env, overrides)
 }
 
+// PassthroughEnv is what a tool needs from the parent environment to run at
+// all: where to find itself, where its own configuration lives, and how to
+// reach the daemon.
+//
+// Everything outside this list is dropped. That is the point -- see
+// FilteredEnv.
+var PassthroughEnv = []string{
+	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG",
+	"XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+	// Docker's own client configuration: which daemon, which context,
+	// which certificates, and the agent socket for an ssh:// host.
+	"DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG",
+	"DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY", "DOCKER_API_VERSION",
+	"SSH_AUTH_SOCK",
+	// Proxies, for a machine that reaches a registry through one.
+	"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+	"http_proxy", "https_proxy", "no_proxy",
+}
+
+// FilteredEnv builds a child environment from an allow-list plus explicit
+// overrides, instead of inheriting whatever the operator's shell happened to
+// hold.
+//
+// This is what makes a declared parameter the only way an operator value
+// reaches Compose. Inheriting the whole environment meant any `<PRODUCT>_*`
+// variable silently interpolated into a Compose file -- undocumented,
+// unvalidated, unrecorded, and not visible to the manifest. The result was a
+// deployment published on one port while preflight checked, and the health
+// probe asked for, another.
+//
+// Case-sensitive, and deliberately: HTTP_PROXY and http_proxy are both real
+// conventions and tools read them differently, so both are listed rather than
+// folded together.
+func FilteredEnv(passthrough []string, overrides map[string]string) []string {
+	allowed := make(map[string]bool, len(passthrough))
+	for _, key := range passthrough {
+		allowed[key] = true
+	}
+
+	env := make([]string, 0, len(passthrough)+len(overrides))
+	for _, kv := range os.Environ() {
+		if k, _, ok := strings.Cut(kv, "="); ok && allowed[k] {
+			env = append(env, kv)
+		}
+	}
+	return MergeEnv(env, overrides)
+}
+
 // MergeEnv applies overrides to an environment slice, replacing existing keys
 // rather than appending duplicates.
 func MergeEnv(env []string, overrides map[string]string) []string {

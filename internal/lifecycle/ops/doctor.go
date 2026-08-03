@@ -717,7 +717,16 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 			probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 
-			results, err := d.Health.CheckOnce(probeCtx, d.checkSpecs(inst, rel, "", domain.OpTypeApply))
+			specs, err := d.checkSpecs(inst, rel, "", domain.OpTypeApply)
+			if err != nil {
+				// A health URL that cannot be resolved is a
+				// finding, not a crash: doctor's job is to
+				// report what is wrong with the installation.
+				return preflight.Fail("check the release's parameters with `morzer release show`",
+					"%s", domain.AsError(err).Message)
+			}
+
+			results, err := d.Health.CheckOnce(probeCtx, specs)
 			if err != nil {
 				return preflight.Warn("", "%s", domain.AsError(err).Message)
 			}

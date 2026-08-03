@@ -248,7 +248,33 @@ func (d *Deps) hookEnv(
 		ComposeProject:  rel.Manifest.Runtime.Project,
 		DryRun:          dryRun,
 		LogLevel:        "info",
+		// Best effort: a hook environment is built on paths that do
+		// not fail, and a parameter that cannot resolve is already
+		// refused by the steps that matter -- render, apply, health.
+		// Failing here would turn a bad parameter into a crash in the
+		// middle of building a log line.
+		Parameters: d.parametersOrEmpty(rel, inst),
 	}
+}
+
+// parametersOrEmpty resolves parameters, returning nothing on failure.
+func (d *Deps) parametersOrEmpty(rel domain.Release, inst domain.Installation) map[string]string {
+	params, err := d.parameters(rel, inst)
+	if err != nil {
+		return nil
+	}
+	return params
+}
+
+// parameters resolves the release's declarations against the operator's
+// choices.
+//
+// One resolution point, because every consumer -- Compose, the templates, the
+// hooks, the port preflight, the health probes -- must see the same values.
+// Resolving twice is how the published port and the probed port drift apart,
+// which is the defect this closes.
+func (d *Deps) parameters(rel domain.Release, inst domain.Installation) (domain.Parameters, error) {
+	return domain.ResolveParameters(rel.Manifest.Parameters, inst.Parameters)
 }
 
 // runtimeConfig builds the runtime configuration for a release and profile.
@@ -277,6 +303,20 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		env[envName(inst.Product, "DOMAIN")] = inst.Domains[0]
 	}
 
+	// Every declared parameter, as <PRODUCT>_PARAM_<NAME>, defaulted when
+	// the operator has not set it.
+	//
+	// PARAM_ rather than a flat <PRODUCT>_<NAME>: the flat form lets a
+	// parameter named `data_dir` shadow <PRODUCT>_DATA_DIR and take the
+	// deployment's storage with it.
+	params, err := d.parameters(rel, inst)
+	if err != nil {
+		return ports.RuntimeConfig{}, err
+	}
+	for name, value := range params {
+		env[envName(inst.Product, "PARAM_"+parameterVarName(name))] = value
+	}
+
 	// Every image the manifest declares, as <PRODUCT>_IMAGE_<NAME>.
 	//
 	// This is what connects the two halves of a release: the manifest says
@@ -302,6 +342,12 @@ func envName(product, key string) string {
 	return ports.HookEnv{Product: product}.Var(key)
 }
 
+// parameterVarName turns a parameter name into its variable suffix. Names are
+// already constrained to lowercase, digits and underscores, so this is only an
+// upcase -- but going through a named function keeps the mapping in one place
+// alongside imageVarName.
+func parameterVarName(name string) string { return strings.ToUpper(name) }
+
 // imageVarName turns a manifest image key into the variable suffix a Compose
 // file interpolates: `app` becomes APP, `web-ui` becomes WEB_UI.
 func imageVarName(name string) string {
@@ -316,7 +362,7 @@ func (d *Deps) templateData(
 	rel domain.Release,
 	profile string,
 	schema domain.SecretSchema,
-) ports.TemplateData {
+) (ports.TemplateData, error) {
 	// Secret *references*: a name to the path of its rendered file. The
 	// values never enter the render context, so a configuration file
 	// cannot accidentally embed one.
@@ -327,6 +373,11 @@ func (d *Deps) templateData(
 
 	if profile == "" {
 		profile = inst.Profile
+	}
+
+	params, err := d.parameters(rel, inst)
+	if err != nil {
+		return ports.TemplateData{}, err
 	}
 
 	return ports.TemplateData{
@@ -349,11 +400,11 @@ func (d *Deps) templateData(
 			Secrets:   d.Paths.SecretsRenderDir(),
 			Generated: d.Paths.GeneratedDir(),
 		},
-		Secrets:  secretPaths,
-		Domains:  inst.Domains,
-		Settings: inst.Settings,
-		Env:      productEnvOverrides(inst.Product),
-	}
+		Secrets:    secretPaths,
+		Domains:    inst.Domains,
+		Parameters: params,
+		Env:        productEnvOverrides(inst.Product),
+	}, nil
 }
 
 // productEnvOverrides collects <PRODUCT>_* variables from the process

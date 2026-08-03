@@ -9,7 +9,11 @@ import (
 // InstallationSchemaVersion is the second of the three versioned contracts:
 // what the manager can migrate. Bumped only when the on-disk shape changes in
 // a way a previous manager would misread.
-const InstallationSchemaVersion = 1
+// Bumped to 2 when `settings` became `parameters`. encoding/json ignores
+// unknown fields, so without the bump an older manager would read a newer
+// state file, see no `settings`, and silently run the whole deployment on
+// default parameters -- a wrong port rather than a refusal.
+const InstallationSchemaVersion = 2
 
 // Installation is the machine-specific state of one deployment. It is the
 // only place operator intent is recorded; everything else is derived from it
@@ -32,9 +36,19 @@ type Installation struct {
 	// is canonical and becomes the public URL in `status`.
 	Domains []string `yaml:"domains" json:"domains,omitempty"`
 
-	Providers Providers      `yaml:"providers" json:"providers"`
-	Policy    Policy         `yaml:"policy" json:"policy"`
-	Settings  map[string]any `yaml:"settings" json:"settings,omitempty"`
+	Providers Providers `yaml:"providers" json:"providers"`
+	Policy    Policy    `yaml:"policy" json:"policy"`
+
+	// Parameters are the operator's choices among what the release
+	// declares, stored as written and validated against the declaration on
+	// load. Storing the raw text means a release that changes a
+	// parameter's type surfaces a validation error rather than silently
+	// reinterpreting the value.
+	//
+	// This replaces the `settings` free-form map, which reached the
+	// template context but had no writer, no schema, no documentation and
+	// no test -- it was never settable, so nothing can depend on it.
+	Parameters map[string]string `yaml:"parameters" json:"parameters,omitempty"`
 }
 
 // Policy is operator-set behaviour that overrides release defaults. These are

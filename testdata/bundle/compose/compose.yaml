@@ -9,11 +9,16 @@ services:
     # could never pass -- an incoherence nothing noticed until the acceptance
     # run exercised the bundle against real Docker.
     ports:
-      - "${DEMO_HTTP_PORT:-18080}:18080"
+      # DEMO_PARAM_HTTP_PORT, not DEMO_HTTP_PORT: parameters are namespaced so
+      # one named `data_dir` cannot shadow DEMO_DATA_DIR and take the
+      # deployment's storage with it. The manager always exports every declared
+      # parameter, so the `:-` fallback is belt-and-braces.
+      - "${DEMO_PARAM_HTTP_PORT:-18080}:18080"
     environment:
       # Secrets reach the container as files, never as environment: an
       # environment variable is visible to `docker inspect`.
       DEMO_CONFIG_FILE: /etc/demo/application.yaml
+      DEMO_LOG_LEVEL: ${DEMO_PARAM_LOG_LEVEL:-info}
       DEMO_DB_PASSWORD_FILE: /run/secrets/db_password
     volumes:
       - ${DEMO_CONFIG_FILE:-/etc/demo/application.yaml}:/etc/demo/application.yaml:ro

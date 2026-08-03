@@ -203,6 +203,15 @@ func stringSchema(t reflect.Type) map[string]any {
 		out["enum"] = []string{
 			string(domain.HealthHTTP), string(domain.HealthTCP), string(domain.HealthCommand),
 		}
+	case reflect.TypeOf(domain.ParamPort):
+		values := make([]string, len(domain.ParameterTypes))
+		for i, pt := range domain.ParameterTypes {
+			values[i] = string(pt)
+		}
+		out["enum"] = values
+	case reflect.TypeOf(domain.PortSpec("")):
+		out["description"] = "A port number, or a {{ .Parameters.<name> }} reference."
+		out["examples"] = []string{"18080", "{{ .Parameters.http_port }}"}
 	case reflect.TypeOf(domain.GeneratorPassword):
 		out["enum"] = []string{
 			string(domain.GeneratorPassword), string(domain.GeneratorHex),

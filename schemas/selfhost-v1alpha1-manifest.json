@@ -185,6 +185,45 @@
       },
       "type": "object"
     },
+    "parameters": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": {
+            "enum": [
+              "port",
+              "int",
+              "bool",
+              "string",
+              "enum",
+              "duration",
+              "bytes"
+            ],
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "type": "object"
+    },
     "providers": {
       "additionalProperties": false,
       "properties": {
@@ -301,7 +340,12 @@
         },
         "ports": {
           "items": {
-            "type": "integer"
+            "description": "A port number, or a {{ .Parameters.\u003cname\u003e }} reference.",
+            "examples": [
+              "18080",
+              "{{ .Parameters.http_port }}"
+            ],
+            "type": "string"
           },
           "type": "array"
         },

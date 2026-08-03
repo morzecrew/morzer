@@ -50,9 +50,10 @@ type TemplateData struct {
 	// Domains is the configured public names, first one canonical.
 	Domains []string `json:"domains"`
 
-	// Settings is the operator's free-form settings block from
-	// installation.yaml.
-	Settings map[string]any `json:"settings"`
+	// Parameters is the release's declared knobs, resolved for this
+	// installation: every declared name is present, holding either the
+	// operator's value or the release's default.
+	Parameters domain.Parameters `json:"parameters"`
 
 	// Env exposes PRODUCT_* environment overrides so a template can react
 	// to them without the renderer reaching into os.Environ itself.

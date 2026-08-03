@@ -80,6 +80,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--signing-key` | minisign public key a release signature must verify against. Repeat for several. |
 | `--require-signature` | Refuse any release that is not signed by one of those keys. |
 | `--product` | Product name, when no `--release` is given to take it from. |
+| `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
 | `--repair` | Restore missing directories on an existing installation. |
 
 ### The interactive first run

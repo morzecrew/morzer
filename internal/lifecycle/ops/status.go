@@ -166,7 +166,11 @@ func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.I
 	probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	specs := d.checkSpecs(inst, rel, "", domain.OpTypeApply)
+	specs, err := d.checkSpecs(inst, rel, "", domain.OpTypeApply)
+	if err != nil {
+		out.Problems = append(out.Problems, domain.AsError(err).Message)
+		return
+	}
 	if results, err := d.Health.CheckOnce(probeCtx, specs); err == nil {
 		out.Health = results
 	}
