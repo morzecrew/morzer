@@ -241,6 +241,7 @@ func newRootCommand(app *App) *cobra.Command {
 	root.AddCommand(
 		newInitCommand(app),
 		newApplyCommand(app),
+		newUpdateCommand(app),
 		newStatusCommand(app),
 		newDoctorCommand(app),
 		newBackupCommand(app),

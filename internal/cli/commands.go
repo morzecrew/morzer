@@ -129,6 +129,62 @@ func newApplyCommand(app *App) *cobra.Command {
 	return cmd
 }
 
+func newUpdateCommand(app *App) *cobra.Command {
+	var (
+		skipBackup bool
+		digest     string
+		profile    string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "update <bundle>",
+		Short: "Install a new release over the current one",
+		Long: "Verifies the bundle, checks it against the compatibility the manifest\n" +
+			"declares, takes a pre-update backup, stages the release and converges\n" +
+			"to it.\n\n" +
+			"A failed update rolls back to the release that was running. The database\n" +
+			"is never rolled back automatically: when a migration cannot be undone the\n" +
+			"release says so, and the answer is a restore from the backup taken here.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts := app.operationOptions()
+			opts.Profile = profile
+			opts.SkipBackup = skipBackup
+
+			// Skipping the backup is the one choice here that removes
+			// a safety net rather than adding a risk, so it needs the
+			// same explicit authorisation a destructive action does.
+			if skipBackup && !opts.Force {
+				return domain.Usage("--skip-backup also requires --force").
+					WithHint("the pre-update backup is what a failed update is recovered from")
+			}
+
+			// The backup engine is built from the *current* release,
+			// which is what is being backed up. Its absence is only
+			// fatal when a backup is actually going to be taken, so
+			// the error is left to the step.
+			_ = app.attachBackupEngine(cmd.Context())
+
+			result, err := ops.Update(cmd.Context(), app.Deps, ops.UpdateOptions{
+				Options:      opts,
+				Ref:          args[0],
+				ExpectDigest: digest,
+			})
+			app.finish(result)
+			return err
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVar(&skipBackup, "skip-backup", false,
+		"skip the pre-update backup; requires --force and is recorded in the journal")
+	f.StringVar(&digest, "digest", "",
+		"expected bundle content digest; a mismatch refuses the update")
+	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")
+
+	return cmd
+}
+
 func newStatusCommand(app *App) *cobra.Command {
 	var clearIntervention string
 
