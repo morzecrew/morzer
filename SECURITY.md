@@ -59,6 +59,27 @@ Stated here rather than discovered during an incident:
 - Signature verification is designed but not implemented, so setting
   `require_signature: true` currently refuses every operation instead of
   enforcing signing. See [RFC 0004](rfcs/0004-distribution-and-verification.md).
-- The offline recovery recipient that `init` requires has no import path yet:
-  the key can be created and registered, but rebuilding a machine from it is not
+- `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
   implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
+
+## Closed gaps
+
+Kept here because a security policy that only ever grows is one nobody trusts to
+be current.
+
+- **The offline recovery key had no import path** (closed 2026-08-03). It could
+  be created and registered, but nothing could rebuild a machine from it —
+  a safeguard `init` insisted on and could not deliver. `installation export`
+  and `installation import` close it, and the path is proven end to end against
+  real age keys on every CI run: create an installation, delete its entire root,
+  rebuild from the export plus the offline key, and read the secrets back with
+  the new host's own identity. See
+  [Recovering a lost machine](https://morzecrew.github.io/morzer/operating/recovering-a-lost-machine/).
+
+- **The cross-installation restore guard could never fire** (closed 2026-08-03).
+  `restore` requires `--force`, and that same flag was passed down as the
+  authorisation to restore a backup belonging to a *different* installation — so
+  every restore that reached the check had already disabled it. Restoring one
+  deployment's data over another now needs `--allow-cross-installation`, which
+  is a separate answer to a separate question. Found by the recovery test above,
+  not by review.

@@ -423,6 +423,7 @@ func newRestoreCommand(app *App) *cobra.Command {
 		backupID   string
 		confirm    string
 		components []string
+		crossInst  bool
 	)
 
 	cmd := &cobra.Command{
@@ -447,6 +448,7 @@ func newRestoreCommand(app *App) *cobra.Command {
 				BackupID:                backupID,
 				Components:              parsed,
 				ConfirmedInstallationID: confirm,
+				AllowCrossInstallation:  crossInst,
 			})
 			app.finish(result)
 			return err
@@ -457,6 +459,8 @@ func newRestoreCommand(app *App) *cobra.Command {
 	f.StringVar(&backupID, "backup", "", "backup id; the most recent when omitted")
 	f.StringVar(&confirm, "confirm", "", "the installation id, typed to confirm a destructive restore")
 	f.StringSliceVar(&components, "component", nil, "limit the restore to these components")
+	f.BoolVar(&crossInst, "allow-cross-installation", false,
+		"restore a backup belonging to a different installation")
 
 	return cmd
 }

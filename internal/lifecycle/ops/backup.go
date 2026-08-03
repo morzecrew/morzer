@@ -197,6 +197,16 @@ type RestoreOptions struct {
 	// Restore is destructive, so the confirmation is the installation's
 	// own identifier rather than a y/n: it cannot be answered by reflex.
 	ConfirmedInstallationID string
+
+	// AllowCrossInstallation permits restoring a backup that belongs to a
+	// different installation.
+	//
+	// It is separate from Force because Force is already mandatory for any
+	// restore at all. Passing Force down as the cross-installation
+	// authorisation made the guard unreachable: every restore that got far
+	// enough to be checked had already been forced. This is the flag that
+	// actually says "yes, another machine's data, on purpose".
+	AllowCrossInstallation bool
 }
 
 // Restore returns the system to a backed-up state.
@@ -382,8 +392,13 @@ func stepRunRestore(d *Deps, inst domain.Installation, ref ports.BackupRef, opts
 		Timeout:                       3 * time.Hour,
 		Execute: func(ctx context.Context, st *engine.State) error {
 			return d.Backup.Restore(ctx, ref, ports.RestoreOptions{
-				Components:           opts.Components,
-				Force:                opts.Force,
+				Components: opts.Components,
+				// Not opts.Force. Force authorises destroying
+				// this machine's data and is required for every
+				// restore; using it here too meant the
+				// cross-installation guard was checked only
+				// after the one thing that disabled it.
+				Force:                opts.AllowCrossInstallation,
 				TargetInstallationID: inst.ID,
 			})
 		},

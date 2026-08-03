@@ -50,6 +50,7 @@ These are accepted by every command.
 | [`version`](#version) | Print version, commit, and supported manifest API versions. |
 | [`secret`](secret-commands.md) | Manage the encrypted secret state. |
 | [`release`](release-commands.md) | Inspect and manage release bundles. |
+| [`installation`](installation-commands.md) | Export and rebuild an installation's identity. |
 
 ---
 
@@ -206,6 +207,17 @@ waiting to destroy a production database.
 | `--backup` | Backup id. The most recent when omitted. |
 | `--component` | Limit the restore to these components. |
 | `--confirm` | The installation id, typed to confirm a destructive restore. |
+| `--allow-cross-installation` | Restore a backup that belongs to a different installation. |
+
+`--allow-cross-installation` is separate from `--force` because `--force` is
+already required for every restore: using it for both would mean the
+cross-installation guard was only ever checked after the one thing that disabled
+it. Restoring another deployment's data is a distinct decision and gets its own
+answer.
+
+If the machine is a rebuild of the one the backup came from,
+[`installation import`](installation-commands.md#installation-import) is the
+right answer instead — it restores the original id, so the guard never fires.
 
 Restore declares that it requires manual intervention on failure: a half-restored
 database is a state no automatic action can repair, so a failure here exits

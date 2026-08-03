@@ -59,17 +59,22 @@ contract:
 # A skipped real-adapter suite means the production adapter was never exercised
 # and the fake carried the run alone. That is the failure this recipe exists to
 # catch, so absence of a skip is asserted rather than assumed.
+#
+# The recovery scenario is in scope for the same reason: it is the only proof
+# that an offline key can rebuild a machine, it needs sops to be that proof, and
+# a run where it quietly skipped would be a run that verified nothing about the
+# safeguard `init` insists on.
 
-# Run the contract suites and fail if any of them skipped.
+# Run the contract suites and the recovery scenario, failing if any skipped.
 contract-strict:
     #!/usr/bin/env bash
     set -euo pipefail
     out=$(mktemp)
     trap 'rm -f "$out"' EXIT
-    go test ./test/suite/ -run Contract -v 2>&1 | tee "$out"
+    go test ./test/suite/ -run 'Contract|Recovery|Import|Backups' -v 2>&1 | tee "$out"
     if grep -q -- '--- SKIP' "$out"; then
         echo >&2
-        echo "error: a contract suite skipped, so a real adapter went unexercised." >&2
+        echo "error: a suite that needs a real adapter skipped, so it went unexercised." >&2
         echo "       install the missing tool (sops) and re-run." >&2
         exit 1
     fi
@@ -91,7 +96,7 @@ test-cover:
     go tool cover -func=coverage.out | tail -1
 
 # Fail when total coverage drops below the floor.
-coverage-gate floor="45": test-cover
+coverage-gate floor="50": test-cover
     .github/scripts/coverage-floor.sh coverage.out {{floor}}
 
 # Open the coverage report in a browser.
@@ -190,6 +195,49 @@ demo-json: demo
 # Validate the example release bundle.
 verify-bundle:
     ./{{binary}} release verify ./testdata/bundle
+
+# The recovery path is the one an operator runs when everything else has already
+# gone wrong, so it is worth being able to watch it work on a normal day.
+
+# Rebuild a deleted installation from an export and an offline key.
+demo-recovery: build
+    #!/usr/bin/env sh
+    set -e
+    rm -rf tmp/recovery
+    mkdir -p tmp/recovery/keys
+
+    printf '\n\033[1m== an offline recovery key, kept away from both machines ==\033[0m\n'
+    recovery=$(./{{binary}} secret recipients generate-recovery-key tmp/recovery/keys/recovery.key)
+    echo "recovery recipient: $recovery"
+
+    printf '\n\033[1m== machine A: init ==\033[0m\n'
+    ./{{binary}} --root tmp/recovery/a init \
+        --release ./testdata/bundle \
+        --profile embedded \
+        --domain demo.example \
+        --recovery-recipient "$recovery" \
+        --install-units=false
+
+    printf '\n\033[1m== machine A: secrets ==\033[0m\n'
+    ./{{binary}} --root tmp/recovery/a secret list
+
+    printf '\n\033[1m== machine A: export ==\033[0m\n'
+    ./{{binary}} --root tmp/recovery/a installation export tmp/recovery/demo.export.yaml
+
+    printf '\n\033[1m== machine A is destroyed ==\033[0m\n'
+    rm -rf tmp/recovery/a
+    echo "gone: tmp/recovery/a"
+
+    printf '\n\033[1m== machine B: import ==\033[0m\n'
+    ./{{binary}} --root tmp/recovery/b installation import tmp/recovery/demo.export.yaml \
+        --identity tmp/recovery/keys/recovery.key
+
+    printf '\n\033[1m== machine B: the same secrets, read with B'"'"'s own key ==\033[0m\n'
+    ./{{binary}} --root tmp/recovery/b secret list
+    printf '\nthe fingerprints above match machine A'"'"'s. The key that read them does not.\n'
+
+    printf '\n\033[1m== machine B: recipients ==\033[0m\n'
+    ./{{binary}} --root tmp/recovery/b secret recipients list
 
 # Serve the documentation site with live reload.
 [working-directory("pages")]

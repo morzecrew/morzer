@@ -412,6 +412,56 @@ func (s *SecretStore) RemoveRecipient(ctx context.Context, r ports.Recipient) er
 	return nil
 }
 
+// ReencryptFor replaces the recipient set wholesale.
+//
+// It applies the two rules that are not about cryptography -- an empty set is
+// refused, keys are validated and de-duplicated -- and deliberately does not
+// apply RemoveRecipient's refusals, matching the real store: this is the method
+// recovery uses to drop a machine key whose host no longer exists.
+func (s *SecretStore) ReencryptFor(ctx context.Context, recipients []ports.Recipient) error {
+	if err := s.fail("ReencryptFor"); err != nil {
+		return err
+	}
+	if len(recipients) == 0 {
+		return domain.SecretsError(nil, "refusing to re-encrypt for an empty recipient set").
+			WithHint("the secret state would become permanently undecryptable")
+	}
+
+	next := make([]ports.Recipient, 0, len(recipients))
+	seen := map[string]bool{}
+	for _, r := range recipients {
+		if err := s.ValidateRecipient(r.PublicKey); err != nil {
+			return err
+		}
+		if seen[r.PublicKey] {
+			continue
+		}
+		seen[r.PublicKey] = true
+		if r.Kind == "" {
+			r.Kind = ports.RecipientOperator
+		}
+		next = append(next, r)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recipients = next
+	return nil
+}
+
+// This fake deliberately does NOT implement ports.RecoverableSecretStore.
+//
+// Every question that capability exists to answer is a question about
+// cryptography: can this offline key open this state, does a re-encryption
+// leave the new machine able to read it, is what an export carries actually
+// ciphertext. A fake holding plaintext in a map can answer none of them, and
+// one that returned plausible values would let the recovery scenario -- the
+// test the whole feature exists for -- pass without proving anything.
+//
+// So `installation import` refuses a fake store, and the recovery path is
+// proven end to end against the real sops-age store with real age keys in
+// TestRecoveryRebuildsAMachineFromAnOfflineKey.
+
 // Seed sets values directly, for test arrangement.
 func (s *SecretStore) Seed(values map[string]string) {
 	s.mu.Lock()

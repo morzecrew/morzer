@@ -260,6 +260,7 @@ func newRootCommand(app *App) *cobra.Command {
 		newRestoreCommand(app),
 		newSecretCommand(app),
 		newReleaseCommand(app),
+		newInstallationCommand(app),
 		newVersionCommand(app),
 	)
 	return root

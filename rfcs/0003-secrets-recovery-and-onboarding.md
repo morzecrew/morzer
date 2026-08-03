@@ -1,6 +1,11 @@
 # RFC 0003 — Secrets, recovery and onboarding
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — P1–P2 shipped 2026-08-03. `ReencryptFor` is on the
+  port with contract cases against both stores; `installation export` /
+  `import` work, and the recovery scenario runs end to end against real age keys
+  on every CI run. Two design changes are recorded in §5.2, and one defect the
+  test found is in §12. P3–P5 (`secret edit`, rotation reporting, the wizard)
+  remain.
 - **Scope:** Completes the secret surface with `secret edit` (an `$EDITOR`
   session over a decrypted copy on tmpfs), rotation-policy reporting in `doctor`,
   and `installation export` / `installation import` so a machine can be rebuilt
@@ -175,6 +180,32 @@ The contract suite gains a case asserting that after `ReencryptFor`, exactly
 the named recipients can decrypt — enforced against both the fake and the real
 sops-age store.
 
+> **Amendment, P2 (2026-08-03).** Two things shipped differently.
+>
+> **`export --recipient` was dropped.** The design had export re-encrypt for a
+> given recipient set, which requires decrypting first — putting plaintext in a
+> process that has no use for it — and, to avoid rewriting the live file,
+> either a temporary store or a second port method. It is also redundant:
+> `secret recipients add` already grants someone access, and export then carries
+> the state as it stands. Export now copies the ciphertext verbatim and never
+> decrypts. See decision 10.
+>
+> **The capability is an interface, not three methods on `SecretStore`.** Import
+> needs to re-open the state under an identity that is not this machine's, and
+> to read and write the encrypted document wholesale. A KMS- or
+> systemd-credential-backed store has no identity file to swap and no document
+> to hand over, so requiring all of it of every implementation would force a
+> future adapter to stub methods it cannot honour. `ports.RecoverableSecretStore`
+> adds `WithIdentity`, `ExportState` and `ImportState`; `ReencryptFor` stayed on
+> `SecretStore` as designed, because replacing a recipient set is meaningful for
+> any store. Export and import assert for the capability and refuse by name when
+> it is absent. See decision 11.
+>
+> The consequence worth stating: the in-memory fake deliberately does **not**
+> implement it. Every question the capability exists to answer is a question
+> about cryptography, and a fake holding plaintext in a map answering them would
+> let the recovery scenario pass without proving anything.
+
 ### 5.3 Rotation reporting
 
 A `doctor` check comparing `SecretMetadata.LastChanged` against
@@ -282,6 +313,11 @@ equivalent to:
 | 7 | `ReencryptFor` replaces the recipient set wholesale, distinct from add/remove which preserve it. Recovery replaces a machine key that no longer exists. |
 | 8 | The wizard is a front-end over flags, never a separate path. It sets the same options struct and prints the equivalent command line. Where the two could diverge, the flags are correct. |
 | 9 | The README recovery section is written only after the end-to-end recovery test passes. Documenting a recovery procedure that has not been executed is how operators discover it does not work during an incident. |
+| 10 | Export copies the ciphertext verbatim and has no `--recipient`. Re-encrypting would mean decrypting in a process with no use for plaintext, and `secret recipients add` already covers granting access before an export. See §5.2. |
+| 11 | Re-opening the state under another identity, and reading or replacing the encrypted document, live on an optional `RecoverableSecretStore` capability rather than on `SecretStore`. A KMS-backed store has no identity file to swap; requiring it of everyone would force stubs. The fake does not implement it, deliberately. |
+| 12 | Export validation refuses a document whose only recipient is the exporting machine. That file looks like an insurance policy and is not one, and the moment to find out is not during the recovery it was taken for. |
+| 13 | `--allow-cross-installation` is a flag of its own on `restore`, not `--force`. See §12: sharing `--force` made the guard unreachable, because every restore already requires it. |
+| 14 | Import checks the supplied identity against the export's recipients before creating anything. A refusal after the directories and a new machine key exist is a half-built machine at the worst possible moment. |
 
 ## 11. Phasing
 
@@ -293,3 +329,52 @@ equivalent to:
 - **P4** — rotation reporting.
 - **P5** — the `huh` wizard. Deliberately last: it is the only part that adds a
   dependency and changes nothing about what the tool can do.
+
+### What P1–P2 shipped
+
+- `SecretStore.ReencryptFor` with four contract cases run against both the fake
+  and the real sops-age store, including the asymmetry the method exists for:
+  it may drop the machine key that `RemoveRecipient` refuses to touch.
+- `domain.InstallationExport`, a fourth versioned document schema, validated
+  before it is written rather than when it is read.
+- `installation export` (read-only, no lock, no journal) and `installation
+  import` (five steps, journaled as its own `OpTypeImport`).
+- The recovery scenario, end to end against real age keys: create an
+  installation, export it, **delete the machine's entire root**, rebuild from
+  the export plus the offline key, and assert the installation id, every secret
+  value, the revocation of the dead host's key, and that the recovery key still
+  opens the state for the next rebuild.
+- `TestRecoveryKeepsBackupsRestorable` and its negative control: a backup taken
+  before the loss restores onto the rebuilt machine, and the *same* backup is
+  refused by a machine rebuilt with `init` instead. Decision 1 reads as a
+  mistake until you can see what happens without it.
+- `just contract-strict` now covers these too, so a CI run where sops went
+  missing and the recovery scenario quietly skipped fails instead of going
+  green.
+- Documentation: `reference/installation-commands.md` and
+  `operating/recovering-a-lost-machine.md` — the first page of RFC 0006's
+  operating section, which that RFC gated on exactly this test passing.
+
+## 12. Defects found
+
+Recorded because both were invisible to review and only a test that actually
+performed a recovery could surface them.
+
+**The cross-installation restore guard could never fire.** `hookbackup.Restore`
+refuses a backup belonging to another installation `&& !opts.Force`, and
+`ops.Restore` passed its own `--force` straight into that field. But `--force`
+is *mandatory* for every restore — the operation refuses without it before the
+engine starts. So every restore that reached the check had already disabled it,
+and the guard had never once run since it was written.
+
+It surfaced as the negative control failing: a machine rebuilt with `init`
+happily restored another installation's backup. The fix separates the two
+questions, because they are two questions: `--force` authorises destroying
+*this* machine's data, and `--allow-cross-installation` authorises using
+*another* machine's. Decision 13.
+
+**The export could be a file nobody can open.** An installation created with
+`--no-recovery-recipient` has exactly one recipient: its own machine key. An
+export of it is decryptable only by the host it is meant to survive. Nothing
+failed — a perfectly well-formed, entirely useless file was produced. Validation
+now refuses it at export time. Decision 12.

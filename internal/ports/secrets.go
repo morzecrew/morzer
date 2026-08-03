@@ -52,6 +52,19 @@ type SecretStore interface {
 	// out of its own state.
 	RemoveRecipient(ctx context.Context, r Recipient) error
 
+	// ReencryptFor replaces the recipient set wholesale, re-encrypting the
+	// state for exactly the recipients given.
+	//
+	// Distinct from AddRecipient and RemoveRecipient, which preserve the
+	// rest of the set. Recovery deliberately replaces a machine key that no
+	// longer exists: there is no host left to remove it from, and the
+	// refusals those two enforce -- never drop the machine's own key --
+	// would make rebuilding a machine impossible.
+	//
+	// An empty set is refused. It would produce state nothing can ever
+	// read, which is the one outcome no flag should be able to authorise.
+	ReencryptFor(ctx context.Context, recipients []Recipient) error
+
 	// Rotate replaces a secret with a freshly generated value of the same
 	// shape, returning the previous value's fingerprint for the journal.
 	Rotate(ctx context.Context, name string, spec GenSpec) error
@@ -76,6 +89,39 @@ type SecretStore interface {
 	// created, rather than after: a malformed recipient that happened to
 	// parse would encrypt the state to a key nobody holds.
 	ValidateRecipient(key string) error
+}
+
+// RecoverableSecretStore is an optional capability: a store that can be
+// re-opened under a decryption identity other than this machine's own.
+//
+// Exactly one operation needs it. Rebuilding a lost machine means reading state
+// encrypted for a key this host does not have, using an offline key the
+// operator holds -- and then re-encrypting for a freshly generated machine key.
+// Without it, the recovery recipient `init` insists on would remain a
+// safeguard with no way to use it.
+//
+// It is optional rather than part of SecretStore because it is not universally
+// implementable: a store backed by a KMS or by systemd credentials has no
+// identity file to swap, and would have to fail the method rather than
+// implement it. An operation that needs the capability asserts for it and says
+// so plainly when the configured provider does not offer it.
+type RecoverableSecretStore interface {
+	SecretStore
+
+	// WithIdentity returns a view of the same state that decrypts with the
+	// identity at path. It does not read the file: an unusable identity
+	// surfaces on the first operation, with that operation's error message.
+	WithIdentity(identityFile string) SecretStore
+
+	// ExportState returns the encrypted state verbatim, without decrypting
+	// it. Export has no reason to see plaintext, and a format that carried
+	// it would be one an operator could leak by copying a file.
+	ExportState(ctx context.Context) ([]byte, error)
+
+	// ImportState replaces the encrypted state wholesale with bytes an
+	// export carried. It validates the shape before writing: overwriting
+	// state with something unreadable is not recoverable by re-running.
+	ImportState(ctx context.Context, state []byte) error
 }
 
 // GenSpec parameterises generation.

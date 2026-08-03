@@ -15,6 +15,12 @@ const (
 	OpTypeRestore  OperationType = "restore"
 	OpTypeSecret   OperationType = "secret"
 	OpTypeRelease  OperationType = "release"
+
+	// OpTypeImport rebuilds a machine from an installation export. It is
+	// its own type rather than a flavour of init because an incident review
+	// needs to see, at a glance, that this machine's identity was assumed
+	// rather than created.
+	OpTypeImport OperationType = "import"
 )
 
 // OperationStatus is the lifecycle of one operation.

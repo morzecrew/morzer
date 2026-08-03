@@ -75,7 +75,10 @@ func New(runner exec.Runner, file, identityFile string, opts ...Option) *Store {
 	return s
 }
 
-var _ ports.SecretStore = (*Store)(nil)
+var (
+	_ ports.SecretStore            = (*Store)(nil)
+	_ ports.RecoverableSecretStore = (*Store)(nil)
+)
 
 // document is the decrypted shape of the SOPS file.
 //

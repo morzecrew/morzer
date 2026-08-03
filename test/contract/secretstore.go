@@ -319,4 +319,119 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 		require.NoError(t, err)
 		assert.Len(t, after, len(before), "the recipient must not be duplicated")
 	})
+
+	// ReencryptFor is the method recovery is built on. These cases assert
+	// the recipient *set* it produces; that the named keys can actually
+	// decrypt afterwards is a question about cryptography, which a fake
+	// cannot answer, and is asserted end to end against real age keys by
+	// TestRecoveryRebuildsAMachineFromAnOfflineKey in test/suite.
+
+	t.Run("reencrypt replaces the recipient set exactly", func(t *testing.T) {
+		store := newStore(t)
+		ctx := context.Background()
+
+		require.NoError(t, store.Set(ctx, "kept", domain.NewSecret("a-value-to-encrypt")))
+
+		machine, err := store.EnsureIdentity(ctx)
+		require.NoError(t, err)
+
+		// Two keys the store has never seen, so a set that merely
+		// merged would be visibly larger than one that replaced.
+		require.NoError(t, store.AddRecipient(ctx, ports.Recipient{
+			PublicKey: "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p",
+			Kind:      ports.RecipientOperator,
+		}))
+
+		recovery := ports.Recipient{
+			PublicKey: "age1d369794a45rmk3s5kt2s7wn99m2q2zxnxcltshmxt5ydvhafysaq6r63rm",
+			Kind:      ports.RecipientRecovery,
+			Comment:   "offline key",
+		}
+		require.NoError(t, store.ReencryptFor(ctx, []ports.Recipient{
+			{PublicKey: machine, Kind: ports.RecipientMachine},
+			recovery,
+		}))
+
+		after, err := store.Recipients(ctx)
+		require.NoError(t, err)
+
+		keys := make([]string, 0, len(after))
+		for _, r := range after {
+			keys = append(keys, r.PublicKey)
+		}
+		assert.ElementsMatch(t, []string{machine, recovery.PublicKey}, keys,
+			"ReencryptFor replaces the set; a recipient absent from the list must lose access")
+
+		// The state must still be readable by the machine, which is in
+		// the new set. A re-encryption that lost the values would be a
+		// far worse bug than one that kept the wrong recipients.
+		set, err := store.Load(ctx)
+		require.NoError(t, err)
+		got, ok := set.Get("kept")
+		require.True(t, ok, "re-encryption must preserve the values")
+		assert.Equal(t, "a-value-to-encrypt", got.Reveal())
+	})
+
+	t.Run("reencrypt refuses an empty recipient set", func(t *testing.T) {
+		store := newStore(t)
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "anything", domain.NewSecret("a-value-to-encrypt")))
+
+		err := store.ReencryptFor(ctx, nil)
+		require.Error(t, err,
+			"an empty recipient set would make the state permanently undecryptable")
+
+		after, err := store.Recipients(ctx)
+		require.NoError(t, err)
+		assert.NotEmpty(t, after, "a refused re-encryption must leave the recipients untouched")
+	})
+
+	t.Run("reencrypt refuses a malformed key before writing anything", func(t *testing.T) {
+		store := newStore(t)
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "anything", domain.NewSecret("a-value-to-encrypt")))
+
+		before, err := store.Recipients(ctx)
+		require.NoError(t, err)
+
+		machine, err := store.EnsureIdentity(ctx)
+		require.NoError(t, err)
+
+		err = store.ReencryptFor(ctx, []ports.Recipient{
+			{PublicKey: machine, Kind: ports.RecipientMachine},
+			{PublicKey: "not-an-age-key", Kind: ports.RecipientOperator},
+		})
+		require.Error(t, err, "a malformed recipient must be caught before the state is rewritten")
+
+		after, err := store.Recipients(ctx)
+		require.NoError(t, err)
+		assert.Len(t, after, len(before),
+			"a validation failure must not partially apply the new recipient set")
+	})
+
+	t.Run("reencrypt may drop the machine key, unlike RemoveRecipient", func(t *testing.T) {
+		store := newStore(t)
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "anything", domain.NewSecret("a-value-to-encrypt")))
+
+		machine, err := store.EnsureIdentity(ctx)
+		require.NoError(t, err)
+
+		// This is the asymmetry the method exists for: rebuilding a
+		// machine means encrypting for keys that do not include the one
+		// belonging to the host that is gone.
+		recovery := ports.Recipient{
+			PublicKey: "age1d369794a45rmk3s5kt2s7wn99m2q2zxnxcltshmxt5ydvhafysaq6r63rm",
+			Kind:      ports.RecipientRecovery,
+		}
+		require.NoError(t, store.ReencryptFor(ctx, []ports.Recipient{recovery}),
+			"recovery must be able to drop a machine key whose host no longer exists")
+
+		after, err := store.Recipients(ctx)
+		require.NoError(t, err)
+		for _, r := range after {
+			assert.NotEqual(t, machine, r.PublicKey,
+				"the old machine key must be gone from the recipient set")
+		}
+	})
 }

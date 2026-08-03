@@ -390,8 +390,10 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 		return domain.BackupError(nil,
 			"backup %s belongs to installation %s, but this machine is %s",
 			manifest.ID, manifest.InstallationID, opts.TargetInstallationID).
-			WithHint("restoring across installations is a disaster-recovery operation; " +
-				"pass --force if that is what you intend")
+			WithHint("if this machine is a rebuild of that one, run " +
+				"`morzer installation import <export> --identity <key>` first, which " +
+				"restores the original id. Otherwise pass --allow-cross-installation " +
+				"to restore another deployment's data on purpose.")
 	}
 
 	spec, ok := e.release.Manifest.Operation(domain.OpRestore)

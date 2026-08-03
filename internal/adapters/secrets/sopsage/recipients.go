@@ -216,6 +216,111 @@ func (s *Store) RemoveRecipient(ctx context.Context, r ports.Recipient) error {
 	return s.saveAnnotations(annotations)
 }
 
+// ReencryptFor replaces the recipient set wholesale.
+//
+// The refusals RemoveRecipient enforces -- never the last recipient, never this
+// machine's own key -- are deliberately not applied here beyond the empty-set
+// check. This is the method recovery uses, and recovery's whole job is to drop
+// a machine key that belongs to a host that no longer exists.
+//
+// The annotations are replaced rather than merged: a leftover annotation for a
+// key that is no longer a recipient would make `secret recipients list`
+// describe access nobody has.
+func (s *Store) ReencryptFor(ctx context.Context, recipients []ports.Recipient) error {
+	if len(recipients) == 0 {
+		return domain.SecretsError(nil, "refusing to re-encrypt for an empty recipient set").
+			WithHint("the secret state would become permanently undecryptable")
+	}
+
+	keys := make([]string, 0, len(recipients))
+	annotations := recipientAnnotations{Recipients: map[string]recipientAnnotation{}}
+	now := s.now().UTC().Format(time.RFC3339)
+
+	for _, r := range recipients {
+		key := strings.TrimSpace(r.PublicKey)
+		// Validated before anything is written. A malformed key that
+		// happened to parse would encrypt the state to nobody, and the
+		// operator would not find out until the next read.
+		if err := ValidateRecipient(key); err != nil {
+			return err
+		}
+		if _, seen := annotations.Recipients[key]; seen {
+			continue
+		}
+		kind := r.Kind
+		if kind == "" {
+			kind = ports.RecipientOperator
+		}
+		annotations.Recipients[key] = recipientAnnotation{
+			Kind:    kind,
+			Comment: r.Comment,
+			AddedAt: now,
+		}
+		keys = append(keys, key)
+	}
+
+	if err := s.reencrypt(ctx, keys); err != nil {
+		return err
+	}
+	return s.saveAnnotations(annotations)
+}
+
+// WithIdentity returns a view of the same encrypted state that decrypts using
+// a different age identity, satisfying ports.RecoverableSecretStore.
+//
+// Everything else is shared: same file, same runner, same clock. Only the key
+// used to open it differs, which is exactly what reading state on a rebuilt
+// machine requires.
+func (s *Store) WithIdentity(identityFile string) ports.SecretStore {
+	clone := *s
+	clone.identityFile = identityFile
+	return &clone
+}
+
+// ExportState returns the encrypted document verbatim.
+//
+// It never decrypts. An export is only ever as readable as the recipients the
+// state already had, so decrypting in order to re-encrypt would put plaintext
+// in a process that has no need for it and no way to benefit from it.
+func (s *Store) ExportState(ctx context.Context) ([]byte, error) {
+	data, err := os.ReadFile(s.file)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, domain.SecretsError(domain.ErrNotFound,
+				"there is no secret state at %s to export", s.file).
+				WithHint("run `morzer init` first, or set a secret to create it")
+		}
+		return nil, domain.SecretsError(err, "cannot read %s", s.file)
+	}
+	return data, nil
+}
+
+// ImportState replaces the encrypted state with bytes from an export.
+//
+// The shape is checked first. Writing something unreadable over the secret
+// state is the one failure here that re-running cannot fix, so a document with
+// no age recipients is refused before the existing file is touched.
+func (s *Store) ImportState(ctx context.Context, state []byte) error {
+	if len(strings.TrimSpace(string(state))) == 0 {
+		return domain.SecretsError(nil, "refusing to import empty secret state")
+	}
+
+	var header sopsFileHeader
+	if err := yaml.Unmarshal(state, &header); err != nil {
+		return domain.SecretsError(err, "the exported secret state is not a SOPS document").
+			WithHint("the export may be truncated; check the file it came from")
+	}
+	if len(header.SOPS.Age) == 0 {
+		return domain.SecretsError(nil,
+			"the exported secret state names no age recipients").
+			WithHint("nothing would be able to decrypt it; the export is unusable")
+	}
+
+	// 0600, the same mode saveWithRecipients writes. Encryption is not a
+	// licence to widen filesystem permissions.
+	return atomicfs.WriteFile(s.file, state, 0o600)
+}
+
 // reencrypt rewrites the file for a new recipient set.
 //
 // It decrypts and re-encrypts through this package rather than using `sops

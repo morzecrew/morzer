@@ -32,10 +32,14 @@ repo_name = "morzecrew/morzer"
 
 nav = [
     { "Home" = "index.md" },
+    { "Operating" = [
+        "operating/recovering-a-lost-machine.md",
+    ] },
     { "Reference" = [
         "reference/commands.md",
         "reference/secret-commands.md",
         "reference/release-commands.md",
+        "reference/installation-commands.md",
         "reference/exit-codes.md",
         "reference/manifest.md",
         "reference/hooks.md",

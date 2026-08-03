@@ -15,10 +15,9 @@ machine.
 the manifest schema and the hook ABI.
 
 **Status:** `init`, `apply`, `update`, `rollback`, `status`, `doctor`, `backup`,
-`restore`, `secret` and `release` work against a real bundle. Releases are
-fetched from local directories only; archive extraction, signature verification
-and the offline recovery import are designed but not built — see
-[`rfcs/`](rfcs/).
+`restore`, `secret`, `release` and `installation` work against a real bundle.
+Releases are fetched from local directories only; archive extraction and
+signature verification are designed but not built — see [`rfcs/`](rfcs/).
 
 ## What it is not
 
@@ -90,6 +89,7 @@ RECOVERY=$(./morzer secret recipients generate-recovery-key ~/recovery.key)
 | `backup` / `restore` | Coordinates the release's backup and restore hooks, wraps the result in a self-describing manifest, verifies checksums. |
 | `secret` | `list`, `set`, `generate`, `rotate`, `remove`, `render`, `recipients`. Values are never printed, never in argv, never journaled. |
 | `release` | `list`, `show`, `verify`, `fetch`, `prune`. |
+| `installation` | `export`, `import`. Rebuilds a lost machine from an offline recovery key: identity and secrets, never data. |
 
 Every flag, and the stable exit-code table systemd units and CI depend on, are
 in the reference documentation:
@@ -98,6 +98,9 @@ in the reference documentation:
 - [Exit codes](https://morzecrew.github.io/morzer/reference/exit-codes/)
 - [Release manifest](https://morzecrew.github.io/morzer/reference/manifest/)
 - [Hook ABI](https://morzecrew.github.io/morzer/reference/hooks/)
+- [Recovering a lost machine](https://morzecrew.github.io/morzer/operating/recovering-a-lost-machine/)
+  — the procedure the offline recovery key exists for, executed end to end by
+  the test suite on every run rather than only described
 
 ## Architecture
 
