@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/morzecrew/morzer/internal/adapters/hooks"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -39,7 +38,7 @@ const BackupManifestSchemaVersion = 1
 
 // Engine is the hook-coordinating backup engine.
 type Engine struct {
-	hooks *hooks.Runner
+	hooks ports.HookRunner
 
 	// release supplies the backup and restore hooks.
 	release domain.Release
@@ -55,7 +54,7 @@ type Engine struct {
 // Config wires the engine. Every field is required except the clock and ID
 // generator, which exist so tests get deterministic output.
 type Config struct {
-	Hooks          *hooks.Runner
+	Hooks          ports.HookRunner
 	Release        domain.Release
 	Installation   domain.Installation
 	Paths          domain.Paths
@@ -117,7 +116,7 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		components = ports.AllComponents
 	}
 
-	env := e.hookEnv(hooks.PhaseBackup, dir)
+	env := e.hookEnv(ports.PhaseBackup, dir)
 	env.Extra = map[string]string{
 		prefixed(e.installation.Product, "BACKUP_ID"):         id,
 		prefixed(e.installation.Product, "BACKUP_COMPONENTS"): joinComponents(components),
@@ -237,7 +236,7 @@ func (e *Engine) captureManagedComponents(dir string, components []ports.Compone
 }
 
 // recordArtifacts checksums the files the hook reported.
-func recordArtifacts(dir string, artifacts []hooks.Artifact) ([]ports.ComponentRecord, error) {
+func recordArtifacts(dir string, artifacts []ports.HookArtifact) ([]ports.ComponentRecord, error) {
 	var out []ports.ComponentRecord
 
 	for _, a := range artifacts {
@@ -401,7 +400,7 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 			"this release declares no restore operation")
 	}
 
-	env := e.hookEnv(hooks.PhaseRestore, dir)
+	env := e.hookEnv(ports.PhaseRestore, dir)
 	env.Extra = map[string]string{
 		prefixed(e.installation.Product, "BACKUP_ID"):              manifest.ID,
 		prefixed(e.installation.Product, "BACKUP_RELEASE_VERSION"): manifest.ReleaseVersion.String(),
@@ -470,8 +469,8 @@ func (e *Engine) resolve(ref ports.BackupRef) (string, error) {
 	return dir, nil
 }
 
-func (e *Engine) hookEnv(phase hooks.Phase, backupDir string) hooks.Env {
-	return hooks.Env{
+func (e *Engine) hookEnv(phase ports.HookPhase, backupDir string) ports.HookEnv {
+	return ports.HookEnv{
 		Product:        e.installation.Product,
 		InstallationID: e.installation.ID,
 		Phase:          phase,

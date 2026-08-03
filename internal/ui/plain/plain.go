@@ -197,8 +197,13 @@ func (p *Presenter) check(e events.Event) {
 	}
 }
 
+// line writes one rendered line.
+//
+// The write error is discarded deliberately: the destination is stderr, there
+// is nothing useful to do when it fails, and an operation must never fail
+// because its narration could not be printed.
 func (p *Presenter) line(format string, args ...any) {
-	fmt.Fprintf(p.w, format+"\n", args...)
+	_, _ = fmt.Fprintf(p.w, format+"\n", args...)
 }
 
 func shortDuration(d time.Duration) string {
@@ -220,7 +225,7 @@ func (p *Presenter) Writer() io.Writer { return p.w }
 
 // RenderStatus prints the status card.
 func RenderStatus(w io.Writer, s ops.Status) {
-	f := func(format string, args ...any) { fmt.Fprintf(w, format+"\n", args...) }
+	f := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format+"\n", args...) }
 
 	f("%s", s.Product)
 	f("  installation   %s", s.InstallationID)
@@ -302,7 +307,7 @@ func RenderStatus(w io.Writer, s ops.Status) {
 
 // RenderDoctor prints the diagnostic table grouped by category.
 func RenderDoctor(w io.Writer, report ops.DoctorReport) {
-	f := func(format string, args ...any) { fmt.Fprintf(w, format+"\n", args...) }
+	f := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format+"\n", args...) }
 
 	// Results arrive in execution order, which interleaves categories: a
 	// storage check runs early, another late. Grouping them here keeps the

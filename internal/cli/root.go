@@ -194,7 +194,7 @@ func (a *App) printError(err error) {
 		if e.StepID != "" {
 			fmt.Fprintf(a.Stream.Err, ", step %s", e.StepID)
 		}
-		fmt.Fprintln(a.Stream.Err)
+		_, _ = fmt.Fprintln(a.Stream.Err)
 	}
 }
 
@@ -211,7 +211,7 @@ func newRootCommand(app *App) *cobra.Command {
 		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			app.command = cmd.CommandPath()
-			return app.setup(cmd)
+			return app.setup(cmd.Context())
 		},
 	}
 
@@ -253,15 +253,8 @@ func newRootCommand(app *App) *cobra.Command {
 }
 
 // setup resolves the output mode, builds the logger, and wires every adapter.
-func (a *App) setup(cmd *cobra.Command) error {
+func (a *App) setup(ctx context.Context) error {
 	f := a.Flags
-
-	if f.dryRun && f.json {
-		// Not an error, but worth stating: a plan in JSON is a plan,
-		// and a caller scripting against it should know it changed
-		// nothing.
-		_ = cmd
-	}
 
 	a.Mode = ui.ResolveMode(ui.ModeOptions{
 		JSON:   f.json,
@@ -276,7 +269,7 @@ func (a *App) setup(cmd *cobra.Command) error {
 	if f.logFormat == "json" {
 		logFormat = logging.FormatJSON
 	}
-	var logWriter io.Writer = a.Stream.Err
+	logWriter := a.Stream.Err
 	if a.Mode == ui.ModeJSON && !f.verbose {
 		// In JSON mode the envelope is the contract; log narration on
 		// stderr would be noise for a consumer that is not reading it.
@@ -326,7 +319,7 @@ func (a *App) setup(cmd *cobra.Command) error {
 		}
 	}
 
-	return a.wire(cmd.Context(), bus, redactor, logger)
+	return a.wire(ctx, bus, redactor, logger)
 }
 
 // eventStreamWriter returns the JSONL event destination, or nil when events
@@ -406,6 +399,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		Hooks:          hookRunner,
 		Tools:          toolRegistry,
 		Bus:            bus,
+		ManagerPath:    systemd.ManagerPath(),
 		ManagerVersion: parseBuildVersion(a.Build.Version),
 		Redactor:       redactor,
 		TargetPrefix:   a.Flags.root,

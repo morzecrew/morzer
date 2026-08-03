@@ -6,8 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
-	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
@@ -86,7 +84,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		// Validated before anything is created: an unusable key
 		// discovered after the identity exists would leave a
 		// half-configured installation.
-		if err := sopsage.ValidateRecipient(opts.RecoveryRecipient); err != nil {
+		if err := d.Secrets.ValidateRecipient(opts.RecoveryRecipient); err != nil {
 			return Result{}, err
 		}
 	}
@@ -213,7 +211,7 @@ func stepCreateIdentity(d *Deps) engine.Step {
 			return atomicfs.Exists(d.Paths.AgeIdentityFile())
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			pub, err := sopsage.GenerateIdentity(d.Paths.AgeIdentityFile())
+			pub, err := d.Secrets.EnsureIdentity(ctx)
 			if err != nil {
 				return err
 			}
@@ -511,9 +509,9 @@ func stepInstallUnits(d *Deps, opts InitOptions) engine.Step {
 			return false, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			units, err := systemd.BuildUnits(systemd.UnitParams{
+			units, err := d.Supervisor.Units(ports.UnitParams{
 				Product:        opts.Product,
-				ManagerPath:    systemd.ManagerPath(),
+				ManagerPath:    d.ManagerPath,
 				ConfigPath:     d.Paths.InstallationFile(),
 				BackupSchedule: opts.BackupSchedule,
 			})
@@ -530,7 +528,7 @@ func stepInstallUnits(d *Deps, opts InitOptions) engine.Step {
 			if d.Supervisor == nil {
 				return nil
 			}
-			return d.Supervisor.RemoveUnits(ctx, systemd.UnitNames(opts.Product))
+			return d.Supervisor.RemoveUnits(ctx, d.Supervisor.ManagedUnitNames(opts.Product))
 		},
 	}
 }

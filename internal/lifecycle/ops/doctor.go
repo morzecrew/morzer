@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
-	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/tools"
@@ -213,7 +211,7 @@ func (d *Deps) checkIdentity() preflight.Check {
 					"the age identity is mode %04o, expected 0400", mode)
 			}
 
-			pub, err := sopsage.PublicKeyFromIdentityFile(path)
+			pub, err := d.Secrets.IdentityPublicKey(ctx)
 			if err != nil {
 				e := domain.AsError(err)
 				return preflight.Fail(e.Hint, "%s", e.Message)
@@ -546,7 +544,7 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 			}
 
 			var problems []string
-			for _, name := range systemd.UnitNames(inst.Product) {
+			for _, name := range d.Supervisor.ManagedUnitNames(inst.Product) {
 				state, err := d.Supervisor.Status(ctx, name)
 				if err != nil {
 					problems = append(problems, name+": cannot query")

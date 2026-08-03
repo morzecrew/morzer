@@ -132,6 +132,12 @@ to ports — the string `docker` appears nowhere above `internal/adapters`.
 These rules are enforced mechanically by `depguard` in `.golangci.yml`, not by
 discipline. Run `just lint`.
 
+That enforcement is load-bearing rather than decorative: when the rule was first
+widened to cover the whole lifecycle layer it immediately found three real
+violations in `lifecycle/ops`, which was reaching for the hooks, sops-age and
+systemd adapters directly. The hook ABI, the machine identity operations and
+unit rendering now sit behind `HookRunner`, `SecretStore` and `Supervisor`.
+
 Two deliberate departures from the spec's package sketch, both documented at the
 top of the packages concerned:
 

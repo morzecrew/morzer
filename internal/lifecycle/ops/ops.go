@@ -18,7 +18,6 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	"github.com/morzecrew/morzer/internal/adapters/hooks"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/logging"
@@ -51,7 +50,7 @@ type Deps struct {
 	Renderer   ports.Renderer
 	Notifier   ports.Notifier
 
-	Hooks *hooks.Runner
+	Hooks ports.HookRunner
 	Tools *tools.Registry
 
 	Bus    *events.Bus
@@ -69,6 +68,10 @@ type Deps struct {
 
 	// Now is the clock. Injectable for the same reason.
 	Now func() time.Time
+
+	// ManagerPath is the absolute path of this binary, embedded in the
+	// supervisor units so they do not depend on PATH.
+	ManagerPath string
 
 	// TargetPrefix relocates the absolute paths a manifest declares --
 	// configuration targets above all -- underneath a prefix.
@@ -223,10 +226,10 @@ func (d *Deps) hookEnv(
 	previous domain.Version,
 	opID string,
 	opType domain.OperationType,
-	phase hooks.Phase,
+	phase ports.HookPhase,
 	dryRun bool,
-) hooks.Env {
-	return hooks.Env{
+) ports.HookEnv {
+	return ports.HookEnv{
 		Product:         inst.Product,
 		InstallationID:  inst.ID,
 		OperationID:     opID,
@@ -281,7 +284,7 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 
 // envName builds a product-namespaced variable name, matching the hook ABI.
 func envName(product, key string) string {
-	return hooks.Env{Product: product}.Prefix() + "_" + key
+	return ports.HookEnv{Product: product}.Var(key)
 }
 
 // templateData assembles the documented render context.
@@ -334,7 +337,7 @@ func (d *Deps) templateData(
 // environment, which sit between installation.yaml and command-line flags in
 // the precedence order.
 func productEnvOverrides(product string) map[string]string {
-	prefix := hooks.Env{Product: product}.Prefix() + "_"
+	prefix := ports.HookEnv{Product: product}.Prefix() + "_"
 	out := map[string]string{}
 	for _, kv := range os.Environ() {
 		if k, v, ok := cut(kv, '='); ok && len(k) > len(prefix) && k[:len(prefix)] == prefix {

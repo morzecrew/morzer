@@ -25,6 +25,37 @@ type Supervisor interface {
 	Stop(ctx context.Context, unit string) error
 
 	Status(ctx context.Context, unit string) (UnitState, error)
+
+	// Units renders the unit set this supervisor manages for a product.
+	//
+	// Unit *content* is supervisor-specific, so the lifecycle layer asks for
+	// it rather than composing systemd stanzas it would have to rewrite for
+	// any other init system.
+	Units(params UnitParams) ([]Unit, error)
+
+	// ManagedUnitNames lists the units this supervisor owns for a product,
+	// so they can be queried or removed without the caller knowing their
+	// naming scheme.
+	ManagedUnitNames(product string) []string
+}
+
+// UnitParams is what a supervisor needs to render its units.
+type UnitParams struct {
+	Product string
+
+	// ManagerPath is the absolute path of the manager binary. A supervisor
+	// must not rely on PATH: an init system's environment is not a login
+	// shell's.
+	ManagerPath string
+
+	// ConfigPath is passed to the manager so a unit keeps working if the
+	// default configuration location ever changes.
+	ConfigPath string
+
+	Description string
+
+	// BackupSchedule is a supervisor-specific schedule expression.
+	BackupSchedule string
 }
 
 // Unit is a supervisor unit to install.

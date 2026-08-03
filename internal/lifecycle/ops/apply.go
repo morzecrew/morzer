@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/morzecrew/morzer/internal/adapters/hooks"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -500,7 +499,7 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 
 			case domain.OperationKindHook:
 				env := d.hookEnv(inst, rel, domain.Version{}, st.OpID,
-					domain.OpTypeApply, hooks.PhaseMigrate, st.DryRun)
+					domain.OpTypeApply, ports.PhaseMigrate, st.DryRun)
 
 				outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env,
 					spec.Timeout.Or(30*time.Minute))
@@ -607,14 +606,14 @@ func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) eng
 
 // checkSpecs resolves manifest health checks into runnable specs.
 func (d *Deps) checkSpecs(inst domain.Installation, rel domain.Release, opID string, opType domain.OperationType) []ports.CheckSpec {
-	env := d.hookEnv(inst, rel, domain.Version{}, opID, opType, hooks.PhaseHealthCheck, false)
+	env := d.hookEnv(inst, rel, domain.Version{}, opID, opType, ports.PhaseHealthCheck, false)
 
 	specs := make([]ports.CheckSpec, 0, len(rel.Manifest.Health.Checks))
 	for _, check := range rel.Manifest.Health.Checks {
 		specs = append(specs, ports.CheckSpec{
 			Check:      check,
 			WorkingDir: rel.Root,
-			Env:        env.Vars(),
+			Env:        ports.HookEnvVars(env),
 		})
 	}
 	return specs
@@ -635,7 +634,7 @@ func stepSmokeTest(d *Deps, inst domain.Installation, rel domain.Release, opts O
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			env := d.hookEnv(inst, rel, domain.Version{}, st.OpID,
-				domain.OpTypeApply, hooks.PhaseSmokeTest, st.DryRun)
+				domain.OpTypeApply, ports.PhaseSmokeTest, st.DryRun)
 
 			outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env, spec.Timeout.Or(10*time.Minute))
 			if err != nil {

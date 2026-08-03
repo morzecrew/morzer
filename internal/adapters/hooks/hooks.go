@@ -15,179 +15,44 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
-// ResultFD is the descriptor a hook writes its structured result to.
-//
-// It is not stdout: stdout goes to the log and the live view, and a hook that
-// had to keep its human output free of JSON would be a hook whose logging is
-// constrained by the manager's parsing. Separating them means a hook can print
-// whatever it likes and still return data.
-const ResultFD = 3
-
-// Exit-code meanings. Anything not listed is a failure.
+// ResultFD and the exit-code meanings are defined by the ABI in ports; these
+// keep the names short inside this package.
 const (
-	// ExitSuccess means the hook did its work.
-	ExitSuccess = 0
-	// ExitSkipped means there was nothing to do. It is distinct from
-	// success so `apply` can report "migrations: nothing to run" rather
-	// than implying work happened.
-	ExitSkipped = 2
+	ResultFD    = ports.HookResultFD
+	ExitSuccess = ports.HookExitSuccess
+	ExitSkipped = ports.HookExitSkipped
 )
 
-// Phase is the lifecycle point a hook is invoked at, passed as <P>_PHASE.
-type Phase string
+// Type aliases keep call sites inside this package readable while the ABI
+// vocabulary itself lives in ports, where the lifecycle layer can reach it
+// without importing an adapter.
+type (
+	Env      = ports.HookEnv
+	Phase    = ports.HookPhase
+	Result   = ports.HookResult
+	Artifact = ports.HookArtifact
+	Outcome  = ports.HookOutcome
+)
 
+// Phase values, re-exported for brevity at call sites in this package.
 const (
-	PhasePreflight   Phase = "preflight"
-	PhasePreUpdate   Phase = "pre-update"
-	PhasePostUpdate  Phase = "post-update"
-	PhaseMigrate     Phase = "migrate"
-	PhaseSmokeTest   Phase = "smoke-test"
-	PhaseBackup      Phase = "backup"
-	PhaseRestore     Phase = "restore"
-	PhaseHealthCheck Phase = "health-check"
+	PhasePreflight   = ports.PhasePreflight
+	PhasePreUpdate   = ports.PhasePreUpdate
+	PhasePostUpdate  = ports.PhasePostUpdate
+	PhaseMigrate     = ports.PhaseMigrate
+	PhaseSmokeTest   = ports.PhaseSmokeTest
+	PhaseBackup      = ports.PhaseBackup
+	PhaseRestore     = ports.PhaseRestore
+	PhaseHealthCheck = ports.PhaseHealthCheck
 )
-
-// Env is everything a hook is told about the world it runs in.
-//
-// The field set is the stable part of the ABI. Adding a variable is a minor
-// change; removing or repurposing one is not.
-type Env struct {
-	Product        string
-	InstallationID string
-	OperationID    string
-	OperationType  domain.OperationType
-	Phase          Phase
-
-	ReleaseVersion  domain.Version
-	ReleaseDir      string
-	PreviousVersion domain.Version
-
-	DataDir    string
-	BackupDir  string
-	SecretsDir string
-	ConfigFile string
-
-	ComposeProject string
-
-	DryRun   bool
-	LogLevel string
-
-	// Extra carries operation-specific variables, already fully named.
-	Extra map[string]string
-}
-
-// prefix derives the environment-variable prefix from the product name.
-//
-// Variables are namespaced per product rather than under a fixed MORZER_
-// prefix because hooks ship inside a product's own release: the author always
-// knows the name, and the namespacing keeps two products' hooks from colliding
-// if they ever run in the same shell.
-func prefix(product string) string {
-	p := strings.ToUpper(product)
-	p = strings.ReplaceAll(p, "-", "_")
-	p = strings.ReplaceAll(p, ".", "_")
-	if p == "" {
-		return "PRODUCT"
-	}
-	return p
-}
-
-// Prefix is the environment-variable namespace for this product. Exported so
-// the lifecycle layer can name Compose interpolation variables the same way,
-// keeping one convention rather than two.
-func (e Env) Prefix() string { return prefix(e.Product) }
-
-// Vars renders the environment as a map.
-func (e Env) Vars() map[string]string {
-	p := prefix(e.Product)
-	set := func(m map[string]string, key, value string) {
-		if value != "" {
-			m[p+"_"+key] = value
-		}
-	}
-
-	out := make(map[string]string, 16)
-	set(out, "PRODUCT", e.Product)
-	set(out, "INSTALLATION_ID", e.InstallationID)
-	set(out, "OPERATION_ID", e.OperationID)
-	set(out, "OPERATION_TYPE", string(e.OperationType))
-	set(out, "PHASE", string(e.Phase))
-	set(out, "RELEASE_VERSION", e.ReleaseVersion.String())
-	set(out, "RELEASE_DIR", e.ReleaseDir)
-	set(out, "PREVIOUS_VERSION", e.PreviousVersion.String())
-	set(out, "DATA_DIR", e.DataDir)
-	set(out, "BACKUP_DIR", e.BackupDir)
-	set(out, "SECRETS_DIR", e.SecretsDir)
-	set(out, "CONFIG_FILE", e.ConfigFile)
-	set(out, "COMPOSE_PROJECT", e.ComposeProject)
-	set(out, "LOG_LEVEL", e.LogLevel)
-
-	// DRY_RUN is always present, including as "0". A hook checking for the
-	// variable's existence rather than its value would otherwise mutate
-	// during a plan.
-	out[p+"_DRY_RUN"] = boolVar(e.DryRun)
-	out[p+"_RESULT_FD"] = strconv.Itoa(ResultFD)
-
-	for k, v := range e.Extra {
-		out[k] = v
-	}
-	return out
-}
-
-func boolVar(b bool) string {
-	if b {
-		return "1"
-	}
-	return "0"
-}
-
-// Result is what a hook may report through the result descriptor. Every field
-// is optional: a hook that writes nothing is not in error.
-type Result struct {
-	// Message is a one-line summary for the operator.
-	Message string `json:"message,omitempty"`
-
-	// Skipped lets a hook say it did nothing while still exiting zero.
-	Skipped bool `json:"skipped,omitempty"`
-
-	// SchemaVersion is how a migrate hook reports the database schema it
-	// left behind. Rollback needs this, and asking the product later would
-	// mean running its tooling just to pose a question it already answered.
-	SchemaVersion int `json:"schema_version,omitempty"`
-
-	// Artifacts are files the hook produced, e.g. a database dump.
-	Artifacts []Artifact `json:"artifacts,omitempty"`
-
-	// Data is free-form output for hooks with something else to say.
-	Data map[string]any `json:"data,omitempty"`
-}
-
-// Artifact is a file a hook produced, with its checksum so the backup manifest
-// is self-describing.
-type Artifact struct {
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Size   int64  `json:"size,omitempty"`
-	SHA256 string `json:"sha256,omitempty"`
-}
-
-// Outcome is the full result of running a hook.
-type Outcome struct {
-	ExitCode int
-	Skipped  bool
-	Result   Result
-	Stdout   string
-	Stderr   string
-	Duration time.Duration
-}
 
 // Runner executes hooks.
 type Runner struct {
@@ -195,6 +60,8 @@ type Runner struct {
 	redact []string
 	onLine func(exec.Line)
 }
+
+var _ ports.HookRunner = (*Runner)(nil)
 
 func NewRunner(runner exec.Runner, opts ...Option) *Runner {
 	r := &Runner{runner: runner}
@@ -265,7 +132,7 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 		// The working directory is the release root, so a hook can use
 		// relative paths to its own files.
 		Dir:           rel.Root,
-		Env:           exec.BaseEnv(env.Vars()),
+		Env:           exec.BaseEnv(ports.HookEnvVars(env)),
 		Timeout:       timeout,
 		Redact:        r.redact,
 		OnLine:        r.onLine,

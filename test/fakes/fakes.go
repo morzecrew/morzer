@@ -421,3 +421,51 @@ func (s *SecretStore) Seed(values map[string]string) {
 		s.changed[k] = s.Now()
 	}
 }
+
+// EnsureIdentity creates the machine identity if absent and returns its public
+// half. Idempotent, matching the real store: regenerating would orphan every
+// encrypted value.
+func (s *SecretStore) EnsureIdentity(ctx context.Context) (string, error) {
+	if err := s.fail("EnsureIdentity"); err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, r := range s.recipients {
+		if r.Kind == ports.RecipientMachine {
+			return r.PublicKey, nil
+		}
+	}
+	machine := ports.Recipient{
+		PublicKey: "age1fakemachinekey000000000000000000000000000000000000000000",
+		Kind:      ports.RecipientMachine,
+	}
+	s.recipients = append(s.recipients, machine)
+	return machine.PublicKey, nil
+}
+
+// IdentityPublicKey returns the machine key without creating one.
+func (s *SecretStore) IdentityPublicKey(ctx context.Context) (string, error) {
+	if err := s.fail("IdentityPublicKey"); err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, r := range s.recipients {
+		if r.Kind == ports.RecipientMachine {
+			return r.PublicKey, nil
+		}
+	}
+	return "", domain.SecretsError(domain.ErrNotFound, "no machine identity exists")
+}
+
+// ValidateRecipient applies the same shape check the real store does, so a
+// test using an obviously bogus key fails the way production would.
+func (s *SecretStore) ValidateRecipient(key string) error {
+	if !strings.HasPrefix(key, "age1") || len(key) < 20 {
+		return domain.SecretsError(nil, "%q is not a valid age recipient", key)
+	}
+	return nil
+}

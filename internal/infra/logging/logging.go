@@ -277,7 +277,20 @@ func EventSink(l *slog.Logger) events.Sink {
 		if msg == "" {
 			msg = string(e.Kind)
 		}
-		l.Log(context.Background(), level, msg, attrs...)
+
+		// The level-specific methods rather than Log(ctx, ...): a bus sink is
+		// invoked from wherever an event was published and has no operation
+		// context to carry, so passing a background one would be a fiction.
+		switch level {
+		case slog.LevelDebug:
+			l.Debug(msg, attrs...)
+		case slog.LevelWarn:
+			l.Warn(msg, attrs...)
+		case slog.LevelError:
+			l.Error(msg, attrs...)
+		default:
+			l.Info(msg, attrs...)
+		}
 	})
 }
 

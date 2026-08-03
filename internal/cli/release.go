@@ -57,7 +57,7 @@ func newReleaseListCommand(app *App) *cobra.Command {
 				return nil
 			}
 			if len(entries) == 0 {
-				fmt.Fprintln(app.Stream.Out, "no releases are installed")
+				_, _ = fmt.Fprintln(app.Stream.Out, "no releases are installed")
 				return nil
 			}
 			for _, e := range entries {

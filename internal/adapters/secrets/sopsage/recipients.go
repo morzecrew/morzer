@@ -12,6 +12,7 @@ import (
 
 	"filippo.io/age"
 	"github.com/goccy/go-yaml"
+
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -318,3 +319,36 @@ func truncateKey(k string) string {
 	}
 	return k[:12] + "…" + k[len(k)-6:]
 }
+
+// EnsureIdentity creates the machine's age identity if it is absent and
+// returns its public half.
+//
+// Idempotent by necessity: regenerating an identity would leave every existing
+// encrypted value unreadable, so an existing one is returned untouched.
+func (s *Store) EnsureIdentity(ctx context.Context) (string, error) {
+	if pub, err := PublicKeyFromIdentityFile(s.identityFile); err == nil {
+		return pub, nil
+	}
+
+	exists, err := atomicfs.Exists(s.identityFile)
+	if err != nil {
+		return "", err
+	}
+	if exists {
+		// Present but unreadable or malformed. Overwriting it would
+		// destroy the only key that can read the secret state.
+		return "", domain.SecretsError(nil,
+			"the age identity at %s exists but cannot be parsed", s.identityFile).
+			WithHint("refusing to replace it; restore the original from your backup")
+	}
+
+	return GenerateIdentity(s.identityFile)
+}
+
+// IdentityPublicKey returns the machine's public key without creating one.
+func (s *Store) IdentityPublicKey(ctx context.Context) (string, error) {
+	return PublicKeyFromIdentityFile(s.identityFile)
+}
+
+// ValidateRecipient checks that a string is a usable age public key.
+func (s *Store) ValidateRecipient(key string) error { return ValidateRecipient(key) }

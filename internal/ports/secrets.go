@@ -58,6 +58,24 @@ type SecretStore interface {
 
 	// Initialized reports whether encrypted state exists yet.
 	Initialized(ctx context.Context) (bool, error)
+
+	// EnsureIdentity creates this machine's key if it does not exist and
+	// returns its public half. Idempotent: an existing identity is returned
+	// untouched, because regenerating one would make every existing
+	// encrypted value unreadable.
+	EnsureIdentity(ctx context.Context) (string, error)
+
+	// IdentityPublicKey returns the machine's public key without creating
+	// one. It reports an error when no identity exists, which is what
+	// `doctor` needs to distinguish "missing" from "unreadable".
+	IdentityPublicKey(ctx context.Context) (string, error)
+
+	// ValidateRecipient checks that a string is a usable public key.
+	//
+	// Exposed on the port so an operator's typo is caught before anything is
+	// created, rather than after: a malformed recipient that happened to
+	// parse would encrypt the state to a key nobody holds.
+	ValidateRecipient(key string) error
 }
 
 // GenSpec parameterises generation.

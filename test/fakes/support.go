@@ -2,6 +2,7 @@ package fakes
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -278,4 +279,124 @@ func itoa(i int) string {
 		i /= 10
 	}
 	return string(b[pos:])
+}
+
+// Supervisor is an in-memory ports.Supervisor.
+type Supervisor struct {
+	mu sync.Mutex
+
+	// Installed maps a unit name to its rendered contents.
+	Installed map[string][]byte
+	// States maps a unit name to the state Status reports.
+	States map[string]ports.UnitState
+
+	// Present controls whether the host is reported as having a supervisor.
+	Present bool
+
+	Fail map[string]error
+}
+
+func NewSupervisor() *Supervisor {
+	return &Supervisor{
+		Installed: map[string][]byte{},
+		States:    map[string]ports.UnitState{},
+		Present:   true,
+		Fail:      map[string]error{},
+	}
+}
+
+var _ ports.Supervisor = (*Supervisor)(nil)
+
+func (s *Supervisor) Available(ctx context.Context) bool { return s.Present }
+
+func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.Fail["InstallUnits"]; err != nil {
+		return err
+	}
+	for _, u := range units {
+		s.Installed[u.Name] = u.Contents
+		s.States[u.Name] = ports.UnitState{Name: u.Name, Loaded: true, Active: "inactive", Enabled: u.Enable}
+	}
+	return nil
+}
+
+func (s *Supervisor) RemoveUnits(ctx context.Context, names []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.Fail["RemoveUnits"]; err != nil {
+		return err
+	}
+	for _, n := range names {
+		delete(s.Installed, n)
+		delete(s.States, n)
+	}
+	return nil
+}
+
+func (s *Supervisor) Enable(ctx context.Context, unit string) error {
+	return s.setActive(unit, "", true)
+}
+func (s *Supervisor) Disable(ctx context.Context, unit string) error {
+	return s.setActive(unit, "", false)
+}
+
+func (s *Supervisor) Start(ctx context.Context, unit string) error {
+	return s.setActive(unit, "active", true)
+}
+
+func (s *Supervisor) Stop(ctx context.Context, unit string) error {
+	return s.setActive(unit, "inactive", true)
+}
+
+func (s *Supervisor) setActive(unit, active string, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.States[unit]
+	st.Name = unit
+	st.Loaded = true
+	if active != "" {
+		st.Active = active
+	}
+	st.Enabled = enabled
+	s.States[unit] = st
+	return nil
+}
+
+func (s *Supervisor) Status(ctx context.Context, unit string) (ports.UnitState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.Fail["Status"]; err != nil {
+		return ports.UnitState{}, err
+	}
+	if st, ok := s.States[unit]; ok {
+		return st, nil
+	}
+	// An unknown unit is a state to report, not an error: doctor asks about
+	// units that may never have been installed.
+	return ports.UnitState{Name: unit, Loaded: false}, nil
+}
+
+// Units renders placeholder unit contents. The fake asserts the lifecycle
+// layer asks for units rather than composing them, which is the boundary that
+// matters; what a real supervisor puts in them is its own business.
+func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
+	if err := s.Fail["Units"]; err != nil {
+		return nil, err
+	}
+	names := s.ManagedUnitNames(params.Product)
+	out := make([]ports.Unit, 0, len(names))
+	for _, name := range names {
+		out = append(out, ports.Unit{
+			Name:     name,
+			Contents: []byte("# fake unit for " + params.Product + "\n"),
+			Enable:   !strings.HasSuffix(name, "-backup.service"),
+		})
+	}
+	return out, nil
+}
+
+func (s *Supervisor) ManagedUnitNames(product string) []string {
+	return []string{product + ".service", product + "-backup.service", product + "-backup.timer"}
 }

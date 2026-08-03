@@ -1,3 +1,11 @@
+// Package domain holds the manager's types and rules: the release manifest,
+// the installation, operations, versions and the error model.
+//
+// It is pure. Nothing here performs I/O, and it imports nothing from this
+// repository and nothing beyond the standard library and a semver parser. That
+// restriction is what lets the rules every other layer depends on -- manifest
+// validation, compatibility, exit-code mapping -- be tested in isolation, and
+// it is enforced by depguard rather than by discipline.
 package domain
 
 import (
@@ -109,11 +117,10 @@ func (e *Error) WithOp(opID, stepID string) *Error {
 
 // newf builds an Error whose cause chain includes both sentinel and cause.
 func newf(code Code, cat Category, sentinel error, cause error, format string, args ...any) *Error {
-	var chained error
-	switch {
-	case cause == nil:
-		chained = sentinel
-	default:
+	chained := sentinel
+	if cause != nil {
+		// Wrapping both keeps errors.Is working against the sentinel for
+		// exit-code mapping and against the cause for diagnosis.
 		chained = fmt.Errorf("%w: %w", sentinel, cause)
 	}
 	return &Error{

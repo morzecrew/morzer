@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"filippo.io/age"
+
 	"github.com/morzecrew/morzer/internal/domain"
 )
 
@@ -90,7 +91,13 @@ func randomString(length int, alphabet string) (string, error) {
 
 	// The largest multiple of n that fits in a byte. Values at or above it
 	// are discarded rather than folded in.
-	limit := byte(256 - (256 % n))
+	//
+	// Deliberately an int, not a byte. When n divides 256 evenly -- 2, 4,
+	// 8, ... 64, 256, and 64 is a common alphabet size -- the limit is 256,
+	// which truncates to 0 as a byte. Every draw would then be rejected and
+	// the loop below would spin forever, hanging secret generation with no
+	// timeout. Comparing as int keeps 256 meaning "reject nothing".
+	limit := 256 - (256 % n)
 
 	out := make([]rune, 0, length)
 	buf := make([]byte, length*2) // over-read so most runs need one draw
@@ -100,7 +107,7 @@ func randomString(length int, alphabet string) (string, error) {
 			return "", domain.SecretsError(err, "the system random source is unavailable")
 		}
 		for _, b := range buf {
-			if b >= limit {
+			if int(b) >= limit {
 				continue
 			}
 			out = append(out, runes[int(b)%n])

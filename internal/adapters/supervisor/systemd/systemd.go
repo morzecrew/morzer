@@ -394,3 +394,17 @@ func ManagerPath() string {
 	}
 	return resolved
 }
+
+// Units renders the unit set for a product, satisfying ports.Supervisor.
+func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
+	return BuildUnits(UnitParams{
+		Product:        params.Product,
+		ManagerPath:    params.ManagerPath,
+		ConfigPath:     params.ConfigPath,
+		Description:    params.Description,
+		BackupSchedule: params.BackupSchedule,
+	})
+}
+
+// ManagedUnitNames lists the units this supervisor owns for a product.
+func (s *Supervisor) ManagedUnitNames(product string) []string { return UnitNames(product) }

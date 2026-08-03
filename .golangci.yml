@@ -49,11 +49,12 @@ linters:
         # exists. Adapters are named in exactly one place: internal/cli.
         lifecycle:
           files:
-            - "**/internal/lifecycle/engine/**"
-            - "**/internal/lifecycle/preflight/**"
-          allow:
-            - $gostd
-            - $gomod
+            - "**/internal/lifecycle/**"
+          # No allow list. An allow list here has to enumerate every package
+          # the layer legitimately uses -- domain, ports, events, infra -- and
+          # would then need editing every time one is added, which is how a
+          # layering rule ends up disabled rather than maintained. The rule
+          # expresses the single prohibition that matters.
           deny:
             - pkg: github.com/morzecrew/morzer/internal/adapters
               desc: >-
@@ -83,9 +84,23 @@ linters:
       # a comment saying why the error cannot matter.
       check-type-assertions: true
       check-blank: false
+      # Writes to an output stream. Every one in this codebase goes to stdout
+      # or stderr for an operator to read; there is nothing useful to do when
+      # one fails, and an operation must never fail because its narration could
+      # not be printed. Files are written through internal/infra/atomicfs,
+      # which does check.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
 
     gosec:
       excludes:
+        # Reading a file whose path came from configuration is what this
+        # program does. G304 fires on essentially every read, and where
+        # containment actually matters it is enforced by os.Root, which the
+        # linter cannot see.
+        - G304
         # File permissions are a first-class concern here and are asserted by
         # the contract suite. The linter cannot see that 0400 and 0700 are
         # chosen deliberately, and flags every constant.
@@ -116,6 +131,25 @@ linters:
       - path: test/
         linters:
           - depguard
+
+      # cobra propagates the context through cmd.Context(), which
+      # ExecuteContext sets from the signal-aware context in main. contextcheck
+      # does not model that accessor and asks for a ctx parameter on every
+      # command constructor -- which, once added, it then demands be threaded
+      # through each subcommand closure. The linter stays on everywhere else,
+      # where it caught a real background-context leak in the log sink.
+      - path: internal/cli/
+        linters:
+          - contextcheck
+
+      # internal/infra/atomicfs exists to perform filesystem operations on
+      # caller-supplied paths, so G304 ("file inclusion via variable") fires on
+      # every function in it. Containment is enforced by os.Root, which the
+      # linter cannot see, and is asserted by the path-traversal tests.
+      - path: internal/infra/atomicfs/
+        linters:
+          - gosec
+        text: "G304"
 
 formatters:
   enable:

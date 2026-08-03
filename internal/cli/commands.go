@@ -269,7 +269,7 @@ func newBackupListCommand(app *App) *cobra.Command {
 				return nil
 			}
 			if len(backups) == 0 {
-				fmt.Fprintln(app.Stream.Out, "no backups")
+				_, _ = fmt.Fprintln(app.Stream.Out, "no backups")
 				return nil
 			}
 			for _, b := range backups {
