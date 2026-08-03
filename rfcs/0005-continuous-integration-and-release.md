@@ -1,6 +1,6 @@
 # RFC 0005 — Continuous integration and release automation
 
-- **Status:** 🚧 In progress — P1 shipped 2026-08-03: `ci.yml` with `changes`, `workflows` (actionlint), `quality` and `test`, including the no-skip assertion as `just contract-strict`. P2–P6 remain.
+- **Status:** 🚧 In progress — P1–P4 shipped 2026-08-03. P1: `ci.yml` with `changes`, `workflows`, `quality` and `test`, including the no-skip assertion as `just contract-strict`. P2: coverage floor at 45%. P3: Dependabot, CodeQL, dependency review, Scorecard. P4: governance files and issue templates. P5 (release) and P6 (acceptance) remain.
 - **Scope:** Adds `.github/` — workflows, reusable shell helpers, Dependabot,
   issue templates, CODEOWNERS — plus the governance files a public repository is
   expected to carry (`SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`).
@@ -335,15 +335,19 @@ CI is itself largely untestable, so the design leans on assertions inside it:
 | 9 | Every third-party action is pinned by commit SHA. A moving tag is arbitrary code execution with write access to the release pipeline. |
 | 10 | No OS matrix. The manager targets Linux and calls `Statfs`/`Setpgid` directly; testing macOS would be theatre. |
 | 11 | The acceptance scenario runs on `main` and tags, not every PR commit. It is the slowest and most flake-prone job, and its value is in catching real regressions rather than gating every push. |
+| 12 | *(P2, 2026-08-03)* Coverage is measured with `-coverpkg=./internal/...`. The default per-package measure gives the integration suite no credit for the packages it exercises, reading 8.7% where the honest number is 45.2% — and a floor set against the wrong measure would gate on test placement rather than on coverage. |
+| 13 | *(P4, 2026-08-03)* `SECURITY.md` names the gaps between what the tool asks for and what it can do: `require_signature` currently refuses everything rather than enforcing signing, and the recovery recipient `init` insists on has no import path. A security policy that omits its own known holes is worse than none, because it is believed. |
 
 ## 11. Phasing
 
 - **P1** — `ci.yml` with `changes`, `quality`, `test`, and the no-skip
   assertion; `actionlint`. The highest-value piece: it is what would have caught
   the two defects named in §2.
-- **P2** — Coverage floor, measured then set.
-- **P3** — Supply chain: Dependabot, CodeQL, dependency review, Scorecard.
-- **P4** — Governance files, issue templates, CODEOWNERS.
+- **P2** — ✅ *Shipped 2026-08-03.* Coverage floor at 45%, measured with
+  `-coverpkg` — see decision 12.
+- **P3** — ✅ *Shipped 2026-08-03.*
+- **P4** — ✅ *Shipped 2026-08-03.* `SECURITY.md` states the known gaps
+  explicitly — see decision 13.
 - **P5** — `release.yaml`, initially over `just build-all`, swapping to
   goreleaser when RFC 0004 P5 lands.
 - **P6** — The acceptance job. Last because it is the most work and the most

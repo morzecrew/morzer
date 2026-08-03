@@ -1,0 +1,34 @@
+# Blocks a pull request that introduces a dependency with a known advisory.
+#
+# Distinct from Dependabot, which reports what is already merged. This is the
+# gate before it lands, which is the cheaper moment to say no.
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Review dependency changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write # to summarise the diff as a comment
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # Moderate rather than high: the dependency tree is small and
+          # deliberately curated, so the volume stays manageable and a moderate
+          # advisory in a tool that handles secrets is worth a conversation.
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure
+          # Copyleft licences would change the terms this ships under. Flagged
+          # for a human rather than silently accepted.
+          deny-licenses: GPL-3.0, AGPL-3.0

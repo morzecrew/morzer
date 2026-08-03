@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest a capability or a change to one
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [`rfcs/INDEX.md`](../blob/main/rfcs/INDEX.md) first — several
+        capabilities are already designed and scheduled, and the RFC will say
+        what was decided and what was deliberately excluded.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that you cannot do today?
+    validations: {required: true}
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Optional. The problem matters more than the proposed shape.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Workarounds, and why they are not enough.

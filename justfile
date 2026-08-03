@@ -69,10 +69,18 @@ contract-strict:
 test-race:
     CGO_ENABLED=1 go test -race ./...
 
+# -coverpkg attributes coverage to the package whose statements ran, not the
+# package whose test ran. Without it the integration suite gets no credit for
+# exercising ops and the adapters, and the total reads 8.7% instead of 45%.
+
 # Run the tests with coverage and print the total.
 test-cover:
-    go test -coverprofile=coverage.out -covermode=atomic ./...
+    go test -coverpkg=./internal/... -coverprofile=coverage.out -covermode=atomic ./...
     go tool cover -func=coverage.out | tail -1
+
+# Fail when total coverage drops below the floor.
+coverage-gate floor="45": test-cover
+    .github/scripts/coverage-floor.sh coverage.out {{floor}}
 
 # Open the coverage report in a browser.
 cover-html: test-cover
@@ -119,7 +127,7 @@ check: fmt-check vet test
 # if it passes, CI passes.
 
 # Run exactly what CI runs. Needs golangci-lint and sops.
-ci: fmt-check vet lint contract-strict test-race
+ci: fmt-check vet lint contract-strict test-race coverage-gate
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.

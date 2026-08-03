@@ -1,0 +1,36 @@
+# Dependabot.
+#
+# Two ecosystems, both grouped: a week's worth of patch bumps is one review
+# rather than eight, and a pile of single-dependency pull requests is how
+# updates stop being read.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 5
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      # Matches the repository's gitmoji + conventional commit convention.
+      prefix: "⬆️ build(deps)"
+
+  # The workflows pin every action by commit SHA, which is what makes a moving
+  # tag unable to become arbitrary code execution -- and what makes this entry
+  # necessary, since a pinned SHA never updates itself.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "⬆️ ci(deps)"

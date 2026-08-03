@@ -165,15 +165,7 @@ jobs:
       # run stays green having exercised only the fake. Installing it is what
       # makes the next step meaningful.
       - name: Install sops
-        run: |
-          set -euo pipefail
-          base="https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}"
-          curl -fsSL -o sops "${base}/sops-v${SOPS_VERSION}.linux.amd64"
-          curl -fsSL -o checksums.txt "${base}/sops-v${SOPS_VERSION}.checksums.txt"
-          expected=$(grep "sops-v${SOPS_VERSION}.linux.amd64\$" checksums.txt | awk '{print $1}')
-          echo "${expected}  sops" | sha256sum -c -
-          sudo install -m 0755 sops /usr/local/bin/sops
-          sops --version --disable-version-check
+        run: .github/scripts/install-sops.sh "$SOPS_VERSION"
 
       # Asserts no contract suite skipped. This is the guard against CI being
       # greener than the code: the install above could silently stop working
@@ -181,3 +173,37 @@ jobs:
       - run: just contract-strict
 
       - run: just test-race
+
+  coverage:
+    name: Coverage floor
+    needs: [changes, test]
+    if: needs.changes.outputs.run_full == 'true' || needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # A floor, not a target. Raised deliberately; lowering it is a reviewable
+      # change in this file rather than a silent drift.
+      COVERAGE_FLOOR: "45"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # Without sops the secret-store adapter's statements drop out of the
+      # total, and the floor would be measuring a smaller program than ships.
+      - name: Install sops
+        run: .github/scripts/install-sops.sh "$SOPS_VERSION"
+
+      - run: just coverage-gate "$COVERAGE_FLOOR"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: coverage-profile
+          path: coverage.out
+          retention-days: 7

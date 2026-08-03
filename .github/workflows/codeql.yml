@@ -1,0 +1,56 @@
+# CodeQL static analysis.
+#
+# CodeQL has first-class Go support, so this covers a class of defect the
+# golangci-lint pass does not: taint flow across function boundaries. It runs on
+# pull requests and weekly, because a scheduled run picks up newly published
+# queries against code nobody has touched.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Tuesday, off-hours. A weekend slot would delay a finding by two days.
+    - cron: "23 4 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write # to upload findings to the Security tab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@d1ba80a13dd99fba24a470575428917156a28b43 # v4
+        with:
+          languages: go
+          # security-extended adds lower-severity queries. For a tool that runs
+          # as root on someone else's server, the extra noise is worth it.
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@d1ba80a13dd99fba24a470575428917156a28b43 # v4
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@d1ba80a13dd99fba24a470575428917156a28b43 # v4
+        with:
+          category: /language:go
