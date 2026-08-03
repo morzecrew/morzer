@@ -23,9 +23,12 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
-	"github.com/morzecrew/morzer/internal/adapters/source/dir"
+	"github.com/morzecrew/morzer/internal/adapters/source"
+	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
+	"github.com/morzecrew/morzer/internal/adapters/verify"
 	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
+	"github.com/morzecrew/morzer/internal/adapters/verify/minisign"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/exec"
@@ -400,14 +403,25 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		hooks.WithRedaction(redactor.Values()),
 	)
 
+	// One registry, indexed by reference scheme. Adding a transport is a new
+	// adapter and one more argument here; nothing above this line changes.
+	sources, err := source.NewRegistry(local.New())
+	if err != nil {
+		return err
+	}
+
 	deps := &ops.Deps{
-		Paths:          paths,
-		State:          stateStore,
-		Locker:         locker,
-		Runtime:        runtime,
-		Secrets:        secrets,
-		Source:         dir.New(),
-		Verifier:       checksum.New(),
+		Paths:   paths,
+		State:   stateStore,
+		Locker:  locker,
+		Runtime: runtime,
+		Secrets: secrets,
+		Source:  sources,
+		// Both, always. The checksum verifier answers "is this the
+		// artifact I was told to expect"; minisign answers "did a key
+		// this machine trusts publish it". A build with only the first
+		// could not make require_signature mean anything.
+		Verifier:       verify.NewChain(checksum.New(), minisign.New()),
 		Renderer:       gotemplate.New(),
 		Supervisor:     systemd.New(runner),
 		Hooks:          hookRunner,

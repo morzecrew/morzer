@@ -15,9 +15,9 @@ machine.
 the manifest schema and the hook ABI.
 
 **Status:** `init`, `apply`, `update`, `rollback`, `status`, `doctor`, `backup`,
-`restore`, `secret`, `release` and `installation` work against a real bundle.
-Releases are fetched from local directories only; archive extraction and
-signature verification are designed but not built — see [`rfcs/`](rfcs/).
+`restore`, `secret`, `release` and `installation` work against a real bundle,
+delivered as a directory or a `tar.zst` archive and optionally signed. Fetching
+over `https://` or `oci://` is designed but not built — see [`rfcs/`](rfcs/).
 
 ## What it is not
 
@@ -49,10 +49,11 @@ just demo
 ```
 
 That runs `init`, `status`, `doctor` and `secret list` against the example
-bundle in `testdata/bundle/`, writing everything under `tmp/demo/`. Two
-variants go further: `just demo-plan` shows what `apply` would do as a step
-list with a configuration diff, and `just demo-json` shows the machine-readable
-output contract.
+bundle in `testdata/bundle/`, writing everything under `tmp/demo/`. Three
+variants go further: `just demo-plan` shows what `apply` would do as a step list
+with a configuration diff, `just demo-json` shows the machine-readable output
+contract, and `just demo-recovery` deletes an installation outright and rebuilds
+it from an export and an offline key.
 
 The `--root` flag relocates *every* managed path -- including the absolute
 configuration targets a manifest declares -- so nothing touches the real
@@ -98,6 +99,7 @@ in the reference documentation:
 - [Exit codes](https://morzecrew.github.io/morzer/reference/exit-codes/)
 - [Release manifest](https://morzecrew.github.io/morzer/reference/manifest/)
 - [Hook ABI](https://morzecrew.github.io/morzer/reference/hooks/)
+- [Where bundles come from, and how they are verified](https://morzecrew.github.io/morzer/reference/release-commands/#where-bundles-come-from)
 - [Recovering a lost machine](https://morzecrew.github.io/morzer/operating/recovering-a-lost-machine/)
   — the procedure the offline recovery key exists for, executed end to end by
   the test suite on every run rather than only described
@@ -111,7 +113,7 @@ internal/ui         plain and json presenters — subscribers, never participant
 internal/lifecycle  operations as step sequences; preflight; the step engine
 internal/domain     pure types and rules: manifest, release, installation, errors
 internal/ports      interfaces, declared by the consumer
-internal/adapters   compose · sops-age · hooks · dir · checksum · systemd · gotemplate
+internal/adapters   compose · sops-age · hooks · local+registry · checksum+minisign · systemd · gotemplate
 internal/infra      exec runner, atomicfs, lock, state, logging, tool registry
 ```
 
@@ -208,6 +210,12 @@ A release is identified by `(name, version)` **plus** its content digest. The
 same version appearing with a different digest is an error, not a warning.
 Images must be pinned by digest: an unpinned image makes a release mutable, and
 a mutable release makes rollback meaningless.
+
+A bundle and its `tar.zst` archive hash identically, so a digest recorded from
+one verifies the other — pinning a release does not pin a transport. A bundle
+may also ship `SHA256SUMS` and a detached `SHA256SUMS.minisig`; installations
+that set `policy.require_signature` refuse anything unsigned by a key they
+configure.
 
 [`testdata/bundle/`](testdata/bundle/) is a complete, valid example, and is what
 the test suite runs against. The

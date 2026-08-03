@@ -16,9 +16,15 @@ import (
 // Container images always come from an OCI registry regardless of the bundle
 // source -- the bundle carries digests, not layers.
 type ReleaseSource interface {
-	// Scheme is the reference scheme this source handles: "file", "https",
-	// "oci".
-	Scheme() string
+	// Schemes are the reference schemes this source handles: "file",
+	// "https", "oci".
+	//
+	// Plural because a registry of sources is itself a source -- it
+	// dispatches on the ref and answers for everything registered in it, so
+	// one scheme per implementation would have made the composite lie about
+	// what it can do. It is also what builds the "this build supports: ..."
+	// half of a refusal, which is the only reason a caller ever asks.
+	Schemes() []string
 
 	// Resolve turns a reference into concrete facts without downloading the
 	// payload -- what version it is, what it will hash to.
@@ -122,6 +128,25 @@ type Verifier interface {
 
 	Verify(ctx context.Context, bundle BundlePath, expect Expectation) error
 }
+
+// Names a bundle may ship its own integrity evidence under. They are part of
+// the release contract rather than an adapter's private detail: a vendor's
+// publishing pipeline writes them, a third party checks them with `sha256sum
+// -c` and `minisign -Vm` without the manager, and two adapters read them.
+const (
+	// SumsFileName lists a per-file checksum for everything else in the
+	// bundle.
+	SumsFileName = "SHA256SUMS"
+
+	// SignatureFileName is a detached minisign signature over SumsFileName.
+	//
+	// The signature covers the sums file rather than each file or the whole
+	// tree, which is what makes the chain checkable by hand: the signature
+	// proves who wrote the list, and the list proves what the files are.
+	// It travels inside the bundle so it survives being packed into an
+	// archive and unpacked again -- a sibling file would not.
+	SignatureFileName = SumsFileName + ".minisig"
+)
 
 // Expectation is what a bundle must satisfy.
 type Expectation struct {

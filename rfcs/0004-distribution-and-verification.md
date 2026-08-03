@@ -1,6 +1,10 @@
 # RFC 0004 — Distribution and verification
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — P1–P3 shipped 2026-08-03. A source registry
+  dispatches on reference scheme, `tar.zst` bundles install like directories,
+  and `require_signature` enforces signing instead of refusing everything. Three
+  design changes are recorded in §5.1, §5.2 and §5.5. P4–P6 (HTTPS, goreleaser
+  and the JSON Schema, OCI) remain.
 - **Scope:** Adds three release sources — `tar.zst`, HTTPS and OCI artifact —
   behind the existing `ReleaseSource` port, and a minisign `Verifier` alongside
   the checksum one. Makes the `require_signature` installation policy fail
@@ -12,7 +16,7 @@
   called. Explicitly **not** in scope: cosign/keyless signing, and a private
   release index.
 - **Related:** [`internal/ports/source.go`](../internal/ports/source.go),
-  [`internal/adapters/source/dir/dir.go`](../internal/adapters/source/dir/dir.go),
+  [`internal/adapters/source/local/local.go`](../internal/adapters/source/local/local.go),
   [`internal/adapters/verify/checksum/checksum.go`](../internal/adapters/verify/checksum/checksum.go),
   [`internal/infra/atomicfs/copy.go`](../internal/infra/atomicfs/copy.go),
   RFC [0001](0001-update-and-rollback.md), which consumes these sources
@@ -132,6 +136,21 @@ func (r *Registry) For(ref ports.Ref) (ports.ReleaseSource, error) {
 The registry itself satisfies `ports.ReleaseSource` by dispatching on the ref,
 so the lifecycle layer's call sites do not change at all.
 
+> **Amendment, P1 (2026-08-03).** `ReleaseSource.Scheme() string` became
+> `Schemes() []string`. A registry that is itself a source has to answer for
+> everything registered in it, and one scheme per implementation would have made
+> the composite lie about what it can do. It is also what builds the "this build
+> supports: ..." half of a refusal, which is the only reason a caller ever asked.
+>
+> Both call sites that pre-checked the scheme -- in `ops.Update` and `release
+> fetch` -- were deleted rather than adapted. Naming the supported transports is
+> the registry's job, not every caller's, and `Resolve` already runs before the
+> deployment lock is taken, so the refusal still arrives before anything mutates.
+>
+> Duplicate registration is an error rather than last-wins or first-wins: one
+> would make behaviour depend on argument order, the other would silently ignore
+> an adapter someone deliberately added. See decision 11.
+
 ### 5.2 Archive source (`tar.zst`)
 
 Extraction reuses `atomicfs`'s existing limits and rejections rather than
@@ -146,6 +165,23 @@ restating them — the enforcement lives in one place:
   type flag — the same rule `CopyTree` already applies.
 - Refuse an archive whose uncompressed size exceeds the limit even if its
   compressed size does not.
+
+> **Amendment, P2 (2026-08-03).** The archive is not a separate source. `ParseRef`
+> gives a bare path the `file` scheme whether it names a directory or an
+> archive, so two sources claiming that scheme could not both be registered --
+> the registry dispatches on scheme and would have had nothing to choose with.
+> Deciding by what the path actually *is* belongs where the filesystem is
+> already being touched, so the `dir` package became `local` and handles both.
+> The extraction itself lives in `atomicfs` beside `CopyTree`, which is what
+> decision 2 asked for. See decision 12.
+>
+> A second change the design did not anticipate: `ops.Update` read the source
+> bundle's manifest straight from `ref.Location`, which works only for a
+> directory. References that cannot be read where they lie are now materialised
+> into the staging directory first, and removed when the operation ends. That is
+> the mechanism HTTPS and OCI will reuse, and it is why a dry run against an
+> archive fetches -- a plan that refused to could say nothing about the release
+> it was asked about. See decision 13.
 
 ### 5.3 HTTPS source
 
@@ -295,6 +331,13 @@ between the schema editors validate against and the types the manager enforces.
 | 8 | No `morzer sign`. The manager verifies; signing belongs in the vendor's pipeline where the key lives. Building it in invites the key onto a deployment host. |
 | 9 | The JSON Schema is generated from `domain.Manifest` and its checked-in copy is equality-tested. A hand-written schema drifts from the types that actually enforce it. |
 | 10 | OCI ships last. It is the heaviest dependency and the only source with an out-of-band workaround. |
+| 11 | `ReleaseSource` declares `Schemes() []string`, not one scheme, and duplicate registration is an error. A registry that is itself a source answers for all of them; ordering-dependent resolution of a duplicate would be a bug nobody could see. See §5.1. |
+| 12 | Directories and archives are one `local` source, not two. `ParseRef` gives both the `file` scheme, so a scheme-dispatching registry could not tell them apart; the filesystem can. See §5.2. |
+| 13 | A reference that cannot be read in place is materialised into the staging directory before its manifest is read, and removed when the operation ends. Dry runs materialise too — a plan that would not fetch could say nothing about the release. See §5.2. |
+| 14 | The signature covers `SHA256SUMS` and ships inside the bundle. Signing a tree digest would need this program to produce or check a signature; a sibling file would not survive being archived. See §5.5. |
+| 15 | The checksum verifier knows nothing about signatures. One policy decision in two adapters is two adapters that can disagree about it. See §5.5. |
+| 16 | Extracted permissions are normalised to `0755` or `0644`. Only the executable bit is part of a release — the digest records nothing else — and normalising means a bundle cannot ship a world-writable or setuid file at all, rather than being checked for one. |
+| 17 | The verifier contract suite is parameterised by what each verifier claims to check. minisign genuinely cannot detect a file edited along with its checksum entry, so a shared assertion would either fail a correct implementation or be weakened until it proved nothing. Declaring a claim falsely is what the suite now catches. |
 
 ## 11. Phasing
 
@@ -311,3 +354,40 @@ between the schema editors validate against and the types the manager enforces.
 
 P1–P3 are the ones that change the security posture and are worth doing whether
 or not the transports follow.
+
+### What P1–P3 shipped
+
+- `internal/adapters/source.Registry`, dispatching on `Ref.Scheme` and itself a
+  `ReleaseSource`. `local` replaces `dir` and handles a bundle directory or a
+  `tar.zst`.
+- `atomicfs.ExtractTarZst`, sharing `ExtractLimits` and the non-regular-file
+  rejection with `CopyTree`, plus a zstd decoder window cap — a format that lets
+  an archive declare its own window is a way to make a 200-byte file allocate
+  gigabytes before anything is written.
+- A `ReleaseSource` contract suite run against the directory source, the archive
+  source and the registry, whose central assertion is that all three produce
+  the *same* content digest for the same bundle. Without it, pinning a release
+  would silently pin a transport.
+- Thirteen malicious-archive fixtures, each built in Go in the test that asserts
+  its refusal rather than checked in as a file nobody can review by reading:
+  traversal, absolute path, symlink escape, hardlink, device node, FIFO,
+  entry-count bomb, oversized declaration, total-size overrun mid-write,
+  decompression bomb, non-archive, truncated archive, and mode normalisation.
+- `minisign` verifier and a `verify.Chain`, wired as checksum + minisign
+  everywhere. `Policy.SigningKeys`, `init --signing-key` and
+  `--require-signature`, and `release verify --signing-key` for a vendor's own
+  CI, which needs no installation on the machine.
+- A verifier contract suite parameterised by claims (§decision 17), run against
+  the checksum verifier, minisign, and the chain production actually wires.
+
+**Verified with the real binary, not only in tests**: a bundle fetched as an
+archive reports the identical digest to the same bundle as a directory; a
+traversal archive is refused by name; a truncated one is refused as corrupt;
+`release verify --signing-key` accepts a signed bundle, refuses the wrong key,
+and catches a hook edited after signing; `init --require-signature` without a
+key is refused, and with one, an unsigned bundle is refused at fetch.
+
+**Not** done: `https://` and `oci://` still parse and have no adapter, so the
+registry has exactly one entry. That is worth saying plainly — the registry's
+value today is the refusal message and the shape it sets up, not a transport
+anyone can use.

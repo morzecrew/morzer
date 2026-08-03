@@ -11,9 +11,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
+	"github.com/morzecrew/morzer/internal/adapters/source"
+	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/domain"
 	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/infra/state"
@@ -46,6 +49,63 @@ func TestSecretStoreContract_SOPSAge(t *testing.T) {
 
 		return sopsage.New(infraexec.New(), filepath.Join(dir, "secrets.sops.yaml"), identity)
 	})
+}
+
+// The release-source suite runs against every shape a local bundle can arrive
+// in. What it is really asserting is that the shape does not matter: an
+// operator who records a digest from an unpacked bundle must be able to pin the
+// archive of it, and vice versa.
+
+func TestReleaseSourceContract_Directory(t *testing.T) {
+	contract.RunReleaseSourceSuite(t, testBundlePath(t),
+		func(t *testing.T, bundleDir string) (ports.ReleaseSource, ports.Ref) {
+			return local.New(), ports.Ref{Scheme: "file", Location: bundleDir}
+		})
+}
+
+func TestReleaseSourceContract_Archive(t *testing.T) {
+	contract.RunReleaseSourceSuite(t, testBundlePath(t),
+		func(t *testing.T, bundleDir string) (ports.ReleaseSource, ports.Ref) {
+			archive := filepath.Join(t.TempDir(), "bundle.tar.zst")
+			writeTarZst(t, bundleDir, archive)
+			return local.New(), ports.Ref{Scheme: "file", Location: archive}
+		})
+}
+
+// The registry is itself a source, so it runs the same suite. A dispatcher that
+// passed its own tests but mangled a delegation would otherwise look correct.
+func TestReleaseSourceContract_Registry(t *testing.T) {
+	contract.RunReleaseSourceSuite(t, testBundlePath(t),
+		func(t *testing.T, bundleDir string) (ports.ReleaseSource, ports.Ref) {
+			registry, err := source.NewRegistry(local.New())
+			require.NoError(t, err)
+			return registry, ports.Ref{Scheme: "file", Location: bundleDir}
+		})
+}
+
+func TestSourceRegistryRefusesAnUnbuiltScheme(t *testing.T) {
+	registry, err := source.NewRegistry(local.New())
+	require.NoError(t, err)
+
+	_, err = registry.Resolve(context.Background(),
+		ports.Ref{Scheme: "oci", Location: "registry.example/demo:1.0.0"})
+	require.Error(t, err)
+
+	// The refusal has to name what this build *can* do. An operator asking
+	// for oci:// on a binary without it is asking for something reasonable,
+	// and "no" alone leaves them nowhere.
+	assert.Contains(t, err.Error(), "oci")
+	assert.Contains(t, domain.AsError(err).Hint, "file",
+		"the hint must list the schemes that are available")
+}
+
+func TestSourceRegistryRefusesDuplicateSchemes(t *testing.T) {
+	// A wiring mistake with no sensible resolution: last-wins would make
+	// behaviour depend on argument order, first-wins would silently ignore
+	// an adapter someone deliberately added.
+	_, err := source.NewRegistry(local.New(), local.New())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file")
 }
 
 func TestStateStoreContract_Filesystem(t *testing.T) {

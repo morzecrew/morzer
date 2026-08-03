@@ -195,14 +195,20 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 }
 
 func newReleaseVerifyCommand(app *App) *cobra.Command {
-	var expectDigest string
+	var (
+		expectDigest string
+		signingKeys  []string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "verify <path>",
 		Short: "Validate a bundle's manifest and check its integrity",
 		Long: "Loads and validates the manifest, checks every referenced file exists,\n" +
 			"computes the content digest, and verifies SHA256SUMS when the bundle\n" +
-			"ships one.",
+			"ships one.\n\n" +
+			"Pass --signing-key to check the bundle's signature too. This is the\n" +
+			"command a bundle vendor runs in their own CI, so it needs no\n" +
+			"installation on the machine.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]
@@ -216,6 +222,19 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			// with sha256sum, independently of this tool.
 			if err := checksum.VerifySumsFile(rel.Root); err != nil {
 				return err
+			}
+
+			// The signature check is opt-in here rather than driven by
+			// policy: `release verify` runs on a build machine with no
+			// installation, so there is no policy to read.
+			if len(signingKeys) > 0 {
+				if err := app.Deps.Verifier.Verify(cmd.Context(),
+					ports.BundlePath(rel.Root), ports.Expectation{
+						PublicKeys: signingKeys,
+						Required:   true,
+					}); err != nil {
+					return err
+				}
 			}
 
 			if expectDigest != "" && !atomicfs.SameDigest(rel.Digest, expectDigest) {
@@ -240,6 +259,8 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&expectDigest, "digest", "", "expected content digest; a mismatch is an error")
+	cmd.Flags().StringArrayVar(&signingKeys, "signing-key", nil,
+		"minisign public key the bundle's signature must verify against; repeat for several")
 	return cmd
 }
 
@@ -249,19 +270,17 @@ func newReleaseFetchCommand(app *App) *cobra.Command {
 		Short: "Fetch a release bundle into the release store",
 		Long: "Resolves a reference, verifies it, and copies it into the release store\n" +
 			"without making it current. Use `morzer apply` to activate it.\n\n" +
-			"v1 supports local directories; https and oci arrive in a later milestone.",
+			"Takes a bundle directory or a tar.zst archive; https and oci arrive in a\n" +
+			"later milestone.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, err := ports.ParseRef(args[0])
 			if err != nil {
 				return err
 			}
-			if ref.Scheme != app.Deps.Source.Scheme() {
-				return domain.Usage("no source is configured for scheme %q", ref.Scheme).
-					WithHint("this build supports %q sources; unpack the bundle and pass a path",
-						app.Deps.Source.Scheme())
-			}
-
+			// No scheme pre-check: the source registry refuses a
+			// scheme it has no adapter for, and naming the supported
+			// ones is its job rather than every call site's.
 			resolved, err := app.Deps.Source.Resolve(cmd.Context(), ref)
 			if err != nil {
 				return err
@@ -290,9 +309,17 @@ func newReleaseFetchCommand(app *App) *cobra.Command {
 			}
 
 			// Verified before anything in it is trusted as
-			// configuration or executed as a hook.
+			// configuration or executed as a hook, and against this
+			// machine's policy rather than a default: a fetch that
+			// accepted an unsigned bundle would leave one in the
+			// store for `update --to` to install later.
+			expect := ports.Expectation{Digest: resolved.Digest}
+			if inst, loadErr := app.Deps.State.LoadInstallation(cmd.Context()); loadErr == nil {
+				expect.Required = inst.Policy.RequireSignature
+				expect.PublicKeys = inst.Policy.SigningKeys
+			}
 			if err := app.Deps.Verifier.Verify(cmd.Context(),
-				ports.BundlePath(dest), ports.Expectation{Digest: resolved.Digest}); err != nil {
+				ports.BundlePath(dest), expect); err != nil {
 				_ = atomicfs.RemoveAll(dest)
 				return err
 			}

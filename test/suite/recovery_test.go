@@ -16,7 +16,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/hooks"
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
-	"github.com/morzecrew/morzer/internal/adapters/source/dir"
+	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -82,7 +82,7 @@ func newMachine(t *testing.T, root string) *machine {
 		Secrets:        secrets,
 		Health:         fakes.NewHealth(),
 		Renderer:       gotemplate.New(),
-		Source:         dir.New(),
+		Source:         local.New(),
 		Verifier:       checksum.New(),
 		Supervisor:     fakes.NewSupervisor(),
 		Hooks:          hooks.NewRunner(runner),

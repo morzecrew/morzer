@@ -39,6 +39,18 @@ resist:
 - **Path traversal from a bundle.** Extraction and configuration rendering are
   confined by `os.Root`, so containment is enforced by the kernel rather than by
   string inspection.
+- **A hostile archive.** `tar.zst` extraction refuses entries that escape the
+  destination, symlinks and hardlinks, device nodes, FIFOs and sockets, and
+  anything exceeding the entry, per-file or total size limits — enforced *during*
+  extraction, so a decompression bomb is refused while it is being written rather
+  than once the disk is full. Permissions are normalised to `0755` or `0644`, so
+  a bundle cannot ship a world-writable file. Each of these is covered by a
+  fixture built in the test that asserts its refusal.
+- **A bundle from someone other than your vendor.** A detached minisign
+  signature over the bundle's `SHA256SUMS` is verified against keys the
+  *installation* configures, never keys the bundle names.
+  `policy.require_signature` makes one mandatory, and the two checks compose:
+  signature → `SHA256SUMS` → every file.
 
 ## What is not
 
@@ -46,9 +58,10 @@ resist:
   age identity and every rendered secret. Nothing here defends against that.
 - **Attacks against the Docker daemon itself.**
 - **A malicious release bundle from a trusted vendor.** Hooks run as root by
-  design — that is what a hook *is*. Signature verification, once it lands,
-  proves a bundle came from the holder of a key. It does not prove the bundle is
-  safe to run, and it is not intended to.
+  design — that is what a hook *is*. Signature verification proves a bundle came
+  from the holder of a key. It does not prove the bundle is safe to run, and it
+  is not intended to. Signing narrows *who* can hand you a release; it does not
+  narrow what a release can do.
 - **The secrecy of a recovery key stored on the machine it protects.** Move it
   elsewhere; `init` says so when it generates one.
 
@@ -56,9 +69,14 @@ resist:
 
 Stated here rather than discovered during an incident:
 
-- Signature verification is designed but not implemented, so setting
-  `require_signature: true` currently refuses every operation instead of
-  enforcing signing. See [RFC 0004](rfcs/0004-distribution-and-verification.md).
+- Bundles can only be fetched from this machine — a directory or a `tar.zst`
+  archive. `https://` and `oci://` parse but have no adapter, so a bundle from
+  either has to be downloaded out of band, where the manager cannot see how it
+  arrived. See [RFC 0004](rfcs/0004-distribution-and-verification.md).
+- Nothing checks a signature's *freshness*. A correctly signed older release can
+  be presented in place of a newer one; only `compatibility.upgrade_from` and a
+  pinned `--digest` stand in the way. See
+  [RFC 0004](rfcs/0004-distribution-and-verification.md).
 - `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
   implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
 
@@ -66,6 +84,14 @@ Stated here rather than discovered during an incident:
 
 Kept here because a security policy that only ever grows is one nobody trusts to
 be current.
+
+- **`require_signature: true` refused every operation instead of enforcing
+  signing** (closed 2026-08-03). Every part of the policy existed except a
+  verifier that could satisfy it, so the one control that raised the bar made
+  the tool unusable instead. A minisign verifier now enforces it, and an
+  installation that requires a signature with no `policy.signing_keys`
+  configured is refused where it is written rather than failing every later
+  operation with a message about bundles.
 
 - **The offline recovery key had no import path** (closed 2026-08-03). It could
   be created and registered, but nothing could rebuild a machine from it —

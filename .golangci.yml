@@ -128,9 +128,13 @@ linters:
         linters:
           - depguard
           - gosec
+      # The shared contract suites live in non-_test files so several packages
+      # can run them. They build paths from their own fixtures and deliberately
+      # corrupt bundles, which is the work, not a finding.
       - path: test/
         linters:
           - depguard
+          - gosec
 
       # cobra propagates the context through cmd.Context(), which
       # ExecuteContext sets from the signal-aware context in main. contextcheck

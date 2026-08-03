@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -43,6 +44,15 @@ type Policy struct {
 	// RequireSignature refuses any bundle that is not signed. Checksum
 	// verification always happens; this raises the bar.
 	RequireSignature bool `yaml:"require_signature" json:"require_signature"`
+
+	// SigningKeys are the minisign public keys a bundle's signature must
+	// verify against.
+	//
+	// They live with the installation rather than with the release for the
+	// obvious reason: a bundle naming the key that may sign it would be a
+	// bundle authorising itself. This is the operator saying whose releases
+	// this machine will install.
+	SigningKeys []string `yaml:"signing_keys" json:"signing_keys,omitempty"`
 
 	// RetainReleases and RetainBackups override manifest retention when
 	// non-zero. An operator with a small disk should not have to edit a
@@ -132,6 +142,20 @@ func (i Installation) Validate() error {
 	}
 	if i.Policy.RetainBackups < 0 {
 		v.add("policy.retain_backups", "must not be negative")
+	}
+
+	// An unsatisfiable policy is refused where it is written rather than
+	// where it would be enforced. Requiring a signature with no key to check
+	// it against would fail every operation with a message about bundles,
+	// when the problem is one line of installation.yaml.
+	if i.Policy.RequireSignature && len(i.Policy.SigningKeys) == 0 {
+		v.add("policy.require_signature",
+			"is set but policy.signing_keys is empty, so no bundle could ever satisfy it")
+	}
+	for n, key := range i.Policy.SigningKeys {
+		if strings.TrimSpace(key) == "" {
+			v.add(fmt.Sprintf("policy.signing_keys[%d]", n), "is empty")
+		}
 	}
 
 	return v.err()

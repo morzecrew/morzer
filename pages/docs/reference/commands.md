@@ -77,8 +77,15 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--generate-secrets` | Generate every secret the release declares a generator for. Default `true`. |
 | `--install-units` | Install systemd units when systemd is available. Default `true`. |
 | `--backup-schedule` | systemd `OnCalendar` expression for scheduled backups. |
+| `--signing-key` | minisign public key a release signature must verify against. Repeat for several. |
+| `--require-signature` | Refuse any release that is not signed by one of those keys. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--repair` | Restore missing directories on an existing installation. |
+
+`--require-signature` without `--signing-key` is refused: no bundle could
+satisfy it, and a policy nothing can satisfy is a configuration error rather
+than something to discover on the next update. Both are written into
+`installation.yaml` under `policy`, and can be edited there afterwards.
 
 !!! warning "Keep the recovery key off this machine"
 

@@ -55,6 +55,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release management covering listing, inspection, validation, fetching into the release store and pruning. Pruning never removes the current or previous release, since rollback depends on both.
 
+- Installing a release from a compressed archive as well as an unpacked directory. A bundle and its archive produce the same content digest, so a digest recorded from one verifies the other and pinning a release does not pin a transport.
+
+- Selection of a release source by reference scheme, so a reference the build cannot fetch is refused by name and told which forms are supported.
+
+- Signature verification for release bundles, against public keys the installation configures rather than any the bundle names. The signature covers the bundle's per-file checksum manifest, so a signature and that manifest together cover every file, and both remain checkable with standard command-line tools.
+
+- Refusal of any unsigned release when an installation requires signing, configurable at creation or by editing the installation file afterwards.
+
 - Generated systemd units for boot-time convergence and scheduled backups. The main unit will not restart on the exit code meaning manual intervention is required, so a system needing a human stops instead of looping.
 
 - Reporting of measured sizes such as free disk space in readable units, while values declared in a manifest keep their exact written form.
@@ -76,6 +84,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bundle extraction and configuration rendering are confined to their target directory by the operating system rather than by string inspection, and archives are bounded by entry count and size. Symlinks and non-regular files in a bundle are rejected.
 
 - Secret values are read from a terminal without echo or from standard input. There is no flag for supplying one, because process arguments are readable by other local users.
+
+- Archive extraction refuses entries that escape the destination, links of any kind, device nodes and other non-regular files, and anything beyond the entry, per-file or total size limits. The limits apply while files are being written, so an archive that expands enormously is refused before it fills the disk rather than after.
+
+- Extracted files carry either an executable or a plain permission set, so a release cannot arrive world-writable regardless of how it was packed.
+
+- Requiring signatures without configuring any signing key is refused when the installation is written. The policy could not be satisfied by any release, and reporting that as a failure of each later operation would point at bundles instead of at configuration.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 

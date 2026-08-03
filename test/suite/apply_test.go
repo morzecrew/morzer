@@ -13,7 +13,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/adapters/hooks"
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
-	"github.com/morzecrew/morzer/internal/adapters/source/dir"
+	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -102,7 +102,7 @@ func newHarness(t *testing.T) *harness {
 		// The real directory source and checksum verifier: both are
 		// filesystem-only, so using the production adapters here costs
 		// nothing and exercises them.
-		Source:         dir.New(),
+		Source:         local.New(),
 		Verifier:       checksum.New(),
 		Hooks:          hooks.NewRunner(runner),
 		Tools:          tools.NewRegistry(runner),

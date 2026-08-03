@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
 
@@ -381,4 +382,69 @@ func currentVersion(t *testing.T, h *harness) string {
 	c, err := h.Deps.State.CurrentRelease(context.Background())
 	require.NoError(t, err)
 	return c.Version.String()
+}
+
+// TestUpdateFromAnArchive is the end of the chain the archive source exists
+// for: a vendor publishes a `tar.zst`, an operator points `update` at it, and
+// everything downstream -- the compatibility gate, the pre-update backup, the
+// convergence pipeline -- behaves exactly as it does for an unpacked directory.
+//
+// It is the only test that exercises materialising a reference that cannot be
+// read where it lies, which is the part that will carry HTTPS and OCI later.
+func TestUpdateFromAnArchive(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	src := stageUpgradeSource(t, h)
+	archive := filepath.Join(t.TempDir(), "demo-1.3.0.tar.zst")
+	writeTarZst(t, src, archive)
+
+	ctx := context.Background()
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: archive})
+	require.NoError(t, err, "an archive reference must install like a directory one")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
+
+	// The digest recorded in the release pointer is the tree digest, not
+	// the archive's. An operator who pinned it from the unpacked bundle can
+	// pin the archive with the same value.
+	unpacked, err := atomicfs.DigestTree(src)
+	require.NoError(t, err)
+	assert.Equal(t, unpacked, current.Digest,
+		"the transport must not change the identity of the release")
+
+	// Staging is scratch and must not accumulate: an update that left its
+	// unpacked copy behind would double the disk cost of every release.
+	entries, err := os.ReadDir(h.Paths.StagingDir())
+	require.NoError(t, err)
+	assert.Empty(t, entries, "the staging directory must be empty once the update finishes")
+}
+
+// TestUpdateFromAnArchivePinsTheSameDigest asserts the pinning story an
+// operator actually uses: record the digest once, pass it whatever shape the
+// bundle arrives in.
+func TestUpdateFromAnArchivePinsTheSameDigest(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	src := stageUpgradeSource(t, h)
+	digest, err := atomicfs.DigestTree(src)
+	require.NoError(t, err)
+
+	archive := filepath.Join(t.TempDir(), "demo-1.3.0.tar.zst")
+	writeTarZst(t, src, archive)
+
+	_, err = ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
+		Ref:          archive,
+		ExpectDigest: digest,
+	})
+	require.NoError(t, err,
+		"a digest recorded from the unpacked bundle must verify against its archive")
 }

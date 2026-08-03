@@ -47,6 +47,14 @@ type InitOptions struct {
 	// generator for.
 	GenerateSecrets bool
 
+	// RequireSignature and SigningKeys are this machine's verification
+	// policy. They are set here rather than left to a later edit of
+	// installation.yaml because the release staged during init is verified
+	// against them too -- a policy that only took effect from the second
+	// release would be a policy with a hole in it.
+	RequireSignature bool
+	SigningKeys      []string
+
 	// Repair re-creates missing directories on an existing installation
 	// instead of refusing.
 	Repair bool
@@ -73,6 +81,17 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 			"an installation already exists at %s", d.Paths.EtcDir).
 			WithHint("use `morzer init --repair` to restore missing directories, " +
 				"or `morzer update` to install a new release")
+	}
+
+	// An unsatisfiable policy is refused before anything is created, with
+	// the same message Installation.Validate would give later. Discovering
+	// it after the directories and the machine key exist would mean
+	// unwinding a half-built installation over one missing flag.
+	if opts.RequireSignature && len(opts.SigningKeys) == 0 {
+		return Result{}, domain.Usage(
+			"--require-signature needs at least one --signing-key").
+			WithHint("no bundle could satisfy the policy otherwise; " +
+				"pass the vendor's minisign public key")
 	}
 
 	if !opts.NoRecoveryKey && opts.RecoveryRecipient == "" {
@@ -286,6 +305,8 @@ func (d *Deps) buildInstallation(ctx context.Context, opts InitOptions) (domain.
 		Policy:        domain.DefaultPolicy(),
 		Settings:      opts.Settings,
 	}
+	inst.Policy.RequireSignature = opts.RequireSignature
+	inst.Policy.SigningKeys = opts.SigningKeys
 
 	if existing, err := d.State.LoadInstallation(ctx); err == nil && existing.ID != "" {
 		inst.ID = existing.ID
@@ -331,7 +352,11 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			// Verified before it is trusted for anything: hooks run
 			// only from a verified release.
 			if d.Verifier != nil {
-				expect := ports.Expectation{Digest: resolved.Digest}
+				expect := ports.Expectation{
+					Digest:     resolved.Digest,
+					Required:   opts.RequireSignature,
+					PublicKeys: opts.SigningKeys,
+				}
 				if err := d.Verifier.Verify(ctx, ports.BundlePath(dest), expect); err != nil {
 					return err
 				}

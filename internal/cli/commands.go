@@ -27,6 +27,8 @@ func newInitCommand(app *App) *cobra.Command {
 		backupSchedule string
 		generate       bool
 		repair         bool
+		requireSig     bool
+		signingKeys    []string
 	)
 
 	cmd := &cobra.Command{
@@ -74,6 +76,8 @@ func newInitCommand(app *App) *cobra.Command {
 				InstallUnits:      installUnits,
 				BackupSchedule:    backupSchedule,
 				GenerateSecrets:   generate,
+				RequireSignature:  requireSig,
+				SigningKeys:       signingKeys,
 				Repair:            repair,
 			})
 			app.finish(result)
@@ -92,6 +96,10 @@ func newInitCommand(app *App) *cobra.Command {
 	f.BoolVar(&installUnits, "install-units", true, "install systemd units when systemd is available")
 	f.StringVar(&backupSchedule, "backup-schedule", "", "systemd OnCalendar expression for scheduled backups")
 	f.BoolVar(&generate, "generate-secrets", true, "generate every secret the release declares a generator for")
+	f.StringArrayVar(&signingKeys, "signing-key", nil,
+		"minisign public key a release signature must verify against; repeat for several")
+	f.BoolVar(&requireSig, "require-signature", false,
+		"refuse any release that is not signed by a configured signing key")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
 
 	return cmd

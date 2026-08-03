@@ -20,8 +20,10 @@ import (
 // Name identifies this verifier in journal records and doctor output.
 const Name = "sha256"
 
-// SumsFileName is the checksum file a bundle may ship alongside itself.
-const SumsFileName = "SHA256SUMS"
+// SumsFileName is the checksum file a bundle may ship alongside itself. It is
+// named in ports because the signature verifier reads the same file, and
+// because a vendor's pipeline and `sha256sum -c` both depend on the name.
+const SumsFileName = ports.SumsFileName
 
 type Verifier struct{}
 
@@ -32,22 +34,22 @@ var _ ports.Verifier = (*Verifier)(nil)
 func (v *Verifier) Name() string { return Name }
 
 // Verify checks a bundle against an expectation.
+//
+// Signatures are not this verifier's concern. It used to refuse when one was
+// required, because nothing else could -- now the minisign verifier answers
+// that question and this one answers only "is this the artifact I was told to
+// expect". Keeping a policy decision in two adapters would mean two places
+// could disagree about it.
 func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect ports.Expectation) error {
 	path := string(bundle)
 
-	// A required signature that no verifier can check must fail loudly.
-	// Silently downgrading to a checksum would turn an installation policy
-	// into a suggestion.
-	if expect.Required && expect.SignaturePath == "" {
-		return domain.ValidationError(nil,
-			"installation policy requires a signature, but the bundle has none").
-			WithHint("obtain a signed bundle, or clear require_signature in installation.yaml " +
-				"if you accept checksum-only verification")
-	}
-	if expect.SignaturePath != "" {
-		return domain.ValidationError(domain.ErrUnsupported,
-			"this build verifies checksums only; signature verification is not available yet").
-			WithHint("remove the signature expectation, or wait for the minisign verifier")
+	// A bundle that ships its own per-file checksums is checked against
+	// them whether or not a digest was pinned. It is the link between a
+	// signature -- which covers this file -- and the contents.
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		if err := VerifySumsFile(path); err != nil {
+			return err
+		}
 	}
 
 	actual, err := digestOf(path)

@@ -3,6 +3,8 @@ package ops
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -53,7 +55,11 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		return Result{}, err
 	}
 
-	source, staged, err := d.resolveUpdateTarget(ctx, opts)
+	source, staged, cleanup, err := d.resolveUpdateTarget(ctx, opts)
+	// Whatever had to be brought down to read the bundle is scratch, and
+	// goes when the operation does. The release itself has already been
+	// copied into the store by then.
+	defer cleanup()
 	if err != nil {
 		return Result{}, err
 	}
@@ -102,6 +108,53 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	return out, nil
 }
 
+// materialiseSource returns a directory the bundle's manifest can be read from.
+//
+// A reference that already names an unpacked bundle is used in place. Anything
+// else -- an archive today, a URL or an OCI artifact later -- has to be brought
+// down before its manifest, its compatibility declarations or its hooks can be
+// looked at, and the staging directory is where that happens. It is scratch by
+// definition, which is what makes doing it during a dry run acceptable: a plan
+// that refused to fetch could not tell the operator anything about the release
+// they asked about.
+//
+// The caller removes what this creates; see the cleanup returned by
+// resolveUpdateTarget.
+func (d *Deps) materialiseSource(ctx context.Context, ref ports.Ref) (root string, cleanup func(), err error) {
+	if isUnpackedBundle(ref.Location) {
+		return ref.Location, func() {}, nil
+	}
+
+	if err := atomicfs.MkdirAll(d.Paths.StagingDir(), 0o750); err != nil {
+		return "", func() {}, err
+	}
+	staging, err := os.MkdirTemp(d.Paths.StagingDir(), "fetch-")
+	if err != nil {
+		return "", func() {}, domain.Internal(err, "cannot create a staging directory")
+	}
+	cleanup = func() { _ = atomicfs.RemoveAll(staging) }
+
+	if _, err := d.Source.Fetch(ctx, ref, staging); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return staging, cleanup, nil
+}
+
+// isUnpackedBundle reports whether a location can be read as a release where it
+// stands, without fetching anything.
+func isUnpackedBundle(location string) bool {
+	if location == "" {
+		return false
+	}
+	info, err := os.Stat(location)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(location, release.ManifestFileName))
+	return err == nil
+}
+
 // resolveUpdateTarget reads the bundle without mutating anything, and returns
 // it twice: rooted where it currently lives, and rooted where it will live.
 //
@@ -110,15 +163,20 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 // content digest is computed from file contents, paths and the executable bit,
 // so it is identical either side of the copy -- which is what lets the staging
 // step assert the copy was faithful rather than assume it.
-func (d *Deps) resolveUpdateTarget(ctx context.Context, opts UpdateOptions) (source, staged domain.Release, err error) {
+func (d *Deps) resolveUpdateTarget(
+	ctx context.Context,
+	opts UpdateOptions,
+) (source, staged domain.Release, cleanup func(), err error) {
+	cleanup = func() {}
+
 	switch {
 	case opts.Ref == "" && opts.To == "":
-		return domain.Release{}, domain.Release{},
+		return domain.Release{}, domain.Release{}, cleanup,
 			domain.Usage("no release was given").
 				WithHint("pass a bundle path, e.g. `morzer update ./bundle`, " +
 					"or --to <version> for one already in the release store")
 	case opts.Ref != "" && opts.To != "":
-		return domain.Release{}, domain.Release{},
+		return domain.Release{}, domain.Release{}, cleanup,
 			domain.Usage("--to and a bundle path are alternatives").
 				WithHint("--to installs a release already in the store; " +
 					"a path installs one from outside it")
@@ -127,42 +185,41 @@ func (d *Deps) resolveUpdateTarget(ctx context.Context, opts UpdateOptions) (sou
 		// destination are the same directory and staging is a no-op.
 		installed, err := d.resolveInstalled(opts.To)
 		if err != nil {
-			return domain.Release{}, domain.Release{}, err
+			return domain.Release{}, domain.Release{}, cleanup, err
 		}
 		opts.Ref = installed.Root
 	}
 
 	if d.Source == nil {
-		return domain.Release{}, domain.Release{},
+		return domain.Release{}, domain.Release{}, cleanup,
 			domain.Internal(nil, "no release source is configured")
 	}
 
 	ref, err := ports.ParseRef(opts.Ref)
 	if err != nil {
-		return domain.Release{}, domain.Release{}, err
-	}
-	if ref.Scheme != d.Source.Scheme() {
-		return domain.Release{}, domain.Release{},
-			domain.Usage("no source is configured for scheme %q", ref.Scheme).
-				WithHint("this build supports %q references; unpack the bundle and pass a path",
-					d.Source.Scheme())
+		return domain.Release{}, domain.Release{}, cleanup, err
 	}
 	ref.Digest = opts.ExpectDigest
 
-	// Resolve is read-only: it reads the manifest and hashes the tree
-	// without copying anything, so a bad reference fails before the lock is
-	// even taken.
+	// Resolve does not mutate the installation, so a reference this build
+	// cannot fetch -- or one whose digest does not match -- fails before the
+	// lock is even taken.
 	resolved, err := d.Source.Resolve(ctx, ref)
 	if err != nil {
-		return domain.Release{}, domain.Release{}, err
+		return domain.Release{}, domain.Release{}, cleanup, err
 	}
 
-	source, err = release.Load(ref.Location)
+	sourceRoot, cleanup, err := d.materialiseSource(ctx, ref)
 	if err != nil {
-		return domain.Release{}, domain.Release{}, err
+		return domain.Release{}, domain.Release{}, cleanup, err
+	}
+
+	source, err = release.Load(sourceRoot)
+	if err != nil {
+		return domain.Release{}, domain.Release{}, cleanup, err
 	}
 	if resolved.Version.IsZero() || !resolved.Version.Equal(source.Version()) {
-		return domain.Release{}, domain.Release{},
+		return domain.Release{}, domain.Release{}, cleanup,
 			domain.Internal(nil, "source resolved %s but the bundle declares %s",
 				resolved.Version, source.Version())
 	}
@@ -177,7 +234,7 @@ func (d *Deps) resolveUpdateTarget(ctx context.Context, opts UpdateOptions) (sou
 	// validation failure with nothing journaled as rolled back.
 	if existing, loadErr := release.Load(staged.Root); loadErr == nil {
 		if !atomicfs.SameDigest(existing.Digest, source.Digest) {
-			return domain.Release{}, domain.Release{},
+			return domain.Release{}, domain.Release{}, cleanup,
 				domain.ValidationError(domain.ErrDigestMismatch,
 					"release %s is already installed with a different digest", source.Version()).
 					WithHint("installed %s, incoming %s — these are different bundles "+
@@ -185,7 +242,7 @@ func (d *Deps) resolveUpdateTarget(ctx context.Context, opts UpdateOptions) (sou
 		}
 	}
 
-	return source, staged, nil
+	return source, staged, cleanup, nil
 }
 
 func updateFlags(opts UpdateOptions) map[string]string {
@@ -255,12 +312,14 @@ func stepVerifyBundle(d *Deps, inst domain.Installation, source domain.Release, 
 				return domain.Internal(nil, "no verifier is configured")
 			}
 
+			// The policy comes from the installation, never from the
+			// bundle: a bundle asserting it needs no signature, or
+			// naming the key that may sign it, would defeat the
+			// check it is supposed to satisfy.
 			err := d.Verifier.Verify(ctx, ports.BundlePath(source.Root), ports.Expectation{
-				Digest: opts.ExpectDigest,
-				// Comes from installation policy, never from the
-				// bundle: a bundle asserting it needs no signature
-				// would defeat the check.
-				Required: inst.Policy.RequireSignature,
+				Digest:     opts.ExpectDigest,
+				Required:   inst.Policy.RequireSignature,
+				PublicKeys: inst.Policy.SigningKeys,
 			})
 			if err != nil {
 				return err
