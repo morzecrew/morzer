@@ -25,6 +25,12 @@ type UpdateOptions struct {
 	// update; when empty the digest is recorded but not compared, because
 	// there is nothing to compare it against.
 	ExpectDigest string
+
+	// To selects a release already in the store by version, instead of
+	// pointing at a bundle. Sugar for passing its path: the store is
+	// populated by `release fetch`, and an operator should not have to know
+	// the layout to install from it.
+	To string
 }
 
 // Update installs a new release over the current one.
@@ -105,10 +111,25 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 // so it is identical either side of the copy -- which is what lets the staging
 // step assert the copy was faithful rather than assume it.
 func (d *Deps) resolveUpdateTarget(ctx context.Context, opts UpdateOptions) (source, staged domain.Release, err error) {
-	if opts.Ref == "" {
+	switch {
+	case opts.Ref == "" && opts.To == "":
 		return domain.Release{}, domain.Release{},
-			domain.Usage("no release reference was given").
-				WithHint("pass a path to an unpacked bundle, e.g. `morzer update ./bundle`")
+			domain.Usage("no release was given").
+				WithHint("pass a bundle path, e.g. `morzer update ./bundle`, " +
+					"or --to <version> for one already in the release store")
+	case opts.Ref != "" && opts.To != "":
+		return domain.Release{}, domain.Release{},
+			domain.Usage("--to and a bundle path are alternatives").
+				WithHint("--to installs a release already in the store; " +
+					"a path installs one from outside it")
+	case opts.To != "":
+		// Already in the store: nothing to fetch, so the source and the
+		// destination are the same directory and staging is a no-op.
+		installed, err := d.resolveInstalled(opts.To)
+		if err != nil {
+			return domain.Release{}, domain.Release{}, err
+		}
+		opts.Ref = installed.Root
 	}
 
 	if d.Source == nil {

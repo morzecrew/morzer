@@ -326,3 +326,59 @@ func TestUpdateRefusesTheSameVersionWithDifferentContent(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Message, "different digest")
 }
+
+func TestUpdateToInstallsFromTheReleaseStore(t *testing.T) {
+	h := updatedHarness(t) // 1.2.0 -> 1.3.0, both now in the store
+	ctx := context.Background()
+	setSchema(t, h, 12)
+
+	// Roll back so 1.3.0 is in the store but not current.
+	_, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "1.2.0", currentVersion(t, h))
+
+	// --to installs it again without an operator knowing the store layout.
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{To: "1.3.0"})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+	assert.Equal(t, "1.3.0", currentVersion(t, h))
+
+	// Nothing was copied: source and destination are the same directory.
+	var staged domain.StepRecord
+	for _, s := range result.Record.Steps {
+		if s.ID == "stage-release" {
+			staged = s
+		}
+	}
+	assert.Equal(t, domain.StepSkipped, staged.Status)
+}
+
+func TestUpdateRejectsBothARefAndTo(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
+		Ref: "./somewhere", To: "1.3.0",
+	})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+}
+
+func TestUpdateWithNeitherRefNorTo(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+	assert.Contains(t, domain.AsError(err).Hint, "--to")
+}
+
+func currentVersion(t *testing.T, h *harness) string {
+	t.Helper()
+	c, err := h.Deps.State.CurrentRelease(context.Background())
+	require.NoError(t, err)
+	return c.Version.String()
+}

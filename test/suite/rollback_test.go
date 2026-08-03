@@ -259,3 +259,99 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+// TestRollbackToReachesOlderReleases is the gap --to exists to close.
+//
+// Each rollback promotes the release it displaced to previous, so a second
+// rollback without --to returns to where the first started. Naming the target
+// is the only way to reach a release two steps back.
+func TestRollbackToReachesOlderReleases(t *testing.T) {
+	h := updatedHarness(t) // 1.2.0 -> 1.3.0
+	ctx := context.Background()
+	setSchema(t, h, 12)
+
+	// Without --to, rollback oscillates.
+	_, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err)
+	first, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "1.2.0", first.Version.String())
+
+	_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err)
+	second, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", second.Version.String(),
+		"a second rollback without --to returns to where the first started")
+
+	// Landing back on 1.3.0 re-ran its migration, so the schema is at 14
+	// again and 1.2.0 genuinely cannot read it. Put the database back within
+	// range: --to selects *where* to go, and the assessment still governs
+	// whether going there is safe.
+	setSchema(t, h, 12)
+
+	// Naming the target reaches it directly.
+	result, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{To: "1.2.0"})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+	assert.Equal(t, "true", result.Record.Flags["to_explicit"],
+		"a targeted rollback skipped over releases, which the journal should show")
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String())
+}
+
+func TestRollbackToRefusesAForwardMove(t *testing.T) {
+	h := updatedHarness(t)
+	ctx := context.Background()
+	setSchema(t, h, 12)
+
+	_, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err) // now on 1.2.0, with 1.3.0 still in the store
+
+	// Moving forward is an update: it gates on upgrade_from and takes a
+	// backup, neither of which a rollback does.
+	_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{To: "1.3.0"})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+	assert.Contains(t, domain.AsError(err).Hint, "update --to 1.3.0")
+}
+
+func TestRollbackToAnUninstalledVersion(t *testing.T) {
+	h := updatedHarness(t)
+	setSchema(t, h, 12)
+
+	_, err := ops.Rollback(context.Background(), h.Deps, ops.RollbackOptions{To: "9.9.9"})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+	// The error names what is available rather than leaving the operator to
+	// go looking.
+	assert.Contains(t, domain.AsError(err).Hint, "1.3.0")
+	assert.Contains(t, domain.AsError(err).Hint, "1.2.0")
+}
+
+func TestRollbackToStillAssesses(t *testing.T) {
+	h := updatedHarness(t)
+	ctx := context.Background()
+
+	// A named target gets the same three-question assessment as the default
+	// one: --to selects where to go, not whether it is safe.
+	setSchema(t, h, 14)
+
+	_, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{To: "1.2.0"})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitIncompatible, domain.ExitCode(err))
+}
+
+func TestRollbackToTheRunningReleaseIsRefused(t *testing.T) {
+	h := updatedHarness(t)
+	setSchema(t, h, 12)
+
+	// Rolling back to what is already running would stop and restart the
+	// product for nothing.
+	_, err := ops.Rollback(context.Background(), h.Deps, ops.RollbackOptions{To: "1.3.0"})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+	assert.Contains(t, domain.AsError(err).Hint, "apply")
+}

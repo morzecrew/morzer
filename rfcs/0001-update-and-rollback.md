@@ -1,6 +1,6 @@
 # RFC 0001 — Update and rollback
 
-- **Status:** 🚧 In progress — P1–P3 shipped 2026-08-03. P1: `CheckUpgrade` and `AssessRollback` are now covered (100% of both) and the `bundle-1.3.0` fixture exists. Testing them found and fixed two defects, recorded in §10 as decisions 9 and 10. P2: `ops.Update`, the `update` command, and fault injection at six points of the pipeline. P3: `ops.Rollback`, the `rollback` command and its refusal paths. Only P4 (`--to`) remains.
+- **Status:** ✅ Complete — shipped 2026-08-03. P1: `CheckUpgrade` and `AssessRollback` are now covered (100% of both) and the `bundle-1.3.0` fixture exists. Testing them found and fixed two defects, recorded in §10 as decisions 9 and 10. P2: `ops.Update`, the `update` command, and fault injection at six points of the pipeline. P3: `ops.Rollback`, the `rollback` command and its refusal paths. P4: `--to` on both, which was **not** gated on RFC 0004 as §11 claimed — see decision 15.
 - **Scope:** Adds two operations to `internal/lifecycle/ops`: `update`, which
   fetches a release, verifies it, gates it on the manifest's `compatibility`
   block, takes a pre-update backup and swaps the release pointer; and
@@ -49,6 +49,12 @@ The gap is visible in the code. `domain.CheckUpgrade` and
 three-part rollback assessment. A grep for callers across `internal/` returns
 nothing. They were written alongside the domain model and never wired, because
 the operations that would call them do not exist.
+
+**Verified after P1–P3 shipped:** a second rollback returns to where the first
+started. `SetCurrentRelease` promotes the displaced release to previous, so
+1.3.0 → 1.2.0 leaves previous at 1.3.0 and the next rollback goes forward again.
+Reaching a release two steps back is impossible without naming it, which is what
+P4's `--to` is for — not a convenience.
 
 ## 3. Current state
 
@@ -320,6 +326,9 @@ the immediate previous one; it runs the same assessment against that target.
 | 12 | *(P2, 2026-08-03)* `--dry-run` plans the convergence steps against the bundle at its source rather than its release-store destination. Nothing is staged during a plan, so planning against the destination reported every template and hook as missing and told the operator their bundle was broken when it was merely not installed yet. |
 | 13 | *(P3, 2026-08-03)* The rollback assessment runs before the engine rather than as a step. A refused rollback is one that never started, so journaling it as a failed operation would file a record of work that did not happen beside records of work that did — and checking before the engine is also what makes the assessment available to `--dry-run`, which executes no steps. |
 | 14 | *(P3, 2026-08-03)* `ReleaseRecord.SchemaAtInstall` is carried forward across a rollback, not reset. The schema describes the database, and rolling containers back migrates nothing; the migrate hook overwrites it at the end of the pipeline with what the database actually reports. |
+| 15 | *(P4, 2026-08-03)* P4 was **not** gated on RFC 0004, contrary to §11 as written. `--to` resolves a version against the release store, which needs neither the source registry nor a new transport. The gating claim was made before update and rollback existed. |
+| 16 | *(P4, 2026-08-03)* `rollback --to` refuses a target newer than, or equal to, what is installed. Forward is `update --to`, which gates on `upgrade_from` and takes a backup; sideways is `apply`. Accepting either here would silently skip those. |
+| 17 | *(P4, 2026-08-03)* `--to` selects where to go, never whether it is safe. A named target gets the same three-question assessment as the default one, so `--to` cannot be used to route around a refusal. |
 
 ## 11. Phasing
 
@@ -332,7 +341,9 @@ the immediate previous one; it runs the same assessment against that target.
   decisions 11 and 12.
 - **P3** — ✅ *Shipped 2026-08-03.* `ops.Rollback`, the `rollback` command and
   its refusal paths. One divergence from §5.4, recorded as decision 13.
-- **P4** — `--to` on both, gated on RFC 0004's reference parsing.
+- **P4** — ✅ *Shipped 2026-08-03.* `--to` on both. The claim that this was
+  gated on RFC 0004 was wrong: resolving a version to a release-store path needs
+  no source registry and no new transports. See decision 15.
 
 P1 is worth landing on its own regardless of when P2 follows: it puts the
 repository's only untested domain logic under test.

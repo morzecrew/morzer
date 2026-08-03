@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -24,6 +26,7 @@ import (
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // Deps is everything an operation needs. It is one struct rather than a
@@ -395,3 +398,57 @@ func describe(opType domain.OperationType, from, to domain.Version) string {
 // so callers outside this package can read the journal without importing
 // ports for one zero value.
 func OperationFilterAll() ports.Filter { return ports.Filter{} }
+
+// installedVersions lists the releases present in the release store, newest
+// first.
+//
+// A directory whose manifest will not load is skipped rather than reported: the
+// store accumulates half-fetched directories, and a stray one must not make
+// `--to` unusable.
+func (d *Deps) installedVersions() []domain.Version {
+	entries, err := os.ReadDir(d.Paths.ReleasesDir())
+	if err != nil {
+		return nil
+	}
+
+	var out []domain.Version
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		rel, err := release.Load(filepath.Join(d.Paths.ReleasesDir(), e.Name()))
+		if err != nil {
+			continue
+		}
+		out = append(out, rel.Version())
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].GreaterThan(out[j]) })
+	return out
+}
+
+// resolveInstalled loads a release from the store by version, naming what is
+// available when it is not there.
+func (d *Deps) resolveInstalled(version string) (domain.Release, error) {
+	parsed, err := domain.ParseVersion(version)
+	if err != nil {
+		return domain.Release{}, err
+	}
+
+	rel, loadErr := release.Load(d.Paths.ReleaseDir(parsed.String()))
+	if loadErr == nil {
+		return rel, nil
+	}
+
+	available := d.installedVersions()
+	labels := make([]string, 0, len(available))
+	for _, v := range available {
+		labels = append(labels, v.String())
+	}
+	hint := "run `morzer release list` to see what is installed"
+	if len(labels) > 0 {
+		hint = "installed releases: " + strings.Join(labels, ", ")
+	}
+
+	return domain.Release{}, domain.ValidationError(domain.ErrReleaseNotFound,
+		"release %s is not in the release store", parsed).WithHint("%s", hint)
+}

@@ -16,6 +16,14 @@ import (
 // RollbackOptions configures a rollback.
 type RollbackOptions struct {
 	Options
+
+	// To selects an installed release other than the immediate previous
+	// one.
+	//
+	// Without it a second rollback bounces back to where it started, because
+	// each one promotes the release it displaced to previous. Reaching a
+	// release two steps back is only possible by naming it.
+	To string
 }
 
 // RollbackReport is what `rollback` answers before it acts, and what it
@@ -52,7 +60,7 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		return Result{}, err
 	}
 
-	current, previous, err := d.rollbackEndpoints(ctx)
+	current, previous, err := d.rollbackEndpoints(ctx, opts.To)
 	if err != nil {
 		return Result{}, err
 	}
@@ -101,7 +109,7 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		From:        current.Version,
 		To:          previous.Version,
 		Steps:       rollbackSteps(d, inst, current, previousRel, opts),
-		Flags:       map[string]string{"to": previous.Version.String()},
+		Flags:       rollbackFlags(previous, opts),
 	}
 
 	var result engine.Result
@@ -125,8 +133,20 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	return out, nil
 }
 
+func rollbackFlags(previous domain.ReleaseRecord, opts RollbackOptions) map[string]string {
+	flags := map[string]string{"to": previous.Version.String()}
+	if opts.To != "" {
+		// Recorded because a targeted rollback skipped over releases an
+		// incident review may want to know about.
+		flags["to_explicit"] = "true"
+	}
+	return flags
+}
+
 // rollbackEndpoints resolves what is running and what to return to.
-func (d *Deps) rollbackEndpoints(ctx context.Context) (current, previous domain.ReleaseRecord, err error) {
+//
+// `to` names an installed release; empty means the immediate previous one.
+func (d *Deps) rollbackEndpoints(ctx context.Context, to string) (current, previous domain.ReleaseRecord, err error) {
 	if current, err = d.State.CurrentRelease(ctx); err != nil {
 		return current, previous, err
 	}
@@ -134,6 +154,38 @@ func (d *Deps) rollbackEndpoints(ctx context.Context) (current, previous domain.
 		return current, previous, domain.InstallationError(domain.ErrReleaseNotFound,
 			"no release is installed, so there is nothing to roll back").
 			WithHint("run `morzer update <bundle>` to install one")
+	}
+
+	if to != "" {
+		target, err := d.resolveInstalled(to)
+		if err != nil {
+			return current, previous, err
+		}
+		// Moving to a newer release is an update, not a rollback. They
+		// differ in what they check -- an update gates on upgrade_from
+		// and takes a backup -- so silently doing one when asked for the
+		// other would skip those.
+		if target.Version().GreaterThan(current.Version) {
+			return current, previous, domain.Usage(
+				"%s is newer than the installed %s", target.Version(), current.Version).
+				WithHint("use `morzer update --to %s` to move forward", target.Version())
+		}
+		// The same check the default path makes: rolling back to what is
+		// already running would stop and restart the product for nothing.
+		if target.Version().Equal(current.Version) {
+			return current, previous, domain.Usage(
+				"%s is already the installed release", target.Version()).
+				WithHint("run `morzer apply` to reconverge to it, " +
+					"or `morzer release list` to see what else is installed")
+		}
+		return current, domain.ReleaseRecord{
+			SchemaVersion:   domain.InstallationSchemaVersion,
+			Name:            target.Name(),
+			Version:         target.Version(),
+			Digest:          target.Digest,
+			Root:            target.Root,
+			SchemaAtInstall: current.SchemaAtInstall,
+		}, nil
 	}
 
 	if previous, err = d.State.PreviousRelease(ctx); err != nil {

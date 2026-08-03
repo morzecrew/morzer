@@ -134,18 +134,21 @@ func newUpdateCommand(app *App) *cobra.Command {
 		skipBackup bool
 		digest     string
 		profile    string
+		to         string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "update <bundle>",
+		Use:   "update [bundle]",
 		Short: "Install a new release over the current one",
 		Long: "Verifies the bundle, checks it against the compatibility the manifest\n" +
 			"declares, takes a pre-update backup, stages the release and converges\n" +
 			"to it.\n\n" +
 			"A failed update rolls back to the release that was running. The database\n" +
 			"is never rolled back automatically: when a migration cannot be undone the\n" +
-			"release says so, and the answer is a restore from the backup taken here.",
-		Args: cobra.ExactArgs(1),
+			"release says so, and the answer is a restore from the backup taken here.\n\n" +
+			"Takes a bundle path, or --to <version> for a release already fetched into\n" +
+			"the release store.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := app.operationOptions()
 			opts.Profile = profile
@@ -165,9 +168,15 @@ func newUpdateCommand(app *App) *cobra.Command {
 			// the error is left to the step.
 			_ = app.attachBackupEngine(cmd.Context())
 
+			ref := ""
+			if len(args) == 1 {
+				ref = args[0]
+			}
+
 			result, err := ops.Update(cmd.Context(), app.Deps, ops.UpdateOptions{
 				Options:      opts,
-				Ref:          args[0],
+				Ref:          ref,
+				To:           to,
 				ExpectDigest: digest,
 			})
 			app.finish(result)
@@ -181,12 +190,15 @@ func newUpdateCommand(app *App) *cobra.Command {
 	f.StringVar(&digest, "digest", "",
 		"expected bundle content digest; a mismatch refuses the update")
 	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")
+	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
 
 	return cmd
 }
 
 func newRollbackCommand(app *App) *cobra.Command {
-	return &cobra.Command{
+	var to string
+
+	cmd := &cobra.Command{
 		Use:   "rollback",
 		Short: "Return to the previous release",
 		Long: "Reports three things separately before acting: whether the containers\n" +
@@ -195,7 +207,10 @@ func newRollbackCommand(app *App) *cobra.Command {
 			"Refuses when the answers do not permit a safe return, naming the backup\n" +
 			"to restore from instead. The database is never rolled back automatically,\n" +
 			"and --force does not override a refusal: it authorises destructive\n" +
-			"actions, not incorrect ones.",
+			"actions, not incorrect ones.\n\n" +
+			"Returns to the immediate previous release by default. Use --to to reach\n" +
+			"an older one: each rollback promotes the release it displaced, so a\n" +
+			"second rollback without --to returns to where the first started.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Wired so a refusal can name the most recent backup. Its
@@ -204,6 +219,7 @@ func newRollbackCommand(app *App) *cobra.Command {
 
 			result, err := ops.Rollback(cmd.Context(), app.Deps, ops.RollbackOptions{
 				Options: app.operationOptions(),
+				To:      to,
 			})
 
 			// The assessment is the point of the command, so it reaches
@@ -215,6 +231,11 @@ func newRollbackCommand(app *App) *cobra.Command {
 			return err
 		},
 	}
+
+	cmd.Flags().StringVar(&to, "to", "",
+		"roll back to this installed version rather than the immediate previous one")
+
+	return cmd
 }
 
 func newStatusCommand(app *App) *cobra.Command {
