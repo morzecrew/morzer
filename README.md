@@ -284,6 +284,10 @@ export/import, restore verified on a clean VM.
 `require_signature` policy, goreleaser, offline installation, published JSON
 Schema.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
