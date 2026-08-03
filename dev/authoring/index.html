@@ -12,36 +12,36 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/exit-codes/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/authoring/">
       
       
-        <link rel="prev" href="../installation-commands/">
+        <link rel="prev" href="../operating/recovering-a-lost-machine/">
       
       
-        <link rel="next" href="../output-modes/">
+        <link rel="next" href="./your-first-bundle/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="zensical-0.0.52">
     
     
       
-        <title>Exit codes - morzer</title>
+        <title>What a bundle is - morzer</title>
       
     
     
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.8b3b5a67.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.dfe2e883.min.css">
       
       
 
@@ -60,7 +60,7 @@
       
     
     
-    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
     
       
 
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#exit-codes" class="md-skip">
+        <a href="#authoring-a-release-bundle" class="md-skip">
           Skip to content
         </a>
       
@@ -103,7 +103,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="morzer" class="md-header__button md-logo" aria-label="morzer" data-md-component="logo">
+    <a href="./.." title="morzer" class="md-header__button md-logo" aria-label="morzer" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Exit codes
+              What a bundle is
             
           </span>
         </div>
@@ -207,7 +207,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../.." class="md-tabs__link">
+      <a href="./.." class="md-tabs__link">
         
   
   Home
@@ -228,7 +228,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../get-started/installation/" class="md-tabs__link">
+        <a href="../get-started/installation/" class="md-tabs__link">
           
   
   Get started
@@ -250,32 +250,10 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../operating/updating/" class="md-tabs__link">
+        <a href="../operating/updating/" class="md-tabs__link">
           
   
   Operating
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    
-      
-    
-    
-    
-      <li class="md-tabs__item">
-        <a href="../../authoring/" class="md-tabs__link">
-          
-  
-  Authoring
 
         </a>
       </li>
@@ -296,7 +274,29 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../commands/" class="md-tabs__link">
+        <a href="././" class="md-tabs__link">
+          
+  
+  Authoring
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/commands/" class="md-tabs__link">
           
   
   Reference
@@ -318,7 +318,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../explanation/architecture/" class="md-tabs__link">
+        <a href="../explanation/architecture/" class="md-tabs__link">
           
   
   Explanation
@@ -351,7 +351,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="morzer" class="md-nav__button md-logo" aria-label="morzer" data-md-component="logo">
+    <a href="./.." title="morzer" class="md-nav__button md-logo" aria-label="morzer" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
@@ -381,7 +381,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href="./.." class="md-nav__link">
         
   
   
@@ -459,7 +459,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../get-started/installation/" class="md-nav__link">
+      <a href="../get-started/installation/" class="md-nav__link">
         
   
   
@@ -488,7 +488,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../get-started/first-deployment/" class="md-nav__link">
+      <a href="../get-started/first-deployment/" class="md-nav__link">
         
   
   
@@ -574,7 +574,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/updating/" class="md-nav__link">
+      <a href="../operating/updating/" class="md-nav__link">
         
   
   
@@ -603,7 +603,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/rolling-back/" class="md-nav__link">
+      <a href="../operating/rolling-back/" class="md-nav__link">
         
   
   
@@ -632,7 +632,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/secrets/" class="md-nav__link">
+      <a href="../operating/secrets/" class="md-nav__link">
         
   
   
@@ -661,7 +661,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/backups/" class="md-nav__link">
+      <a href="../operating/backups/" class="md-nav__link">
         
   
   
@@ -690,7 +690,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/installing-offline/" class="md-nav__link">
+      <a href="../operating/installing-offline/" class="md-nav__link">
         
   
   
@@ -719,7 +719,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
+      <a href="../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
   
@@ -729,179 +729,6 @@
     
   
   Recovering a lost machine
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Authoring
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-  Authoring
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../authoring/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  What a bundle is
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../authoring/your-first-bundle/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Your first bundle
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../authoring/hooks/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Writing hooks
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../authoring/publishing/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-upload" viewBox="0 0 24 24"><path d="M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Signing and publishing
 
     
   </span>
@@ -946,10 +773,265 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Authoring
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Authoring
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a bundle is
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a bundle is
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-division-of-labour" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The division of labour
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-things-you-declare" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The four things you declare
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start-from-something-that-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Start from something that works
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./your-first-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Writing hooks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./publishing/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-upload" viewBox="0 0 24 24"><path d="M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Signing and publishing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -966,7 +1048,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -983,7 +1065,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../commands/" class="md-nav__link">
+      <a href="../reference/commands/" class="md-nav__link">
         
   
   
@@ -1012,7 +1094,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../secret-commands/" class="md-nav__link">
+      <a href="../reference/secret-commands/" class="md-nav__link">
         
   
   
@@ -1041,7 +1123,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../release-commands/" class="md-nav__link">
+      <a href="../reference/release-commands/" class="md-nav__link">
         
   
   
@@ -1070,7 +1152,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../installation-commands/" class="md-nav__link">
+      <a href="../reference/installation-commands/" class="md-nav__link">
         
   
   
@@ -1096,38 +1178,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Exit codes
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../reference/exit-codes/" class="md-nav__link">
         
   
   
@@ -1144,71 +1198,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        12 is the one that matters
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Error codes in output
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Categories
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Every error carries a hint
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1221,7 +1210,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../output-modes/" class="md-nav__link">
+      <a href="../reference/output-modes/" class="md-nav__link">
         
   
   
@@ -1250,7 +1239,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../manifest/" class="md-nav__link">
+      <a href="../reference/manifest/" class="md-nav__link">
         
   
   
@@ -1279,7 +1268,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../hooks/" class="md-nav__link">
+      <a href="../reference/hooks/" class="md-nav__link">
         
   
   
@@ -1365,7 +1354,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../explanation/architecture/" class="md-nav__link">
+      <a href="../explanation/architecture/" class="md-nav__link">
         
   
   
@@ -1394,7 +1383,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../explanation/the-step-engine/" class="md-nav__link">
+      <a href="../explanation/the-step-engine/" class="md-nav__link">
         
   
   
@@ -1423,7 +1412,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../explanation/secrets/" class="md-nav__link">
+      <a href="../explanation/secrets/" class="md-nav__link">
         
   
   
@@ -1493,10 +1482,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
+  <a href="#the-division-of-labour" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        12 is the one that matters
+        The division of labour
       </span>
     </span>
   </a>
@@ -1504,10 +1493,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
+  <a href="#the-four-things-you-declare" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Error codes in output
+        The four things you declare
       </span>
     </span>
   </a>
@@ -1515,21 +1504,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
+  <a href="#start-from-something-that-works" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Categories
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Every error carries a hint
+        Start from something that works
       </span>
     </span>
   </a>
@@ -1561,7 +1539,7 @@
   
   
     <li class="md-path__item">
-      <a href="../.." class="md-path__link">
+      <a href="./.." class="md-path__link">
         
   
   <span class="md-ellipsis">
@@ -1583,11 +1561,11 @@
     
     
       <li class="md-path__item">
-        <a href="../commands/" class="md-path__link">
+        <a href="././" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    Reference
+    Authoring
   </span>
 
         </a>
@@ -1607,156 +1585,103 @@
   
 
 
-<h1 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h1>
-<p>Stable, and depended on by systemd units, CI pipelines and operator scripts.
-Codes are never renamed or repurposed once published.</p>
-<p>The mapping happens in exactly one place — <code>domain.ExitCode</code> — so a new error
-type cannot quietly acquire a new exit code by being handled somewhere else.</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: right;">Code</th>
-<th>Error code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: right;">0</td>
-<td>—</td>
-<td>Success.</td>
-</tr>
-<tr>
-<td style="text-align: right;">1</td>
-<td><code>internal</code></td>
-<td>Internal or unexpected error. The manager itself is at fault.</td>
-</tr>
-<tr>
-<td style="text-align: right;">2</td>
-<td><code>usage</code></td>
-<td>Usage or input validation. A mistyped flag, an unknown subcommand, an invalid manifest.</td>
-</tr>
-<tr>
-<td style="text-align: right;">3</td>
-<td><code>preflight</code></td>
-<td>A precondition failed: a missing tool, a version below what the release requires, not enough disk.</td>
-</tr>
-<tr>
-<td style="text-align: right;">4</td>
-<td><code>locked</code></td>
-<td>The deployment lock is held by another operation. Retry, or pass <code>--wait</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">5</td>
-<td><code>installation</code></td>
-<td>The installation is missing or corrupted.</td>
-</tr>
-<tr>
-<td style="text-align: right;">6</td>
-<td><code>secrets</code></td>
-<td>A secrets error: the state could not be decrypted, a required secret is absent.</td>
-</tr>
-<tr>
-<td style="text-align: right;">7</td>
-<td><code>runtime</code></td>
-<td>The container runtime failed — <code>docker</code> or <code>docker compose</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">8</td>
-<td><code>health</code></td>
-<td>A health check or the release's smoke test failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">9</td>
-<td><code>incompatible</code></td>
-<td>The release cannot be installed over, or rolled back to, what is running.</td>
-</tr>
-<tr>
-<td style="text-align: right;">10</td>
-<td><code>backup</code></td>
-<td>A backup or restore failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">11</td>
-<td><code>compensated</code></td>
-<td>The operation failed and compensation succeeded. The system is back where it started.</td>
-</tr>
-<tr>
-<td style="text-align: right;">12</td>
-<td><code>manual-intervention</code></td>
-<td>The operation mutated something it could not undo. A human has to look.</td>
-</tr>
-<tr>
-<td style="text-align: right;">130</td>
-<td><code>interrupted</code></td>
-<td>Interrupted by a signal.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="12-is-the-one-that-matters">12 is the one that matters<a class="headerlink" href="#12-is-the-one-that-matters" title="Permanent link">&para;</a></h2>
-<p>Exit 12 means an operation changed something no automatic action can put back —
-a migration that ran, a restore that got halfway. It is not a louder version of
-11: 11 says the system is where you left it, and 12 says it is not.</p>
-<p>The systemd unit sets <code>RestartPreventExitStatus=12</code> so a unit that hits it does
-not spin. The failed operation keeps surfacing in <code>status</code> and <code>doctor</code> until an
-operator clears it with <code>morzer status --clear-intervention</code>.</p>
-<p>Steps declare this explicitly rather than having it inferred from the absence of
-a compensator. Most steps without one are simply read-only, and inferring would
-flag every failed health check for human acknowledgement — which trains people
-to clear the flag without looking, destroying the value of the one signal meant
-to stop them.</p>
-<h2 id="error-codes-in-output">Error codes in output<a class="headerlink" href="#error-codes-in-output" title="Permanent link">&para;</a></h2>
-<p>Every failure carries a machine-readable <code>code</code> (the middle column above)
-alongside a human <code>message</code> and a <code>hint</code>. Under <code>--json</code> they are fields of the
-single object on stdout:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;exit_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;preflight&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker 23.0.1 is older than the 24 this release requires&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;upgrade docker, or install a release with a lower requirement&quot;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
+<h1 id="authoring-a-release-bundle">Authoring a release bundle<a class="headerlink" href="#authoring-a-release-bundle" title="Permanent link">&para;</a></h1>
+<p>You ship a product. Your users run it on machines you do not have access to.
+A <strong>release bundle</strong> is what you hand them: an immutable archive describing one
+version of your product completely enough that a manager on their machine can
+install, configure, update, back up and roll it back without you.</p>
+<div class="highlight"><pre><span></span><code>release/
+├── manifest.yaml       the contract — api_version: selfhost/v1alpha1
+├── compose/            your service topology
+├── templates/          configuration templates + the secret schema
+├── hooks/              your product-specific logic
+└── VERSION
 </code></pre></div>
-<p>Match on <code>code</code>, not on <code>message</code>. Messages are written for people and will be
-reworded; codes are a contract.</p>
-<h2 id="categories">Categories<a class="headerlink" href="#categories" title="Permanent link">&para;</a></h2>
-<p><code>category</code> groups a failure by who can act on it. It carries no control-flow
-meaning — it exists so a dashboard can separate "the operator mistyped
-something" from "the manager has a bug".</p>
+<h2 id="the-division-of-labour">The division of labour<a class="headerlink" href="#the-division-of-labour" title="Permanent link">&para;</a></h2>
+<p>This is the whole design, and everything else follows from it:</p>
 <table>
 <thead>
 <tr>
-<th>Category</th>
-<th>Meaning</th>
+<th>The manager owns</th>
+<th>You own</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>user</code></td>
-<td>The operator can fix this directly.</td>
+<td>Ordering, atomicity, journaling, compensation</td>
+<td>What the product <em>is</em></td>
 </tr>
 <tr>
-<td><code>system</code></td>
-<td>The machine or an external tool is at fault.</td>
+<td>Taking the lock, taking the backup</td>
+<td>How to back up your data</td>
 </tr>
 <tr>
-<td><code>bug</code></td>
-<td>The manager itself is at fault.</td>
+<td>Deciding <em>whether</em> an update is safe</td>
+<td>Declaring what makes it safe</td>
 </tr>
 <tr>
-<td><code>conflict</code></td>
-<td>Another actor holds the resource.</td>
+<td>Running hooks and reporting what they said</td>
+<td>What the hooks do</td>
+</tr>
+<tr>
+<td>Encrypting, rendering and rotating secrets</td>
+<td>Declaring which secrets exist</td>
 </tr>
 </tbody>
 </table>
-<h2 id="every-error-carries-a-hint">Every error carries a hint<a class="headerlink" href="#every-error-carries-a-hint" title="Permanent link">&para;</a></h2>
-<p><code>message</code> says what happened; <code>hint</code> says what to do about it. Both are printed.
-An error without its remedy is a support ticket.</p>
-<p>Neither may contain a secret value — callers redact before constructing, and the
-<code>domain.Secret</code> type cannot be formatted into one by accident.</p>
+<p>The manager never learns anything product-specific. That is not modesty — it is
+what lets a bug fix in the manager reach every product without a coordinated
+release, and what lets your product change shape without a manager that knows
+about it.</p>
+<h2 id="the-four-things-you-declare">The four things you declare<a class="headerlink" href="#the-four-things-you-declare" title="Permanent link">&para;</a></h2>
+<p><strong>Identity and requirements.</strong> Your name and version, the architectures and OS
+versions you support, the tools and their minimum versions, memory, disk, ports.
+The manager refuses to install on a machine that does not meet them, before
+anything is written.</p>
+<p><strong>Images, pinned by digest.</strong> A bare tag is rejected at load time. An unpinned
+image makes a release mutable, and a mutable release makes rollback meaningless
+— the same version could produce a different system on a different day.</p>
+<p><strong>Compatibility.</strong> What this release can be installed over, which database
+schemas it can read, and whether returning to the previous release is safe.
+These are the declarations that let a manager decide an update is unsafe
+<em>before</em> it starts, rather than discovering it halfway.</p>
+<p><strong>Operations.</strong> Executables in your bundle that the manager invokes at defined
+points: migrate, smoke test, backup, restore, health checks. See
+<a href="hooks/">Hooks</a>.</p>
+<h2 id="start-from-something-that-works">Start from something that works<a class="headerlink" href="#start-from-something-that-works" title="Permanent link">&para;</a></h2>
+<p>The example bundle in the repository is a complete, valid bundle that this
+project's test suite runs against on every commit — including an acceptance run
+that installs it against real Docker, updates it, and rolls it back.</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/morzecrew/morzer
+cp<span class="w"> </span>-r<span class="w"> </span>morzer/testdata/bundle<span class="w"> </span>./my-product
+morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product
+</code></pre></div>
+<p>Every example on these pages is extracted from that bundle at build time, so
+nothing here can drift from something that demonstrably works.</p>
+<div class="grid cards">
+<ul>
+<li>
+<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg></span> <strong>Build your first bundle</strong></p>
+<hr />
+<p><a href="your-first-bundle/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Your first bundle</a></p>
+</li>
+<li>
+<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg></span> <strong>Write the hooks</strong></p>
+<hr />
+<p><a href="hooks/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Hooks</a></p>
+</li>
+<li>
+<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-upload" viewBox="0 0 24 24"><path d="M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></span> <strong>Sign and publish it</strong></p>
+<hr />
+<p><a href="publishing/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Publishing</a></p>
+</li>
+<li>
+<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13"/></svg></span> <strong>Every field</strong></p>
+<hr />
+<p><a href="../reference/manifest/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Manifest reference</a></p>
+</li>
+</ul>
+</div>
 
 
 
@@ -1797,7 +1722,7 @@ An error without its remedy is a support ticket.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../installation-commands/" class="md-footer__link md-footer__link--prev" aria-label="Previous: installation">
+          <a href="../operating/recovering-a-lost-machine/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Recovering a lost machine">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1807,20 +1732,20 @@ An error without its remedy is a support ticket.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                installation
+                Recovering a lost machine
               </div>
             </div>
           </a>
         
         
           
-          <a href="../output-modes/" class="md-footer__link md-footer__link--next" aria-label="Next: Output modes">
+          <a href="./your-first-bundle/" class="md-footer__link md-footer__link--next" aria-label="Next: Your first bundle">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Output modes
+                Your first bundle
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1863,10 +1788,10 @@ An error without its remedy is a support ticket.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["search.highlight","navigation.footer","navigation.instant","navigation.instant.progress","navigation.tabs","navigation.sections","navigation.path","navigation.top","toc.follow","content.code.copy","content.code.select","content.code.annotate","content.tooltips"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["search.highlight","navigation.footer","navigation.instant","navigation.instant.progress","navigation.tabs","navigation.sections","navigation.path","navigation.top","toc.follow","content.code.copy","content.code.select","content.code.annotate","content.tooltips"],"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      <script src="../assets/javascripts/bundle.ed145cee.min.js"></script>
       
     
   </body>

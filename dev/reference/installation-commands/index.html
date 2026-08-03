@@ -12,13 +12,13 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/exit-codes/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/installation-commands/">
       
       
-        <link rel="prev" href="../installation-commands/">
+        <link rel="prev" href="../release-commands/">
       
       
-        <link rel="next" href="../output-modes/">
+        <link rel="next" href="../exit-codes/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Exit codes - morzer</title>
+        <title>installation - morzer</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#exit-codes" class="md-skip">
+        <a href="#morzer-installation" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Exit codes
+              installation
             
           </span>
         </div>
@@ -1067,35 +1067,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../installation-commands/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  installation
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -1112,12 +1083,12 @@
           
   
   
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
   
   <span class="md-ellipsis">
     
   
-  Exit codes
+  installation
 
     
   </span>
@@ -1131,12 +1102,12 @@
         
   
   
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
   
   <span class="md-ellipsis">
     
   
-  Exit codes
+  installation
 
     
   </span>
@@ -1162,43 +1133,77 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
+  <a href="#installation-export" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        12 is the one that matters
+        installation export
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="installation export">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-makes-an-export-usable" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What makes an export usable
       </span>
     </span>
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
+  <a href="#installation-import" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Error codes in output
+        installation import
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="installation import">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#refusals" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Refusals
       </span>
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-does-not-do" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Categories
+        What it does not do
       </span>
     </span>
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
+  <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Every error carries a hint
+        Related
       </span>
     </span>
   </a>
@@ -1209,6 +1214,35 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../exit-codes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1493,43 +1527,77 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
+  <a href="#installation-export" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        12 is the one that matters
+        installation export
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="installation export">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-makes-an-export-usable" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What makes an export usable
       </span>
     </span>
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
+  <a href="#installation-import" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Error codes in output
+        installation import
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="installation import">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#refusals" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Refusals
       </span>
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-does-not-do" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Categories
+        What it does not do
       </span>
     </span>
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
+  <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Every error carries a hint
+        Related
       </span>
     </span>
   </a>
@@ -1607,156 +1675,130 @@
   
 
 
-<h1 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h1>
-<p>Stable, and depended on by systemd units, CI pipelines and operator scripts.
-Codes are never renamed or repurposed once published.</p>
-<p>The mapping happens in exactly one place — <code>domain.ExitCode</code> — so a new error
-type cannot quietly acquire a new exit code by being handled somewhere else.</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: right;">Code</th>
-<th>Error code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: right;">0</td>
-<td>—</td>
-<td>Success.</td>
-</tr>
-<tr>
-<td style="text-align: right;">1</td>
-<td><code>internal</code></td>
-<td>Internal or unexpected error. The manager itself is at fault.</td>
-</tr>
-<tr>
-<td style="text-align: right;">2</td>
-<td><code>usage</code></td>
-<td>Usage or input validation. A mistyped flag, an unknown subcommand, an invalid manifest.</td>
-</tr>
-<tr>
-<td style="text-align: right;">3</td>
-<td><code>preflight</code></td>
-<td>A precondition failed: a missing tool, a version below what the release requires, not enough disk.</td>
-</tr>
-<tr>
-<td style="text-align: right;">4</td>
-<td><code>locked</code></td>
-<td>The deployment lock is held by another operation. Retry, or pass <code>--wait</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">5</td>
-<td><code>installation</code></td>
-<td>The installation is missing or corrupted.</td>
-</tr>
-<tr>
-<td style="text-align: right;">6</td>
-<td><code>secrets</code></td>
-<td>A secrets error: the state could not be decrypted, a required secret is absent.</td>
-</tr>
-<tr>
-<td style="text-align: right;">7</td>
-<td><code>runtime</code></td>
-<td>The container runtime failed — <code>docker</code> or <code>docker compose</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">8</td>
-<td><code>health</code></td>
-<td>A health check or the release's smoke test failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">9</td>
-<td><code>incompatible</code></td>
-<td>The release cannot be installed over, or rolled back to, what is running.</td>
-</tr>
-<tr>
-<td style="text-align: right;">10</td>
-<td><code>backup</code></td>
-<td>A backup or restore failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">11</td>
-<td><code>compensated</code></td>
-<td>The operation failed and compensation succeeded. The system is back where it started.</td>
-</tr>
-<tr>
-<td style="text-align: right;">12</td>
-<td><code>manual-intervention</code></td>
-<td>The operation mutated something it could not undo. A human has to look.</td>
-</tr>
-<tr>
-<td style="text-align: right;">130</td>
-<td><code>interrupted</code></td>
-<td>Interrupted by a signal.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="12-is-the-one-that-matters">12 is the one that matters<a class="headerlink" href="#12-is-the-one-that-matters" title="Permanent link">&para;</a></h2>
-<p>Exit 12 means an operation changed something no automatic action can put back —
-a migration that ran, a restore that got halfway. It is not a louder version of
-11: 11 says the system is where you left it, and 12 says it is not.</p>
-<p>The systemd unit sets <code>RestartPreventExitStatus=12</code> so a unit that hits it does
-not spin. The failed operation keeps surfacing in <code>status</code> and <code>doctor</code> until an
-operator clears it with <code>morzer status --clear-intervention</code>.</p>
-<p>Steps declare this explicitly rather than having it inferred from the absence of
-a compensator. Most steps without one are simply read-only, and inferring would
-flag every failed health check for human acknowledgement — which trains people
-to clear the flag without looking, destroying the value of the one signal meant
-to stop them.</p>
-<h2 id="error-codes-in-output">Error codes in output<a class="headerlink" href="#error-codes-in-output" title="Permanent link">&para;</a></h2>
-<p>Every failure carries a machine-readable <code>code</code> (the middle column above)
-alongside a human <code>message</code> and a <code>hint</code>. Under <code>--json</code> they are fields of the
-single object on stdout:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;exit_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;preflight&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker 23.0.1 is older than the 24 this release requires&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;upgrade docker, or install a release with a lower requirement&quot;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
+<h1 id="morzer-installation"><code>morzer installation</code><a class="headerlink" href="#morzer-installation" title="Permanent link">&para;</a></h1>
+<p>An <strong>installation export</strong> carries the identity of a deployment and its
+encrypted secret state, so a machine that is gone can be rebuilt. It carries no
+application data: <a href="../commands/#backup"><code>backup</code></a> owns that.</p>
+<p>The procedure that uses these commands is
+<a href="../../operating/recovering-a-lost-machine/">Recovering a lost machine</a>. This page
+is the surface.</p>
+<h2 id="installation-export">installation export<a class="headerlink" href="#installation-export" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span><span class="nb">export</span><span class="w"> </span>&lt;path&gt;
 </code></pre></div>
-<p>Match on <code>code</code>, not on <code>message</code>. Messages are written for people and will be
-reworded; codes are a contract.</p>
-<h2 id="categories">Categories<a class="headerlink" href="#categories" title="Permanent link">&para;</a></h2>
-<p><code>category</code> groups a failure by who can act on it. It carries no control-flow
-meaning — it exists so a dashboard can separate "the operator mistyped
-something" from "the manager has a bug".</p>
+<p>Writes the installation record, the encrypted secret state, the list of who can
+decrypt it, and a note of which release was running.</p>
+<p>It is read-only: no lock, no journal entry, safe to run at any time. That
+matters more than it sounds — an export is worth nothing if taking one is
+something an operator hesitates over.</p>
 <table>
 <thead>
 <tr>
-<th>Category</th>
+<th>Contains</th>
+<th>Does not contain</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The installation id, product, profile, domains and policy</td>
+<td>Any plaintext secret</td>
+</tr>
+<tr>
+<td>The encrypted secret state, byte for byte</td>
+<td>Any application data or database contents</td>
+</tr>
+<tr>
+<td>Every recipient's public key and role</td>
+<td>The release bundle itself</td>
+</tr>
+<tr>
+<td>The release name, version and content digest</td>
+<td>The machine's own age private key</td>
+</tr>
+</tbody>
+</table>
+<p>The file is written <code>0600</code>. The ciphertext inside is useless without a key, but
+the installation record names domains, policy and the layout of a production
+deployment.</p>
+<div class="admonition danger">
+<p class="admonition-title">Store it where the machine cannot reach</p>
+<p>An export kept only on the host it describes protects nothing. Neither does
+one kept next to the recovery key that opens it.</p>
+</div>
+<p><code>--force</code> overwrites an existing file. <code>--dry-run</code> reports what would be written
+without writing it.</p>
+<h3 id="what-makes-an-export-usable">What makes an export usable<a class="headerlink" href="#what-makes-an-export-usable" title="Permanent link">&para;</a></h3>
+<p>The export is only ever as readable as the state already was. If the
+installation was created with <code>--no-recovery-recipient</code>, the only recipient is
+the machine's own key — and an export nobody but the dead machine can open is a
+file that looks like an insurance policy and is not one.</p>
+<p><code>export</code> refuses to write one. Add a recovery recipient first:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>generate-recovery-key<span class="w"> </span>~/recovery.key
+morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>add<span class="w"> </span>&lt;the<span class="w"> </span>printed<span class="w"> </span>public<span class="w"> </span>key&gt;<span class="w"> </span>--kind<span class="w"> </span>recovery
+</code></pre></div>
+<h2 id="installation-import">installation import<a class="headerlink" href="#installation-import" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>&lt;path&gt;<span class="w"> </span>--identity<span class="w"> </span>&lt;recovery-key-file&gt;
+</code></pre></div>
+<p>Rebuilds this machine from an export and the offline key that can decrypt it.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
 <th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>user</code></td>
-<td>The operator can fix this directly.</td>
-</tr>
-<tr>
-<td><code>system</code></td>
-<td>The machine or an external tool is at fault.</td>
-</tr>
-<tr>
-<td><code>bug</code></td>
-<td>The manager itself is at fault.</td>
-</tr>
-<tr>
-<td><code>conflict</code></td>
-<td>Another actor holds the resource.</td>
+<td><code>--identity</code></td>
+<td>Private age identity that can decrypt the export. Required; there is no default, because the whole point is that this key was not on the machine that was lost.</td>
 </tr>
 </tbody>
 </table>
-<h2 id="every-error-carries-a-hint">Every error carries a hint<a class="headerlink" href="#every-error-carries-a-hint" title="Permanent link">&para;</a></h2>
-<p><code>message</code> says what happened; <code>hint</code> says what to do about it. Both are printed.
-An error without its remedy is a support ticket.</p>
-<p>Neither may contain a secret value — callers redact before constructing, and the
-<code>domain.Secret</code> type cannot be formatted into one by accident.</p>
+<p>What it does, in order:</p>
+<ol>
+<li>Creates the managed directory layout.</li>
+<li>Writes the installation record <strong>with its original id</strong>.</li>
+<li>Restores the encrypted secret state from the export.</li>
+<li>Generates a <strong>new</strong> age identity for this host.</li>
+<li>Re-encrypts the state for that new key plus every non-machine recipient, and
+   verifies this machine can now read it.</li>
+</ol>
+<p>The old machine's key is dropped. A decommissioned host must not retain the
+ability to decrypt — if it is being replaced because it was compromised, keeping
+its key would make the rebuild ceremonial.</p>
+<div class="admonition warning">
+<p class="admonition-title">The installation id is reused, on purpose</p>
+<p>Backups are stamped with the installation id and <code>restore</code> checks against
+it, so a rebuilt machine with a fresh id could not restore its own backups —
+which is the point of having recovered at all.</p>
+<p>The consequence: <strong>decommission the source machine.</strong> Two live hosts sharing
+an installation id will confuse every backup either of them takes.</p>
+</div>
+<h3 id="refusals">Refusals<a class="headerlink" href="#refusals" title="Permanent link">&para;</a></h3>
+<ul>
+<li>An existing installation is not replaced without <code>--force</code>.</li>
+<li>An identity that is not one of the export's recipients is refused <strong>before</strong>
+  anything is created, naming the keys that would work. Discovering it after the
+  directories and a new machine key exist is the worst moment for it.</li>
+<li>A secret provider that cannot be re-opened under another identity is refused
+  by name. Recovery needs one that can; <code>sops-age</code> is it.</li>
+</ul>
+<h3 id="what-it-does-not-do">What it does not do<a class="headerlink" href="#what-it-does-not-do" title="Permanent link">&para;</a></h3>
+<p>It restores identity, not software, and not data. After importing:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>update<span class="w"> </span>&lt;bundle&gt;<span class="w">                        </span><span class="c1"># the export records which version</span>
+morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;id&gt;<span class="w">         </span><span class="c1"># your offsite backup</span>
+morzer<span class="w"> </span>doctor
+</code></pre></div>
+<p>Release bundles are content-addressed and fetchable, so carrying one inside
+every export would make exports enormous for no gain. The export records the
+version and digest instead, which is what lets an operator confirm they got the
+same bytes.</p>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../secret-commands/#secret-recipients"><code>secret recipients</code></a> — who can decrypt</li>
+<li><a href="../commands/#backup"><code>backup</code> and <code>restore</code></a> — the data half of a recovery</li>
+<li><a href="../../operating/recovering-a-lost-machine/">Recovering a lost machine</a> — the
+  whole procedure, in order</li>
+</ul>
 
 
 
@@ -1797,7 +1839,7 @@ An error without its remedy is a support ticket.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../installation-commands/" class="md-footer__link md-footer__link--prev" aria-label="Previous: installation">
+          <a href="../release-commands/" class="md-footer__link md-footer__link--prev" aria-label="Previous: release">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1807,20 +1849,20 @@ An error without its remedy is a support ticket.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                installation
+                release
               </div>
             </div>
           </a>
         
         
           
-          <a href="../output-modes/" class="md-footer__link md-footer__link--next" aria-label="Next: Output modes">
+          <a href="../exit-codes/" class="md-footer__link md-footer__link--next" aria-label="Next: Exit codes">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Output modes
+                Exit codes
               </div>
             </div>
             <div class="md-footer__button md-icon">

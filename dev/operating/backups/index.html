@@ -12,13 +12,13 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/exit-codes/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/operating/backups/">
       
       
-        <link rel="prev" href="../installation-commands/">
+        <link rel="prev" href="../secrets/">
       
       
-        <link rel="next" href="../output-modes/">
+        <link rel="next" href="../installing-offline/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Exit codes - morzer</title>
+        <title>Backups and restore - morzer</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#exit-codes" class="md-skip">
+        <a href="#backups-and-restore" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Exit codes
+              Backups and restore
             
           </span>
         </div>
@@ -243,14 +243,16 @@
   
   
   
+    
+  
   
     
       
     
     
     
-      <li class="md-tabs__item">
-        <a href="../../operating/updating/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../updating/" class="md-tabs__link">
           
   
   Operating
@@ -287,16 +289,14 @@
   
   
   
-    
-  
   
     
       
     
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../commands/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../reference/commands/" class="md-tabs__link">
           
   
   Reference
@@ -521,26 +521,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -557,7 +562,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -574,7 +579,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/updating/" class="md-nav__link">
+      <a href="../updating/" class="md-nav__link">
         
   
   
@@ -603,7 +608,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/rolling-back/" class="md-nav__link">
+      <a href="../rolling-back/" class="md-nav__link">
         
   
   
@@ -632,7 +637,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/secrets/" class="md-nav__link">
+      <a href="../secrets/" class="md-nav__link">
         
   
   
@@ -658,10 +663,38 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../operating/backups/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backups and restore
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -678,6 +711,99 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-backup-contains" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What a backup contains
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-is-not-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Verification is not optional
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Retention
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#restoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Restoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restoring-another-machines-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring another machine's backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-them-somewhere-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Keeping them somewhere else
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -690,7 +816,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/installing-offline/" class="md-nav__link">
+      <a href="../installing-offline/" class="md-nav__link">
         
   
   
@@ -719,7 +845,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
+      <a href="../recovering-a-lost-machine/" class="md-nav__link">
         
   
   
@@ -925,31 +1051,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -966,7 +1087,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -983,7 +1104,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../commands/" class="md-nav__link">
+      <a href="../../reference/commands/" class="md-nav__link">
         
   
   
@@ -1012,7 +1133,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../secret-commands/" class="md-nav__link">
+      <a href="../../reference/secret-commands/" class="md-nav__link">
         
   
   
@@ -1041,7 +1162,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../release-commands/" class="md-nav__link">
+      <a href="../../reference/release-commands/" class="md-nav__link">
         
   
   
@@ -1070,7 +1191,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../installation-commands/" class="md-nav__link">
+      <a href="../../reference/installation-commands/" class="md-nav__link">
         
   
   
@@ -1096,38 +1217,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Exit codes
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../reference/exit-codes/" class="md-nav__link">
         
   
   
@@ -1144,71 +1237,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        12 is the one that matters
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Error codes in output
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Categories
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Every error carries a hint
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1221,7 +1249,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../output-modes/" class="md-nav__link">
+      <a href="../../reference/output-modes/" class="md-nav__link">
         
   
   
@@ -1250,7 +1278,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../manifest/" class="md-nav__link">
+      <a href="../../reference/manifest/" class="md-nav__link">
         
   
   
@@ -1279,7 +1307,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../hooks/" class="md-nav__link">
+      <a href="../../reference/hooks/" class="md-nav__link">
         
   
   
@@ -1493,10 +1521,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
+  <a href="#what-a-backup-contains" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        12 is the one that matters
+        What a backup contains
       </span>
     </span>
   </a>
@@ -1504,10 +1532,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
+  <a href="#verification-is-not-optional" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Error codes in output
+        Verification is not optional
       </span>
     </span>
   </a>
@@ -1515,10 +1543,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
+  <a href="#retention" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Categories
+        Retention
       </span>
     </span>
   </a>
@@ -1526,10 +1554,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
+  <a href="#restoring" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Every error carries a hint
+        Restoring
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Restoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restoring-another-machines-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring another machine's backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-them-somewhere-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Keeping them somewhere else
       </span>
     </span>
   </a>
@@ -1583,11 +1639,11 @@
     
     
       <li class="md-path__item">
-        <a href="../commands/" class="md-path__link">
+        <a href="../updating/" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    Reference
+    Operating
   </span>
 
         </a>
@@ -1607,156 +1663,105 @@
   
 
 
-<h1 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h1>
-<p>Stable, and depended on by systemd units, CI pipelines and operator scripts.
-Codes are never renamed or repurposed once published.</p>
-<p>The mapping happens in exactly one place — <code>domain.ExitCode</code> — so a new error
-type cannot quietly acquire a new exit code by being handled somewhere else.</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: right;">Code</th>
-<th>Error code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: right;">0</td>
-<td>—</td>
-<td>Success.</td>
-</tr>
-<tr>
-<td style="text-align: right;">1</td>
-<td><code>internal</code></td>
-<td>Internal or unexpected error. The manager itself is at fault.</td>
-</tr>
-<tr>
-<td style="text-align: right;">2</td>
-<td><code>usage</code></td>
-<td>Usage or input validation. A mistyped flag, an unknown subcommand, an invalid manifest.</td>
-</tr>
-<tr>
-<td style="text-align: right;">3</td>
-<td><code>preflight</code></td>
-<td>A precondition failed: a missing tool, a version below what the release requires, not enough disk.</td>
-</tr>
-<tr>
-<td style="text-align: right;">4</td>
-<td><code>locked</code></td>
-<td>The deployment lock is held by another operation. Retry, or pass <code>--wait</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">5</td>
-<td><code>installation</code></td>
-<td>The installation is missing or corrupted.</td>
-</tr>
-<tr>
-<td style="text-align: right;">6</td>
-<td><code>secrets</code></td>
-<td>A secrets error: the state could not be decrypted, a required secret is absent.</td>
-</tr>
-<tr>
-<td style="text-align: right;">7</td>
-<td><code>runtime</code></td>
-<td>The container runtime failed — <code>docker</code> or <code>docker compose</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">8</td>
-<td><code>health</code></td>
-<td>A health check or the release's smoke test failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">9</td>
-<td><code>incompatible</code></td>
-<td>The release cannot be installed over, or rolled back to, what is running.</td>
-</tr>
-<tr>
-<td style="text-align: right;">10</td>
-<td><code>backup</code></td>
-<td>A backup or restore failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">11</td>
-<td><code>compensated</code></td>
-<td>The operation failed and compensation succeeded. The system is back where it started.</td>
-</tr>
-<tr>
-<td style="text-align: right;">12</td>
-<td><code>manual-intervention</code></td>
-<td>The operation mutated something it could not undo. A human has to look.</td>
-</tr>
-<tr>
-<td style="text-align: right;">130</td>
-<td><code>interrupted</code></td>
-<td>Interrupted by a signal.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="12-is-the-one-that-matters">12 is the one that matters<a class="headerlink" href="#12-is-the-one-that-matters" title="Permanent link">&para;</a></h2>
-<p>Exit 12 means an operation changed something no automatic action can put back —
-a migration that ran, a restore that got halfway. It is not a louder version of
-11: 11 says the system is where you left it, and 12 says it is not.</p>
-<p>The systemd unit sets <code>RestartPreventExitStatus=12</code> so a unit that hits it does
-not spin. The failed operation keeps surfacing in <code>status</code> and <code>doctor</code> until an
-operator clears it with <code>morzer status --clear-intervention</code>.</p>
-<p>Steps declare this explicitly rather than having it inferred from the absence of
-a compensator. Most steps without one are simply read-only, and inferring would
-flag every failed health check for human acknowledgement — which trains people
-to clear the flag without looking, destroying the value of the one signal meant
-to stop them.</p>
-<h2 id="error-codes-in-output">Error codes in output<a class="headerlink" href="#error-codes-in-output" title="Permanent link">&para;</a></h2>
-<p>Every failure carries a machine-readable <code>code</code> (the middle column above)
-alongside a human <code>message</code> and a <code>hint</code>. Under <code>--json</code> they are fields of the
-single object on stdout:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;exit_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;preflight&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker 23.0.1 is older than the 24 this release requires&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;upgrade docker, or install a release with a lower requirement&quot;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
+<h1 id="backups-and-restore">Backups and restore<a class="headerlink" href="#backups-and-restore" title="Permanent link">&para;</a></h1>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--reason<span class="w"> </span><span class="s2">&quot;before the 1.4 upgrade&quot;</span>
+morzer<span class="w"> </span>backup<span class="w"> </span>list
+morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>&lt;id&gt;
 </code></pre></div>
-<p>Match on <code>code</code>, not on <code>message</code>. Messages are written for people and will be
-reworded; codes are a contract.</p>
-<h2 id="categories">Categories<a class="headerlink" href="#categories" title="Permanent link">&para;</a></h2>
-<p><code>category</code> groups a failure by who can act on it. It carries no control-flow
-meaning — it exists so a dashboard can separate "the operator mistyped
-something" from "the manager has a bug".</p>
+<p>The manager does not know how to back your product up — it coordinates the
+release's own <code>backup</code> hook, wraps what that produces in a self-describing
+manifest, and verifies the checksums by re-reading what was written.</p>
+<h2 id="what-a-backup-contains">What a backup contains<a class="headerlink" href="#what-a-backup-contains" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Category</th>
-<th>Meaning</th>
+<th>Component</th>
+<th>Comes from</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>user</code></td>
-<td>The operator can fix this directly.</td>
+<td><code>database</code></td>
+<td>the release's backup hook</td>
 </tr>
 <tr>
-<td><code>system</code></td>
-<td>The machine or an external tool is at fault.</td>
+<td><code>files</code></td>
+<td>the release's backup hook</td>
 </tr>
 <tr>
-<td><code>bug</code></td>
-<td>The manager itself is at fault.</td>
+<td><code>config</code></td>
+<td>the rendered configuration</td>
 </tr>
 <tr>
-<td><code>conflict</code></td>
-<td>Another actor holds the resource.</td>
+<td><code>secrets</code></td>
+<td>the encrypted secret state, as it is on disk</td>
+</tr>
+<tr>
+<td><code>manifest</code></td>
+<td>the release identity, schema version, checksums, installation id</td>
 </tr>
 </tbody>
 </table>
-<h2 id="every-error-carries-a-hint">Every error carries a hint<a class="headerlink" href="#every-error-carries-a-hint" title="Permanent link">&para;</a></h2>
-<p><code>message</code> says what happened; <code>hint</code> says what to do about it. Both are printed.
-An error without its remedy is a support ticket.</p>
-<p>Neither may contain a secret value — callers redact before constructing, and the
-<code>domain.Secret</code> type cannot be formatted into one by accident.</p>
+<p>The manifest is what makes a backup self-describing: which release took it,
+which database schema was current, and which installation it belongs to.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--component<span class="w"> </span>database<span class="w"> </span>--component<span class="w"> </span>files
+</code></pre></div>
+<p>Limits it, when a full backup is not what you need.</p>
+<h2 id="verification-is-not-optional">Verification is not optional<a class="headerlink" href="#verification-is-not-optional" title="Permanent link">&para;</a></h2>
+<p>Every backup is re-read and checksummed after it is written, unless you pass
+<code>--no-verify</code>. A backup nobody has read is a hypothesis, and the moment to test
+it is not during a restore.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w">        </span><span class="c1"># the most recent</span>
+morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>&lt;id&gt;<span class="w">   </span><span class="c1"># a specific one</span>
+</code></pre></div>
+<p>Worth running on a schedule against your oldest retained backup, which is the
+one most likely to have rotted.</p>
+<h2 id="retention">Retention<a class="headerlink" href="#retention" title="Permanent link">&para;</a></h2>
+<p>Governed by <code>retention.backups</code> in the manifest, or <code>policy.retain_backups</code> in
+your installation when you want a different number than the vendor chose. <strong>The
+most recent backup is never pruned</strong>, whatever the number says.</p>
+<p><code>--no-prune</code> skips the retention pass for one run.</p>
+<h2 id="restoring">Restoring<a class="headerlink" href="#restoring" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+morzer<span class="w"> </span>restore<span class="w"> </span>--backup<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+</code></pre></div>
+<p>Destructive, and it asks for two things:</p>
+<ul>
+<li><code>--force</code>, which authorises destroying what is currently there.</li>
+<li><code>--confirm &lt;installation-id&gt;</code>, typed out. A y/n prompt can be answered by
+  reflex; an identifier you have to go and look up cannot.</li>
+</ul>
+<p>What it does, in order: verify the backup, <strong>stop the services</strong> so nothing is
+writing, run the release's restore hook, re-apply the release over the restored
+data, and run the smoke test.</p>
+<p>Stopping first is the part that matters. Restored data underneath containers
+still holding stale state in memory is a combination that corrupts quietly.</p>
+<div class="admonition warning">
+<p class="admonition-title">A failed restore needs a human</p>
+<p>Restore declares that it requires manual intervention on failure. A
+half-restored database is a state no automatic action can repair, so a
+failure exits <a href="../../reference/exit-codes/">12</a> rather than pretending
+compensation succeeded — and keeps surfacing in <code>status</code> and <code>doctor</code> until
+you clear it with <code>morzer status --clear-intervention</code>.</p>
+</div>
+<h3 id="restoring-another-machines-backup">Restoring another machine's backup<a class="headerlink" href="#restoring-another-machines-backup" title="Permanent link">&para;</a></h3>
+<p>Refused by default. Backups are stamped with the installation they came from,
+and restoring one deployment's data over another is almost always a mistake.</p>
+<p>If the machine is a rebuild of the one the backup came from, the right answer is
+<a href="../../reference/installation-commands/"><code>installation import</code></a>, which restores
+the original installation id so the guard never fires.</p>
+<p>If you genuinely mean it:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;this<span class="w"> </span>machine<span class="err">&#39;</span>s<span class="w"> </span>id&gt;<span class="w"> </span>--allow-cross-installation
+</code></pre></div>
+<p>A separate flag from <code>--force</code> on purpose: every restore already requires
+forcing, so a shared flag would mean this check could never apply.</p>
+<h2 id="keeping-them-somewhere-else">Keeping them somewhere else<a class="headerlink" href="#keeping-them-somewhere-else" title="Permanent link">&para;</a></h2>
+<p>The manager writes backups under <code>/var/lib/&lt;product&gt;/backups</code> and does not
+transport them. Copying them offsite is a job for whatever you already use —
+what matters is that a backup on the same disk as the thing it protects is not
+a backup.</p>
+<p>An <a href="../../reference/installation-commands/">installation export</a> belongs offsite
+too, and separately from the recovery key that opens it.</p>
 
 
 
@@ -1797,7 +1802,7 @@ An error without its remedy is a support ticket.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../installation-commands/" class="md-footer__link md-footer__link--prev" aria-label="Previous: installation">
+          <a href="../secrets/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Managing secrets">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1807,20 +1812,20 @@ An error without its remedy is a support ticket.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                installation
+                Managing secrets
               </div>
             </div>
           </a>
         
         
           
-          <a href="../output-modes/" class="md-footer__link md-footer__link--next" aria-label="Next: Output modes">
+          <a href="../installing-offline/" class="md-footer__link md-footer__link--next" aria-label="Next: Installing without a network">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Output modes
+                Installing without a network
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -12,13 +12,13 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/exit-codes/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/explanation/the-step-engine/">
       
       
-        <link rel="prev" href="../installation-commands/">
+        <link rel="prev" href="../architecture/">
       
       
-        <link rel="next" href="../output-modes/">
+        <link rel="next" href="../secrets/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Exit codes - morzer</title>
+        <title>The step engine - morzer</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#exit-codes" class="md-skip">
+        <a href="#the-step-engine" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Exit codes
+              The step engine
             
           </span>
         </div>
@@ -287,16 +287,14 @@
   
   
   
-    
-  
   
     
       
     
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../commands/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../reference/commands/" class="md-tabs__link">
           
   
   Reference
@@ -311,14 +309,16 @@
   
   
   
+    
+  
   
     
       
     
     
     
-      <li class="md-tabs__item">
-        <a href="../../explanation/architecture/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../architecture/" class="md-tabs__link">
           
   
   Explanation
@@ -925,31 +925,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -966,7 +961,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -983,7 +978,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../commands/" class="md-nav__link">
+      <a href="../../reference/commands/" class="md-nav__link">
         
   
   
@@ -1012,7 +1007,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../secret-commands/" class="md-nav__link">
+      <a href="../../reference/secret-commands/" class="md-nav__link">
         
   
   
@@ -1041,7 +1036,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../release-commands/" class="md-nav__link">
+      <a href="../../reference/release-commands/" class="md-nav__link">
         
   
   
@@ -1070,7 +1065,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../installation-commands/" class="md-nav__link">
+      <a href="../../reference/installation-commands/" class="md-nav__link">
         
   
   
@@ -1096,38 +1091,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Exit codes
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../reference/exit-codes/" class="md-nav__link">
         
   
   
@@ -1144,71 +1111,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        12 is the one that matters
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Error codes in output
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Categories
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Every error carries a hint
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1221,7 +1123,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../output-modes/" class="md-nav__link">
+      <a href="../../reference/output-modes/" class="md-nav__link">
         
   
   
@@ -1250,7 +1152,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../manifest/" class="md-nav__link">
+      <a href="../../reference/manifest/" class="md-nav__link">
         
   
   
@@ -1279,7 +1181,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../hooks/" class="md-nav__link">
+      <a href="../../reference/hooks/" class="md-nav__link">
         
   
   
@@ -1312,26 +1214,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
@@ -1348,7 +1255,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1365,7 +1272,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../explanation/architecture/" class="md-nav__link">
+      <a href="../architecture/" class="md-nav__link">
         
   
   
@@ -1391,10 +1298,38 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../explanation/the-step-engine/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list-checks" viewBox="0 0 24 24"><path d="M13 5h8M13 12h8M13 19h8M3 17l2 2 4-4M3 7l2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The step engine
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1411,6 +1346,110 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#four-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Four functions
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-happens-when-a-step-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What happens when a step fails
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-distinction-that-matters-most" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The distinction that matters most
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The distinction that matters most">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#intervention-is-declared-not-inferred" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Intervention is declared, not inferred
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-journal" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The journal
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reuse-rather-than-duplication" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reuse rather than duplication
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dry-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Dry runs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1423,7 +1462,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../explanation/secrets/" class="md-nav__link">
+      <a href="../secrets/" class="md-nav__link">
         
   
   
@@ -1493,10 +1532,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
+  <a href="#four-functions" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        12 is the one that matters
+        Four functions
       </span>
     </span>
   </a>
@@ -1504,10 +1543,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
+  <a href="#what-happens-when-a-step-fails" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Error codes in output
+        What happens when a step fails
       </span>
     </span>
   </a>
@@ -1515,10 +1554,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
+  <a href="#the-distinction-that-matters-most" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Categories
+        The distinction that matters most
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The distinction that matters most">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#intervention-is-declared-not-inferred" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Intervention is declared, not inferred
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-journal" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The journal
       </span>
     </span>
   </a>
@@ -1526,10 +1593,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
+  <a href="#reuse-rather-than-duplication" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Every error carries a hint
+        Reuse rather than duplication
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dry-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Dry runs
       </span>
     </span>
   </a>
@@ -1583,11 +1661,11 @@
     
     
       <li class="md-path__item">
-        <a href="../commands/" class="md-path__link">
+        <a href="../architecture/" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    Reference
+    Explanation
   </span>
 
         </a>
@@ -1607,156 +1685,104 @@
   
 
 
-<h1 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h1>
-<p>Stable, and depended on by systemd units, CI pipelines and operator scripts.
-Codes are never renamed or repurposed once published.</p>
-<p>The mapping happens in exactly one place — <code>domain.ExitCode</code> — so a new error
-type cannot quietly acquire a new exit code by being handled somewhere else.</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: right;">Code</th>
-<th>Error code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: right;">0</td>
-<td>—</td>
-<td>Success.</td>
-</tr>
-<tr>
-<td style="text-align: right;">1</td>
-<td><code>internal</code></td>
-<td>Internal or unexpected error. The manager itself is at fault.</td>
-</tr>
-<tr>
-<td style="text-align: right;">2</td>
-<td><code>usage</code></td>
-<td>Usage or input validation. A mistyped flag, an unknown subcommand, an invalid manifest.</td>
-</tr>
-<tr>
-<td style="text-align: right;">3</td>
-<td><code>preflight</code></td>
-<td>A precondition failed: a missing tool, a version below what the release requires, not enough disk.</td>
-</tr>
-<tr>
-<td style="text-align: right;">4</td>
-<td><code>locked</code></td>
-<td>The deployment lock is held by another operation. Retry, or pass <code>--wait</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">5</td>
-<td><code>installation</code></td>
-<td>The installation is missing or corrupted.</td>
-</tr>
-<tr>
-<td style="text-align: right;">6</td>
-<td><code>secrets</code></td>
-<td>A secrets error: the state could not be decrypted, a required secret is absent.</td>
-</tr>
-<tr>
-<td style="text-align: right;">7</td>
-<td><code>runtime</code></td>
-<td>The container runtime failed — <code>docker</code> or <code>docker compose</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">8</td>
-<td><code>health</code></td>
-<td>A health check or the release's smoke test failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">9</td>
-<td><code>incompatible</code></td>
-<td>The release cannot be installed over, or rolled back to, what is running.</td>
-</tr>
-<tr>
-<td style="text-align: right;">10</td>
-<td><code>backup</code></td>
-<td>A backup or restore failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">11</td>
-<td><code>compensated</code></td>
-<td>The operation failed and compensation succeeded. The system is back where it started.</td>
-</tr>
-<tr>
-<td style="text-align: right;">12</td>
-<td><code>manual-intervention</code></td>
-<td>The operation mutated something it could not undo. A human has to look.</td>
-</tr>
-<tr>
-<td style="text-align: right;">130</td>
-<td><code>interrupted</code></td>
-<td>Interrupted by a signal.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="12-is-the-one-that-matters">12 is the one that matters<a class="headerlink" href="#12-is-the-one-that-matters" title="Permanent link">&para;</a></h2>
-<p>Exit 12 means an operation changed something no automatic action can put back —
-a migration that ran, a restore that got halfway. It is not a louder version of
-11: 11 says the system is where you left it, and 12 says it is not.</p>
-<p>The systemd unit sets <code>RestartPreventExitStatus=12</code> so a unit that hits it does
-not spin. The failed operation keeps surfacing in <code>status</code> and <code>doctor</code> until an
-operator clears it with <code>morzer status --clear-intervention</code>.</p>
-<p>Steps declare this explicitly rather than having it inferred from the absence of
-a compensator. Most steps without one are simply read-only, and inferring would
-flag every failed health check for human acknowledgement — which trains people
-to clear the flag without looking, destroying the value of the one signal meant
-to stop them.</p>
-<h2 id="error-codes-in-output">Error codes in output<a class="headerlink" href="#error-codes-in-output" title="Permanent link">&para;</a></h2>
-<p>Every failure carries a machine-readable <code>code</code> (the middle column above)
-alongside a human <code>message</code> and a <code>hint</code>. Under <code>--json</code> they are fields of the
-single object on stdout:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;exit_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;preflight&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker 23.0.1 is older than the 24 this release requires&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;upgrade docker, or install a release with a lower requirement&quot;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
+<h1 id="the-step-engine">The step engine<a class="headerlink" href="#the-step-engine" title="Permanent link">&para;</a></h1>
+<p>Every mutating command is an Operation: an id, an ordered list of steps, and a
+journal record. The engine owns ordering, journaling and compensation, so an
+operation is a <em>plan</em> rather than a procedure.</p>
+<h2 id="four-functions">Four functions<a class="headerlink" href="#four-functions" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nx">Check</span><span class="w">      </span><span class="kd">func</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="nx">State</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nx">done</span><span class="w"> </span><span class="kt">bool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w">  </span><span class="c1">// is it already done?</span>
+<span class="nx">Execute</span><span class="w">    </span><span class="kd">func</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="nx">State</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w">                   </span><span class="c1">// do it</span>
+<span class="nx">Verify</span><span class="w">     </span><span class="kd">func</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="nx">State</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w">                   </span><span class="c1">// did it take effect?</span>
+<span class="nx">Compensate</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="nx">State</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w">                   </span><span class="c1">// undo it</span>
 </code></pre></div>
-<p>Match on <code>code</code>, not on <code>message</code>. Messages are written for people and will be
-reworded; codes are a contract.</p>
-<h2 id="categories">Categories<a class="headerlink" href="#categories" title="Permanent link">&para;</a></h2>
-<p><code>category</code> groups a failure by who can act on it. It carries no control-flow
-meaning — it exists so a dashboard can separate "the operator mistyped
-something" from "the manager has a bug".</p>
+<p>Only <code>Execute</code> is required. The other three each buy something specific.</p>
+<p><strong><code>Check</code> is what makes <code>apply</code> idempotent.</strong> A satisfied postcondition marks
+the step skipped, so converging an already-converged system runs nothing and
+says so. Idempotence built this way is a property of each step rather than a
+claim about the whole.</p>
+<p><strong><code>Verify</code> is separate from <code>Execute</code> because a tool exiting zero is not the
+same claim as the system being in the desired state.</strong> <code>docker compose up</code>
+returning 0 says the command succeeded; it does not say the services are
+healthy. Two questions, two functions.</p>
+<p><strong><code>Compensate</code> undoes.</strong> Not every step has one, and that is fine — most steps
+without a compensator are simply read-only.</p>
+<h2 id="what-happens-when-a-step-fails">What happens when a step fails<a class="headerlink" href="#what-happens-when-a-step-fails" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TD
+    S[step fails] --&gt; Q{RequiresIntervention?}
+    Q --&gt;|yes| M[requires-manual-intervention&lt;br/&gt;&lt;small&gt;exit 12, keeps surfacing&lt;/small&gt;]
+    Q --&gt;|no| P{FailurePolicy}
+    P --&gt;|Abort| A[stop, nothing mutated yet]
+    P --&gt;|Continue| C[record and carry on]
+    P --&gt;|Compensate| R[undo completed steps, newest first]
+    R --&gt; D[compensated&lt;br/&gt;&lt;small&gt;exit 11, system where it started&lt;/small&gt;]</code></pre>
+<p>Compensation runs newest-first and <strong>includes the step that failed</strong> — it may
+have mutated before failing, which is exactly the case a <code>Verify</code> failure
+describes.</p>
+<h2 id="the-distinction-that-matters-most">The distinction that matters most<a class="headerlink" href="#the-distinction-that-matters-most" title="Permanent link">&para;</a></h2>
+<p>Three outcomes that a lesser design would collapse into "error":</p>
 <table>
 <thead>
 <tr>
-<th>Category</th>
-<th>Meaning</th>
+<th>Status</th>
+<th style="text-align: right;">Exit</th>
+<th>What it means</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>user</code></td>
-<td>The operator can fix this directly.</td>
+<td><code>failed</code></td>
+<td style="text-align: right;">varies</td>
+<td>The system is where it started.</td>
 </tr>
 <tr>
-<td><code>system</code></td>
-<td>The machine or an external tool is at fault.</td>
+<td><code>compensated</code></td>
+<td style="text-align: right;">11</td>
+<td>Partial work was successfully undone.</td>
 </tr>
 <tr>
-<td><code>bug</code></td>
-<td>The manager itself is at fault.</td>
-</tr>
-<tr>
-<td><code>conflict</code></td>
-<td>Another actor holds the resource.</td>
+<td><code>requires-manual-intervention</code></td>
+<td style="text-align: right;">12</td>
+<td>It could not be, and a human has to look.</td>
 </tr>
 </tbody>
 </table>
-<h2 id="every-error-carries-a-hint">Every error carries a hint<a class="headerlink" href="#every-error-carries-a-hint" title="Permanent link">&para;</a></h2>
-<p><code>message</code> says what happened; <code>hint</code> says what to do about it. Both are printed.
-An error without its remedy is a support ticket.</p>
-<p>Neither may contain a secret value — callers redact before constructing, and the
-<code>domain.Secret</code> type cannot be formatted into one by accident.</p>
+<p>Collapsing these would hide exactly the case that needs a person. Exit 12 keeps
+surfacing in <code>status</code> and <code>doctor</code> until an operator clears it explicitly, and
+the systemd unit sets <code>RestartPreventExitStatus=12</code> so a machine that needs a
+human stops instead of looping.</p>
+<h3 id="intervention-is-declared-not-inferred">Intervention is declared, not inferred<a class="headerlink" href="#intervention-is-declared-not-inferred" title="Permanent link">&para;</a></h3>
+<p><code>RequiresInterventionOnFailure</code> is an explicit field on a step. Inferring it
+from a missing compensator was the obvious shortcut and would have been wrong:
+most steps without one are read-only, so every failed health check would demand
+human acknowledgement. That trains people to clear the flag without looking,
+which destroys the value of the one signal meant to stop them.</p>
+<p>Migrations and restores declare it. Health checks do not.</p>
+<h2 id="the-journal">The journal<a class="headerlink" href="#the-journal" title="Permanent link">&para;</a></h2>
+<p>Every transition is written <strong>before and after</strong> the work:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="s2">&quot;op_01KZ…&quot;</span><span class="p">,</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="s2">&quot;update&quot;</span><span class="p">,</span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="s2">&quot;running&quot;</span><span class="p">,</span><span class="nt">&quot;steps&quot;</span><span class="p">:[</span><span class="err">…</span><span class="p">]}</span>
+</code></pre></div>
+<p>Before, so a crash mid-step leaves a record saying which step was in flight.
+After, so a completed step is known to be complete. That is what makes <code>--resume</code>
+possible: the journal says where to pick up, rather than the operation guessing.</p>
+<p>It is append-only and the ids are ULIDs — lexicographically sortable and
+timestamp-prefixed — so reading the file in order is reading the history in
+order.</p>
+<h2 id="reuse-rather-than-duplication">Reuse rather than duplication<a class="headerlink" href="#reuse-rather-than-duplication" title="Permanent link">&para;</a></h2>
+<p><code>update</code> is four steps of its own followed by <code>apply</code>'s eleven:</p>
+<pre class="mermaid"><code>flowchart LR
+    subgraph update
+      V[verify] --&gt; C[compatibility] --&gt; B[backup] --&gt; S[stage]
+    end
+    S --&gt; A["apply's pipeline&lt;br/&gt;&lt;small&gt;preflight → … → smoke test&lt;/small&gt;"]</code></pre>
+<p>Duplicating those eleven would mean two lists to keep in agreement, and the
+second one would be the one nobody tests. <code>rollback</code> does the same thing from
+the other direction: swap the pointer, then converge with the same pipeline.</p>
+<h2 id="dry-runs">Dry runs<a class="headerlink" href="#dry-runs" title="Permanent link">&para;</a></h2>
+<p><code>--dry-run</code> runs the plan without any <code>Execute</code>. It reports the step list, marks
+what <code>Check</code> says is already done, and renders a configuration diff.</p>
+<p>It deliberately does <strong>not</strong> take the deployment lock: planning mutates nothing,
+and making <code>--dry-run</code> wait on a running update would defeat the point of being
+able to inspect a plan while one is in flight.</p>
 
 
 
@@ -1797,7 +1823,7 @@ An error without its remedy is a support ticket.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../installation-commands/" class="md-footer__link md-footer__link--prev" aria-label="Previous: installation">
+          <a href="../architecture/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Architecture">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1807,20 +1833,20 @@ An error without its remedy is a support ticket.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                installation
+                Architecture
               </div>
             </div>
           </a>
         
         
           
-          <a href="../output-modes/" class="md-footer__link md-footer__link--next" aria-label="Next: Output modes">
+          <a href="../secrets/" class="md-footer__link md-footer__link--next" aria-label="Next: The secrets model">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Output modes
+                The secrets model
               </div>
             </div>
             <div class="md-footer__button md-icon">

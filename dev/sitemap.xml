@@ -4,6 +4,42 @@
         <loc>https://morzecrew.github.io/morzer/dev/</loc>
       </url>
       <url>
+        <loc>https://morzecrew.github.io/morzer/dev/get-started/installation/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/get-started/first-deployment/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/operating/updating/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/operating/rolling-back/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/operating/secrets/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/operating/backups/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/operating/installing-offline/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/operating/recovering-a-lost-machine/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/authoring/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/authoring/your-first-bundle/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/authoring/hooks/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/authoring/publishing/</loc>
+      </url>
+      <url>
         <loc>https://morzecrew.github.io/morzer/dev/reference/commands/</loc>
       </url>
       <url>
@@ -13,12 +49,27 @@
         <loc>https://morzecrew.github.io/morzer/dev/reference/release-commands/</loc>
       </url>
       <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/installation-commands/</loc>
+      </url>
+      <url>
         <loc>https://morzecrew.github.io/morzer/dev/reference/exit-codes/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/output-modes/</loc>
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/reference/manifest/</loc>
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/reference/hooks/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/explanation/architecture/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/explanation/the-step-engine/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/explanation/secrets/</loc>
       </url>
 </urlset>

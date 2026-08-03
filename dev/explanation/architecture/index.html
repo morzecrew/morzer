@@ -12,13 +12,13 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/exit-codes/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/explanation/architecture/">
       
       
-        <link rel="prev" href="../installation-commands/">
+        <link rel="prev" href="../../reference/hooks/">
       
       
-        <link rel="next" href="../output-modes/">
+        <link rel="next" href="../the-step-engine/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Exit codes - morzer</title>
+        <title>Architecture - morzer</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#exit-codes" class="md-skip">
+        <a href="#architecture" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Exit codes
+              Architecture
             
           </span>
         </div>
@@ -287,16 +287,14 @@
   
   
   
-    
-  
   
     
       
     
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../commands/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../reference/commands/" class="md-tabs__link">
           
   
   Reference
@@ -311,14 +309,16 @@
   
   
   
+    
+  
   
     
       
     
     
     
-      <li class="md-tabs__item">
-        <a href="../../explanation/architecture/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="././" class="md-tabs__link">
           
   
   Explanation
@@ -925,31 +925,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -966,7 +961,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -983,7 +978,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../commands/" class="md-nav__link">
+      <a href="../../reference/commands/" class="md-nav__link">
         
   
   
@@ -1012,7 +1007,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../secret-commands/" class="md-nav__link">
+      <a href="../../reference/secret-commands/" class="md-nav__link">
         
   
   
@@ -1041,7 +1036,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../release-commands/" class="md-nav__link">
+      <a href="../../reference/release-commands/" class="md-nav__link">
         
   
   
@@ -1070,7 +1065,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../installation-commands/" class="md-nav__link">
+      <a href="../../reference/installation-commands/" class="md-nav__link">
         
   
   
@@ -1096,38 +1091,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Exit codes
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../reference/exit-codes/" class="md-nav__link">
         
   
   
@@ -1144,71 +1111,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        12 is the one that matters
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Error codes in output
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Categories
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Every error carries a hint
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1221,7 +1123,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../output-modes/" class="md-nav__link">
+      <a href="../../reference/output-modes/" class="md-nav__link">
         
   
   
@@ -1250,7 +1152,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../manifest/" class="md-nav__link">
+      <a href="../../reference/manifest/" class="md-nav__link">
         
   
   
@@ -1279,7 +1181,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../hooks/" class="md-nav__link">
+      <a href="../../reference/hooks/" class="md-nav__link">
         
   
   
@@ -1312,26 +1214,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
@@ -1348,7 +1255,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1362,10 +1269,38 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../explanation/architecture/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Architecture
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1382,6 +1317,99 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-rule-that-does-the-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The rule that does the work
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#it-is-enforced-not-encouraged" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        It is enforced, not encouraged
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interfaces-are-declared-by-the-consumer" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Interfaces are declared by the consumer
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Interfaces are declared by the consumer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#optional-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Optional capabilities
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-deliberate-departures" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Two deliberate departures
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#presenters-are-subscribers-never-participants" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Presenters are subscribers, never participants
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1394,7 +1422,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../explanation/the-step-engine/" class="md-nav__link">
+      <a href="../the-step-engine/" class="md-nav__link">
         
   
   
@@ -1423,7 +1451,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../explanation/secrets/" class="md-nav__link">
+      <a href="../secrets/" class="md-nav__link">
         
   
   
@@ -1493,10 +1521,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#12-is-the-one-that-matters" class="md-nav__link">
+  <a href="#the-rule-that-does-the-work" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        12 is the one that matters
+        The rule that does the work
       </span>
     </span>
   </a>
@@ -1504,10 +1532,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#error-codes-in-output" class="md-nav__link">
+  <a href="#it-is-enforced-not-encouraged" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Error codes in output
+        It is enforced, not encouraged
       </span>
     </span>
   </a>
@@ -1515,10 +1543,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#categories" class="md-nav__link">
+  <a href="#interfaces-are-declared-by-the-consumer" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Categories
+        Interfaces are declared by the consumer
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Interfaces are declared by the consumer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#optional-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Optional capabilities
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-deliberate-departures" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Two deliberate departures
       </span>
     </span>
   </a>
@@ -1526,10 +1582,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#every-error-carries-a-hint" class="md-nav__link">
+  <a href="#presenters-are-subscribers-never-participants" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Every error carries a hint
+        Presenters are subscribers, never participants
       </span>
     </span>
   </a>
@@ -1583,11 +1639,11 @@
     
     
       <li class="md-path__item">
-        <a href="../commands/" class="md-path__link">
+        <a href="././" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    Reference
+    Explanation
   </span>
 
         </a>
@@ -1607,156 +1663,102 @@
   
 
 
-<h1 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h1>
-<p>Stable, and depended on by systemd units, CI pipelines and operator scripts.
-Codes are never renamed or repurposed once published.</p>
-<p>The mapping happens in exactly one place — <code>domain.ExitCode</code> — so a new error
-type cannot quietly acquire a new exit code by being handled somewhere else.</p>
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
+<pre class="mermaid"><code>flowchart TD
+    CLI["internal/cli&lt;br/&gt;&lt;small&gt;cobra commands, flag parsing, wiring&lt;/small&gt;"]
+    UI["internal/ui&lt;br/&gt;&lt;small&gt;plain and json presenters&lt;/small&gt;"]
+    LC["internal/lifecycle&lt;br/&gt;&lt;small&gt;operations as step sequences, the engine&lt;/small&gt;"]
+    P["internal/ports&lt;br/&gt;&lt;small&gt;interfaces, declared by the consumer&lt;/small&gt;"]
+    A["internal/adapters&lt;br/&gt;&lt;small&gt;compose · sops-age · hooks · sources · verifiers&lt;/small&gt;"]
+    D["internal/domain&lt;br/&gt;&lt;small&gt;manifest, release, installation, errors&lt;/small&gt;"]
+    I["internal/infra&lt;br/&gt;&lt;small&gt;exec, atomicfs, lock, state, logging&lt;/small&gt;"]
+
+    CLI --&gt; UI
+    CLI --&gt; LC
+    CLI --&gt; A
+    UI --&gt; LC
+    LC --&gt; P
+    A --&gt; P
+    LC --&gt; D
+    A --&gt; D
+    P --&gt; D
+    LC --&gt; I
+    A --&gt; I</code></pre>
+<p>Dependencies point downward only. <code>internal/domain</code> imports nothing from this
+repository and nothing beyond the standard library and a semver parser.</p>
+<h2 id="the-rule-that-does-the-work">The rule that does the work<a class="headerlink" href="#the-rule-that-does-the-work" title="Permanent link">&para;</a></h2>
+<p><strong>The lifecycle layer speaks only to ports.</strong> The string <code>docker</code> appears
+nowhere above <code>internal/adapters</code>, and <code>internal/cli</code> is the single place an
+adapter is named.</p>
+<p>This is not a style preference. It is what makes the entire test suite run
+without Docker, without root and without a network — which is what makes a
+fault-injection suite that kills an operation at each of eleven steps a loop
+rather than an afternoon.</p>
+<h2 id="it-is-enforced-not-encouraged">It is enforced, not encouraged<a class="headerlink" href="#it-is-enforced-not-encouraged" title="Permanent link">&para;</a></h2>
+<p><code>depguard</code> in <code>.golangci.yml</code> fails the build on a violation. That enforcement
+is load-bearing rather than decorative: when the rule was first widened to cover
+the whole lifecycle layer it immediately found three real violations in
+<code>lifecycle/ops</code>, which was reaching for the hooks, sops-age and systemd adapters
+directly. The hook <abbr title="Application Binary Interface">ABI</abbr>, the machine identity operations and unit rendering now
+sit behind <code>HookRunner</code>, <code>SecretStore</code> and <code>Supervisor</code>.</p>
+<p>A layering rule nothing checks is a paragraph in a document that the next
+refactor quietly violates.</p>
+<h2 id="interfaces-are-declared-by-the-consumer">Interfaces are declared by the consumer<a class="headerlink" href="#interfaces-are-declared-by-the-consumer" title="Permanent link">&para;</a></h2>
+<p><code>internal/ports</code> holds the interfaces, and none of them are written by the thing
+that implements them. <code>Runtime</code> exists because the lifecycle layer needs to
+start services, not because Compose has an API worth wrapping. That is why the
+methods are the ones an operation actually calls, and why an adapter that
+implements them is bounded work with bounded risk: implement the interface, pass
+the contract suite, register the name.</p>
+<h3 id="optional-capabilities">Optional capabilities<a class="headerlink" href="#optional-capabilities" title="Permanent link">&para;</a></h3>
+<p>Some things are true of one adapter and not of another. A store backed by a KMS
+has no identity file to swap; a runtime with no local image store cannot say
+whether an image is present.</p>
+<p>Those live as separate interfaces that a caller type-asserts for:</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: right;">Code</th>
-<th>Error code</th>
-<th>Meaning</th>
+<th>Capability</th>
+<th>What needs it</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: right;">0</td>
-<td>—</td>
-<td>Success.</td>
+<td><code>RecoverableSecretStore</code></td>
+<td><code>installation export</code> / <code>import</code></td>
 </tr>
 <tr>
-<td style="text-align: right;">1</td>
-<td><code>internal</code></td>
-<td>Internal or unexpected error. The manager itself is at fault.</td>
+<td><code>RegistryProber</code></td>
+<td><code>doctor</code>'s registry check</td>
 </tr>
 <tr>
-<td style="text-align: right;">2</td>
-<td><code>usage</code></td>
-<td>Usage or input validation. A mistyped flag, an unknown subcommand, an invalid manifest.</td>
-</tr>
-<tr>
-<td style="text-align: right;">3</td>
-<td><code>preflight</code></td>
-<td>A precondition failed: a missing tool, a version below what the release requires, not enough disk.</td>
-</tr>
-<tr>
-<td style="text-align: right;">4</td>
-<td><code>locked</code></td>
-<td>The deployment lock is held by another operation. Retry, or pass <code>--wait</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">5</td>
-<td><code>installation</code></td>
-<td>The installation is missing or corrupted.</td>
-</tr>
-<tr>
-<td style="text-align: right;">6</td>
-<td><code>secrets</code></td>
-<td>A secrets error: the state could not be decrypted, a required secret is absent.</td>
-</tr>
-<tr>
-<td style="text-align: right;">7</td>
-<td><code>runtime</code></td>
-<td>The container runtime failed — <code>docker</code> or <code>docker compose</code>.</td>
-</tr>
-<tr>
-<td style="text-align: right;">8</td>
-<td><code>health</code></td>
-<td>A health check or the release's smoke test failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">9</td>
-<td><code>incompatible</code></td>
-<td>The release cannot be installed over, or rolled back to, what is running.</td>
-</tr>
-<tr>
-<td style="text-align: right;">10</td>
-<td><code>backup</code></td>
-<td>A backup or restore failed.</td>
-</tr>
-<tr>
-<td style="text-align: right;">11</td>
-<td><code>compensated</code></td>
-<td>The operation failed and compensation succeeded. The system is back where it started.</td>
-</tr>
-<tr>
-<td style="text-align: right;">12</td>
-<td><code>manual-intervention</code></td>
-<td>The operation mutated something it could not undo. A human has to look.</td>
-</tr>
-<tr>
-<td style="text-align: right;">130</td>
-<td><code>interrupted</code></td>
-<td>Interrupted by a signal.</td>
+<td><code>ImageInspector</code></td>
+<td><code>doctor</code>'s offline-readiness check</td>
 </tr>
 </tbody>
 </table>
-<h2 id="12-is-the-one-that-matters">12 is the one that matters<a class="headerlink" href="#12-is-the-one-that-matters" title="Permanent link">&para;</a></h2>
-<p>Exit 12 means an operation changed something no automatic action can put back —
-a migration that ran, a restore that got halfway. It is not a louder version of
-11: 11 says the system is where you left it, and 12 says it is not.</p>
-<p>The systemd unit sets <code>RestartPreventExitStatus=12</code> so a unit that hits it does
-not spin. The failed operation keeps surfacing in <code>status</code> and <code>doctor</code> until an
-operator clears it with <code>morzer status --clear-intervention</code>.</p>
-<p>Steps declare this explicitly rather than having it inferred from the absence of
-a compensator. Most steps without one are simply read-only, and inferring would
-flag every failed health check for human acknowledgement — which trains people
-to clear the flag without looking, destroying the value of the one signal meant
-to stop them.</p>
-<h2 id="error-codes-in-output">Error codes in output<a class="headerlink" href="#error-codes-in-output" title="Permanent link">&para;</a></h2>
-<p>Every failure carries a machine-readable <code>code</code> (the middle column above)
-alongside a human <code>message</code> and a <code>hint</code>. Under <code>--json</code> they are fields of the
-single object on stdout:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;exit_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;preflight&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker 23.0.1 is older than the 24 this release requires&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;upgrade docker, or install a release with a lower requirement&quot;</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
-<p>Match on <code>code</code>, not on <code>message</code>. Messages are written for people and will be
-reworded; codes are a contract.</p>
-<h2 id="categories">Categories<a class="headerlink" href="#categories" title="Permanent link">&para;</a></h2>
-<p><code>category</code> groups a failure by who can act on it. It carries no control-flow
-meaning — it exists so a dashboard can separate "the operator mistyped
-something" from "the manager has a bug".</p>
-<table>
-<thead>
-<tr>
-<th>Category</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>user</code></td>
-<td>The operator can fix this directly.</td>
-</tr>
-<tr>
-<td><code>system</code></td>
-<td>The machine or an external tool is at fault.</td>
-</tr>
-<tr>
-<td><code>bug</code></td>
-<td>The manager itself is at fault.</td>
-</tr>
-<tr>
-<td><code>conflict</code></td>
-<td>Another actor holds the resource.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="every-error-carries-a-hint">Every error carries a hint<a class="headerlink" href="#every-error-carries-a-hint" title="Permanent link">&para;</a></h2>
-<p><code>message</code> says what happened; <code>hint</code> says what to do about it. Both are printed.
-An error without its remedy is a support ticket.</p>
-<p>Neither may contain a secret value — callers redact before constructing, and the
-<code>domain.Secret</code> type cannot be formatted into one by accident.</p>
+<p>An operation that needs one asserts for it and refuses by name when the
+configured provider does not offer it — rather than every adapter carrying a
+stub for something it cannot honestly do.</p>
+<h2 id="two-deliberate-departures">Two deliberate departures<a class="headerlink" href="#two-deliberate-departures" title="Permanent link">&para;</a></h2>
+<p>Both documented at the top of the packages concerned, because both look wrong
+until you know why:</p>
+<ul>
+<li><strong><code>internal/events</code> sits beside <code>domain</code>, not under <code>lifecycle</code>.</strong>
+  <code>ports.Notifier</code> takes an <code>Event</code>. If that type lived inside the lifecycle
+  layer, <code>ports</code> would have to import the layer that consumes it, and the
+  dependency arrows would stop pointing downward.</li>
+<li><strong><code>internal/release</code> owns manifest parsing.</strong> <code>domain</code> is restricted to the
+  standard library and semver, so a <abbr title="YAML Ain't Markup Language">YAML</abbr> decoder cannot live there. Domain keeps
+  the types and the validation rules; this package turns bytes into them.</li>
+</ul>
+<h2 id="presenters-are-subscribers-never-participants">Presenters are subscribers, never participants<a class="headerlink" href="#presenters-are-subscribers-never-participants" title="Permanent link">&para;</a></h2>
+<p>The engine publishes events; <code>internal/ui</code> consumes them. There is no
+back-channel — a presenter cannot influence control flow, and a panic in one is
+logged and dropped rather than aborting an update that is midway through
+migrating a database.</p>
+<p>Plain output is the reference for what must be conveyed. Anything richer is
+motion added to information that was already complete.</p>
 
 
 
@@ -1797,7 +1799,7 @@ An error without its remedy is a support ticket.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../installation-commands/" class="md-footer__link md-footer__link--prev" aria-label="Previous: installation">
+          <a href="../../reference/hooks/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Hook ABI">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1807,20 +1809,20 @@ An error without its remedy is a support ticket.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                installation
+                Hook ABI
               </div>
             </div>
           </a>
         
         
           
-          <a href="../output-modes/" class="md-footer__link md-footer__link--next" aria-label="Next: Output modes">
+          <a href="../the-step-engine/" class="md-footer__link md-footer__link--next" aria-label="Next: The step engine">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Output modes
+                The step engine
               </div>
             </div>
             <div class="md-footer__button md-icon">
