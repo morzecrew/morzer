@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/manifest/">
       
       
-        <link rel="prev" href="../output-modes/">
+        <link rel="prev" href="../parameters/">
       
       
         <link rel="next" href="../hooks/">
@@ -1154,6 +1154,35 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../parameters/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Parameters
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -1268,6 +1297,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         requirements
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        parameters
       </span>
     </span>
   </a>
@@ -1680,6 +1720,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#images" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1938,6 +1989,12 @@ later. Vendor-specific keys go under <code>extensions.&lt;namespace&gt;</code>.<
 <td>What the machine must provide.</td>
 </tr>
 <tr>
+<td><code>parameters</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Knobs an operator may set, typed and defaulted. See <a href="../parameters/">Parameters</a>.</td>
+</tr>
+<tr>
 <td><code>images</code></td>
 <td>map</td>
 <td style="text-align: center;">✅</td>
@@ -2131,10 +2188,101 @@ Deploying the wrong topology quietly is worse than refusing.</p>
 <tr>
 <td><code>ports</code></td>
 <td>list</td>
-<td>TCP ports the release binds, checked for conflicts.</td>
+<td>TCP ports the release binds, checked for conflicts. A literal number, or <code>"{{ .Parameters.&lt;name&gt; }}"</code> so the check follows the port the deployment actually publishes.</td>
 </tr>
 </tbody>
 </table>
+<h2 id="parameters">parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
+<p>What an operator may change, and nothing else. Each entry declares a <code>type</code>, an
+optional <code>default</code>, and — for an enum — the <code>values</code> it accepts.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">parameters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">http_port</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">port</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">18080</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Port the application is published on</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">log_level</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">enum</span>
+<span class="w">    </span><span class="nt">values</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">debug</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">info</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">warn</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">error</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td style="text-align: center;">✅</td>
+<td>One of <code>port</code>, <code>int</code>, <code>bool</code>, <code>string</code>, <code>enum</code>, <code>duration</code>, <code>bytes</code>.</td>
+</tr>
+<tr>
+<td><code>default</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>Used when the operator sets nothing. Validated against <code>type</code> at <code>release verify</code>.</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>Shown when a value is refused, so the operator learns what is accepted.</td>
+</tr>
+<tr>
+<td><code>values</code></td>
+<td>list</td>
+<td style="text-align: center;"></td>
+<td>The permitted set. Required for <code>enum</code>, an error for anything else.</td>
+</tr>
+<tr>
+<td><code>services</code></td>
+<td>list</td>
+<td style="text-align: center;"></td>
+<td>Services to restart when the value changes. Empty means the change needs a full <code>apply</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>A declared parameter reaches three places, all under the same name:</p>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Form</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Compose files</td>
+<td><code>&lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;</code></td>
+</tr>
+<tr>
+<td>Configuration templates</td>
+<td><code>.Parameters.&lt;name&gt;</code></td>
+</tr>
+<tr>
+<td>Hooks</td>
+<td><code>&lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p>Every declared parameter is always exported, holding its default when the
+operator has set nothing — so a Compose file's <code>:-</code> fallback is belt-and-braces
+rather than the actual source of the value.</p>
+<div class="admonition danger">
+<p class="admonition-title">Parameters are not secrets</p>
+<p>A parameter's value is visible in <code>docker inspect</code>, in <code>status --json</code>, in
+the journal, and in <code>installation.yaml</code> in the clear. Anything that must
+not be is a <a href="../../authoring/">secret</a>, which has its own declared,
+audited path and is rendered to tmpfs as a file.</p>
+</div>
+<p>See <a href="../parameters/">Parameters</a> for the operator's side.</p>
 <h2 id="images">images<a class="headerlink" href="#images" title="Permanent link">&para;</a></h2>
 <p>A map of logical name to image reference. <strong>Every reference must be pinned by
 digest</strong>:</p>
@@ -2482,7 +2630,26 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span>
 <span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2GiB</span>
 <span class="w">  </span><span class="nt">disk</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5GiB</span>
-<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">18080</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="c1"># Follows the parameter rather than restating it: preflight has to check the</span>
+<span class="w">  </span><span class="c1"># port this deployment will actually publish, not the one the vendor chose.</span>
+<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}&quot;</span><span class="p p-Indicator">]</span>
+
+<span class="c1"># What an operator may change, and nothing else. Each reaches Compose as</span>
+<span class="c1"># &lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;, templates as .Parameters.&lt;name&gt;, and hooks the same</span>
+<span class="c1"># way as Compose. Parameters are not secrets: their values are visible in</span>
+<span class="c1"># `docker inspect` and in `status --json`.</span>
+<span class="nt">parameters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">http_port</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">port</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">18080</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Port the application is published on</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">log_level</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">enum</span>
+<span class="w">    </span><span class="nt">values</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">debug</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">info</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">warn</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">error</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Application log verbosity</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
 
 <span class="nt">images</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001</span>
@@ -2518,7 +2685,10 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 
 <span class="nt">health</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">checks</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:18080/health/ready&quot;</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="c1"># Follows the parameter too. A probe on a port the deployment does not</span>
+<span class="w">    </span><span class="c1"># publish is an `apply` that fails at &quot;wait for health&quot; on a system that</span>
+<span class="w">    </span><span class="c1"># is working.</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}/health/ready&quot;</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
 <span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">command</span><span class="p p-Indicator">,</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/check-db&quot;</span><span class="p p-Indicator">],</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">15s</span><span class="p p-Indicator">}</span>
 
 <span class="nt">compatibility</span><span class="p">:</span>
@@ -2604,7 +2774,7 @@ all run against it, so it cannot drift from what the manager actually accepts.</
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../output-modes/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Output modes">
+          <a href="../parameters/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Parameters">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2614,7 +2784,7 @@ all run against it, so it cannot drift from what the manager actually accepts.</
                 Previous
               </span>
               <div class="md-ellipsis">
-                Output modes
+                Parameters
               </div>
             </div>
           </a>
