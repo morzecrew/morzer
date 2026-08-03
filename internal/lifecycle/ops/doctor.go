@@ -49,7 +49,11 @@ func (r DoctorReport) ExitCode() int {
 // any other command to load it. Every check that cannot run reports itself as
 // a failed check rather than aborting the run.
 func Doctor(ctx context.Context, d *Deps) (DoctorReport, error) {
-	runner := preflight.NewRunner(d.Bus)
+	// Deliberately not wired to the event bus. For `apply` the checks are
+	// progress and streaming them is useful; for `doctor` they *are* the
+	// result, and the command renders them grouped by category. Publishing
+	// as well would print every check twice.
+	runner := preflight.NewRunner(nil)
 	checks := d.doctorChecks(ctx)
 
 	report := runner.Run(ctx, checks)
@@ -440,9 +444,12 @@ func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) prefl
 
 			services, err := d.Runtime.Status(ctx, cfg)
 			if err != nil {
+				// The adapter's message already names the failure;
+				// prefixing it produced "cannot read service
+				// status: cannot read service status".
 				return preflight.Fail(
 					"check that the Docker daemon is running: `docker info`",
-					"cannot read service status: %s", domain.AsError(err).Message)
+					"%s", domain.AsError(err).Message)
 			}
 			if len(services) == 0 {
 				return preflight.Warn(
@@ -484,9 +491,19 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 			// wall of connection refusals, and a remedy ("check its
 			// logs") that contradicts the service check directly
 			// above. The service check already said what is wrong.
-			cfg, err := d.runtimeConfig(rel, inst, "")
-			if err == nil {
-				if services, err := d.Runtime.Status(ctx, cfg); err == nil && !anyRunning(services) {
+			cfg, cfgErr := d.runtimeConfig(rel, inst, "")
+			if cfgErr == nil {
+				services, statusErr := d.Runtime.Status(ctx, cfg)
+				switch {
+				case statusErr != nil:
+					// The service check above already reported
+					// why the runtime is unreachable. Probing
+					// anyway would add a wall of connection
+					// refusals that explain nothing.
+					return preflight.Warn(
+						"the runtime is unreachable; see the service check above",
+						"not probed: cannot determine what is running")
+				case !anyRunning(services):
 					return preflight.Warn(
 						"run `morzer apply` to start the product",
 						"not probed: no services are running")

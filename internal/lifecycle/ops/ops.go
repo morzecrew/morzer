@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -68,6 +69,24 @@ type Deps struct {
 
 	// Now is the clock. Injectable for the same reason.
 	Now func() time.Time
+
+	// TargetPrefix relocates the absolute paths a manifest declares --
+	// configuration targets above all -- underneath a prefix.
+	//
+	// It backs the hidden --root flag. Manifest targets are required to be
+	// absolute, so without this a "relocated" installation would still
+	// write its configuration to the real /etc, and --root would be a flag
+	// that only half works. Empty in production.
+	TargetPrefix string
+}
+
+// configTarget resolves a manifest configuration target, honouring the
+// relocation prefix.
+func (d *Deps) configTarget(target string) string {
+	if d.TargetPrefix == "" {
+		return target
+	}
+	return filepath.Join(d.TargetPrefix, target)
 }
 
 // Options are the flags an operation honours. They come from the CLI layer and

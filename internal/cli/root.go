@@ -408,6 +408,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		Bus:            bus,
 		ManagerVersion: parseBuildVersion(a.Build.Version),
 		Redactor:       redactor,
+		TargetPrefix:   a.Flags.root,
 	}
 
 	deps.Health = health.NewWaiter(

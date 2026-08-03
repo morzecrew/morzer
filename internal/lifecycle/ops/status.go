@@ -20,8 +20,11 @@ type Status struct {
 	Profile        string `json:"profile,omitempty"`
 	PublicURL      string `json:"public_url,omitempty"`
 
-	CurrentRelease  domain.ReleaseRecord `json:"current_release"`
-	PreviousRelease domain.ReleaseRecord `json:"previous_release,omitempty"`
+	// Pointers, not values: encoding/json ignores omitempty on a struct, so
+	// a value here emitted a zero-filled object for "no previous release".
+	// null says it unambiguously.
+	CurrentRelease  *domain.ReleaseRecord `json:"current_release"`
+	PreviousRelease *domain.ReleaseRecord `json:"previous_release"`
 
 	Services []ports.ServiceState `json:"services"`
 	Health   []ports.HealthResult `json:"health,omitempty"`
@@ -86,11 +89,20 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		PublicURL:      inst.PublicURL(),
 	}
 
-	if out.CurrentRelease, err = d.State.CurrentRelease(ctx); err != nil {
+	current, err := d.State.CurrentRelease(ctx)
+	switch {
+	case err != nil:
 		out.Problems = append(out.Problems, "cannot read the current release: "+domain.AsError(err).Message)
+	case !current.IsZero():
+		out.CurrentRelease = &current
 	}
-	if out.PreviousRelease, err = d.State.PreviousRelease(ctx); err != nil {
+
+	previous, err := d.State.PreviousRelease(ctx)
+	switch {
+	case err != nil:
 		out.Problems = append(out.Problems, "cannot read the previous release: "+domain.AsError(err).Message)
+	case !previous.IsZero():
+		out.PreviousRelease = &previous
 	}
 
 	if owner, held, err := d.Locker.Owner(ctx, "deployment"); err == nil && held {
@@ -109,8 +121,8 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 	}
 
 	// Service and health state need a release to know what to look at.
-	if !out.CurrentRelease.IsZero() {
-		rel, relErr := d.resolveCurrentRelease(ctx, out.CurrentRelease)
+	if out.CurrentRelease != nil {
+		rel, relErr := d.resolveCurrentRelease(ctx, *out.CurrentRelease)
 		if relErr != nil {
 			out.Problems = append(out.Problems, domain.AsError(relErr).Message)
 		} else {
@@ -134,8 +146,10 @@ func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.I
 
 	services, err := d.Runtime.Status(ctx, cfg)
 	if err != nil {
-		out.Problems = append(out.Problems,
-			"cannot read service status: "+domain.AsError(err).Message)
+		// The adapter's message already names what failed; prefixing it
+		// again produced "cannot read service status: cannot read
+		// service status".
+		out.Problems = append(out.Problems, domain.AsError(err).Message)
 		return
 	}
 	out.Services = services

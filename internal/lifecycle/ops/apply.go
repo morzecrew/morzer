@@ -307,7 +307,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if err != nil {
 				return nil, err
 			}
-			out[cfg.Target] = rendered
+			out[d.configTarget(cfg.Target)] = rendered
 		}
 		return out, nil
 	}
@@ -360,7 +360,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			backups := make(map[string][]byte, len(rendered))
 			modes := make(map[string]uint32, len(rendered))
 			for _, cfg := range rel.Manifest.Configuration {
-				modes[cfg.Target] = cfg.Mode.Perm()
+				modes[d.configTarget(cfg.Target)] = cfg.Mode.Perm()
 			}
 
 			for target, content := range rendered {

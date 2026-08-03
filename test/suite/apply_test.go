@@ -413,6 +413,7 @@ func TestStatusReportsDeployedState(t *testing.T) {
 
 	assert.Equal(t, "demo", status.Product)
 	assert.Equal(t, "inst_01TESTINSTALLATION", status.InstallationID)
+	require.NotNil(t, status.CurrentRelease)
 	assert.True(t, status.CurrentRelease.Version.Equal(domain.MustParseVersion("1.2.0")))
 	assert.Equal(t, "https://demo.example", status.PublicURL)
 	assert.NotEmpty(t, status.Services)
@@ -434,7 +435,7 @@ func TestStatusWorksWithoutARelease(t *testing.T) {
 
 	status, err := ops.GetStatus(ctx, h.Deps)
 	require.NoError(t, err, "status must work on a fresh installation")
-	assert.True(t, status.CurrentRelease.IsZero())
+	assert.Nil(t, status.CurrentRelease, "no release installed must be null, not a zero-filled object")
 	assert.Empty(t, status.Services)
 }
 

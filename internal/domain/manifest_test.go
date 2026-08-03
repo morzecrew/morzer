@@ -377,3 +377,25 @@ func TestScalarRoundTrips(t *testing.T) {
 		require.Error(t, b.UnmarshalText([]byte("plenty")))
 	})
 }
+
+func TestByteSizeIsReadable(t *testing.T) {
+	// Manifest values divide evenly and must round-trip unchanged.
+	for _, exact := range []string{"4GiB", "512MiB", "2TiB", "40GiB"} {
+		var b ByteSize
+		require.NoError(t, b.UnmarshalText([]byte(exact)))
+		assert.Equal(t, exact, b.String(), "a manifest value must round-trip exactly")
+	}
+
+	// Measured values -- free disk, backup sizes -- get one decimal in the
+	// largest sensible unit. "1066834032KiB free" is unreadable.
+	assert.Equal(t, "1017.4GiB", ByteSize(1066834032*KiB).String())
+	assert.Equal(t, "1.5MiB", ByteSize(1536*KiB+512).String())
+	assert.Equal(t, "0", ByteSize(0).String())
+	assert.Equal(t, "512", ByteSize(512).String(), "sub-KiB values stay a byte count")
+
+	// Whatever String produces must parse back.
+	for _, n := range []ByteSize{0, 512, 1536*KiB + 512, 1066834032 * KiB, 4 * GiB} {
+		var round ByteSize
+		require.NoError(t, round.UnmarshalText([]byte(n.String())), "cannot re-parse %q", n)
+	}
+}

@@ -23,9 +23,11 @@ atomicity, verification and reporting.
 ## Install
 
 ```sh
-make build          # ./morzer
-make build-all      # dist/morzer-linux-{amd64,arm64} + SHA256SUMS
+just build          # ./morzer
+just build-all      # dist/morzer-linux-{amd64,arm64} + SHA256SUMS
 ```
+
+`just --list` shows every recipe.
 
 Requires Go 1.24+ to build. At runtime it needs `docker`, `docker compose` and
 `sops` on the target machine — the versions a release demands are checked in
@@ -37,11 +39,18 @@ Every managed path derives from a single root, so the whole thing can be
 exercised against a throwaway directory:
 
 ```sh
-make demo
+just demo
 ```
 
-That runs `init`, `status` and `doctor` against the example bundle in
-`testdata/bundle/`, writing everything under `tmp/demo/`.
+That runs `init`, `status`, `doctor` and `secret list` against the example
+bundle in `testdata/bundle/`, writing everything under `tmp/demo/`. Two
+variants go further: `just demo-plan` shows what `apply` would do as a step
+list with a configuration diff, and `just demo-json` shows the machine-readable
+output contract.
+
+The `--root` flag relocates *every* managed path -- including the absolute
+configuration targets a manifest declares -- so nothing touches the real
+`/etc`. It is hidden from `--help` because it exists for testing.
 
 By hand:
 
@@ -121,7 +130,7 @@ to ports — the string `docker` appears nowhere above `internal/adapters`.
 `internal/cli` is the single place adapters are named.
 
 These rules are enforced mechanically by `depguard` in `.golangci.yml`, not by
-discipline. Run `make lint`.
+discipline. Run `just lint`.
 
 Two deliberate departures from the spec's package sketch, both documented at the
 top of the packages concerned:
@@ -232,10 +241,11 @@ logic without changing the manager.
 ## Testing
 
 ```sh
-make test        # everything
-make contract    # the shared port contract suites
-make test-race   # the bus and the engine under -race
-make lint        # including the depguard layering rules
+just test        # everything
+just contract    # the shared port contract suites
+just test-race   # the bus and the engine under -race
+just lint        # including the depguard layering rules
+just check       # what CI runs: fmt-check, vet, test
 ```
 
 | Level | What it covers |

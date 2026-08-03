@@ -92,21 +92,41 @@ const (
 
 func (b ByteSize) Bytes() int64 { return int64(b) }
 
+// String renders a size for a human.
+//
+// A value that divides evenly into a unit keeps its exact form, so a manifest
+// saying `4GiB` round-trips as `4GiB`. Anything else -- free disk space, a
+// backup size -- is rendered in the largest unit that leaves a number below
+// 1024, with one decimal. Reporting 1066834032KiB free is technically correct
+// and completely unreadable.
 func (b ByteSize) String() string {
-	switch {
-	case b == 0:
+	if b == 0 {
 		return "0"
+	}
+	if b < 0 {
+		return "-" + (-b).String()
+	}
+
+	switch {
 	case b%TiB == 0:
 		return fmt.Sprintf("%dTiB", b/TiB)
 	case b%GiB == 0:
 		return fmt.Sprintf("%dGiB", b/GiB)
 	case b%MiB == 0:
 		return fmt.Sprintf("%dMiB", b/MiB)
-	case b%KiB == 0:
+	case b%KiB == 0 && b < MiB:
 		return fmt.Sprintf("%dKiB", b/KiB)
-	default:
-		return strconv.FormatInt(int64(b), 10)
 	}
+
+	for _, unit := range []struct {
+		size   ByteSize
+		suffix string
+	}{{TiB, "TiB"}, {GiB, "GiB"}, {MiB, "MiB"}, {KiB, "KiB"}} {
+		if b >= unit.size {
+			return fmt.Sprintf("%.1f%s", float64(b)/float64(unit.size), unit.suffix)
+		}
+	}
+	return strconv.FormatInt(int64(b), 10)
 }
 
 // byteUnits is ordered longest-suffix-first so "GiB" matches before "G".

@@ -225,11 +225,11 @@ func RenderStatus(w io.Writer, s ops.Status) {
 	f("%s", s.Product)
 	f("  installation   %s", s.InstallationID)
 
-	if s.CurrentRelease.IsZero() {
+	if s.CurrentRelease == nil {
 		f("  release        none installed")
 	} else {
 		f("  release        %s", s.CurrentRelease.Version)
-		if !s.PreviousRelease.IsZero() {
+		if s.PreviousRelease != nil {
 			f("  previous       %s", s.PreviousRelease.Version)
 		}
 	}
