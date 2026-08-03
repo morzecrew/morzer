@@ -9,9 +9,9 @@ manifest, Compose files, configuration templates and lifecycle hooks. The unit
 of management is an **installation** — the state of one deployment on one
 machine.
 
-**Status:** milestone M1. `init`, `apply`, `status`, `doctor`, `backup`,
-`restore`, `secret` and `release` are implemented against a real bundle.
-See [Milestones](#milestones) for what is not here yet.
+**Status:** `init`, `apply`, `status`, `doctor`, `backup`, `restore`, `secret`
+and `release` work against a real bundle. `update` and `rollback` do not exist
+yet — see [`rfcs/`](rfcs/) for what is designed but not built.
 
 ## What it is not
 
@@ -269,26 +269,14 @@ the fast integration tests honest.
 The fault-injection suite is the one that matters most: the step engine's value
 is entirely in what happens when something breaks.
 
-## Milestones
+## Design proposals
 
-**M1 — done.** Core CLI and vertical slice: typed manifest with strict decoding,
-installation state, release directories, `init`/`apply`/`status`/`doctor`, step
-engine with dry-run and resume, atomic operations, the full exit-code table,
-SOPS rendering, systemd unit generation, backup and restore hooks, contract
-suites for `Runtime`/`SecretStore`/`StateStore`, plain and JSON output.
+Work that has not shipped is designed in [`rfcs/`](rfcs/) before it is built,
+one numbered document per piece with its decisions recorded and its exclusions
+reasoned. [`rfcs/INDEX.md`](rfcs/INDEX.md) is the table of contents.
 
-**M2 — next.** `update`, `rollback`, bundle verification against a published
-digest, compatibility gating, pre-update backup, the Bubble Tea live renderer.
-The domain rules for compatibility and rollback assessment (`CheckUpgrade`,
-`AssessRollback`) are already implemented; what is missing is the operations
-that call them.
-
-**M3.** Full `secret` surface polish, `init` wizard via `huh`, installation
-export/import, restore verified on a clean VM.
-
-**M4.** HTTPS and OCI sources, signature verification and the
-`require_signature` policy, goreleaser, offline installation, published JSON
-Schema.
+Currently proposed: update and rollback, the rich terminal renderer, secrets
+recovery and onboarding, and distribution with signature verification.
 
 ## Changelog
 
