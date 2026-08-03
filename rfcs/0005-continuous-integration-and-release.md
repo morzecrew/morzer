@@ -1,6 +1,6 @@
 # RFC 0005 — Continuous integration and release automation
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — P1 shipped 2026-08-03: `ci.yml` with `changes`, `workflows` (actionlint), `quality` and `test`, including the no-skip assertion as `just contract-strict`. P2–P6 remain.
 - **Scope:** Adds `.github/` — workflows, reusable shell helpers, Dependabot,
   issue templates, CODEOWNERS — plus the governance files a public repository is
   expected to carry (`SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`).
@@ -75,7 +75,10 @@ exercising the production secret store. CI is where that skip must not fire.
   documented exclusions. Currently passes with 0 issues.
 - A test suite that runs in ~1s without Docker, plus contract suites that use
   the real `sops` binary when present.
-- `go.mod` pinning Go 1.24 as the language version.
+- `go.mod` declaring **Go 1.25.0** as the language version — `golang.org/x/term`,
+  `golang.org/x/sys` and `renameio/v2` each require it. (This RFC originally
+  said 1.24, written from memory rather than checked; the README carried the
+  same error and both were corrected when P1 shipped.)
 
 **Absent.**
 
@@ -122,9 +125,10 @@ suite:
 
 ```text
 ci.yml (also callable as a reusable workflow)
-  changes    → path filter; emits code / docs / force_full outputs
+  changes    → path filter; emits code / workflows / run_full outputs
+  workflows  → actionlint                                   [needs: changes]
   quality    → just fmt-check, just vet, just lint          [needs: changes]
-  test       → matrix: {go: [1.24, stable]}                 [needs: quality]
+  test       → matrix: {go: [1.25.0, stable]}               [needs: quality]
                just test-race, with sops + Docker present
   coverage   → floor gate                                   [needs: test]
   acceptance → the clean-VM scenario                        [needs: test]
@@ -133,7 +137,7 @@ ci.yml (also callable as a reusable workflow)
 `quality` before `test` is deliberate: a formatting or layering violation should
 fail in twenty seconds rather than after the suite.
 
-**The Go version matrix is `[1.24, stable]`** — the declared minimum in `go.mod`
+**The Go version matrix is `[1.25.0, stable]`** — the declared minimum in `go.mod`
 and whatever is current. A build that only ever runs on the latest toolchain
 silently raises the floor.
 
@@ -162,6 +166,12 @@ The single most important line in the whole workflow:
 The assertion matters more than the install: without it, a future change to how
 `sops` is located would silently return the suite to skipping, and nothing would
 report it.
+
+*As shipped in P1* this lives in the justfile as `just contract-strict` rather
+than inline YAML, per Decision 1 — which also makes it reproducible locally.
+Verified both ways before merge: it passes with `sops` present, and with `sops`
+removed from `PATH` the SOPS suite reports `--- SKIP` and the recipe exits 1,
+while a plain `go test ./test/suite/` still exits 0.
 
 ### 5.3 Coverage floor
 
@@ -317,7 +327,7 @@ CI is itself largely untestable, so the design leans on assertions inside it:
 | 1 | CI invokes `just` recipes rather than restating commands in YAML. Local and CI cannot drift when there is one definition, and a contributor can reproduce a failure exactly. |
 | 2 | CI fails if any contract suite **skips**. A skipped real-adapter suite means CI is greener than the code — the fake was exercised and the production store was not. |
 | 3 | `quality` gates `test`. A formatting or layering violation should fail in twenty seconds, not after the full suite. |
-| 4 | The Go matrix is the `go.mod` minimum plus `stable`. Testing only the latest toolchain silently raises the declared floor. |
+| 4 | The Go matrix is the `go.mod` minimum (1.25.0) plus `stable`. Testing only the latest toolchain silently raises the declared floor. |
 | 5 | One total coverage floor, not per-package. Per-package floors let the domain sit at 95% and the adapters at 5% while the headline looks respectable. |
 | 6 | The floor starts at the first measured value and is raised deliberately. A floor set above current coverage is a permanently red build everyone learns to ignore. |
 | 7 | `release.yaml` calls `ci.yml` as a reusable workflow rather than trusting a prior run. A tag must be built from a commit that passed everything, verified at release time. |

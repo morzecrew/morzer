@@ -1,5 +1,7 @@
 # morzer
 
+[![CI](https://github.com/morzecrew/morzer/actions/workflows/ci.yml/badge.svg)](https://github.com/morzecrew/morzer/actions/workflows/ci.yml)
+
 A CLI that manages the lifecycle of a self-hosted product on a single Linux
 machine running Docker Compose: install, configure, update, roll back, back up,
 restore, diagnose.
@@ -29,7 +31,7 @@ just build-all      # dist/morzer-linux-{amd64,arm64} + SHA256SUMS
 
 `just --list` shows every recipe.
 
-Requires Go 1.24+ to build. At runtime it needs `docker`, `docker compose` and
+Requires Go 1.25+ to build. At runtime it needs `docker`, `docker compose` and
 `sops` on the target machine — the versions a release demands are checked in
 preflight and reported by `doctor`.
 

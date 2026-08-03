@@ -44,6 +44,24 @@ test *args:
 contract:
     go test -v ./test/suite/ -run Contract
 
+# A skipped real-adapter suite means the production adapter was never exercised
+# and the fake carried the run alone. That is the failure this recipe exists to
+# catch, so absence of a skip is asserted rather than assumed.
+
+# Run the contract suites and fail if any of them skipped.
+contract-strict:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$(mktemp)
+    trap 'rm -f "$out"' EXIT
+    go test ./test/suite/ -run Contract -v 2>&1 | tee "$out"
+    if grep -q -- '--- SKIP' "$out"; then
+        echo >&2
+        echo "error: a contract suite skipped, so a real adapter went unexercised." >&2
+        echo "       install the missing tool (sops) and re-run." >&2
+        exit 1
+    fi
+
 # The engine publishes events from step goroutines while presenters consume
 # them, so this is the recipe that actually exercises the bus.
 
@@ -95,6 +113,13 @@ tidy:
 
 # Everything CI runs.
 check: fmt-check vet test
+
+# `check` deliberately omits lint and the strict contract run so it works
+# without golangci-lint or sops installed. This recipe is the exact-parity one:
+# if it passes, CI passes.
+
+# Run exactly what CI runs. Needs golangci-lint and sops.
+ci: fmt-check vet lint contract-strict test-race
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.

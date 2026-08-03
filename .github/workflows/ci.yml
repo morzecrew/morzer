@@ -1,0 +1,183 @@
+# Continuous integration.
+#
+# Every gate is a `just` recipe. CI does not restate commands, so a contributor
+# who runs `just check && just lint && just contract-strict` locally has run
+# what CI runs, and a failure here is reproducible there.
+#
+# Third-party actions are pinned by commit SHA rather than tag. A moving tag is
+# arbitrary code execution with whatever permissions the job holds; Dependabot
+# updates the SHAs.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # Callable from release.yaml, so a tag is verified at release time rather
+  # than trusting that CI happened to pass on the commit earlier.
+  workflow_call:
+    inputs:
+      force_full:
+        description: Run every job regardless of which paths changed.
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      force_full:
+        description: Run every job regardless of which paths changed.
+        type: boolean
+        default: true
+
+# Read-only by default. Jobs elevate individually if they ever need to.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Superseded pull-request runs are cancelled; pushes to main are not, so the
+  # history of what passed on main stays complete.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Pinned deliberately. An unpinned linter turns an unrelated upstream release
+  # into a red build on an untouched branch.
+  GOLANGCI_LINT_VERSION: "2.12.2"
+  ACTIONLINT_VERSION: "1.7.12"
+  SOPS_VERSION: "3.13.3"
+
+jobs:
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+      run_full: ${{ steps.decide.outputs.run_full }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - id: filter
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
+        with:
+          filters: |
+            code:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'justfile'
+              - '.golangci.yml'
+              - 'testdata/**'
+            workflows:
+              - '.github/**'
+
+      - id: decide
+        # A push to main and an explicitly requested run ignore the path
+        # filters. Anything merged to main gets the full suite regardless of
+        # what it touched.
+        run: |
+          if [ "${{ inputs.force_full }}" = "true" ] || [ "${{ github.event_name }}" = "push" ]; then
+            echo "run_full=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_full=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  workflows:
+    name: Lint workflows
+    needs: changes
+    if: needs.changes.outputs.run_full == 'true' || needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+          curl -fsSL -o actionlint.tar.gz \
+            "${base}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o checksums.txt \
+            "${base}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          expected=$(grep "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz\$" checksums.txt | awk '{print $1}')
+          echo "${expected}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          sudo install -m 0755 actionlint /usr/local/bin/actionlint
+
+      - run: actionlint -color
+
+  quality:
+    name: Formatting, vet and lint
+    needs: changes
+    if: needs.changes.outputs.run_full == 'true' || needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      - name: Install golangci-lint
+        run: |
+          set -euo pipefail
+          v="${GOLANGCI_LINT_VERSION}"
+          base="https://github.com/golangci/golangci-lint/releases/download/v${v}"
+          curl -fsSL -o golangci-lint.tar.gz "${base}/golangci-lint-${v}-linux-amd64.tar.gz"
+          curl -fsSL -o checksums.txt "${base}/golangci-lint-${v}-checksums.txt"
+          expected=$(grep "golangci-lint-${v}-linux-amd64.tar.gz\$" checksums.txt | awk '{print $1}')
+          echo "${expected}  golangci-lint.tar.gz" | sha256sum -c -
+          tar -xzf golangci-lint.tar.gz "golangci-lint-${v}-linux-amd64/golangci-lint"
+          sudo install -m 0755 "golangci-lint-${v}-linux-amd64/golangci-lint" /usr/local/bin/golangci-lint
+
+      # Ordered cheapest-first: a formatting violation should fail in seconds
+      # rather than after the linter has walked the whole module.
+      - run: just fmt-check
+      - run: just vet
+      - run: just lint
+
+  test:
+    name: Test (go ${{ matrix.go }})
+    needs: [changes, quality]
+    if: needs.changes.outputs.run_full == 'true' || needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The declared floor in go.mod, and whatever is current. Testing only
+        # the latest toolchain silently raises the floor for everyone else.
+        go: ["1.25.0", "stable"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # Without sops the real SecretStore contract suite skips itself and the
+      # run stays green having exercised only the fake. Installing it is what
+      # makes the next step meaningful.
+      - name: Install sops
+        run: |
+          set -euo pipefail
+          base="https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}"
+          curl -fsSL -o sops "${base}/sops-v${SOPS_VERSION}.linux.amd64"
+          curl -fsSL -o checksums.txt "${base}/sops-v${SOPS_VERSION}.checksums.txt"
+          expected=$(grep "sops-v${SOPS_VERSION}.linux.amd64\$" checksums.txt | awk '{print $1}')
+          echo "${expected}  sops" | sha256sum -c -
+          sudo install -m 0755 sops /usr/local/bin/sops
+          sops --version --disable-version-check
+
+      # Asserts no contract suite skipped. This is the guard against CI being
+      # greener than the code: the install above could silently stop working
+      # and nothing else would report it.
+      - run: just contract-strict
+
+      - run: just test-race
