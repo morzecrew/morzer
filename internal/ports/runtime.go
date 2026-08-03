@@ -182,6 +182,23 @@ type RegistryProber interface {
 	ProbeRegistry(ctx context.Context, imageRef string) error
 }
 
+// ImageInspector reports whether an image is already on this machine.
+//
+// It exists for the question an operator has to answer *before* losing network
+// access, not after: will this deployment come up on a host that cannot reach a
+// registry. `apply --startup` already skips pulls when images are local, so the
+// capability is there — what was missing was any way to find out beforehand,
+// which meant discovering it at the moment nothing could be done about it.
+//
+// Optional for the same reason as RegistryProber: a runtime with no local image
+// store has nothing to answer, and a mandatory method would make it lie.
+type ImageInspector interface {
+	// HasImage reports whether imageRef is present locally. An image that
+	// cannot be checked is reported as an error rather than as absent:
+	// "not here" and "cannot tell" lead an operator to different actions.
+	HasImage(ctx context.Context, imageRef string) (bool, error)
+}
+
 // ToolInfo is a resolved external binary. The lifecycle layer uses it for
 // preflight and doctor; adapters expose it so version checks are not
 // re-implemented per adapter.

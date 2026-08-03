@@ -1,0 +1,382 @@
+{
+  "$id": "https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The release contract for api_version selfhost/v1alpha1. Generated from the Go types that enforce it; do not edit by hand.",
+  "properties": {
+    "api_version": {
+      "enum": [
+        "selfhost/v1alpha1"
+      ],
+      "type": "string"
+    },
+    "compatibility": {
+      "additionalProperties": false,
+      "properties": {
+        "database_schema_max": {
+          "type": "integer"
+        },
+        "database_schema_min": {
+          "type": "integer"
+        },
+        "min_manager_version": {
+          "description": "A semantic version, e.g. 1.2.0.",
+          "examples": [
+            "1.2.0"
+          ],
+          "pattern": "^v?\\d+\\.\\d+\\.\\d+(?:[-+].*)?$",
+          "type": "string"
+        },
+        "rollback_safe": {
+          "type": "boolean"
+        },
+        "upgrade_from": {
+          "description": "A semantic version constraint, e.g. \"\u003e=1.0.0 \u003c2.0.0\".",
+          "examples": [
+            "\u003e=1.0.0 \u003c2.0.0"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "configuration": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "description": "An octal file mode, quoted, e.g. \"0640\".",
+            "examples": [
+              "0640"
+            ],
+            "pattern": "^0?[0-7]{3,4}$",
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "template": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "extensions": {
+      "additionalProperties": {
+        "type": "object"
+      },
+      "type": "object"
+    },
+    "health": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "command": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              },
+              "timeout": {
+                "description": "A duration, e.g. 30s or 10m.",
+                "examples": [
+                  "30s",
+                  "10m"
+                ],
+                "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "http",
+                  "tcp",
+                  "command"
+                ],
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "images": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "kind": {
+      "enum": [
+        "application-release"
+      ],
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string"
+        },
+        "version": {
+          "description": "A semantic version, e.g. 1.2.0.",
+          "examples": [
+            "1.2.0"
+          ],
+          "pattern": "^v?\\d+\\.\\d+\\.\\d+(?:[-+].*)?$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "operations": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "hook",
+              "runtime-service"
+            ],
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "timeout": {
+            "description": "A duration, e.g. 30s or 10m.",
+            "examples": [
+              "30s",
+              "10m"
+            ],
+            "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "type": "object"
+    },
+    "providers": {
+      "additionalProperties": false,
+      "properties": {
+        "backup": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "description": "A semantic version constraint, e.g. \"\u003e=1.0.0 \u003c2.0.0\".",
+              "examples": [
+                "\u003e=1.0.0 \u003c2.0.0"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "health": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "description": "A semantic version constraint, e.g. \"\u003e=1.0.0 \u003c2.0.0\".",
+              "examples": [
+                "\u003e=1.0.0 \u003c2.0.0"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "runtime": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "description": "A semantic version constraint, e.g. \"\u003e=1.0.0 \u003c2.0.0\".",
+              "examples": [
+                "\u003e=1.0.0 \u003c2.0.0"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "secrets": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "description": "A semantic version constraint, e.g. \"\u003e=1.0.0 \u003c2.0.0\".",
+              "examples": [
+                "\u003e=1.0.0 \u003c2.0.0"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "requirements": {
+      "additionalProperties": false,
+      "properties": {
+        "architectures": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "disk": {
+          "description": "A byte size, e.g. 2GiB.",
+          "examples": [
+            "2GiB",
+            "512MiB"
+          ],
+          "type": "string"
+        },
+        "memory": {
+          "description": "A byte size, e.g. 2GiB.",
+          "examples": [
+            "2GiB",
+            "512MiB"
+          ],
+          "type": "string"
+        },
+        "os": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "description": "A semantic version constraint, e.g. \"\u003e=1.0.0 \u003c2.0.0\".",
+                "examples": [
+                  "\u003e=1.0.0 \u003c2.0.0"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "ports": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "tools": {
+          "additionalProperties": {
+            "description": "A semantic version constraint, e.g. \"\u003e=1.0.0 \u003c2.0.0\".",
+            "examples": [
+              "\u003e=1.0.0 \u003c2.0.0"
+            ],
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "retention": {
+      "additionalProperties": false,
+      "properties": {
+        "backups": {
+          "type": "integer"
+        },
+        "releases": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "runtime": {
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "profiles": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
+        "project": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "secrets": {
+      "additionalProperties": false,
+      "properties": {
+        "render_to": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "api_version",
+    "kind",
+    "metadata",
+    "runtime",
+    "images"
+  ],
+  "title": "morzer release manifest",
+  "type": "object"
+}

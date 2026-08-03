@@ -1,0 +1,70 @@
+# Cut a release from a tag.
+#
+# CI runs again here rather than trusting that it passed on the commit earlier:
+# a tag can point at anything, and "it was green last Tuesday" is not the same
+# claim as "this artifact was built from code that passes".
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Verify the tag
+    uses: ./.github/workflows/ci.yml
+    with:
+      force_full: true
+    permissions:
+      contents: read
+
+  release:
+    name: Build and publish
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # goreleaser creates the GitHub release
+    env:
+      # A boolean rather than the key itself: the `secrets` context is not
+      # available in a step's `if`, and job-level `env` is. Carrying only the
+      # answer keeps the key out of every step but the one that writes it.
+      HAS_SIGNING_KEY: ${{ secrets.MINISIGN_SECRET_KEY != '' }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # goreleaser builds the changelog from history
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Signing the checksums is what makes them worth publishing. The key is a
+      # repository secret; a fork without one still gets a release, unsigned,
+      # rather than no release at all.
+      - name: Install minisign and write the signing key
+        if: env.HAS_SIGNING_KEY == 'true'
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends minisign
+
+          # 0600 and outside the workspace, so it is not swept into an archive.
+          key="${RUNNER_TEMP}/minisign.key"
+          umask 077
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
+          echo "MINISIGN_KEY_FILE=${key}" >> "$GITHUB_ENV"
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
+        with:
+          version: '~> v2'
+          args: release --clean ${{ env.MINISIGN_KEY_FILE == '' && '--skip=sign' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -69,10 +69,75 @@ A reference's scheme selects the source that handles it. This build supports:
 | `./bundle`, `/opt/x/releases/1.2.0` | An unpacked bundle directory. |
 | `./demo-1.3.0.tar.zst`, `.tzst` | A zstd-compressed tar archive. |
 | `file:///abs/path` | Either of the above, spelled explicitly. |
+| `https://host/demo-1.3.0.tar.zst` | An archive published over TLS. |
+| `oci://registry.example/demo/bundle:1.3.0` | An OCI artifact in a registry. |
 
-`https://` and `oci://` parse but have no adapter in this build; the refusal
-names what is available. Plaintext `http://` is refused outright — fetch the
-bundle out of band and pass a path.
+Plaintext `http://` is refused outright — fetch the bundle out of band and pass
+a path. A reference whose scheme this build has no adapter for is refused by
+name, listing the ones it does have.
+
+### Over HTTPS
+
+TLS is not optional, and **a redirect may not leave it**. A server that answered
+an `https://` request with a redirect to plaintext would route around the
+refusal above at exactly the moment it matters, so the redirect is refused and
+the chain is bounded.
+
+A response body is capped while it is being read rather than trusted to match
+its `Content-Length` — that header is a claim by the same server sending the
+body. A 5xx or 429 is retried a few times, because a mirror restarting during a
+deploy is ordinary; a 404 or a 401 is not, because repeating a request the
+server answered definitively only delays the same answer.
+
+An untrusted certificate is named as one rather than retried:
+
+```text
+error: the TLS certificate for https://releases.internal/demo.tar.zst is not
+       trusted by this machine
+hint:  install the issuing CA, or fetch the bundle out of band and install it
+       from a path. There is no option to skip verification.
+```
+
+**There is no flag to skip verification, and there will not be.** A bundle
+fetched over a connection nothing authenticated is a bundle from nobody in
+particular, and a `--insecure` that existed would be reached for at exactly the
+moment it should not be.
+
+No credentials are sent. A bundle behind authentication is fetched out of band,
+or published to a registry.
+
+### From an OCI registry
+
+```sh
+morzer release fetch oci://registry.example/demo/bundle:1.3.0
+morzer release fetch oci://registry.example/demo/bundle@sha256:…
+```
+
+The bundle is one layer of an OCI artifact, published with the media type
+`application/vnd.morzer.release.bundle.v1.tar+zstd`. An artifact with a single
+layer is taken whatever its type; with several, the media type is what selects
+the bundle rather than a guess at ordering.
+
+**A reference with no tag or digest is refused.** A bare repository resolves to
+whatever `latest` points at today, which is the thing content-addressed identity
+exists to prevent.
+
+Credentials come from the ambient Docker configuration, so an operator who has
+run `docker login` for the registry their *images* come from does not log in
+again for the bundle that pins those images. Nothing is stored by the manager.
+
+`release list` against an `oci://` reference enumerates the repository's version
+tags. It is the only transport that can — a URL has no index — and tags that are
+not versions, like `latest`, are skipped rather than offered as something to
+install by number.
+
+!!! note "What the registry proves, and what it does not"
+
+    Both the manifest and the layer are checked against the digests the registry
+    itself advertises, so a registry serving different bytes than it named is
+    refused. That is a weaker claim than it sounds: it says the registry was
+    self-consistent, not that the bundle is the vendor's. The bundle's own
+    content digest and its signature are what answer that.
 
 **The shape a bundle arrives in does not change its identity.** A directory and
 its archive produce the same content digest, so a digest recorded from one

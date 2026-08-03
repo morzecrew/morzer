@@ -58,7 +58,10 @@ func NewRuntime() *Runtime {
 	}
 }
 
-var _ ports.Runtime = (*Runtime)(nil)
+var (
+	_ ports.Runtime        = (*Runtime)(nil)
+	_ ports.ImageInspector = (*Runtime)(nil)
+)
 
 func (r *Runtime) record(method string) error {
 	r.mu.Lock()
@@ -165,6 +168,22 @@ func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.
 		}
 	}
 	return out, nil
+}
+
+// HasImage answers from PulledImages, so a test can arrange a machine that has
+// never pulled and assert doctor says so.
+func (r *Runtime) HasImage(ctx context.Context, imageRef string) (bool, error) {
+	if err := r.record("HasImage"); err != nil {
+		return false, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, pulled := range r.PulledImages {
+		if pulled == imageRef {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *Runtime) Logs(ctx context.Context, cfg ports.RuntimeConfig, opts ports.LogOptions) (io.ReadCloser, error) {

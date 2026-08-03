@@ -1,10 +1,10 @@
 # RFC 0004 — Distribution and verification
 
-- **Status:** 🚧 In progress — P1–P3 shipped 2026-08-03. A source registry
-  dispatches on reference scheme, `tar.zst` bundles install like directories,
-  and `require_signature` enforces signing instead of refusing everything. Three
-  design changes are recorded in §5.1, §5.2 and §5.5. P4–P6 (HTTPS, goreleaser
-  and the JSON Schema, OCI) remain.
+- **Status:** ✅ Complete — P1–P3 shipped 2026-08-03, P4–P6 the same day. All
+  four transports, both verifiers, the generated JSON Schema, the offline path
+  and signed reproducible builds. Five design changes are recorded as amendments
+  in §5.1, §5.2, §5.3, §5.5 and §5.7; one defect the tests found is in §12; two
+  of the RFC's own risk assessments turned out wrong and are corrected in §9.
 - **Scope:** Adds three release sources — `tar.zst`, HTTPS and OCI artifact —
   behind the existing `ReleaseSource` port, and a minisign `Verifier` alongside
   the checksum one. Makes the `require_signature` installation policy fail
@@ -197,12 +197,69 @@ A sibling `<url>.minisig` is fetched when the installation requires signatures.
 A missing signature file under `require_signature: true` is a hard failure, not
 a downgrade.
 
+> **Amendment, P4 (2026-08-03).** No sibling `.minisig` is fetched, and
+> `go-retryablehttp` is not used.
+>
+> **The signature.** §5.5's design settled in P3 on a signature that travels
+> *inside* the bundle, over its `SHA256SUMS`. A sibling file over the archive
+> bytes would be a second mechanism covering different bytes, doubling the
+> surface to verify the same claim. The in-bundle signature works identically
+> for every transport, which is the point.
+>
+> The cost is worth stating: the signature is checked *after* extraction, so the
+> extractor runs on bytes nothing has authenticated. Extraction is confined by
+> `os.Root` and bounded by the limits in §5.2, so the exposure is the extractor
+> itself rather than the host — but it is an ordering, and it is now in
+> SECURITY.md's known gaps rather than left for someone to notice.
+>
+> **The retry library.** `hashicorp/go-retryablehttp` brings six transitive
+> modules including `go-hclog`, `fatih/color` and `go-colorable` — a logging
+> framework and a terminal-colour library, for retry logic that is forty lines
+> of `net/http`. Measured, not assumed. The forty lines are in the adapter. See
+> decision 18.
+>
+> **A defect the binary found, not the tests.** A certificate the machine does
+> not trust was retried three times and then reported as "cannot download after
+> 3 attempts" -- a message that never mentions the certificate, after a wait
+> three times longer than necessary. A certificate does not start being trusted
+> on the second attempt. TLS failures are now named and not retried, and there
+> is deliberately no flag to skip verification.
+>
+> **What shipped beyond the design:** a per-source download cache, because every
+> caller resolves a reference and then fetches it, and downloading a bundle
+> twice per command is a waste an operator on a slow link notices. It lives for
+> one command and `Close` removes it; a cache that survived the process would be
+> a cache needing invalidation, and "the bundle I fetched an hour ago" is what a
+> content digest exists to stop anyone assuming.
+
 ### 5.4 OCI source
 
 `oras-go/v2` pulls the bundle as an OCI artifact. Auth reuses the ambient Docker
 credential store — an operator who has run `docker login` should not have to log
 in twice. An `oci://` reference with a digest is pinned and verified against
 the pulled manifest digest.
+
+> **Amendment, P6 (2026-08-03).** Three things the design did not anticipate.
+>
+> **The client does not verify blob contents.** `oras`'s `blobStore.Fetch`
+> compares the `Content-Length` and the `Docker-Content-Digest` *header* against
+> the descriptor and then returns the response body untouched. A registry
+> serving a correct header and different bytes gets through it. This RFC's
+> §5.4 assumed otherwise, and so did the adapter's first draft — the fixture
+> that serves same-length wrong bytes is what caught it. Both the manifest and
+> the layer are now verified against their digests here. See §12.
+>
+> **A reference with no tag or digest is refused.** The design said a reference
+> *with* a digest is pinned; it did not say what happens without one. A bare
+> repository resolves to whatever `latest` points at today, which is precisely
+> what content-addressed identity exists to prevent, so it is refused rather
+> than defaulted.
+>
+> **The registry interface is exported and narrow**, and plain HTTP is not an
+> option on the source. Offering a flag to disable TLS while refusing plaintext
+> references elsewhere would be a policy with a switch on it; supplying a client
+> that speaks plaintext takes code, which the test suite does and an operator
+> with an internal registry would have to mean. See decision 19.
 
 ### 5.5 minisign verifier
 
@@ -252,6 +309,20 @@ The JSON Schema is **generated from `domain.Manifest`** and checked into
 `schemas/selfhost-v1alpha1.json`, with a test asserting the checked-in file
 matches what the current types generate. Hand-writing it would guarantee drift
 between the schema editors validate against and the types the manager enforces.
+
+> **Amendment, P5 (2026-08-03).** Two schemas, not one:
+> `selfhost-v1alpha1-manifest.json` and `selfhost-v1alpha1-secrets.json`. A
+> vendor writes both files and an editor validates each against its own schema,
+> so one covering both would validate neither.
+>
+> The example bundle is checked against the schema **structurally** rather than
+> by a JSON Schema validator. Every validator available brings a dependency tree
+> larger than this program -- `jsonschema/v6` drags `golang.org/x/tools` -- for a
+> test-only assertion, and the failure mode that actually matters is a schema
+> that *rejects* a valid manifest, which a walk over the real bundle's fields
+> catches. Types, patterns and enums are not checked, and the loader enforces
+> all of them anyway. Stated plainly rather than described as full validation.
+> See decision 20.
 
 ## 6. Tests
 
@@ -308,6 +379,13 @@ between the schema editors validate against and the types the manager enforces.
   OCI is the source to drop — it is the only one whose absence has a workaround
   (`oras pull` out of band, then a directory reference). Phased last for exactly
   this reason.
+
+  > **Wrong, measured at P6.** `oras-go/v2` adds four modules —
+  > `opencontainers/go-digest`, `opencontainers/image-spec`, `x/sync` and itself
+  > — and none of `image-spec`'s schema-validation dependencies are reachable, so
+  > they never link. All of P4–P6 together, three transports and the schema
+  > generator, grew the binary by **0.4 MiB**. The dependency that turned out
+  > heavy was the *retry library* in §5.3, which is why it is not here.
 - **Signature verification read as more than it is.** It proves provenance, not
   safety. A signed bundle still runs hooks as root on the host. The docs must
   keep saying so.
@@ -338,6 +416,12 @@ between the schema editors validate against and the types the manager enforces.
 | 15 | The checksum verifier knows nothing about signatures. One policy decision in two adapters is two adapters that can disagree about it. See §5.5. |
 | 16 | Extracted permissions are normalised to `0755` or `0644`. Only the executable bit is part of a release — the digest records nothing else — and normalising means a bundle cannot ship a world-writable or setuid file at all, rather than being checked for one. |
 | 17 | The verifier contract suite is parameterised by what each verifier claims to check. minisign genuinely cannot detect a file edited along with its checksum entry, so a shared assertion would either fail a correct implementation or be weakened until it proved nothing. Declaring a claim falsely is what the suite now catches. |
+| 18 | Retry is forty lines of `net/http`, not `go-retryablehttp`. Measured: the library brings a logging framework and a terminal-colour library through six transitive modules. See §5.3. |
+| 19 | Plain HTTP is not an option on the OCI source. Refusing plaintext references while shipping a flag to enable them would be a policy with a switch on it; a caller supplying their own client can still do it, deliberately, in code. See §5.4. |
+| 20 | The example bundle is checked against the schema structurally rather than with a JSON Schema validator, and the limit is stated rather than glossed. The validators available cost more than the assertion is worth, and the loader enforces everything they would. See §5.7. |
+| 21 | Both the OCI manifest and the bundle layer are verified against the registry's own digests by this adapter, because the client library does not. See §12. |
+| 22 | HTTPS and OCI both delegate to the local source once the bytes are on disk. A bundle that was safer or less safe depending on how it arrived would defeat the property the content digest exists to establish. |
+| 23 | No flag skips TLS verification, and a certificate failure is named rather than retried. An `--insecure` that existed would be reached for at the moment it should not be, and retrying an untrusted certificate only delays a message that never mentioned it. |
 
 ## 11. Phasing
 
@@ -387,7 +471,37 @@ traversal archive is refused by name; a truncated one is refused as corrupt;
 and catches a hook edited after signing; `init --require-signature` without a
 key is refused, and with one, an unsigned bundle is refused at fetch.
 
-**Not** done: `https://` and `oci://` still parse and have no adapter, so the
-registry has exactly one entry. That is worth saying plainly — the registry's
-value today is the refusal message and the shape it sets up, not a transport
-anyone can use.
+**Not** done at P3: `https://` and `oci://` still parsed with no adapter. Both
+landed in P4 and P6.
+
+### What P4–P6 shipped
+
+- **HTTPS** (`internal/adapters/source/https`): retry on transport failures,
+  5xx and 429 but not on a definitive 404 or 401; a body bounded while it
+  streams rather than trusted to match `Content-Length`; a redirect out of TLS
+  refused and the chain bounded. Ten tests against `httptest`, including a
+  hostile archive served over TLS to prove the transport is not a way around
+  the archive rules.
+- **OCI** (`internal/adapters/source/oci`): pulls the bundle layer of an
+  artifact, selecting by media type when there is more than one, with ambient
+  Docker credentials. It is the one transport that can enumerate versions, so
+  `List` actually works there. Tested against a fake registry implementing the
+  four requests a pull makes — a real registry would have meant Docker in a
+  suite whose whole point is that it needs none.
+- **Both delegate to `local`** once the bytes are on disk, sharing a per-command
+  download cache so resolving and then fetching one reference downloads once.
+- **JSON Schema** (`internal/schema`, `schemas/`), generated from the manifest
+  and secret-schema types, with a drift test verified in both directions: a new
+  Go field fails it, and so does a hand-edited schema.
+- **Offline install**: `ports.ImageInspector`, a `doctor` check reporting which
+  of a release's images are absent locally, and a procedure page written so it
+  can be followed by someone who cannot reach the internet to read it.
+- **goreleaser** with reproducible flags matching the justfile's, `tar.zst`
+  archives, a minisign-signed `SHA256SUMS`, and a release workflow that re-runs
+  CI on the tag. Validated with `goreleaser check` and a snapshot build.
+
+**Not** done, and worth naming: no acceptance test installs from a *real*
+registry or a *real* HTTPS host. Both transports are tested against in-process
+servers, which exercises every branch in this repository and none of the
+behaviour of a production registry — pagination, rate limits, a proxy that
+rewrites redirects. The first real deployment is where that gets found.

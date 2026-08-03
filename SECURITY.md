@@ -46,6 +46,11 @@ resist:
   than once the disk is full. Permissions are normalised to `0755` or `0644`, so
   a bundle cannot ship a world-writable file. Each of these is covered by a
   fixture built in the test that asserts its refusal.
+- **A bundle arriving over a network.** TLS is not optional and a redirect may
+  not leave it, so a server cannot downgrade a fetch to plaintext by asking.
+  Bodies and registry layers are bounded while they are read rather than trusted
+  to match a declared length, and registry content is checked against the digests
+  the registry advertises for it.
 - **A bundle from someone other than your vendor.** A detached minisign
   signature over the bundle's `SHA256SUMS` is verified against keys the
   *installation* configures, never keys the bundle names.
@@ -69,14 +74,17 @@ resist:
 
 Stated here rather than discovered during an incident:
 
-- Bundles can only be fetched from this machine — a directory or a `tar.zst`
-  archive. `https://` and `oci://` parse but have no adapter, so a bundle from
-  either has to be downloaded out of band, where the manager cannot see how it
-  arrived. See [RFC 0004](rfcs/0004-distribution-and-verification.md).
 - Nothing checks a signature's *freshness*. A correctly signed older release can
   be presented in place of a newer one; only `compatibility.upgrade_from` and a
   pinned `--digest` stand in the way. See
   [RFC 0004](rfcs/0004-distribution-and-verification.md).
+- A signature is verified *after* the archive is extracted, because it travels
+  inside the bundle. Extraction is confined and bounded, so what an unsigned
+  hostile archive can do is refuse to extract — but the ordering is worth
+  knowing: the extractor runs on bytes nothing has authenticated yet.
+- The manager sends no credentials over HTTPS. A bundle behind authentication
+  has to be fetched out of band, or published to an OCI registry, where the
+  ambient Docker credentials are used.
 - `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
   implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
 

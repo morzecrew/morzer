@@ -196,6 +196,25 @@ demo-json: demo
 verify-bundle:
     ./{{binary}} release verify ./testdata/bundle
 
+# A bundle author validates against the published schema in their own CI,
+# without running the manager. It is generated from the types that enforce the
+# contract, so it cannot drift -- a test fails when the checked-in copy is stale.
+
+# Regenerate the JSON Schemas in schemas/.
+schemas:
+    go run ./tools/schemagen
+
+# Build a release exactly as the tag pipeline would, without publishing.
+release-dry-run:
+    #!/usr/bin/env sh
+    if ! command -v goreleaser >/dev/null 2>&1; then
+        echo "goreleaser is not installed:"
+        echo "  go install github.com/goreleaser/goreleaser/v2@latest"
+        exit 1
+    fi
+    goreleaser check
+    goreleaser release --snapshot --clean --skip=sign
+
 # The recovery path is the one an operator runs when everything else has already
 # gone wrong, so it is worth being able to watch it work on a normal day.
 

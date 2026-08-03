@@ -1,0 +1,121 @@
+# Release builds.
+#
+# The build flags here must match the justfile's, because reproducibility is the
+# claim: a binary an operator builds from a tag should be byte-identical to the
+# one this publishes. `-trimpath` removes the build machine's paths,
+# `CGO_ENABLED=0` makes a static binary with no libc dependency, and the version
+# stamps are the only inputs that vary.
+#
+# Archives are `tar.zst`, which is also the release-bundle format — one
+# decompressor for both, and the one this program already links.
+version: 2
+
+project_name: morzer
+
+before:
+  hooks:
+    # A release that fails `go mod tidy` afterwards is a release whose module
+    # graph nobody can reproduce.
+    - go mod verify
+
+builds:
+  - id: morzer
+    main: ./cmd/morzer
+    binary: morzer
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .FullCommit }}
+      - -X main.date={{ .CommitDate }}
+    # The commit's timestamp rather than the build's, so two builds of one tag
+    # produce identical bytes.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: morzer
+    formats: [tar.zst]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      # The manifest schemas ship with the release so a bundle vendor can
+      # validate against the exact version of the manager they target.
+      - schemas/*
+
+checksum:
+  name_template: SHA256SUMS
+
+# Signing is what makes the checksums worth anything: without it, whoever can
+# replace a binary can replace the sums file beside it.
+#
+# The key is a repository secret and never leaves CI. There is deliberately no
+# `morzer sign` — see RFC 0004 decision 8 — and this is the other half of that
+# decision: signing happens in the release pipeline, where the key lives.
+signs:
+  - id: minisign
+    cmd: minisign
+    args:
+      - -S
+      - -s
+      - "{{ .Env.MINISIGN_KEY_FILE }}"
+      - -m
+      - "${artifact}"
+      - -x
+      - "${signature}"
+      - -t
+      - "morzer {{ .Version }}"
+    signature: "${artifact}.minisig"
+    # The checksums file, not each binary: signing one file that covers them
+    # all is the same chain a release bundle uses, and is what
+    # `minisign -Vm SHA256SUMS` checks.
+    artifacts: checksum
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  # Assembled from conventional commits, which the repository already enforces
+  # by convention. The gitmoji prefix is stripped by the group patterns.
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?(✨|feat)(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?(🐛|🚑|fix)(\(.+\))??!?:.+$'
+      order: 1
+    - title: Security
+      regexp: '^.*?(🔒|🛡)(\(.+\))??!?:.+$'
+      order: 2
+    - title: Other
+      order: 99
+  filters:
+    exclude:
+      - '^.*?(📝|docs)(\(.+\))??!?:'
+      - '^.*?(✅|test)(\(.+\))??!?:'
+      - '^.*?(👷|ci)(\(.+\))??!?:'
+      - "^Merge "
+
+release:
+  draft: true
+  # A release an operator installs is a release a human looked at first. The
+  # draft is published by hand after checking the notes.
+  prerelease: auto
+  footer: |
+    ## Verifying this release
+
+    ```sh
+    minisign -Vm SHA256SUMS -P <the published public key>
+    sha256sum -c SHA256SUMS
+    ```
+
+    Release bundles are a separate artifact with their own signature; see
+    https://morzecrew.github.io/morzer/reference/release-commands/#verification

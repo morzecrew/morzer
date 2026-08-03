@@ -63,6 +63,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refusal of any unsigned release when an installation requires signing, configurable at creation or by editing the installation file afterwards.
 
+- Fetching a release over HTTPS. Transport failures and server errors are retried; a definitive answer such as not-found or unauthorised is not, because repeating the request only delays it.
+
+- Fetching a release from an OCI registry, using the credentials the machine already holds for its container images. Listing available versions works there, which no other transport can offer, and tags that are not versions are ignored rather than presented as installable.
+
+- A published JSON Schema for the release manifest and the secret schema, generated from the types that enforce them, so a bundle author can validate in an editor or in their own pipeline without running the manager.
+
+- A diagnostic reporting which of a release's images are already present locally, so an operator can tell before losing network access whether the deployment would still come up.
+
+- Reproducible signed release builds for linux amd64 and arm64, published as compressed archives with a signed checksum file.
+
 - Generated systemd units for boot-time convergence and scheduled backups. The main unit will not restart on the exit code meaning manual intervention is required, so a system needing a human stops instead of looping.
 
 - Reporting of measured sizes such as free disk space in readable units, while values declared in a manifest keep their exact written form.
@@ -92,5 +102,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Requiring signatures without configuring any signing key is refused when the installation is written. The policy could not be satisfied by any release, and reporting that as a failure of each later operation would point at bundles instead of at configuration.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
+
+- Transport-layer encryption is not optional when fetching over the network, and a redirect out of it is refused. Otherwise a server could hand over a release unencrypted by asking politely, defeating the refusal of plaintext references.
+
+- Response and layer sizes are bounded while they are read rather than trusted to match what the server declared, since the declaration comes from the same server as the content.
+
+- Content fetched from a registry is checked against the digests that registry advertises for it, which the client library does not do on its own. A registry serving bytes other than the ones it named is refused rather than discovered later.
+
+- A registry reference naming no version is refused. Such a reference resolves to whatever a moving tag points at today, which is what content-addressed release identity exists to prevent.
 
 [unreleased]: https://github.com/morzecrew/morzer/commits/main

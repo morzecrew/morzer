@@ -9,6 +9,8 @@ package source
 
 import (
 	"context"
+	"errors"
+	"io"
 	"sort"
 	"strings"
 
@@ -103,4 +105,31 @@ func (r *Registry) List(ctx context.Context, ref ports.Ref) ([]domain.Version, e
 		return nil, err
 	}
 	return s.List(ctx, ref)
+}
+
+var _ io.Closer = (*Registry)(nil)
+
+// Close releases every source that holds anything, so a caller can clean up
+// without knowing which transports it happens to have registered.
+//
+// Every source is closed even after one fails: a transport that cannot tidy up
+// must not leave the next one's download on disk.
+func (r *Registry) Close() error {
+	var errs []error
+	seen := make(map[ports.ReleaseSource]bool, len(r.byScheme))
+
+	for _, s := range r.byScheme {
+		// One source may answer for several schemes.
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+
+		if closer, ok := s.(io.Closer); ok {
+			if err := closer.Close(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
 }

@@ -421,6 +421,39 @@ func wrapExit(err error, message, hint string) error {
 	return e
 }
 
+// HasImage reports whether an image is already in the local store.
+//
+// `docker image inspect` answers from the daemon's own index without touching
+// the network, which is what makes this usable as the pre-flight for an offline
+// install: an operator can ask on a connected machine whether a disconnected
+// one would come up.
+//
+// A non-zero exit means absent; anything else means the question could not be
+// answered, and saying so beats reporting "absent" for a daemon that is down.
+func (r *Runtime) HasImage(ctx context.Context, imageRef string) (bool, error) {
+	res, err := r.runner.Run(ctx, exec.Command{
+		Argv:          []string{r.docker, "image", "inspect", imageRef},
+		Timeout:       30 * time.Second,
+		Redact:        r.redact,
+		CaptureOutput: true,
+	})
+	if err == nil {
+		return true, nil
+	}
+
+	var exitErr *exec.ExitError
+	if !asExit(err, &exitErr) {
+		return false, domain.RuntimeError(err, "cannot inspect local images")
+	}
+
+	stderr := strings.ToLower(res.Stderr + exitErr.Stderr)
+	if strings.Contains(stderr, "no such image") || strings.Contains(stderr, "not found") {
+		return false, nil
+	}
+	return false, domain.RuntimeError(err, "cannot inspect %s: %s",
+		imageRef, firstLine(exitErr.Stderr))
+}
+
 // ProbeRegistry checks that an image's registry is reachable, without
 // transferring any layers.
 //
@@ -468,4 +501,7 @@ func firstLine(s string) string {
 	return s
 }
 
-var _ ports.RegistryProber = (*Runtime)(nil)
+var (
+	_ ports.RegistryProber = (*Runtime)(nil)
+	_ ports.ImageInspector = (*Runtime)(nil)
+)

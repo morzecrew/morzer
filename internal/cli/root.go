@@ -24,7 +24,9 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/adapters/source"
+	"github.com/morzecrew/morzer/internal/adapters/source/https"
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
+	"github.com/morzecrew/morzer/internal/adapters/source/oci"
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/adapters/verify"
 	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
@@ -138,6 +140,11 @@ func Execute(ctx context.Context, build BuildInfo, args []string) int {
 
 	err := classifyCLIError(root.ExecuteContext(ctx))
 
+	// A source that downloaded something holds a temporary copy of it. The
+	// command is over, so it goes -- before the JSON envelope is written,
+	// because that is the last thing this process does.
+	app.closeSources()
+
 	if app.json != nil {
 		// In JSON mode the envelope is the whole output, including for
 		// errors, so it is written here rather than per-command.
@@ -152,6 +159,23 @@ func Execute(ctx context.Context, build BuildInfo, args []string) int {
 		app.printError(err)
 	}
 	return domain.ExitCode(err)
+}
+
+// closeSources releases anything a release source is holding.
+//
+// Only the network transports have anything to release, so this is a type
+// assertion rather than a port method: making every source implement Close so
+// one of them can would be ceremony imposed on the simple case by the complex
+// one.
+func (a *App) closeSources() {
+	if a.Deps == nil {
+		return
+	}
+	if closer, ok := a.Deps.Source.(io.Closer); ok {
+		if err := closer.Close(); err != nil && a.log != nil {
+			a.log.Debug("cannot clean up a release source", "error", err)
+		}
+	}
 }
 
 // classifyCLIError maps cobra's own parse failures onto the usage exit code.
@@ -405,7 +429,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 
 	// One registry, indexed by reference scheme. Adding a transport is a new
 	// adapter and one more argument here; nothing above this line changes.
-	sources, err := source.NewRegistry(local.New())
+	sources, err := source.NewRegistry(local.New(), https.New(), oci.New())
 	if err != nil {
 		return err
 	}

@@ -109,6 +109,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		checks = append(checks,
 			d.checkRequiredSecrets(rel),
 			d.checkRegistryReachable(rel),
+			d.checkImagesLocal(rel),
 			d.checkServices(inst, rel),
 			d.checkHealth(inst, rel),
 		)
@@ -417,6 +418,67 @@ func (d *Deps) checkRegistryReachable(rel domain.Release) preflight.Check {
 					shortRef(refs[0]), domain.AsError(err).Message)
 			}
 			return preflight.OK("reachable")
+		},
+	}
+}
+
+// checkImagesLocal reports which of the release's images are already on this
+// machine.
+//
+// The question it answers is "would this deployment come up with no network",
+// and the moment to ask is while there still is one. `apply --startup` skips
+// pulls when images are present, so an installation whose images are all local
+// survives a reboot in a datacentre that has lost its uplink -- and one whose
+// images are not will sit there failing to pull, at the worst possible time.
+//
+// A warning rather than a failure: needing the network is the normal case, and
+// failing `doctor` over it would make the exit code mean "this machine is
+// online" instead of "this machine is healthy".
+func (d *Deps) checkImagesLocal(rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.images-local",
+		Category:    preflight.CategoryRuntime,
+		Description: "release images are available offline",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			refs := rel.Manifest.ImageRefs()
+			if len(refs) == 0 {
+				return preflight.OK("the release declares no images")
+			}
+
+			inspector, ok := d.Runtime.(ports.ImageInspector)
+			if !ok {
+				return preflight.OK("the configured runtime has no local image store")
+			}
+
+			checkCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			defer cancel()
+
+			var missing []string
+			for _, ref := range refs {
+				present, err := inspector.HasImage(checkCtx, ref)
+				if err != nil {
+					// "Cannot tell" is not "absent". Reporting
+					// a stopped daemon as missing images would
+					// send an operator to fix the wrong thing.
+					return preflight.Warn(
+						"check that the container runtime is running",
+						"cannot check local images: %s", domain.AsError(err).Message)
+				}
+				if !present {
+					missing = append(missing, shortRef(ref))
+				}
+			}
+
+			if len(missing) == 0 {
+				return preflight.OK("all %d image(s) are present locally", len(refs))
+			}
+			return preflight.Warn(
+				"run `morzer apply` while online, or preload with "+
+					"`docker load < images.tar`, if this machine has to come up "+
+					"without network access",
+				"%d of %d image(s) are not local: %s",
+				len(missing), len(refs), strings.Join(missing, ", "))
 		},
 	}
 }

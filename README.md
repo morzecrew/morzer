@@ -16,8 +16,8 @@ the manifest schema and the hook ABI.
 
 **Status:** `init`, `apply`, `update`, `rollback`, `status`, `doctor`, `backup`,
 `restore`, `secret`, `release` and `installation` work against a real bundle,
-delivered as a directory or a `tar.zst` archive and optionally signed. Fetching
-over `https://` or `oci://` is designed but not built — see [`rfcs/`](rfcs/).
+delivered as a directory, a `tar.zst`, an HTTPS URL or an OCI artifact, and
+optionally signed. See [`rfcs/`](rfcs/) for what is designed but not built.
 
 ## What it is not
 
@@ -100,6 +100,7 @@ in the reference documentation:
 - [Release manifest](https://morzecrew.github.io/morzer/reference/manifest/)
 - [Hook ABI](https://morzecrew.github.io/morzer/reference/hooks/)
 - [Where bundles come from, and how they are verified](https://morzecrew.github.io/morzer/reference/release-commands/#where-bundles-come-from)
+- [Installing without a network](https://morzecrew.github.io/morzer/operating/installing-offline/)
 - [Recovering a lost machine](https://morzecrew.github.io/morzer/operating/recovering-a-lost-machine/)
   — the procedure the offline recovery key exists for, executed end to end by
   the test suite on every run rather than only described
@@ -113,7 +114,7 @@ internal/ui         plain and json presenters — subscribers, never participant
 internal/lifecycle  operations as step sequences; preflight; the step engine
 internal/domain     pure types and rules: manifest, release, installation, errors
 internal/ports      interfaces, declared by the consumer
-internal/adapters   compose · sops-age · hooks · local+registry · checksum+minisign · systemd · gotemplate
+internal/adapters   compose · sops-age · hooks · local/https/oci · checksum+minisign · systemd · gotemplate
 internal/infra      exec runner, atomicfs, lock, state, logging, tool registry
 ```
 
@@ -211,8 +212,9 @@ same version appearing with a different digest is an error, not a warning.
 Images must be pinned by digest: an unpinned image makes a release mutable, and
 a mutable release makes rollback meaningless.
 
-A bundle and its `tar.zst` archive hash identically, so a digest recorded from
-one verifies the other — pinning a release does not pin a transport. A bundle
+A bundle hashes identically however it arrives — as a directory, an archive, an
+HTTPS download or an OCI artifact — so a digest recorded from one verifies the
+others. Pinning a release does not pin a transport. A bundle
 may also ship `SHA256SUMS` and a detached `SHA256SUMS.minisig`; installations
 that set `policy.require_signature` refuse anything unsigned by a key they
 configure.
