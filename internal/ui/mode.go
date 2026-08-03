@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // Mode is the resolved output style. It is decided once at startup and never
@@ -19,9 +21,9 @@ type Mode string
 
 const (
 	// ModeRich is the live step list with spinners and progress. Requires
-	// a TTY. Landing in M2 alongside the Bubble Tea renderer; until then
-	// it resolves to plain, which is the same information without the
-	// motion.
+	// a TTY on both streams. It carries no information plain does not:
+	// the difference is motion, and anything visible only here is a bug in
+	// plain rather than a feature of rich.
 	ModeRich Mode = "rich"
 
 	// ModePlain is one line per event: no ANSI, no cursor movement,
@@ -155,13 +157,27 @@ func DefaultStreams() Streams {
 	return Streams{Out: os.Stdout, Err: os.Stderr}
 }
 
-// TerminalWidth returns a usable width for wrapping, defaulting when the
-// terminal cannot be measured.
+// TerminalWidth returns a usable width for wrapping.
+//
+// COLUMNS first, because an operator who exports it means it. Then the terminal
+// itself: stderr before stdout, since that is where the styled views are drawn
+// and stdout may well be a pipe. The fallback is only reached when neither
+// stream is a terminal, and in that case nothing is drawing a table anyway.
+//
+// It measures rather than assuming, which is not merely tidier: a table sized
+// to a guessed 100 columns on an 80-column terminal wraps every row twice, and
+// that is what the first real-terminal run of the doctor report looked like.
 func TerminalWidth() int {
 	const fallback = 100
+
 	if v, ok := os.LookupEnv("COLUMNS"); ok {
 		if n := atoiSafe(v); n > 20 {
 			return n
+		}
+	}
+	for _, f := range []*os.File{os.Stderr, os.Stdout} {
+		if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 20 {
+			return w
 		}
 	}
 	return fallback

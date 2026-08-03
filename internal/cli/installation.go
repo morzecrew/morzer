@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -36,12 +37,12 @@ func newInstallationExportCommand(app *App) *cobra.Command {
 			"only on the host it describes protects nothing.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := ops.Export(cmd.Context(), app.Deps, ops.ExportOptions{
-				Options: app.operationOptions(),
-				Path:    args[0],
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.Export(ctx, app.Deps, ops.ExportOptions{
+					Options: app.operationOptions(),
+					Path:    args[0],
+				})
 			})
-			app.finish(result)
-			return err
 		},
 	}
 }
@@ -79,13 +80,14 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			result, err := ops.Import(cmd.Context(), app.Deps, ops.ImportOptions{
-				Options:      app.operationOptions(),
-				SourcePath:   args[0],
-				Export:       export,
-				IdentityFile: identity,
+			err = app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.Import(ctx, app.Deps, ops.ImportOptions{
+					Options:      app.operationOptions(),
+					SourcePath:   args[0],
+					Export:       export,
+					IdentityFile: identity,
+				})
 			})
-			app.finish(result)
 			if err == nil && app.json == nil && !app.Flags.quiet {
 				printImportNextSteps(app, export)
 			}

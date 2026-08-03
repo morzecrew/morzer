@@ -59,6 +59,7 @@ nav = [
         "reference/release-commands.md",
         "reference/installation-commands.md",
         "reference/exit-codes.md",
+        "reference/output-modes.md",
         "reference/manifest.md",
         "reference/hooks.md",
     ] },

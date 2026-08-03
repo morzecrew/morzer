@@ -139,7 +139,8 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 	}
 
 	e.journal(ctx, rec)
-	e.bus.Publish(events.OperationStarted(op.ID, op.Type, op.Description, len(op.Steps), false))
+	e.bus.Publish(events.OperationStarted(op.ID, op.Type, op.Description,
+		stepDescriptions(op.Steps), false))
 
 	completed := make([]int, 0, len(op.Steps))
 	var failure error
@@ -529,4 +530,14 @@ func stepIDAt(op Operation, idx int) string {
 		return ""
 	}
 	return op.Steps[idx].ID
+}
+
+// stepDescriptions is the step list as the live view draws it before anything
+// has run.
+func stepDescriptions(steps []Step) []string {
+	out := make([]string, len(steps))
+	for i, s := range steps {
+		out[i] = s.Description
+	}
+	return out
 }

@@ -62,6 +62,32 @@ linters:
                 adapter here is the boundary being wrong -- add a port method,
                 or an optional capability interface.
 
+        # The terminal libraries are confined to internal/ui. Bubble Tea owns
+        # a terminal: it puts it in raw mode, reads keys and drives a render
+        # loop. Once any other package can construct a program, "the UI is a
+        # subscriber, never a participant" stops being a structural fact and
+        # becomes a convention -- and the first thing to go is a command that
+        # renders directly instead of publishing an event, which then has no
+        # plain, JSON or log equivalent.
+        #
+        # internal/cli drives the live view through tty.Run, which takes the
+        # bus and a closure. That is the whole surface.
+        terminal:
+          files:
+            - "**/internal/**"
+            - "!**/internal/ui/**"
+          deny:
+            - pkg: github.com/charmbracelet/bubbletea
+              desc: >-
+                the terminal program lives in internal/ui/tty. Drive it with
+                tty.Run, or publish an event and let the presenters render it.
+            - pkg: github.com/charmbracelet/bubbles
+              desc: terminal widgets belong to internal/ui.
+            - pkg: github.com/charmbracelet/lipgloss
+              desc: >-
+                styling belongs to internal/ui/theme, which is also what makes
+                --no-color and the ASCII fallback work everywhere at once.
+
         # Ports declare interfaces. An implementation detail leaking in here
         # would make every adapter depend on whichever tool got there first.
         ports:

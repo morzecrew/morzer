@@ -17,6 +17,7 @@ import (
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/ui"
 )
 
 // Presenter writes events line by line.
@@ -31,6 +32,15 @@ type Presenter struct {
 
 	// totalSteps backs the "[3/11]" prefix.
 	totalSteps int
+
+	// muted suppresses output while another renderer owns the terminal.
+	//
+	// This presenter stays subscribed for the whole process even in rich
+	// mode, because it is what narrates everything outside an operation.
+	// Muting it for the operation's duration is what guarantees exactly one
+	// renderer is drawing at a time -- and unmuting is how the live view
+	// hands back when it fails.
+	muted bool
 }
 
 func New(stderr io.Writer, verbose bool) *Presenter {
@@ -38,6 +48,20 @@ func New(stderr io.Writer, verbose bool) *Presenter {
 }
 
 var _ events.Sink = (*Presenter)(nil)
+
+// Mute stops the presenter writing anything until Unmute.
+func (p *Presenter) Mute() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.muted = true
+}
+
+// Unmute resumes output.
+func (p *Presenter) Unmute() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.muted = false
+}
 
 // Handle renders one event.
 //
@@ -47,6 +71,10 @@ func (p *Presenter) Handle(e events.Event) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.muted {
+		return
+	}
+
 	switch e.Kind {
 	case events.KindOperationStarted:
 		p.totalSteps = e.StepCount
@@ -54,7 +82,10 @@ func (p *Presenter) Handle(e events.Event) {
 			p.line("plan: %s (%d steps, nothing will be changed)", e.Description, e.StepCount)
 			return
 		}
-		p.line("%s (%d steps)", e.Description, e.StepCount)
+		// The operation id is on the first line rather than the last, so
+		// an interrupted run still tells the operator what to pass to
+		// --resume and what to look up in the journal.
+		p.line("%s (%d steps)  %s", e.Description, e.StepCount, e.OpID)
 
 	case events.KindStepStarted:
 		p.line("[%d/%d] %s", e.StepIndex+1, p.totalSteps, e.Description)
@@ -309,25 +340,16 @@ func RenderStatus(w io.Writer, s ops.Status) {
 func RenderDoctor(w io.Writer, report ops.DoctorReport) {
 	f := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format+"\n", args...) }
 
-	// Results arrive in execution order, which interleaves categories: a
-	// storage check runs early, another late. Grouping them here keeps the
-	// table scannable instead of showing "storage" three times.
-	var categories []string
-	grouped := map[string][]events.CheckResult{}
-	for _, res := range report.Results {
-		if _, seen := grouped[res.Category]; !seen {
-			categories = append(categories, res.Category)
-		}
-		grouped[res.Category] = append(grouped[res.Category], res)
-	}
-
-	for i, category := range categories {
+	// Grouping is shared with the rich renderer, not reimplemented: two
+	// implementations of the same table is how the two start disagreeing
+	// about what the system found.
+	for i, group := range ui.GroupChecks(report.Results) {
 		if i > 0 {
 			f("")
 		}
-		f("%s", category)
+		f("%s", group.Category)
 
-		for _, res := range grouped[category] {
+		for _, res := range group.Results {
 
 			marker := "ok  "
 			switch res.Status {
@@ -345,15 +367,7 @@ func RenderDoctor(w io.Writer, report ops.DoctorReport) {
 		}
 	}
 
-	// Remedies are collected into their own section rather than inlined,
-	// so the table stays scannable and the actions stay together.
-	var remedies []events.CheckResult
-	for _, res := range report.Results {
-		if res.Status != events.CheckOK && res.Remedy != "" {
-			remedies = append(remedies, res)
-		}
-	}
-	if len(remedies) > 0 {
+	if remedies := ui.Remedies(report.Results); len(remedies) > 0 {
 		f("")
 		f("what to do")
 		for _, res := range remedies {

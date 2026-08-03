@@ -1,6 +1,8 @@
 # RFC 0002 — Rich terminal renderer
 
-- **Status:** 📝 Draft
+- **Status:** ✅ Complete — shipped 2026-08-03. P1–P4 built; P5 (`glamour`
+  release notes) remains deliberately unbuilt, still gated on a bundle shipping
+  a `RELEASE.md`. Divergences from this document are recorded in §12.
 - **Scope:** Implements the live step-list renderer behind the `ModeRich`
   output mode, which is currently resolved correctly and then silently falls
   back to plain. Adds `internal/ui/tty` (a Bubble Tea program), `internal/ui/theme`
@@ -243,6 +245,8 @@ run.
 | 6 | Symbols carry state, colour reinforces it. `NO_COLOR` and monochrome terminals are supported targets, not degraded ones. |
 | 7 | Bubble Tea failing to start falls back to plain for the whole run rather than aborting. A display failure must never be an operation failure. |
 | 8 | No exact-frame golden tests. Spinner phase and timing make them flaky, and flaky goldens train people to regenerate without reading. |
+| 9 | Only operations get a Bubble Tea program. The plan, the doctor table and a single `status` reading are computed once and printed; a program that redraws nothing is a terminal held for no reason. Added during execution — see §12. |
+| 10 | The terminal libraries are confined to `internal/ui` by `depguard`. `internal/cli` drives the live view through `tty.Run`, which takes the bus and a closure. Added during execution — see §12. |
 
 ## 11. Phasing
 
@@ -258,3 +262,75 @@ run.
 Scheduled after RFC 0001: that RFC changes what the tool can do, this one
 changes how it looks doing it, and the live view is more useful once there is a
 long multi-step `update` to watch.
+
+## 12. Amendments
+
+Recorded on completion, 2026-08-03. The decision table above is append-only;
+this section records where execution diverged from the design and why.
+
+### The dependency risk in §9 was already paid
+
+§9 called four new dependencies "the largest dependency addition in the
+project… none of which serve correctness". That was true when this was written
+and no longer was when it was executed: RFC
+[0003](0003-secrets-recovery-and-onboarding.md) P5 added `huh` for the `init`
+wizard, which brought `bubbletea`, `bubbles`, `lipgloss` and `charmbracelet/x/*`
+in as indirect dependencies. Executing this RFC promoted them to direct and
+added exactly two modules — `harmonica`, which the progress bar needs, and
+`x/exp/teatest`, which is test-only.
+
+Measured: **+171 KiB** on the binary and **+1 module** in the graph. The
+mitigation the risk called for was still implemented — decision 10 — because it
+is worth having regardless of what the libraries cost.
+
+### `operation.started` gained a `steps` field
+
+§5.2's layout shows pending steps by name, which the events did not carry: the
+engine published a step *count* and each description arrived only when its step
+started. Rather than have the renderer ask the engine — which decision 1
+forbids, and rightly — `events.OperationStarted` now carries every step
+description, and `engine.Run` fills it from `op.Steps`.
+
+This is decision 1 working as intended rather than an exception to it: a view
+that needs more data means the event carries more data.
+
+### Only operations are Bubble Tea programs
+
+§5.5 lists four "other views" without saying what shape each takes. Three of
+them turn out not to want a program at all:
+
+- the **plan** is computed by a dry run and then printed, and a diff long enough
+  to scroll is one the live renderer would fight with;
+- the **doctor table** is a report that is produced once;
+- a single **`status`** reading answers a question and exits.
+
+They are styled prints — which also means they work when piped into a pager.
+`status --watch` is the only one that runs a program, and the only alt-screen
+view, for the reason §5.5 gave. Recorded as decision 9.
+
+### The parity test found a real gap in plain, not in rich
+
+Decision 3 predicted the drift would run one way: something in rich that plain
+omits. The first thing the test caught was the operation id — shown in the live
+view's footer and never printed by the plain presenter, so an operator reading a
+CI log had no id to pass to `--resume` or to look up in the journal. Fixed in
+plain, which is what decision 3 says to do.
+
+### `--interval`, and refusing `--watch` without a terminal
+
+`status --watch` takes `--interval` (default `2s`), which §5.5 did not mention.
+
+`--watch` is refused outside a terminal rather than degrading to a loop of
+printed tables: a `--watch` left in a unit file would otherwise fill a journal
+with thousands of copies of the same output. `morzer status --json` on a timer
+is the scripted equivalent, and the error says so.
+
+### `ui.TerminalWidth` now measures the terminal
+
+It previously read `COLUMNS` and otherwise assumed 100 columns, which nothing
+depended on until the doctor table did. On an 80-column terminal every row
+wrapped twice. It now falls back to `term.GetSize` on stderr, then stdout.
+
+Found by running the binary in a real terminal, which is also where the elapsed
+clock was found reporting `0ms` for any operation that finished between two
+half-second ticks.

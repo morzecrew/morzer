@@ -71,6 +71,16 @@ type Event struct {
 	// Description is the human label for the step or operation.
 	Description string `json:"description,omitempty"`
 
+	// Steps are the descriptions of every step, in order, set only on
+	// operation.started.
+	//
+	// It is here because the live view draws the whole list from the first
+	// event and dims what has not run yet -- a presenter never asks the
+	// engine for anything, so a view that needs more data means the event
+	// carries more data. Plain mode names each step as it starts instead,
+	// so nothing is visible only in rich; the difference is when.
+	Steps []string `json:"steps,omitempty"`
+
 	Level   Level  `json:"level,omitempty"`
 	Message string `json:"message,omitempty"`
 
@@ -154,10 +164,11 @@ type CheckResult struct {
 // Constructors. Presenters rely on At always being set, so events are built
 // here rather than as struct literals at call sites.
 
-func OperationStarted(opID string, opType domain.OperationType, desc string, stepCount int, dryRun bool) Event {
+func OperationStarted(opID string, opType domain.OperationType, desc string, steps []string, dryRun bool) Event {
 	return Event{
 		Kind: KindOperationStarted, At: time.Now(), OpID: opID, OpType: opType,
-		Description: desc, StepCount: stepCount, DryRun: dryRun, Level: LevelInfo,
+		Description: desc, StepCount: len(steps), Steps: steps,
+		DryRun: dryRun, Level: LevelInfo,
 	}
 }
 

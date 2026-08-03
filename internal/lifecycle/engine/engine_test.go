@@ -133,6 +133,24 @@ func TestRunSucceedsAndJournalsEveryTransition(t *testing.T) {
 	require.Len(t, collector.OfKind(events.KindOperationFinished), 1)
 }
 
+// TestOperationStartedCarriesEveryStepDescription pins the contract the live
+// view draws from. A presenter never queries the engine, so the whole step list
+// has to be in the first event or the view cannot show what is still to come.
+func TestOperationStartedCarriesEveryStepDescription(t *testing.T) {
+	eng, _, collector := newEngine()
+	tr := &tracker{}
+
+	op := operation(step(tr, "one", false, true), step(tr, "two", false, true))
+	_, err := eng.Run(context.Background(), op, Options{ManagerVersion: "1.0.0"})
+	require.NoError(t, err)
+
+	started := collector.OfKind(events.KindOperationStarted)
+	require.Len(t, started, 1)
+	assert.Equal(t, []string{"step one", "step two"}, started[0].Steps)
+	assert.Equal(t, len(op.Steps), started[0].StepCount,
+		"the count and the list describe the same steps")
+}
+
 func TestCheckSkipsSatisfiedSteps(t *testing.T) {
 	eng, _, _ := newEngine()
 	tr := &tracker{}

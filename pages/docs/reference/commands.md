@@ -29,7 +29,7 @@ These are accepted by every command.
 | `--quiet`, `-q` | Errors only. |
 | `--log-format` | `text` (default) or `json`. Logs always go to stderr. |
 | `--no-color` | Disable styling. Also honoured through `NO_COLOR` and a non-TTY stdout. |
-| `--plain` | Line-oriented output; no interactive rendering. |
+| `--plain` | Line-oriented output; no interactive rendering. Already automatic under CI, systemd, `NO_COLOR` and without a terminal — see [Output modes](output-modes.md). |
 | `--resume` | Continue an interrupted operation from where its journal left off. |
 | `--wait` | Wait for the deployment lock instead of failing with exit 4. |
 | `--config` | Path to `installation.yaml`, when it is not in the default location. |
@@ -189,10 +189,33 @@ operation, and anything needing attention.
 | Flag | Meaning |
 | --- | --- |
 | `--clear-intervention` | Acknowledge a `requires-manual-intervention` operation. An empty value selects the only one. |
+| `--watch` | Refresh until interrupted. Needs a terminal. |
+| `--interval` | How often `--watch` refreshes. Default `2s`. |
 
 An operation that ended in [exit 12](exit-codes.md) keeps surfacing in `status`
 and `doctor` until it is cleared explicitly. That is deliberate: the flag exists
 to stop an operator proceeding as though nothing happened.
+
+### Watching
+
+`--watch` redraws the status on a timer until you press `q`. It is the only view
+that takes over the screen, and it restores what was there when it exits — there
+is nothing in a repeatedly-redrawn table worth keeping in the scrollback.
+
+It observes and never acts. No key restarts a service or clears an
+intervention: those take the deployment lock and are journaled, which makes them
+commands rather than keystrokes.
+
+A refresh that fails leaves the last good reading on screen with the error
+underneath, because a runtime that briefly stops answering is exactly when the
+previous reading matters most. Refreshes never overlap: if one is still in
+flight when the timer fires, the tick is skipped rather than queued against a
+runtime that is already struggling.
+
+It is refused without a terminal, rather than falling back to printing the table
+in a loop — a `--watch` left in a unit file would otherwise fill a journal with
+thousands of copies of the same output. For scripts, poll `morzer status --json`
+instead.
 
 ## doctor
 

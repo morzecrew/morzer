@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -12,7 +14,9 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
+	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/plain"
+	"github.com/morzecrew/morzer/internal/ui/tty"
 )
 
 func newInitCommand(app *App) *cobra.Command {
@@ -113,9 +117,9 @@ func newInitCommand(app *App) *cobra.Command {
 				}
 			}
 
-			result, err := ops.Init(cmd.Context(), app.Deps, opts)
-			app.finish(result)
-			return err
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.Init(ctx, app.Deps, opts)
+			})
 		},
 	}
 
@@ -157,9 +161,9 @@ func newApplyCommand(app *App) *cobra.Command {
 			opts.Startup = startup
 			opts.Profile = profile
 
-			result, err := ops.Apply(cmd.Context(), app.Deps, opts)
-			app.finish(result)
-			return err
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.Apply(ctx, app.Deps, opts)
+			})
 		},
 	}
 
@@ -215,14 +219,14 @@ func newUpdateCommand(app *App) *cobra.Command {
 				ref = args[0]
 			}
 
-			result, err := ops.Update(cmd.Context(), app.Deps, ops.UpdateOptions{
-				Options:      opts,
-				Ref:          ref,
-				To:           to,
-				ExpectDigest: digest,
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.Update(ctx, app.Deps, ops.UpdateOptions{
+					Options:      opts,
+					Ref:          ref,
+					To:           to,
+					ExpectDigest: digest,
+				})
 			})
-			app.finish(result)
-			return err
 		},
 	}
 
@@ -259,18 +263,20 @@ func newRollbackCommand(app *App) *cobra.Command {
 			// absence only costs the operator a more specific hint.
 			_ = app.attachBackupEngine(cmd.Context())
 
-			result, err := ops.Rollback(cmd.Context(), app.Deps, ops.RollbackOptions{
-				Options: app.operationOptions(),
-				To:      to,
-			})
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				result, err := ops.Rollback(ctx, app.Deps, ops.RollbackOptions{
+					Options: app.operationOptions(),
+					To:      to,
+				})
 
-			// The assessment is the point of the command, so it reaches
-			// --json output on the refusal path too.
-			if app.json != nil {
-				app.jsonData = result.Data
-			}
-			app.finish(result)
-			return err
+				// The assessment is the point of the command, so
+				// it reaches --json output on the refusal path
+				// too.
+				if app.json != nil {
+					app.jsonData = result.Data
+				}
+				return result, err
+			})
 		},
 	}
 
@@ -281,7 +287,11 @@ func newRollbackCommand(app *App) *cobra.Command {
 }
 
 func newStatusCommand(app *App) *cobra.Command {
-	var clearIntervention string
+	var (
+		clearIntervention string
+		watch             bool
+		interval          time.Duration
+	)
 
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -299,23 +309,35 @@ func newStatusCommand(app *App) *cobra.Command {
 			// installed.
 			_ = app.attachBackupEngine(cmd.Context())
 
+			if watch {
+				return app.watchStatus(cmd.Context(), interval)
+			}
+
 			status, err := ops.GetStatus(cmd.Context(), app.Deps)
 			if err != nil {
 				return err
 			}
 
-			if app.json != nil {
+			switch {
+			case app.json != nil:
 				app.jsonData = status
-				return nil
+			case app.rich():
+				tty.RenderStatus(app.Stream.Out, app.theme(), status)
+			default:
+				plain.RenderStatus(app.Stream.Out, status)
 			}
-			plain.RenderStatus(app.Stream.Out, status)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&clearIntervention, "clear-intervention", "",
+	f := cmd.Flags()
+	f.StringVar(&clearIntervention, "clear-intervention", "",
 		"acknowledge a requires-manual-intervention operation (empty selects the only one)")
-	cmd.Flags().Lookup("clear-intervention").NoOptDefVal = " "
+	f.Lookup("clear-intervention").NoOptDefVal = " "
+	f.BoolVar(&watch, "watch", false,
+		"refresh the status until interrupted; requires a terminal")
+	f.DurationVar(&interval, "interval", 2*time.Second,
+		"how often --watch refreshes")
 
 	return cmd
 }
@@ -336,11 +358,14 @@ func newDoctorCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
+			switch {
+			case app.json != nil:
 				app.jsonData = report
-			} else {
+			case app.rich():
 				// The plain presenter already streamed each
 				// check as it ran; the table is the summary.
+				tty.RenderDoctor(app.Stream.Out, app.theme(), report, ui.TerminalWidth())
+			default:
 				plain.RenderDoctor(app.Stream.Out, report)
 			}
 
@@ -377,15 +402,15 @@ func newBackupCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			result, err := ops.Backup(cmd.Context(), app.Deps, ops.BackupOptions{
-				Options:    app.operationOptions(),
-				Reason:     reason,
-				Components: parsed,
-				Verify:     !noVerify,
-				Prune:      !noPrune,
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.Backup(ctx, app.Deps, ops.BackupOptions{
+					Options:    app.operationOptions(),
+					Reason:     reason,
+					Components: parsed,
+					Verify:     !noVerify,
+					Prune:      !noPrune,
+				})
 			})
-			app.finish(result)
-			return err
 		},
 	}
 
@@ -485,15 +510,15 @@ func newRestoreCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			result, err := ops.Restore(cmd.Context(), app.Deps, ops.RestoreOptions{
-				Options:                 app.operationOptions(),
-				BackupID:                backupID,
-				Components:              parsed,
-				ConfirmedInstallationID: confirm,
-				AllowCrossInstallation:  crossInst,
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.Restore(ctx, app.Deps, ops.RestoreOptions{
+					Options:                 app.operationOptions(),
+					BackupID:                backupID,
+					Components:              parsed,
+					ConfirmedInstallationID: confirm,
+					AllowCrossInstallation:  crossInst,
+				})
 			})
-			app.finish(result)
-			return err
 		},
 	}
 

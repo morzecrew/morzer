@@ -264,7 +264,10 @@ func newRootCommand(app *App) *cobra.Command {
 	pf.BoolVarP(&f.quiet, "quiet", "q", false, "errors only")
 	pf.StringVar(&f.logFormat, "log-format", "text", "log format: text or json")
 	pf.BoolVar(&f.noColor, "no-color", false, "disable styling")
-	pf.BoolVar(&f.plainOut, "plain", false, "line-oriented output, no interactive rendering")
+	// The help text names the automatic cases because otherwise this flag
+	// ends up in every systemd unit and CI job by superstition.
+	pf.BoolVar(&f.plainOut, "plain", false,
+		"line-oriented output; already automatic under CI, systemd, NO_COLOR and without a terminal")
 	pf.BoolVar(&f.resume, "resume", false, "continue an interrupted operation")
 	pf.BoolVar(&f.wait, "wait", false, "wait for the deployment lock instead of failing")
 	pf.StringVar(&f.configDir, "config", "", "path to installation.yaml")

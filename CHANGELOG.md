@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Plain and machine-readable output modes. The mode is resolved once at startup and honours a non-terminal, NO_COLOR, CLICOLOR, a dumb terminal, and CI without needing a flag. Machine-readable runs emit exactly one object on standard output.
 
+- Live output at a terminal, showing every operation as a step list with the steps still to come, elapsed times, progress where a step can report it, and a tail of the current subprocess output. It carries no information the plain mode omits, and interrupting shows cancellation as a state rather than stopping the display.
+
+- Styled diagnostics, plan and status views: doctor results grouped into a table with remedies collected underneath, dry-run configuration diffs coloured by addition and removal, and the status marked by service state. Every state is distinguishable without colour, and symbols fall back to ASCII when the terminal or locale cannot render them.
+
+- Watching the deployment with `morzer status --watch`, redrawing on an interval until interrupted. A failed refresh leaves the last good reading on screen with the error beneath it, and the view never acts on the deployment.
+
 - Hook ABI letting a release ship its own migrate, smoke-test, backup, restore and health-check executables. Hooks receive a documented environment, report structured results on a dedicated descriptor, and use a distinct exit code to mean nothing to do.
 
 - Backups coordinated through the release's own hooks, wrapped in a self-describing manifest recording installation, release, schema version, component list and checksums. Backups are verified by re-reading them, and retention never removes the most recent one.
