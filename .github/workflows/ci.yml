@@ -210,6 +210,43 @@ jobs:
       # time, when the only signal is a red badge on main.
       - run: just build-docs
 
+  acceptance:
+    name: Acceptance (real Docker)
+    needs: [changes, test]
+    # Not on every pull-request commit: it builds images, runs a registry and
+    # exercises the whole lifecycle. It runs on what merges and on what ships,
+    # which is where "does this actually work on a machine" has to be answered.
+    if: >-
+      needs.changes.outputs.run_full == 'true' &&
+      (needs.changes.outputs.code == 'true' || github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # The scenario encrypts real secrets, so it needs the real store.
+      - name: Install sops
+        run: .github/scripts/install-sops.sh "$SOPS_VERSION"
+
+      # Docker and jq are already on ubuntu-latest; asserted rather than
+      # assumed, because a runner image change would otherwise surface as a
+      # confusing failure halfway through the scenario.
+      - name: Check the runner has what the scenario needs
+        run: |
+          set -euo pipefail
+          docker version
+          docker compose version
+          jq --version
+
+      - run: just acceptance
+
   coverage:
     name: Coverage floor
     needs: [changes, test]

@@ -39,6 +39,11 @@ jobs:
         with:
           fetch-depth: 0 # goreleaser builds the changelog from history
 
+      # Before anything is built, not after: a release from a side branch is
+      # one nobody can reconstruct once the branch is gone.
+      - name: Refuse a tag that is not on main
+        run: .github/scripts/ensure-tag-on-main.sh
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod

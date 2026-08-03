@@ -1,6 +1,6 @@
 # RFC 0005 — Continuous integration and release automation
 
-- **Status:** 🚧 In progress — P1–P4 shipped 2026-08-03. P1: `ci.yml` with `changes`, `workflows`, `quality` and `test`, including the no-skip assertion as `just contract-strict`. P2: coverage floor at 45%. P3: Dependabot, CodeQL, dependency review, Scorecard. P4: governance files and issue templates. P5 (release) and P6 (acceptance) remain.
+- **Status:** ✅ Complete — P1–P4 shipped 2026-08-03, P5–P6 the same day. P1: `ci.yml` with the no-skip assertion as `just contract-strict`. P2: coverage floor, now 50%. P3: Dependabot, CodeQL, dependency review, Scorecard. P4: governance files. P5: the tag-on-main guard, completing a release workflow whose goreleaser half landed with RFC 0004. P6: the acceptance scenario, running the whole lifecycle against real Docker in about forty seconds — which found three defects on its first run, recorded in §12.
 - **Scope:** Adds `.github/` — workflows, reusable shell helpers, Dependabot,
   issue templates, CODEOWNERS — plus the governance files a public repository is
   expected to carry (`SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`).
@@ -212,6 +212,31 @@ without restructuring it.
 This job is allowed to be slow. It runs on `push` to main and on tags, not on
 every PR commit.
 
+> **Amendment, P6 (2026-08-03).** Three changes, and the job turned out fast.
+>
+> **A registry, not just images.** An image built locally has no digest until it
+> is pushed — `RepoDigests` is empty — and the manifest requires
+> `name@sha256:…`. There is no way around that short of weakening the rule that
+> makes a release immutable, so the scenario runs a throwaway `registry:2`,
+> pushes the stubs to it, and rewrites the bundle's two image lines with the
+> digests the registry issued. Everything else in the bundle is the fixture the
+> unit tests use, so the two cannot drift.
+>
+> **"restart docker" became "stop the containers".** Restarting the daemon on a
+> shared runner disrupts everything else on it. What the step is really testing
+> is the boot-time path — `apply --startup` recovering a deployment whose
+> containers are down — and stopping the project reproduces exactly that state.
+>
+> **The rollback stage asserts a refusal, not a success.** 1.3.0's migrate hook
+> moves the database schema to 14; 1.2.0 declares it reads at most 12. A
+> rollback after a real update *must* be refused, and the scenario asserts the
+> exit code, that `--force` does not override it, that nothing changed, and that
+> the hint names the backup. Writing it the other way round was my error, and
+> the tool was right — see §12.
+>
+> It runs in about **40 seconds**, not the "allowed to be slow" the design
+> budgeted for, which is mostly because the stubs are stubs.
+
 ### 5.5 Release
 
 Ported directly from forze's pattern — the release workflow **calls CI as a
@@ -245,6 +270,16 @@ reconstruct.
 Until RFC 0004 lands its goreleaser config, the release job runs
 `just build-all`, which already produces both architectures and `SHA256SUMS`.
 The workflow is written so swapping in goreleaser is a step replacement.
+
+> **Amendment, P5 (2026-08-03).** The interim `just build-all` step was never
+> written: RFC 0004 P5 landed first, so `release.yaml` went straight to
+> goreleaser. What P5 adds here is `ensure-tag-on-main.sh`, which refuses a tag
+> that is not an ancestor of `main` — a release built from a side branch is one
+> nobody can reconstruct after the branch is deleted.
+>
+> `compute-version-from-tag.sh` was not ported. goreleaser derives the version
+> from the tag itself, so a helper that computed it separately would be a second
+> answer to a question already answered, and the two would eventually disagree.
 
 ### 5.6 Supply chain
 
@@ -337,6 +372,11 @@ CI is itself largely untestable, so the design leans on assertions inside it:
 | 11 | The acceptance scenario runs on `main` and tags, not every PR commit. It is the slowest and most flake-prone job, and its value is in catching real regressions rather than gating every push. |
 | 12 | *(P2, 2026-08-03)* Coverage is measured with `-coverpkg=./internal/...`. The default per-package measure gives the integration suite no credit for the packages it exercises, reading 8.7% where the honest number is 45.2% — and a floor set against the wrong measure would gate on test placement rather than on coverage. |
 | 13 | *(P4, 2026-08-03)* `SECURITY.md` names the gaps between what the tool asks for and what it can do: `require_signature` currently refuses everything rather than enforcing signing, and the recovery recipient `init` insists on has no import path. A security policy that omits its own known holes is worse than none, because it is believed. |
+| 14 | *(P5)* A tag not on `main` is refused before anything is built. A release from a side branch cannot be reconstructed once the branch is gone, and finding that out later means finding it out from someone asking what shipped. |
+| 15 | *(P6)* The acceptance scenario derives its bundles from the fixtures the unit tests use, rewriting only the two image lines. A separately maintained acceptance bundle would drift, and an acceptance run against a bundle nobody ships proves nothing about the one they do. |
+| 16 | *(P6)* The scenario runs a throwaway registry rather than referencing local images. A locally built image has no digest, and the manifest requires one — weakening that rule to make a test easier would remove the property the test exists to check. |
+| 17 | *(P6)* The reboot stage stops the containers rather than restarting the Docker daemon. It reproduces the state `apply --startup` has to recover from without disrupting everything else on a shared runner. |
+| 18 | *(P6)* The rollback stage asserts a *refusal*. A real migration moves the schema past what the previous release can read, so a rollback that succeeded there would be the bug. It asserts the exit code, that `--force` does not override it, that nothing changed, and that the hint names the backup. |
 
 ## 11. Phasing
 
@@ -348,11 +388,42 @@ CI is itself largely untestable, so the design leans on assertions inside it:
 - **P3** — ✅ *Shipped 2026-08-03.*
 - **P4** — ✅ *Shipped 2026-08-03.* `SECURITY.md` states the known gaps
   explicitly — see decision 13.
-- **P5** — `release.yaml`, initially over `just build-all`, swapping to
-  goreleaser when RFC 0004 P5 lands.
-- **P6** — The acceptance job. Last because it is the most work and the most
-  likely to need iteration; and once RFC 0001 ships, it grows the
-  `update`/`rollback` stages.
+- **P5** — ✅ *Shipped 2026-08-03.* `ensure-tag-on-main.sh`; the goreleaser half
+  came from RFC 0004 P5 — see the amendment in §5.5.
+- **P6** — ✅ *Shipped 2026-08-03.* The acceptance job — see the amendment in
+  §5.4 and the defects in §12.
 
 P1 is worth landing before any further feature work. Every commit made without
 it is a commit whose lint status is a matter of whether someone remembered.
+
+## 12. Defects the acceptance run found
+
+All three on its first execution, and none reachable by a test that fakes
+Docker. This is the argument for the job, made better than the RFC made it.
+
+**The manifest's images decided nothing.** `compose.Pull` took a list of images
+and ignored it, running `docker compose pull` — which pulls whatever the Compose
+file names. And `runtimeConfig` never exported the `<PRODUCT>_IMAGE_<NAME>`
+variables the example bundle's Compose file interpolates, so
+`${DEMO_IMAGE_APP:-registry.example/...}` always fell back to its placeholder.
+
+Together those mean the manifest's `images` map — validated as digest-pinned,
+described in the README, `SECURITY.md` and RFC 0004 as the thing that makes a
+release immutable and rollback meaningful — had **no effect on what actually
+ran**. Every fake-backed test passed because the fake Runtime records the images
+it is handed rather than resolving a Compose file.
+
+Fixed both ways: `runtimeConfig` exports every manifest image, and `Pull` pulls
+exactly the references it was given, skipping ones already local so the offline
+path still works.
+
+**The example bundle could never have passed its own health check.** The
+manifest declares an HTTP check against `127.0.0.1:18080`, which the manager
+runs from the host, and the Compose file published no ports. The fixture had
+been internally inconsistent since it was written, because nothing had ever run
+it against Docker.
+
+**And one in the scenario, not the tool**: the rollback stage was written to
+expect success. The tool refused it, correctly — see decision 18. Worth
+recording because it is the failure mode an acceptance test is most prone to:
+asserting what the author expected rather than what the design promises.

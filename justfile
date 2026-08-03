@@ -196,6 +196,15 @@ demo-json: demo
 verify-bundle:
     ./{{binary}} release verify ./testdata/bundle
 
+# Everything else runs against fakes in milliseconds, which is the right default
+# and has one blind spot: nothing proves the manager works when Docker is
+# Docker. This is the run that does -- real Compose, real containers, real
+# health checks, real sops -- and it takes about forty seconds.
+
+# Run the full lifecycle against real Docker. Needs docker, sops and jq.
+acceptance: build
+    .github/scripts/acceptance.sh
+
 # A bundle author validates against the published schema in their own CI,
 # without running the manager. It is generated from the types that enforce the
 # contract, so it cannot drift -- a test fails when the checked-in copy is stale.

@@ -4,6 +4,12 @@ services:
   app:
     image: ${DEMO_IMAGE_APP:-registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001}
     restart: unless-stopped
+    # The manifest declares an http health check against 127.0.0.1:18080, which
+    # the manager runs from the host. Without publishing the port that check
+    # could never pass -- an incoherence nothing noticed until the acceptance
+    # run exercised the bundle against real Docker.
+    ports:
+      - "${DEMO_HTTP_PORT:-18080}:18080"
     environment:
       # Secrets reach the container as files, never as environment: an
       # environment variable is visible to `docker inspect`.

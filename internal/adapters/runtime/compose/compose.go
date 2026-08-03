@@ -157,14 +157,42 @@ func serviceNames(raw string) ([]string, error) {
 // manifest pinned by digest. The image list is passed for the progress
 // reporting and for the contract test; Compose resolves the rest itself.
 func (r *Runtime) Pull(ctx context.Context, cfg ports.RuntimeConfig, images []string) error {
-	argv := r.args(cfg, "pull", "--policy", "missing")
-	cmd := r.command(cfg, 30*time.Minute, argv...)
+	// The images the manifest pins, not the ones the Compose file happens to
+	// name.
+	//
+	// `docker compose pull` was what this used to run, and it ignored the
+	// argument entirely. The two agree only for as long as every service
+	// interpolates a manifest image -- and diverge silently the moment one
+	// does not, at which point the release pulls something nobody pinned.
+	// The manifest is the authority on what a release consists of.
+	if len(images) == 0 {
+		return nil
+	}
 
-	if _, err := r.runner.Run(ctx, cmd); err != nil {
-		return wrapExit(err, "cannot pull images",
-			"check registry reachability and credentials; `morzer doctor` tests both")
+	for _, ref := range images {
+		// Already here is already correct: a digest-pinned reference
+		// cannot mean different bytes on a second pull, and skipping is
+		// what lets a boot-time apply work without a network.
+		if present, err := r.HasImage(ctx, ref); err == nil && present {
+			continue
+		}
+
+		cmd := r.command(cfg, 30*time.Minute, r.docker, "pull", ref)
+		if _, err := r.runner.Run(ctx, cmd); err != nil {
+			return wrapExit(err, "cannot pull "+shortImage(ref),
+				"check registry reachability and credentials; `morzer doctor` tests both")
+		}
 	}
 	return nil
+}
+
+// shortImage drops the digest, which is 71 characters of noise in an error
+// message that already names the failure.
+func shortImage(ref string) string {
+	if i := strings.Index(ref, "@"); i > 0 {
+		return ref[:i]
+	}
+	return ref
 }
 
 // Up converges the project to running.

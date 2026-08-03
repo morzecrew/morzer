@@ -277,6 +277,18 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		env[envName(inst.Product, "DOMAIN")] = inst.Domains[0]
 	}
 
+	// Every image the manifest declares, as <PRODUCT>_IMAGE_<NAME>.
+	//
+	// This is what connects the two halves of a release: the manifest says
+	// which images, pinned by digest, and the Compose file says which
+	// services. Without it a Compose file's `${DEMO_IMAGE_APP:-...}` falls
+	// back to whatever default it carries, and the manifest's pinning -- the
+	// rule that makes a release immutable and rollback meaningful -- decides
+	// nothing at all.
+	for name, ref := range rel.Manifest.Images {
+		env[envName(inst.Product, "IMAGE_"+imageVarName(name))] = ref
+	}
+
 	return ports.RuntimeConfig{
 		Project:    rel.Manifest.Runtime.Project,
 		Files:      files,
@@ -288,6 +300,14 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 // envName builds a product-namespaced variable name, matching the hook ABI.
 func envName(product, key string) string {
 	return ports.HookEnv{Product: product}.Var(key)
+}
+
+// imageVarName turns a manifest image key into the variable suffix a Compose
+// file interpolates: `app` becomes APP, `web-ui` becomes WEB_UI.
+func imageVarName(name string) string {
+	upper := strings.ToUpper(name)
+	upper = strings.ReplaceAll(upper, "-", "_")
+	return strings.ReplaceAll(upper, ".", "_")
 }
 
 // templateData assembles the documented render context.

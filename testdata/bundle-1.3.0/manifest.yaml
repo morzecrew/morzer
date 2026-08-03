@@ -38,7 +38,7 @@ requirements:
     compose: ">=2.30"
   memory: 2GiB
   disk: 5GiB
-  ports: []
+  ports: [18080]
 
 images:
   app: registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001
