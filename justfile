@@ -12,6 +12,18 @@ date    := `date -u +%Y-%m-%dT%H:%M:%SZ`
 
 ldflags := "-s -w -X main.version=" + version + " -X main.commit=" + commit + " -X main.date=" + date
 
+# The documentation site is built by zensical, a Python tool, run through `uvx`
+# so this Go repository does not acquire a Python project for one generator.
+#
+# Both pins are exact. An unpinned generator turns an unrelated upstream release
+# into a broken deploy on an untouched branch, and `mike` is here as squidfunk's
+# zensical-aware fork -- upstream mike drives mkdocs and cannot build a
+# zensical.toml site at all. A git dependency is pinned by commit, never by
+# branch: a branch is arbitrary code execution at whatever time CI happens to
+# run.
+zensical := "0.0.52"
+mike     := "mike @ git+https://github.com/squidfunk/mike@2d4ad799442f4592db8ad53b179bfb33db8c69ac"
+
 export CGO_ENABLED := "0"
 
 # List the available recipes.
@@ -127,7 +139,7 @@ check: fmt-check vet test
 # if it passes, CI passes.
 
 # Run exactly what CI runs. Needs golangci-lint and sops.
-ci: fmt-check vet lint contract-strict test-race coverage-gate
+ci: fmt-check vet lint docs-check contract-strict test-race coverage-gate
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.
@@ -179,6 +191,31 @@ demo-json: demo
 verify-bundle:
     ./{{binary}} release verify ./testdata/bundle
 
-# Remove build artifacts and the demo installation.
+# Serve the documentation site with live reload.
+[working-directory("pages")]
+serve-docs:
+    uvx --from zensical=={{zensical}} zensical serve
+
+# Build the documentation site into pages/site.
+[working-directory("pages")]
+build-docs:
+    uvx --from zensical=={{zensical}} zensical build
+
+# Documentation drift is a build failure, not a discovery. The checker reads the
+# command tree, the manifest schema and the hook ABI out of the source, so a new
+# command or a new manifest field fails until some page mentions it.
+
+# Check the docs against the code: links, nav, contracts, commands.
+docs-check:
+    go run ./tools/docscheck
+
+# Publish the site to the gh-pages branch under `version`, optionally moving an
+# alias onto it. Pushes; intended for CI. `just build-docs` is the local one.
+[working-directory("pages")]
+deploy-docs version alias="":
+    uvx --from "{{mike}}" --with zensical=={{zensical}} mike deploy \
+        --push --branch gh-pages --update-aliases {{version}} {{alias}}
+
+# Remove build artifacts, the demo installation and the built site.
 clean:
-    rm -rf {{binary}} {{dist}} coverage.out tmp
+    rm -rf {{binary}} {{dist}} coverage.out tmp pages/site pages/.cache

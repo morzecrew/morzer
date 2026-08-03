@@ -1,0 +1,241 @@
+---
+title: Manifest
+icon: lucide/file-code
+summary: The release manifest schema — every field of selfhost/v1alpha1, and the secret schema alongside it
+---
+
+# Release manifest
+
+`manifest.yaml` is the release contract: everything the manager needs to know
+about a product, declared by the vendor rather than configured by the operator.
+
+```text
+release/
+├── manifest.yaml       api_version: selfhost/v1alpha1
+├── compose/            service topology
+├── templates/          configuration + the secret schema
+├── hooks/              migrate · smoke-test · backup · restore · check-db
+└── VERSION
+```
+
+The schema is versioned independently of the manager. `morzer version --json`
+reports which `api_version` values a given binary can read; a previously
+published version stays readable until it is explicitly deprecated.
+
+!!! info "Unknown fields are an error"
+
+    Not a warning, and not silently ignored. A typo must not fall back to a
+    default — the failure would surface as behaviour nobody asked for, days
+    later. Vendor-specific keys go under `extensions.<namespace>`.
+
+## Top level
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `api_version` | string | ✅ | Manifest schema version. `selfhost/v1alpha1` is the only one currently supported. |
+| `kind` | string | ✅ | Must be `application-release`. |
+| `metadata` | table | ✅ | Identity of the release. |
+| `providers` | table | | Which port implementation to use for each capability. |
+| `runtime` | table | ✅ | The Compose project and its files. |
+| `requirements` | table | | What the machine must provide. |
+| `images` | map | ✅ | Container images, pinned by digest. |
+| `configuration` | list | | Templates rendered to absolute paths on the host. |
+| `secrets` | table | | Where the encrypted state lives and where it renders. |
+| `operations` | map | | Named lifecycle operations: migrate, smoke test, backup, restore. |
+| `health` | table | | How to tell whether the product is working. |
+| `compatibility` | table | | What this release can be installed over, and rolled back from. |
+| `retention` | table | | How many releases and backups to keep. |
+| `extensions` | map | | Namespaced vendor data the manager passes through untouched. |
+
+## metadata
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `name` | string | ✅ | Product name. Drives `/etc/<name>/`, `/var/lib/<name>/`, `/run/<name>/`, `/opt/<name>/` and the hook environment prefix. |
+| `version` | semver | ✅ | Release version. |
+| `description` | string | | One line, shown by `release show`. |
+| `vendor` | string | | Who publishes this. |
+
+## providers
+
+Each entry selects a port implementation by `name`, with an optional `version`
+constraint. New capabilities arrive as new provider names, never as changes to
+the core.
+
+| Field | Default | Accepted |
+| --- | --- | --- |
+| `runtime` | `compose` | `compose` |
+| `secrets` | `sops-age` | `sops-age` |
+| `backup` | `hooks` | `hooks` |
+| `health` | | `http` |
+
+## runtime
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `project` | string | | Compose project name. Defaults to `metadata.name`. |
+| `files` | list | ✅ | Base Compose files, release-relative. |
+| `profiles` | map | | Named deployment topologies; each is a list of *additional* Compose files. |
+
+An unknown profile is an error rather than a silent fall back to the base files.
+Deploying the wrong topology quietly is worse than refusing.
+
+## requirements
+
+Checked in preflight and reported by `doctor`.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `architectures` | list | Accepted machine architectures, e.g. `[amd64, arm64]`. |
+| `os` | list | Accepted distributions. Each entry has an `id` and a `version` constraint. |
+| `tools` | map | Version constraints for external tools, e.g. `docker: ">=24"`. |
+| `memory` | size | Minimum RAM, e.g. `2GiB`. |
+| `disk` | size | Minimum free disk, e.g. `5GiB`. |
+| `ports` | list | TCP ports the release binds, checked for conflicts. |
+
+## images
+
+A map of logical name to image reference. **Every reference must be pinned by
+digest**:
+
+```yaml
+images:
+  app: registry.example/demo/app@sha256:0000…0001
+```
+
+A bare tag is rejected. An unpinned image makes a release mutable, and a mutable
+release makes rollback meaningless — the same version could produce a different
+system on a different day.
+
+## configuration
+
+A list of templates rendered onto the host.
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `template` | path | ✅ | Release-relative template file. |
+| `target` | path | ✅ | Absolute destination on the host. |
+| `mode` | octal | | File mode. Default `0640`. |
+
+Rendered files contain *paths* to secrets, never secret values.
+
+## secrets
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `source` | path | Absolute path to the encrypted state, e.g. `/etc/demo/secrets.sops.yaml`. |
+| `render_to` | path | Absolute tmpfs directory the decrypted values are written to. |
+| `schema` | path | Release-relative [secret schema](#the-secret-schema). |
+
+## operations
+
+A map of well-known name to how it runs. The manager looks up `migrate`,
+`smoke_test`, `backup`, `restore` and `preflight` by convention.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `kind` | enum | `hook` — an executable in the release, run under the [hook ABI](hooks.md); or `runtime-service` — a one-shot container from the Compose project. |
+| `command` | list | For `hook`: argv, release-relative. Not allowed for `runtime-service`. |
+| `service` | string | For `runtime-service`: the Compose service to run. Not allowed for `hook`. |
+| `timeout` | duration | Time budget. Default `10m`. |
+
+The two kinds are not collapsed into one field because their failure semantics
+differ: a hook runs on the host and sees the host's filesystem, a runtime
+service runs on the application network and sees the container's.
+
+## health
+
+`checks` is a list; each entry has a unique `name`, a `type`, and a `timeout`
+(default `120s`).
+
+| `type` | Additional field | Meaning |
+| --- | --- | --- |
+| `http` | `url` | Considered healthy on a 2xx response. |
+| `tcp` | `address` | Considered healthy when the connection is accepted. |
+| `command` | `command` | Considered healthy on exit 0. Release-relative argv. |
+
+## compatibility
+
+The declarations that make `update` and `rollback` decidable without running
+anything.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `database_schema_min` | int | Oldest schema this release can read. |
+| `database_schema_max` | int | Newest schema this release can read. |
+| `rollback_safe` | bool | Whether this release's migrations can be undone by returning to the previous one. |
+| `min_manager_version` | semver | Oldest manager that may install this release. |
+| `upgrade_from` | constraint | Which currently-installed versions this may be installed over, e.g. `">=1.0.0 <2.0.0"`. |
+
+`rollback_safe: false` is how a vendor says "going back needs a restore". The
+manager takes it literally and refuses the rollback, naming the backup instead.
+
+## retention
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `releases` | int | 3 | Non-active releases kept in the store. Must be at least 1. |
+| `backups` | int | 7 | Backups kept. Must be at least 1. |
+
+## extensions
+
+Namespaced free-form data, passed through untouched:
+
+```yaml
+extensions:
+  example.com/telemetry:
+    endpoint: https://telemetry.example/ingest
+```
+
+The namespace must contain a `.` or a `/`, so a typo'd core field cannot hide
+inside a vendor block.
+
+---
+
+## The secret schema
+
+`templates/secrets.yaml` declares what secrets exist, so `init` can provision
+them and `doctor` can audit them without the manager knowing anything about the
+product.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `api_version` | string | Same version vocabulary as the manifest. |
+| `secrets` | list | The declarations below. |
+
+Each declaration:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `name` | string | Secret name, as `morzer secret` refers to it. |
+| `description` | string | Shown by `secret list`. |
+| `required` | bool | Whether `doctor` reports its absence as a failure. |
+| `generator` | table | How the manager may produce it: `kind`, `length`, `alphabet`. |
+| `file` | string | Filename under the render directory. Defaults to `name`. |
+| `services` | list | Compose services that consume it. A rotation restarts exactly these. |
+| `rotation_period` | duration | Advisory; `doctor` warns when a secret is older. |
+
+Generator `kind` is one of `password`, `hex`, `base64`, `uuid`, `age-key`, or
+absent — meaning the operator must supply the value.
+
+The default password alphabet excludes characters that are ambiguous read aloud
+or that need shell quoting. Secrets get copied by humans more often than anyone
+plans for.
+
+---
+
+## A complete example
+
+This is `testdata/bundle/manifest.yaml`, included from the repository rather
+than transcribed: the manifest loader, the step engine and the contract suites
+all run against it, so it cannot drift from what the manager actually accepts.
+
+```yaml title="testdata/bundle/manifest.yaml"
+--8<-- "testdata/bundle/manifest.yaml"
+```
+
+And its secret schema:
+
+```yaml title="testdata/bundle/templates/secrets.yaml"
+--8<-- "testdata/bundle/templates/secrets.yaml"
+```

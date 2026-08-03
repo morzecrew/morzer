@@ -51,6 +51,37 @@ User-facing changes go in [`CHANGELOG.md`](CHANGELOG.md) under `Unreleased`, in
 Keep a Changelog format. Tests, CI, lint configuration and build tooling do not
 — if it does not change how the tool is used, leave it out.
 
+## Documentation
+
+The site lives in [`pages/`](pages/) and is published to
+<https://morzecrew.github.io/morzer/>. It is split by audience and by kind:
+
+| You changed | It goes in |
+| --- | --- |
+| A command, a flag, an exit code | `pages/docs/reference/` |
+| A manifest field, the hook ABI | `pages/docs/reference/manifest.md` or `hooks.md` |
+| How an operator does a task | `pages/docs/operating/` |
+| How a vendor builds a bundle | `pages/docs/authoring/` |
+| Why the system is shaped this way | `pages/docs/explanation/` |
+| A design that has not shipped | [`rfcs/`](rfcs/), not the site |
+
+```sh
+just docs-check  # the drift gate; part of `just ci`
+just serve-docs  # live reload on localhost:8046
+just build-docs  # build into pages/site
+```
+
+**`just docs-check` fails until the new surface is documented.** It reads the
+command tree, the manifest and secret schemas, the error and exit codes and the
+hook ABI out of the source, so a new flag or a new manifest field is a build
+failure until some page names it. It also fails on a broken relative link and on
+a page missing from the nav in `pages/zensical.toml`.
+
+A mention counts only in a page's own prose. Fenced code blocks are stripped
+before matching, so an example that happens to contain a new field is not
+documentation of it. Adding a page means adding it to the nav in the same
+change.
+
 ## Architecture rules, and how they are enforced
 
 ```text

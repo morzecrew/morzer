@@ -11,9 +11,14 @@ manifest, Compose files, configuration templates and lifecycle hooks. The unit
 of management is an **installation** — the state of one deployment on one
 machine.
 
-**Status:** `init`, `apply`, `status`, `doctor`, `backup`, `restore`, `secret`
-and `release` work against a real bundle. `update` and `rollback` do not exist
-yet — see [`rfcs/`](rfcs/) for what is designed but not built.
+**Documentation:** <https://morzecrew.github.io/morzer/> — commands, exit codes,
+the manifest schema and the hook ABI.
+
+**Status:** `init`, `apply`, `update`, `rollback`, `status`, `doctor`, `backup`,
+`restore`, `secret` and `release` work against a real bundle. Releases are
+fetched from local directories only; archive extraction, signature verification
+and the offline recovery import are designed but not built — see
+[`rfcs/`](rfcs/).
 
 ## What it is not
 
@@ -78,40 +83,21 @@ RECOVERY=$(./morzer secret recipients generate-recovery-key ~/recovery.key)
 | --- | --- |
 | `init` | Creates the layout, the machine age identity, the installation config and the secret state. Never overwrites an existing installation. Does not start the product. |
 | `apply` | Converges the system to the installed release: secrets, configuration, images, migrations, services, health, smoke test. Idempotent. |
+| `update` | Installs a new release over the current one, after a backup. Rolls back to what was running if it fails. |
+| `rollback` | Returns to the previous release, or refuses and names the backup to restore from instead. |
 | `status` | What is deployed, which services are up, last backup, last operation, anything needing attention. |
 | `doctor` | Read-only diagnostics with a suggested remedy for every non-ok result. Exits 3 on failure. |
 | `backup` / `restore` | Coordinates the release's backup and restore hooks, wraps the result in a self-describing manifest, verifies checksums. |
 | `secret` | `list`, `set`, `generate`, `rotate`, `remove`, `render`, `recipients`. Values are never printed, never in argv, never journaled. |
 | `release` | `list`, `show`, `verify`, `fetch`, `prune`. |
 
-Global flags: `--json`, `--dry-run`, `--yes`, `--force`, `--timeout`,
-`--verbose`, `--quiet`, `--log-format`, `--no-color`, `--plain`, `--resume`,
-`--wait`.
+Every flag, and the stable exit-code table systemd units and CI depend on, are
+in the reference documentation:
 
-### Exit codes
-
-Stable, and depended on by systemd units and CI:
-
-| Code | Meaning |
-| --- | --- |
-| 0 | success |
-| 1 | internal or unexpected error |
-| 2 | usage or input validation |
-| 3 | preflight / precondition failed |
-| 4 | lock held by another operation |
-| 5 | installation missing or corrupted |
-| 6 | secrets error |
-| 7 | runtime error (docker / compose) |
-| 8 | health check or smoke test failed |
-| 9 | incompatible release |
-| 10 | backup or restore failure |
-| 11 | operation failed, compensation succeeded |
-| 12 | manual intervention required |
-| 130 | interrupted by signal |
-
-Code 12 is the one that matters: it means an operation mutated something it
-could not undo, and a human has to look. The systemd unit sets
-`RestartPreventExitStatus=12` so it does not spin.
+- [Commands and global flags](https://morzecrew.github.io/morzer/reference/commands/)
+- [Exit codes](https://morzecrew.github.io/morzer/reference/exit-codes/)
+- [Release manifest](https://morzecrew.github.io/morzer/reference/manifest/)
+- [Hook ABI](https://morzecrew.github.io/morzer/reference/hooks/)
 
 ## Architecture
 
@@ -215,36 +201,16 @@ release/
 └── VERSION
 ```
 
-Rules the loader enforces:
-
-- Unknown manifest fields are an error. A typo must not silently fall back to a
-  default. Vendor keys live under `extensions.<namespace>`.
-- Images are pinned by digest. A bare tag is rejected — an unpinned image makes
-  a release mutable, and a mutable release makes rollback meaningless.
-- Paths are release-relative and may not escape the root.
-- A declared-but-missing hook is a validation error, and so is a hook without
-  the executable bit. Both are knowable before the lock is taken.
-- Errors report line and column from the source YAML.
-
 A release is identified by `(name, version)` **plus** its content digest. The
 same version appearing with a different digest is an error, not a warning.
+Images must be pinned by digest: an unpinned image makes a release mutable, and
+a mutable release makes rollback meaningless.
 
-See [`testdata/bundle/`](testdata/bundle/) for a complete, valid example — it is
-what the test suite runs against.
-
-## Hook ABI
-
-Hooks are executables inside a release: the only way to add product-specific
-logic without changing the manager.
-
-- Working directory is the release root; hooks run only from a verified release.
-- Environment is namespaced per product: `DEMO_OPERATION_ID`, `DEMO_DATA_DIR`,
-  `DEMO_BACKUP_DIR`, `DEMO_SECRETS_DIR`, `DEMO_RESULT_FD`, and so on.
-- Structured results are written as JSON to `DEMO_RESULT_FD` (3), keeping them
-  out of stdout — which goes to the log and the live view.
-- Exit `0` success, `2` nothing to do, anything else failure.
-- Timeouts come from the manifest; expiry sends `SIGTERM` to the process
-  *group*, then `SIGKILL`.
+[`testdata/bundle/`](testdata/bundle/) is a complete, valid example, and is what
+the test suite runs against. The
+[manifest schema](https://morzecrew.github.io/morzer/reference/manifest/) and
+the [hook ABI](https://morzecrew.github.io/morzer/reference/hooks/) — the
+contract for authoring one — are documented on the site.
 
 ## Testing
 
@@ -277,9 +243,9 @@ Work that has not shipped is designed in [`rfcs/`](rfcs/) before it is built,
 one numbered document per piece with its decisions recorded and its exclusions
 reasoned. [`rfcs/INDEX.md`](rfcs/INDEX.md) is the table of contents.
 
-Currently proposed: update and rollback, the rich terminal renderer, secrets
-recovery and onboarding, distribution with signature verification, continuous
-integration, and a documentation site to replace most of this file.
+Currently proposed: the rich terminal renderer, secrets recovery and onboarding,
+distribution with signature verification, and the remaining sections of the
+documentation site that will replace most of this file.
 
 ## Changelog
 

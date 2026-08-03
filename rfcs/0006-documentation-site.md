@@ -1,6 +1,9 @@
 # RFC 0006 — Documentation site
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — P1–P3 shipped 2026-08-03. The site is live with
+  its reference section, and `just docs-check` gates drift in CI. §5.5 check 3
+  shipped amended; see the note there and decision 11. P4–P6 (prose, vendor
+  section, diagrams, versioned release deployment) remain.
 - **Scope:** Moves operator- and vendor-facing documentation out of the 287-line
   README into a `pages/` site built with zensical, structured by Diátaxis and
   deployed to GitHub Pages — versioned, so an operator running 1.2.0 reads the
@@ -194,6 +197,21 @@ schema are things the README already claims are stable contracts, and a stable
 contract that drifts from its documentation silently is worse than an undocumented
 one.
 
+> **Amendment, P3 (2026-08-03).** Check 3 shipped without the port-method
+> clause, and with two surfaces the draft did not name. The clause contradicted
+> **decision 8**: `internal/ports` holds 14 interfaces and about 60 methods,
+> all internal by deliberate choice, and requiring an operator- and
+> vendor-facing site to name every one of them would have produced exactly the
+> internal API reference decision 8 forbids — or, more likely, an exemption
+> table long enough to make the gate meaningless.
+>
+> What shipped instead covers what a bundle vendor actually writes against:
+> every yaml-tagged field of `domain.Manifest` and `domain.SecretSchema`
+> (collected by reflection over the struct graph) must be named on
+> `reference/manifest.md`, and every variable `ports.HookEnvVars` produces must
+> be named somewhere. Error codes and exit codes shipped as designed, read out
+> of the domain package's AST rather than from a list. See decision 11.
+
 ### 5.6 What the README becomes
 
 Roughly 60 lines: what morzer is, the what-it-is-not paragraph, install, a
@@ -264,6 +282,12 @@ that, the floors in §5.5 become a chore to satisfy rather than a guide.
 | 8 | No API reference. Everything is under `internal/` by deliberate choice, so nothing is importable and a generated reference would document what nobody can use. |
 | 9 | The README shrinks to roughly 60 lines and links out. Success is measured by a feature no longer adding a README section. |
 | 10 | The manifest reference page is generated from, or checked against, RFC 0004's JSON Schema. Two hand-maintained descriptions of one schema will disagree. |
+| 11 | Check 3 covers the manifest and secret schemas and the hook ABI environment, not the port methods the draft named. Port methods are internal by decision 8, and documenting all sixty would be the internal API reference that decision forbids. See the amendment in §5.5. |
+| 12 | A contract counts as documented only when a page names it as an identifier — an inline code span — in its own prose, with fenced blocks stripped first. Free-text matching would pass on `name`, `version` and `command` by accident, and counting the included `testdata` example would let a fixture stand in for documentation of the field it happens to use. |
+| 13 | The generator runs through `uvx` at an exact pin, with no `pyproject.toml` or lockfile. A Go repository does not acquire a Python project for one build tool, and the pin gives the reproducibility a lockfile was wanted for. |
+| 14 | `mike` is squidfunk's zensical-aware fork, pinned by commit SHA. Upstream `mike` drives mkdocs and cannot build a `zensical.toml` site at all — verified, not assumed. A git dependency on a branch would be arbitrary code execution at whatever time a deploy happens to run. |
+| 15 | The README shrinks in two steps, not one. P2 removed only the sections whose replacement pages exist; deleting architecture, the step engine and secrets before P4 and P6 have written their replacements would be losing content rather than relocating it. |
+| 16 | Decision 10 is not yet satisfied and is not claimed to be. The manifest page is hand-written; what `docs-check` enforces is that its *field list* matches the Go structs. Generation from RFC 0004's JSON Schema is still the target, and the gate means a drifting page fails in the meantime. |
 
 ## 11. Phasing
 
@@ -282,3 +306,27 @@ that, the floors in §5.5 become a chore to satisfy rather than a guide.
 P1–P3 are worth doing together: a site with only reference material and a
 working drift check is already better than the current README, and the prose can
 land page by page afterwards.
+
+### What P1–P3 shipped
+
+- `pages/` with `zensical.toml`, `index.md` and six reference pages: commands,
+  the `secret` group, the `release` group, exit codes, the manifest schema and
+  the hook ABI. `just serve-docs` / `just build-docs` / `just deploy-docs`.
+- `.github/workflows/docs-dev.yaml` — `main` publishes `dev` through mike, in
+  the gh-pages layout the versioned deployment in P6 will extend rather than
+  replace. Verified end to end against a scratch repository before shipping.
+- `tools/docscheck` and `just docs-check`, in `just ci` and in a change-gated CI
+  job that also builds the site. Each of its seven failure modes was verified by
+  perturbation — a new flag, a new manifest field, a new error code, a new exit
+  code, a new hook variable, a removed nav entry, a broken link — because a gate
+  that has never been seen to fail is not known to work.
+- The README lost its command table's flag detail, the exit-code table, the
+  manifest rules and the hook ABI: 290 lines to 256. The larger shrink is P4 and
+  P6, when architecture, the step engine, secrets and testing have somewhere to
+  go. Its stale status line — which still said `update` and `rollback` did not
+  exist — was corrected in passing.
+
+**Not** done, and worth naming: `pages/docs/` has no `get-started/`,
+`operating/`, `authoring/` or `explanation/` directory yet, so the Diátaxis
+split in §5.2 exists as a plan and a nav shape rather than as pages. An operator
+who wants to know how to update still reads the reference page for `update`.

@@ -35,3 +35,7 @@ go.work.sum
 /morzer
 /dist/
 /tmp/
+
+# Documentation site build output and generator cache
+/pages/site/
+/pages/.cache/

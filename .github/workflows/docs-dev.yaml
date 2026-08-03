@@ -1,0 +1,57 @@
+# Publish main's in-progress documentation to the `dev` version.
+#
+# `dev` is never the default and never carries the `latest` alias, so this can
+# never disturb released docs. Released versions arrive with the tag-driven
+# deployment in RFC 0006 P6; until then `dev` is the only published version and
+# the site's version selector shows exactly that.
+#
+# The build itself is `just deploy-docs`, so the generator and its pins live in
+# one place and a contributor can reproduce what CI does.
+name: Deploy dev documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pages/**'
+      - '.github/workflows/docs-dev.yaml'
+  workflow_dispatch:
+
+# One group shared with any future release deployment: concurrent deploys all
+# mutate gh-pages, and a cancelled half-push is how the version index ends up
+# pointing at nothing. Never cancel in progress.
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Publish dev docs
+    # `dev` always tracks main. The push trigger is already main-only; this also
+    # pins a manual run to main, so it cannot be dispatched from a feature
+    # branch and silently overwrite main's docs.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # mike pushes the built site to the gh-pages branch
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # full history; mike reads and rewrites gh-pages
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # mike writes a commit to gh-pages, so it needs an author.
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - run: just deploy-docs dev

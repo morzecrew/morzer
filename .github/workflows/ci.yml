@@ -52,6 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
       workflows: ${{ steps.filter.outputs.workflows }}
       run_full: ${{ steps.decide.outputs.run_full }}
     steps:
@@ -68,6 +69,9 @@ jobs:
               - 'justfile'
               - '.golangci.yml'
               - 'testdata/**'
+            docs:
+              - 'pages/**'
+              - 'README.md'
             workflows:
               - '.github/**'
 
@@ -173,6 +177,38 @@ jobs:
       - run: just contract-strict
 
       - run: just test-race
+
+  docs:
+    name: Docs drift and site build
+    needs: changes
+    # Gated on `code` as well as `docs`: the checker reads the command tree,
+    # the manifest schema and the hook ABI out of the source, so a change that
+    # touches no page at all is exactly the change that breaks it.
+    if: >-
+      needs.changes.outputs.run_full == 'true' ||
+      needs.changes.outputs.code == 'true' ||
+      needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9
+
+      # Drift first: it needs only Go, and it is the check that fails on a code
+      # change nobody documented.
+      - run: just docs-check
+
+      # A broken nav or an unparseable config must not be discovered at deploy
+      # time, when the only signal is a red badge on main.
+      - run: just build-docs
 
   coverage:
     name: Coverage floor

@@ -96,6 +96,17 @@ type App struct {
 	jsonRecord *domain.OperationRecord
 }
 
+// CommandTree returns the command tree with nothing wired.
+//
+// It exists for the documentation checker, which walks the tree to assert that
+// every command and every flag is mentioned by some page. Building the tree is
+// pure -- adapters are constructed in PersistentPreRunE, which this never runs
+// -- so reading the CLI surface needs neither a machine with docker on it nor
+// an installation to point at.
+func CommandTree() *cobra.Command {
+	return newRootCommand(&App{Stream: ui.DefaultStreams()})
+}
+
 // Execute builds the command tree and runs it, returning the process exit
 // code.
 //
