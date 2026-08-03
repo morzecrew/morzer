@@ -1,6 +1,6 @@
 # RFC 0001 — Update and rollback
 
-- **Status:** 🚧 In progress — P1–P2 shipped 2026-08-03. P1: `CheckUpgrade` and `AssessRollback` are now covered (100% of both) and the `bundle-1.3.0` fixture exists. Testing them found and fixed two defects, recorded in §10 as decisions 9 and 10. P2: `ops.Update`, the `update` command, and fault injection at six points of the pipeline. P3 (`rollback`) and P4 remain.
+- **Status:** 🚧 In progress — P1–P3 shipped 2026-08-03. P1: `CheckUpgrade` and `AssessRollback` are now covered (100% of both) and the `bundle-1.3.0` fixture exists. Testing them found and fixed two defects, recorded in §10 as decisions 9 and 10. P2: `ops.Update`, the `update` command, and fault injection at six points of the pipeline. P3: `ops.Rollback`, the `rollback` command and its refusal paths. Only P4 (`--to`) remains.
 - **Scope:** Adds two operations to `internal/lifecycle/ops`: `update`, which
   fetches a release, verifies it, gates it on the manifest's `compatibility`
   block, takes a pre-update backup and swaps the release pointer; and
@@ -318,6 +318,8 @@ the immediate previous one; it runs the same assessment against that target.
 | 10 | *(P1, 2026-08-03)* `AssessRollback` evaluates both blockers rather than returning early on the first. The early return left `SchemaCompatible` reporting `true` having never been checked — the opposite of the three-independent-answers property the struct exists for. This amends, but does not reverse, decision 6. |
 | 11 | *(P2, 2026-08-03)* A version already staged with a different digest is refused in `resolveUpdateTarget`, before the engine runs, rather than by the staging step's `Check` as §5.1 sketched. It is a precondition on the reference, so it reports as a validation failure (exit 2) instead of an operation that rolled back (exit 11), and journals nothing as compensated. |
 | 12 | *(P2, 2026-08-03)* `--dry-run` plans the convergence steps against the bundle at its source rather than its release-store destination. Nothing is staged during a plan, so planning against the destination reported every template and hook as missing and told the operator their bundle was broken when it was merely not installed yet. |
+| 13 | *(P3, 2026-08-03)* The rollback assessment runs before the engine rather than as a step. A refused rollback is one that never started, so journaling it as a failed operation would file a record of work that did not happen beside records of work that did — and checking before the engine is also what makes the assessment available to `--dry-run`, which executes no steps. |
+| 14 | *(P3, 2026-08-03)* `ReleaseRecord.SchemaAtInstall` is carried forward across a rollback, not reset. The schema describes the database, and rolling containers back migrates nothing; the migrate hook overwrites it at the end of the pipeline with what the database actually reports. |
 
 ## 11. Phasing
 
@@ -328,7 +330,8 @@ the immediate previous one; it runs the same assessment against that target.
 - **P2** — ✅ *Shipped 2026-08-03.* `ops.Update`, the `update` command, and the
   fault-injection extension. Two divergences from §5, both recorded as
   decisions 11 and 12.
-- **P3** — `ops.Rollback` plus the `rollback` command and its refusal paths.
+- **P3** — ✅ *Shipped 2026-08-03.* `ops.Rollback`, the `rollback` command and
+  its refusal paths. One divergence from §5.4, recorded as decision 13.
 - **P4** — `--to` on both, gated on RFC 0004's reference parsing.
 
 P1 is worth landing on its own regardless of when P2 follows: it puts the

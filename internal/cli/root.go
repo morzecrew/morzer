@@ -242,6 +242,7 @@ func newRootCommand(app *App) *cobra.Command {
 		newInitCommand(app),
 		newApplyCommand(app),
 		newUpdateCommand(app),
+		newRollbackCommand(app),
 		newStatusCommand(app),
 		newDoctorCommand(app),
 		newBackupCommand(app),

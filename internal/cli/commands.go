@@ -185,6 +185,38 @@ func newUpdateCommand(app *App) *cobra.Command {
 	return cmd
 }
 
+func newRollbackCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rollback",
+		Short: "Return to the previous release",
+		Long: "Reports three things separately before acting: whether the containers\n" +
+			"can be reversed, whether the current database schema is compatible with\n" +
+			"the previous release, and whether a restore is required.\n\n" +
+			"Refuses when the answers do not permit a safe return, naming the backup\n" +
+			"to restore from instead. The database is never rolled back automatically,\n" +
+			"and --force does not override a refusal: it authorises destructive\n" +
+			"actions, not incorrect ones.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Wired so a refusal can name the most recent backup. Its
+			// absence only costs the operator a more specific hint.
+			_ = app.attachBackupEngine(cmd.Context())
+
+			result, err := ops.Rollback(cmd.Context(), app.Deps, ops.RollbackOptions{
+				Options: app.operationOptions(),
+			})
+
+			// The assessment is the point of the command, so it reaches
+			// --json output on the refusal path too.
+			if app.json != nil {
+				app.jsonData = result.Data
+			}
+			app.finish(result)
+			return err
+		},
+	}
+}
+
 func newStatusCommand(app *App) *cobra.Command {
 	var clearIntervention string
 
