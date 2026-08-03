@@ -2,6 +2,9 @@
 #
 # Run `just` with no arguments to list everything.
 
+set quiet
+set shell := ["bash", "-cu"]
+
 binary  := "morzer"
 cmd     := "./cmd/morzer"
 dist    := "dist"
