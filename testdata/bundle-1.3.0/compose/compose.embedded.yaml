@@ -1,0 +1,14 @@
+# The embedded profile runs the database alongside the application.
+services:
+  db:
+    image: ${DEMO_IMAGE_DB:-registry.example/demo/db@sha256:0000000000000000000000000000000000000000000000000000000000000002}
+    restart: unless-stopped
+    volumes:
+      - ${DEMO_DATA_DIR:-/var/lib/demo/data}/db:/var/lib/postgresql/data:rw
+    secrets:
+      - db_password
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

@@ -182,12 +182,15 @@ func CheckUpgrade(from, to Version, target Compatibility, managerVersion Version
 		}
 	}
 
-	if currentSchema > 0 && target.DatabaseSchemaMax > 0 {
-		if currentSchema > target.DatabaseSchemaMax {
+	// Each bound is guarded by its own presence. Nesting the minimum check
+	// inside the maximum's guard meant a release declaring only
+	// database_schema_min never warned about a schema below it.
+	if currentSchema > 0 {
+		if target.DatabaseSchemaMax > 0 && currentSchema > target.DatabaseSchemaMax {
 			report.problem("database schema %d is newer than release %s supports (max %d)",
 				currentSchema, to, target.DatabaseSchemaMax)
 		}
-		if currentSchema < target.DatabaseSchemaMin {
+		if target.DatabaseSchemaMin > 0 && currentSchema < target.DatabaseSchemaMin {
 			report.warn("database schema %d is below release minimum %d; migrations will run",
 				currentSchema, target.DatabaseSchemaMin)
 		}
@@ -210,22 +213,28 @@ type RollbackAssessment struct {
 // currentSchema is the schema version the running database is at.
 func AssessRollback(current, previous Compatibility, currentSchema int) RollbackAssessment {
 	a := RollbackAssessment{ContainersReversible: true, SchemaCompatible: true}
+	var reasons []string
 
 	if !current.RollbackSafe {
 		a.ContainersReversible = false
 		a.RestoreRequired = true
-		a.Reason = "the installed release declares rollback_safe: false, so its migrations are irreversible"
-		return a
+		reasons = append(reasons,
+			"the installed release declares rollback_safe: false, so its migrations are irreversible")
 	}
 
+	// Evaluated independently of the check above rather than after an early
+	// return. The three answers exist to fail separately; reporting the
+	// schema as compatible because an earlier blocker short-circuited would
+	// tell an operator it had been looked at when it had not.
 	if currentSchema > 0 && previous.DatabaseSchemaMax > 0 && currentSchema > previous.DatabaseSchemaMax {
 		a.SchemaCompatible = false
 		a.RestoreRequired = true
-		a.Reason = fmt.Sprintf(
+		reasons = append(reasons, fmt.Sprintf(
 			"database schema is at %d but the previous release supports at most %d; "+
 				"rolling back containers alone would leave the application reading a schema it does not understand",
-			currentSchema, previous.DatabaseSchemaMax)
+			currentSchema, previous.DatabaseSchemaMax))
 	}
 
+	a.Reason = strings.Join(reasons, "; ")
 	return a
 }

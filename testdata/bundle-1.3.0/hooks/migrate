@@ -1,0 +1,25 @@
+#!/bin/sh
+# Migration hook.
+#
+# Exit 0 means migrations ran, exit 2 means the schema was already current.
+# The schema version is reported on the result descriptor so rollback can
+# later reason about compatibility without re-running this tooling.
+set -eu
+
+marker="${DEMO_DATA_DIR:?DEMO_DATA_DIR is required}/.schema"
+target=14
+
+mkdir -p "$(dirname "$marker")"
+current=0
+[ -f "$marker" ] && current=$(cat "$marker")
+
+if [ "$current" -ge "$target" ]; then
+    printf '{"message":"schema already at %s","schema_version":%s,"skipped":true}' "$current" "$current" >&"${DEMO_RESULT_FD:-3}"
+    echo "schema already at $current"
+    exit 2
+fi
+
+echo "migrating schema $current -> $target"
+echo "$target" > "$marker"
+
+printf '{"message":"migrated %s -> %s","schema_version":%s}' "$current" "$target" "$target" >&"${DEMO_RESULT_FD:-3}"

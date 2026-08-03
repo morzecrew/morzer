@@ -1,0 +1,28 @@
+# Base topology. The manifest describes the product lifecycle; service
+# topology stays here, which is the division the release contract draws.
+services:
+  app:
+    image: ${DEMO_IMAGE_APP:-registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001}
+    restart: unless-stopped
+    environment:
+      # Secrets reach the container as files, never as environment: an
+      # environment variable is visible to `docker inspect`.
+      DEMO_CONFIG_FILE: /etc/demo/application.yaml
+      DEMO_DB_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - ${DEMO_CONFIG_FILE:-/etc/demo/application.yaml}:/etc/demo/application.yaml:ro
+      - ${DEMO_DATA_DIR:-/var/lib/demo/data}:/var/lib/demo:rw
+    secrets:
+      - db_password
+      - session_key
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+secrets:
+  db_password:
+    file: ${DEMO_SECRETS_DIR:-/run/demo/secrets}/db_password
+  session_key:
+    file: ${DEMO_SECRETS_DIR:-/run/demo/secrets}/session_key

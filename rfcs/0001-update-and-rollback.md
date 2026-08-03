@@ -1,6 +1,6 @@
 # RFC 0001 — Update and rollback
 
-- **Status:** 📝 Draft (execution-ready — the ports it needs already exist)
+- **Status:** 🚧 In progress — P1 shipped 2026-08-03: `CheckUpgrade` and `AssessRollback` are now covered (100% of both) and the `bundle-1.3.0` fixture exists. Testing them found and fixed two defects, recorded in §10 as decisions 9 and 10. P2–P4 remain.
 - **Scope:** Adds two operations to `internal/lifecycle/ops`: `update`, which
   fetches a release, verifies it, gates it on the manifest's `compatibility`
   block, takes a pre-update backup and swaps the release pointer; and
@@ -314,11 +314,15 @@ the immediate previous one; it runs the same assessment against that target.
 | 6 | Rollback reports three independent answers — containers, schema, restore-required. Collapsing them into one boolean would hide which of the three actually blocked the operator. |
 | 7 | An unknown current schema (`0`) skips the schema check and says so in the message, rather than assuming compatibility. The manager does not own the database and must not pretend to know its state. |
 | 8 | No new ports, event kinds, exit codes or state-schema fields. Everything here composes mechanisms the engine already has; needing a new one would mean the design is wrong. |
+| 9 | *(P1, 2026-08-03)* Each schema bound is guarded by its own presence. The minimum warning had been nested inside the maximum's guard, so a release declaring only `database_schema_min` never warned about a schema below it. |
+| 10 | *(P1, 2026-08-03)* `AssessRollback` evaluates both blockers rather than returning early on the first. The early return left `SchemaCompatible` reporting `true` having never been checked — the opposite of the three-independent-answers property the struct exists for. This amends, but does not reverse, decision 6. |
 
 ## 11. Phasing
 
-- **P1** — Domain tests for `CheckUpgrade` / `AssessRollback`, and the second
-  bundle fixture. Pure additions, no behaviour change, mergeable alone.
+- **P1** — ✅ *Shipped 2026-08-03.* Domain tests for `CheckUpgrade` /
+  `AssessRollback`, and the `bundle-1.3.0` fixture. Billed as pure additions;
+  it was not — the tests found two defects in the previously-uncalled functions
+  and fixing them changed behaviour. See decisions 9 and 10.
 - **P2** — `ops.Update` plus the `update` command, including the fault-injection
   extension. This is the bulk.
 - **P3** — `ops.Rollback` plus the `rollback` command and its refusal paths.

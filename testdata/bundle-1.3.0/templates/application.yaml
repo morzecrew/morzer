@@ -1,0 +1,28 @@
+# Rendered to /etc/demo/application.yaml.
+#
+# Note that secrets appear as *paths*, never as values: the rendered config in
+# /etc must never contain a credential.
+server:
+  url: {{ .Installation.URL | default "http://localhost:8080" }}
+  domains:
+{{- range .Domains }}
+    - {{ . }}
+{{- end }}
+
+release:
+  name: {{ .Release.Name }}
+  version: {{ .Release.Version }}
+  digest: {{ .Release.Digest }}
+
+profile: {{ .Profile | default "default" }}
+
+paths:
+  data: {{ .Paths.Data }}
+  backups: {{ .Paths.Backups }}
+
+secrets:
+  db_password_file: {{ secretFile .Secrets "db_password" }}
+  session_key_file: {{ secretFile .Secrets "session_key" }}
+
+installation:
+  id: {{ .Installation.ID }}
