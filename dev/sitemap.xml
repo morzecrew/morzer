@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/commands/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/secret-commands/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/release-commands/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/exit-codes/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/manifest/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/hooks/</loc>
+      </url>
+</urlset>
