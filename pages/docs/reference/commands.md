@@ -82,6 +82,32 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--repair` | Restore missing directories on an existing installation. |
 
+### The interactive first run
+
+At a terminal, with something required still missing, `init` asks for it —
+product name, deployment profile (offering what the release declares), domains,
+and the recovery key, with an option to generate one on the spot.
+
+It is a front-end over the flags and never a second path. It fills the same
+options the flags do, and prints the command line that would have produced the
+same result:
+
+```text
+equivalent to:
+  morzer init \
+      --product demo \
+      --profile embedded \
+      --domain demo.example \
+      --recovery-recipient age1vm6ncva…
+```
+
+Put that in your provisioning script and you never need the wizard again, which
+is the point of printing it.
+
+It never runs with `--yes`, `--json` or `--quiet`, without a terminal, or when
+the command line already answers everything. A CI job, a systemd unit and a
+scripted install all take the flags exactly as given.
+
 `--require-signature` without `--signing-key` is refused: no bundle could
 satisfy it, and a policy nothing can satisfy is a configuration error rather
 than something to discover on the next update. Both are written into
@@ -175,6 +201,18 @@ checks tool versions against what the release requires, the installation layout,
 the secret state, service and health status, disk headroom, and the journal.
 
 Exits [3](exit-codes.md) when any check fails; warnings exit 0.
+
+Three checks are advisory by design, and warn rather than fail:
+
+| Check | What it means |
+| --- | --- |
+| `secrets.rotation` | A secret is older than the `rotation_period` its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all. |
+| `secrets.ephemeral-storage` | The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this. |
+| `runtime.images-local` | Some of the release's images are not present locally, so this machine would not come up without network access. See [Installing without a network](../operating/installing-offline.md). |
+
+The rotation remedy names the command that will actually work: `secret rotate`
+for a secret the release declares a generator for, and `secret set` for one it
+does not — pointing at `rotate` there would point at a command that fails.
 
 ## backup
 

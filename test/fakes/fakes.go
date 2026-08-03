@@ -481,6 +481,14 @@ func (s *SecretStore) ReencryptFor(ctx context.Context, recipients []ports.Recip
 // proven end to end against the real sops-age store with real age keys in
 // TestRecoveryRebuildsAMachineFromAnOfflineKey.
 
+// SetChanged backdates a secret's last-changed timestamp, so a test can put a
+// secret past a rotation period without waiting ninety days for it.
+func (s *SecretStore) SetChanged(name string, when time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.changed[name] = when
+}
+
 // Seed sets values directly, for test arrangement.
 func (s *SecretStore) Seed(values map[string]string) {
 	s.mu.Lock()

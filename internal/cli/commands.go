@@ -51,7 +51,10 @@ func newInitCommand(app *App) *cobra.Command {
 				}
 				product = manifest.Metadata.Name
 			}
-			if product == "" {
+			// A missing product name is not fatal at a terminal: the
+			// wizard below asks for it. It is fatal everywhere else,
+			// and the check moved after the wizard for that reason.
+			if product == "" && !isInteractive() {
 				return domain.Usage("a product name is required").
 					WithHint("pass --product <name>, or --release <bundle> to take it from the manifest")
 			}
@@ -60,12 +63,14 @@ func newInitCommand(app *App) *cobra.Command {
 			// managed path derives from it, and the adapters wired
 			// during the pre-run captured the placeholder paths --
 			// so they are rebuilt too, not merely re-pointed.
-			app.Flags.product = product
-			if err := app.rewireForProduct(cmd.Context(), product); err != nil {
-				return err
+			if product != "" {
+				app.Flags.product = product
+				if err := app.rewireForProduct(cmd.Context(), product); err != nil {
+					return err
+				}
 			}
 
-			result, err := ops.Init(cmd.Context(), app.Deps, ops.InitOptions{
+			opts := ops.InitOptions{
 				Options:           app.operationOptions(),
 				Product:           product,
 				ReleasePath:       releasePath,
@@ -79,7 +84,36 @@ func newInitCommand(app *App) *cobra.Command {
 				RequireSignature:  requireSig,
 				SigningKeys:       signingKeys,
 				Repair:            repair,
-			})
+			}
+
+			// Only at a terminal, only without --yes, and only when
+			// something it collects is actually missing. Everything
+			// else -- CI, a systemd unit, a provisioning script --
+			// runs the flags it was given, untouched.
+			if wizardApplies(app, opts) {
+				filled, err := runInitWizard(cmd.Context(), app, opts)
+				if err != nil {
+					return err
+				}
+				opts = filled
+
+				// Printed every time: it is what stops the
+				// wizard becoming the only way anyone knows how
+				// to do this.
+				fmt.Fprintf(app.Stream.Err, "\nequivalent to:\n  %s\n\n",
+					EquivalentCommand(opts))
+
+				// The product may have been chosen just now, and
+				// every managed path derives from it.
+				if opts.Product != product {
+					app.Flags.product = opts.Product
+					if err := app.rewireForProduct(cmd.Context(), opts.Product); err != nil {
+						return err
+					}
+				}
+			}
+
+			result, err := ops.Init(cmd.Context(), app.Deps, opts)
 			app.finish(result)
 			return err
 		},

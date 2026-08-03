@@ -31,6 +31,7 @@ func newSecretCommand(app *App) *cobra.Command {
 		newSecretGenerateCommand(app),
 		newSecretRemoveCommand(app),
 		newSecretRotateCommand(app),
+		newSecretEditCommand(app),
 		newSecretRenderCommand(app),
 		newSecretRecipientsCommand(app),
 	)

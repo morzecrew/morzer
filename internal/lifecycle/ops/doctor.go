@@ -95,6 +95,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		d.checkIdentity(),
 		d.checkSecretsDecryptable(),
 		d.checkRecoveryRecipient(),
+		d.checkSecretsOnEphemeralStorage(),
 		d.checkDiskSpace(),
 	)
 
@@ -108,6 +109,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
 		checks = append(checks,
 			d.checkRequiredSecrets(rel),
+			d.checkSecretRotation(rel),
 			d.checkRegistryReachable(rel),
 			d.checkImagesLocal(rel),
 			d.checkServices(inst, rel),
@@ -296,6 +298,148 @@ func (d *Deps) checkRecoveryRecipient() preflight.Check {
 			return preflight.OK("%d recipient(s), %d for recovery", len(recipients), recovery)
 		},
 	}
+}
+
+// checkSecretsOnEphemeralStorage reports a render directory that is not tmpfs.
+//
+// Decrypted secrets are written there on every apply, and `secret edit` puts a
+// whole plaintext session there. The design assumes those bytes are pages of
+// RAM: that is what makes overwriting them meaningful and what makes a reboot
+// a guaranteed cleanup. On a disk-backed filesystem neither holds -- the old
+// contents can survive in a journal or an unreferenced extent that nothing will
+// hand back and nothing has erased.
+//
+// A warning rather than a failure. A container image with no tmpfs mounted, or
+// a `--root` used for testing, is a legitimate way to run this, and refusing to
+// operate would help nobody. What an operator needs is to know.
+func (d *Deps) checkSecretsOnEphemeralStorage() preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.ephemeral-storage",
+		Category:    preflight.CategorySecrets,
+		Description: "decrypted secrets live on memory-backed storage",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			dir := d.Paths.SecretsRenderDir()
+
+			fstype := preflight.FilesystemType(dir)
+			if fstype == "" {
+				// "Cannot tell" is not "insecure". Reporting a
+				// container that mounts /proc elsewhere as a
+				// finding would be crying wolf.
+				return preflight.OK("cannot determine the filesystem under %s", dir)
+			}
+			if preflight.IsEphemeralFilesystem(fstype) {
+				return preflight.OK("%s is %s", dir, fstype)
+			}
+
+			return preflight.Warn(
+				fmt.Sprintf("mount a tmpfs at %s, or accept that decrypted secrets "+
+					"touch disk and are not reliably erasable there", d.Paths.RunDir),
+				"%s is %s, not tmpfs: decrypted secrets are written to disk", dir, fstype)
+		},
+	}
+}
+
+// checkSecretRotation reports secrets older than the period the release
+// declares for them.
+//
+// The period is the release author's recommendation, so this is a warning and
+// never a failure: `doctor`'s exit code is something a monitoring system pages
+// on, and paging over a recommendation is how a team learns to ignore it.
+//
+// Secrets with no declared period are not mentioned at all. A tool that
+// invented a default rotation policy for a vendor who declined to state one
+// would be inventing the vendor's opinion.
+func (d *Deps) checkSecretRotation(rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.rotation",
+		Category:    preflight.CategorySecrets,
+		Description: "secrets are within their declared rotation period",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			schema, err := release.LoadSecretSchema(rel)
+			if err != nil {
+				return preflight.OK("the release declares no secret schema")
+			}
+
+			metadata, err := d.Secrets.Metadata(ctx)
+			if err != nil {
+				return preflight.Warn("", "cannot read secret metadata: %s",
+					domain.AsError(err).Message)
+			}
+			changed := make(map[string]domain.Time, len(metadata))
+			for _, m := range metadata {
+				changed[m.Name] = m.LastChanged
+			}
+
+			now := d.now()
+			var overdue, unknown []string
+			var rotatable int
+
+			for _, decl := range schema.Secrets {
+				if decl.RotationPeriod <= 0 {
+					continue
+				}
+				rotatable++
+
+				last, ok := changed[decl.Name]
+				if !ok {
+					continue // not set; checkRequiredSecrets covers that
+				}
+				if last.IsZero() {
+					// Present but never stamped -- written by
+					// a manager that predates the metadata, or
+					// restored from one.
+					unknown = append(unknown, decl.Name)
+					continue
+				}
+
+				age := now.Sub(last.Time)
+				if age > time.Duration(decl.RotationPeriod) {
+					overdue = append(overdue, fmt.Sprintf("%s is %s old (policy %s)",
+						decl.Name, roundDays(age), roundDays(time.Duration(decl.RotationPeriod))))
+				}
+			}
+
+			switch {
+			case rotatable == 0:
+				return preflight.OK("no secret declares a rotation period")
+			case len(overdue) > 0:
+				return preflight.Warn(rotationRemedy(schema, overdue),
+					"%s", strings.Join(overdue, "; "))
+			case len(unknown) > 0:
+				return preflight.Warn(
+					"rotate them to establish a date, or ignore this if they are known to be recent",
+					"%d secret(s) have no recorded change date: %s",
+					len(unknown), strings.Join(unknown, ", "))
+			default:
+				return preflight.OK("%d secret(s) within their period", rotatable)
+			}
+		},
+	}
+}
+
+// rotationRemedy names the command that can actually fix it.
+//
+// A secret the release declares no generator for cannot be rotated by the
+// manager: there is nothing to generate. Telling an operator to run `rotate`
+// there would be telling them to run something that fails.
+func rotationRemedy(schema domain.SecretSchema, overdue []string) string {
+	name := strings.SplitN(overdue[0], " ", 2)[0]
+	if decl, ok := schema.Declaration(name); ok && !decl.Generator.Auto() {
+		return fmt.Sprintf("this release declares no generator for %s, "+
+			"so supply a new value with `morzer secret set %s`", name, name)
+	}
+	return fmt.Sprintf("rotate with `morzer secret rotate %s`", name)
+}
+
+// roundDays renders an age the way an operator thinks about one.
+func roundDays(d time.Duration) string {
+	days := int(d.Hours() / 24)
+	if days < 1 {
+		return d.Round(time.Hour).String()
+	}
+	return fmt.Sprintf("%dd", days)
 }
 
 func (d *Deps) checkDiskSpace() preflight.Check {

@@ -66,6 +66,62 @@ Generates a new value of the same shape and restarts **only** the services the
 release declares as depending on it — the difference between a blip and a full
 outage.
 
+## secret edit
+
+```sh
+morzer secret edit             # every secret
+morzer secret edit db_password session_key
+```
+
+Decrypts into a temporary file on tmpfs, opens `$VISUAL` or `$EDITOR`, and
+re-encrypts what changed. Rotating a related group of credentials is one logical
+change; doing it as several `secret set` calls is several decrypt-modify-encrypt
+cycles and several chances to stop halfway.
+
+The editor sees a plain mapping and nothing else:
+
+```yaml
+db_password: the-current-value
+session_key: the-current-value
+```
+
+Change a value to change it, delete a line to remove the secret, add a line to
+add one. Leaving without changes changes nothing, and **only the services that
+declare a dependency on a secret you changed are restarted**.
+
+The encryption metadata is never in the file, so the envelope cannot be
+corrupted by editing it.
+
+### Where the plaintext lives, and for how long
+
+This is the one place in the manager where a decrypted secret is written to a
+filesystem. What bounds it:
+
+- The session lives in a `0700` directory **inside the tmpfs render
+  directory**, not `/tmp` — which is frequently not tmpfs, and where a crash
+  would leave plaintext on a disk you believe is clean.
+- The whole directory is overwritten and removed when the editor exits, however
+  it exits: a clean save, a non-zero exit, a signal, a panic. The directory
+  rather than just the file, because editors leave swap and backup files beside
+  the one they were handed.
+- On tmpfs, overwriting is as final as it sounds — those bytes are pages of RAM.
+  On a disk-backed filesystem it is not, which is why `doctor` reports a render
+  directory that is not tmpfs.
+
+### Refusals
+
+- **No terminal.** There is no sensible non-interactive editor session; use
+  `secret set`, which reads from stdin.
+- **A file that does not parse.** Nothing is written, and the message says so —
+  an operator who has just lost an edit needs to know whether they also broke
+  something.
+- **An empty value.** Almost always a half-finished edit. Delete the line to
+  remove a secret.
+- **Removing a secret the release declares `required`**, without `--force`.
+
+`$VISUAL` is preferred over `$EDITOR`, the order `git`, `crontab` and `sudoedit`
+use. A non-zero exit from the editor — `:cq` in vim — abandons the edit.
+
 ## secret remove
 
 ```sh

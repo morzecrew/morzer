@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reproducible signed release builds for linux amd64 and arm64, published as compressed archives with a signed checksum file.
 
+- Editing several secrets in one editor session with `secret edit`. Rotating a related group of credentials is one logical change, and only the services that declare a dependency on something that changed are restarted.
+
+- Diagnostics reporting secrets older than the rotation period their release declares, naming whichever command can actually replace the value. Secrets whose release states no period are not mentioned.
+
+- Diagnostics reporting a decrypted-secret directory that is not memory-backed, since overwriting a file there does not reliably destroy it.
+
+- An interactive first run of `init` at a terminal, which asks only for what is missing and prints the equivalent command line so the same install can be scripted afterwards. It never runs without a terminal, with assume-yes, or when the command line already answers everything.
+
 - Generated systemd units for boot-time convergence and scheduled backups. The main unit will not restart on the exit code meaning manual intervention is required, so a system needing a human stops instead of looping.
 
 - Reporting of measured sizes such as free disk space in readable units, while values declared in a manifest keep their exact written form.
@@ -102,6 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extracted files carry either an executable or a plain permission set, so a release cannot arrive world-writable regardless of how it was packed.
 
 - Requiring signatures without configuring any signing key is refused when the installation is written. The policy could not be satisfied by any release, and reporting that as a failure of each later operation would point at bundles instead of at configuration.
+
+- Editing secrets writes plaintext only inside the memory-backed render directory, in a directory of its own that is overwritten and removed however the editor exits — including a crash or a non-zero exit. The whole directory goes, because editors leave swap and backup files beside the one they were given.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 

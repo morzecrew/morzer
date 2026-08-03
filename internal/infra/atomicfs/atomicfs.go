@@ -291,3 +291,74 @@ func RemoveAll(path string) error {
 	}
 	return nil
 }
+
+// RemoveWithOverwrite overwrites every regular file under path before removing
+// it.
+//
+// What this is worth depends entirely on where it runs. On tmpfs -- which is
+// where the only caller puts its files -- the bytes are pages of RAM, and
+// overwriting them is exactly as final as it sounds. On a journalling or
+// copy-on-write filesystem it is not: the old contents may survive in a journal,
+// a snapshot, or an unreferenced extent that nothing will ever hand back but
+// nothing has erased either.
+//
+// So it is a second line rather than the first. The first is that the file is
+// on tmpfs at all, and `doctor` reports a `/run` that is not.
+//
+// Errors overwriting are not fatal: failing to scrub is not a reason to leave
+// the file in place, and removal is the part that must happen.
+func RemoveWithOverwrite(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return domain.Internal(err, "cannot inspect %s", path)
+	}
+
+	if info.IsDir() {
+		entries, readErr := os.ReadDir(path)
+		if readErr == nil {
+			for _, e := range entries {
+				_ = RemoveWithOverwrite(filepath.Join(path, e.Name()))
+			}
+		}
+		return RemoveAll(path)
+	}
+
+	if info.Mode().IsRegular() {
+		_ = overwriteFile(path, info.Size())
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return domain.Internal(err, "cannot remove %s", path)
+	}
+	return nil
+}
+
+// overwriteFile writes zeros over a file's contents and flushes them.
+func overwriteFile(path string, size int64) error {
+	if size <= 0 {
+		return nil
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	// A page at a time, so a large file does not become a large allocation.
+	const chunk = 32 << 10
+	zeros := make([]byte, chunk)
+	for remaining := size; remaining > 0; {
+		n := int64(chunk)
+		if remaining < n {
+			n = remaining
+		}
+		if _, err := f.Write(zeros[:n]); err != nil {
+			return err
+		}
+		remaining -= n
+	}
+	return f.Sync()
+}

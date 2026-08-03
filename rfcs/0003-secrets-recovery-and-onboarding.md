@@ -1,11 +1,12 @@
 # RFC 0003 — Secrets, recovery and onboarding
 
-- **Status:** 🚧 In progress — P1–P2 shipped 2026-08-03. `ReencryptFor` is on the
-  port with contract cases against both stores; `installation export` /
-  `import` work, and the recovery scenario runs end to end against real age keys
-  on every CI run. Two design changes are recorded in §5.2, and one defect the
-  test found is in §12. P3–P5 (`secret edit`, rotation reporting, the wizard)
-  remain.
+- **Status:** ✅ Complete — P1–P2 shipped 2026-08-03, P3–P5 the same day. The
+  offline recovery key is usable end to end and proven by a test that deletes a
+  machine's entire root; `secret edit` bounds the one place plaintext touches a
+  filesystem; `doctor` reports overdue rotations and a render directory that is
+  not tmpfs; and `init` asks at a terminal while staying exactly as scriptable
+  as before. Three design changes are recorded as amendments in §5.1, §5.2 and
+  §5.4; the defects P2 found are in §12.
 - **Scope:** Completes the secret surface with `secret edit` (an `$EDITOR`
   session over a decrypted copy on tmpfs), rotation-policy reporting in `doctor`,
   and `installation export` / `installation import` so a machine can be rebuilt
@@ -141,6 +142,22 @@ declares `required` without `--force`.
 The editor never sees the SOPS metadata block — only a plain `name: value`
 mapping — so an operator cannot corrupt the encryption envelope by editing it.
 
+> **Amendment, P3 (2026-08-03).** Two changes.
+>
+> **A directory, not a file.** The design put one temp file in the render
+> directory. Editors write more than the file they are handed: vim leaves
+> `.swp`, emacs leaves `file~`, and both would hold the same plaintext next to a
+> file that was carefully removed. The session gets a `0700` directory of its
+> own and the whole directory is overwritten and removed. `RemoveWithOverwrite`
+> in `atomicfs` does that, and its doc comment says plainly that overwriting is
+> worth something on tmpfs and very little anywhere else.
+>
+> **`$VISUAL` before `$EDITOR`.** The design wrote it the other way round. Every
+> tool an operator already uses -- `git`, `crontab`, `sudoedit` -- prefers
+> `$VISUAL`, and someone with `VISUAL=code` and `EDITOR=vi` means the first for
+> an interactive session. Following the RFC literally would have opened the
+> wrong editor for exactly the people who set both.
+
 ### 5.2 Export and import
 
 ```text
@@ -240,6 +257,17 @@ equivalent to:
 
 `huh`'s accessible mode is honoured automatically for screen readers.
 
+> **Amendment, P5 (2026-08-03).** `huh` costs **1.7 MiB** of binary (11.5 → 13.2)
+> and 42 modules, measured rather than estimated. That is a real price for a
+> first-run convenience, and it is the one part of this RFC that could be
+> dropped without losing a capability -- which is why it was phased last.
+> Recorded so the trade is visible rather than assumed; RFC 0002 would bring
+> most of the same tree anyway.
+>
+> Two conditions were added to the design's three: the wizard also stands down
+> under `--json` and `--quiet`. A form has nowhere to go in a single-object
+> output contract, and `--quiet` asked for silence.
+
 ## 6. Tests
 
 - **Contract suite** gains `ReencryptFor` cases — recipient set replaced
@@ -318,6 +346,11 @@ equivalent to:
 | 12 | Export validation refuses a document whose only recipient is the exporting machine. That file looks like an insurance policy and is not one, and the moment to find out is not during the recovery it was taken for. |
 | 13 | `--allow-cross-installation` is a flag of its own on `restore`, not `--force`. See §12: sharing `--force` made the guard unreachable, because every restore already requires it. |
 | 14 | Import checks the supplied identity against the export's recipients before creating anything. A refusal after the directories and a new machine key exist is a half-built machine at the worst possible moment. |
+| 15 | An edit session is a directory, not a file, and the directory is what gets overwritten and removed. Editors leave swap and backup files beside what they are given, and those hold the same plaintext. See §5.1. |
+| 16 | `$VISUAL` is preferred over `$EDITOR`, against the RFC's own wording. Every tool an operator already uses does it that way, and following the RFC would open the wrong editor for anyone who sets both. See §5.1. |
+| 17 | An empty value in an edited file is refused rather than stored or treated as a deletion. It is almost always a half-finished edit, and guessing which of two destructive readings was meant is worse than asking. |
+| 18 | A rotation warning names `secret set` when the release declares no generator for that secret. Pointing at `secret rotate` there would point at a command that cannot work. |
+| 19 | A render directory that is not tmpfs is a warning, never a refusal. A container without a tmpfs mount is a legitimate way to run this, and refusing to operate would help nobody who is already running it. |
 
 ## 11. Phasing
 
@@ -325,10 +358,11 @@ equivalent to:
   Small, and unblocks the rest.
 - **P2** — `installation export` / `import` plus the end-to-end recovery test.
   This is the milestone's reason for existing.
-- **P3** — `secret edit`, and the `doctor` check for a non-tmpfs `/run`.
-- **P4** — rotation reporting.
-- **P5** — the `huh` wizard. Deliberately last: it is the only part that adds a
-  dependency and changes nothing about what the tool can do.
+- **P3** — ✅ *Shipped 2026-08-03.* `secret edit` and the tmpfs check; see the
+  amendment in §5.1 and decisions 15–17, 19.
+- **P4** — ✅ *Shipped 2026-08-03.* Rotation reporting; decision 18.
+- **P5** — ✅ *Shipped 2026-08-03.* The `huh` wizard, at a measured 1.7 MiB; see
+  the amendment in §5.4.
 
 ### What P1–P2 shipped
 
