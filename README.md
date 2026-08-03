@@ -276,7 +276,8 @@ one numbered document per piece with its decisions recorded and its exclusions
 reasoned. [`rfcs/INDEX.md`](rfcs/INDEX.md) is the table of contents.
 
 Currently proposed: update and rollback, the rich terminal renderer, secrets
-recovery and onboarding, and distribution with signature verification.
+recovery and onboarding, distribution with signature verification, continuous
+integration, and a documentation site to replace most of this file.
 
 ## Changelog
 
