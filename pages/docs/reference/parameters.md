@@ -16,7 +16,8 @@ much later as "the port did not change".
 
 ## Setting one
 
-At install time:
+After install, with [`config set`](#changing-one-after-install). At install
+time:
 
 ```sh
 morzer init --release ./bundle --set http_port=9000 --set log_level=debug
@@ -129,11 +130,45 @@ check would then probe a port nothing is listening on.
 
 ## Changing one after install
 
-Not yet. `init --set` records the values; there is no command to change them
-afterwards, so today the answer is to edit the recorded state and re-`apply`,
-or to rebuild the installation.
+`morzer config set` takes the deployment lock, validates the value, records it,
+re-renders the configuration and re-creates the services the release says depend
+on it.
 
-A `morzer config` group — `list`, `get`, `set`, `unset`, restarting only the
-services a parameter declares — is designed in
-[RFC 0007](https://github.com/morzecrew/morzer/blob/main/rfcs/0007-operator-parameters.md)
-and is the next phase of this work.
+```sh
+morzer config list                    # every parameter, its value, and where it came from
+morzer config get http_port           # the value alone, for a script
+morzer config set http_port=9000      # validate, record, re-create the dependants
+morzer config unset http_port         # back to the release's default
+morzer config set http_port=9000 --dry-run   # the step list, and the config diff
+```
+
+`morzer config get` prints the value alone, with no decoration, so it
+substitutes directly into a script. `config list` names the source of every
+value, so *what have I changed on this machine* is answerable without diffing
+against the bundle:
+
+```text
+NAME                 TYPE       VALUE            SOURCE
+http_port            port       9000             installation
+log_level            enum       info             release
+```
+
+### It re-creates, it does not restart
+
+A published port is fixed when a container is created. `docker compose restart`
+restarts the *existing* containers, so a restart after a port change would
+report success and leave the old mapping in place. `config set` re-creates the
+affected services instead.
+
+This is the opposite of [`secret rotate`](secret-commands.md), which restarts:
+a secret reaches a container as a mounted file, and restarting re-reads it.
+
+A parameter that declares no dependent services is recorded and takes effect on
+the next `apply`. The summary says which of the two happened, and says it in the
+tense it happened in — a `--dry-run` never claims a service was re-created.
+
+### A value an older release left behind
+
+A release that drops a parameter leaves its recorded value bound to nothing.
+That is the vendor's decision, so it is reported rather than refused:
+`config list` marks it stale, and `config unset <name>` clears it.

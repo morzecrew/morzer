@@ -379,3 +379,45 @@ func RenderDoctor(w io.Writer, report ops.DoctorReport) {
 	f("")
 	f("%d ok, %d warning, %d failed", report.Summary.OK, report.Summary.Warn, report.Summary.Fail)
 }
+
+// RenderConfig prints the release's parameters and their effective values.
+func RenderConfig(w io.Writer, report ops.ConfigReport) {
+	f := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format+"\n", args...) }
+
+	if len(report.Parameters) == 0 {
+		f("%s %s declares no parameters", report.Product, report.Release)
+		return
+	}
+
+	f("%-20s %-10s %-16s %s", "NAME", "TYPE", "VALUE", "SOURCE")
+	for _, p := range report.Parameters {
+		f("%-20s %-10s %-16s %s", p.Name, p.Type, p.Value, p.Source)
+	}
+
+	// The detail goes below the table rather than in it: these are
+	// sentences, and a sentence in a column makes every row as tall as the
+	// longest. It is here at all because the styled view shows it, and
+	// nothing may be visible only on a terminal.
+	for _, p := range report.Parameters {
+		f("")
+		f("  %s", p.Name)
+		if p.Description != "" {
+			f("    %s", p.Description)
+		}
+		if len(p.Values) > 0 {
+			f("    one of: %s", strings.Join(p.Values, ", "))
+		}
+		if len(p.Services) > 0 {
+			f("    changing it re-creates: %s", strings.Join(p.Services, ", "))
+		} else {
+			f("    changing it takes effect on the next apply")
+		}
+	}
+
+	if len(report.Stale) > 0 {
+		f("")
+		f("stale (recorded, but %s declares no such parameter): %s",
+			report.Release, strings.Join(report.Stale, ", "))
+		f("clear with: morzer config unset %s", strings.Join(report.Stale, " "))
+	}
+}

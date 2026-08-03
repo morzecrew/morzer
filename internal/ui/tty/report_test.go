@@ -178,3 +178,87 @@ func TestThePlanKeepsTheDiffReadable(t *testing.T) {
 // flatten collapses every run of whitespace to one space, so a wrapped or
 // padded cell compares equal to the text it holds.
 func flatten(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// configReport is an installation with one value the operator chose, one at the
+// release's default, an enum, a parameter with no dependent services, and a
+// stale entry from an older release.
+func configReport() ops.ConfigReport {
+	return ops.ConfigReport{
+		Product: "demo", Release: "1.3.0",
+		Parameters: []ops.ConfigEntry{
+			{
+				Name: "http_port", Type: "port", Value: "9000", Default: "18080",
+				Source: "installation", Description: "Port the application is published on",
+				Services: []string{"app"},
+			},
+			{
+				Name: "log_level", Type: "enum", Value: "info", Default: "info",
+				Source: "release", Description: "Application log verbosity",
+				Values: []string{"debug", "info", "warn"}, Services: []string{"app"},
+			},
+			{
+				Name: "site_name", Type: "string", Value: "Demo", Source: "release",
+			},
+		},
+		Stale: []string{"legacy_flag"},
+	}
+}
+
+// TestTheConfigViewNeverShowsLessThanPlain is decision 3 of RFC 0002 applied to
+// the view an operator reads before changing anything.
+func TestTheConfigViewNeverShowsLessThanPlain(t *testing.T) {
+	report := configReport()
+
+	var rich, plainBuf bytes.Buffer
+	tty.RenderConfig(&rich, theme.New(false, false), report)
+	plain.RenderConfig(&plainBuf, report)
+
+	richText, plainText := flatten(rich.String()), flatten(plainBuf.String())
+
+	var want []string
+	for _, p := range report.Parameters {
+		want = append(want, p.Name, p.Value, string(p.Type), p.Source, p.Description)
+		want = append(want, p.Values...)
+		want = append(want, p.Services...)
+	}
+	want = append(want, report.Stale...)
+
+	for _, s := range want {
+		if s == "" {
+			continue
+		}
+		if !strings.Contains(richText, flatten(s)) {
+			t.Errorf("the styled view omits %q:\n%s", s, rich.String())
+		}
+		if !strings.Contains(plainText, flatten(s)) {
+			t.Errorf("plain omits %q:\n%s", s, plainBuf.String())
+		}
+	}
+}
+
+// TestTheConfigViewNamesTheSourceWithoutColour is why the SOURCE column exists.
+// Highlighting an operator-set value is the fast path; the word is the one that
+// survives a pipe, a CI log and a monochrome terminal.
+func TestTheConfigViewNamesTheSourceWithoutColour(t *testing.T) {
+	var buf bytes.Buffer
+	tty.RenderConfig(&buf, theme.New(false, false), configReport())
+
+	out := flatten(buf.String())
+	if !strings.Contains(out, "installation") || !strings.Contains(out, "release") {
+		t.Errorf("a monochrome reader cannot tell a chosen value from a default:\n%s", buf.String())
+	}
+}
+
+// TestAParameterWithNoServicesSaysSo stops an operator assuming a change took
+// effect. There is nothing to re-create, so it waits for the next apply.
+func TestAParameterWithNoServicesSaysSo(t *testing.T) {
+	var rich, plainBuf bytes.Buffer
+	tty.RenderConfig(&rich, theme.New(false, false), configReport())
+	plain.RenderConfig(&plainBuf, configReport())
+
+	for name, out := range map[string]string{"rich": rich.String(), "plain": plainBuf.String()} {
+		if !strings.Contains(out, "next apply") {
+			t.Errorf("%s does not say that site_name waits for an apply:\n%s", name, out)
+		}
+	}
+}

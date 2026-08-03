@@ -1,12 +1,13 @@
 # RFC 0007 — Operator parameters
 
-- **Status:** 🚧 In progress — P1 and P2 shipped 2026-08-04. A release declares
-  typed parameters, `init --set` records them, values reach Compose, templates
-  and hooks as `<PRODUCT>_PARAM_<NAME>`, `requirements.ports` and health URLs
-  follow them, and the Compose subprocess no longer inherits the operator's
-  environment. P3 (`morzer config`), P4 (the three-tier example) and P5 (the
-  remaining docs and the Compose-variable gate) are open. Divergences are in
-  §13.
+- **Status:** 🚧 In progress — P1–P3 shipped 2026-08-04. A release declares typed
+  parameters; `init --set` and `morzer config list/get/set/unset` record them;
+  values reach Compose, templates and hooks as `<PRODUCT>_PARAM_<NAME>`;
+  `requirements.ports` and health URLs follow them; the Compose subprocess no
+  longer inherits the operator's environment; and `doctor` reports an
+  `installation.yaml` edit that decides nothing. P4 (the three-tier example) and
+  P5 (the remaining docs and the two ABI gates) are open. Divergences are in
+  §13 and §14.
 - **Scope:** Gives a release a declared set of knobs an operator may set — ports
   above all — and gives the operator a supported way to set them. Covers the
   manifest's `parameters` block, typed validation, delivery to Compose,
@@ -589,3 +590,76 @@ So P5 grows: documenting and gating the render context, not just the Compose
 variables, and deciding `.Env`'s fate in the same change. Recorded here rather
 than left for someone to rediscover, and it is why the P2 work should not be
 read as "the undeclared channels are closed" — one of three is.
+
+## 14. Amendments from P3
+
+Recorded on shipping `morzer config`, 2026-08-04.
+
+### `config set` re-creates services; it does not restart them
+
+Decision 7 said `config set` "restarts only the declared services", borrowing
+the wording from `secret rotate`. That would have shipped the exact class of
+defect this RFC exists to close.
+
+`docker compose restart` restarts the **existing** containers, and a published
+port is fixed when a container is created. Measured directly before writing the
+step:
+
+```console
+$ P=18111 docker compose up -d && docker compose port web 80
+0.0.0.0:18111
+$ P=18222 docker compose restart && docker compose port web 80
+0.0.0.0:18111        # unchanged
+$ P=18222 docker compose up -d && docker compose port web 80
+0.0.0.0:18222
+```
+
+So the step calls `Up` with the affected services. `secret rotate` is right to
+restart, because a secret reaches a container as a mounted file and restarting
+re-reads it; a parameter is part of the container's definition, so the container
+has to be replaced. The distinction is now in the code comment, the command's
+help and the reference page.
+
+Proved rather than asserted: an acceptance stage moves a running deployment's
+port with `config set` and checks Docker published it. Reverting the step to
+`Restart` fails that stage with `config set left the port at 18099, expected
+18098`.
+
+### The summary must be in the tense it happened in
+
+The first working version reported "set http_port; re-created app" for a
+`--dry-run`, and again when nothing was running and the re-create step was
+skipped. Both are false statements about a deployment, and the second is the
+worse one: it tells an operator the containers already hold the new value.
+
+`projectRunning` is now asked once, before anything changes, and decides both
+which steps run and what the summary may claim. A plan says "would set"; a
+change to a stopped deployment says it takes effect on the next `apply`.
+
+### Decision 8's second half landed as well as the check
+
+Decision 8 kept `installation.yaml` a report and added a `doctor` check. Two
+things followed that the RFC did not say:
+
+- The file's header used to read *"Values here override release defaults"*,
+  which was false. It now says the file is a report and names `morzer config
+  set` as the editor.
+- `init` and `config` were writing it through separate code. They share one
+  writer now, because two writers for one operator-facing file is how it stops
+  matching the deployment it describes.
+
+The check reports the differing fields by name — `profile`, `domains`,
+`policy`, `parameters.<name>` — rather than "something differs", and compares
+only what an operator would plausibly hand-edit. Comparing whole structs would
+report a timestamp's formatting as configuration drift.
+
+### Open question 3 is answered: stale values are reported
+
+§12 asked what happens when an update drops a parameter that has a recorded
+value. Answered as the RFC leaned: `config list` marks it stale and names
+`config unset` to clear it. Nothing is refused and no update is blocked —
+dropping a parameter is the vendor's decision.
+
+`config set` still validates the *whole* recorded set, so a stale value that has
+become genuinely invalid surfaces on the next change rather than at the next
+apply.

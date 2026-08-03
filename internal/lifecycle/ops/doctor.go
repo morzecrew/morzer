@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/goccy/go-yaml"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -96,6 +99,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		d.checkSecretsDecryptable(),
 		d.checkRecoveryRecipient(),
 		d.checkSecretsOnEphemeralStorage(),
+		d.checkInstallationFileMatchesState(),
 		d.checkDiskSpace(),
 	)
 
@@ -151,6 +155,106 @@ func (d *Deps) checkInstallationReadable() preflight.Check {
 			return preflight.OK("%s (%s)", inst.Product, inst.ID)
 		},
 	}
+}
+
+// checkInstallationFileMatchesState catches the one confusing failure this
+// layout allows: an operator edits /etc/<product>/installation.yaml, sees no
+// effect, and cannot tell whether the edit was wrong, the file is wrong, or the
+// manager is broken.
+//
+// Nothing reads that file -- the manager reads its own JSON state -- so an edit
+// changes nothing. Reporting the disagreement by name is what turns a silent
+// no-op into a diagnosis.
+func (d *Deps) checkInstallationFileMatchesState() preflight.Check {
+	return preflight.Check{
+		ID:          "config.installation-file",
+		Category:    preflight.CategoryConfig,
+		Description: "installation.yaml matches the recorded state",
+		Run: func(ctx context.Context) events.CheckResult {
+			recorded, err := d.State.LoadInstallation(ctx)
+			if err != nil {
+				// checkInstallationReadable already reports this,
+				// and saying it twice helps nobody.
+				return preflight.OK("not checked: the installation state is unreadable")
+			}
+
+			raw, err := os.ReadFile(d.Paths.InstallationFile())
+			if err != nil {
+				if os.IsNotExist(err) {
+					return preflight.Warn(
+						"run `morzer init --repair` to write it",
+						"%s is missing", d.Paths.InstallationFile())
+				}
+				return preflight.Warn("check the permissions on "+d.Paths.EtcDir,
+					"cannot read %s: %v", d.Paths.InstallationFile(), err)
+			}
+
+			var onDisk domain.Installation
+			if err := yaml.Unmarshal(raw, &onDisk); err != nil {
+				return preflight.Warn(
+					"the manager will rewrite it on the next `morzer config set`",
+					"%s is not valid YAML", d.Paths.InstallationFile())
+			}
+
+			if diffs := installationDifferences(onDisk, recorded); len(diffs) > 0 {
+				return preflight.Warn(
+					"the file is a report, not a control: nothing reads it back. "+
+						"Use `morzer config set` to change a parameter, or "+
+						"`morzer init --repair` to rewrite the file from the state",
+					"%s disagrees with the recorded state (%s); the recorded state is what runs",
+					d.Paths.InstallationFile(), strings.Join(diffs, ", "))
+			}
+			return preflight.OK("in step with the recorded state")
+		},
+	}
+}
+
+// installationDifferences names the fields that disagree.
+//
+// Only what an operator would plausibly hand-edit. Comparing whole structs
+// would report a timestamp's formatting as configuration drift.
+func installationDifferences(onDisk, recorded domain.Installation) []string {
+	var out []string
+
+	if onDisk.Profile != recorded.Profile {
+		out = append(out, "profile")
+	}
+	if strings.Join(onDisk.Domains, ",") != strings.Join(recorded.Domains, ",") {
+		out = append(out, "domains")
+	}
+	if !policyEqual(onDisk.Policy, recorded.Policy) {
+		out = append(out, "policy")
+	}
+	for _, name := range differingKeys(onDisk.Parameters, recorded.Parameters) {
+		out = append(out, "parameters."+name)
+	}
+	return out
+}
+
+// policyEqual compares field by field, because Policy holds a slice and is not
+// comparable with ==.
+func policyEqual(a, b domain.Policy) bool {
+	return a.RequireSignature == b.RequireSignature &&
+		a.RetainReleases == b.RetainReleases &&
+		a.RetainBackups == b.RetainBackups &&
+		a.BackupBeforeUpdate == b.BackupBeforeUpdate &&
+		a.StaleBackupAfter == b.StaleBackupAfter &&
+		strings.Join(a.SigningKeys, ",") == strings.Join(b.SigningKeys, ",")
+}
+
+func differingKeys(a, b map[string]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range []map[string]string{a, b} {
+		for name := range m {
+			if !seen[name] && a[name] != b[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (d *Deps) checkUnfinishedOperations() preflight.Check {

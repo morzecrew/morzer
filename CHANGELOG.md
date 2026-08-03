@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A release's port requirements and health-check URLs can follow a parameter, so changing a published port moves the conflict check and the health probe with it. Previously the two were fixed in the manifest, and changing a port produced a deployment that worked and a converge that failed waiting for health.
 
+- Reading and changing parameters after install with `morzer config`: list every declared parameter with its value and where that value came from, get one value alone for a script, set one or several, and unset one back to the release default.
+
+- Changing a parameter re-creates the services the release says depend on it, rather than restarting them. A published port is fixed when a container is created, so a restart would report success and leave the old port in place.
+
+- A diagnostic reporting when the operator-facing installation file disagrees with the recorded state, naming the fields that differ. Nothing reads that file back, so an edit to it changes nothing; the check turns a silent no-op into a diagnosis.
+
 - Container images must be pinned by digest. A bare tag is rejected at load time, because an unpinned image makes a release mutable and a mutable release makes rollback meaningless.
 
 - Releases are identified by name and version together with the content digest of the bundle. The same version appearing with a different digest is reported as an error rather than a warning.
@@ -100,6 +106,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The container runtime no longer inherits the whole environment of whoever invoked the manager. It receives an allow-list of what a tool needs to run, plus the release's declared parameters. Any product-prefixed variable set in a shell used to interpolate into Compose files unvalidated and unrecorded.
+
+- The header of the operator-facing installation file no longer claims that editing it overrides release defaults. It never did: the manager reads its own state. The file is now described as a report, and names the command that changes a parameter.
 
 - The free-form `settings` block on an installation is replaced by declared parameters. It reached configuration templates but nothing could set it, so no deployment can depend on it.
 

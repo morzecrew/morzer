@@ -18,10 +18,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/oklog/ulid/v2"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
@@ -264,6 +266,31 @@ func (d *Deps) parametersOrEmpty(rel domain.Release, inst domain.Installation) m
 		return nil
 	}
 	return params
+}
+
+// saveInstallation records operator intent in both places it lives.
+//
+// installation.yaml is the operator-facing report and the JSON state file is
+// what the manager reads. One writer, because two of them is how the file an
+// operator looks at stops matching the deployment they are looking at.
+func (d *Deps) saveInstallation(ctx context.Context, inst domain.Installation) error {
+	data, err := yaml.Marshal(inst)
+	if err != nil {
+		return domain.Internal(err, "cannot serialise the installation")
+	}
+
+	// The header says what the file is. It used to claim edits took
+	// effect, which was never true: nothing reads it back. `config` is the
+	// editor, and `doctor` reports when the two disagree.
+	const header = "# Managed by morzer. This file is a report, not a control:\n" +
+		"# the manager reads its own state, so editing this changes nothing.\n" +
+		"# Change parameters with `morzer config set name=value`.\n"
+
+	if err := atomicfs.WriteFile(d.Paths.InstallationFile(),
+		append([]byte(header), data...), 0o640); err != nil {
+		return err
+	}
+	return d.State.SaveInstallation(ctx, inst)
 }
 
 // parameters resolves the release's declarations against the operator's

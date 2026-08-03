@@ -289,6 +289,7 @@ func newRootCommand(app *App) *cobra.Command {
 		newBackupCommand(app),
 		newRestoreCommand(app),
 		newSecretCommand(app),
+		newConfigCommand(app),
 		newReleaseCommand(app),
 		newInstallationCommand(app),
 		newVersionCommand(app),

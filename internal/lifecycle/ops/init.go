@@ -11,8 +11,6 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
-
-	"github.com/goccy/go-yaml"
 )
 
 // InitOptions is what `init` needs to create an installation. Every field has
@@ -280,20 +278,7 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 			}
 			st.Set(engine.KeyInstallation, inst)
 
-			// installation.yaml is the operator-facing file; the
-			// JSON state file is the manager's. Both are written so
-			// a hand edit to the YAML is visible, and so the manager
-			// never has to parse YAML on a hot path.
-			data, err := yaml.Marshal(inst)
-			if err != nil {
-				return domain.Internal(err, "cannot serialise the installation")
-			}
-			header := "# Managed by morzer. Edit with care.\n" +
-				"# Values here override release defaults; see `morzer status --json` for effective values.\n"
-			if err := atomicfs.WriteFile(d.Paths.InstallationFile(), append([]byte(header), data...), 0o640); err != nil {
-				return err
-			}
-			return d.State.SaveInstallation(ctx, inst)
+			return d.saveInstallation(ctx, inst)
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			_ = os.Remove(d.Paths.InstallationFile())

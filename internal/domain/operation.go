@@ -14,6 +14,7 @@ const (
 	OpTypeBackup   OperationType = "backup"
 	OpTypeRestore  OperationType = "restore"
 	OpTypeSecret   OperationType = "secret"
+	OpTypeConfig   OperationType = "config"
 	OpTypeRelease  OperationType = "release"
 
 	// OpTypeImport rebuilds a machine from an installation export. It is

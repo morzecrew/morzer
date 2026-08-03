@@ -48,6 +48,7 @@ These are accepted by every command.
 | [`backup`](#backup) | Back up the database, files, configuration and secret state. |
 | [`restore`](#restore) | Restore from a backup. |
 | [`version`](#version) | Print version, commit, and supported manifest API versions. |
+| [`config`](parameters.md#changing-one-after-install) | Read and change the release parameters. |
 | [`secret`](secret-commands.md) | Manage the encrypted secret state. |
 | [`release`](release-commands.md) | Inspect and manage release bundles. |
 | [`installation`](installation-commands.md) | Export and rebuild an installation's identity. |

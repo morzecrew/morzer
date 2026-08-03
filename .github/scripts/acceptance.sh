@@ -37,6 +37,10 @@ ROOT="${WORK}/root"
 # default would pass whether or not any of that worked.
 HTTP_PORT="${ACCEPTANCE_HTTP_PORT:-18099}"
 
+# A second port, so `config set` is proved to *move* a published port rather
+# than merely to agree with one already in place.
+MOVED_PORT="${ACCEPTANCE_MOVED_PORT:-18098}"
+
 # Whether this script started the registry, and so owns stopping it.
 STARTED_REGISTRY=0
 
@@ -250,6 +254,43 @@ step "an operator value reaches the container, a default fills the rest"
 docker compose -p demo exec -T app printenv DEMO_LOG_LEVEL 2>/dev/null | grep -qx debug ||
 	fail "the log_level parameter did not reach the container"
 info "DEMO_LOG_LEVEL=debug inside the container"
+
+step "config set moves the published port on a running deployment"
+# The trap this stage exists for: `docker compose restart` restarts the
+# *existing* containers, and a published port is fixed when a container is
+# created. Restarting after a port change reports success and leaves the old
+# mapping in place. Only re-creating works, and only a real Docker run can tell
+# the difference.
+"${MORZER}" --root "${ROOT}" config set http_port="${MOVED_PORT}"
+published=$(docker compose -p demo port app 18080 2>/dev/null | sed 's/.*://')
+[ "${published}" = "${MOVED_PORT}" ] ||
+	fail "config set left the port at ${published:-nothing}, expected ${MOVED_PORT}"
+curl -fsS "http://127.0.0.1:${MOVED_PORT}/health/ready" >/dev/null ||
+	fail "nothing answers on the port config set moved it to"
+info "config set moved the published port to ${MOVED_PORT}"
+
+step "config get reports it, and doctor still passes"
+[ "$("${MORZER}" --root "${ROOT}" config get http_port)" = "${MOVED_PORT}" ] ||
+	fail "config get does not report the value config set recorded"
+"${MORZER}" --root "${ROOT}" doctor >/dev/null || fail "doctor fails after config set"
+
+step "config unset returns it to the release default"
+"${MORZER}" --root "${ROOT}" config unset http_port
+[ "$("${MORZER}" --root "${ROOT}" config get http_port)" = "18080" ] ||
+	fail "config unset did not restore the release default"
+published=$(docker compose -p demo port app 18080 2>/dev/null | sed 's/.*://')
+[ "${published}" = "18080" ] || fail "unset left the port at ${published:-nothing}"
+info "config unset restored the release default and re-created the service"
+
+step "a hand edit to installation.yaml is reported, not obeyed"
+sed -i 's/^profile: embedded/profile: external-db/' "${ROOT}/etc/demo/installation.yaml"
+"${MORZER}" --root "${ROOT}" doctor 2>&1 | grep -q 'installation.yaml' ||
+	fail "doctor does not report a hand edit that changes nothing"
+"${MORZER}" --root "${ROOT}" config set log_level=warn >/dev/null
+grep -q '^profile: embedded' "${ROOT}/etc/demo/installation.yaml" ||
+	fail "config set did not rewrite installation.yaml from the recorded state"
+info "the drift is reported and the next config set corrects the file"
+
 
 step "the rendered configuration holds paths, never values"
 config="${ROOT}/etc/demo/application.yaml"

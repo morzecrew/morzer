@@ -196,7 +196,7 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 		value, err := spec.Parse(set[name])
 		if err != nil {
 			return nil, ValidationError(err, "parameter %q", name).
-				WithHint("%s", describeParameter(name, spec))
+				WithHint("%s", DescribeParameter(name, spec))
 		}
 		out[name] = value
 	}
@@ -237,8 +237,8 @@ func (p Parameters) ValidateAgainst(declared map[string]ParameterSpec) []string 
 	return stale
 }
 
-// describeParameter is the hint shown when a value is refused.
-func describeParameter(name string, spec ParameterSpec) string {
+// DescribeParameter is the hint shown when a value is refused.
+func DescribeParameter(name string, spec ParameterSpec) string {
 	var b strings.Builder
 	if spec.Type == ParamEnum {
 		fmt.Fprintf(&b, "%s accepts %s", name, strings.Join(spec.Values, ", "))
