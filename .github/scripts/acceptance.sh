@@ -358,10 +358,40 @@ assert_running 0
 "${MORZER}" --root "${ROOT}" apply --startup
 assert_running 2
 
+step "a backup target off this machine"
+# file:// on separate media is the target that needs no credential, and the one
+# a recovery can always reach. Configured before the backup so the push is part
+# of the same operation an operator would run.
+offsite="${ROOT}/offsite"
+"${MORZER}" --root "${ROOT}" backup target add "file://${offsite}"
+"${MORZER}" --root "${ROOT}" backup target list
+
 step "backup"
 echo "acceptance-marker" > "${ROOT}/var/lib/demo/data/marker"
 "${MORZER}" --root "${ROOT}" backup --reason acceptance
 "${MORZER}" --root "${ROOT}" backup list
+
+step "the backup left the machine"
+remote_id=$("${MORZER}" --root "${ROOT}" --json backup list --remote | jq -r '.data[0].manifest.id')
+[ -n "${remote_id}" ] && [ "${remote_id}" != "null" ] ||
+	fail "the backup was reported as taken but is not on the target"
+info "${remote_id} is on ${offsite}"
+
+# Every component on the target is ciphertext apart from the manifest. This is
+# what makes a target safe to use at all, and it is checked here against the
+# bytes a real backup hook produced rather than against a fixture.
+if grep -rl "acceptance-marker" "${offsite}" >/dev/null 2>&1; then
+	fail "a component on the target carries readable plaintext"
+fi
+info "everything on the target except its manifest is encrypted"
+
+step "the copy on the target verifies without a key"
+"${MORZER}" --root "${ROOT}" backup verify --remote
+
+step "doctor is satisfied that the backup arrived"
+"${MORZER}" --root "${ROOT}" --json doctor |
+	jq -e '.data.results[] | select(.id == "backup.target-freshness") | .status == "ok"' >/dev/null ||
+	fail "doctor does not agree that the most recent backup reached a target"
 
 step "restore"
 installation=$(status_field '.data.installation_id')

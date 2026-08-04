@@ -7,6 +7,7 @@ package suite
 
 import (
 	"context"
+	"io/fs"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -17,6 +18,8 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/adapters/source"
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
+	"github.com/morzecrew/morzer/internal/adapters/target"
+	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
 	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/infra/state"
@@ -106,6 +109,101 @@ func TestSourceRegistryRefusesDuplicateSchemes(t *testing.T) {
 	_, err := source.NewRegistry(local.New(), local.New())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "file")
+}
+
+// The backup-target suite runs against the fake and against every shipped
+// adapter. What it asserts is that the transport does not matter: a backup
+// pushed anywhere comes back byte for byte, and a transfer interrupted anywhere
+// leaves something nobody can restore rather than something they can.
+
+func TestBackupTargetContract_Fake(t *testing.T) {
+	contract.RunBackupTargetSuite(t, func(t *testing.T) contract.BackupTargetHarness {
+		fake := fakes.NewBackupTarget()
+		return contract.BackupTargetHarness{
+			Target: fake,
+			Ref:    ports.TargetRef{Scheme: "memory", Path: "/backups"},
+			Keys:   fake.Objects,
+		}
+	})
+}
+
+func TestBackupTargetContract_LocalDir(t *testing.T) {
+	contract.RunBackupTargetSuite(t, func(t *testing.T) contract.BackupTargetHarness {
+		root := filepath.Join(t.TempDir(), "offsite")
+		ref, err := ports.TargetURL("file://" + root)
+		require.NoError(t, err)
+
+		return contract.BackupTargetHarness{
+			Target: localdir.New(),
+			Ref:    ref,
+			Keys:   func() []string { return walkKeys(t, root) },
+		}
+	})
+}
+
+func TestBackupTargetContract_Registry(t *testing.T) {
+	// The registry is itself a BackupTarget, so it has to pass the same
+	// suite. A dispatcher that lost a credential or mangled a ref on the way
+	// through would fail here rather than in production.
+	contract.RunBackupTargetSuite(t, func(t *testing.T) contract.BackupTargetHarness {
+		registry, err := target.NewRegistry(localdir.New())
+		require.NoError(t, err)
+
+		root := filepath.Join(t.TempDir(), "offsite")
+		ref, err := ports.TargetURL("file://" + root)
+		require.NoError(t, err)
+
+		return contract.BackupTargetHarness{
+			Target: registry,
+			Ref:    ref,
+			Keys:   func() []string { return walkKeys(t, root) },
+		}
+	})
+}
+
+// walkKeys lists every file under a directory target, so the suite can see what
+// a push actually put there.
+func walkKeys(t *testing.T, root string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(root, func(p string, e fs.DirEntry, err error) error {
+		if err != nil || e.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, p)
+		out = append(out, filepath.ToSlash(rel))
+		return nil
+	})
+	require.NoError(t, err)
+	return out
+}
+
+func TestTargetRegistryRefusesAnUnbuiltScheme(t *testing.T) {
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+
+	_, err = registry.List(context.Background(), ports.TargetRef{Scheme: "s3", Path: "/bucket"})
+	require.Error(t, err)
+
+	// The refusal names what this build does have. An operator asking for
+	// something reasonable should be told what to do instead, not only that
+	// they are wrong.
+	assert.Contains(t, err.Error(), "s3")
+	assert.Contains(t, domain.AsError(err).Hint, "file")
+}
+
+func TestTargetRegistryRefusesDuplicateSchemes(t *testing.T) {
+	_, err := target.NewRegistry(localdir.New(), localdir.New())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file")
+}
+
+func TestTargetRegistryRefusesAnEmptyBuild(t *testing.T) {
+	// A build with no targets would fail every configured push at push
+	// time, during the nightly backup. Failing at startup instead is the
+	// whole reason this is checked at all.
+	_, err := target.NewRegistry()
+	require.Error(t, err)
 }
 
 func TestStateStoreContract_Filesystem(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -31,6 +32,19 @@ type BackupOptions struct {
 
 	// Prune applies the retention policy after a successful backup.
 	Prune bool
+
+	// Push copies the backup to every configured target. On by default: a
+	// target an operator configured and the manager quietly stopped using
+	// is the failure this whole mechanism exists to prevent.
+	//
+	// Turning it off is for the operator who knows the medium is
+	// disconnected and wants a local backup anyway.
+	Push bool
+
+	// PruneRemote applies the retention policy on each target too. On by
+	// default, because a target nothing prunes fills up, and the first sign
+	// of that is a failed push during an incident.
+	PruneRemote bool
 }
 
 // Backup coordinates a backup of the database, files, configuration, the
@@ -76,10 +90,82 @@ func Backup(ctx context.Context, d *Deps, opts BackupOptions) (Result, error) {
 
 	ref := engine.MustGet[ports.BackupRef](result.State, engine.KeyBackupRef)
 	out.Summary = fmt.Sprintf("backup %s created (%s)", ref.ID, domain.ByteSize(ref.Size))
+
+	// Where it went is the part worth saying out loud. A backup on one disk
+	// and a backup in two places read the same in a log otherwise, and the
+	// difference is the whole point of having configured a target.
+	if pushed := engine.MustGet[[]ports.RemoteRef](result.State, engine.KeyPushedBackups); len(pushed) > 0 {
+		targets := make([]ports.TargetRef, len(pushed))
+		for i, p := range pushed {
+			targets[i] = p.Target
+		}
+		out.Summary += ", copied to " + targetSummary(targets)
+	}
+
 	out.Data = ref
 	return out, nil
 }
 
+// PushOptions configures a push of a backup that already exists.
+type PushOptions struct {
+	Options
+
+	// BackupID selects the backup; empty means the most recent.
+	BackupID string
+}
+
+// Push copies an existing backup to every configured target.
+//
+// It exists because the push step fails the backup when a target is
+// unreachable, and the remedy has to be something better than "take another
+// backup": the data is already on the disk, correct and verified, and what
+// failed was the network. This is the retry.
+func Push(ctx context.Context, d *Deps, opts PushOptions) (Result, error) {
+	inst, err := d.loadInstallation(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	if !inst.Backup.HasTargets() {
+		return Result{}, domain.Usage("this installation configures no backup targets").
+			WithHint("add one with `morzer backup target add file:///mnt/backups`")
+	}
+
+	ref, err := d.resolveBackupRef(ctx, opts.BackupID)
+	if err != nil {
+		return Result{}, err
+	}
+
+	// Verified before it is copied, for the same reason the backup
+	// operation verifies before it pushes: a backup that fails its
+	// checksums must not be put anywhere a restore might find it.
+	if err := d.Backup.Verify(ctx, ref); err != nil {
+		return Result{}, err
+	}
+
+	targets, err := d.resolveTargets(ctx, inst)
+	if err != nil {
+		return Result{}, err
+	}
+
+	for _, target := range targets {
+		if _, err := d.Targets.Push(ctx, target, ref.Path, ref.ID); err != nil {
+			return Result{}, domain.BackupError(err,
+				"cannot copy backup %s to %s", ref.ID, target)
+		}
+	}
+
+	return Result{
+		Summary: fmt.Sprintf("backup %s copied to %s", ref.ID, targetSummary(targets)),
+		Data:    ref,
+	}, nil
+}
+
+// backupSteps assembles the sequence.
+//
+// The order is the argument: create, verify, push, prune. Pushing after
+// verification because copying a backup that failed its own checksums is
+// putting a known-bad file in a second place; pruning after pushing because
+// retention that ran first could remove the copy the push was about to make.
 func backupSteps(d *Deps, inst domain.Installation, rel domain.Release, opts BackupOptions) []engine.Step {
 	steps := []engine.Step{
 		stepCreateBackup(d, inst, rel, opts),
@@ -87,10 +173,133 @@ func backupSteps(d *Deps, inst domain.Installation, rel domain.Release, opts Bac
 	if opts.Verify {
 		steps = append(steps, stepVerifyBackup(d))
 	}
+	if opts.Push && inst.Backup.HasTargets() {
+		steps = append(steps, stepPushBackup(d, inst))
+	}
 	if opts.Prune {
 		steps = append(steps, stepPruneBackups(d, inst, rel))
+		if opts.PruneRemote && inst.Backup.HasTargets() {
+			steps = append(steps, stepPruneRemoteBackups(d, inst, rel))
+		}
 	}
 	return steps
+}
+
+// stepPushBackup copies the backup to every configured target.
+//
+// A failed push fails the backup. Retention failing is `Continue` because a
+// disk that stays fuller than intended is a smaller problem than a backup
+// reported as failed after it produced one -- but this is not that. The purpose
+// of a target is that the data is somewhere the machine's failure does not
+// reach, and reporting success for a backup that is still only on the machine
+// that will die is precisely the state targets exist to end.
+//
+// `Abort` rather than `Compensate`, and the reason is worth writing down
+// because the obvious choice is wrong. Compensation walks *every* completed
+// step newest-first, and the oldest of those is `create-backup`, whose
+// compensation deletes the backup. A failed push would therefore have left the
+// operator with no backup at all -- strictly worse than before targets existed,
+// and the exact opposite of the promise that the local copy is kept either way.
+//
+// So the partial remote copies are cleaned up here, inline, where the cleanup
+// can be scoped to what this step did. RFC 0009 §5.4 says Compensate; it was
+// wrong, and the amendment records why.
+func stepPushBackup(d *Deps, inst domain.Installation) engine.Step {
+	return engine.Step{
+		ID:          "push-backup",
+		Description: "copy the backup to " + describeTargetCount(len(inst.Backup.Targets)),
+		Idempotent:  true, // a re-push overwrites; it does not duplicate
+		OnFailure:   engine.Abort,
+		Timeout:     2 * time.Hour,
+		Execute: func(ctx context.Context, st *engine.State) error {
+			ref, err := engine.GetTyped[ports.BackupRef](st, engine.KeyBackupRef)
+			if err != nil {
+				return err
+			}
+			targets, err := d.resolveTargets(ctx, inst)
+			if err != nil {
+				return err
+			}
+
+			pushed := make([]ports.RemoteRef, 0, len(targets))
+			for _, target := range targets {
+				remote, pushErr := d.Targets.Push(ctx, target, ref.Path, ref.ID)
+				if pushErr != nil {
+					// What did land is removed, including
+					// whatever this target managed before it
+					// failed: a half-pushed backup that
+					// looks like a backup is something
+					// somebody eventually restores.
+					d.unpush(ctx, append(pushed, ports.RemoteRef{Target: target, ID: ref.ID}))
+
+					return domain.BackupError(pushErr,
+						"the backup was taken but could not be copied to %s", target).
+						WithHint("the backup is still on this machine at %s; "+
+							"fix the target, then run `morzer backup push %s`",
+							ref.Path, ref.ID)
+				}
+				pushed = append(pushed, remote)
+			}
+
+			st.Set(engine.KeyPushedBackups, pushed)
+			st.Detail("%s", targetSummary(targets))
+			return nil
+		},
+	}
+}
+
+// unpush removes copies a failed push left behind, best effort.
+//
+// Failures are logged and dropped. The operation is already failing, and
+// replacing "the backup could not be copied to your bucket" with "the cleanup
+// of the copy that failed also failed" would bury the sentence the operator
+// needs. What is left behind has no manifest, so nothing will offer it as a
+// backup; the next successful push overwrites it.
+func (d *Deps) unpush(ctx context.Context, refs []ports.RemoteRef) {
+	for _, remote := range refs {
+		if err := d.Targets.Remove(ctx, remote); err != nil {
+			logging.FromContext(ctx).Warn("cannot remove a partial backup copy",
+				"target", remote.Target.String(), "backup", remote.ID, "error", err)
+		}
+	}
+}
+
+// stepPruneRemoteBackups applies retention on each target.
+//
+// `Continue`, like the local pass and for the same reason: the backup is taken
+// and it is off the machine, which is everything the operation promised. A
+// target that stays fuller than intended is a warning, not a failed backup.
+func stepPruneRemoteBackups(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {
+	return engine.Step{
+		ID:          "prune-remote-backups",
+		Description: "apply retention on the backup targets",
+		Idempotent:  true,
+		OnFailure:   engine.Continue,
+		Timeout:     30 * time.Minute,
+		Execute: func(ctx context.Context, st *engine.State) error {
+			targets, err := d.resolveTargets(ctx, inst)
+			if err != nil {
+				return err
+			}
+			policy := ports.RetentionPolicy{
+				Keep:        inst.RetentionBackups(rel.Manifest),
+				KeepReasons: []string{"pre-update"},
+			}
+
+			var total int
+			for _, target := range targets {
+				removed, err := d.remoteRetention(ctx, target, policy)
+				total += len(removed)
+				if err != nil {
+					return err
+				}
+			}
+			if total > 0 {
+				st.Detail("removed %d old backup(s) from the target(s)", total)
+			}
+			return nil
+		},
+	}
 }
 
 // stepCreateBackup runs the release's backup hook and wraps the result.

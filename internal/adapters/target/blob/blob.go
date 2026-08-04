@@ -1,0 +1,394 @@
+// Package blob holds the choreography every backup target shares, over the
+// smallest remote filesystem a target actually needs.
+//
+// The three adapters differ only in how bytes move: a directory copy, an SFTP
+// stream, a bucket PUT. Everything that makes a pushed backup *correct* is the
+// same in all three, and it is the part that is easy to get subtly wrong:
+//
+//   - the manifest is written last, so a push interrupted halfway leaves a
+//     directory that List does not report and nobody can restore;
+//   - the manifest is deleted first, so a removal interrupted halfway leaves
+//     the same;
+//   - a re-push of the same backup overwrites rather than duplicating, because
+//     retention counts backups and a second copy under a second name would
+//     make the count wrong.
+//
+// Writing that three times would be three chances to get it wrong, and the
+// contract suite would only catch it on whichever adapter a developer
+// remembered to run.
+package blob
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/ports"
+)
+
+// Store is the minimal remote filesystem a backup target needs.
+//
+// Keys are slash-separated and relative to the target's own root, so an adapter
+// joins them onto a directory or a bucket prefix as it likes. Nothing here
+// knows about backups.
+type Store interface {
+	// Put writes size bytes from r at key, replacing whatever was there.
+	Put(ctx context.Context, key string, r io.Reader, size int64) error
+
+	// Get opens key for reading. A key that is not there must report an
+	// error satisfying errors.Is(err, fs.ErrNotExist), because "no such
+	// backup" and "the bucket is unreachable" send an operator to
+	// different places.
+	Get(ctx context.Context, key string) (io.ReadCloser, error)
+
+	// Keys lists everything under prefix, recursively, as keys relative to
+	// the store root rather than to the prefix.
+	Keys(ctx context.Context, prefix string) ([]string, error)
+
+	// Delete removes key. Removing something already absent is not an
+	// error: Remove is retried after a partial failure.
+	Delete(ctx context.Context, key string) error
+}
+
+// Push copies a local backup directory to the store.
+//
+// Two rules, and both of them matter more than the transport underneath.
+//
+// The manifest goes last, so a push interrupted halfway leaves a directory that
+// List does not report and nobody can restore.
+//
+// What goes at all is decided by the manifest, not by walking the directory. A
+// backup directory can hold files the backup does not contain: an interrupted
+// restore leaves a `.restore-*` staging directory of *decrypted* components
+// beside the encrypted ones, and a push that copied everything it found would
+// take a plaintext database dump to a bucket. Naming the components is the same
+// rule Fetch follows, and it fails closed in both directions.
+func Push(ctx context.Context, s Store, ref ports.TargetRef, localDir, id string) (ports.RemoteRef, error) {
+	if id == "" {
+		return ports.RemoteRef{}, domain.Internal(nil, "a backup was pushed with no id")
+	}
+
+	manifestPath := filepath.Join(localDir, ports.BackupManifestFileName)
+	manifest, err := readLocalManifest(manifestPath)
+	if err != nil {
+		return ports.RemoteRef{}, err
+	}
+
+	names := make([]string, 0, len(manifest.Components))
+	for _, c := range manifest.Components {
+		if c.Path == "" || c.Path == ports.BackupManifestFileName {
+			continue
+		}
+		names = append(names, c.Path)
+	}
+	// Sorted so a failed push fails at the same file twice, which is what
+	// makes one reproducible from a log.
+	sort.Strings(names)
+
+	for _, name := range names {
+		local := filepath.Join(localDir, filepath.FromSlash(name))
+		size, err := regularFileSize(local)
+		if err != nil {
+			return ports.RemoteRef{}, err
+		}
+		if err := putFile(ctx, s, path.Join(id, name), local, size); err != nil {
+			return ports.RemoteRef{}, err
+		}
+	}
+
+	size, err := regularFileSize(manifestPath)
+	if err != nil {
+		return ports.RemoteRef{}, err
+	}
+	if err := putFile(ctx, s, path.Join(id, ports.BackupManifestFileName), manifestPath, size); err != nil {
+		return ports.RemoteRef{}, err
+	}
+
+	return ports.RemoteRef{Target: ref, ID: id}, nil
+}
+
+// List reads every manifest on the target, newest first.
+//
+// Only manifests are transferred. A directory without a readable one is skipped
+// rather than reported: it is a push that was interrupted, and `backup list`
+// has to stay usable while one is in flight.
+func List(ctx context.Context, s Store) ([]ports.BackupManifest, error) {
+	keys, err := s.Keys(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var out []ports.BackupManifest
+	for _, key := range keys {
+		id, name := path.Split(key)
+		if name != ports.BackupManifestFileName {
+			continue
+		}
+		id = strings.Trim(id, "/")
+		if id == "" || strings.Contains(id, "/") {
+			// A manifest at the root, or nested two deep, is not a
+			// backup this manager wrote.
+			continue
+		}
+
+		manifest, err := readManifest(ctx, s, key)
+		if err != nil {
+			continue
+		}
+		if manifest.ID == "" {
+			manifest.ID = id
+		}
+		out = append(out, manifest)
+	}
+
+	// Newest first, breaking ties by id descending.
+	//
+	// The tie-break is not cosmetic. Retention deletes everything past the
+	// keep count, so an unstable order among equal timestamps means
+	// retention picks a different backup to delete on every run -- and the
+	// one it keeps is not necessarily the newest. Ids are timestamps, so
+	// descending id is the same ordering by another route.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt.Time) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt.Time)
+	})
+	return out, nil
+}
+
+// Fetch copies one backup down into destDir.
+//
+// Driven by the manifest rather than by a listing: a file on the target that the
+// manifest does not name was not part of the backup, and copying it down would
+// hand a restore something nobody checksummed.
+func Fetch(ctx context.Context, s Store, ref ports.RemoteRef, destDir string) error {
+	manifestKey := path.Join(ref.ID, ports.BackupManifestFileName)
+
+	manifest, err := readManifest(ctx, s, manifestKey)
+	if err != nil {
+		return err
+	}
+
+	if err := atomicfs.MkdirAll(destDir, 0o700); err != nil {
+		return err
+	}
+
+	for _, c := range manifest.Components {
+		if err := getFile(ctx, s, path.Join(ref.ID, c.Path), filepath.Join(destDir, c.Path)); err != nil {
+			return err
+		}
+	}
+	// Manifest last here too, so an interrupted fetch leaves a local
+	// directory that `backup list` skips rather than one it offers.
+	return getFile(ctx, s, manifestKey, filepath.Join(destDir, ports.BackupManifestFileName))
+}
+
+// Verify reads a backup back off the target and checks its checksums.
+//
+// A full transfer, which is the honest cost of the claim: a backup nobody has
+// read back is a hope, and that sentence does not stop being true because the
+// backup is in a bucket. Nothing is written to disk -- each component is
+// streamed through a digest and discarded -- so this costs bandwidth and no
+// storage, and needs no key: the checksums are of the stored bytes.
+func Verify(ctx context.Context, s Store, ref ports.RemoteRef) error {
+	manifest, err := readManifest(ctx, s, path.Join(ref.ID, ports.BackupManifestFileName))
+	if err != nil {
+		return err
+	}
+
+	var problems []string
+	for _, c := range manifest.Components {
+		size, sum, err := digest(ctx, s, path.Join(ref.ID, c.Path))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				problems = append(problems, c.Path+": missing")
+				continue
+			}
+			return err
+		}
+		switch {
+		case c.Size > 0 && size != c.Size:
+			problems = append(problems, fmt.Sprintf("%s: size is %d, manifest says %d",
+				c.Path, size, c.Size))
+		case c.SHA256 != "" && !atomicfs.SameDigest(sum, c.SHA256):
+			problems = append(problems, c.Path+": checksum mismatch")
+		}
+	}
+
+	if len(problems) > 0 {
+		return domain.BackupError(domain.ErrDigestMismatch,
+			"backup %s on %s failed verification:\n  - %s",
+			manifest.ID, ref.Target, strings.Join(problems, "\n  - ")).
+			WithHint("the copy on the target cannot be trusted for a restore; " +
+				"push a fresh backup, and check the local copy too")
+	}
+	return nil
+}
+
+// digest streams one object through SHA-256 without keeping it.
+func digest(ctx context.Context, s Store, key string) (int64, string, error) {
+	r, err := s.Get(ctx, key)
+	if err != nil {
+		return 0, "", err
+	}
+	defer func() { _ = r.Close() }()
+
+	h := sha256.New()
+	size, err := io.Copy(h, r)
+	if err != nil {
+		return 0, "", domain.BackupError(err, "cannot read %s from the target", key)
+	}
+	return size, ports.DigestString("sha256", h.Sum(nil)), nil
+}
+
+// Remove deletes one backup, manifest first.
+//
+// The reverse of Push for the same reason: an interrupted removal must leave
+// something nothing will restore from, rather than a backup missing one
+// component that verification would only catch after the restore began.
+func Remove(ctx context.Context, s Store, ref ports.RemoteRef) error {
+	if ref.ID == "" {
+		return domain.Internal(nil, "a backup removal named no backup")
+	}
+
+	if err := s.Delete(ctx, path.Join(ref.ID, ports.BackupManifestFileName)); err != nil {
+		return err
+	}
+
+	keys, err := s.Keys(ctx, ref.ID+"/")
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if err := s.Delete(ctx, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readManifest(ctx context.Context, s Store, key string) (ports.BackupManifest, error) {
+	r, err := s.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return ports.BackupManifest{}, domain.BackupError(domain.ErrNotFound,
+				"there is no backup %s on this target", path.Dir(key)).
+				WithHint("run `morzer backup list --target <url>` to see what is there")
+		}
+		return ports.BackupManifest{}, err
+	}
+	defer func() { _ = r.Close() }()
+
+	// A manifest is kilobytes. The bound is here so a target that answers
+	// with something else cannot be used to exhaust this machine's memory.
+	data, err := io.ReadAll(io.LimitReader(r, 1<<20))
+	if err != nil {
+		return ports.BackupManifest{}, domain.BackupError(err, "cannot read %s from the target", key)
+	}
+
+	var m ports.BackupManifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return ports.BackupManifest{}, domain.BackupError(err,
+			"%s on the target is not a valid backup manifest", key)
+	}
+	return m, nil
+}
+
+func putFile(ctx context.Context, s Store, key, localPath string, size int64) error {
+	f, err := os.Open(localPath) //nolint:gosec // a path under the manager's own backup directory
+	if err != nil {
+		return domain.BackupError(err, "cannot read %s", localPath)
+	}
+	defer func() { _ = f.Close() }()
+
+	if err := s.Put(ctx, key, f, size); err != nil {
+		return err
+	}
+	return nil
+}
+
+func getFile(ctx context.Context, s Store, key, localPath string) error {
+	r, err := s.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return domain.BackupError(domain.ErrNotFound,
+				"the backup on this target is missing %s", path.Base(key)).
+				WithHint("the push that wrote it did not finish; take a fresh backup")
+		}
+		return err
+	}
+	defer func() { _ = r.Close() }()
+
+	if dir := filepath.Dir(localPath); dir != "" {
+		if err := atomicfs.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+	}
+
+	// 0600 and created before anything is written: a fetched backup holds
+	// the same ciphertext the local one does and is never briefly readable
+	// by anyone else.
+	f, err := os.OpenFile(localPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) //nolint:gosec // caller-owned destination
+	if err != nil {
+		return domain.BackupError(err, "cannot create %s", localPath)
+	}
+	if _, err := io.Copy(f, r); err != nil {
+		_ = f.Close()
+		return domain.BackupError(err, "cannot write %s", localPath)
+	}
+	return f.Close()
+}
+
+// readLocalManifest reads the manifest of a backup about to be pushed.
+func readLocalManifest(path string) (ports.BackupManifest, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // the manager's own backup directory
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return ports.BackupManifest{}, domain.BackupError(domain.ErrNotFound,
+				"%s holds no %s, so it is not a backup",
+				filepath.Dir(path), ports.BackupManifestFileName)
+		}
+		return ports.BackupManifest{}, domain.BackupError(err, "cannot read %s", path)
+	}
+
+	var m ports.BackupManifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return ports.BackupManifest{}, domain.BackupError(err,
+			"%s is not a valid backup manifest", path)
+	}
+	return m, nil
+}
+
+// regularFileSize stats a component and refuses anything that is not a plain
+// file.
+//
+// A symlink among a backup's components points at something this manager did
+// not write, and following it would copy a file from outside the backup onto a
+// machine nobody meant to put it on.
+func regularFileSize(path string) (int64, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return 0, domain.BackupError(domain.ErrNotFound,
+				"the backup names %s but it is not there", filepath.Base(path)).
+				WithHint("run `morzer backup verify` on it before pushing")
+		}
+		return 0, domain.BackupError(err, "cannot stat %s", path)
+	}
+	if !info.Mode().IsRegular() {
+		return 0, domain.BackupError(nil, "%s is not a regular file", path)
+	}
+	return info.Size(), nil
+}

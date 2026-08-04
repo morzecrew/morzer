@@ -394,10 +394,12 @@ func newDoctorCommand(app *App) *cobra.Command {
 
 func newBackupCommand(app *App) *cobra.Command {
 	var (
-		reason     string
-		components []string
-		noVerify   bool
-		noPrune    bool
+		reason        string
+		components    []string
+		noVerify      bool
+		noPrune       bool
+		noPush        bool
+		noPruneRemote bool
 	)
 
 	cmd := &cobra.Command{
@@ -416,11 +418,13 @@ func newBackupCommand(app *App) *cobra.Command {
 
 			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				return ops.Backup(ctx, app.Deps, ops.BackupOptions{
-					Options:    app.operationOptions(),
-					Reason:     reason,
-					Components: parsed,
-					Verify:     !noVerify,
-					Prune:      !noPrune,
+					Options:     app.operationOptions(),
+					Reason:      reason,
+					Components:  parsed,
+					Verify:      !noVerify,
+					Prune:       !noPrune,
+					Push:        !noPush,
+					PruneRemote: !noPruneRemote,
 				})
 			})
 		},
@@ -432,17 +436,44 @@ func newBackupCommand(app *App) *cobra.Command {
 		"limit the backup to these components: database, files, config, secrets, manifest")
 	f.BoolVar(&noVerify, "no-verify", false, "skip re-reading the backup to check its checksums")
 	f.BoolVar(&noPrune, "no-prune", false, "skip applying the retention policy afterwards")
+	// Named for what it costs rather than for what it does: an operator
+	// reaching for this flag should see, in the help text, that they are
+	// choosing to leave the backup on the machine it is meant to outlive.
+	f.BoolVar(&noPush, "no-push", false,
+		"do not copy the backup to the configured targets; it stays only on this machine")
+	f.BoolVar(&noPruneRemote, "no-prune-remote", false,
+		"skip applying the retention policy on the targets")
 
-	cmd.AddCommand(newBackupListCommand(app), newBackupVerifyCommand(app))
+	cmd.AddCommand(
+		newBackupListCommand(app),
+		newBackupVerifyCommand(app),
+		newBackupTargetCommand(app),
+		newBackupPushCommand(app),
+		newBackupFetchCommand(app),
+	)
 	return cmd
 }
 
 func newBackupListCommand(app *App) *cobra.Command {
-	return &cobra.Command{
+	var (
+		remote          bool
+		targetURL       string
+		credentialsFile string
+	)
+
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List backups, newest first",
-		Args:  cobra.NoArgs,
+		Long: "Lists this machine's backups.\n\n" +
+			"With --remote, lists what is on the configured targets instead. That\n" +
+			"reads only each backup's manifest, which is the one file in a backup\n" +
+			"that is not encrypted -- so it works from a machine that has lost every\n" +
+			"key it ever had, which is the machine most likely to be running it.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if remote || targetURL != "" {
+				return app.listRemoteBackups(cmd, targetURL, credentialsFile)
+			}
 			if err := app.attachBackupEngine(cmd.Context()); err != nil {
 				return err
 			}
@@ -467,22 +498,76 @@ func newBackupListCommand(app *App) *cobra.Command {
 			return nil
 		},
 	}
+
+	f := cmd.Flags()
+	f.BoolVar(&remote, "remote", false, "list what is on the configured backup targets")
+	f.StringVar(&targetURL, "target", "",
+		"list one target by URL, whether or not this installation configures it")
+	f.StringVar(&credentialsFile, "credentials-file", "",
+		"YAML file holding the target's credentials, for a machine whose secret state is not readable yet")
+	return cmd
+}
+
+// listRemoteBackups prints what is on a target.
+func (a *App) listRemoteBackups(cmd *cobra.Command, targetURL, credentialsFile string) error {
+	creds, err := readCredentialsFile(credentialsFile)
+	if err != nil {
+		return err
+	}
+
+	backups, err := ops.ListRemote(cmd.Context(), a.Deps, ops.TargetOptions{
+		Options:     a.operationOptions(),
+		URL:         targetURL,
+		Credentials: creds,
+	})
+	if err != nil {
+		return err
+	}
+
+	if a.json != nil {
+		a.jsonData = backups
+		return nil
+	}
+	if len(backups) == 0 {
+		_, _ = fmt.Fprintln(a.Stream.Out, "no backups on the target")
+		return nil
+	}
+	for _, b := range backups {
+		fmt.Fprintf(a.Stream.Out, "%-24s  %s  %-12s  %s\n",
+			b.Manifest.ID, b.Manifest.CreatedAt.Format("2006-01-02 15:04:05Z"),
+			b.Manifest.ReleaseVersion, b.Target)
+	}
+	return nil
 }
 
 func newBackupVerifyCommand(app *App) *cobra.Command {
-	return &cobra.Command{
+	var (
+		remote          bool
+		targetURL       string
+		credentialsFile string
+	)
+
+	cmd := &cobra.Command{
 		Use:   "verify [backup-id]",
 		Short: "Re-read a backup and check its checksums",
-		Args:  cobra.MaximumNArgs(1),
+		Long: "Re-reads a backup and checks it against the checksums in its manifest.\n\n" +
+			"With --remote, checks the copy on a target instead. That is a full\n" +
+			"transfer and writes nothing: a backup nobody has read back is a hope,\n" +
+			"and copying one to a bucket does not change that. Worth running on a\n" +
+			"schedule against your oldest retained backup.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := app.attachBackupEngine(cmd.Context()); err != nil {
-				return err
-			}
-
 			id := ""
 			if len(args) == 1 {
 				id = args[0]
 			}
+			if remote || targetURL != "" {
+				return app.verifyRemoteBackups(cmd, id, targetURL, credentialsFile)
+			}
+			if err := app.attachBackupEngine(cmd.Context()); err != nil {
+				return err
+			}
+
 			ref, err := app.Deps.ResolveBackup(cmd.Context(), id)
 			if err != nil {
 				return err
@@ -495,6 +580,37 @@ func newBackupVerifyCommand(app *App) *cobra.Command {
 			return nil
 		},
 	}
+
+	f := cmd.Flags()
+	f.BoolVar(&remote, "remote", false,
+		"check the copy on the configured backup targets; a full transfer")
+	f.StringVar(&targetURL, "target", "",
+		"verify on one target by URL, whether or not this installation configures it")
+	f.StringVar(&credentialsFile, "credentials-file", "",
+		"YAML file holding the target's credentials, for a machine whose secret state is not readable yet")
+	return cmd
+}
+
+// verifyRemoteBackups checks the copies on a target.
+func (a *App) verifyRemoteBackups(cmd *cobra.Command, id, targetURL, credentialsFile string) error {
+	creds, err := readCredentialsFile(credentialsFile)
+	if err != nil {
+		return err
+	}
+
+	result, err := ops.VerifyRemote(cmd.Context(), a.Deps, ops.FetchOptions{
+		TargetOptions: ops.TargetOptions{
+			Options:     a.operationOptions(),
+			URL:         targetURL,
+			Credentials: creds,
+		},
+		BackupID: id,
+	})
+	if err != nil {
+		return err
+	}
+	a.finish(result)
+	return nil
 }
 
 func newRestoreCommand(app *App) *cobra.Command {

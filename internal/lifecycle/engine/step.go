@@ -238,6 +238,7 @@ const (
 	KeySecretSchema  = "secret-schema"
 	KeyRuntimeConfig = "runtime-config"
 	KeyBackupRef     = "backup-ref"
+	KeyPushedBackups = "pushed-backups"
 	KeyRenderedFiles = "rendered-files"
 	KeyHealthResults = "health-results"
 	KeySchemaVersion = "database-schema-version"

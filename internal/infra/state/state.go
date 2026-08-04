@@ -107,7 +107,20 @@ func (s *Store) SaveInstallation(ctx context.Context, i domain.Installation) err
 func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 	for i.SchemaVersion < domain.InstallationSchemaVersion {
 		switch i.SchemaVersion {
-		// case 1: migrate 1 -> 2 here when the shape changes.
+		case 2:
+			// 2 -> 3 added backup.targets. There is nothing to
+			// convert: an installation written before targets
+			// existed has none, and the zero value is the correct
+			// reading of that. The bump is entirely for the other
+			// direction -- an older manager must refuse a state
+			// whose targets it would ignore, take a backup, report
+			// success, and leave it on the machine the operator
+			// configured a target to survive.
+			//
+			// TestASchemaTwoInstallationStillLoads pins this half.
+			i.SchemaVersion = 3
+		// case 1: there is no 1 -> 2 path. Schema 1 predates any
+		// released manager, so nothing on disk is at it.
 		default:
 			return i, domain.InstallationError(nil,
 				"no migration path from installation schema %d to %d",

@@ -2,11 +2,15 @@ package fakes
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -87,6 +91,15 @@ type Backup struct {
 	Fail     map[string]error
 	Now      func() time.Time
 	Verified map[string]int
+
+	// Root makes Create write a real backup directory rather than only
+	// recording one.
+	//
+	// Set it when the test involves a backup target: pushing is a file
+	// transfer, and a fake whose backups exist only in a map would make the
+	// push step untestable at this level -- which is the level where "a
+	// failed push fails the backup" actually lives.
+	Root string
 }
 
 func NewBackup() *Backup {
@@ -111,14 +124,68 @@ func (b *Backup) Create(ctx context.Context, scope ports.Scope, labels map[strin
 	id := "backup-" + itoa(b.nextID)
 	at := domain.NewTime(b.Now())
 
-	b.backups[id] = ports.BackupManifest{
+	manifest := ports.BackupManifest{
 		ID: id, CreatedAt: at, Reason: scope.Reason, Labels: labels,
-		Components: []ports.ComponentRecord{{Component: ports.ComponentDatabase, Path: "db.sql"}},
+		Product:    "demo",
+		Components: []ports.ComponentRecord{{Component: ports.ComponentDatabase, Path: "db.sql.age"}},
 	}
+	b.backups[id] = manifest
 	// Prepended so the list is newest-first without a sort.
 	b.order = append([]string{id}, b.order...)
 
-	return ports.BackupRef{ID: id, Path: "/fake/backups/" + id, At: at, Size: 1024}, nil
+	path := "/fake/backups/" + id
+	if b.Root != "" {
+		var err error
+		if path, err = b.writeBackup(manifest); err != nil {
+			return ports.BackupRef{}, err
+		}
+	}
+	return ports.BackupRef{ID: id, Path: path, At: at, Size: 1024}, nil
+}
+
+// writeBackup lays a backup out on disk the way hookbackup does: the components
+// the manifest names, each with its size and the digest of the stored bytes,
+// then the manifest.
+//
+// The checksums are not decoration. A manifest without them makes `verify` a
+// no-op that reports success, so a fake that omitted them would let a test claim
+// corruption is detected while nothing was ever compared.
+func (b *Backup) writeBackup(m ports.BackupManifest) (string, error) {
+	dir := filepath.Join(b.Root, m.ID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+
+	for i, c := range m.Components {
+		content := []byte("component " + string(c.Component) + " of " + m.ID)
+		path := filepath.Join(dir, c.Path)
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			return "", err
+		}
+		sum, err := atomicfs.DigestFile(path)
+		if err != nil {
+			return "", err
+		}
+		m.Components[i].Size = int64(len(content))
+		m.Components[i].SHA256 = sum
+	}
+
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(dir, ports.BackupManifestFileName), data, 0o600); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// Dir is where a backup lives on disk, empty when Root was not set.
+func (b *Backup) Dir(id string) string {
+	if b.Root == "" {
+		return ""
+	}
+	return filepath.Join(b.Root, id)
 }
 
 func (b *Backup) List(ctx context.Context) ([]ports.BackupRef, error) {
@@ -131,9 +198,11 @@ func (b *Backup) List(ctx context.Context) ([]ports.BackupRef, error) {
 	out := make([]ports.BackupRef, 0, len(b.order))
 	for _, id := range b.order {
 		m := b.backups[id]
-		out = append(out, ports.BackupRef{
-			ID: id, Path: "/fake/backups/" + id, At: m.CreatedAt, Size: 1024,
-		})
+		path := "/fake/backups/" + id
+		if b.Root != "" {
+			path = filepath.Join(b.Root, id)
+		}
+		out = append(out, ports.BackupRef{ID: id, Path: path, At: m.CreatedAt, Size: 1024})
 	}
 	return out, nil
 }
@@ -196,6 +265,9 @@ func (b *Backup) Prune(ctx context.Context, policy ports.RetentionPolicy) ([]por
 	for _, id := range b.order[keep:] {
 		removed = append(removed, ports.BackupRef{ID: id})
 		delete(b.backups, id)
+		if b.Root != "" {
+			_ = os.RemoveAll(filepath.Join(b.Root, id))
+		}
 	}
 	b.order = b.order[:keep]
 	return removed, nil
