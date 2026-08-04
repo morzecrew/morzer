@@ -4,8 +4,9 @@
   Measured **81.6%**, from 70.0% when this was written. Every row of §5.4's
   real-service table has a real service behind it and all three of §5.3's
   mechanisms are in use; §15 records where execution diverged. 95% remains
-  unmet: §16 measures the 1438 statements between here and there, and
-  decision 7 still governs.
+  unmet: §16 measures the 1438 statements between here and there, and §17
+  plans P6–P11 against them — 1048 have to be covered, the phases target 1155,
+  and the 107-statement margin is published rather than hidden.
 - **Scope:** Raises statement coverage from a measured 70% to 95%, and — the
   actual point — makes every security property this project advertises name the
   test that enforces it. Covers counting the coverage the acceptance suite
@@ -375,6 +376,12 @@ The programme's own verification:
 | **P3** | I/O fault injection: real filesystem conditions, port fakes, scripted subprocesses | est. ~86%, measured **81.6% with P4** |
 | **P4** | Real-service contract suites: Caddy, Postgres, Redis | est. ~92%, see above |
 | **P5** | Claims inventory, the gate for it, and the remaining named gaps | est. 95%, **not met — §16** |
+| **P6** | The interactive surface: the `init` wizard, the editor, the prompts | +100 stmts (§17.5) |
+| **P7** | The rest of the CLI, against a populated fixture machine | +215 (§17.6) |
+| **P8** | Adapters and infrastructure: scripted sops, corrupt archives, the OCI source | +320 (§17.7) |
+| **P9** | Operation steps, injected at the three ports the harness does not yet fail | +265 (§17.8) |
+| **P10** | The renderer's program lifecycle under `teatest` | +65 (§17.9) |
+| **P11** | Domain, ports and the remainder | +190 (§17.9) |
 
 P1 is worth landing on its own and changes no test. P5 is worth landing even if
 the number stops short, because it is the part that answers the question the
@@ -665,3 +672,255 @@ the inventory backed by a test that was verified by perturbation, and one real
 security defect found (§12, `redactAttr`). The percentage is the proxy; the
 inventory is the thing; and the remaining 13.4 points are named above rather
 than waved at.
+
+## 17. P6–P11: the plan to 95%
+
+### 17.1 The arithmetic
+
+95% of 7815 statements is 7425 covered. 6377 are covered today, so **1048 more
+have to be, and 391 may be left**. That is the whole budget, and everything
+below is sized against it.
+
+### 17.2 The shape of what remains, which decides the plan
+
+| | |
+| --- | --- |
+| Uncovered statements | 1438 |
+| ...in blocks | 1225 (mean **1.17** statements each) |
+| ...across functions | 468 (mean **3.07** each) |
+
+| Uncovered per function | Statements |
+| --- | --- |
+| 1–3 | 572 |
+| 4–9 | 507 |
+| 10–19 | 304 |
+| 20 or more | **55** |
+
+**There is no large win left.** Fifty-five statements — under 4% of the gap —
+live in functions with twenty or more uncovered. The rest is 468 small pieces
+of work, and the only thing that makes it tractable is that they cluster by the
+*mechanism* each needs rather than by package. That is what the phases below
+group on.
+
+By shape, classified from the profile:
+
+| Shape | Statements | Share |
+| --- | --- | --- |
+| `if err != nil` after a call that has not failed in a test | 538 | 37% |
+| A conditional whose other arm nothing takes | 417 | 29% |
+| Straight-line code in a function nothing calls | 366 | 26% |
+| A `switch` arm never selected | 81 | 6% |
+| Loop bodies and explicit refusals | 36 | 2% |
+
+The 366 straight-line statements are the encouraging number: they are whole
+functions and whole branches that nothing drives, which is fixture work rather
+than fault-injection work. 67 functions are at 0.0%.
+
+### 17.3 What is genuinely out of reach
+
+Measured, not estimated. Statements sitting behind a call that cannot fail at
+that call site:
+
+| Statements | Why |
+| --- | --- |
+| 16 | marshalling a struct the manager itself defines |
+| 5 | a write to an in-memory buffer |
+| 4 | `filepath.Abs`, which fails only if the working directory has been unlinked |
+| 3 | `crypto/rand`, which does not fail on any supported platform |
+| 2 | parsing a constant template; `filepath.Rel` on two absolute paths |
+| **30** | **total** |
+
+Add roughly 25 more in `systemd.Start` and `systemd.Units`, which need a real
+init system and root — the acceptance runner has neither, and giving it both
+would mean the test suite could stop and start units on the developer's own
+machine.
+
+**So about 55 statements are permanently out, against an allowance of 391.**
+The remaining ~336 of slack is what absorbs estimation error. It is not
+comfortable, and §17.10 says what happens when it runs out.
+
+### 17.4 The mechanisms, and which already exist
+
+| Mechanism | Exists? | Reaches |
+| --- | --- | --- |
+| `exec.Scripted` — a runner whose replies are written in advance | **yes**, P3 | sops failure modes, tool probes |
+| `fakes.Runtime/Backup/Secrets/Supervisor.Fail` | **yes** | operation step bodies |
+| `fakes.Renderer.Err` | **yes** | configuration rendering failures |
+| Real hostile filesystems (unwritable, mode 0000, a file where a directory belongs) | **yes**, P3 | state, lock, atomicfs, ops |
+| `dockerlab` containers, registry included | **yes**, P4 | the OCI source |
+| `teatest` | **yes**, RFC 0002 | the renderer's program lifecycle |
+| `clitest` | **yes**, P2 | every command, once its fixtures are richer |
+| **huh accessible mode + an injected reader** | **no** | the `init` wizard, the editor, the password prompt |
+| **A corrupt-archive fixture builder** | **no** | `ExtractTarZst`'s refusals, one archive per branch |
+
+Two new mechanisms for 1438 statements. Everything else is fixtures and
+injection through switches that are already there — which is the same finding
+as §14, and the reason the phases below are sized in fixture-days rather than
+in design.
+
+### 17.5 P6 — The interactive surface (121 statements)
+
+`runInitWizard`, `resolveRecoveryChoice`, `generateRecoveryKey`,
+`defaultRecoveryKeyPath`, `readPassword`, `readSecretValue`, `readAll`,
+`editSecrets`, `checkRemovals`, `editorCommand`. All at or near 0%: nothing in
+any suite can answer a prompt.
+
+**The one production change in this plan**, and the reason this phase goes
+first and alone. `huh.Form` already has `WithAccessible(bool)`, `WithInput` and
+`WithOutput`; in accessible mode a form is line-oriented and needs no
+pseudo-terminal, because that is what a screen reader needs too. The change is
+to thread the `App`'s own streams and an accessible flag into the three forms
+the wizard builds, and to give `readPassword`/`readAll` the same reader instead
+of `os.Stdin`.
+
+That is a small change with a user-facing justification independent of testing:
+today the wizard writes to `os.Stdout` regardless of what `--json` or a
+redirect asked for, and honours accessible mode only if the ambient environment
+happens to set `ACCESSIBLE`.
+
+What the tests then assert is the wizard's actual contract: that it fills only
+what the flags left empty, that a fully-specified command line runs untouched,
+that each of the three recovery answers produces the right `InitOptions`, that
+cancelling is `CodeInterrupted` and not a half-made installation, and that the
+generated recovery key is `0400` with the "move it off this machine" warning on
+stderr where a pipe cannot swallow it.
+
+**Target: 100 of 121.** `isInteractive` and the `UserHomeDir` fallback stay
+out — both need the process to be attached to a terminal or to have no home.
+
+### 17.6 P7 — The rest of the CLI (255 statements)
+
+`release fetch` (29), `release prune` (19), `secret recipients` (17), `secret
+set` (13), `backup verify` (12), `installation import` (11), `secret generate`
+(11), `secret remove` (9), `parseComponents` (14), and a long tail of flag
+combinations.
+
+No new mechanism: `clitest` drives these already, and what is missing is a
+machine for them to act on. The phase builds one fixture family —
+
+- a release store holding three versions, so `prune`, `list` and `show` have
+  something to choose between;
+- a populated secret set with a recovery recipient, so `recipients list`,
+  `remove` and the refusals have a real set to operate on;
+- two backups with different reasons, so `verify` and retention have inputs;
+- an export from a second installation, so `import` has something to refuse.
+
+— and drives every command against it in all three output modes, asserting the
+exit code, the refusal that fires, and the `--json` envelope. The parity rule
+from RFC 0002 decision 3 applies to each.
+
+**Target: 215 of 255.**
+
+### 17.7 P8 — Adapters and infrastructure (420 statements)
+
+The largest block, and four independent pieces:
+
+**sops failure modes (82).** `sopsage` takes an `exec.Runner`, so
+`exec.Scripted` reaches all of it with no new machinery: a binary that is not
+installed, one that exits 1 with `no matching keys`, one that writes half a
+file and dies, one that prints a deprecation warning to stderr and exits zero.
+`decryptError`'s classification is the point — "wrong key" and "corrupt file"
+send an operator to different places.
+
+**A corrupt-archive fixture builder (70).** `ExtractTarZst` refuses a path that
+escapes, a symlink, a device node, an entry over the size limit, one over the
+count limit, a truncated stream, and a zstd frame that is not one. Each needs
+an archive built to trip exactly that branch, which is a `tar.Writer` and a
+helper — the second new mechanism in this plan, and about eighty lines of it.
+
+**The OCI source (44).** `dockerlab` already starts a registry and `oras-go` is
+already a dependency, so the test can push a bundle as an OCI artifact and
+resolve it back. This closes the last transport with no real-service test.
+
+**The remainder (~224):** hand-written backup directories for `hookbackup`
+(48), the HTTPS retry and limit paths (18), `checksum` and `minisign` (~25),
+the source registry and its cache (~30), and the leftovers in `exec`,
+`logging`, `lock` and `preflight`.
+
+**Target: 320 of 420**, with systemd's privileged half excluded by name.
+
+### 17.8 P9 — Operation steps (331 statements)
+
+Spread over about eighty functions, mean four each: `stepInstallUnits` (14),
+`stepRenderConfiguration` (12), `stepMigrate` (11), `stepInitSecrets` (10),
+`recovery.Export` (10), `doctor.checkUnits` (9), `stepStageRelease` (9),
+`findResumable` (7), and a long tail.
+
+Injection at the three ports the harness does not yet fail — `Supervisor.Fail`
+and `Renderer.Err` both already exist, and the state store fails for real when
+its directory is made read-only — plus three fixtures the suite has never
+built: a journal with an unfinished operation for `--resume`, an installation
+export/import round trip on a rebuilt machine, and a host with a supervisor
+present so the unit-installation steps run at all.
+
+**Target: 265 of 331.**
+
+### 17.9 P10 and P11 — the renderer (85) and the remainder (226)
+
+**P10.** `teatest` already drives the models; what is uncovered is the program
+*lifecycle* — `tty.Run`'s handover on a display failure (17), `Watch` (5 plus
+its update loop), `Model.Subscribe` and the three accessors — and
+`cli/render.go`'s `runPlan`, `watchStatus` and `runLive`, which are the three
+places the CLI hands control to it. **Target: 65 of 85.**
+
+**P11.** `Manifest.MarshalJSON`/`UnmarshalJSON`, `ParameterSpec.Require` and
+`ValidateAgainst`, `Secret.MarshalYAML` and `RevealAll`, `Paths.LockFile` and
+`PreviousLink`, the engine and step accessors, `release.Load`'s last refusals,
+and the leftovers in `ui/plain`, `ui/theme` and `events`. Almost all of it is
+one to three statements per function, and almost all of it is a serialisation
+contract somebody will eventually depend on. **Target: 190 of 226.**
+
+### 17.10 Whether this actually reaches 95%
+
+| Phase | Statements available | Target |
+| --- | --- | --- |
+| P6 interactive surface | 121 | 100 |
+| P7 the rest of the CLI | 255 | 215 |
+| P8 adapters and infrastructure | 420 | 320 |
+| P9 operation steps | 331 | 265 |
+| P10 the renderer | 85 | 65 |
+| P11 domain, ports, remainder | 226 | 190 |
+| **Total** | **1438** | **1155** |
+
+1048 are needed. **The margin is 107 statements — about 1.4 points.**
+
+That is thin, and stating it plainly is the point: if two phases each come in
+15% under target, 95% is not reached. The estimates are honest but they are
+estimates, made by reading 468 functions and judging what a test could drive.
+
+If it comes to that, decision 7 governs and the floor stops where the testing
+actually is, with this table amended to say which phase fell short and why. A
+number met by writing tests that execute lines without asserting on them would
+be worse than an honest 93%, and decision 6 forbids it regardless.
+
+### 17.11 Decisions
+
+Appended to §10; the existing eight stand.
+
+| # | Decision |
+| --- | --- |
+| 9 | 95% is measured against the union of all three profiles, on the tree the phases were sized against. If the program grows, the target grows with it — these are phases, not a budget to spend down. |
+| 10 | Test scaffolding does not belong in the denominator. `internal/infra/exec/scripted.go` moves under `test/` during P8. Removing 47 statements of which 39 were covered moves the ratio by nothing, and it is not reported as progress. |
+| 11 | Each phase ships its own floor ratchet, measured, in the same change. A phase that lands without moving the floor has not been measured, and an unmeasured phase is a claim. |
+| 12 | P6 is the only phase permitted to change shipping code, and it does so for a reason that stands without the tests: the wizard should honour the streams and the accessibility mode the rest of the CLI already does. Any other testability refactor is out of scope — the plan is to test what is there, not to reshape it until it is easy. |
+
+### 17.12 Risks
+
+**The interactive refactor is the only real one.** Everything else is fixtures
+against mechanisms that already exist and have already paid. P6 touches the
+first-run path, which is the one path an operator meets before they trust the
+tool, and a regression there is expensive. It goes first, alone, and its
+acceptance criterion is that the wizard's output is byte-identical at a
+terminal before and after.
+
+**The long tail is the slow one.** 468 functions at three statements each is
+not hard, it is long, and the temptation at statement 1100 will be to write
+something that executes a line and asserts nothing. Decision 6 exists for that
+moment, and §17.10's margin is deliberately published so that giving in shows
+up as a number rather than as a feeling.
+
+**Coverage still is not proof.** The claims inventory is at 73 rows and it is
+the deliverable; 95% is the proxy. If the two ever conflict — and P11 is where
+they might, since a `MarshalJSON` with a round-trip test raises the number
+without protecting anything an operator cares about — decision 8 already says
+which one wins.
