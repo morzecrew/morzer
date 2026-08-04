@@ -22,6 +22,9 @@
         <loc>https://morzecrew.github.io/morzer/dev/operating/backups/</loc>
       </url>
       <url>
+        <loc>https://morzecrew.github.io/morzer/dev/operating/changing-configuration/</loc>
+      </url>
+      <url>
         <loc>https://morzecrew.github.io/morzer/dev/operating/installing-offline/</loc>
       </url>
       <url>
@@ -32,6 +35,9 @@
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/authoring/your-first-bundle/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/authoring/a-three-tier-bundle/</loc>
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/authoring/hooks/</loc>
@@ -64,6 +70,9 @@
         <loc>https://morzecrew.github.io/morzer/dev/reference/manifest/</loc>
       </url>
       <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/variables/</loc>
+      </url>
+      <url>
         <loc>https://morzecrew.github.io/morzer/dev/reference/hooks/</loc>
       </url>
       <url>
@@ -74,5 +83,8 @@
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/explanation/secrets/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/explanation/what-is-tested/</loc>
       </url>
 </urlset>

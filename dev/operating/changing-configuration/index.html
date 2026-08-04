@@ -12,13 +12,13 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/operating/backups/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/operating/changing-configuration/">
       
       
-        <link rel="prev" href="../secrets/">
+        <link rel="prev" href="../backups/">
       
       
-        <link rel="next" href="../changing-configuration/">
+        <link rel="next" href="../installing-offline/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Backups and restore - morzer</title>
+        <title>Changing configuration - morzer</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#backups-and-restore" class="md-skip">
+        <a href="#changing-configuration" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Backups and restore
+              Changing configuration
             
           </span>
         </div>
@@ -663,6 +663,35 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../backups/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backups and restore
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -679,12 +708,12 @@
           
   
   
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
   
   <span class="md-ellipsis">
     
   
-  Backups and restore
+  Changing configuration
 
     
   </span>
@@ -698,12 +727,12 @@
         
   
   
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
   
   <span class="md-ellipsis">
     
   
-  Backups and restore
+  Changing configuration
 
     
   </span>
@@ -729,10 +758,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-a-backup-contains" class="md-nav__link">
+  <a href="#find-out-what-you-can-change" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What a backup contains
+        Find out what you can change
       </span>
     </span>
   </a>
@@ -740,10 +769,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#verification-is-not-optional" class="md-nav__link">
+  <a href="#change-one" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Verification is not optional
+        Change one
       </span>
     </span>
   </a>
@@ -751,10 +780,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#retention" class="md-nav__link">
+  <a href="#plan-it-first" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Retention
+        Plan it first
       </span>
     </span>
   </a>
@@ -762,38 +791,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#restoring" class="md-nav__link">
+  <a href="#what-is-not-a-parameter" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Restoring
+        What is not a parameter
       </span>
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Restoring">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#restoring-another-machines-backup" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Restoring another machine's backup
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#keeping-them-somewhere-else" class="md-nav__link">
+  <a href="#editing-installationyaml-does-nothing" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Keeping them somewhere else
+        Editing installation.yaml does nothing
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#after-a-release-changes-what-it-declares" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        After a release changes what it declares
       </span>
     </span>
   </a>
@@ -804,35 +827,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../changing-configuration/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Changing configuration
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -1666,10 +1660,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-a-backup-contains" class="md-nav__link">
+  <a href="#find-out-what-you-can-change" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What a backup contains
+        Find out what you can change
       </span>
     </span>
   </a>
@@ -1677,10 +1671,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#verification-is-not-optional" class="md-nav__link">
+  <a href="#change-one" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Verification is not optional
+        Change one
       </span>
     </span>
   </a>
@@ -1688,10 +1682,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#retention" class="md-nav__link">
+  <a href="#plan-it-first" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Retention
+        Plan it first
       </span>
     </span>
   </a>
@@ -1699,38 +1693,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#restoring" class="md-nav__link">
+  <a href="#what-is-not-a-parameter" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Restoring
+        What is not a parameter
       </span>
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Restoring">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#restoring-another-machines-backup" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Restoring another machine's backup
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#keeping-them-somewhere-else" class="md-nav__link">
+  <a href="#editing-installationyaml-does-nothing" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Keeping them somewhere else
+        Editing installation.yaml does nothing
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#after-a-release-changes-what-it-declares" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        After a release changes what it declares
       </span>
     </span>
   </a>
@@ -1808,105 +1796,135 @@
   
 
 
-<h1 id="backups-and-restore">Backups and restore<a class="headerlink" href="#backups-and-restore" title="Permanent link">&para;</a></h1>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--reason<span class="w"> </span><span class="s2">&quot;before the 1.4 upgrade&quot;</span>
-morzer<span class="w"> </span>backup<span class="w"> </span>list
-morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>&lt;id&gt;
+<h1 id="changing-configuration">Changing configuration<a class="headerlink" href="#changing-configuration" title="Permanent link">&para;</a></h1>
+<p>Almost everything an operator changes after install is a <strong>parameter</strong>: a value
+the release declares and you choose. Ports, log levels, limits.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>list<span class="w">                </span><span class="c1"># what exists, what it is set to, and where that came from</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">9000</span><span class="w">  </span><span class="c1"># change one</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>http_port<span class="w">     </span><span class="c1"># back to the release&#39;s default</span>
 </code></pre></div>
-<p>The manager does not know how to back your product up — it coordinates the
-release's own <code>backup</code> hook, wraps what that produces in a self-describing
-manifest, and verifies the checksums by re-reading what was written.</p>
-<h2 id="what-a-backup-contains">What a backup contains<a class="headerlink" href="#what-a-backup-contains" title="Permanent link">&para;</a></h2>
+<h2 id="find-out-what-you-can-change">Find out what you can change<a class="headerlink" href="#find-out-what-you-can-change" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span>list
+<span class="go">NAME                 TYPE       VALUE            SOURCE</span>
+<span class="go">http_port            port       9000             installation</span>
+<span class="go">log_level            enum       info             release</span>
+</code></pre></div>
+<p><code>SOURCE</code> is the column to read. <strong>installation</strong> means you set it; <strong>release</strong>
+means it is the vendor's default and you have not touched it. That answers
+<em>what have I changed on this machine</em> without diffing against the bundle.</p>
+<p>The release decides what exists. There is no way to set something it does not
+declare, and a typo is refused by name:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">htpp_port</span><span class="o">=</span><span class="m">9000</span>
+<span class="go">error: the release declares no parameter &quot;htpp_port&quot;</span>
+<span class="go">hint:  it declares: http_port, log_level</span>
+</code></pre></div>
+<h2 id="change-one">Change one<a class="headerlink" href="#change-one" title="Permanent link">&para;</a></h2>
+<p><code>config set</code> is an operation, not a file edit. It takes the deployment lock,
+plans under <code>--dry-run</code>, journals before and after each step, and unwinds what
+it changed if a step fails:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">9000</span>
+<span class="go">[1/3] record parameters</span>
+<span class="go">[2/3] render configuration</span>
+<span class="go">[3/3] re-create app</span>
+
+<span class="go">set http_port; re-created app</span>
+</code></pre></div>
+<p>The last line is the one to read. It tells you which of two things happened:</p>
 <table>
 <thead>
 <tr>
-<th>Component</th>
-<th>Comes from</th>
+<th>Summary ends with</th>
+<th>What it means</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>database</code></td>
-<td>the release's backup hook</td>
+<td><code>re-created &lt;services&gt;</code></td>
+<td>The change is live. Those services are running with the new value.</td>
 </tr>
 <tr>
-<td><code>files</code></td>
-<td>the release's backup hook</td>
-</tr>
-<tr>
-<td><code>config</code></td>
-<td>the rendered configuration</td>
-</tr>
-<tr>
-<td><code>secrets</code></td>
-<td>the encrypted secret state, as it is on disk</td>
-</tr>
-<tr>
-<td><code>manifest</code></td>
-<td>the release identity, schema version, checksums, installation id</td>
+<td><code>takes effect on the next morzer apply</code></td>
+<td>Recorded, not yet live. Run <code>apply</code>.</td>
 </tr>
 </tbody>
 </table>
-<p>The manifest is what makes a backup self-describing: which release took it,
-which database schema was current, and which installation it belongs to.</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--component<span class="w"> </span>database<span class="w"> </span>--component<span class="w"> </span>files
-</code></pre></div>
-<p>Limits it, when a full backup is not what you need.</p>
-<h2 id="verification-is-not-optional">Verification is not optional<a class="headerlink" href="#verification-is-not-optional" title="Permanent link">&para;</a></h2>
-<p>Every backup is re-read and checksummed after it is written, unless you pass
-<code>--no-verify</code>. A backup nobody has read is a hypothesis, and the moment to test
-it is not during a restore.</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w">        </span><span class="c1"># the most recent</span>
-morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>&lt;id&gt;<span class="w">   </span><span class="c1"># a specific one</span>
-</code></pre></div>
-<p>Worth running on a schedule against your oldest retained backup, which is the
-one most likely to have rotted.</p>
-<h2 id="retention">Retention<a class="headerlink" href="#retention" title="Permanent link">&para;</a></h2>
-<p>Governed by <code>retention.backups</code> in the manifest, or <code>policy.retain_backups</code> in
-your installation when you want a different number than the vendor chose. <strong>The
-most recent backup is never pruned</strong>, whatever the number says.</p>
-<p><code>--no-prune</code> skips the retention pass for one run.</p>
-<h2 id="restoring">Restoring<a class="headerlink" href="#restoring" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
-morzer<span class="w"> </span>restore<span class="w"> </span>--backup<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
-</code></pre></div>
-<p>Destructive, and it asks for two things:</p>
-<ul>
-<li><code>--force</code>, which authorises destroying what is currently there.</li>
-<li><code>--confirm &lt;installation-id&gt;</code>, typed out. A y/n prompt can be answered by
-  reflex; an identifier you have to go and look up cannot.</li>
-</ul>
-<p>What it does, in order: verify the backup, <strong>stop the services</strong> so nothing is
-writing, run the release's restore hook, re-apply the release over the restored
-data, and run the smoke test.</p>
-<p>Stopping first is the part that matters. Restored data underneath containers
-still holding stale state in memory is a combination that corrupts quietly.</p>
-<div class="admonition warning">
-<p class="admonition-title">A failed restore needs a human</p>
-<p>Restore declares that it requires manual intervention on failure. A
-half-restored database is a state no automatic action can repair, so a
-failure exits <a href="../../reference/exit-codes/">12</a> rather than pretending
-compensation succeeded — and keeps surfacing in <code>status</code> and <code>doctor</code> until
-you clear it with <code>morzer status --clear-intervention</code>.</p>
+<p>Which one you get is the release's decision: each parameter declares the
+services that depend on it, and one that declares none is a value read at
+start-up rather than from the environment.</p>
+<div class="admonition note">
+<p class="admonition-title">It re-creates rather than restarts</p>
+<p>A published port is fixed when a container is created, so restarting would
+report success and leave the old port in place. <code>config set</code> replaces the
+affected containers.</p>
+<p>This is the opposite of <a href="../secrets/"><code>secret rotate</code></a>, which restarts —
+a secret reaches a container as a mounted file, and restarting re-reads it.</p>
 </div>
-<h3 id="restoring-another-machines-backup">Restoring another machine's backup<a class="headerlink" href="#restoring-another-machines-backup" title="Permanent link">&para;</a></h3>
-<p>Refused by default. Backups are stamped with the installation they came from,
-and restoring one deployment's data over another is almost always a mistake.</p>
-<p>If the machine is a rebuild of the one the backup came from, the right answer is
-<a href="../../reference/installation-commands/"><code>installation import</code></a>, which restores
-the original installation id so the guard never fires.</p>
-<p>If you genuinely mean it:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;this<span class="w"> </span>machine<span class="err">&#39;</span>s<span class="w"> </span>id&gt;<span class="w"> </span>--allow-cross-installation
+<h2 id="plan-it-first">Plan it first<a class="headerlink" href="#plan-it-first" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">9000</span><span class="w"> </span>--dry-run
 </code></pre></div>
-<p>A separate flag from <code>--force</code> on purpose: every restore already requires
-forcing, so a shared flag would mean this check could never apply.</p>
-<h2 id="keeping-them-somewhere-else">Keeping them somewhere else<a class="headerlink" href="#keeping-them-somewhere-else" title="Permanent link">&para;</a></h2>
-<p>The manager writes backups under <code>/var/lib/&lt;product&gt;/backups</code> and does not
-transport them. Copying them offsite is a job for whatever you already use —
-what matters is that a backup on the same disk as the thing it protects is not
-a backup.</p>
-<p>An <a href="../../reference/installation-commands/">installation export</a> belongs offsite
-too, and separately from the recovery key that opens it.</p>
+<p>Shows the step list and a diff of any configuration file that would change.
+A plan never claims a service was re-created; it says what <em>would</em> happen.</p>
+<h2 id="what-is-not-a-parameter">What is not a parameter<a class="headerlink" href="#what-is-not-a-parameter" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>You want to change</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A port, a log level, a limit</td>
+<td><code>config set</code>, if the release declares it</td>
+</tr>
+<tr>
+<td>A credential</td>
+<td><a href="../secrets/"><code>morzer secret</code></a> — never a parameter</td>
+</tr>
+<tr>
+<td>The deployment profile</td>
+<td><code>apply --profile</code> for one run; otherwise re-install</td>
+</tr>
+<tr>
+<td>Domains, signing policy, retention</td>
+<td>Not yet changeable after <code>init</code></td>
+</tr>
+<tr>
+<td>The service topology</td>
+<td>The vendor's, in the release's Compose files</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition danger">
+<p class="admonition-title">Parameters are not secrets</p>
+<p>A parameter's value is visible in <code>docker inspect</code>, in <code>status --json</code>, in
+the journal and in <code>installation.yaml</code> in the clear. Anything that must not
+be visible belongs in the <a href="../secrets/">secret state</a>, which encrypts it at
+rest and renders it to tmpfs as a file.</p>
+</div>
+<h2 id="editing-installationyaml-does-nothing">Editing installation.yaml does nothing<a class="headerlink" href="#editing-installationyaml-does-nothing" title="Permanent link">&para;</a></h2>
+<p><code>/etc/&lt;product&gt;/installation.yaml</code> is a <strong>report</strong>. The manager reads its own
+state file, so an edit there changes nothing at all — and <code>doctor</code> says so,
+naming the fields that disagree:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>doctor
+<span class="go">config</span>
+<span class="go">  [warn] installation.yaml matches the recorded state: /etc/demo/installation.yaml</span>
+<span class="go">         disagrees with the recorded state (parameters.log_level); the recorded</span>
+<span class="go">         state is what runs</span>
+</code></pre></div>
+<p>The file is rewritten from the recorded state by the next <code>config set</code>, or by
+<code>morzer init --repair</code>.</p>
+<h2 id="after-a-release-changes-what-it-declares">After a release changes what it declares<a class="headerlink" href="#after-a-release-changes-what-it-declares" title="Permanent link">&para;</a></h2>
+<p>An update can add a parameter — it simply takes its default — or drop one. A
+dropped parameter leaves your recorded value bound to nothing, which
+<code>config list</code> reports as <strong>stale</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span>list
+<span class="go">…</span>
+<span class="go">stale (recorded, but 2.0.0 declares no such parameter): legacy_flag</span>
+<span class="go">clear with: morzer config unset legacy_flag</span>
+</code></pre></div>
+<p>Nothing is blocked over it. Dropping a parameter is the vendor's decision, and
+refusing every command until you tidy up would help nobody.</p>
 
 
 
@@ -1947,7 +1965,7 @@ too, and separately from the recovery key that opens it.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../secrets/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Managing secrets">
+          <a href="../backups/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Backups and restore">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -1957,20 +1975,20 @@ too, and separately from the recovery key that opens it.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Managing secrets
+                Backups and restore
               </div>
             </div>
           </a>
         
         
           
-          <a href="../changing-configuration/" class="md-footer__link md-footer__link--next" aria-label="Next: Changing configuration">
+          <a href="../installing-offline/" class="md-footer__link md-footer__link--next" aria-label="Next: Installing without a network">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Changing configuration
+                Installing without a network
               </div>
             </div>
             <div class="md-footer__button md-icon">
