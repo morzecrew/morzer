@@ -162,7 +162,15 @@ func (t *Target) store(ctx context.Context, ref ports.TargetRef) (*sftpStore, er
 }
 
 func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection, error) {
-	key := connectionKey(ref)
+	// The configuration is built before the cache is consulted, so the cache
+	// key can be derived from the parsed key's *public* half rather than from
+	// the private material. Parsing on a cache hit costs microseconds and
+	// happens a handful of times per backup.
+	cfg, signer, err := t.clientConfig(ref)
+	if err != nil {
+		return nil, err
+	}
+	key := connectionKey(ref, signer)
 
 	t.mu.Lock()
 	if conn, ok := t.conns[key]; ok {
@@ -170,11 +178,6 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 		return conn, nil
 	}
 	t.mu.Unlock()
-
-	cfg, err := t.clientConfig(ref)
-	if err != nil {
-		return nil, err
-	}
 
 	addr := ref.Host
 	if _, _, splitErr := net.SplitHostPort(addr); splitErr != nil {
@@ -226,13 +229,22 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 // does not get a handshake. An operator could configure one target with a
 // correct pin and a second with a wrong one, and nothing would object.
 //
-// The credentials are hashed rather than concatenated: this string is a map
-// key, and a map key holding a private key is a private key in a heap dump.
-func connectionKey(ref ports.TargetRef) string {
-	c := ref.Credentials
-	sum := sha256.Sum256([]byte(
-		c.PrivateKey + "\x00" + c.Passphrase + "\x00" + c.KnownHosts))
-	return ref.User + "@" + ref.Host + "|" + hex.EncodeToString(sum[:8])
+// Every input here is public. The authenticating key contributes its own
+// fingerprint -- the public half uniquely identifies the private one -- and the
+// pin contributes a digest of known_hosts, which holds nothing but public host
+// keys. No secret material reaches this string, which matters twice over: it is
+// a map key that lives as long as the process, and a cache key derived from a
+// passphrase is indistinguishable, to a reader and to a scanner, from storing
+// one badly.
+//
+// The passphrase is deliberately absent. A wrong one does not produce a
+// different connection; it produces no connection at all, because the key fails
+// to parse before this is ever called.
+func connectionKey(ref ports.TargetRef, signer ssh.Signer) string {
+	pin := sha256.Sum256([]byte(ref.Credentials.KnownHosts))
+	return ref.User + "@" + ref.Host +
+		"|" + ssh.FingerprintSHA256(signer.PublicKey()) +
+		"|" + hex.EncodeToString(pin[:16])
 }
 
 func (t *Target) dialTCP(ctx context.Context, addr string) (net.Conn, error) {
@@ -245,11 +257,11 @@ func (t *Target) dialTCP(ctx context.Context, addr string) (net.Conn, error) {
 
 // clientConfig builds the SSH configuration, refusing anything that would
 // weaken authentication in either direction.
-func (t *Target) clientConfig(ref ports.TargetRef) (*ssh.ClientConfig, error) {
+func (t *Target) clientConfig(ref ports.TargetRef) (*ssh.ClientConfig, ssh.Signer, error) {
 	creds := ref.Credentials
 
 	if strings.TrimSpace(creds.PrivateKey) == "" {
-		return nil, domain.BackupError(nil,
+		return nil, nil, domain.BackupError(nil,
 			"the ssh backup target %s has no private key", ref).
 			WithHint("put one in a secret as `private_key`, alongside `known_hosts`, " +
 				"and name it with --credentials")
@@ -271,14 +283,14 @@ func (t *Target) clientConfig(ref ports.TargetRef) (*ssh.ClientConfig, error) {
 		if _, isPassphrase := err.(*ssh.PassphraseMissingError); isPassphrase {
 			hint = "this key is encrypted; add `passphrase` to the same secret"
 		}
-		return nil, domain.BackupError(nil,
+		return nil, nil, domain.BackupError(nil,
 			"the private key for the backup target %s cannot be read", ref).
 			WithHint("%s", hint)
 	}
 
 	callback, algorithms, err := t.hostKeyCallback(ref)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	user := ref.User
@@ -301,7 +313,7 @@ func (t *Target) clientConfig(ref ports.TargetRef) (*ssh.ClientConfig, error) {
 		HostKeyAlgorithms: algorithms,
 		HostKeyCallback:   callback,
 		Timeout:           30 * time.Second,
-	}, nil
+	}, signer, nil
 }
 
 // hostKeyCallback builds the verifier, and refuses to build one that accepts

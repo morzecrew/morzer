@@ -64,7 +64,7 @@ func knownHostsLine(t *testing.T, addr string, key ssh.PublicKey) string {
 }
 
 func TestAPrivateKeyIsRequired(t *testing.T) {
-	_, err := New().clientConfig(ports.TargetRef{Scheme: "ssh", URL: "ssh://host/backups"})
+	_, _, err := New().clientConfig(ports.TargetRef{Scheme: "ssh", URL: "ssh://host/backups"})
 	if err == nil {
 		t.Fatal("a target with no key was accepted")
 	}
@@ -78,7 +78,7 @@ func TestAPrivateKeyIsRequired(t *testing.T) {
 func TestAnUnreadablePrivateKeyIsRefusedWithoutEchoingIt(t *testing.T) {
 	const material = "-----BEGIN OPENSSH PRIVATE KEY-----\nSECRETLOOKINGGARBAGE\n"
 
-	_, err := New().clientConfig(ports.TargetRef{
+	_, _, err := New().clientConfig(ports.TargetRef{
 		Scheme: "ssh", URL: "ssh://host/backups",
 		Credentials: ports.TargetCredentials{PrivateKey: material},
 	})
@@ -95,7 +95,7 @@ func TestAnUnreadablePrivateKeyIsRefusedWithoutEchoingIt(t *testing.T) {
 func TestAHostKeyPinIsRequired(t *testing.T) {
 	key := newKey(t)
 
-	_, err := New().clientConfig(ports.TargetRef{
+	_, _, err := New().clientConfig(ports.TargetRef{
 		Scheme: "ssh", URL: "ssh://host/backups",
 		Credentials: ports.TargetCredentials{PrivateKey: key.Private},
 	})
@@ -115,7 +115,7 @@ func TestAHostKeyPinIsRequired(t *testing.T) {
 func TestAMalformedPinIsRefused(t *testing.T) {
 	key := newKey(t)
 
-	_, err := New().clientConfig(ports.TargetRef{
+	_, _, err := New().clientConfig(ports.TargetRef{
 		Scheme: "ssh", URL: "ssh://host/backups",
 		Credentials: ports.TargetCredentials{
 			PrivateKey: key.Private,
@@ -139,7 +139,7 @@ func TestThePinDecidesWhichAlgorithmsAreOffered(t *testing.T) {
 	key := newKey(t)
 	pin := knownHostsLine(t, "127.0.0.1:2222", key.Public)
 
-	cfg, err := New().clientConfig(ports.TargetRef{
+	cfg, _, err := New().clientConfig(ports.TargetRef{
 		Scheme: "ssh", URL: "ssh://host/backups",
 		Credentials: ports.TargetCredentials{PrivateKey: key.Private, KnownHosts: pin},
 	})

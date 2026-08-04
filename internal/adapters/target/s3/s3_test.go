@@ -90,23 +90,55 @@ func TestNeitherHalfOfACredentialIsFine(t *testing.T) {
 	}
 }
 
-func TestClientsAreReusedPerEndpoint(t *testing.T) {
+// TestTheConnectionPoolIsSharedRatherThanTheClient.
+//
+// Clients are built per call and deliberately not cached: a cache would have to
+// be keyed on what authenticated it, which means a secret access key in a map
+// key that outlives the call -- or a hash of one, which is the same thing
+// wearing a hat. What actually needs reusing is the connection pool, and that
+// is the transport.
+func TestTheConnectionPoolIsSharedRatherThanTheClient(t *testing.T) {
 	target := New()
 	ref := ports.TargetRef{Scheme: "s3", Credentials: ports.TargetCredentials{
 		AccessKeyID: "AKIA", SecretAccessKey: "s3kr3t", Endpoint: "http://minio.example:9000",
 	}}
 
-	first, err := target.client(ref)
+	if _, err := target.client(ref); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := target.client(ref); err != nil {
+		t.Fatal(err)
+	}
+
+	if target.transport == nil {
+		t.Fatal("no shared transport, so every client opens its own connection pool")
+	}
+}
+
+// TestARotatedSecretIsNotIgnored. With a client cache keyed on the access key
+// id, a secret rotated under an unchanged id would have been used for the life
+// of the process. Without a cache the question cannot arise, and this pins that
+// it stays that way.
+func TestARotatedSecretIsNotIgnored(t *testing.T) {
+	target := New()
+	base := ports.TargetCredentials{
+		AccessKeyID: "AKIA", SecretAccessKey: "old", Endpoint: "http://minio.example:9000",
+	}
+
+	first, err := target.client(ports.TargetRef{Scheme: "s3", Credentials: base})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := target.client(ref)
+
+	rotated := base
+	rotated.SecretAccessKey = "new"
+	second, err := target.client(ports.TargetRef{Scheme: "s3", Credentials: rotated})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first != second {
-		t.Error("a second client was built for the same endpoint; one backup would " +
-			"open a connection pool per component")
+
+	if first == second {
+		t.Error("a rotated secret reused the client built with the old one")
 	}
 }
 

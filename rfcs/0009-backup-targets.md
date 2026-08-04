@@ -570,6 +570,25 @@ the *read* side. All three adapters had it, so nothing was exploitable, but the
 contract suite never proved it and a fourth adapter could omit it. It now lives
 in `blob.Fetch`, where no adapter can forget it.
 
+**Follow-up on 2026-08-05.** A CodeQL scan flagged the connection-cache fix as
+weak password hashing. On its stated rationale that is a false positive -- this
+is a map key in memory, not password storage, and anyone who can read it already
+has the plaintext key in the same struct -- but the underlying instinct is
+right, and the finding is cheaper to remove than to argue with.
+
+The SSH cache key is now derived entirely from **public** material: the
+authenticating key's own fingerprint, which uniquely identifies the private half
+without containing it, and a digest of `known_hosts`, which holds nothing but
+public host keys. The passphrase is absent because a wrong one produces no
+connection rather than a different one.
+
+The S3 client cache is gone entirely. It would have had to be keyed on what
+authenticated it -- a secret access key in a long-lived map key, or a hash of
+one, which is the same thing wearing a hat. `minio.New` opens nothing and costs
+nothing; what is worth reusing is the connection pool, which now lives in a
+shared transport that holds no credential. Removing the cache also makes the
+rotated-secret case unrepresentable rather than merely handled.
+
 Two of the tests written for these initially passed against the unfixed code,
 for the same reason an earlier one did: they asserted on a fetch, and a fetch
 refuses before it writes. Both were rewritten to assert where the decision is

@@ -15,8 +15,6 @@ package s3
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"io/fs"
@@ -24,7 +22,6 @@ import (
 	"net/url"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -45,12 +42,18 @@ const DefaultEndpoint = "s3.amazonaws.com"
 const DefaultRegion = "us-east-1"
 
 // Target is the object-store backup target.
+//
+// There is no client cache, deliberately. A cache would have to be keyed on
+// what authenticated the client -- which means a secret access key in a map key
+// that lives as long as the process, or a hash of one, which is the same thing
+// wearing a hat. Building a client is cheap: minio.New assembles a struct and
+// opens nothing. What is actually worth reusing is the connection pool, and
+// that lives in the transport below, which is shared.
 type Target struct {
-	mu      sync.Mutex
-	clients map[string]*minio.Client
+	transport http.RoundTripper
 }
 
-func New() *Target { return &Target{clients: map[string]*minio.Client{}} }
+func New() *Target { return &Target{transport: newTransport()} }
 
 var _ ports.BackupTarget = (*Target)(nil)
 
@@ -135,21 +138,6 @@ func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {
 		return nil, err
 	}
 
-	// Keyed on every value that authenticates the client, not just the access
-	// key id: a rotated secret under the same id would otherwise be ignored
-	// for the life of the process. Hashed, because a map key holding a secret
-	// access key is a secret access key in a heap dump.
-	sum := sha256.Sum256([]byte(
-		creds.AccessKeyID + "\x00" + creds.SecretAccessKey + "\x00" + creds.SessionToken))
-	key := endpoint + "|" + creds.Region + "|" + hex.EncodeToString(sum[:8])
-
-	t.mu.Lock()
-	if client, ok := t.clients[key]; ok {
-		t.mu.Unlock()
-		return client, nil
-	}
-	t.mu.Unlock()
-
 	region := creds.Region
 	if region == "" {
 		region = DefaultRegion
@@ -175,22 +163,17 @@ func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {
 		// can be.
 		Secure:    secure,
 		Region:    region,
-		Transport: transport(),
+		Transport: t.transport,
 	})
 	if err != nil {
 		return nil, domain.BackupError(err, "cannot build a client for %s", endpoint)
 	}
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if existing, ok := t.clients[key]; ok {
-		return existing, nil
-	}
-	t.clients[key] = client
 	return client, nil
 }
 
-func transport() http.RoundTripper {
+// newTransport is the one thing worth sharing between clients: the connection
+// pool. It holds no credential.
+func newTransport() http.RoundTripper {
 	return &http.Transport{
 		ResponseHeaderTimeout: 60 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
