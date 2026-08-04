@@ -359,9 +359,14 @@ assert_running 0
 assert_running 2
 
 step "a backup target off this machine"
-# file:// on separate media is the target that needs no credential, and the one
-# a recovery can always reach. Configured before the backup so the push is part
-# of the same operation an operator would run.
+# file:// is the target that needs no credential, and the one a recovery can
+# always reach. Configured before the backup so the push is part of the same
+# operation an operator would run.
+#
+# A directory under the test root, not a second device. What is under test is
+# that the manager pushes, lists, verifies and prunes there -- whether the
+# operator picked storage that survives the machine is their decision, and
+# arranging a real second device would need privileges CI does not have.
 offsite="${ROOT}/offsite"
 "${MORZER}" --root "${ROOT}" backup target add "file://${offsite}"
 "${MORZER}" --root "${ROOT}" backup target list

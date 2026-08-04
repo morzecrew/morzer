@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -147,6 +148,16 @@ func Push(ctx context.Context, d *Deps, opts PushOptions) (Result, error) {
 		return Result{}, err
 	}
 
+	// After resolving and verifying, so a dry run still answers the questions
+	// worth asking -- does the backup exist, does it verify, where would it
+	// go -- and before the one thing that writes.
+	if opts.DryRun {
+		return Result{
+			Summary: fmt.Sprintf("would copy backup %s to %s", ref.ID, targetSummary(targets)),
+			Data:    ref,
+		}, nil
+	}
+
 	for _, target := range targets {
 		if _, err := d.Targets.Push(ctx, target, ref.Path, ref.ID); err != nil {
 			return Result{}, domain.BackupError(err,
@@ -256,8 +267,16 @@ func stepPushBackup(d *Deps, inst domain.Installation) engine.Step {
 // needs. What is left behind has no manifest, so nothing will offer it as a
 // backup; the next successful push overwrites it.
 func (d *Deps) unpush(ctx context.Context, refs []ports.RemoteRef) {
+	// A detached context, because the commonest reason a push failed is that
+	// this one was cancelled or timed out -- and cleanup on a dead context
+	// fails instantly, leaving exactly the partial copy it was meant to
+	// remove. Bounded, so a target that has stopped answering cannot hold the
+	// operation open after it has already failed.
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
+
 	for _, remote := range refs {
-		if err := d.Targets.Remove(ctx, remote); err != nil {
+		if err := d.Targets.Remove(cleanup, remote); err != nil {
 			logging.FromContext(ctx).Warn("cannot remove a partial backup copy",
 				"target", remote.Target.String(), "backup", remote.ID, "error", err)
 		}
@@ -286,18 +305,23 @@ func stepPruneRemoteBackups(d *Deps, inst domain.Installation, rel domain.Releas
 				KeepReasons: []string{"pre-update"},
 			}
 
+			// Every target is pruned even after one fails. Returning at
+			// the first error left later targets silently unpruned, and
+			// a target nothing prunes fills up -- which surfaces much
+			// later, as a failed push during an incident.
 			var total int
+			var errs []error
 			for _, target := range targets {
 				removed, err := d.remoteRetention(ctx, target, policy)
 				total += len(removed)
 				if err != nil {
-					return err
+					errs = append(errs, err)
 				}
 			}
 			if total > 0 {
 				st.Detail("removed %d old backup(s) from the target(s)", total)
 			}
-			return nil
+			return errors.Join(errs...)
 		},
 	}
 }

@@ -37,6 +37,11 @@ type BackupTarget struct {
 	// the suite arranges a target that is simply unreachable.
 	FailWith error
 
+	// FailRemoveWith fails only removal, which is how the suite arranges a
+	// target that accepts a push and refuses a prune -- the case that
+	// separates "the backup is safe" from "the disk is tidy".
+	FailRemoveWith error
+
 	// Pushes counts successful pushes, so a test can assert a re-push
 	// happened rather than inferring it from the contents.
 	Pushes int
@@ -87,6 +92,9 @@ func (t *BackupTarget) Verify(ctx context.Context, ref ports.RemoteRef) error {
 func (t *BackupTarget) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	if t.FailWith != nil {
 		return t.FailWith
+	}
+	if t.FailRemoveWith != nil {
+		return t.FailRemoveWith
 	}
 	return blob.Remove(ctx, t.store(ref.Target), ref)
 }

@@ -109,7 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Backup targets: somewhere a backup is kept that is not the machine that took it. `morzer backup target add` accepts `file://` for a second disk or removable media, `ssh://` for another host, and `s3://` for S3 and everything that speaks its API, including MinIO, R2, B2 and Google Cloud Storage in interoperability mode.
 
-- Every backup is copied to every configured target after it is verified, and a push that fails fails the backup. Reporting success for data that is still only on the machine that will die is the state targets exist to end. The local copy is kept either way, so a failed push leaves an operator no worse off than before they configured one.
+- Every backup is copied to every configured target after it is verified, and a push that fails fails the backup. Reporting success for data that is still only on the machine that will die is the state targets exist to end. The local copy is kept either way, so a failed push leaves an operator no worse off than before they configured one. Two exceptions warn instead: a backup taken with the push disabled, and the backup taken before an update.
 
 - Retrying a copy that failed with `morzer backup push`, which verifies the backup again and sends it without taking a new one. The data on disk is already correct; what failed was the medium.
 

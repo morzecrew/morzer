@@ -471,6 +471,9 @@ func newBackupListCommand(app *App) *cobra.Command {
 			"key it ever had, which is the machine most likely to be running it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireRemoteMode(remote, targetURL, credentialsFile); err != nil {
+				return err
+			}
 			if remote || targetURL != "" {
 				return app.listRemoteBackups(cmd, targetURL, credentialsFile)
 			}
@@ -506,6 +509,19 @@ func newBackupListCommand(app *App) *cobra.Command {
 	f.StringVar(&credentialsFile, "credentials-file", "",
 		"YAML file holding the target's credentials, for a machine whose secret state is not readable yet")
 	return cmd
+}
+
+// requireRemoteMode refuses a credentials file with nothing to apply it to.
+//
+// Silently ignoring it is the worse failure: an operator who passed credentials
+// and got a local listing would reasonably conclude the target holds what this
+// machine holds.
+func requireRemoteMode(remote bool, targetURL, credentialsFile string) error {
+	if credentialsFile == "" || remote || targetURL != "" {
+		return nil
+	}
+	return domain.Usage("--credentials-file needs a target to apply to").
+		WithHint("add --remote for the configured targets, or --target <url> for one")
 }
 
 // listRemoteBackups prints what is on a target.
@@ -557,6 +573,9 @@ func newBackupVerifyCommand(app *App) *cobra.Command {
 			"schedule against your oldest retained backup.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireRemoteMode(remote, targetURL, credentialsFile); err != nil {
+				return err
+			}
 			id := ""
 			if len(args) == 1 {
 				id = args[0]

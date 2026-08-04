@@ -329,9 +329,11 @@ func (t *Target) hostKeyCallback(ref ports.TargetRef) (ssh.HostKeyCallback, []st
 		return nil, nil, domain.BackupError(nil,
 			"the ssh backup target %s pins no host key", ref).
 			WithHint("add `known_hosts` to the target's credentials. Get the line " +
-				"with `ssh-keyscan <host>`, and check it against the host's own " +
-				"`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` -- a keyscan " +
-				"taken over the network is only as trustworthy as the network")
+				"with `ssh-keyscan -p <port> <host>`, and check it against the " +
+				"host's own `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` -- " +
+				"a keyscan taken over the network is only as trustworthy as the " +
+				"network. On a port other than 22 the entry names the host as " +
+				"[host]:port, which is what ssh-keyscan -p prints")
 	}
 
 	algorithms, err := pinnedAlgorithms(raw)
@@ -515,12 +517,31 @@ func (s *sftpStore) Get(ctx context.Context, key string) (io.ReadCloser, error) 
 func (s *sftpStore) Keys(ctx context.Context, prefix string) ([]string, error) {
 	var out []string
 
+	// A root that is not there yet holds no backups -- the state before the
+	// first push, which `backup list --remote` has to be able to answer.
+	// Anything else about the root is a reachability problem and must be
+	// reported: a target whose directory cannot be read was being reported as
+	// reachable with zero backups, which is the one answer that looks healthy
+	// and is not.
+	if _, err := s.client.Stat(s.root); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, s.unreachable(err, "cannot read %s on the target", s.root)
+	}
+
 	walker := s.client.Walk(s.root)
 	for walker.Step() {
 		if err := walker.Err(); err != nil {
-			// A directory that vanished between listing and
-			// walking is a concurrent prune, not a failure.
-			continue
+			// A directory that vanished between listing and walking is
+			// a concurrent prune. Anything else -- a subdirectory that
+			// cannot be read -- would silently shorten the listing, and
+			// a short listing is how retention decides to delete the
+			// wrong thing.
+			if errors.Is(walker.Err(), fs.ErrNotExist) {
+				continue
+			}
+			return nil, s.unreachable(err, "cannot read %s on the target", walker.Path())
 		}
 		info := walker.Stat()
 		if info == nil || info.IsDir() || !info.Mode().IsRegular() {

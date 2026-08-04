@@ -211,8 +211,11 @@ func TestTargetURLGrammar(t *testing.T) {
 // has to be closed, and one that cannot tidy up must not stop the next one from
 // trying.
 func TestATargetRegistryClosesEveryTarget(t *testing.T) {
-	first := &closableTarget{scheme: "one"}
-	second := &closableTarget{scheme: "two", err: assertError}
+	// The embedded fake is initialised even though this test calls only
+	// Schemes and Close: a nil embed makes every promoted method a panic
+	// waiting for the first person to add an assertion.
+	first := &closableTarget{BackupTarget: fakes.NewBackupTarget(), scheme: "one"}
+	second := &closableTarget{BackupTarget: fakes.NewBackupTarget(), scheme: "two", err: assertError}
 
 	registry, err := target.NewRegistry(first, second)
 	require.NoError(t, err)
@@ -223,6 +226,16 @@ func TestATargetRegistryClosesEveryTarget(t *testing.T) {
 }
 
 var assertError = domain.Internal(nil, "cannot close")
+
+// requireNonRoot skips a test whose premise is that a permission bit stops a
+// write. Root ignores them, so the test would pass without exercising anything
+// -- which is worse than not running it, because the report says it did.
+func requireNonRoot(t *testing.T) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, which bypasses the permission bits this test relies on")
+	}
+}
 
 type closableTarget struct {
 	*fakes.BackupTarget
@@ -322,6 +335,8 @@ func TestAComponentTheManifestNamesButIsNotThere(t *testing.T) {
 // TestATargetOnAReadOnlyMediumFailsRatherThanHalfWriting. The ordinary shape of
 // a full disk or a medium mounted read-only.
 func TestATargetOnAReadOnlyMediumFailsRatherThanHalfWriting(t *testing.T) {
+	requireNonRoot(t)
+
 	local := writeTestBackup(t, "20260101T000000Z", map[string]string{
 		"database.sql.age": "ciphertext",
 	})
@@ -418,6 +433,8 @@ func TestATargetThatBecomesUnwritableMidPushFailsTheWholePush(t *testing.T) {
 		"aaa-first.age":  "lands",
 		"zzz-second.age": "does not",
 	})
+
+	requireNonRoot(t)
 
 	offsite := filepath.Join(t.TempDir(), "offsite")
 	ref, err := ports.TargetURL("file://" + offsite)

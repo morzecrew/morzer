@@ -181,7 +181,7 @@ func TestAMalformedCredentialsFileIsRefusedWithoutQuotingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := r.Run("backup", "list", "--target", "file:///tmp/whatever",
+	result := r.Run("backup", "list", "--target", "file://"+filepath.Join(t.TempDir(), "elsewhere"),
 		"--credentials-file", creds).
 		ExitCode(domain.ExitUsage)
 
@@ -235,7 +235,8 @@ func TestABackupGoesToATargetAndComesBack(t *testing.T) {
 		StdoutContains("1 backup")
 
 	// Lose the local copy, the way a failed disk does.
-	backups, err := os.ReadDir(filepath.Join(r.Root, "var", "lib", "demo", "backups"))
+	backupsDir := domain.PathsUnder(r.Root, "demo").BackupsDir()
+	backups, err := os.ReadDir(backupsDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +244,7 @@ func TestABackupGoesToATargetAndComesBack(t *testing.T) {
 		t.Fatalf("expected one local backup, found %d", len(backups))
 	}
 	id := backups[0].Name()
-	if err := os.RemoveAll(filepath.Join(r.Root, "var", "lib", "demo", "backups", id)); err != nil {
+	if err := os.RemoveAll(filepath.Join(backupsDir, id)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -374,4 +375,43 @@ func TestADryRunStillReportsWhetherTheTargetAnswers(t *testing.T) {
 	r.Run("--dry-run", "backup", "target", "add", "file://"+filepath.Join(blocked, "backups")).
 		Failed().
 		StderrContains("not added")
+}
+
+// TestDryRunDoesNotPush. `backup push` is a write like any other, and the flag
+// that says it will not write has to hold for every command that has one.
+func TestDryRunDoesNotPush(t *testing.T) {
+	r := NewInstalled(t)
+	offsite := filepath.Join(t.TempDir(), "offsite")
+
+	r.Run("backup", "target", "add", "file://"+offsite).ExitCode(0)
+	r.Run("backup", "--no-push").ExitCode(0)
+
+	r.Run("--dry-run", "backup", "push").
+		ExitCode(0).
+		StderrContains("would copy")
+
+	r.Run("backup", "list", "--remote").
+		ExitCode(0).
+		StdoutContains("no backups on the target")
+}
+
+// TestACredentialsFileWithNothingToApplyItToIsRefused, rather than silently
+// ignored. An operator who passed credentials and got a local listing would
+// reasonably conclude the target holds what this machine holds.
+func TestACredentialsFileWithNothingToApplyItToIsRefused(t *testing.T) {
+	r := NewInstalled(t)
+
+	creds := filepath.Join(t.TempDir(), "creds.yaml")
+	if err := os.WriteFile(creds, []byte("access_key_id: AKIA\nsecret_access_key: x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, cmd := range [][]string{
+		{"backup", "list", "--credentials-file", creds},
+		{"backup", "verify", "--credentials-file", creds},
+	} {
+		r.Run(cmd...).
+			ExitCode(domain.ExitUsage).
+			StderrContains("--remote", "--target")
+	}
 }

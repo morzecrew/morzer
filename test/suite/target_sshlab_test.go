@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -94,7 +95,11 @@ func startInProcessSSH(t *testing.T, host sshKey, authorized ssh.PublicKey, root
 	cfg := &ssh.ServerConfig{
 		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			if string(key.Marshal()) != string(authorized.Marshal()) {
-				return nil, ssh.ErrNoAuth
+				// A plain rejection, not ssh.ErrNoAuth: that sentinel
+				// means "no auth was attempted", and a server that
+				// returned it for a wrong key would let the adapter's
+				// diagnosis of the two cases go untested.
+				return nil, fmt.Errorf("unknown public key for %q", "ops")
 			}
 			return &ssh.Permissions{}, nil
 		},

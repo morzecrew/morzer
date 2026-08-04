@@ -16,6 +16,7 @@ import (
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // withTargets wires a real target registry and a directory target, and points
@@ -194,7 +195,7 @@ func TestAnInstallationWithNoTargetsIsUnchanged(t *testing.T) {
 // need another backup.
 func TestPushIsTheRetryForAFailedPush(t *testing.T) {
 	h := newHarness(t)
-	inst, offsite := h.withTargets(t)
+	_, offsite := h.withTargets(t)
 
 	// A backup taken with the push turned off: the state a failed push
 	// leaves behind.
@@ -221,7 +222,6 @@ func TestPushIsTheRetryForAFailedPush(t *testing.T) {
 	// Verified before it is copied, for the same reason the operation
 	// verifies before it pushes.
 	assert.Positive(t, h.Backup.Verified[ref.ID])
-	_ = inst
 }
 
 // TestRetentionOnATargetKeepsTheSamePolicyAsLocally, and never the most recent
@@ -292,13 +292,26 @@ func TestAPreUpdateBackupIsExemptOnTheTargetToo(t *testing.T) {
 			"operator reaches for when the update they were guarding goes wrong")
 }
 
-// TestRetentionFailingOnATargetDoesNotFailTheBackup. Unlike the push, this is
-// Continue: the backup was taken and it is off the machine, which is everything
-// the operation promised.
+// TestRetentionFailingOnATargetDoesNotFailTheBackup.
+//
+// Unlike the push, this is `Continue`: the backup was taken and it is off the
+// machine, which is everything the operation promised. A target that stays
+// fuller than intended is a warning, not a failed backup.
+//
+// Driven by a target that accepts every push and refuses every removal, rather
+// than by a read-only directory. A read-only directory breaks the push too, so
+// the test could only assert "one of two things happened" -- which is a test
+// that passes whichever way the code behaves.
 func TestRetentionFailingOnATargetDoesNotFailTheBackup(t *testing.T) {
 	h := newHarness(t)
-	inst, offsite := h.withTargets(t)
+	inst := h.install()
 
+	fake := fakes.NewBackupTarget()
+	h.Deps.Targets = fake
+	h.Backup.Root = filepath.Join(h.Root, "var", "backups")
+	require.NoError(t, os.MkdirAll(h.Backup.Root, 0o700))
+
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
 	inst.Policy.RetainBackups = 1
 	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
 
@@ -307,27 +320,21 @@ func TestRetentionFailingOnATargetDoesNotFailTheBackup(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Make removal fail: the directory holding the first backup is made
-	// read-only, so the prune cannot unlink it.
-	entries, err := os.ReadDir(offsite)
-	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	require.NoError(t, os.Chmod(offsite, 0o500))
-	t.Cleanup(func() { _ = os.Chmod(offsite, 0o700) })
+	fake.FailRemoveWith = domain.BackupError(nil, "the target refuses deletions")
 
 	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
 		Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
 	})
-	if err == nil {
-		// The push itself must have succeeded, and the retention
-		// failure must not have turned a taken backup into a failed
-		// operation.
-		assert.Contains(t, result.Summary, "copied to")
-		return
-	}
-	// If the push failed too -- the same read-only directory blocks it --
-	// then it must be the push that is blamed, not retention.
-	assert.Equal(t, "push-backup", failedStepID(result.Record))
+	require.NoError(t, err,
+		"a target that would not prune failed the backup it had just accepted")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+	assert.Contains(t, result.Summary, "copied to")
+
+	// Both backups are still there: the prune failed, which is the point.
+	manifests, err := fake.List(context.Background(),
+		ports.TargetRef{Scheme: "memory", Path: "/backups"})
+	require.NoError(t, err)
+	assert.Len(t, manifests, 2)
 }
 
 // TestFetchBringsABackupBackAndVerifiesIt. The recovery move: the machine is
@@ -335,7 +342,7 @@ func TestRetentionFailingOnATargetDoesNotFailTheBackup(t *testing.T) {
 // it overwrites anything.
 func TestFetchBringsABackupBackAndVerifiesIt(t *testing.T) {
 	h := newHarness(t)
-	_, offsite := h.withTargets(t)
+	h.withTargets(t)
 
 	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
 		Reason: "manual", Verify: true, Push: true,
@@ -357,7 +364,6 @@ func TestFetchBringsABackupBackAndVerifiesIt(t *testing.T) {
 		_, err := os.Stat(filepath.Join(dest, name))
 		require.NoError(t, err, "%s did not come back", name)
 	}
-	_ = offsite
 }
 
 // TestAnInterruptedFetchLeavesNothingInTheBackupStore. The store is what
@@ -593,11 +599,15 @@ func TestAnInstallationWithABadTargetIsRefusedWhereItIsWritten(t *testing.T) {
 	assert.Contains(t, err.Error(), "twice")
 }
 
-// TestAnOlderManagerRefusesAnInstallationThatConfiguresTargets. The bump to
-// schema 3 exists for exactly this: an older manager reads the state, sees no
-// targets, takes a backup, reports success, and leaves it on the machine the
-// operator configured a target to survive.
-func TestAnOlderManagerRefusesAnInstallationThatConfiguresTargets(t *testing.T) {
+// TestAnInstallationFromANewerSchemaIsRefused, which is what makes the bump to
+// schema 3 do its job: an older manager reading a state it does not understand
+// would see no targets, take a backup, report success, and leave it on the
+// machine the operator configured a target to survive.
+//
+// The refusal is the mechanism; that targets are what arrived at schema 3 is
+// asserted separately below, because a test named for one and checking the
+// other is a test nobody can maintain.
+func TestAnInstallationFromANewerSchemaIsRefused(t *testing.T) {
 	require.GreaterOrEqual(t, domain.InstallationSchemaVersion, 3,
 		"backup targets arrived at schema 3")
 
@@ -605,6 +615,9 @@ func TestAnOlderManagerRefusesAnInstallationThatConfiguresTargets(t *testing.T) 
 		SchemaVersion: domain.InstallationSchemaVersion + 1,
 		ID:            "inst_x",
 		Product:       "demo",
+		Backup: domain.BackupConfig{
+			Targets: []domain.BackupTargetConfig{{URL: "file:///mnt/backups"}},
+		},
 	}
 	err := inst.Validate()
 	require.Error(t, err)
@@ -850,7 +863,7 @@ func TestAPreUpdateBackupThatCannotBePushedWarnsRatherThanFailingTheUpdate(t *te
 	assert.True(t, warned,
 		"the update succeeded without telling the operator their pre-update "+
 			"backup is only on the machine being updated")
-	_ = result
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
 }
 
 // TestRetentionNeverRemovesTheLastCopyOnATarget, whatever the policy says.

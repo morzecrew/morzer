@@ -934,7 +934,12 @@ func (d *Deps) checkBackupTargets(inst domain.Installation) preflight.Check {
 				return preflight.OK("no off-machine target is configured")
 			}
 
-			probeCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			// Scaled by the number of targets, because the probe walks
+			// them in turn: one shared budget meant a slow first target
+			// spent it, and every healthy target after was reported as
+			// unreachable for no reason of its own.
+			probeCtx, cancel := context.WithTimeout(ctx,
+				time.Duration(max(1, len(inst.Backup.Targets)))*30*time.Second)
 			defer cancel()
 
 			statuses := d.TargetStatuses(probeCtx, inst)
@@ -988,7 +993,9 @@ func (d *Deps) checkBackupTargetFreshness(inst domain.Installation) preflight.Ch
 			}
 			newest := local[0]
 
-			probeCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			// Per target, for the same reason as the check above.
+			probeCtx, cancel := context.WithTimeout(ctx,
+				time.Duration(max(1, len(inst.Backup.Targets)))*30*time.Second)
 			defer cancel()
 
 			remote, err := ListRemote(probeCtx, d, TargetOptions{})

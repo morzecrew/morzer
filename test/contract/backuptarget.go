@@ -180,7 +180,7 @@ func RunBackupTargetSuite(t *testing.T, newTarget BackupTargetFactory) {
 		assert.True(t, errors.Is(err, domain.ErrNotFound), "got: %v", err)
 	})
 
-	t.Run("verify notices a component that is gone", func(t *testing.T) {
+	t.Run("a manifest naming a component that was never uploaded is refused", func(t *testing.T) {
 		h := newTarget(t)
 		target, ref := h.Target, h.Ref
 		ctx := context.Background()
@@ -245,6 +245,10 @@ func RunBackupTargetSuite(t *testing.T, newTarget BackupTargetFactory) {
 		// on the target -- which is a file this manager may not have
 		// written, and which is what Remove is driven by. A listing
 		// prefix is a string match, not a path one.
+		// writeBackup always stamps the manifest with a parseable timestamp
+		// id, while Push stores under `id` -- so the `-copy` variant is a
+		// backup whose stored name differs from its recorded one, which is
+		// exactly the shape a hand-placed backup has.
 		for _, id := range []string{"20260101T000000Z", "20260101T000000Z-copy"} {
 			local := writeBackup(t, "20260101T000000Z", map[string]string{"database.sql.age": id})
 			_, err := target.Push(ctx, ref, local, id)

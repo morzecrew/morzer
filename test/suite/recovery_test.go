@@ -569,6 +569,11 @@ func TestABackupOnATargetIsUnreadableWithoutAKey(t *testing.T) {
 		ciphertext++
 		assert.NotContains(t, string(data), "SENSITIVE-CUSTOMER-DATA",
 			"%s on the target carries readable plaintext", p)
+		// Positively encrypted, not merely free of one known string: a
+		// component written in some third format would pass the check above
+		// while being perfectly readable to whoever found it.
+		assert.True(t, strings.HasPrefix(string(data), "age-encryption.org/"),
+			"%s on the target is not an age file", p)
 		return nil
 	}))
 

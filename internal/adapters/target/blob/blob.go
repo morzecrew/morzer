@@ -97,7 +97,14 @@ func Push(ctx context.Context, s Store, ref ports.TargetRef, localDir, id string
 	sort.Strings(names)
 
 	for _, name := range names {
-		local := filepath.Join(localDir, filepath.FromSlash(name))
+		// The same guard Fetch applies, for the same reason and in the
+		// other direction: a manifest is data, and a component path that
+		// leaves the backup directory would read a file the backup does
+		// not contain and send it somewhere else.
+		local, err := safeDestination(localDir, name)
+		if err != nil {
+			return ports.RemoteRef{}, err
+		}
 		size, err := regularFileSize(local)
 		if err != nil {
 			return ports.RemoteRef{}, err

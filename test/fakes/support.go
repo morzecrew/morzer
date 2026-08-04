@@ -129,17 +129,23 @@ func (b *Backup) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		Product:    "demo",
 		Components: []ports.ComponentRecord{{Component: ports.ComponentDatabase, Path: "db.sql.age"}},
 	}
+
+	// Recorded only after the write succeeds. A failed Create that had already
+	// registered the id would leave a backup that lists and cannot be read,
+	// which is the state the real engine goes out of its way to avoid.
+	path := "/fake/backups/" + id
+	if b.Root != "" {
+		written, dir, err := b.writeBackup(manifest)
+		if err != nil {
+			return ports.BackupRef{}, err
+		}
+		manifest, path = written, dir
+	}
+
 	b.backups[id] = manifest
 	// Prepended so the list is newest-first without a sort.
 	b.order = append([]string{id}, b.order...)
 
-	path := "/fake/backups/" + id
-	if b.Root != "" {
-		var err error
-		if path, err = b.writeBackup(manifest); err != nil {
-			return ports.BackupRef{}, err
-		}
-	}
 	return ports.BackupRef{ID: id, Path: path, At: at, Size: 1024}, nil
 }
 
@@ -150,21 +156,21 @@ func (b *Backup) Create(ctx context.Context, scope ports.Scope, labels map[strin
 // The checksums are not decoration. A manifest without them makes `verify` a
 // no-op that reports success, so a fake that omitted them would let a test claim
 // corruption is detected while nothing was ever compared.
-func (b *Backup) writeBackup(m ports.BackupManifest) (string, error) {
+func (b *Backup) writeBackup(m ports.BackupManifest) (ports.BackupManifest, string, error) {
 	dir := filepath.Join(b.Root, m.ID)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
+		return m, "", err
 	}
 
 	for i, c := range m.Components {
 		content := []byte("component " + string(c.Component) + " of " + m.ID)
 		path := filepath.Join(dir, c.Path)
 		if err := os.WriteFile(path, content, 0o600); err != nil {
-			return "", err
+			return m, "", err
 		}
 		sum, err := atomicfs.DigestFile(path)
 		if err != nil {
-			return "", err
+			return m, "", err
 		}
 		m.Components[i].Size = int64(len(content))
 		m.Components[i].SHA256 = sum
@@ -172,12 +178,12 @@ func (b *Backup) writeBackup(m ports.BackupManifest) (string, error) {
 
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return "", err
+		return m, "", err
 	}
 	if err := os.WriteFile(filepath.Join(dir, ports.BackupManifestFileName), data, 0o600); err != nil {
-		return "", err
+		return m, "", err
 	}
-	return dir, nil
+	return m, dir, nil
 }
 
 // Dir is where a backup lives on disk, empty when Root was not set.

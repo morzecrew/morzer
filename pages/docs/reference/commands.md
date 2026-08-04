@@ -301,8 +301,8 @@ bucket is one you should be able to look at before it overwrites a database.
 
 ### backup verify
 
-Re-reads a backup and checks its checksums. Takes a backup id; the most recent
-when omitted.
+Re-reads a backup and checks its checksums. Takes a backup id; locally, the most
+recent backup when omitted.
 
 ```sh
 morzer backup verify 01J8ZP...
@@ -312,6 +312,10 @@ morzer backup verify --remote
 With `--remote` it checks the copy on the configured targets instead, streaming
 each component through a checksum and keeping nothing. A full transfer, and the
 only thing that notices rot on a target.
+
+Omitting the id means something different in each mode: locally it verifies the
+most recent backup, and with `--remote` it verifies **every** backup on every
+configured target, which is what a scheduled check wants.
 
 | Flag | Meaning |
 | --- | --- |

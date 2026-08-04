@@ -19,6 +19,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/adapters/target/s3"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/contract"
 	"github.com/morzecrew/morzer/test/dockerlab"
@@ -124,9 +125,16 @@ func addComponent(t *testing.T, backupDir, path string, size int) {
 
 	var manifest ports.BackupManifest
 	require.NoError(t, json.Unmarshal(data, &manifest))
+
+	// Digested like the real engine does. Without it `verify` skips the
+	// component entirely, so a fixture that omitted it would let a corrupt
+	// round trip pass.
+	sum, err := atomicfs.DigestFile(filepath.Join(backupDir, filepath.FromSlash(path)))
+	require.NoError(t, err)
+
 	manifest.Components = append(manifest.Components, ports.ComponentRecord{
 		Component: ports.ComponentFiles, Path: path,
-		Size: int64(size), Encryption: ports.EncryptionAge,
+		Size: int64(size), SHA256: sum, Encryption: ports.EncryptionAge,
 	})
 
 	out, err := json.MarshalIndent(manifest, "", "  ")

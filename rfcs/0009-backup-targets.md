@@ -3,8 +3,9 @@
 - **Status:** ✅ Complete — shipped 2026-08-04, all three phases. `file://`,
   `ssh://` and `s3://` are wired, the push step fails the backup, `doctor` has
   both checks, and the recovery scenario fetches from a target instead of
-  copying a directory. Fifteen divergences and defects are recorded as amendments
-  in §12 — six of them found by auditing the shipped implementation on 2026-08-05 — one of them (the push step's failure policy) a defect in this RFC
+  copying a directory. §12 records ten dated amendments — nine individual items
+  plus one grouping six defects found by auditing the shipped implementation on
+  2026-08-05 — one of them (the push step's failure policy) a defect in this RFC
   that would have deleted the very backup it was protecting, and three of them
   defects the real-service suites found: a host-key pin that failed against
   honest servers, a listing prefix that deleted a neighbouring backup, and a

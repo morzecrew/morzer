@@ -291,15 +291,20 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 		}, nil
 	}
 
-	inst.Backup.Targets = append(inst.Backup.Targets, cfg)
-
-	// Under the deployment lock, like every other command that writes the
-	// installation. Without it, adding a target concurrently with `config
-	// set` -- or with the installation write an update makes as it rolls
-	// back -- is a lost update: both load, both mutate, and one change
-	// silently disappears.
+	// Read again *inside* the lock, and appended to that copy. The
+	// installation above was loaded before the lock was held, so writing it
+	// back would overwrite whatever a concurrent `config set` recorded in
+	// between -- taking the lock and then saving stale data is the same lost
+	// update, arriving more slowly.
 	if err := d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts.Options,
-		func(ctx context.Context) error { return d.saveInstallation(ctx, inst) }); err != nil {
+		func(ctx context.Context) error {
+			current, err := d.loadInstallation(ctx)
+			if err != nil {
+				return err
+			}
+			current.Backup.Targets = append(current.Backup.Targets, cfg)
+			return d.saveInstallation(ctx, current)
+		}); err != nil {
 		return Result{}, err
 	}
 
@@ -349,9 +354,26 @@ func TargetRemove(ctx context.Context, d *Deps, opts Options, url string) (Resul
 		return Result{Summary: "would remove backup target " + ref.String()}, nil
 	}
 
-	inst.Backup.Targets = kept
+	// Recomputed inside the lock against a fresh read, for the same reason
+	// TargetAdd does: `kept` was derived from a copy loaded before the lock,
+	// and writing it back would discard anything recorded in between.
 	if err := d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts,
-		func(ctx context.Context) error { return d.saveInstallation(ctx, inst) }); err != nil {
+		func(ctx context.Context) error {
+			current, err := d.loadInstallation(ctx)
+			if err != nil {
+				return err
+			}
+			remaining := make([]domain.BackupTargetConfig, 0, len(current.Backup.Targets))
+			for _, cfg := range current.Backup.Targets {
+				if parsed, perr := ports.TargetURL(cfg.URL); perr == nil &&
+					parsed.String() == ref.String() {
+					continue
+				}
+				remaining = append(remaining, cfg)
+			}
+			current.Backup.Targets = remaining
+			return d.saveInstallation(ctx, current)
+		}); err != nil {
 		return Result{}, err
 	}
 
@@ -669,13 +691,19 @@ func (d *Deps) pushPreUpdateBackup(
 		return
 	}
 
+	// Every target is attempted. Stopping at the first failure hid the state
+	// of the rest, so an operator fixing one unreachable target could not tell
+	// whether the others had worked.
+	var failed []string
 	for _, target := range targets {
 		if _, err := d.Targets.Push(ctx, target, ref.Path, ref.ID); err != nil {
 			st.Warn("the pre-update backup is on this machine but could not be "+
 				"copied to %s: %s. Run `morzer backup push %s` once it is reachable",
 				target, domain.AsError(err).Message, ref.ID)
-			return
+			failed = append(failed, target.String())
 		}
 	}
-	st.Detail("%s, copied to %s", ref.ID, targetSummary(targets))
+	if len(failed) < len(targets) {
+		st.Detail("%s, copied to %d of %d target(s)", ref.ID, len(targets)-len(failed), len(targets))
+	}
 }

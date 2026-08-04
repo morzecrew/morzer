@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -50,10 +51,11 @@ const DefaultRegion = "us-east-1"
 // opens nothing. What is actually worth reusing is the connection pool, and
 // that lives in the transport below, which is shared.
 type Target struct {
+	mu        sync.Mutex
 	transport http.RoundTripper
 }
 
-func New() *Target { return &Target{transport: newTransport()} }
+func New() *Target { return &Target{} }
 
 var _ ports.BackupTarget = (*Target)(nil)
 
@@ -143,6 +145,11 @@ func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {
 		region = DefaultRegion
 	}
 
+	transport, err := t.sharedTransport(secure)
+	if err != nil {
+		return nil, err
+	}
+
 	// No credentials at all is a legitimate configuration -- an EC2
 	// instance role, or a public MinIO in a test -- so it is passed through
 	// rather than refused. What is refused is half a credential, which is
@@ -163,7 +170,7 @@ func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {
 		// can be.
 		Secure:    secure,
 		Region:    region,
-		Transport: t.transport,
+		Transport: transport,
 	})
 	if err != nil {
 		return nil, domain.BackupError(err, "cannot build a client for %s", endpoint)
@@ -171,13 +178,29 @@ func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {
 	return client, nil
 }
 
-// newTransport is the one thing worth sharing between clients: the connection
-// pool. It holds no credential.
-func newTransport() http.RoundTripper {
-	return &http.Transport{
-		ResponseHeaderTimeout: 60 * time.Second,
-		IdleConnTimeout:       90 * time.Second,
+// sharedTransport is the one thing worth sharing between clients: the
+// connection pool. It holds no credential.
+//
+// minio.DefaultTransport rather than a hand-rolled http.Transport, because the
+// SDK's carries proxy support, connection tuning and TLS settings that a
+// four-line struct silently drops -- and an operator behind a proxy would meet
+// that as "cannot reach the backup target" with no hint that a proxy exists.
+func (t *Target) sharedTransport(secure bool) (http.RoundTripper, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.transport != nil {
+		return t.transport, nil
 	}
+	tr, err := minio.DefaultTransport(secure)
+	if err != nil {
+		return nil, domain.BackupError(err, "cannot build the http transport for a backup target")
+	}
+	tr.ResponseHeaderTimeout = 60 * time.Second
+	tr.IdleConnTimeout = 90 * time.Second
+
+	t.transport = tr
+	return tr, nil
 }
 
 // resolveEndpoint reads the endpoint override.

@@ -15,14 +15,14 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
-// A real sshd in a container proves the handshake. This proves everything that
-// happens before one and everything that happens after: what is refused, and
-// what a component path is allowed to be.
+// A real sshd in a container proves the handshake. This file proves everything
+// that happens either side of one, without needing a server at all: what is
+// refused before a connection is attempted, which algorithms a pin admits, how
+// a failed handshake is diagnosed, and what a component path is allowed to be.
 //
-// The in-process server below is not a fake of ssh -- it is the real x/crypto
-// server side, so a handshake that succeeds here succeeded for the same reasons
-// it would against OpenSSH. What it cannot prove is interoperability, which is
-// what the container suite is for.
+// A full round trip against a real x/crypto server lives in the suite, as
+// TestBackupTargetContract_SSHInProcess; interoperability with OpenSSH is what
+// the container suite is for.
 
 // testKey is one keypair in the two shapes needed.
 type testKey struct {
