@@ -119,7 +119,17 @@ func CommandTree() *cobra.Command {
 // type cannot accidentally acquire a new exit code by being handled somewhere
 // else.
 func Execute(ctx context.Context, build BuildInfo, args []string) int {
-	app := &App{Build: build, Stream: ui.DefaultStreams()}
+	return ExecuteWith(ctx, build, args, ui.DefaultStreams())
+}
+
+// ExecuteWith runs the CLI against the given streams.
+//
+// The seam the command tests drive: they invoke exactly what an operator's
+// shell invokes -- flag parsing, argument validation, confirmations, the error
+// formatter and the exit-code mapping -- and read back what was written, rather
+// than calling the operation underneath and assuming the wiring above it works.
+func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui.Streams) int {
+	app := &App{Build: build, Stream: streams}
 	root := newRootCommand(app)
 
 	// Flag errors are the one case where printing usage helps: the operator

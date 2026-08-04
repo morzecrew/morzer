@@ -80,7 +80,8 @@ func read(path string, into map[string]block) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	// Read-only: there is nothing a failed close could have lost.
+	defer func() { _ = f.Close() }()
 
 	s := bufio.NewScanner(f)
 	s.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
@@ -134,7 +135,9 @@ func write(path string, blocks map[string]block) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	// Closed explicitly below so a write error is reported; this is the
+	// error path's cleanup.
+	defer func() { _ = f.Close() }()
 
 	w := bufio.NewWriter(f)
 	fmt.Fprintln(w, "mode: set")

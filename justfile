@@ -103,7 +103,7 @@ test-cover:
 # picture.
 
 # Fail when `go test` coverage drops below the floor.
-coverage-gate floor="59": test-cover
+coverage-gate floor="68": test-cover
     .github/scripts/coverage-floor.sh coverage.out {{floor}}
 
 # The main package has to be instrumented too: with -coverpkg=./internal/...
@@ -126,7 +126,7 @@ acceptance-cover:
 # 70.0% together.
 
 # Fail when coverage across every suite drops below the floor. Needs Docker.
-coverage-union floor="68": test-cover acceptance-cover
+coverage-union floor="72": test-cover acceptance-cover
     go run ./tools/covmerge union.out coverage.out acceptance.profile
     .github/scripts/coverage-floor.sh union.out {{floor}}
 

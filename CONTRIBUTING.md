@@ -141,7 +141,7 @@ real violations that had been described as compliant.
 
 ## Coverage
 
-`just coverage-gate` enforces a floor, currently 59%. It is a floor, not a
+`just coverage-gate` enforces a floor, currently 68% for `go test` and 72% across every suite. It is a floor, not a
 target: raise it deliberately, and if a change genuinely lowers it, lower
 `COVERAGE_FLOOR` in `.github/workflows/ci.yml` in the same pull request, so the
 decision is reviewable rather than silent.

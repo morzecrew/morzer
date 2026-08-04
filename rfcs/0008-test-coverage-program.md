@@ -1,6 +1,6 @@
 # RFC 0008 — Testing the claims: a coverage programme to 95%
 
-- **Status:** 🚧 In progress — P1 shipped 2026-08-04, measured 70.0%. P2–P5 open.
+- **Status:** 🚧 In progress — P1 and P2 shipped 2026-08-04, measured 72.9%. P3–P5 open.
 - **Scope:** Raises statement coverage from a measured 70% to 95%, and — the
   actual point — makes every security property this project advertises name the
   test that enforces it. Covers counting the coverage the acceptance suite
@@ -377,3 +377,52 @@ percentage is only a proxy for.
 
 Every projection after P1 is an estimate from the per-package figures in §2.3,
 not a measurement. Each phase reports its actual number and amends this table.
+
+## 12. Amendments
+
+### P1 — the union pipeline (shipped, 70.0%)
+
+Landed as designed and measured exactly the predicted number. Three things the
+design did not say:
+
+- `-coverpkg=./internal/...` alone produces **no profile at all**. The main
+  package has to be instrumented too, or nothing registers the coverage
+  meta-data and `GOCOVERDIR` stays empty. This cost an hour the first time.
+- The profiles cannot be concatenated. `go test` writes `atomic` counts and the
+  instrumented binary writes `set`, `go tool cover` refuses a file with two mode
+  lines, and the same block appears in both. `tools/covmerge` unions them
+  block-by-block and writes `set`, because "how many times" stops meaning
+  anything once two counting schemes are combined.
+- CI needs **two floors**, not one. The acceptance job is change-gated, so a
+  pull request can legitimately produce only the `go test` profile. The gate
+  picks its floor from what actually arrived rather than from what was hoped
+  for; a missing artefact is the unit floor, not a failure.
+
+### P2 — the CLI harness (shipped, 72.9%)
+
+`internal/cli` went from 17.3% to 60.4%, and `go test` alone from 59.5% to
+69.0%.
+
+**The union only moved 70.0% → 72.9%.** Most of what the new command tests
+execute was already being executed by the instrumented acceptance run; what they
+add is *assertions* on paths that were previously run without being checked.
+
+That is worth recording because it is the strongest argument for P1 having gone
+first. Judged by `go test` alone this phase looks like +9.5 points; judged
+honestly it is +2.9, and the rest of its value is in what it pins rather than
+what it reaches. A programme that had skipped P1 would have congratulated itself
+for the wrong reason and aimed the next phase at the wrong packages.
+
+Two test-design notes:
+
+- Four of the first twenty tests failed on **my** expectations, not on defects:
+  the envelope field is `supported_api_versions`, `release verify` prints its
+  verdict to stderr because summaries go there, and both `secret rotate` without
+  a generator and an unsafe `installation export` are usage errors rather than
+  domain-specific ones. Each was checked against the code before the test was
+  changed.
+- The first version of the restore-guard test asserted only the exit code. Every
+  path through `restore` exits 2, so it passed with the confirmation check
+  removed — the failure had simply moved to the next step. It now asserts *which*
+  refusal fires, and that a correct confirmation gets past the guard to fail on
+  its merits. Verified by perturbation both ways.

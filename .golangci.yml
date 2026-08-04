@@ -172,6 +172,14 @@ linters:
         linters:
           - contextcheck
 
+      # tools/ are build-time helpers, run by `just` and by CI on paths given
+      # on their own command line. G703 fires on every one of those reads and
+      # writes; there is no untrusted input and nothing to contain. They are
+      # also excluded from -coverpkg, so they never ship.
+      - path: tools/
+        linters:
+          - gosec
+
       # internal/infra/atomicfs exists to perform filesystem operations on
       # caller-supplied paths, so G304 ("file inclusion via variable") fires on
       # every function in it. Containment is enforced by os.Root, which the
