@@ -1559,6 +1559,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#the-age-identity-and-its-recipients" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The age identity and its recipients
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#releases-and-verification" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1585,6 +1596,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Refusals
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backups-against-a-real-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Backups, against a real database
       </span>
     </span>
   </a>
@@ -1720,6 +1742,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#the-age-identity-and-its-recipients" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The age identity and its recipients
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#releases-and-verification" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1746,6 +1779,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Refusals
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backups-against-a-real-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Backups, against a real database
       </span>
     </span>
   </a>
@@ -1933,6 +1977,55 @@ quietly leaving a claim unbacked.</p>
 <td><code>doctor</code> reports a render directory that is not memory-backed</td>
 <td><code>TestIsEphemeralFilesystem</code></td>
 </tr>
+<tr>
+<td>A secret a hook prints is scrubbed from its output and from the error</td>
+<td><code>TestSecretsAreScrubbedFromHookOutput</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-age-identity-and-its-recipients">The age identity and its recipients<a class="headerlink" href="#the-age-identity-and-its-recipients" title="Permanent link">&para;</a></h3>
+<p>The identity is the only thing that can read the encrypted state, so every
+operation that could destroy or weaken it is a refusal.</p>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A generated identity is <code>0400</code> in a <code>0700</code> directory, and never widened</td>
+<td><code>TestGenerateIdentityWritesAKeyNobodyElseCanRead</code></td>
+</tr>
+<tr>
+<td>An identity that exists but cannot be parsed is never replaced</td>
+<td><code>TestEnsureIdentityRefusesToReplaceOneItCannotParse</code></td>
+</tr>
+<tr>
+<td>Creating an identity twice returns the first, never a second key</td>
+<td><code>TestEnsureIdentityIsIdempotent</code></td>
+</tr>
+<tr>
+<td>A malformed recipient is refused before it reaches the file</td>
+<td><code>TestValidateRecipient</code></td>
+</tr>
+<tr>
+<td>Re-encrypting validates every key before rewriting anything</td>
+<td><code>TestReencryptForValidatesEveryKeyBeforeTouchingAnything</code></td>
+</tr>
+<tr>
+<td>The machine's own key is identified by comparison, not by a sidecar that could be edited</td>
+<td><code>TestRecipientsIdentifiesTheMachineKeyByComparison</code></td>
+</tr>
+<tr>
+<td>An import that could not be decrypted is refused before it overwrites the state</td>
+<td><code>TestImportRefusesAnythingItCannotVouchFor</code></td>
+</tr>
+<tr>
+<td>Imported state is written <code>0600</code></td>
+<td><code>TestImportWritesTheStateAtSixHundred</code></td>
+</tr>
 </tbody>
 </table>
 <h3 id="releases-and-verification">Releases and verification<a class="headerlink" href="#releases-and-verification" title="Permanent link">&para;</a></h3>
@@ -1995,6 +2088,30 @@ quietly leaving a claim unbacked.</p>
 <td>Rendered secrets are overwritten before removal</td>
 <td><code>TestRemoveWithOverwriteClearsEveryFile</code></td>
 </tr>
+<tr>
+<td>A bundle containing a symlink or a device node is refused, not partially copied</td>
+<td><code>TestCopyTreeRefusesEverythingThatIsNotAFileOrADirectory</code></td>
+</tr>
+<tr>
+<td>A bundle cannot exhaust the disk or the inode table before anything validates it</td>
+<td><code>TestCopyTreeEnforcesItsLimits</code></td>
+</tr>
+<tr>
+<td>The content digest covers paths, contents and the executable bit — but not the umask</td>
+<td><code>TestDigestTreeCoversPathsModesAndContents</code></td>
+</tr>
+<tr>
+<td>A hook is resolved inside the release, never from <code>PATH</code></td>
+<td><code>TestAHookPathCannotEscapeTheRelease</code></td>
+</tr>
+<tr>
+<td>A hook that arrives without the executable bit is a broken bundle, named as one</td>
+<td><code>TestAHookWithoutTheExecutableBitIsRefused</code></td>
+</tr>
+<tr>
+<td>A hook's timeout reaches the whole process group, so nothing survives it</td>
+<td><code>TestATimeoutReachesTheWholeProcessGroup</code></td>
+</tr>
 </tbody>
 </table>
 <h3 id="refusals">Refusals<a class="headerlink" href="#refusals" title="Permanent link">&para;</a></h3>
@@ -2028,6 +2145,67 @@ asserted by <em>which</em> refusal fires — not merely that something failed.</
 <td>A mistyped command is a usage error, not an internal one</td>
 <td><code>TestUnknownInputIsAUsageErrorNotABug</code></td>
 </tr>
+<tr>
+<td>A rollback with no previous release is refused rather than guessed at</td>
+<td><code>TestRollbackWithNothingToRollBackTo</code></td>
+</tr>
+<tr>
+<td>A second operation cannot run against one installation, and is told who holds the lock</td>
+<td><code>TestTheRefusalNamesWhoHoldsItAndForHowLong</code></td>
+</tr>
+<tr>
+<td>A lock record left by a killed process is not reported as a live holder</td>
+<td><code>TestAStaleRecordIsNotReportedAsAHolder</code></td>
+</tr>
+<tr>
+<td>Removing the last recipient, or this machine's own, is refused</td>
+<td><code>TestReencryptForRefusesAnEmptyRecipientSet</code></td>
+</tr>
+<tr>
+<td>An installation written by a newer manager is refused, not silently downgraded</td>
+<td><code>TestAnInstallationFromANewerManagerIsRefusedClearly</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="backups-against-a-real-database">Backups, against a real database<a class="headerlink" href="#backups-against-a-real-database" title="Permanent link">&para;</a></h3>
+<p>A backup that has never been restored is a hope. These run <code>pg_dump</code> and
+<code>psql</code> against a real Postgres, drop the rows in between, and query them back.</p>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A backup taken by the manager can be restored, and the rows come back</td>
+<td><code>TestABackupOfARealDatabaseCanBeRestored</code></td>
+</tr>
+<tr>
+<td>A corrupt backup is refused before it reaches a live database</td>
+<td><code>TestARestoreIsRefusedWhenTheBackupIsCorrupt</code></td>
+</tr>
+<tr>
+<td>A backup belonging to another installation is refused by name</td>
+<td><code>TestARestoreIsRefusedAcrossInstallations</code></td>
+</tr>
+<tr>
+<td>A failed backup leaves nothing a later restore could mistake for one</td>
+<td><code>TestAFailedBackupLeavesNothingBehind</code></td>
+</tr>
+<tr>
+<td>A hook cannot record an artifact outside the backup directory</td>
+<td><code>TestAHookThatWritesOutsideTheBackupDirectoryIsRefused</code></td>
+</tr>
+<tr>
+<td>Retention never removes the only copy, whatever the policy says</td>
+<td><code>TestPruneNeverRemovesTheOnlyCopy</code></td>
+</tr>
+<tr>
+<td>Retention keeps the reasons it was told to keep</td>
+<td><code>TestPruneKeepsTheReasonsItWasToldTo</code></td>
+</tr>
 </tbody>
 </table>
 <h3 id="the-runtime-boundary">The runtime boundary<a class="headerlink" href="#the-runtime-boundary" title="Permanent link">&para;</a></h3>
@@ -2058,6 +2236,18 @@ asserted by <em>which</em> refusal fires — not merely that something failed.</
 <tr>
 <td>A published port, its conflict check and its health probe all follow one value</td>
 <td><code>TestAChangedPortMovesEverythingTogether</code></td>
+</tr>
+<tr>
+<td>A <code>down</code> run by a compensation preserves the volume; only the explicit flag removes it — checked against real Docker</td>
+<td><code>TestComposeDownKeepsTheVolumeAndDownWithVolumesDoesNot</code></td>
+</tr>
+<tr>
+<td>A failed configuration change is unwound, so the recorded value never describes a container that does not exist</td>
+<td><code>TestConfigSetReportsARuntimeThatWillNotRecreate</code></td>
+</tr>
+<tr>
+<td>A failed step stops the operation and the exit code says whether the system was put back</td>
+<td><code>TestEveryPortFailureStopsApply</code></td>
 </tr>
 </tbody>
 </table>
@@ -2090,6 +2280,38 @@ asserted by <em>which</em> refusal fires — not merely that something failed.</
 <td>Output mode is resolved by the documented table</td>
 <td><code>TestResolveModeFollowsItsDocumentedTable</code></td>
 </tr>
+<tr>
+<td>A service that is up but not ready is reported unhealthy by a real web server too</td>
+<td><code>TestHTTPProbeAgainstCaddy</code></td>
+</tr>
+<tr>
+<td>A service that takes seconds to start is waited for, not failed</td>
+<td><code>TestWaitReadyAgainstAServiceThatStartsSlowly</code></td>
+</tr>
+<tr>
+<td>A service that never comes up is named in the refusal, with what it last said</td>
+<td><code>TestWaitReadyTimesOutNamingWhatNeverCameUp</code></td>
+</tr>
+<tr>
+<td>One broken probe never hides the state of the others</td>
+<td><code>TestCheckOnceKeepsGoingWhenOneProberIsBroken</code></td>
+</tr>
+<tr>
+<td>A converged service is not re-probed every two seconds while the rest start</td>
+<td><code>TestWaitReadyStopsReprobingWhatAlreadyPassed</code></td>
+</tr>
+<tr>
+<td><code>doctor</code> works on a machine where every adapter is broken — the only kind anyone runs it on</td>
+<td><code>TestDoctorSurvivesEveryAdapterBeingBroken</code></td>
+</tr>
+<tr>
+<td>An absent healthcheck reads as "no probe", not as "unhealthy" — against real Docker</td>
+<td><code>TestComposeStatusReportsRealHealth</code></td>
+</tr>
+<tr>
+<td>A journal line half-written by a crash does not make <code>status</code> unusable</td>
+<td><code>TestACorruptFinalJournalLineIsDiscardedNotFatal</code></td>
+</tr>
 </tbody>
 </table>
 <h2 id="what-a-test-in-this-table-has-to-do">What a test in this table has to do<a class="headerlink" href="#what-a-test-in-this-table-has-to-do" title="Permanent link">&para;</a></h2>
@@ -2109,6 +2331,18 @@ and pins nothing.</p>
 <li><strong>A parameter's <code>services</code> list is not checked against the topology.</strong> A
   vendor who names one tier for a value two tiers read gets a change that
   reports success and leaves one stale.</li>
+<li><strong><code>config set</code> refuses an undeclared parameter by name; <code>config unset</code> does
+  not.</strong> The merge treats "not recorded" as "already at its default" without
+  asking whether the release declares it, so an operator who mistypes an unset
+  is told it worked. Recorded as
+  <code>TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp</code>, which fails if that
+  ever becomes a refusal.</li>
+<li><strong>The registry probe's success path is not covered.</strong> <code>docker manifest
+  inspect</code> speaks HTTPS unless given <code>--insecure</code>, which the adapter never
+  passes — a reachability probe that accepted plaintext could be answered by
+  anyone on the path. A plain-HTTP registry is the only kind a test can stand
+  up without reconfiguring the daemon, so only the three failure
+  classifications are asserted.</li>
 <li><strong>Overwriting before deletion is meaningful on tmpfs and very little
   elsewhere.</strong> The function's own documentation says so; the test asserts the
   files are overwritten and gone, not that the bytes are unrecoverable.</li>
