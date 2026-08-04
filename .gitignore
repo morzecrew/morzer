@@ -35,6 +35,10 @@ go.work.sum
 
 # Build output
 /morzer
+# Built helpers from tools/, when someone runs `go build ./tools/...`.
+/covmerge
+/docscheck
+/schemagen
 /dist/
 /tmp/
 
