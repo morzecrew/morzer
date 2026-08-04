@@ -1,12 +1,15 @@
 # RFC 0008 — Testing the claims: a coverage programme to 95%
 
-- **Status:** 🚧 In progress — P1 through P5 all complete as designed.
-  Measured **81.6%**, from 70.0% when this was written. Every row of §5.4's
-  real-service table has a real service behind it and all three of §5.3's
-  mechanisms are in use; §15 records where execution diverged. 95% remains
-  unmet: §16 measures the 1438 statements between here and there, and §17
-  plans P6–P11 against them — 1048 have to be covered, the phases target 1155,
-  and the 107-statement margin is published rather than hidden.
+- **Status:** 🚧 In progress — **every phase this RFC defines has shipped, and
+  its target has not been met.** P1–P11 all ran. Coverage is **86.1%**, from
+  70.0% when this was written; 95% needs 1090 uncovered statements to become
+  391, so it is 699 short. §18 measures each phase and says plainly why the
+  estimates in §17 were about three times optimistic. The claims inventory —
+  which decision 8 makes the actual deliverable — is complete at 86 rows and
+  gated by `docs-check`. One piece of P8 is undone: the OCI source, 44
+  statements, the last transport with no real-service test. **No further
+  phases are planned.** Closing this at 86.1% with the target formally revised,
+  or designing P12 onwards, is a decision this RFC does not make for itself.
 - **Scope:** Raises statement coverage from a measured 70% to 95%, and — the
   actual point — makes every security property this project advertises name the
   test that enforces it. Covers counting the coverage the acceptance suite
