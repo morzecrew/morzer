@@ -8,6 +8,7 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -178,15 +179,26 @@ func (h *redactingHandler) redactAttr(a slog.Attr) slog.Attr {
 		return slog.Group(a.Key, out...)
 	case slog.KindAny:
 		// Anything that stringifies could carry a secret through its
-		// String method, so it is rendered and scrubbed rather than
-		// passed through untouched.
-		if s, ok := v.Any().(string); ok {
-			return slog.String(a.Key, h.redactor.Apply(s))
+		// String method, so it is rendered here and scrubbed rather
+		// than left for the handler to format unscrubbed.
+		//
+		// fmt.Stringer is in this list because leaving it out was a
+		// real hole: the comment above claimed every stringifying value
+		// was covered while the code handled only string and error, so
+		// a struct with a String method printed its secret in full.
+		// Found by the test that names each route a secret can take.
+		switch t := v.Any().(type) {
+		case string:
+			return slog.String(a.Key, h.redactor.Apply(t))
+		case error:
+			return slog.String(a.Key, h.redactor.Apply(t.Error()))
+		case fmt.Stringer:
+			return slog.String(a.Key, h.redactor.Apply(t.String()))
 		}
-		if err, ok := v.Any().(error); ok {
-			return slog.String(a.Key, h.redactor.Apply(err.Error()))
-		}
-		return a
+		// Anything else is rendered by the handler, and %v on an
+		// arbitrary value can still reach a String method one level
+		// down. Scrubbing the rendering is the only way to be sure.
+		return slog.String(a.Key, h.redactor.Apply(fmt.Sprintf("%v", v.Any())))
 	default:
 		return a
 	}
