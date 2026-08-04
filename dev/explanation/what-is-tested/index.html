@@ -2003,6 +2003,22 @@ operation that could destroy or weaken it is a refusal.</p>
 <td><code>TestEnsureIdentityRefusesToReplaceOneItCannotParse</code></td>
 </tr>
 <tr>
+<td>A failed decryption says which of three problems it is: a wrong key, a missing identity, or something else</td>
+<td><code>TestDecryptionFailuresAreClassifiedByRemedy</code></td>
+</tr>
+<tr>
+<td>A failed encryption never replaces the existing state with something half-written</td>
+<td><code>TestEncryptionFailuresAreReported</code></td>
+</tr>
+<tr>
+<td>A secret the release stopped declaring is removed from the render directory, not left where the product can read it</td>
+<td><code>TestRenderingRemovesWhatNoDeclarationBacks</code></td>
+</tr>
+<tr>
+<td>Walking away from the recovery question generates a key rather than waiving one</td>
+<td><code>TestEndOfInputDoesNotCancelInAccessibleMode</code></td>
+</tr>
+<tr>
 <td>Creating an identity twice returns the first, never a second key</td>
 <td><code>TestEnsureIdentityIsIdempotent</code></td>
 </tr>
@@ -2097,6 +2113,18 @@ operation that could destroy or weaken it is a refusal.</p>
 <td><code>TestCopyTreeEnforcesItsLimits</code></td>
 </tr>
 <tr>
+<td>Every way an archive can be hostile — an escaping path, a link, a device node, a count or a size — is refused by name</td>
+<td><code>TestEveryWayAnArchiveCanBeHostileIsRefused</code></td>
+</tr>
+<tr>
+<td>An archive's own modes are normalised, never trusted</td>
+<td><code>TestArchiveModesAreNormalisedNotTrusted</code></td>
+</tr>
+<tr>
+<td>A <code>Secret</code> cannot serialise its value, even inside a struct somebody marshals without thinking</td>
+<td><code>TestASecretNeverSerialisesItsValue</code></td>
+</tr>
+<tr>
 <td>The content digest covers paths, contents and the executable bit — but not the umask</td>
 <td><code>TestDigestTreeCoversPathsModesAndContents</code></td>
 </tr>
@@ -2144,6 +2172,30 @@ asserted by <em>which</em> refusal fires — not merely that something failed.</
 <tr>
 <td>A mistyped command is a usage error, not an internal one</td>
 <td><code>TestUnknownInputIsAUsageErrorNotABug</code></td>
+</tr>
+<tr>
+<td>An export only the exporting machine could read is refused: that is not a recovery plan</td>
+<td><code>TestExportRefusesWhenNothingElseCouldReadIt</code></td>
+</tr>
+<tr>
+<td>A recovered machine keeps the original installation id, or every backup it holds belongs to somebody else</td>
+<td><code>TestARecoveredMachineKeepsTheOriginalIdentity</code></td>
+</tr>
+<tr>
+<td>Generating a recovery key does not by itself grant it access</td>
+<td><code>TestSecretRecipientsAddAndRemove</code></td>
+</tr>
+<tr>
+<td>A secret value never reaches argv: stdin is the only channel</td>
+<td><code>TestAPipedSecretIsTakenWhole</code></td>
+</tr>
+<tr>
+<td>A value larger than a megabyte on stdin is refused rather than read</td>
+<td><code>TestAnUnreasonablyLargeValueIsRefused</code></td>
+</tr>
+<tr>
+<td><code>secret edit</code> says it needs a terminal rather than hanging without one</td>
+<td><code>TestSecretEditRefusesWithoutATerminal</code></td>
 </tr>
 <tr>
 <td>A rollback with no previous release is refused rather than guessed at</td>
@@ -2337,6 +2389,17 @@ and pins nothing.</p>
   is told it worked. Recorded as
   <code>TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp</code>, which fails if that
   ever becomes a refusal.</li>
+<li><strong><code>preflight.NoUnfinishedOperation</code> is written but never wired in.</strong> It is
+  documented as refusing to start while a previous operation is flagged, and
+  nothing calls it — so <code>apply</code> runs straight over an operation that asked for
+  a human. Pinned by <code>TestAnUnfinishedOperationDoesNotBlockANewOne</code>, which
+  fails the day it is wired.</li>
+<li><strong>Cancelling the <code>init</code> wizard is not honoured in accessible mode.</strong> huh's
+  accessible renderer ignores the context and discards each field's error, so
+  ctrl-D completes the form with defaults. What is asserted instead is that the
+  defaults are the safe ones.</li>
+<li><strong><code>ByteSize</code> does not round-trip decimal units.</strong> <code>5GB</code> marshals as <code>4.7GiB</code>.
+  Harmless because sizes are read from a manifest and never written back.</li>
 <li><strong>The registry probe's success path is not covered.</strong> <code>docker manifest
   inspect</code> speaks HTTPS unless given <code>--insecure</code>, which the adapter never
   passes — a reachability probe that accepted plaintext could be answered by
