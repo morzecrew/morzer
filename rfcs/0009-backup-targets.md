@@ -3,8 +3,8 @@
 - **Status:** ✅ Complete — shipped 2026-08-04, all three phases. `file://`,
   `ssh://` and `s3://` are wired, the push step fails the backup, `doctor` has
   both checks, and the recovery scenario fetches from a target instead of
-  copying a directory. Nine divergences and defects are recorded as amendments
-  in §12 — one of them (the push step's failure policy) a defect in this RFC
+  copying a directory. Fifteen divergences and defects are recorded as amendments
+  in §12 — six of them found by auditing the shipped implementation on 2026-08-05 — one of them (the push step's failure policy) a defect in this RFC
   that would have deleted the very backup it was protecting, and three of them
   defects the real-service suites found: a host-key pin that failed against
   honest servers, a listing prefix that deleted a neighbouring backup, and a
@@ -532,3 +532,46 @@ manifest **on the target**, which is a file this manager may not have written.
 All three stores now filter after trimming the prefix, and the contract suite
 holds them to it: `removing a backup does not take a neighbour whose id shares
 its prefix`, which fails against the unfixed adapter.
+
+### 2026-08-05 — six defects found by auditing the shipped implementation
+
+Recorded together because they were found in one pass over code that had already
+passed CI, the container suites and the acceptance run. Each is fixed and pinned.
+
+**`--dry-run` mutated.** `backup target add` and `remove` ignored it and changed
+the installation for real. A global flag documented as "plan only, make no
+changes" that lies about one command is a flag nobody can trust on any of them.
+The reachability probe still runs under a dry run, because it reads nothing and
+it is the only question worth asking before adding a target.
+
+**Neither command took the deployment lock.** Every other command that writes
+the installation does. Adding a target concurrently with `config set`, or with
+the installation write an update makes while rolling back, was a lost update:
+both load, both mutate, one change disappears.
+
+**A second `ssh://` target on one host was never handshaked.** Connections were
+cached under `user@host`, so the second target reused the first's connection --
+and therefore its credentials, and therefore **never checked its own host key**.
+An operator could configure one target with a correct pin and a second with a
+wrong one and nothing would object, which defeats decision 4 on the exact path
+it matters. The cache key now covers everything that authenticated the
+connection, hashed, because a map key holding a private key is a private key in
+a heap dump. The same applied, less severely, to the S3 client cache, where a
+rotated secret under an unchanged access key id was ignored.
+
+**Credentials from `--credentials-file` were never registered for redaction.**
+The secret-store path armed the redactor and the file path did not -- and the
+file path is the one a recovery uses. No leak was found, because nothing on that
+path logs or execs the values; the second line of defence was simply not armed.
+
+**The traversal guard was in the wrong place.** A manifest on a target decides
+where a fetch *writes*, and the guard lived in each adapter's key resolution --
+the *read* side. All three adapters had it, so nothing was exploitable, but the
+contract suite never proved it and a fourth adapter could omit it. It now lives
+in `blob.Fetch`, where no adapter can forget it.
+
+Two of the tests written for these initially passed against the unfixed code,
+for the same reason an earlier one did: they asserted on a fetch, and a fetch
+refuses before it writes. Both were rewritten to assert where the decision is
+actually made, and both were re-verified by breaking the fix and watching them
+fail.

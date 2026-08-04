@@ -186,7 +186,19 @@ func Fetch(ctx context.Context, s Store, ref ports.RemoteRef, destDir string) er
 	}
 
 	for _, c := range manifest.Components {
-		if err := getFile(ctx, s, path.Join(ref.ID, c.Path), filepath.Join(destDir, c.Path)); err != nil {
+		// Checked here rather than only in each store's key resolution.
+		//
+		// The stores do refuse a `..` key, so this was never reachable --
+		// but the guard that mattered was on the *read* side, and what a
+		// hostile component path actually decides is where the **write**
+		// goes. Depending on three adapters to each remember a rule that
+		// protects a fourth one's caller is how the fourth adapter ships
+		// without it.
+		local, err := safeDestination(destDir, c.Path)
+		if err != nil {
+			return err
+		}
+		if err := getFile(ctx, s, path.Join(ref.ID, c.Path), local); err != nil {
 			return err
 		}
 	}
@@ -349,6 +361,24 @@ func getFile(ctx context.Context, s Store, key, localPath string) error {
 		return domain.BackupError(err, "cannot write %s", localPath)
 	}
 	return f.Close()
+}
+
+// safeDestination joins a component path onto a destination and refuses one
+// that leaves it.
+//
+// A manifest on a target is a file this manager may not have written -- that is
+// the entire premise of a target being somewhere else. Its component paths
+// decide where a fetch writes, so `../../.ssh/authorized_keys` in one must not
+// be a way for whoever controls the bucket to choose a path on this machine.
+func safeDestination(destDir, component string) (string, error) {
+	clean := filepath.Clean(filepath.FromSlash(component))
+	if component == "" || filepath.IsAbs(clean) ||
+		clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", domain.BackupError(nil,
+			"the backup names a component outside the target: %q", component).
+			WithHint("this backup was not written by this manager; do not restore from it")
+	}
+	return filepath.Join(destDir, clean), nil
 }
 
 // readLocalManifest reads the manifest of a backup about to be pushed.

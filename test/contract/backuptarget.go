@@ -139,6 +139,24 @@ func RunBackupTargetSuite(t *testing.T, newTarget BackupTargetFactory) {
 				"good backup goes")
 	})
 
+	t.Run("a manifest naming a component outside the backup is not pushed", func(t *testing.T) {
+		h := newTarget(t)
+		target, ref := h.Target, h.Ref
+
+		// Only half the story: this is the push side. Where a *fetch*
+		// writes is decided by a manifest already on the target, which
+		// this suite cannot plant through the port -- that guard is
+		// tested directly in the blob package, and end to end against
+		// localdir.
+		local := writeBackup(t, "20260101T000000Z", map[string]string{
+			"database.sql.age": "ciphertext",
+		})
+		rewriteComponentPath(t, local, "database.sql.age", "../../escaped.age")
+
+		_, err := target.Push(context.Background(), ref, local, "20260101T000000Z")
+		require.Error(t, err, "a backup naming a component outside itself was pushed")
+	})
+
 	t.Run("verify reads the backup back and checks it", func(t *testing.T) {
 		h := newTarget(t)
 		target, ref := h.Target, h.Ref
@@ -326,6 +344,29 @@ func RunBackupTargetSuite(t *testing.T, newTarget BackupTargetFactory) {
 				"an unencrypted component reached the target: %s", key)
 		}
 	})
+}
+
+// rewriteComponentPath edits a manifest to name a component somewhere else,
+// without moving the file. It is how the suite builds a backup this manager
+// would not have written.
+func rewriteComponentPath(t *testing.T, dir, from, to string) {
+	t.Helper()
+
+	path := filepath.Join(dir, ports.BackupManifestFileName)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var manifest ports.BackupManifest
+	require.NoError(t, json.Unmarshal(data, &manifest))
+	for i, c := range manifest.Components {
+		if c.Path == from {
+			manifest.Components[i].Path = to
+		}
+	}
+
+	out, err := json.MarshalIndent(manifest, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, out, 0o600))
 }
 
 // writeBackup builds a backup directory the way hookbackup does: components,

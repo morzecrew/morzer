@@ -280,8 +280,26 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 				"every backup at the push step")
 	}
 
+	// The reachability check above runs either way -- it reads and mutates
+	// nothing -- so a dry run still tells an operator whether the target they
+	// are about to add actually answers, which is the only question worth
+	// asking before adding one.
+	if opts.DryRun {
+		return Result{
+			Summary: fmt.Sprintf("would add backup target %s, which answers", ref),
+			Data:    cfg,
+		}, nil
+	}
+
 	inst.Backup.Targets = append(inst.Backup.Targets, cfg)
-	if err := d.saveInstallation(ctx, inst); err != nil {
+
+	// Under the deployment lock, like every other command that writes the
+	// installation. Without it, adding a target concurrently with `config
+	// set` -- or with the installation write an update makes as it rolls
+	// back -- is a lost update: both load, both mutate, and one change
+	// silently disappears.
+	if err := d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts.Options,
+		func(ctx context.Context) error { return d.saveInstallation(ctx, inst) }); err != nil {
 		return Result{}, err
 	}
 
@@ -297,7 +315,7 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 // wants the old copies to stay exactly where they are, and a command that
 // silently erased an off-site archive because its URL was removed from a config
 // file would be the worst possible reading of "remove".
-func TargetRemove(ctx context.Context, d *Deps, url string) (Result, error) {
+func TargetRemove(ctx context.Context, d *Deps, opts Options, url string) (Result, error) {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return Result{}, err
@@ -322,15 +340,21 @@ func TargetRemove(ctx context.Context, d *Deps, url string) (Result, error) {
 			WithHint("run `morzer backup target list` to see them")
 	}
 
-	inst.Backup.Targets = kept
-	if err := d.saveInstallation(ctx, inst); err != nil {
-		return Result{}, err
-	}
-
 	summary := fmt.Sprintf("backup target %s removed; what is already there was left alone", ref)
 	if len(kept) == 0 {
 		summary += "\nevery copy of this deployment's data is now on this machine"
 	}
+
+	if opts.DryRun {
+		return Result{Summary: "would remove backup target " + ref.String()}, nil
+	}
+
+	inst.Backup.Targets = kept
+	if err := d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts,
+		func(ctx context.Context) error { return d.saveInstallation(ctx, inst) }); err != nil {
+		return Result{}, err
+	}
+
 	return Result{Summary: summary}, nil
 }
 
@@ -389,6 +413,13 @@ func (d *Deps) targetsFor(ctx context.Context, opts TargetOptions) ([]ports.Targ
 			return nil, err
 		}
 		if !opts.Credentials.IsZero() {
+			// Registered here as well as in targetCredentials. The
+			// secret-store path arms the redactor; credentials handed in
+			// from a file did not, so the second line of defence was
+			// missing on exactly the path a recovery uses.
+			if d.Redactor != nil {
+				d.Redactor.Register(opts.Credentials.Redactions()...)
+			}
 			return []ports.TargetRef{ref.WithCredentials(opts.Credentials)}, nil
 		}
 		// Not fatal when the installation is unreadable: that is the

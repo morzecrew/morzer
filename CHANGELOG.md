@@ -156,6 +156,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Restoring accepts `--identity` for the case the recovery design exists for: a rebuilt machine has a new key that was never a recipient of the lost machine's backups, and the offline key is what opens them.
 
+- A second SSH backup target on the same host is handshaked in its own right, so its host key is checked rather than inherited from the first target's connection.
+
 - An SSH backup target must pin its host key, and no flag disables checking it. An impostor cannot read a backup, which is encrypted to the deployment's own recipients, but it can accept every push and answer every listing while an operator believes they have off-site copies they do not have.
 
 - Target credentials are named rather than written into the installation, and a target URL carrying a password is refused. The URL is stored on disk, printed by diagnostics and quoted in support requests.

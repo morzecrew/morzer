@@ -17,6 +17,8 @@ package sftp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"io/fs"
@@ -160,7 +162,7 @@ func (t *Target) store(ctx context.Context, ref ports.TargetRef) (*sftpStore, er
 }
 
 func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection, error) {
-	key := ref.User + "@" + ref.Host
+	key := connectionKey(ref)
 
 	t.mu.Lock()
 	if conn, ok := t.conns[key]; ok {
@@ -212,6 +214,25 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 	}
 	t.conns[key] = conn
 	return conn, nil
+}
+
+// connectionKey identifies a connection by everything that authenticated it,
+// not merely by where it went.
+//
+// Keying on `user@host` alone was a defect, and a security-relevant one. Two
+// targets on the same host share a connection under that key, so the second
+// one's credentials are never used and -- worse -- **its host key is never
+// checked**: the pin is verified during the handshake, and the second target
+// does not get a handshake. An operator could configure one target with a
+// correct pin and a second with a wrong one, and nothing would object.
+//
+// The credentials are hashed rather than concatenated: this string is a map
+// key, and a map key holding a private key is a private key in a heap dump.
+func connectionKey(ref ports.TargetRef) string {
+	c := ref.Credentials
+	sum := sha256.Sum256([]byte(
+		c.PrivateKey + "\x00" + c.Passphrase + "\x00" + c.KnownHosts))
+	return ref.User + "@" + ref.Host + "|" + hex.EncodeToString(sum[:8])
 }
 
 func (t *Target) dialTCP(ctx context.Context, addr string) (net.Conn, error) {

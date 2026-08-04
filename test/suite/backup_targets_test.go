@@ -545,7 +545,7 @@ func TestRemovingATargetLeavesWhatIsAlreadyThere(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := ops.TargetRemove(context.Background(), h.Deps, "file://"+offsite)
+	result, err := ops.TargetRemove(context.Background(), h.Deps, ops.Options{}, "file://"+offsite)
 	require.NoError(t, err)
 	assert.Contains(t, result.Summary, "left alone")
 

@@ -331,3 +331,47 @@ func TestVerifyRemoteAgainstNothingIsNotFound(t *testing.T) {
 		Failed().
 		StderrContains("no backups")
 }
+
+// TestDryRunDoesNotChangeTheTargets.
+//
+// `--dry-run` is documented as "plan only, make no changes", and it was adding
+// and removing targets for real. A global flag that lies about one command is a
+// global flag nobody can trust on any of them.
+func TestDryRunDoesNotChangeTheTargets(t *testing.T) {
+	r := NewInstalled(t)
+	offsite := filepath.Join(t.TempDir(), "offsite")
+
+	r.Run("--dry-run", "backup", "target", "add", "file://"+offsite).
+		ExitCode(0).
+		StderrContains("would add")
+
+	r.Run("backup", "target", "list").
+		ExitCode(0).
+		StdoutContains("no backup targets")
+
+	// And the same going the other way.
+	r.Run("backup", "target", "add", "file://"+offsite).ExitCode(0)
+	r.Run("--dry-run", "backup", "target", "remove", "file://"+offsite).
+		ExitCode(0).
+		StderrContains("would remove")
+
+	r.Run("backup", "target", "list").
+		ExitCode(0).
+		StdoutContains(offsite)
+}
+
+// TestADryRunStillReportsWhetherTheTargetAnswers, because that is the only
+// question worth asking before adding one, and it reads nothing and writes
+// nothing.
+func TestADryRunStillReportsWhetherTheTargetAnswers(t *testing.T) {
+	r := NewInstalled(t)
+
+	blocked := filepath.Join(r.Root, "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Run("--dry-run", "backup", "target", "add", "file://"+filepath.Join(blocked, "backups")).
+		Failed().
+		StderrContains("not added")
+}

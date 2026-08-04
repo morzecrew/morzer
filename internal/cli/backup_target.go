@@ -88,7 +88,7 @@ func newBackupTargetRemoveCommand(app *App) *cobra.Command {
 			"retiring one medium for another almost always wants.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := ops.TargetRemove(cmd.Context(), app.Deps, args[0])
+			result, err := ops.TargetRemove(cmd.Context(), app.Deps, app.operationOptions(), args[0])
 			if err != nil {
 				return err
 			}

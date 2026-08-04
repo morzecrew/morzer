@@ -15,6 +15,8 @@ package s3
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"io/fs"
@@ -133,7 +135,13 @@ func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {
 		return nil, err
 	}
 
-	key := endpoint + "|" + creds.AccessKeyID + "|" + creds.Region
+	// Keyed on every value that authenticates the client, not just the access
+	// key id: a rotated secret under the same id would otherwise be ignored
+	// for the life of the process. Hashed, because a map key holding a secret
+	// access key is a secret access key in a heap dump.
+	sum := sha256.Sum256([]byte(
+		creds.AccessKeyID + "\x00" + creds.SecretAccessKey + "\x00" + creds.SessionToken))
+	key := endpoint + "|" + creds.Region + "|" + hex.EncodeToString(sum[:8])
 
 	t.mu.Lock()
 	if client, ok := t.clients[key]; ok {

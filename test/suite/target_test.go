@@ -15,7 +15,9 @@ import (
 
 	"github.com/morzecrew/morzer/internal/adapters/target"
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
+	"github.com/morzecrew/morzer/internal/adapters/target/sftp"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -466,4 +468,78 @@ func TestReadingAComponentThatIsNotThereIsNotFound(t *testing.T) {
 	assert.True(t, errors.Is(err, domain.ErrNotFound), "got: %v", err)
 	assert.Contains(t, domain.AsError(err).Hint, "did not finish",
 		"the remedy has to say the push was incomplete, not that the disk is broken")
+}
+
+// TestASecondTargetOnOneHostGetsItsOwnHandshake.
+//
+// Connections are cached so one backup does not open a session per file. The
+// cache key was `user@host`, which meant a second target on the same host
+// reused the first one's connection — and therefore was never handshaked, so
+// **its host key was never checked**. An operator could configure one target
+// with a correct pin and a second with a wrong one, and nothing would object.
+//
+// The pin is what makes "the backup reached the target" mean "the backup
+// reached *that* machine", so a path that skips it is worth a test of its own.
+func TestASecondTargetOnOneHostGetsItsOwnHandshake(t *testing.T) {
+	client := newSSHKey(t)
+	host := newSSHKey(t)
+	impostor := newSSHKey(t)
+
+	root := t.TempDir()
+	addr := startInProcessSSH(t, host, client.public, root)
+
+	adapter := sftp.New()
+	t.Cleanup(func() { _ = adapter.Close() })
+
+	good := ports.TargetRef{
+		Scheme: "ssh", Host: addr, Path: root, User: "ops",
+		URL: "ssh://ops@" + addr + root,
+		Credentials: ports.TargetCredentials{
+			PrivateKey: client.private,
+			KnownHosts: sshKnownHostsLine(t, addr, host.public),
+		},
+	}
+	_, err := adapter.List(context.Background(), good)
+	require.NoError(t, err, "the correctly pinned target should connect")
+
+	// Same user, same host, a pin for a key this server does not have.
+	bad := good
+	bad.Credentials.KnownHosts = sshKnownHostsLine(t, addr, impostor.public)
+
+	_, err = adapter.List(context.Background(), bad)
+	require.Error(t, err,
+		"a second target on the same host reused the first one's connection, so "+
+			"its host key was never checked")
+}
+
+// TestCredentialsFromAFileAreRedactedToo.
+//
+// The secret-store path armed the redactor and the file path did not — which
+// is the path a recovery uses, and the one where an operator has a private key
+// sitting in a file they just typed the name of.
+func TestCredentialsFromAFileAreRedactedToo(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	const secret = "AKIA-THIS-IS-THE-SECRET-HALF"
+	offsite := filepath.Join(t.TempDir(), "elsewhere")
+	require.NoError(t, os.MkdirAll(offsite, 0o700))
+
+	_, err := ops.ListRemote(context.Background(), h.Deps, ops.TargetOptions{
+		URL: "file://" + offsite,
+		Credentials: ports.TargetCredentials{
+			AccessKeyID: "AKIAEXAMPLE", SecretAccessKey: secret,
+		},
+	})
+	require.NoError(t, err)
+
+	var registered bool
+	for _, v := range h.Deps.Redactor.Values() {
+		if v == secret {
+			registered = true
+		}
+	}
+	assert.True(t, registered,
+		"a credential supplied from a file was never registered for redaction, so "+
+			"the second line of defence is missing on the recovery path")
 }
