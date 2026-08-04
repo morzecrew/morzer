@@ -207,6 +207,16 @@ type RestoreOptions struct {
 	// enough to be checked had already been forced. This is the flag that
 	// actually says "yes, another machine's data, on purpose".
 	AllowCrossInstallation bool
+
+	// IdentityFile decrypts the backup, defaulting to this machine's own
+	// age identity.
+	//
+	// The case it exists for: the machine that took the backup is gone, and
+	// the key in hand is the offline recovery one. A rebuilt machine has a
+	// new identity that was never a recipient of the old machine's backups,
+	// so without this the backups an operator carefully kept offsite would
+	// be the one thing they could not read.
+	IdentityFile string
 }
 
 // Restore returns the system to a backed-up state.
@@ -400,6 +410,7 @@ func stepRunRestore(d *Deps, inst domain.Installation, ref ports.BackupRef, opts
 				// after the one thing that disabled it.
 				Force:                opts.AllowCrossInstallation,
 				TargetInstallationID: inst.ID,
+				IdentityFile:         opts.IdentityFile,
 			})
 		},
 	}

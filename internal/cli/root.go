@@ -519,6 +519,23 @@ func (a *App) attachBackupEngine(ctx context.Context) error {
 		Installation:   inst,
 		Paths:          d.Paths,
 		ManagerVersion: a.Build.Version,
+
+		// A backup is encrypted to whoever can already read this
+		// deployment's secrets -- this machine's key plus whatever
+		// offline and operator keys have been added. Read at backup
+		// time rather than captured here, so a key added this morning
+		// can read a backup taken this afternoon.
+		Recipients: func(ctx context.Context) ([]string, error) {
+			recipients, err := d.Secrets.Recipients(ctx)
+			if err != nil {
+				return nil, err
+			}
+			keys := make([]string, 0, len(recipients))
+			for _, r := range recipients {
+				keys = append(keys, r.PublicKey)
+			}
+			return keys, nil
+		},
 	})
 	return nil
 }

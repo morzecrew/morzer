@@ -121,6 +121,22 @@ func (m *machine) wireBackupEngine(ctx context.Context) {
 		Installation:   inst,
 		Paths:          m.Paths,
 		ManagerVersion: "1.0.0",
+
+		// The real recipient list, so the backups these tests take are
+		// encrypted to the same keys as the secret state -- which is
+		// the whole point of the arrangement and what makes the
+		// recovery scenario below prove anything.
+		Recipients: func(ctx context.Context) ([]string, error) {
+			recipients, err := m.Deps.Secrets.Recipients(ctx)
+			if err != nil {
+				return nil, err
+			}
+			keys := make([]string, 0, len(recipients))
+			for _, r := range recipients {
+				keys = append(keys, r.PublicKey)
+			}
+			return keys, nil
+		},
 	})
 }
 
@@ -368,9 +384,15 @@ func TestRecoveryKeepsBackupsRestorable(t *testing.T) {
 
 	// No --allow-cross-installation. The backup is accepted because the ID
 	// genuinely matches, not because a flag waved the check away.
+	//
+	// The offline key opens it. The rebuilt machine has a new identity that
+	// was never a recipient of the lost machine's backups, so the key the
+	// operator kept off the machine is the only thing that can read them --
+	// which is exactly the arrangement `init` insists on at the start.
 	restoreResult, err := ops.Restore(ctx, rebuilt.Deps, ops.RestoreOptions{
 		Options:                 ops.Options{Force: true},
 		ConfirmedInstallationID: originInst.ID,
+		IdentityFile:            recoveryPath,
 	})
 	require.NoError(t, err,
 		"a backup taken before the machine was lost must restore onto the rebuilt one")
@@ -390,7 +412,7 @@ func TestBackupsAreRefusedByAFreshlyInitialisedMachine(t *testing.T) {
 	requireSOPS(t)
 	ctx := context.Background()
 
-	_, recoveryPub := generateRecoveryKey(t)
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
 	origin := initOriginMachine(t, ctx, recoveryPub)
 	origin.wireBackupEngine(ctx)
 
@@ -427,10 +449,16 @@ func TestBackupsAreRefusedByAFreshlyInitialisedMachine(t *testing.T) {
 	// The escape hatch is a flag of its own. `--force` cannot serve: every
 	// restore already requires it, so using it here would have made this
 	// guard unreachable -- which is exactly the defect this test found.
+	//
+	// It still needs a key that can read the backup. This machine shares
+	// the recovery *public* key with the one that took it, which is what
+	// makes the backup addressable at all; the private half is what opens
+	// it, and it is deliberately not on either machine.
 	_, err = ops.Restore(ctx, fresh.Deps, ops.RestoreOptions{
 		Options:                 ops.Options{Force: true},
 		ConfirmedInstallationID: freshInst.ID,
 		AllowCrossInstallation:  true,
+		IdentityFile:            recoveryPath,
 	})
 	require.NoError(t, err,
 		"restoring another deployment's data on purpose must still be possible")

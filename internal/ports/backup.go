@@ -15,6 +15,9 @@ import (
 //     installation ID, timestamp, component list, checksums);
 //   - plaintext secrets are never included -- the encrypted SOPS file is,
 //     the rendered /run files are not;
+//   - nothing in a backup is readable without a key except its manifest, so a
+//     backup that leaves the machine carries no credential and no data with
+//     it;
 //   - restore requires explicit confirmation from the CLI layer.
 type BackupEngine interface {
 	Create(ctx context.Context, scope Scope, labels map[string]string) (BackupRef, error)
@@ -92,8 +95,35 @@ type ComponentRecord struct {
 	Component Component `json:"component"`
 	Path      string    `json:"path"`
 	Size      int64     `json:"size"`
-	SHA256    string    `json:"sha256"`
+
+	// SHA256 is the digest of the file *as stored*, so `backup verify` can
+	// detect rot without holding a key. Tampering is caught separately and
+	// more strongly: the encryption is authenticated, so an altered
+	// ciphertext fails to decrypt rather than producing altered plaintext.
+	SHA256 string `json:"sha256"`
+
+	// Encryption names how the stored file is protected, empty for a
+	// component written before this was recorded.
+	//
+	// A field rather than an inference from the extension: a restore has to
+	// know what to do with a file it did not write, and reading that off a
+	// filename is how a renamed artifact becomes an unreadable backup.
+	Encryption Encryption `json:"encryption,omitempty"`
 }
+
+// Encryption is how one component is stored.
+type Encryption string
+
+const (
+	// EncryptionNone is a component written before backups were encrypted.
+	// Restores still read them; nothing writes them any more.
+	EncryptionNone Encryption = ""
+
+	// EncryptionAge is the deployment's own age recipients: this machine's
+	// identity plus whatever offline and operator keys `secret recipients`
+	// has been told about.
+	EncryptionAge Encryption = "age"
+)
 
 type RestoreOptions struct {
 	// Components limits what is restored; empty restores everything the
@@ -109,6 +139,15 @@ type RestoreOptions struct {
 	// restoring one deployment's data over another is almost always a
 	// mistake, and occasionally exactly what disaster recovery means.
 	TargetInstallationID string
+
+	// IdentityFile decrypts the backup, defaulting to this machine's own
+	// age identity.
+	//
+	// It exists for the case the whole recovery design is for: the machine
+	// that took the backup is gone, and the key in hand is the offline one.
+	// Without it an encrypted backup would be readable only by the host
+	// that no longer exists.
+	IdentityFile string
 }
 
 // RetentionPolicy governs pruning.

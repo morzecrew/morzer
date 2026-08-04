@@ -96,12 +96,18 @@ morzer update ./demo-1.2.0
 ### 4. Restore the data
 
 ```sh
-morzer restore --force --confirm <installation-id>
+morzer restore --force --confirm <installation-id> --identity ~/recovery.key
 ```
 
 The id is the original one, which is exactly why this works: backups are stamped
 with the installation they came from, and a machine rebuilt with a fresh id
 would have its own backups refused.
+
+`--identity` for the second reason the recovery key exists. Import generated a
+**new** age identity for this host, and that key was never a recipient of the
+backups the lost machine took — the offline key was. So the same key opens both
+the export and the backups, which is why keeping one off the machine is not
+optional.
 
 ### 5. Check, then decommission
 

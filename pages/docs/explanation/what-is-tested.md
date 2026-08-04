@@ -122,6 +122,12 @@ A backup that has never been restored is a hope. These run `pg_dump` and
 | A backup belonging to another installation is refused by name | `TestARestoreIsRefusedAcrossInstallations` |
 | A failed backup leaves nothing a later restore could mistake for one | `TestAFailedBackupLeavesNothingBehind` |
 | A hook cannot record an artifact outside the backup directory | `TestAHookThatWritesOutsideTheBackupDirectoryIsRefused` |
+| Nothing in a backup is readable without a key except its manifest | `TestABackupOfARealDatabaseCanBeRestored` |
+| A backup is readable by every recipient of the deployment's secrets, and by nobody else | `TestEveryRecipientCanOpenIt` |
+| A backup altered by one bit is refused rather than decrypted into altered data | `TestAlteredCiphertextIsRefusedRatherThanDecrypted` |
+| A truncated backup — an interrupted upload — is refused | `TestTruncatedCiphertextIsRefused` |
+| A backup is never written in plaintext because the recipient list was unavailable | `TestEncryptingToNobodyIsRefused` |
+| A backup taken before backups were encrypted still restores | `TestASchemaOneBackupStillRestores` |
 | Retention never removes the only copy, whatever the policy says | `TestPruneNeverRemovesTheOnlyCopy` |
 | Retention keeps the reasons it was told to keep | `TestPruneKeepsTheReasonsItWasToldTo` |
 

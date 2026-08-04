@@ -29,6 +29,31 @@ manifest, and verifies the checksums by re-reading what was written.
 The manifest is what makes a backup self-describing: which release took it,
 which database schema was current, and which installation it belongs to.
 
+## Everything in a backup is encrypted except its manifest
+
+Each component is encrypted to the same recipients as the secret state — this
+machine's age key plus whatever offline and operator keys `secret recipients`
+knows about. So a backup you copy to another machine, upload to a bucket, or
+leave on a disk carries no credential and no data with it.
+
+The manifest stays readable on purpose. `morzer backup list` works on a machine
+whose key is gone, and an operator looking at a directory of ciphertext can
+still tell what it is and which installation it belongs to.
+
+```sh
+morzer secret recipients list   # who can read this deployment's backups
+```
+
+Two consequences worth knowing before you need them:
+
+- **A backup is readable by the recipients it had when it was taken.** Adding
+  a recovery key today does not make yesterday's backups readable by it. Add
+  the key first, then take a backup.
+- **Verification needs no key.** The checksum is of the stored bytes, so
+  `backup verify` detects rot without decrypting anything. Tampering is caught
+  separately and more strongly: the encryption is authenticated, so an altered
+  backup fails to decrypt rather than restoring altered data.
+
 ```sh
 morzer backup --component database --component files
 ```
@@ -62,11 +87,16 @@ most recent backup is never pruned**, whatever the number says.
 ```sh
 morzer restore --force --confirm <installation-id>
 morzer restore --backup <id> --force --confirm <installation-id>
+morzer restore --force --confirm <id> --identity ~/demo-recovery.key
 ```
 
 Destructive, and it asks for two things:
 
 - `--force`, which authorises destroying what is currently there.
+- `--identity`, when the backup was taken by a machine that no longer exists.
+  A rebuilt machine has a new key that was never a recipient of the old
+  machine's backups; the offline recovery key is what opens them. See
+  [recovering a lost machine](recovering-a-lost-machine.md).
 - `--confirm <installation-id>`, typed out. A y/n prompt can be answered by
   reflex; an identifier you have to go and look up cannot.
 

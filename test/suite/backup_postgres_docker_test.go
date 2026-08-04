@@ -4,6 +4,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,7 +17,10 @@ import (
 
 	"github.com/morzecrew/morzer/internal/adapters/backup/hookbackup"
 	"github.com/morzecrew/morzer/internal/adapters/hooks"
+	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/agecrypt"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -153,17 +157,25 @@ func writeHook(t *testing.T, path, body string) {
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o700))
 }
 
-func pgEngine(t *testing.T, rel domain.Release, root string) *hookbackup.Engine {
+func pgEngine(t *testing.T, rel domain.Release, root string) (*hookbackup.Engine, string) {
 	t.Helper()
+
+	paths := domain.PathsUnder(root, "demo")
+	identity := paths.AgeIdentityFile()
+	public, err := sopsage.GenerateIdentity(identity)
+	require.NoError(t, err)
 
 	return hookbackup.New(hookbackup.Config{
 		Hooks:          hooks.NewRunner(infraexec.New()),
 		Release:        rel,
 		Installation:   domain.Installation{ID: "inst-postgres-fixture", Product: "demo"},
-		Paths:          domain.PathsUnder(root, "demo"),
+		Paths:          paths,
 		ManagerVersion: "0.0.0-test",
 		Now:            func() time.Time { return time.Now().UTC() },
-	})
+		Recipients: func(context.Context) ([]string, error) {
+			return []string{public}, nil
+		},
+	}), identity
 }
 
 // TestABackupOfARealDatabaseCanBeRestored is the round trip. Everything in the
@@ -172,7 +184,7 @@ func TestABackupOfARealDatabaseCanBeRestored(t *testing.T) {
 	pg := startPostgres(t)
 	root := t.TempDir()
 	rel := pgRelease(t, pg.container.Name)
-	engine := pgEngine(t, rel, root)
+	engine, _ := pgEngine(t, rel, root)
 	ctx := context.Background()
 
 	require.Equal(t, "3", pg.rowCount(t), "the fixture did not load")
@@ -184,10 +196,29 @@ func TestABackupOfARealDatabaseCanBeRestored(t *testing.T) {
 	assert.Greater(t, ref.Size, int64(0), "the backup reports a size of zero, so "+
 		"retention has nothing to account for")
 
-	// The dump is really there and really contains the data.
-	dump, err := os.ReadFile(filepath.Join(ref.Path, "database.sql"))
+	// The dump is there, and it is not readable. This is the whole claim:
+	// a backup that leaves the machine carries no data with it.
+	stored, err := os.ReadFile(filepath.Join(ref.Path, "database.sql.age"))
+	require.NoError(t, err, "the encrypted dump is not where the manifest says")
+	assert.NotContains(t, string(stored), "katherine",
+		"the stored dump is readable, so anyone who finds the file has the data")
+
+	_, err = os.Stat(filepath.Join(ref.Path, "database.sql"))
+	assert.Error(t, err, "the plaintext dump was left beside the encrypted one")
+
+	// Nothing in the directory is readable except the manifest, which stays
+	// plaintext so `backup list` works on a machine whose key is gone.
+	entries, err := os.ReadDir(ref.Path)
 	require.NoError(t, err)
-	assert.Contains(t, string(dump), "katherine")
+	for _, e := range entries {
+		if e.Name() == hookbackup.ManifestFileName {
+			continue
+		}
+		body, readErr := os.ReadFile(filepath.Join(ref.Path, e.Name()))
+		require.NoError(t, readErr)
+		assert.True(t, strings.HasPrefix(string(body), "age-encryption.org/"),
+			"%s is not encrypted", e.Name())
+	}
 
 	// What the manager recorded about it.
 	manifest, err := engine.Inspect(ctx, ref)
@@ -200,7 +231,7 @@ func TestABackupOfARealDatabaseCanBeRestored(t *testing.T) {
 
 	var recorded ports.ComponentRecord
 	for _, c := range manifest.Components {
-		if c.Path == "database.sql" {
+		if c.Path == "database.sql.age" {
 			recorded = c
 		}
 	}
@@ -208,7 +239,12 @@ func TestABackupOfARealDatabaseCanBeRestored(t *testing.T) {
 		"the manager did not checksum the hook's artifact, so the backup "+
 			"cannot be verified")
 	assert.Equal(t, ports.ComponentDatabase, recorded.Component)
-	assert.Equal(t, int64(len(dump)), recorded.Size)
+	assert.Equal(t, ports.EncryptionAge, recorded.Encryption,
+		"the manifest does not record how the component is stored, so a restore "+
+			"cannot know whether to decrypt it")
+	assert.Equal(t, int64(len(stored)), recorded.Size,
+		"the recorded size is not the size of the stored file, which is what "+
+			"`backup verify` compares against")
 
 	require.NoError(t, engine.Verify(ctx, ref))
 
@@ -232,19 +268,20 @@ func TestABackupOfARealDatabaseCanBeRestored(t *testing.T) {
 func TestARestoreIsRefusedWhenTheBackupIsCorrupt(t *testing.T) {
 	pg := startPostgres(t)
 	root := t.TempDir()
-	engine := pgEngine(t, pgRelease(t, pg.container.Name), root)
+	engine, _ := pgEngine(t, pgRelease(t, pg.container.Name), root)
 	ctx := context.Background()
 
 	ref, err := engine.Create(ctx, ports.Scope{Reason: "manual"}, nil)
 	require.NoError(t, err)
 
 	// A single flipped byte, which is what bit rot looks like.
-	dumpPath := filepath.Join(ref.Path, "database.sql")
+	dumpPath := filepath.Join(ref.Path, "database.sql.age")
 	data, err := os.ReadFile(dumpPath)
 	require.NoError(t, err)
 	data[len(data)/2] ^= 0x20
 	require.NoError(t, os.WriteFile(dumpPath, data, 0o600))
 
+	// Two guards now, and the checksum is the one that needs no key.
 	err = engine.Verify(ctx, ref)
 	require.Error(t, err, "a corrupted dump passed verification")
 	assert.Contains(t, err.Error(), "checksum mismatch")
@@ -265,7 +302,7 @@ func TestARestoreIsRefusedWhenTheBackupIsCorrupt(t *testing.T) {
 func TestARestoreIsRefusedAcrossInstallations(t *testing.T) {
 	pg := startPostgres(t)
 	root := t.TempDir()
-	engine := pgEngine(t, pgRelease(t, pg.container.Name), root)
+	engine, _ := pgEngine(t, pgRelease(t, pg.container.Name), root)
 	ctx := context.Background()
 
 	ref, err := engine.Create(ctx, ports.Scope{}, nil)
@@ -308,7 +345,7 @@ echo "pg_dump: error: connection to server was lost" >&2
 exit 1
 `)
 
-	engine := pgEngine(t, rel, root)
+	engine, _ := pgEngine(t, rel, root)
 	ctx := context.Background()
 
 	_, err := engine.Create(ctx, ports.Scope{}, nil)
@@ -343,7 +380,8 @@ docker exec %[1]s pg_dump -U %[2]s %[3]s > %[4]s
 printf '{"artifacts":[{"name":"db","path":"%[4]s"}]}' >&3
 `, pg.container.Name, pgUser, pgDatabase, stray))
 
-	_, err := pgEngine(t, rel, root).Create(context.Background(), ports.Scope{}, nil)
+	backupEngine, _ := pgEngine(t, rel, root)
+	_, err := backupEngine.Create(context.Background(), ports.Scope{}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "outside the backup directory")
 	assert.Contains(t, domain.AsError(err).Hint, "BACKUP_DIR",
@@ -355,7 +393,7 @@ printf '{"artifacts":[{"name":"db","path":"%[4]s"}]}' >&3
 func TestPruneKeepsTheReasonsItWasToldTo(t *testing.T) {
 	pg := startPostgres(t)
 	root := t.TempDir()
-	engine := pgEngine(t, pgRelease(t, pg.container.Name), root)
+	engine, _ := pgEngine(t, pgRelease(t, pg.container.Name), root)
 	ctx := context.Background()
 
 	reasons := []string{"scheduled", "pre-update", "manual"}
@@ -407,7 +445,7 @@ func TestPruneKeepsTheReasonsItWasToldTo(t *testing.T) {
 func TestPruneNeverRemovesTheOnlyCopy(t *testing.T) {
 	pg := startPostgres(t)
 	root := t.TempDir()
-	engine := pgEngine(t, pgRelease(t, pg.container.Name), root)
+	engine, _ := pgEngine(t, pgRelease(t, pg.container.Name), root)
 	ctx := context.Background()
 
 	_, err := engine.Create(ctx, ports.Scope{}, nil)
@@ -420,4 +458,79 @@ func TestPruneNeverRemovesTheOnlyCopy(t *testing.T) {
 	remaining, err := engine.List(ctx)
 	require.NoError(t, err)
 	assert.Len(t, remaining, 1, "a retention policy of zero deleted the only backup")
+}
+
+// TestASchemaOneBackupStillRestores is the compatibility rule this project
+// applies everywhere: a new manager reads an old backup.
+//
+// A backup taken before backups were encrypted holds a plaintext dump and a
+// manifest with no `encryption` field. It has to restore untouched, because an
+// operator upgrading the manager has a directory full of them and no way to
+// re-take one for a machine that is already gone.
+func TestASchemaOneBackupStillRestores(t *testing.T) {
+	pg := startPostgres(t)
+	root := t.TempDir()
+	rel := pgRelease(t, pg.container.Name)
+	engine, identity := pgEngine(t, rel, root)
+	ctx := context.Background()
+
+	ref, err := engine.Create(ctx, ports.Scope{Reason: "manual"}, nil)
+	require.NoError(t, err)
+
+	// Rewrite it into the shape the previous manager produced: plaintext
+	// artifacts, no encryption field, schema 1.
+	downgradeToSchemaOne(t, ctx, ref.Path, engine, identity)
+
+	pg.sql(t, `DELETE FROM customers;`)
+	require.Equal(t, "0", pg.rowCount(t))
+
+	require.NoError(t, engine.Restore(ctx, ref, ports.RestoreOptions{
+		TargetInstallationID: "inst-postgres-fixture",
+	}), "a backup taken by an older manager could not be restored")
+
+	assert.Equal(t, "3", pg.rowCount(t))
+}
+
+// downgradeToSchemaOne decrypts a backup in place and rewrites its manifest,
+// producing exactly what the previous manager wrote.
+func downgradeToSchemaOne(
+	t *testing.T, ctx context.Context, dir string, engine *hookbackup.Engine, identity string,
+) {
+	t.Helper()
+
+	manifest, err := engine.Inspect(ctx, ports.BackupRef{Path: dir})
+	require.NoError(t, err)
+
+	components := make([]ports.ComponentRecord, 0, len(manifest.Components))
+	for _, c := range manifest.Components {
+		sealed, openErr := os.Open(filepath.Join(dir, c.Path))
+		require.NoError(t, openErr)
+
+		plainName := strings.TrimSuffix(c.Path, ".age")
+		out, createErr := os.OpenFile(filepath.Join(dir, plainName),
+			os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+		require.NoError(t, createErr)
+
+		require.NoError(t, agecrypt.Decrypt(out, sealed, identity))
+		require.NoError(t, out.Close())
+		require.NoError(t, sealed.Close())
+		require.NoError(t, os.Remove(filepath.Join(dir, c.Path)))
+
+		sum, digestErr := atomicfs.DigestFile(filepath.Join(dir, plainName))
+		require.NoError(t, digestErr)
+		info, statErr := os.Stat(filepath.Join(dir, plainName))
+		require.NoError(t, statErr)
+
+		components = append(components, ports.ComponentRecord{
+			Component: c.Component, Path: plainName,
+			Size: info.Size(), SHA256: sum,
+		})
+	}
+
+	manifest.SchemaVersion = 1
+	manifest.Components = components
+	body, err := json.MarshalIndent(manifest, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, hookbackup.ManifestFileName), append(body, '\n'), 0o600))
 }

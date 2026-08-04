@@ -134,6 +134,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Secret state is encrypted at rest for the machine and for an offline recovery recipient. Removing the last recipient, or the machine's own, is refused because either would make the state permanently unreadable.
 
+- Backups are encrypted to the same recipients as the secret state, so nothing in a backup is readable without a key except its manifest. Previously a backup held the database dump in plaintext, which mattered little while backups stayed on the machine and matters a great deal once one leaves it.
+
+- Restoring accepts `--identity` for the case the recovery design exists for: a rebuilt machine has a new key that was never a recipient of the lost machine's backups, and the offline key is what opens them.
+
 - Rendered secrets are written read-only to the owner inside an owner-only directory on temporary storage, and files no longer backed by a declaration are removed so stale credentials do not linger.
 
 - Generated configuration contains paths to secrets rather than the values themselves, so a configuration file on disk never holds a credential.

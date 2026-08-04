@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -34,7 +35,13 @@ const Name = "hooks"
 const ManifestFileName = "backup.json"
 
 // BackupManifestSchemaVersion versions that header.
-const BackupManifestSchemaVersion = 1
+//
+// 2 records how each component is stored. A schema-1 backup holds plaintext
+// artifacts and is still restorable: the component's Encryption field is empty
+// and the restore uses the file as it finds it. That is the compatibility rule
+// this project applies everywhere -- a new manager reads an old backup, an old
+// manager refuses a new one clearly.
+const BackupManifestSchemaVersion = 2
 
 // Engine is the hook-coordinating backup engine.
 type Engine struct {
@@ -49,6 +56,12 @@ type Engine struct {
 	managerVersion string
 	newID          func() string
 	now            func() time.Time
+
+	// recipients answers who may read a backup. It is a function rather
+	// than a list because the answer changes: `secret recipients add` is a
+	// command, and a backup taken after it must be readable by the key it
+	// added.
+	recipients func(context.Context) ([]string, error)
 }
 
 // Config wires the engine. Every field is required except the clock and ID
@@ -59,6 +72,13 @@ type Config struct {
 	Installation   domain.Installation
 	Paths          domain.Paths
 	ManagerVersion string
+
+	// Recipients supplies the age public keys a backup is encrypted to,
+	// normally the secret store's own recipient list.
+	//
+	// Required. An engine that cannot answer it refuses to take a backup
+	// rather than writing a plaintext one -- see Create.
+	Recipients func(context.Context) ([]string, error)
 
 	NewID func() string
 	Now   func() time.Time
@@ -73,6 +93,7 @@ func New(cfg Config) *Engine {
 		managerVersion: cfg.ManagerVersion,
 		newID:          cfg.NewID,
 		now:            cfg.Now,
+		recipients:     cfg.Recipients,
 	}
 	if e.now == nil {
 		e.now = time.Now
@@ -147,6 +168,23 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		return ports.BackupRef{}, err
 	}
 	records = append(records, hookRecords...)
+
+	// Encrypted last, so the hook and the copy above stay unchanged: they
+	// write plaintext into a 0700 directory, and it is protected before the
+	// backup is complete enough for anything to move it anywhere.
+	//
+	// Everything except backup.json, which stays readable so `backup list`
+	// works on a machine whose key is gone -- and so an operator staring at
+	// a directory of ciphertext can tell what it is.
+	recipients, err := e.backupRecipients(ctx)
+	if err != nil {
+		_ = atomicfs.RemoveWithOverwrite(dir)
+		return ports.BackupRef{}, err
+	}
+	if records, err = encryptComponents(dir, records, recipients); err != nil {
+		_ = atomicfs.RemoveWithOverwrite(dir)
+		return ports.BackupRef{}, err
+	}
 
 	manifest := ports.BackupManifest{
 		SchemaVersion:  BackupManifestSchemaVersion,
@@ -281,6 +319,99 @@ func recordArtifacts(dir string, artifacts []ports.HookArtifact) ([]ports.Compon
 	return out, nil
 }
 
+// backupRecipients answers who may read this backup, and refuses to proceed
+// without an answer.
+//
+// A plaintext backup is exactly the gap this closes, so falling back to one
+// when the recipient list cannot be read would keep the gap alive and make it
+// invisible: the operator would have a backup, it would restore, and it would
+// be readable by anyone who found the file.
+func (e *Engine) backupRecipients(ctx context.Context) ([]string, error) {
+	if e.recipients == nil {
+		return nil, domain.Internal(nil,
+			"the backup engine was wired without a recipient source")
+	}
+	keys, err := e.recipients(ctx)
+	if err != nil {
+		return nil, domain.BackupError(err, "cannot determine who may read this backup")
+	}
+	if len(keys) == 0 {
+		return nil, domain.BackupError(nil,
+			"this installation has no recipients, so a backup could not be encrypted").
+			WithHint("run `morzer secret recipients list` -- an installation always " +
+				"has at least this machine's own key, so an empty list means the " +
+				"secret state is unreadable and `morzer doctor` will say why")
+	}
+	return keys, nil
+}
+
+// encryptComponents replaces each recorded file with its encrypted form.
+//
+// The plaintext is overwritten before removal rather than merely unlinked.
+// That is meaningful on tmpfs and very little else -- the backups directory is
+// ordinarily not tmpfs -- but it costs one write and removes the easiest case.
+func encryptComponents(
+	dir string, records []ports.ComponentRecord, recipients []string,
+) ([]ports.ComponentRecord, error) {
+	out := make([]ports.ComponentRecord, 0, len(records))
+
+	for _, rec := range records {
+		plain := filepath.Join(dir, rec.Path)
+		encrypted := plain + agecrypt.Extension
+
+		if err := encryptFile(plain, encrypted, recipients); err != nil {
+			return nil, err
+		}
+		if err := atomicfs.RemoveWithOverwrite(plain); err != nil {
+			return nil, err
+		}
+
+		// The digest is of the stored bytes, so `backup verify` needs no
+		// key. Tampering is caught by the decryption itself, which is
+		// authenticated.
+		sum, err := atomicfs.DigestFile(encrypted)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(encrypted)
+		if err != nil {
+			return nil, domain.BackupError(err, "cannot stat %s", encrypted)
+		}
+
+		rec.Path = rec.Path + agecrypt.Extension
+		rec.SHA256 = sum
+		rec.Size = info.Size()
+		rec.Encryption = ports.EncryptionAge
+		out = append(out, rec)
+	}
+	return out, nil
+}
+
+func encryptFile(src, dst string, recipients []string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return domain.BackupError(err, "cannot read %s", src)
+	}
+	defer func() { _ = in.Close() }()
+
+	// 0600 and created before anything is written: a backup artifact is
+	// never briefly world-readable, even as ciphertext.
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return domain.BackupError(err, "cannot create %s", dst)
+	}
+
+	if err := agecrypt.Encrypt(out, in, recipients); err != nil {
+		_ = out.Close()
+		_ = atomicfs.RemoveAll(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return domain.BackupError(err, "cannot finish writing %s", dst)
+	}
+	return nil
+}
+
 // List enumerates backups newest first.
 func (e *Engine) List(ctx context.Context) ([]ports.BackupRef, error) {
 	entries, err := os.ReadDir(e.paths.BackupsDir())
@@ -402,7 +533,19 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 			"this release declares no restore operation")
 	}
 
-	env := e.hookEnv(ports.PhaseRestore, dir)
+	// The hook ABI is a published contract: a restore hook reads
+	// $BACKUP_DIR/database.sql, and it did so before backups were
+	// encrypted. So the decryption happens here, into a staging directory
+	// the hook is pointed at, and the hook itself is unchanged.
+	staged, cleanup, err := e.stage(dir, manifest, opts)
+	if err != nil {
+		return err
+	}
+	// Unconditional, and overwriting: a failed restore must not leave a
+	// decrypted database dump beside the encrypted one.
+	defer cleanup()
+
+	env := e.hookEnv(ports.PhaseRestore, staged)
 	env.Extra = map[string]string{
 		prefixed(e.installation.Product, "BACKUP_ID"):              manifest.ID,
 		prefixed(e.installation.Product, "BACKUP_RELEASE_VERSION"): manifest.ReleaseVersion.String(),
@@ -412,6 +555,80 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 	if _, err := e.hooks.Run(ctx, e.release, spec.Command, env, spec.Timeout.Or(120*time.Minute)); err != nil {
 		return domain.BackupError(err, "the restore hook failed").
 			WithHint("the system may be partially restored; run `morzer doctor` before retrying")
+	}
+	return nil
+}
+
+// stage decrypts a backup into a directory the restore hook can read.
+//
+// A schema-1 backup has plaintext components and is used where it lies, which
+// is what keeps a backup taken before this change restorable after it.
+func (e *Engine) stage(
+	dir string, manifest ports.BackupManifest, opts ports.RestoreOptions,
+) (staged string, cleanup func(), err error) {
+	var encrypted []ports.ComponentRecord
+	for _, c := range manifest.Components {
+		if c.Encryption == ports.EncryptionAge {
+			encrypted = append(encrypted, c)
+		}
+	}
+	if len(encrypted) == 0 {
+		return dir, func() {}, nil
+	}
+
+	identity := opts.IdentityFile
+	if identity == "" {
+		identity = e.paths.AgeIdentityFile()
+	}
+
+	// Beside the backup rather than in /tmp: /tmp is frequently a different
+	// filesystem, and a database dump is not something to copy twice.
+	staged, err = os.MkdirTemp(dir, ".restore-")
+	if err != nil {
+		return "", func() {}, domain.BackupError(err,
+			"cannot create a staging directory under %s", dir)
+	}
+	if err := os.Chmod(staged, 0o700); err != nil {
+		return "", func() {}, domain.BackupError(err, "cannot secure the staging directory")
+	}
+	cleanup = func() { _ = atomicfs.RemoveWithOverwrite(staged) }
+
+	for _, c := range encrypted {
+		if err := decryptComponent(dir, staged, c, identity); err != nil {
+			cleanup()
+			return "", func() {}, err
+		}
+	}
+	return staged, cleanup, nil
+}
+
+func decryptComponent(dir, staged string, c ports.ComponentRecord, identity string) error {
+	in, err := os.Open(filepath.Join(dir, c.Path))
+	if err != nil {
+		return domain.BackupError(err, "cannot read %s from the backup", c.Path)
+	}
+	defer func() { _ = in.Close() }()
+
+	// The stored name carries the .age suffix; the hook expects the name it
+	// wrote.
+	name := strings.TrimSuffix(c.Path, agecrypt.Extension)
+	target := filepath.Join(staged, name)
+	if dirPart := filepath.Dir(target); dirPart != staged {
+		if err := atomicfs.MkdirAll(dirPart, 0o700); err != nil {
+			return err
+		}
+	}
+
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return domain.BackupError(err, "cannot create %s", name)
+	}
+	if err := agecrypt.Decrypt(out, in, identity); err != nil {
+		_ = out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return domain.BackupError(err, "cannot finish writing %s", name)
 	}
 	return nil
 }
