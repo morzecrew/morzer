@@ -1,0 +1,329 @@
+package domain
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+// The manifest contract is what a vendor writes against, so every rule in it
+// is a promise: break it and the bundle is refused by name, at `release
+// verify`, rather than halfway through an apply on somebody's server.
+//
+// One table, one mutation each, so a failure names the rule rather than the
+// document. The baseline is validManifest() from manifest_test.go.
+
+func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
+	cases := map[string]struct {
+		mutate func(*Manifest)
+		field  string
+	}{
+		// The schema gate. Everything else is noise if this is wrong.
+		"no api_version": {
+			func(m *Manifest) { m.APIVersion = "" }, "api_version",
+		},
+		"the wrong kind": {
+			func(m *Manifest) { m.Kind = "application-bundle" }, "kind",
+		},
+
+		// metadata
+		"no name": {
+			func(m *Manifest) { m.Metadata.Name = "" }, "metadata.name",
+		},
+		"a name that is a path": {
+			func(m *Manifest) { m.Metadata.Name = "../etc" }, "metadata.name",
+		},
+		"no version": {
+			func(m *Manifest) { m.Metadata.Version = Version{} }, "metadata.version",
+		},
+
+		// providers and runtime
+		"no runtime provider": {
+			func(m *Manifest) { m.Providers.Runtime.Name = "" }, "providers.runtime.name",
+		},
+		"no compose files": {
+			func(m *Manifest) { m.Runtime.Files = nil }, "runtime.files",
+		},
+		"a compose file outside the bundle": {
+			func(m *Manifest) { m.Runtime.Files = []string{"../../etc/passwd"} }, "runtime.files[0]",
+		},
+		"a profile that selects nothing": {
+			func(m *Manifest) { m.Runtime.Profiles = map[string][]string{"embedded": {}} },
+			"runtime.profiles.embedded",
+		},
+		"a profile file outside the bundle": {
+			func(m *Manifest) {
+				m.Runtime.Profiles = map[string][]string{"embedded": {"/etc/passwd"}}
+			},
+			"runtime.profiles.embedded[0]",
+		},
+
+		// requirements.ports -- literal or a parameter reference, never junk
+		"an empty port entry": {
+			func(m *Manifest) { m.Requirements.Ports = []PortSpec{""} },
+			"requirements.ports[0]",
+		},
+		"a port that is not a number": {
+			func(m *Manifest) { m.Requirements.Ports = []PortSpec{"http"} },
+			"requirements.ports[0]",
+		},
+		"a port of zero": {
+			func(m *Manifest) { m.Requirements.Ports = []PortSpec{"0"} },
+			"requirements.ports[0]",
+		},
+		"a port above the range": {
+			func(m *Manifest) { m.Requirements.Ports = []PortSpec{"65536"} },
+			"requirements.ports[0]",
+		},
+		"a template that does not parse": {
+			func(m *Manifest) { m.Requirements.Ports = []PortSpec{"{{ .Parameters.http_port "} },
+			"requirements.ports[0]",
+		},
+
+		// images
+		"no images at all": {
+			func(m *Manifest) { m.Images = nil }, "images",
+		},
+
+		// configuration
+		"a template outside the bundle": {
+			func(m *Manifest) {
+				m.Configuration = []ConfigurationFile{
+					{Template: "../../../etc/shadow", Target: "/etc/demo/app.yaml"},
+				}
+			},
+			"configuration[0].template",
+		},
+		"a configuration file with no target": {
+			func(m *Manifest) {
+				m.Configuration = []ConfigurationFile{{Template: "templates/app.yaml"}}
+			},
+			"configuration[0].target",
+		},
+
+		// secrets
+		"a secret schema outside the bundle": {
+			func(m *Manifest) { m.Secrets.Schema = "../secrets.yaml" }, "secrets.schema",
+		},
+		"a relative secrets source": {
+			func(m *Manifest) { m.Secrets.Source = "secrets.sops.yaml" }, "secrets.source",
+		},
+		"a relative render_to": {
+			func(m *Manifest) {
+				m.Secrets.Source = "/etc/demo/secrets.sops.yaml"
+				m.Secrets.RenderTo = "run/demo/secrets"
+			},
+			"secrets.render_to",
+		},
+
+		// operations
+		"a runtime-service operation with no service": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSpec{
+					"migrate": {Kind: OperationKindRuntimeService},
+				}
+			},
+			"operations.migrate.service",
+		},
+		"a runtime-service operation that also gives a command": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSpec{
+					"migrate": {Kind: OperationKindRuntimeService, Service: "app",
+						Command: []string{"migrate"}},
+				}
+			},
+			"operations.migrate.command",
+		},
+		"a hook operation with no command": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSpec{"migrate": {Kind: OperationKindHook}}
+			},
+			"operations.migrate.command",
+		},
+		"a hook command outside the bundle": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSpec{
+					"migrate": {Kind: OperationKindHook, Command: []string{"/bin/sh"}},
+				}
+			},
+			"operations.migrate.command[0]",
+		},
+		"a hook operation that also names a service": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSpec{
+					"migrate": {Kind: OperationKindHook, Command: []string{"hooks/migrate"},
+						Service: "app"},
+				}
+			},
+			"operations.migrate.service",
+		},
+		"an operation with no kind": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSpec{"migrate": {Command: []string{"hooks/migrate"}}}
+			},
+			"operations.migrate.kind",
+		},
+		"an operation of an unknown kind": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSpec{"migrate": {Kind: "systemd-unit"}}
+			},
+			"operations.migrate.kind",
+		},
+		"a negative timeout": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSpec{
+					"migrate": {Kind: OperationKindHook, Command: []string{"hooks/migrate"},
+						Timeout: Duration(-time.Second)},
+				}
+			},
+			"operations.migrate.timeout",
+		},
+
+		// health
+		"a health check with no name": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{{Type: HealthHTTP, URL: "http://127.0.0.1/health"}}
+			},
+			"health.checks[0].name",
+		},
+		"two health checks with the same name": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{
+					{Name: "api", Type: HealthHTTP, URL: "http://127.0.0.1/a"},
+					{Name: "api", Type: HealthHTTP, URL: "http://127.0.0.1/b"},
+				}
+			},
+			"health.checks[1].name",
+		},
+		"an http check with no url": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{{Name: "api", Type: HealthHTTP}}
+			},
+			"health.checks[0].url",
+		},
+		"a tcp check with no address": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{{Name: "db", Type: HealthTCP}}
+			},
+			"health.checks[0].address",
+		},
+		"a command check with no command": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{{Name: "db", Type: HealthCommand}}
+			},
+			"health.checks[0].command",
+		},
+		"a command check pointing outside the bundle": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{
+					{Name: "db", Type: HealthCommand, Command: []string{"/usr/bin/pg_isready"}},
+				}
+			},
+			"health.checks[0].command[0]",
+		},
+		"a health check with no type": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{{Name: "api"}}
+			},
+			"health.checks[0].type",
+		},
+		"a health check of an unknown type": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{{Name: "api", Type: "smtp"}}
+			},
+			"health.checks[0].type",
+		},
+
+		// compatibility and retention
+		"a schema range that is inside out": {
+			func(m *Manifest) {
+				m.Compatibility.DatabaseSchemaMin = 12
+				m.Compatibility.DatabaseSchemaMax = 10
+			},
+			"compatibility",
+		},
+		"keeping no releases": {
+			func(m *Manifest) { m.Retention.Releases = 0 }, "retention.releases",
+		},
+		"keeping no backups": {
+			func(m *Manifest) { m.Retention.Backups = 0 }, "retention.backups",
+		},
+
+		// extensions
+		"an extension key that is not namespaced": {
+			func(m *Manifest) {
+				m.Extensions = map[string]map[string]any{"telemetry": {"endpoint": "x"}}
+			},
+			"extensions.telemetry",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := validManifest()
+			tc.mutate(&m)
+
+			err := m.Validate()
+			if err == nil {
+				t.Fatalf("%s was accepted, so a bundle with it reaches a "+
+					"deployment before anyone notices", name)
+			}
+			if !strings.Contains(err.Error(), tc.field) {
+				t.Errorf("the refusal does not name %q, so the vendor has to "+
+					"guess which field is wrong:\n%v", tc.field, err)
+			}
+		})
+	}
+}
+
+// TestApplyDefaultsFillsInWhatAVendorLeftOut. Defaults are applied before
+// validation, so a manifest that omits a timeout is complete rather than
+// invalid -- and the retention floor is why the two `retention` rules above
+// have to be provoked deliberately.
+func TestDefaultsAreAppliedBeforeValidation(t *testing.T) {
+	m := Manifest{
+		APIVersion: APIVersionV1Alpha1,
+		Kind:       KindApplicationRelease,
+		Metadata:   Metadata{Name: "demo", Version: MustParseVersion("1.0.0")},
+		Providers:  Providers{Runtime: Provider{Name: "compose"}},
+		Runtime:    RuntimeSpec{Files: []string{"compose/compose.yaml"}},
+		Images: map[string]string{
+			"app": "registry.example/demo/app@sha256:" + strings.Repeat("a", 64),
+		},
+		Operations: map[string]OperationSpec{
+			"migrate": {Kind: OperationKindHook, Command: []string{"hooks/migrate"}},
+		},
+		Health: HealthSpec{
+			Checks: []HealthCheck{{Name: "api", Type: HealthHTTP, URL: "http://127.0.0.1/health"}},
+		},
+	}
+	m.ApplyDefaults()
+
+	if err := m.Validate(); err != nil {
+		t.Fatalf("a manifest that only omitted defaultable fields was refused: %v", err)
+	}
+	if m.Operations["migrate"].Timeout == 0 {
+		t.Error("an operation with no timeout would run forever")
+	}
+	if m.Health.Checks[0].Timeout == 0 {
+		t.Error("a health check with no timeout would hang an apply")
+	}
+	if m.Retention.Releases < 1 || m.Retention.Backups < 1 {
+		t.Error("the retention defaults would delete the only copy of something")
+	}
+}
+
+// TestOperationLookup is what every operation calls before it runs a hook.
+func TestOperationLookup(t *testing.T) {
+	m := validManifest()
+	m.Operations = map[string]OperationSpec{
+		OpBackup: {Kind: OperationKindHook, Command: []string{"hooks/backup"}},
+	}
+
+	if op, ok := m.Operation(OpBackup); !ok || op.Command[0] != "hooks/backup" {
+		t.Errorf("Operation(%q) = %+v, %v", OpBackup, op, ok)
+	}
+	if _, ok := m.Operation(OpRestore); ok {
+		t.Error("an operation the manifest does not declare was found")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -530,6 +531,12 @@ exit 1
 }
 
 // TestOutputIsForwardedLineByLine is what the live view subscribes to.
+//
+// The sink is called from two goroutines -- one scanning stdout, one scanning
+// stderr -- so it has to be safe to call concurrently. That is a real part of
+// the contract, and the mutex below is not test scaffolding: a sink written
+// without one is a data race in whatever subscribes to it. The race detector
+// found this the first time the test was written without it.
 func TestOutputIsForwardedLineByLine(t *testing.T) {
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
@@ -538,14 +545,19 @@ echo "second" >&2
 echo "third"
 `)
 
+	var mu sync.Mutex
 	var lines []string
 	_, err := hooks.NewRunner(exec.New(), hooks.WithOutputSink(func(l exec.Line) {
+		mu.Lock()
+		defer mu.Unlock()
 		lines = append(lines, l.Text)
 	})).Run(context.Background(), rel, cmd, env(), 30*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	mu.Lock()
+	defer mu.Unlock()
 	joined := strings.Join(lines, "|")
 	for _, want := range []string{"first", "second", "third"} {
 		if !strings.Contains(joined, want) {

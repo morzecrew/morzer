@@ -259,12 +259,52 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  containers:
+    name: Container suites (real services)
+    needs: [changes, test]
+    # The suites behind the `docker` build tag start Compose projects, Caddy,
+    # Redis, Postgres and a registry. They answer what a fake cannot -- whether
+    # what comes back is what the adapter thinks it is -- so they run wherever
+    # the acceptance scenario does, on the same "does this work on a machine"
+    # grounds.
+    if: >-
+      needs.changes.outputs.run_full == 'true' &&
+      (needs.changes.outputs.code == 'true' || github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # Once the tag is set, a missing daemon is a failure rather than a skip:
+      # a run that exercised nothing has to say so.
+      - name: Check the runner has a daemon
+        run: docker version
+
+      - run: just test-docker-cover
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: container-profile
+          path: docker.out
+          if-no-files-found: error
+          retention-days: 7
+
   coverage:
     name: Coverage floor
-    # Acceptance is in `needs` for its profile, not for its verdict: the
-    # condition below runs this job whether acceptance ran, was skipped, or
-    # failed, and the floor adjusts to whichever profiles arrived.
-    needs: [changes, test, acceptance]
+    # Acceptance and the container suites are in `needs` for their profiles,
+    # not for their verdicts: the condition below runs this job whether they
+    # ran, were skipped, or failed, and the floor adjusts to whichever
+    # profiles arrived. Without them in `needs` this job would start first and
+    # find no artefacts at all.
+    needs: [changes, test, acceptance, containers]
     if: >-
       !cancelled() &&
       needs.test.result == 'success' &&
@@ -272,28 +312,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # A floor, not a target. Raised deliberately; lowering it is a reviewable
-      # change in this file rather than a silent drift.
-      #
-      # This measures `go test` only. The acceptance suite runs the built
-      # binary, so what it exercises hardest -- Compose, systemd, the health
-      # probes, the CLI wiring -- barely registers here. Measured: unit tests
-      # alone reach 59.5%, the acceptance run alone reaches 47.6%, and their
-      # union is 70.0%. Counting the union needs the binary built with
-      # `-cover` and the two profiles merged; until that lands, this number is
-      # lower than the testing behind it.
       # Two floors, because two things can arrive.
       #
       # UNIT_FLOOR measures `go test` alone, which is all a change-gated pull
-      # request that skipped the acceptance job can produce. UNION_FLOOR adds
-      # the acceptance run's own profile, which is where Compose, systemd and
-      # the CLI wiring actually get exercised -- measured at 70.0% against
-      # 59.5% for `go test` alone.
+      # request that skipped the container and acceptance jobs can produce.
+      # UNION_FLOOR adds their profiles: the container suites drive the
+      # adapters against real services, and the acceptance run drives the
+      # built binary, which is where the CLI wiring and systemd get exercised.
+      # Measured on one tree: 79.6% for `go test`, 63.0% for the container
+      # suites, 47.3% for acceptance, and 81.6% together.
       #
       # Floors, not targets. Raised deliberately; lowering either is a
       # reviewable change in this file rather than a silent drift.
-      UNIT_FLOOR: "75"
-      UNION_FLOOR: "77"
+      UNIT_FLOOR: "79"
+      UNION_FLOOR: "81"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -323,20 +355,28 @@ jobs:
         with:
           name: acceptance-profile
 
+      # Same reasoning as the acceptance profile above.
+      - name: Fetch the container suites' profile
+        id: container_profile
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: container-profile
+
       - name: Merge the profiles and enforce the floor
         run: |
           set -euo pipefail
-          go run ./tools/covmerge union.out coverage.out acceptance.profile
+          go run ./tools/covmerge union.out coverage.out docker.out acceptance.profile
 
           # Which floor applies is decided by what arrived, not by what was
-          # hoped for. A pull request that skipped acceptance is held to the
-          # unit floor; one that ran it is held to the union floor, which is
-          # nine points higher and the number that reflects the testing.
-          if [ -f acceptance.profile ]; then
-            echo "acceptance profile present: enforcing the union floor"
+          # hoped for. The union floor assumes all three profiles; anything
+          # less is held to the unit floor rather than being failed for
+          # missing coverage it was never going to produce.
+          if [ -f acceptance.profile ] && [ -f docker.out ]; then
+            echo "every profile arrived: enforcing the union floor"
             .github/scripts/coverage-floor.sh union.out "$UNION_FLOOR"
           else
-            echo "no acceptance profile: enforcing the unit floor"
+            echo "a profile is missing: enforcing the unit floor"
             .github/scripts/coverage-floor.sh union.out "$UNIT_FLOOR"
           fi
 

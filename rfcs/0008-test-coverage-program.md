@@ -1,9 +1,11 @@
 # RFC 0008 — Testing the claims: a coverage programme to 95%
 
-- **Status:** 🚧 In progress — P1, P2 and P5 complete; P3 and P4 substantially
-  done. Measured **77.4%**, from 59.5% when this was written. The claims
-  inventory is complete and gated. §13 measures what remains and §14 records
-  what the mechanisms turned out to cost.
+- **Status:** 🚧 In progress — P1 through P5 all complete as designed.
+  Measured **81.6%**, from 70.0% when this was written. Every row of §5.4's
+  real-service table has a real service behind it and all three of §5.3's
+  mechanisms are in use; §15 records where execution diverged. 95% remains
+  unmet: §16 measures the 1438 statements between here and there, and
+  decision 7 still governs.
 - **Scope:** Raises statement coverage from a measured 70% to 95%, and — the
   actual point — makes every security property this project advertises name the
   test that enforces it. Covers counting the coverage the acceptance suite
@@ -370,9 +372,9 @@ The programme's own verification:
 | --- | --- | --- |
 | **P1** | Union pipeline: instrumented acceptance, merged profiles, CI wiring | 59% → **70%** (measured, mechanical) |
 | **P2** | CLI harness driving every command, exit codes, `--json` envelopes | → **~78%** |
-| **P3** | I/O fault injection: real filesystem conditions, port fakes, scripted subprocesses | → **~86%** |
-| **P4** | Real-service contract suites: Caddy, Postgres, Redis | → **~92%** |
-| **P5** | Claims inventory, the gate for it, and the remaining named gaps | → **95%** |
+| **P3** | I/O fault injection: real filesystem conditions, port fakes, scripted subprocesses | est. ~86%, measured **81.6% with P4** |
+| **P4** | Real-service contract suites: Caddy, Postgres, Redis | est. ~92%, see above |
+| **P5** | Claims inventory, the gate for it, and the remaining named gaps | est. 95%, **not met — §16** |
 
 P1 is worth landing on its own and changes no test. P5 is worth landing even if
 the number stops short, because it is the part that answers the question the
@@ -540,3 +542,126 @@ narration from it.
 
 Each was read out of the code before the test was adjusted, which is the rule
 that keeps this exercise from transcribing bugs into assertions.
+
+## 15. Amendments from the P3 and P4 completion pass
+
+P3 and P4 are now complete as §5.3 and §5.4 defined them. Every row of §5.4's
+table has a real service behind it, and all three of §5.3's mechanisms are in
+use. What follows is where execution diverged, and what it cost.
+
+### The container suites are behind a build tag, not a skip
+
+Decision 4 said the real-service suites would follow the existing contract
+pattern exactly: skip when Docker is absent, with `contract-strict` failing on
+a skip. **They do not skip at all.** The `docker` build tag is the opt-in, and
+once it is set a missing daemon is a `t.Fatal`.
+
+The reason is that the skip-plus-strict-recipe arrangement solves a problem the
+tag does not have. A skip is dangerous because it is invisible: a suite that
+quietly stopped running looks identical to one that passed, which is why
+`contract-strict` exists to grep for `--- SKIP`. A build tag makes the same
+guarantee structurally — the suite either compiled and ran, or was never asked
+for. There is no third state to police, and `just test-docker` is one recipe
+rather than a recipe plus a grep plus a rule about what the grep means.
+
+The cost is that `just test` no longer runs everything, which §5.4 wanted
+anyway: a contributor without Docker keeps a fast loop, and CI runs
+`test-docker-cover` in its own job alongside acceptance.
+
+### What only a real service could answer
+
+The five things a fake could not have told us:
+
+- **`docker compose config` does not list profiled services.** The plan view is
+  therefore correct to omit one-shot migrations, which nobody had written down.
+- **`down` really does preserve a named volume, and `down --volumes` really
+  does destroy it.** The fake could only report that the flag was passed. This
+  is the claim every compensation path rests on, and it is now checked by
+  writing a byte and looking for it afterwards.
+- **`pg_isready` without `-h` reports the entrypoint's throwaway initialisation
+  server as ready**, moments before it shuts down to hand over to the real one.
+  Any readiness check that does not probe TCP races it.
+- **`RunOneShot` cannot distinguish a misnamed service from a failed
+  migration.** Compose reports both by exiting non-zero. Exit 1 rather than the
+  ABI's 2 is what keeps a typo from being read as "nothing to do", and that is
+  now a test rather than an assumption.
+- **`ProbeRegistry` cannot probe a plaintext registry.** `docker manifest
+  inspect` speaks HTTPS unless given `--insecure`, which the adapter
+  deliberately never passes. The clean-probe path is therefore not covered by
+  any test that can run without reconfiguring the daemon; the three failure
+  classifications, which carry the real consequences, are.
+
+### Three more expectations of mine were wrong
+
+The same rule as the P3/P4 pass: read the code, then change the test.
+
+- **A compensated operation exits `compensated`, not the cause's own code.**
+  What an operator needs first is whether the system was put back; the cause
+  travels in the message. A failure before any compensable step keeps its own
+  code, which is the distinction the test now pins.
+- **Retention failing is `Continue` by design.** The backup has already been
+  taken and verified, so a full disk must not turn a good backup into a failed
+  operation. The assertion is that the failure survives in the record — an
+  operator whose retention has been silently failing for a month finds out when
+  the disk fills.
+- **`age.ParseIdentities` refuses a file with no key lines** rather than
+  returning an empty slice, so `PublicKeyFromIdentityFile`'s "contains no keys"
+  branch is unreachable today. Left in as defence against a future parser, and
+  recorded as unreachable rather than quietly counted.
+
+### One asymmetry found, and left alone
+
+`config set typo=1` is refused by name. `config unset typo` succeeds quietly,
+because the merge treats "not recorded" as "already at its default" without
+asking whether the release declares the name at all. An operator who mistypes
+an unset is told it worked.
+
+Not fixed here: this RFC is a testing programme, and changing a refusal is a
+behaviour change that belongs in its own pull request. It is recorded in
+[what-is-tested](../pages/docs/explanation/what-is-tested.md) under *what is
+not claimed*, and pinned by a test that fails if it ever becomes a refusal.
+
+## 16. What remains, measured
+
+§13 superseded. Measured on the same tree as the floors:
+
+| | At the RFC | After P3/P4 (§13) | Now |
+| --- | --- | --- | --- |
+| `go test` alone | 59.5% | 75.4% | **79.6%** |
+| The container suites alone | — | — | **63.0%** |
+| The acceptance run alone | 47.6% | 47.6% | **47.3%** |
+| Union of all three | 70.0% | 77.4% | **81.6%** |
+| Uncovered statements (union) | 2331 | 1770 | **1438** |
+
+Floors are 79 (unit) and 81 (union), ratcheted in the same change that raised
+them. Nothing is below 65% any more; at the RFC, four packages were under 40%.
+
+**1438 statements stand between here and 95%, and 404 of them — 28% — are in
+`internal/cli`**, which is 65% covered and has not moved since §13. That is now
+the single largest block by a wide margin, and it is the one this pass did not
+touch.
+
+| Package | Union | Uncovered | Needs |
+| --- | --- | --- | --- |
+| `internal/cli` | 65% | 404 | the interactive `init` wizard, and the flag-combination paths the acceptance run does not take |
+| `internal/lifecycle/ops` | 80% | 331 | the step bodies each operation only reaches under a specific failure |
+| `internal/domain` | 87% | 102 | error-formatting branches |
+| `internal/adapters/secrets/sopsage` | 78% | 82 | sops failure modes: a wrong key, a truncated file, a binary that exits mid-write |
+| `internal/infra/atomicfs` | 82% | 70 | archive extraction failures, which need a corrupt `tar.zst` per branch |
+| `internal/ui/tty` | 85% | 57 | terminal resize and interrupt handling under `teatest` |
+| `internal/adapters/backup/hookbackup` | 77% | 48 | the manifest-reading branches, reachable with hand-written backup directories |
+| `internal/adapters/source/oci` | 71% | 44 | a bundle pushed as an OCI artifact to the registry `dockerlab` already starts |
+
+**95% is not met, and this RFC does not claim it.** Decision 7 said that if the
+last statements turn out to be unreachable defensive code, the floor stops
+below 95% with the measured reason. That is not yet the finding here: of the
+1438, only a handful are genuinely unreachable — the `contains no keys` branch
+in §15, `randomSuffix`'s fallback for a `crypto/rand` that cannot fail. The
+rest is reachable work that has not been done, and saying so is more useful
+than a number.
+
+The honest summary of the programme so far: **70.0% → 81.6%**, every claim in
+the inventory backed by a test that was verified by perturbation, and one real
+security defect found (§12, `redactAttr`). The percentage is the proxy; the
+inventory is the thing; and the remaining 13.4 points are named above rather
+than waved at.

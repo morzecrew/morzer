@@ -35,6 +35,23 @@ quietly leaving a claim unbacked.
 | A failed editor session is cleaned up | `TestSecretEditCleansUpAfterAFailedEditor` |
 | Every value in a secret set is registered for scrubbing, not just the first | `TestRegisterSetTakesEveryValueInASecretSet` |
 | `doctor` reports a render directory that is not memory-backed | `TestIsEphemeralFilesystem` |
+| A secret a hook prints is scrubbed from its output and from the error | `TestSecretsAreScrubbedFromHookOutput` |
+
+### The age identity and its recipients
+
+The identity is the only thing that can read the encrypted state, so every
+operation that could destroy or weaken it is a refusal.
+
+| Claim | Test |
+| --- | --- |
+| A generated identity is `0400` in a `0700` directory, and never widened | `TestGenerateIdentityWritesAKeyNobodyElseCanRead` |
+| An identity that exists but cannot be parsed is never replaced | `TestEnsureIdentityRefusesToReplaceOneItCannotParse` |
+| Creating an identity twice returns the first, never a second key | `TestEnsureIdentityIsIdempotent` |
+| A malformed recipient is refused before it reaches the file | `TestValidateRecipient` |
+| Re-encrypting validates every key before rewriting anything | `TestReencryptForValidatesEveryKeyBeforeTouchingAnything` |
+| The machine's own key is identified by comparison, not by a sidecar that could be edited | `TestRecipientsIdentifiesTheMachineKeyByComparison` |
+| An import that could not be decrypted is refused before it overwrites the state | `TestImportRefusesAnythingItCannotVouchFor` |
+| Imported state is written `0600` | `TestImportWritesTheStateAtSixHundred` |
 
 ### Releases and verification
 
@@ -55,6 +72,12 @@ quietly leaving a claim unbacked.
 | A directory that exists with the wrong permissions is corrected | `TestMkdirExactSetsTheModeEvenWhenTheDirectoryExists` |
 | A wrong mode is reported to `doctor`, not raised as a failure of `doctor` | `TestCheckModeReportsRatherThanFails` |
 | Rendered secrets are overwritten before removal | `TestRemoveWithOverwriteClearsEveryFile` |
+| A bundle containing a symlink or a device node is refused, not partially copied | `TestCopyTreeRefusesEverythingThatIsNotAFileOrADirectory` |
+| A bundle cannot exhaust the disk or the inode table before anything validates it | `TestCopyTreeEnforcesItsLimits` |
+| The content digest covers paths, contents and the executable bit — but not the umask | `TestDigestTreeCoversPathsModesAndContents` |
+| A hook is resolved inside the release, never from `PATH` | `TestAHookPathCannotEscapeTheRelease` |
+| A hook that arrives without the executable bit is a broken bundle, named as one | `TestAHookWithoutTheExecutableBitIsRefused` |
+| A hook's timeout reaches the whole process group, so nothing survives it | `TestATimeoutReachesTheWholeProcessGroup` |
 
 ### Refusals
 
@@ -68,6 +91,26 @@ asserted by *which* refusal fires — not merely that something failed.
 | A signature policy nothing could satisfy is refused before anything is created | `TestInitRefusesAPolicyNothingCouldSatisfy` |
 | An installation is never silently reconfigured by a second `init` | `TestInitCreatesAnInstallationAndRefusesASecond` |
 | A mistyped command is a usage error, not an internal one | `TestUnknownInputIsAUsageErrorNotABug` |
+| A rollback with no previous release is refused rather than guessed at | `TestRollbackWithNothingToRollBackTo` |
+| A second operation cannot run against one installation, and is told who holds the lock | `TestTheRefusalNamesWhoHoldsItAndForHowLong` |
+| A lock record left by a killed process is not reported as a live holder | `TestAStaleRecordIsNotReportedAsAHolder` |
+| Removing the last recipient, or this machine's own, is refused | `TestReencryptForRefusesAnEmptyRecipientSet` |
+| An installation written by a newer manager is refused, not silently downgraded | `TestAnInstallationFromANewerManagerIsRefusedClearly` |
+
+### Backups, against a real database
+
+A backup that has never been restored is a hope. These run `pg_dump` and
+`psql` against a real Postgres, drop the rows in between, and query them back.
+
+| Claim | Test |
+| --- | --- |
+| A backup taken by the manager can be restored, and the rows come back | `TestABackupOfARealDatabaseCanBeRestored` |
+| A corrupt backup is refused before it reaches a live database | `TestARestoreIsRefusedWhenTheBackupIsCorrupt` |
+| A backup belonging to another installation is refused by name | `TestARestoreIsRefusedAcrossInstallations` |
+| A failed backup leaves nothing a later restore could mistake for one | `TestAFailedBackupLeavesNothingBehind` |
+| A hook cannot record an artifact outside the backup directory | `TestAHookThatWritesOutsideTheBackupDirectoryIsRefused` |
+| Retention never removes the only copy, whatever the policy says | `TestPruneNeverRemovesTheOnlyCopy` |
+| Retention keeps the reasons it was told to keep | `TestPruneKeepsTheReasonsItWasToldTo` |
 
 ### The runtime boundary
 
@@ -78,6 +121,9 @@ asserted by *which* refusal fires — not merely that something failed.
 | The Compose interpolation ABI is exactly what is documented | `TestTheComposeABIMatchesItsDeclaration` |
 | The template render context is exactly what is documented, and does not expose the process environment | `TestTheTemplateContextMatchesItsDocumentation` |
 | A published port, its conflict check and its health probe all follow one value | `TestAChangedPortMovesEverythingTogether` |
+| A `down` run by a compensation preserves the volume; only the explicit flag removes it — checked against real Docker | `TestComposeDownKeepsTheVolumeAndDownWithVolumesDoesNot` |
+| A failed configuration change is unwound, so the recorded value never describes a container that does not exist | `TestConfigSetReportsARuntimeThatWillNotRecreate` |
+| A failed step stops the operation and the exit code says whether the system was put back | `TestEveryPortFailureStopsApply` |
 
 ### Health and reporting
 
@@ -88,6 +134,14 @@ asserted by *which* refusal fires — not merely that something failed.
 | A probe that never answers times out rather than hanging an `apply` | `TestHTTPProbeTimesOutRatherThanHanging` |
 | Rich output never carries information plain output omits | `TestRichNeverShowsWhatPlainDoesNot` |
 | Output mode is resolved by the documented table | `TestResolveModeFollowsItsDocumentedTable` |
+| A service that is up but not ready is reported unhealthy by a real web server too | `TestHTTPProbeAgainstCaddy` |
+| A service that takes seconds to start is waited for, not failed | `TestWaitReadyAgainstAServiceThatStartsSlowly` |
+| A service that never comes up is named in the refusal, with what it last said | `TestWaitReadyTimesOutNamingWhatNeverCameUp` |
+| One broken probe never hides the state of the others | `TestCheckOnceKeepsGoingWhenOneProberIsBroken` |
+| A converged service is not re-probed every two seconds while the rest start | `TestWaitReadyStopsReprobingWhatAlreadyPassed` |
+| `doctor` works on a machine where every adapter is broken — the only kind anyone runs it on | `TestDoctorSurvivesEveryAdapterBeingBroken` |
+| An absent healthcheck reads as "no probe", not as "unhealthy" — against real Docker | `TestComposeStatusReportsRealHealth` |
+| A journal line half-written by a crash does not make `status` unusable | `TestACorruptFinalJournalLineIsDiscardedNotFatal` |
 
 ## What a test in this table has to do
 
@@ -110,6 +164,18 @@ Being explicit about the edges is part of the point.
 - **A parameter's `services` list is not checked against the topology.** A
   vendor who names one tier for a value two tiers read gets a change that
   reports success and leaves one stale.
+- **`config set` refuses an undeclared parameter by name; `config unset` does
+  not.** The merge treats "not recorded" as "already at its default" without
+  asking whether the release declares it, so an operator who mistypes an unset
+  is told it worked. Recorded as
+  `TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp`, which fails if that
+  ever becomes a refusal.
+- **The registry probe's success path is not covered.** `docker manifest
+  inspect` speaks HTTPS unless given `--insecure`, which the adapter never
+  passes — a reachability probe that accepted plaintext could be answered by
+  anyone on the path. A plain-HTTP registry is the only kind a test can stand
+  up without reconfiguring the daemon, so only the three failure
+  classifications are asserted.
 - **Overwriting before deletion is meaningful on tmpfs and very little
   elsewhere.** The function's own documentation says so; the test asserts the
   files are overwritten and gone, not that the bytes are unrecoverable.
