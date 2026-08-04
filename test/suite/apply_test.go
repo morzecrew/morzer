@@ -41,6 +41,7 @@ type harness struct {
 	Secrets *fakes.SecretStore
 	Health  *fakes.Health
 	Backup  *fakes.Backup
+	Locker  *fakes.Locker
 	Events  *events.Collector
 
 	Root    string
@@ -82,6 +83,7 @@ func newHarness(t *testing.T) *harness {
 		Secrets: fakes.NewSecretStore(),
 		Health:  fakes.NewHealth(),
 		Backup:  fakes.NewBackup(),
+		Locker:  fakes.NewLocker(),
 		Events:  collector,
 		Root:    root,
 		Paths:   paths,
@@ -93,7 +95,7 @@ func newHarness(t *testing.T) *harness {
 	h.Deps = &ops.Deps{
 		Paths:    paths,
 		State:    stateStore,
-		Locker:   fakes.NewLocker(),
+		Locker:   h.Locker,
 		Runtime:  h.Runtime,
 		Secrets:  h.Secrets,
 		Backup:   h.Backup,
