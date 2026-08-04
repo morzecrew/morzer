@@ -368,6 +368,7 @@ func checkContracts(rep *report, root string, pages []page) {
 	checkHookEnv(rep, pages)
 	checkComposeVars(rep, pages)
 	checkTemplateFields(rep, pages)
+	checkClaimedTests(rep, root, pages)
 }
 
 // checkErrorCodes asserts every domain.Code value is documented. They are part
@@ -601,6 +602,93 @@ func checkComposeVars(rep *report, pages []page) {
 				"the `%s` variable family is not documented", pattern)
 		}
 	}
+}
+
+// claimsPage is the inventory mapping security properties to the tests that
+// enforce them.
+const claimsPage = "explanation/what-is-tested.md"
+
+// testName matches a Go test named in a code span.
+var testName = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
+
+// checkClaimedTests asserts every test the claims inventory names exists.
+//
+// The inventory is the answer to "what actually enforces this?", and it is only
+// worth reading if it cannot go stale. A renamed or deleted test breaks the
+// build here rather than silently leaving a security claim unbacked.
+//
+// It does not check the reverse -- a test absent from the table is fine, most
+// tests are not claims -- and it cannot check that a test is any good. That is
+// what the perturbation discipline is for, and no tool enforces it.
+func checkClaimedTests(rep *report, root string, pages []page) {
+	rep.checks++
+
+	var claims page
+	found := false
+	for _, p := range pages {
+		if strings.HasSuffix(p.Rel, claimsPage) {
+			claims, found = p, true
+			break
+		}
+	}
+	if !found {
+		rep.add("claims", "%s is missing: the security claims have no inventory", claimsPage)
+		return
+	}
+
+	existing, err := goTestNames(root)
+	if err != nil {
+		rep.add("claims", "cannot read the test names: %v", err)
+		return
+	}
+
+	named := 0
+	for span := range claims.Code {
+		if !testName.MatchString(span) {
+			continue
+		}
+		named++
+		if !existing[span] {
+			rep.add("claims",
+				"%s names `%s`, which no test file defines", claimsPage, span)
+		}
+	}
+
+	// A table that names nothing is a table somebody emptied.
+	if named == 0 {
+		rep.add("claims", "%s names no tests at all", claimsPage)
+	}
+}
+
+// goTestNames collects every `func TestX(` in the repository.
+func goTestNames(root string) (map[string]bool, error) {
+	out := map[string]bool{}
+	decl := regexp.MustCompile(`(?m)^func (Test[A-Za-z0-9_]+)\(`)
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			// Vendored or generated trees would only add noise.
+			if name := d.Name(); name == ".git" || name == "node_modules" || name == "site" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range decl.FindAllStringSubmatch(string(data), -1) {
+			out[m[1]] = true
+		}
+		return nil
+	})
+	return out, err
 }
 
 // namesFamily reports whether some page writes a variable in the given family,

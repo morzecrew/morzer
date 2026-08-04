@@ -1,6 +1,9 @@
 # RFC 0008 — Testing the claims: a coverage programme to 95%
 
-- **Status:** 🚧 In progress — P1 and P2 shipped 2026-08-04, measured 72.9%. P3–P5 open.
+- **Status:** 🚧 In progress — P1, P2 and P5 shipped 2026-08-04; P3 and P4
+  partly. Measured **74.6%**, from 59.5% when this was written. The claims
+  inventory — decision 8's actual deliverable — is complete and gated. The
+  remaining gap to 95% is scoped in §13.
 - **Scope:** Raises statement coverage from a measured 70% to 95%, and — the
   actual point — makes every security property this project advertises name the
   test that enforces it. Covers counting the coverage the acceptance suite
@@ -426,3 +429,72 @@ Two test-design notes:
   removed — the failure had simply moved to the next step. It now asserts *which*
   refusal fires, and that a correct confirmation gets past the guard to fail on
   its merits. Verified by perturbation both ways.
+
+### P3 and P4 — failure paths and real listeners (partial)
+
+Not the mechanisms the RFC designed. §5.3 proposed three, cheapest first, and
+the cheapest turned out to be enough for everything attempted: real filesystem
+conditions (an unwritable directory, a file where a directory belongs, a mode
+nobody can read) and real network listeners (`httptest`, a bound-then-closed
+port, a socket that accepts and drops). No port-level `FailOn`, no scripted
+subprocess runner, no containers. Those remain for the packages named in §13.
+
+**What covering the enforcement point actually found.** The RFC predicted that
+`redactAttr` at 21% was where a defect would be, and it was. The `KindAny`
+branch carried this comment:
+
+> Anything that stringifies could carry a secret through its String method, so
+> it is rendered and scrubbed rather than passed through untouched.
+
+It handled `string` and `error`. A value implementing only `fmt.Stringer`, or a
+plain struct, was passed through and rendered by the handler **unscrubbed** — so
+a secret in either printed in full. The comment described the intent; the code
+did not implement it. Fixed, with the `KindAny` branch now ending in a scrub of
+the `%v` rendering, and both the `Stringer` case and the fallback shown to be
+independently load-bearing by removing each and watching a different test fail.
+
+That is the whole argument for this RFC in one defect: a claim, a comment
+asserting it, and a third of the enforcing function never executed.
+
+### P5 — the claims inventory (shipped)
+
+[`explanation/what-is-tested.md`](../pages/docs/explanation/what-is-tested.md)
+maps 31 advertised properties to the tests that enforce them, across secrets,
+verification, filesystem containment, refusals, the runtime boundary, and health
+reporting. `docs-check` fails when a row names a test that does not exist —
+verified by renaming a row and by renaming a test, each of which breaks the
+build.
+
+It also has a *what is not claimed* section, which is the part worth keeping
+honest: eager redaction on `.With`, `services` not being checked against the
+topology, and overwriting-before-deletion being meaningful on tmpfs and very
+little else.
+
+## 13. What remains, measured
+
+| | At the RFC | Now |
+| --- | --- | --- |
+| `go test` alone | 59.5% | **71.4%** |
+| Union with the acceptance run | 70.0% | **74.6%** |
+| Uncovered statements (union) | 2331 | **1976** |
+
+The floors are 70 (unit) and 74 (union), ratcheted in the same changes that
+raised them.
+
+Where the remaining 1976 statements are, and what each needs:
+
+| Package | Union | Needs |
+| --- | --- | --- |
+| `internal/adapters/supervisor/systemd` | 37% | a real `systemd`, or the scripted subprocess runner from §5.3 |
+| `internal/adapters/runtime/compose` | 37% | §5.3's subprocess injection; the acceptance run covers the happy paths only |
+| `internal/lifecycle/ops` | ~77% | §5.3's port-level `FailOn` — these are the compensation branches |
+| `internal/release`, `render/gotemplate` | ~52% | malformed-bundle fixtures |
+| `internal/cli` | ~60% | the interactive wizard, and `update`/`rollback` paths needing Docker |
+
+**95% is still the target and is not yet demonstrated to be reachable.**
+Decision 7 applies: if the last statements turn out to be unreachable defensive
+code, the floor stops honestly below 95% with the measured reason rather than
+being met by lowering the bar. Nothing so far suggests that — the remaining
+work is the two injection mechanisms §5.3 already designed and did not need for
+this pass, plus the container suites of §5.4 — but it has not been proven
+either, and this RFC will not claim it before it is.

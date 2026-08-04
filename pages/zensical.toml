@@ -71,6 +71,7 @@ nav = [
         "explanation/architecture.md",
         "explanation/the-step-engine.md",
         "explanation/secrets.md",
+        "explanation/what-is-tested.md",
     ] },
 ]
 

@@ -121,6 +121,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A secret could reach a log line through a value whose type implements only a string method, or through a plain struct. The redacting handler scrubbed strings and errors and passed everything else through for the log handler to format, so such a value printed in full. It now scrubs the rendering of anything it does not recognise.
+
+
 - Container images now come from the digests the manifest pins. Previously the pull ignored the list it was given and the compose file's image references were never substituted, so a release ran whatever its topology file defaulted to and the pinning that makes a release immutable decided nothing.
 
 - Secret generation no longer hangs when a release declares an alphabet whose length divides 256 evenly, such as the common 64-character case. Rejection sampling computed a cutoff that overflowed to zero, so every random draw was discarded and generation never terminated.
