@@ -41,6 +41,12 @@ HTTP_PORT="${ACCEPTANCE_HTTP_PORT:-18099}"
 # than merely to agree with one already in place.
 MOVED_PORT="${ACCEPTANCE_MOVED_PORT:-18098}"
 
+# The three-tier example's own ports, distinct from the single-tier scenario's
+# so the two can never be confused for one another in a failure message.
+WEB_HTTP_PORT="${ACCEPTANCE_WEB_HTTP_PORT:-18090}"
+WEB_API_PORT="${ACCEPTANCE_WEB_API_PORT:-18091}"
+WEB_MOVED_PORT="${ACCEPTANCE_WEB_MOVED_PORT:-18092}"
+
 # Whether this script started the registry, and so owns stopping it.
 STARTED_REGISTRY=0
 
@@ -66,6 +72,7 @@ cleanup() {
 
 	step "cleaning up"
 	docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
+	docker compose -p web down -v --remove-orphans >/dev/null 2>&1 || true
 	if [ "${STARTED_REGISTRY}" = "1" ]; then
 		docker rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
 	fi
@@ -126,15 +133,28 @@ start_registry() {
 }
 
 # push_stub builds one stub image and prints the digest the registry assigned.
+#
+# The repository defaults to demo/ so the existing calls read unchanged; the
+# three-tier example passes web/.
 push_stub() {
-	local name=$1 tag="${REGISTRY}/demo/$1:acceptance"
+	local name=$1 repo="${2:-demo}" tag
+	tag="${REGISTRY}/${repo}/${name}:acceptance"
 
 	docker build --quiet -t "${tag}" "${ROOT_DIR}/testdata/acceptance/${name}" >/dev/null
 	docker push --quiet "${tag}" >/dev/null
 
-	# The digest the registry computed, which is what the manifest pins.
-	docker inspect --format '{{index .RepoDigests 0}}' "${tag}" |
-		sed "s|^${REGISTRY}/demo/${name}@||"
+	# The digest the registry computed for *this* repository, which is what
+	# the manifest pins.
+	#
+	# Selected by prefix rather than by index: two repositories can hold the
+	# same image -- the three-tier example reuses the db stub -- and then
+	# RepoDigests holds an entry for each. Taking element 0 pinned web/db to
+	# the digest demo/db had been given, and the manifest was rewritten with
+	# a reference containing two @ signs.
+	docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${tag}" |
+		grep "^${REGISTRY}/${repo}/${name}@" |
+		head -1 |
+		sed "s|^${REGISTRY}/${repo}/${name}@||"
 }
 
 # ----------------------------------------------------------------------------
@@ -159,6 +179,26 @@ prepare_bundle() {
 
 	grep -q "@sha256:" "${dest}/manifest.yaml" ||
 		fail "the manifest in ${dest} was not rewritten with real digests"
+}
+
+# prepare_web_bundle does the same for the three-tier example, which pins three.
+prepare_web_bundle() {
+	local dest=$1
+
+	cp -r "${ROOT_DIR}/testdata/bundle-web" "${dest}"
+	sed -i \
+		-e "s|^  frontend: .*|  frontend: ${REGISTRY}/web/frontend@${FRONTEND_DIGEST}|" \
+		-e "s|^  backend: .*|  backend: ${REGISTRY}/web/backend@${BACKEND_DIGEST}|" \
+		-e "s|^  db: .*|  db: ${REGISTRY}/web/db@${WEB_DB_DIGEST}|" \
+		"${dest}/manifest.yaml"
+
+	grep -c "@sha256:" "${dest}/manifest.yaml" | grep -qx 3 ||
+		fail "the three-tier manifest was not rewritten with three real digests"
+}
+
+# web_port reads a published host port out of the three-tier project.
+web_port() {
+	docker compose -p web port "$1" 8080 2>/dev/null | sed 's/.*://'
 }
 
 # ----------------------------------------------------------------------------
@@ -374,6 +414,81 @@ info "$(echo "${refusal}" | jq -r '.error.hint')"
 
 step "doctor, after everything"
 "${MORZER}" --root "${ROOT}" doctor
+
+# ----------------------------------------------------------------------------
+# The three-tier example
+#
+# A separate, shorter scenario: the lifecycle is already proven above, and what
+# this bundle exists to demonstrate is what one tier cannot show -- two tiers
+# each publishing their own port from their own parameter, credentials scoped to
+# the tier that needs them, and a change to one tier leaving the others running.
+#
+# It is the bundle the documentation site's second worked example is drawn from,
+# so it has to be a bundle that runs.
+
+step "the three-tier example: building its images"
+FRONTEND_DIGEST=$(push_stub frontend web)
+BACKEND_DIGEST=$(push_stub backend web)
+WEB_DB_DIGEST=$(push_stub db web)
+prepare_web_bundle "${WORK}/bundle-web"
+"${MORZER}" release verify "${WORK}/bundle-web"
+
+step "the three-tier example: install and converge"
+WEB_ROOT="${WORK}/web-root"
+"${MORZER}" --root "${WEB_ROOT}" init \
+	--release "${WORK}/bundle-web" \
+	--profile embedded \
+	--domain web.example \
+	--no-recovery-recipient \
+	--install-units=false \
+	--set http_port="${WEB_HTTP_PORT}" \
+	--set api_port="${WEB_API_PORT}"
+"${MORZER}" --root "${WEB_ROOT}" apply
+
+step "each tier answers on the port its own parameter set"
+# Asserting the *body* as well as the status: two stubs both answering "ok"
+# would let a swapped port mapping pass, which is precisely the failure a
+# multi-tier example is supposed to catch.
+[ "$(curl -fsS "http://127.0.0.1:${WEB_HTTP_PORT}/health/ready")" = "frontend" ] ||
+	fail "port ${WEB_HTTP_PORT} did not reach the frontend"
+[ "$(curl -fsS "http://127.0.0.1:${WEB_API_PORT}/health/ready")" = "backend" ] ||
+	fail "port ${WEB_API_PORT} did not reach the backend"
+info "frontend on ${WEB_HTTP_PORT}, backend on ${WEB_API_PORT}"
+
+step "only the backend holds the database credential"
+docker compose -p web exec -T backend cat /run/secrets/db_password >/dev/null 2>&1 ||
+	fail "the backend cannot read the credential it needs"
+if docker compose -p web exec -T frontend cat /run/secrets/db_password >/dev/null 2>&1; then
+	fail "the frontend was given a credential it has no use for"
+fi
+info "the credential reaches the backend and not the frontend"
+
+step "changing one tier's port leaves the other tiers alone"
+# The container ids before and after are the evidence: `config set` re-creates
+# the services the parameter declares and nothing else. Bouncing the whole
+# project on every parameter change would make an operator hesitate to use it.
+before_backend=$(docker compose -p web ps -q backend)
+before_db=$(docker compose -p web ps -q db)
+
+"${MORZER}" --root "${WEB_ROOT}" config set http_port="${WEB_MOVED_PORT}"
+
+[ "$(web_port frontend)" = "${WEB_MOVED_PORT}" ] ||
+	fail "the frontend port did not move to ${WEB_MOVED_PORT}"
+[ "$(curl -fsS "http://127.0.0.1:${WEB_MOVED_PORT}/health/ready")" = "frontend" ] ||
+	fail "nothing answers on the frontend's new port"
+[ "$(docker compose -p web ps -q backend)" = "${before_backend}" ] ||
+	fail "changing http_port re-created the backend, which does not use it"
+[ "$(docker compose -p web ps -q db)" = "${before_db}" ] ||
+	fail "changing http_port re-created the database, which does not use it"
+[ "$(web_port backend)" = "${WEB_API_PORT}" ] ||
+	fail "the backend's own port moved when the frontend's changed"
+info "the frontend moved; the backend and database were untouched"
+
+step "the three-tier example: doctor and journal"
+"${MORZER}" --root "${WEB_ROOT}" doctor
+grep -q '"type":"config"' "${WEB_ROOT}/var/lib/web/manager/operations.jsonl" ||
+	fail "the parameter change was not journaled"
+info "three tiers, three parameters, one journal"
 
 step "the journal recorded every operation"
 status_field '.data.last_operation.type'

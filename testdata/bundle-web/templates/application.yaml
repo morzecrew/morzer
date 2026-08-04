@@ -1,0 +1,23 @@
+# Rendered to /etc/web/application.yaml and mounted read-only into both tiers.
+#
+# Parameters appear as values; secrets appear as *paths*. A configuration file
+# in /etc must never contain a credential.
+server:
+  url: {{ .Installation.URL | default "http://localhost:18080" }}
+  http_port: {{ .Parameters.http_port }}
+  api_port: {{ .Parameters.api_port }}
+  log_level: {{ .Parameters.log_level }}
+  max_upload: {{ .Parameters.max_upload }}
+
+release:
+  name: {{ .Release.Name }}
+  version: {{ .Release.Version }}
+
+profile: {{ .Profile | default "embedded" }}
+
+paths:
+  data: {{ .Paths.Data }}
+
+secrets:
+  db_password_file: {{ secretFile .Secrets "db_password" }}
+  session_key_file: {{ secretFile .Secrets "session_key" }}

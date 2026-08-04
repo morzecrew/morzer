@@ -50,6 +50,7 @@ nav = [
     { "Authoring" = [
         "authoring/index.md",
         "authoring/your-first-bundle.md",
+        "authoring/a-three-tier-bundle.md",
         "authoring/hooks.md",
         "authoring/publishing.md",
     ] },

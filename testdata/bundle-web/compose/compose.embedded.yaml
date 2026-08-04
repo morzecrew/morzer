@@ -1,0 +1,18 @@
+# The embedded profile runs the database here.
+services:
+  db:
+    image: ${WEB_IMAGE_DB:-registry.example/web/db@sha256:0000000000000000000000000000000000000000000000000000000000000003}
+    restart: unless-stopped
+    volumes:
+      - ${WEB_DATA_DIR:-/var/lib/web/data}/db:/var/lib/postgresql/data:rw
+    secrets:
+      - db_password
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    depends_on:
+      - db

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Backup hook: archives the data directory into the manager's backup directory.
+set -eu
+
+data="${WEB_DATA_DIR:?WEB_DATA_DIR is required}"
+dest="${WEB_BACKUP_DIR:?WEB_BACKUP_DIR is required}"
+
+mkdir -p "$dest"
+tar -czf "$dest/data.tar.gz" -C "$data" .
+
+schema=0
+[ -f "$data/.schema" ] && schema=$(cat "$data/.schema")
+
+printf '{"message":"backed up data","schema_version":%s,"artifacts":["data.tar.gz"]}' \
+    "$schema" >&"${WEB_RESULT_FD:-3}"
+echo "backed up $data"

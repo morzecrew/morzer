@@ -1,13 +1,14 @@
 # RFC 0007 — Operator parameters
 
-- **Status:** 🚧 In progress — P1–P3 shipped 2026-08-04. A release declares typed
+- **Status:** 🚧 In progress — P1–P4 shipped 2026-08-04. A release declares typed
   parameters; `init --set` and `morzer config list/get/set/unset` record them;
   values reach Compose, templates and hooks as `<PRODUCT>_PARAM_<NAME>`;
   `requirements.ports` and health URLs follow them; the Compose subprocess no
   longer inherits the operator's environment; and `doctor` reports an
-  `installation.yaml` edit that decides nothing. P4 (the three-tier example) and
-  P5 (the remaining docs and the two ABI gates) are open. Divergences are in
-  §13 and §14.
+  `installation.yaml` edit that decides nothing; and `testdata/bundle-web/` is a
+  three-tier example the acceptance run installs and reconfigures. Only P5 (the
+  remaining docs and the two ABI gates) is open. Divergences are in §13, §14 and
+  §15.
 - **Scope:** Gives a release a declared set of knobs an operator may set — ports
   above all — and gives the operator a supported way to set them. Covers the
   manifest's `parameters` block, typed validation, delivery to Compose,
@@ -663,3 +664,76 @@ dropping a parameter is the vendor's decision.
 `config set` still validates the *whole* recorded set, so a stale value that has
 become genuinely invalid surfaces on the next change rather than at the next
 apply.
+
+## 15. Amendments from P4
+
+Recorded on shipping the three-tier example, 2026-08-04.
+
+### The example pins an end state, and taught me what `services:` actually does
+
+§5.7 justified the bundle by "two tiers, each publishing its own port". Building
+it added the assertion a single-tier fixture structurally cannot make: after
+`config set http_port`, the frontend's port has moved and the backend's and
+database's container ids are **unchanged**.
+
+I first wrote here that without that assertion, `services:` scoping "could be
+ignored entirely and every test would still pass". Then I checked, by removing
+the scoping — passing every service to `Up` — and re-running acceptance. **It
+still passed.** Compose re-creates only services whose effective configuration
+changed, and changing `WEB_PARAM_HTTP_PORT` changes only the frontend's port
+mapping, so the other tiers were left alone regardless.
+
+So the honest division of labour is:
+
+- **Compose's change detection** is what keeps unrelated tiers from bouncing.
+- **The `services:` declaration** decides whether a re-create step runs at all,
+  and what the summary is allowed to claim. A parameter declaring none — like
+  `max_upload` here — produces no re-create and a summary saying the change
+  waits for the next `apply`. That part is load-bearing and is unit-tested.
+
+The acceptance assertion is still worth having: it pins the operator-visible
+end state, and would catch a regression to `--force-recreate` or to bouncing the
+whole project. It is not, on its own, evidence that the declaration is doing the
+work — and the first draft of this section said it was.
+
+### A limitation this surfaced: `services:` is not verified against the topology
+
+Nothing checks that a parameter's `services` list covers every service whose
+Compose definition interpolates it. A vendor who declares
+`log_level: {services: [frontend]}` while both tiers read
+`${..._PARAM_LOG_LEVEL}` gets a `config set` that re-creates the frontend,
+reports success, and leaves the backend running the old value.
+
+`bundle-web` declares it correctly, and the fixture test asserts that — but the
+manager cannot currently catch a vendor who does not. Detecting it would mean
+resolving the Compose files and matching interpolations against declarations,
+which is real work and belongs in its own RFC. Recorded so it is a known limit
+rather than a surprise.
+
+### Both stubs had to answer differently
+
+The first version had both tiers serve `ok`, like the existing stub. Then a
+swapped port mapping passes: the frontend's port reaching the backend is
+indistinguishable from it working. The stubs now answer `frontend` and
+`backend`, and the acceptance run asserts the body, not just the status.
+
+### `push_stub` was picking a digest by index
+
+Reusing the `db` stub across two repositories exposed a latent bug in the
+acceptance helper. `docker inspect --format '{{index .RepoDigests 0}}'` returns
+whichever repository got there first, so `web/db` was pinned to the digest
+`demo/db` had been issued and the rewritten manifest contained a reference with
+two `@` signs. It selects by repository prefix now.
+
+Worth recording because the failure was loud and immediate — `release verify`
+refused the manifest — which is the manifest validation rules doing exactly
+their job on a bundle assembled by a script.
+
+### The bundle is unit-tested as well as run
+
+The acceptance run needs Docker and forty seconds; a broken example should not
+wait for either. `test/suite/threetier_test.go` loads the bundle, resolves both
+profiles, and asserts the parameter scoping, the credential isolation and that
+every parameter the template references is declared. It runs in milliseconds
+under `just test`, and the acceptance stage proves the part it cannot: that the
+thing actually starts.

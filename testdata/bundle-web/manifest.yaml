@@ -1,0 +1,123 @@
+# A three-tier release: frontend, backend, database.
+#
+# The other fixture (testdata/bundle) is one application and one database, which
+# is enough to exercise the lifecycle but never shows what an operator actually
+# asks about: two tiers, each publishing its own port, each with its own
+# credentials. This one does, and the acceptance run drives it, so the example
+# on the documentation site is a bundle that demonstrably works rather than
+# prose that once did.
+api_version: selfhost/v1alpha1
+kind: application-release
+
+metadata:
+  name: web
+  version: 1.0.0
+  description: Three-tier example -- frontend, backend and database
+  vendor: example
+
+providers:
+  runtime: {name: compose, version: ">=2.30"}
+  secrets: {name: sops-age}
+  backup: {name: hooks}
+  health: {name: http}
+
+runtime:
+  project: web
+  files:
+    - compose/compose.yaml
+  profiles:
+    # The database runs alongside the product.
+    embedded: [compose/compose.embedded.yaml]
+    # Someone else's database. The backend keeps its credential either way,
+    # which is why db_password is declared for it rather than for the db.
+    external-db: [compose/compose.external-db.yaml]
+
+requirements:
+  architectures: [amd64, arm64]
+  tools:
+    docker: ">=24"
+    compose: ">=2.30"
+  memory: 1GiB
+  disk: 2GiB
+  # Both published ports follow their parameters. A literal here would mean
+  # preflight checking a port the deployment is not going to use.
+  ports:
+    - "{{ .Parameters.http_port }}"
+    - "{{ .Parameters.api_port }}"
+
+# One parameter per thing an operator plausibly changes, and `services` scoped
+# to the tier that actually consumes it -- so changing the web port re-creates
+# the frontend and leaves the backend and the database alone.
+parameters:
+  http_port:
+    type: port
+    default: 18080
+    description: Port the web interface is published on
+    services: [frontend]
+  api_port:
+    type: port
+    default: 18081
+    description: Port the API is published on
+    services: [backend]
+  log_level:
+    type: enum
+    values: [debug, info, warn, error]
+    default: info
+    description: Log verbosity for both application tiers
+    services: [frontend, backend]
+  max_upload:
+    type: bytes
+    default: 25MiB
+    description: Largest accepted upload
+    # No services: the backend reads this from its rendered configuration file
+    # at start-up, so the change needs a full `apply` rather than a re-create.
+    # Declaring nothing is how a vendor says that.
+
+images:
+  frontend: registry.example/web/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000001
+  backend: registry.example/web/backend@sha256:0000000000000000000000000000000000000000000000000000000000000002
+  db: registry.example/web/db@sha256:0000000000000000000000000000000000000000000000000000000000000003
+
+configuration:
+  - template: templates/application.yaml
+    target: /etc/web/application.yaml
+    mode: "0640"
+
+secrets:
+  source: /etc/web/secrets.sops.yaml
+  render_to: /run/web/secrets
+  schema: templates/secrets.yaml
+
+operations:
+  migrate:
+    kind: hook
+    command: ["hooks/migrate"]
+    timeout: 10m
+  smoke_test:
+    kind: hook
+    command: ["hooks/smoke-test"]
+    timeout: 5m
+  backup:
+    kind: hook
+    command: ["hooks/backup"]
+    timeout: 30m
+  restore:
+    kind: hook
+    command: ["hooks/restore"]
+    timeout: 30m
+
+# One check per tier, each on the port its own parameter sets.
+health:
+  checks:
+    - {name: web, type: http, url: "http://127.0.0.1:{{ .Parameters.http_port }}/health/ready", timeout: 30s}
+    - {name: api, type: http, url: "http://127.0.0.1:{{ .Parameters.api_port }}/health/ready", timeout: 30s}
+
+compatibility:
+  database_schema_min: 1
+  database_schema_max: 1
+  rollback_safe: true
+  min_manager_version: "0.0.0"
+
+retention:
+  releases: 3
+  backups: 7

@@ -1,0 +1,6 @@
+# Someone else's database. No db service, and the backend keeps its credential:
+# it still has to authenticate, the server is just somewhere else.
+services:
+  backend:
+    environment:
+      WEB_DB_HOST: ${WEB_PARAM_DB_HOST:-db.internal}

@@ -1,0 +1,57 @@
+# The two application tiers. The database is a profile, because whether it runs
+# here is the operator's decision, not the product's.
+services:
+  frontend:
+    image: ${WEB_IMAGE_FRONTEND:-registry.example/web/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000001}
+    restart: unless-stopped
+    # Host port from the parameter, container port fixed by the image. The
+    # manifest's requirements.ports and health check read the same parameter,
+    # so all three move together.
+    ports:
+      - "${WEB_PARAM_HTTP_PORT:-18080}:8080"
+    environment:
+      WEB_CONFIG_FILE: /etc/web/application.yaml
+      WEB_LOG_LEVEL: ${WEB_PARAM_LOG_LEVEL:-info}
+      WEB_API_URL: http://backend:8080
+    volumes:
+      - ${WEB_CONFIG_FILE:-/etc/web/application.yaml}:/etc/web/application.yaml:ro
+    # No `secrets:` block, and that is the point. The frontend never needs the
+    # database credential, so it never gets it -- a compromised frontend cannot
+    # read what it was never given.
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ${WEB_IMAGE_BACKEND:-registry.example/web/backend@sha256:0000000000000000000000000000000000000000000000000000000000000002}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PARAM_API_PORT:-18081}:8080"
+    environment:
+      WEB_CONFIG_FILE: /etc/web/application.yaml
+      WEB_LOG_LEVEL: ${WEB_PARAM_LOG_LEVEL:-info}
+      # Secrets reach the container as files, never as values: an environment
+      # variable is visible to anyone who can run `docker inspect`.
+      WEB_DB_PASSWORD_FILE: /run/secrets/db_password
+      WEB_SESSION_KEY_FILE: /run/secrets/session_key
+    volumes:
+      - ${WEB_CONFIG_FILE:-/etc/web/application.yaml}:/etc/web/application.yaml:ro
+      - ${WEB_DATA_DIR:-/var/lib/web/data}:/var/lib/web:rw
+    secrets:
+      - db_password
+      - session_key
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+secrets:
+  db_password:
+    file: ${WEB_SECRETS_DIR:-/run/web/secrets}/db_password
+  session_key:
+    file: ${WEB_SECRETS_DIR:-/run/web/secrets}/session_key

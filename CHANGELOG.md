@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A diagnostic reporting when the operator-facing installation file disagrees with the recorded state, naming the fields that differ. Nothing reads that file back, so an edit to it changes nothing; the check turns a silent no-op into a diagnosis.
 
+- A three-tier example bundle with a frontend, a backend and a database. Each application tier publishes its own port from its own parameter, credentials reach only the tier that needs them, and changing one tier's port leaves the others running. It is installed and exercised against real Docker on every change, so the worked example in the documentation is a bundle that runs.
+
 - Container images must be pinned by digest. A bare tag is rejected at load time, because an unpinned image makes a release mutable and a mutable release makes rollback meaningless.
 
 - Releases are identified by name and version together with the content digest of the bundle. The same version appearing with a different digest is reported as an error rather than a warning.

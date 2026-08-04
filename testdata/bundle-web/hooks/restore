@@ -1,0 +1,17 @@
+#!/bin/sh
+# Restore hook: unpacks what the backup hook archived.
+set -eu
+
+data="${WEB_DATA_DIR:?WEB_DATA_DIR is required}"
+src="${WEB_BACKUP_DIR:?WEB_BACKUP_DIR is required}"
+
+test -f "$src/data.tar.gz" || {
+    echo "no data.tar.gz in $src" >&2
+    exit 1
+}
+
+mkdir -p "$data"
+tar -xzf "$src/data.tar.gz" -C "$data"
+
+printf '{"message":"restored data"}' >&"${WEB_RESULT_FD:-3}"
+echo "restored $data"

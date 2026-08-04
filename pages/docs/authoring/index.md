@@ -70,7 +70,9 @@ morzer release verify ./my-product
 ```
 
 Every example on these pages is extracted from that bundle at build time, so
-nothing here can drift from something that demonstrably works.
+nothing here can drift from something that demonstrably works. The same is true
+of the [three-tier example](a-three-tier-bundle.md), which the acceptance run
+installs, reconfigures and probes on every change.
 
 <div class="grid cards" markdown>
 
@@ -79,6 +81,12 @@ nothing here can drift from something that demonstrably works.
     ---
 
     [:octicons-arrow-right-24: Your first bundle](your-first-bundle.md)
+
+-   :lucide-layers:{ .lg .middle } **Two tiers and a database**
+
+    ---
+
+    [:octicons-arrow-right-24: A three-tier bundle](a-three-tier-bundle.md)
 
 -   :lucide-plug:{ .lg .middle } **Write the hooks**
 

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Smoke test: the tiers are up, and each holds what it should.
+set -eu
+
+test -f "${WEB_CONFIG_FILE:?WEB_CONFIG_FILE is required}" || {
+    echo "configuration file is missing" >&2
+    exit 1
+}
+
+# The parameters reach a hook the same way they reach Compose, so a hook can
+# check the deployment it is actually part of rather than a hard-coded port.
+: "${WEB_PARAM_HTTP_PORT:?WEB_PARAM_HTTP_PORT is required}"
+: "${WEB_PARAM_API_PORT:?WEB_PARAM_API_PORT is required}"
+
+test -r "${WEB_SECRETS_DIR:?WEB_SECRETS_DIR is required}/db_password" || {
+    echo "db_password was not rendered" >&2
+    exit 1
+}
+
+printf '{"message":"smoke test passed on %s and %s"}' \
+    "$WEB_PARAM_HTTP_PORT" "$WEB_PARAM_API_PORT" >&"${WEB_RESULT_FD:-3}"
+echo "smoke test passed"
