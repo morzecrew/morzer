@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -235,5 +236,94 @@ func TestNotFoundRecognisesBothShapesTheAPIUses(t *testing.T) {
 	}
 	if notFound(errors.New("connection refused")) {
 		t.Error("a network failure was mistaken for a missing backup")
+	}
+}
+
+// TestAnEndpointIsAHostNotAURL.
+//
+// The client cannot honour a path prefix, so it dropped one silently:
+// `https://proxy.example/s3` connected to `proxy.example` and requests reached
+// the wrong backend, with an error that could never explain why.
+func TestAnEndpointIsAHostNotAURL(t *testing.T) {
+	for name, endpoint := range map[string]string{
+		"a path":     "https://proxy.example/s3",
+		"a query":    "https://minio.example?region=eu",
+		"a fragment": "https://minio.example#frag",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := resolveEndpoint(endpoint)
+			if err == nil {
+				t.Fatalf("resolveEndpoint(%q) was accepted, and the path is dropped", endpoint)
+			}
+			if !strings.Contains(domain.AsError(err).Hint, "host and optional port") {
+				t.Errorf("hint = %q", domain.AsError(err).Hint)
+			}
+		})
+	}
+
+	// A bare trailing slash is not a path and stays acceptable.
+	if _, _, err := resolveEndpoint("https://minio.example/"); err != nil {
+		t.Errorf("a trailing slash was refused: %v", err)
+	}
+}
+
+// TestNoCredentialsMeansTheSDKChain, not a static provider holding nothing.
+//
+// NewStaticV4 with three empty strings signs nothing, so the documented "leave
+// both empty to use the instance's own role" produced unauthenticated requests
+// -- a bucket refusing a backup on an EC2 instance that had a role all along.
+//
+// Asserted through the environment rather than the instance role: the chain
+// tries environment credentials first, and a machine running this test has no
+// metadata service. A static-empty provider would ignore the environment; the
+// chain does not.
+func TestNoCredentialsMeansTheSDKChain(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAFROMENV")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret-from-env")
+
+	value, err := providerFor(ports.TargetCredentials{}).
+		GetWithContext(&credentials.CredContext{Client: http.DefaultClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.AccessKeyID != "AKIAFROMENV" {
+		t.Errorf("access key = %q, want the environment's -- an empty static "+
+			"provider ignores it and signs nothing", value.AccessKeyID)
+	}
+}
+
+// TestSuppliedCredentialsWinOverTheEnvironment, because a target that names its
+// own credentials must not silently authenticate as whatever the shell had.
+func TestSuppliedCredentialsWinOverTheEnvironment(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAFROMENV")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret-from-env")
+
+	value, err := providerFor(ports.TargetCredentials{
+		AccessKeyID: "AKIACONFIGURED", SecretAccessKey: "s3kr3t",
+	}).GetWithContext(&credentials.CredContext{Client: http.DefaultClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.AccessKeyID != "AKIACONFIGURED" {
+		t.Errorf("access key = %q, want the configured one", value.AccessKeyID)
+	}
+}
+
+// TestOnlyParentComponentsAreRefused. A substring test for ".." rejected
+// `notes..age`, a legal name the filesystem target accepts -- so a backup was
+// restorable or not depending on which transport carried it.
+func TestOnlyParentComponentsAreRefused(t *testing.T) {
+	for key, want := range map[string]bool{
+		"../secrets":                  true,
+		"id/../../etc/passwd":         true,
+		"..":                          true,
+		"notes..age":                  false,
+		"database..dump":              false,
+		"id/database.sql.age":         false,
+		"id/nested..name/file.tar.gz": false,
+	} {
+		if got := hasParentComponent(key); got != want {
+			t.Errorf("hasParentComponent(%q) = %v, want %v", key, got, want)
+		}
 	}
 }

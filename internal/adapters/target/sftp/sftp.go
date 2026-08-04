@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net"
@@ -28,6 +29,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -52,6 +54,10 @@ const DefaultPort = "22"
 type Target struct {
 	mu    sync.Mutex
 	conns map[string]*connection
+
+	// seq names staging files apart, so two writes to one path cannot
+	// truncate each other.
+	seq atomic.Uint64
 
 	// dial is the transport, injectable so a test can drive a server in
 	// this process without a container.
@@ -158,7 +164,7 @@ func (t *Target) store(ctx context.Context, ref ports.TargetRef) (*sftpStore, er
 	if err != nil {
 		return nil, err
 	}
-	return &sftpStore{client: conn.client, root: ref.Path, ref: ref}, nil
+	return &sftpStore{client: conn.client, root: ref.Path, ref: ref, seq: &t.seq}, nil
 }
 
 func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection, error) {
@@ -454,11 +460,17 @@ type sftpStore struct {
 	client *sftp.Client
 	root   string
 	ref    ports.TargetRef
+
+	// seq names each staging file apart within this process.
+	seq *atomic.Uint64
 }
 
 var _ blob.Store = (*sftpStore)(nil)
 
 func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	target, err := s.resolve(key)
 	if err != nil {
 		return err
@@ -468,8 +480,10 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	}
 
 	// Written beside and renamed, so an interrupted transfer never leaves a
-	// truncated component under its final name.
-	tmp := target + ".partial"
+	// truncated component under its final name. The staging name is unique
+	// per write: a shared one lets two pushes of the same backup truncate
+	// each other, and the survivor renames bytes it did not write.
+	tmp := fmt.Sprintf("%s.partial-%d-%d", target, os.Getpid(), s.seq.Add(1))
 	f, err := s.client.Create(tmp)
 	if err != nil {
 		return s.unreachable(err, "cannot create %s on the target", tmp)
@@ -484,12 +498,25 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 		return s.unreachable(err, "cannot finish writing %s to the target", key)
 	}
 
-	// Rename over an existing file: a re-push must overwrite rather than
-	// fail, because a re-push is the documented remedy for a partial one.
-	_ = s.client.Remove(target)
-	if err := s.client.Rename(tmp, target); err != nil {
-		_ = s.client.Remove(tmp)
-		return s.unreachable(err, "cannot place %s on the target", key)
+	// Replaced atomically where the server supports it. Removing the old
+	// file first and renaming after was a window in which a failed rename
+	// left the component gone and the manifest still naming it -- a remote
+	// backup that lists as whole and is not.
+	//
+	// posix-rename@openssh.com is an OpenSSH extension, so the remove-then-
+	// rename path stays for servers without it. That window is narrower than
+	// it was, not closed: a server that lacks the extension cannot offer an
+	// atomic replace at all.
+	if err := s.client.PosixRename(tmp, target); err != nil {
+		if removeErr := s.client.Remove(target); removeErr != nil &&
+			!errors.Is(removeErr, fs.ErrNotExist) {
+			_ = s.client.Remove(tmp)
+			return s.unreachable(removeErr, "cannot replace %s on the target", key)
+		}
+		if err := s.client.Rename(tmp, target); err != nil {
+			_ = s.client.Remove(tmp)
+			return s.unreachable(err, "cannot place %s on the target", key)
+		}
 	}
 	if err := s.client.Chmod(target, 0o600); err != nil {
 		return s.unreachable(err, "cannot set the mode of %s on the target", key)
@@ -498,6 +525,9 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 }
 
 func (s *sftpStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	target, err := s.resolve(key)
 	if err != nil {
 		return nil, err
@@ -515,6 +545,9 @@ func (s *sftpStore) Get(ctx context.Context, key string) (io.ReadCloser, error) 
 }
 
 func (s *sftpStore) Keys(ctx context.Context, prefix string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var out []string
 
 	// A root that is not there yet holds no backups -- the state before the
@@ -563,6 +596,9 @@ func (s *sftpStore) Keys(ctx context.Context, prefix string) ([]string, error) {
 }
 
 func (s *sftpStore) Delete(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	target, err := s.resolve(key)
 	if err != nil {
 		return err
@@ -579,16 +615,30 @@ func (s *sftpStore) Delete(ctx context.Context, key string) error {
 // component path of "../../.ssh/authorized_keys" must not be a way for whoever
 // controls the target to decide what a fetch reads or a removal deletes.
 func (s *sftpStore) resolve(key string) (string, error) {
+	// Cleaned and then checked, rather than a substring test for "..".
+	// `notes..age` is a legal filename that the other two transports accept,
+	// and rejecting it here would make a backup restorable or not depending
+	// on which transport it happened to be pushed with.
 	clean := path.Clean("/" + key)
 	if clean == "/" {
 		return "", domain.BackupError(nil, "the backup names an empty component path")
 	}
-	if strings.Contains(key, "..") {
+	if key == "" || hasParentComponent(key) {
 		return "", domain.BackupError(nil,
 			"the backup names a component outside the target: %q", key).
 			WithHint("this backup was not written by this manager; do not restore from it")
 	}
 	return path.Join(s.root, clean), nil
+}
+
+// hasParentComponent reports whether any path element is "..".
+func hasParentComponent(key string) bool {
+	for _, part := range strings.Split(path.Clean(key), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *sftpStore) unreachable(cause error, format string, args ...any) error {

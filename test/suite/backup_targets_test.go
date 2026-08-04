@@ -898,3 +898,38 @@ func TestRetentionNeverRemovesTheLastCopyOnATarget(t *testing.T) {
 	require.NoError(t, localdir.New().Verify(context.Background(),
 		ports.RemoteRef{Target: mustTarget(t, offsite), ID: manifests[0].ID}))
 }
+
+// TestACorruptFetchNeverReachesTheBackupStore.
+//
+// The store is what `backup list` reads and `restore` picks from. Promoting the
+// fetched directory and verifying afterwards left a corrupt backup selectable by
+// the very command the verification exists to protect.
+func TestACorruptFetchNeverReachesTheBackupStore(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	require.NoError(t, os.RemoveAll(h.Backup.Dir(ref.ID)))
+
+	// Rot on the target, after the manifest recorded the digest.
+	component := filepath.Join(offsite, ref.ID, "db.sql.age")
+	require.NoError(t, os.WriteFile(component, []byte("not what was pushed"), 0o600))
+
+	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err, "a corrupt backup was fetched without complaint")
+
+	entries, readErr := os.ReadDir(h.Paths.BackupsDir())
+	if readErr == nil {
+		for _, e := range entries {
+			assert.NotEqual(t, ref.ID, e.Name(),
+				"a backup that failed verification was left in the store, where "+
+					"`restore` can select it")
+		}
+	}
+}

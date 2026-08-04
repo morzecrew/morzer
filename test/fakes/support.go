@@ -227,6 +227,11 @@ func (b *Backup) Inspect(ctx context.Context, ref ports.BackupRef) (ports.Backup
 	return m, nil
 }
 
+// Verify checks the checksums when the backup is on disk.
+//
+// A fake that returned nil regardless would make every "verification catches
+// this" test vacuous -- the assertion would pass because nothing was compared,
+// which is indistinguishable from passing because the check works.
 func (b *Backup) Verify(ctx context.Context, ref ports.BackupRef) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -236,7 +241,56 @@ func (b *Backup) Verify(ctx context.Context, ref ports.BackupRef) error {
 	if _, ok := b.backups[ref.ID]; !ok {
 		return domain.BackupError(domain.ErrNotFound, "no backup with id %q", ref.ID)
 	}
+
+	// ref.Path rather than the recorded directory: a fetch verifies a staging
+	// copy before promoting it, and pointing at the store instead would check
+	// the wrong bytes.
+	if dir := ref.Path; b.Root != "" && dir != "" {
+		if err := verifyOnDisk(dir); err != nil {
+			return err
+		}
+	}
+
 	b.Verified[ref.ID]++
+	return nil
+}
+
+// verifyOnDisk re-reads a backup directory and checks it against its own
+// manifest, the way the real engine does.
+func verifyOnDisk(dir string) error {
+	data, err := os.ReadFile(filepath.Join(dir, ports.BackupManifestFileName))
+	if err != nil {
+		return domain.BackupError(err, "%s has no readable backup manifest", dir)
+	}
+	var m ports.BackupManifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return domain.BackupError(err, "the manifest in %s is not valid JSON", dir)
+	}
+
+	for _, c := range m.Components {
+		path := filepath.Join(dir, filepath.FromSlash(c.Path))
+		info, err := os.Stat(path)
+		if err != nil {
+			return domain.BackupError(domain.ErrDigestMismatch,
+				"backup %s is missing %s", m.ID, c.Path)
+		}
+		if c.Size > 0 && info.Size() != c.Size {
+			return domain.BackupError(domain.ErrDigestMismatch,
+				"backup %s: %s is %d bytes, manifest says %d",
+				m.ID, c.Path, info.Size(), c.Size)
+		}
+		if c.SHA256 == "" {
+			continue
+		}
+		sum, err := atomicfs.DigestFile(path)
+		if err != nil {
+			return domain.BackupError(err, "cannot read %s", c.Path)
+		}
+		if !atomicfs.SameDigest(sum, c.SHA256) {
+			return domain.BackupError(domain.ErrDigestMismatch,
+				"backup %s: %s failed its checksum", m.ID, c.Path)
+		}
+	}
 	return nil
 }
 

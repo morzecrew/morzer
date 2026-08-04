@@ -560,3 +560,155 @@ func TestCredentialsFromAFileAreRedactedToo(t *testing.T) {
 		"a credential supplied from a file was never registered for redaction, so "+
 			"the second line of defence is missing on the recovery path")
 }
+
+// TestTwoSpellingsOfOneTargetAreOneTarget.
+//
+// `String()` returns what the operator wrote, so comparing raw URLs let three
+// spellings of one directory into an installation. Each would then be pushed to
+// and pruned separately, every pass seeing a state the other two had just
+// changed.
+func TestTwoSpellingsOfOneTargetAreOneTarget(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"file:///mnt/a", "file://localhost/mnt/a"},
+		{"file:///mnt/a", "file:///mnt/a/"},
+		{"s3://bucket/demo", "s3://bucket/demo/"},
+		{"ssh://ops@host/srv/x", "ssh://ops@host/srv/x/"},
+	} {
+		first, err := ports.TargetURL(pair[0])
+		require.NoError(t, err)
+		second, err := ports.TargetURL(pair[1])
+		require.NoError(t, err)
+
+		assert.Equal(t, first.Canonical(), second.Canonical(),
+			"%q and %q are the same target and must compare equal", pair[0], pair[1])
+	}
+
+	// And genuinely different targets stay different.
+	a, err := ports.TargetURL("file:///mnt/a")
+	require.NoError(t, err)
+	b, err := ports.TargetURL("file:///mnt/b")
+	require.NoError(t, err)
+	assert.NotEqual(t, a.Canonical(), b.Canonical())
+}
+
+// TestAnInstallationRefusesTwoSpellingsOfOneTarget, which is where the
+// canonical form has to be applied for it to matter.
+func TestAnInstallationRefusesTwoSpellingsOfOneTarget(t *testing.T) {
+	inst := domain.Installation{
+		SchemaVersion: domain.InstallationSchemaVersion,
+		ID:            "inst_x",
+		Product:       "demo",
+		Backup: domain.BackupConfig{Targets: []domain.BackupTargetConfig{
+			{URL: "file:///mnt/a"},
+			{URL: "file://localhost/mnt/a/"},
+		}},
+	}
+
+	err := inst.Validate()
+	require.Error(t, err, "one directory was accepted as two targets")
+	assert.Contains(t, err.Error(), "twice")
+}
+
+// TestASymlinkOnATargetIsNotFollowed.
+//
+// A target is somewhere this deployment does not control -- that is the whole
+// premise -- so whoever owns the medium can replace a component with a link to
+// a local file. The manifest names an innocent path, the lexical check agrees,
+// and without an os.Root the manager reads /etc/shadow into the backup it is
+// fetching.
+func TestASymlinkOnATargetIsNotFollowed(t *testing.T) {
+	dir := t.TempDir()
+	offsite := filepath.Join(dir, "offsite")
+
+	local := writeTestBackup(t, "20260101T000000Z", map[string]string{
+		"database.sql.age": "ciphertext",
+	})
+	ref, err := ports.TargetURL("file://" + offsite)
+	require.NoError(t, err)
+
+	adapter := localdir.New()
+	remote, err := adapter.Push(context.Background(), ref, local, "20260101T000000Z")
+	require.NoError(t, err)
+
+	// The medium's owner swaps a component for a link out of the target.
+	secret := filepath.Join(dir, "local-secret")
+	require.NoError(t, os.WriteFile(secret, []byte("SHOULD-NOT-BE-FETCHED"), 0o600))
+
+	component := filepath.Join(offsite, "20260101T000000Z", "database.sql.age")
+	require.NoError(t, os.Remove(component))
+	require.NoError(t, os.Symlink(secret, component))
+
+	dest := filepath.Join(t.TempDir(), "dest")
+	err = adapter.Fetch(context.Background(), remote, dest)
+	require.Error(t, err, "a symlinked component was followed off the target")
+
+	if data, readErr := os.ReadFile(filepath.Join(dest, "database.sql.age")); readErr == nil {
+		assert.NotContains(t, string(data), "SHOULD-NOT-BE-FETCHED",
+			"a local file was read into the fetched backup")
+	}
+}
+
+// TestALegalNameContainingDotsWorksOnEveryTransport. A substring test for ".."
+// rejected `notes..age`, which the filesystem target accepts -- so a backup was
+// restorable or not depending on which transport it happened to be pushed with.
+func TestALegalNameContainingDotsWorksOnEveryTransport(t *testing.T) {
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	ref, err := ports.TargetURL("file://" + offsite)
+	require.NoError(t, err)
+
+	local := writeTestBackup(t, "20260101T000000Z", map[string]string{
+		"database..age": "ciphertext",
+	})
+
+	adapter := localdir.New()
+	remote, err := adapter.Push(context.Background(), ref, local, "20260101T000000Z")
+	require.NoError(t, err, "a legal component name containing dots was refused")
+
+	back := filepath.Join(t.TempDir(), "fetched")
+	require.NoError(t, adapter.Fetch(context.Background(), remote, back))
+	_, err = os.Stat(filepath.Join(back, "database..age"))
+	require.NoError(t, err)
+}
+
+// TestCanonicalKeepsTheUserApart. Two accounts on one host are two targets: the
+// backups one can read are not necessarily the backups the other can.
+func TestCanonicalKeepsTheUserApart(t *testing.T) {
+	operator, err := ports.TargetURL("ssh://ops@host/srv/backups")
+	require.NoError(t, err)
+	admin, err := ports.TargetURL("ssh://admin@host/srv/backups")
+	require.NoError(t, err)
+
+	assert.NotEqual(t, operator.Canonical(), admin.Canonical())
+	assert.Contains(t, operator.Canonical(), "ops@")
+}
+
+// TestACredentialDocumentIsCheckedFieldateField, so a document that parses as
+// YAML but names nothing useful is refused where it is read rather than at the
+// first request.
+func TestACredentialDocumentIsCheckedFieldByField(t *testing.T) {
+	for name, tc := range map[string]struct {
+		raw string
+		bad bool
+	}{
+		"an s3 pair":         {raw: "access_key_id: AKIA\nsecret_access_key: s3kr3t\n"},
+		"an ssh key and pin": {raw: "private_key: |\n  KEY\nknown_hosts: host ssh-ed25519 AAAA\n"},
+		"an endpoint alone":  {raw: "endpoint: minio.internal\n"},
+		"empty":              {raw: "", bad: true},
+		"only whitespace":    {raw: "   \n\t\n", bad: true},
+		"valid yaml, no known field": {
+			raw: "colour: blue\nsize: large\n", bad: true,
+		},
+		"not yaml at all": {raw: "access_key_id: [unclosed\n", bad: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ops.ParseTargetCredentials(tc.raw)
+			if tc.bad {
+				require.Error(t, err, "a document naming no credential was accepted")
+				assert.NotEmpty(t, domain.AsError(err).Hint,
+					"a refusal about a credential document must say what one looks like")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

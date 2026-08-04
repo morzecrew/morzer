@@ -263,7 +263,7 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 		return Result{}, err
 	}
 	for _, existing := range inst.Backup.Targets {
-		if parsed, perr := ports.TargetURL(existing.URL); perr == nil && parsed.String() == ref.String() {
+		if parsed, perr := ports.TargetURL(existing.URL); perr == nil && parsed.Canonical() == ref.Canonical() {
 			return Result{}, domain.Usage("%s is already a backup target", ref).
 				WithHint("run `morzer backup target list` to see them all")
 		}
@@ -334,7 +334,7 @@ func TargetRemove(ctx context.Context, d *Deps, opts Options, url string) (Resul
 	kept := make([]domain.BackupTargetConfig, 0, len(inst.Backup.Targets))
 	var found bool
 	for _, cfg := range inst.Backup.Targets {
-		if parsed, perr := ports.TargetURL(cfg.URL); perr == nil && parsed.String() == ref.String() {
+		if parsed, perr := ports.TargetURL(cfg.URL); perr == nil && parsed.Canonical() == ref.Canonical() {
 			found = true
 			continue
 		}
@@ -366,7 +366,7 @@ func TargetRemove(ctx context.Context, d *Deps, opts Options, url string) (Resul
 			remaining := make([]domain.BackupTargetConfig, 0, len(current.Backup.Targets))
 			for _, cfg := range current.Backup.Targets {
 				if parsed, perr := ports.TargetURL(cfg.URL); perr == nil &&
-					parsed.String() == ref.String() {
+					parsed.Canonical() == ref.Canonical() {
 					continue
 				}
 				remaining = append(remaining, cfg)
@@ -450,7 +450,7 @@ func (d *Deps) targetsFor(ctx context.Context, opts TargetOptions) ([]ports.Targ
 		if inst, err := d.loadInstallation(ctx); err == nil {
 			for _, cfg := range inst.Backup.Targets {
 				parsed, parseErr := ports.TargetURL(cfg.URL)
-				if parseErr != nil || parsed.String() != ref.String() {
+				if parseErr != nil || parsed.Canonical() != ref.Canonical() {
 					continue
 				}
 				if resolved, resolveErr := d.resolveTarget(ctx, cfg); resolveErr == nil {
@@ -593,20 +593,26 @@ func FetchRemote(ctx context.Context, d *Deps, opts FetchOptions) (Result, error
 		_ = atomicfs.RemoveAll(staging)
 		return Result{}, err
 	}
+
+	// Verified in the staging directory, *before* it is promoted. The transfer
+	// is the new thing that can go wrong, and a backup that failed its
+	// checksums must never appear in the store even briefly: `backup list`
+	// reads that directory and `restore` picks from it, so promoting first and
+	// verifying second left a corrupt backup selectable by the very command
+	// the verification exists to protect.
+	if d.Backup != nil {
+		staged := ports.BackupRef{ID: manifest.ID, Path: staging, At: manifest.CreatedAt}
+		if err := d.Backup.Verify(ctx, staged); err != nil {
+			_ = atomicfs.RemoveAll(staging)
+			return Result{}, err
+		}
+	}
+
 	if err := os.Rename(staging, dest); err != nil {
 		_ = atomicfs.RemoveAll(staging)
 		return Result{}, domain.BackupError(err, "cannot place the fetched backup at %s", dest)
 	}
-
-	// Verified here rather than left to the restore. The transfer is the
-	// new thing that can go wrong, and the moment to find out is now --
-	// while the operator is watching and nothing has been overwritten.
 	ref := ports.BackupRef{ID: manifest.ID, Path: dest, At: manifest.CreatedAt}
-	if d.Backup != nil {
-		if err := d.Backup.Verify(ctx, ref); err != nil {
-			return Result{}, err
-		}
-	}
 
 	return Result{
 		Summary: fmt.Sprintf("backup %s fetched from %s", manifest.ID, target),

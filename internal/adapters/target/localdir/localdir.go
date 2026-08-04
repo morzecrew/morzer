@@ -154,9 +154,20 @@ func (s *dirStore) Put(ctx context.Context, key string, r io.Reader, size int64)
 	// half-written component even for the moment the copy takes. Push's
 	// manifest-last rule covers the interrupted-push case; this covers the
 	// interrupted-file case, which is what a full disk produces.
-	tmp := path + ".partial"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) //nolint:gosec // the operator's own target path
+	//
+	// The neighbour's name is unique per write, not `<name>.partial`. A shared
+	// name means two pushes of the same backup -- a manual `backup push`
+	// overlapping the scheduled one, or two machines writing to one NFS mount,
+	// which no lock of ours reaches -- truncate each other's staging file, and
+	// the survivor renames bytes it did not write.
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".partial-")
 	if err != nil {
+		return s.target.unreachable(s.ref, err)
+	}
+	tmp := f.Name()
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return s.target.unreachable(s.ref, err)
 	}
 	if _, err := io.Copy(f, r); err != nil {
@@ -175,13 +186,30 @@ func (s *dirStore) Put(ctx context.Context, key string, r io.Reader, size int64)
 	return nil
 }
 
+// Get opens a component, refusing to follow a symlink out of the target.
+//
+// The lexical check in resolve is not enough on its own. A target is somewhere
+// this deployment does not control -- that is the entire premise -- so whoever
+// owns the medium can replace `20260101T000000Z/database.sql.age` with a link
+// to /etc/shadow. The manifest names an innocent path, resolve agrees, and the
+// manager reads a local file into the backup it is fetching.
+//
+// os.Root is what closes that: every component is opened relative to the
+// target's own directory, and the kernel refuses a traversal the path string
+// never showed.
 func (s *dirStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
-	path, err := s.resolve(key)
-	if err != nil {
+	if _, err := s.resolve(key); err != nil {
 		return nil, err
 	}
-	f, err := os.Open(path) //nolint:gosec // the operator's own target path
+
+	root, err := atomicfs.OpenRoot(s.root)
 	if err != nil {
+		return nil, s.target.unreachable(s.ref, err)
+	}
+
+	f, err := root.Open(filepath.FromSlash(key))
+	if err != nil {
+		_ = root.Close()
 		if os.IsNotExist(err) {
 			// Passed through unwrapped so blob can tell "not there"
 			// from "the medium is gone".
@@ -189,7 +217,20 @@ func (s *dirStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 		}
 		return nil, s.target.unreachable(s.ref, err)
 	}
-	return f, nil
+	return rootFile{File: f, root: root}, nil
+}
+
+// rootFile closes the os.Root the file was opened through, so a fetch does not
+// leak a directory handle per component.
+type rootFile struct {
+	*os.File
+	root *os.Root
+}
+
+func (f rootFile) Close() error {
+	err := f.File.Close()
+	_ = f.root.Close()
+	return err
 }
 
 func (s *dirStore) Keys(ctx context.Context, prefix string) ([]string, error) {

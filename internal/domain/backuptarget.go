@@ -31,11 +31,23 @@ type BackupTargetURL struct {
 	Raw string
 }
 
-func (u BackupTargetURL) String() string {
-	if u.Raw != "" {
-		return u.Raw
+// Canonical is the target's identity, independent of how it was spelled.
+//
+// There is deliberately no String method here. The one on ports.TargetRef
+// returns what the operator wrote, which is right for a message and wrong for a
+// comparison -- and a type carrying both is a type where the wrong one gets
+// picked. This layer only ever needs the identity.
+//
+// `file:///mnt/a`, `file://localhost/mnt/a` and `file:///mnt/a/` are one
+// target. Comparing the raw strings instead let all three into an installation,
+// which meant the same directory was pushed to three times and pruned three
+// times -- each pass seeing a state the other two had just changed.
+func (u BackupTargetURL) Canonical() string {
+	out := u.Scheme + "://"
+	if u.User != "" {
+		out += u.User + "@"
 	}
-	return u.Scheme + "://" + u.Host + u.Path
+	return out + u.Host + u.Path
 }
 
 // ParseBackupTarget parses a backup target URL.

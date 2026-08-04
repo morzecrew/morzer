@@ -227,13 +227,13 @@ func (i Installation) Validate() error {
 			v.add(field+".url", "%s", AsError(err).Message)
 			continue
 		}
-		if seen[parsed.String()] {
+		if seen[parsed.Canonical()] {
 			// Two identical targets would be pushed to twice and
 			// pruned twice, and the second pass would report
 			// removing what the first already removed.
 			v.add(field+".url", "is listed twice")
 		}
-		seen[parsed.String()] = true
+		seen[parsed.Canonical()] = true
 	}
 
 	return v.err()

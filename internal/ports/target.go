@@ -86,11 +86,21 @@ type TargetRef struct {
 	Credentials TargetCredentials
 }
 
+// String is what an operator wrote, for messages. Canonical is for comparison.
 func (r TargetRef) String() string {
 	if r.URL != "" {
 		return r.URL
 	}
-	return r.Scheme + "://" + r.Host + r.Path
+	return r.Canonical()
+}
+
+// Canonical is the target's identity, independent of how it was spelled.
+func (r TargetRef) Canonical() string {
+	out := r.Scheme + "://"
+	if r.User != "" {
+		out += r.User + "@"
+	}
+	return out + r.Host + r.Path
 }
 
 // Bucket returns the first path segment, which is the bucket for object

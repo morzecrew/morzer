@@ -267,3 +267,48 @@ func TestATargetThatCannotBeDialledSaysSo(t *testing.T) {
 		t.Errorf("hint = %q", domain.AsError(err).Hint)
 	}
 }
+
+// TestOnlyParentComponentsAreRefused. The same rule the other two transports
+// apply: a component name containing dots is legal, a `..` path element is not.
+// A substring test made a backup restorable or not depending on which transport
+// happened to carry it.
+func TestOnlyParentComponentsAreRefused(t *testing.T) {
+	for key, want := range map[string]bool{
+		"../.ssh/authorized_keys": true,
+		"id/../../etc/shadow":     true,
+		"..":                      true,
+		"notes..age":              false,
+		"database..dump":          false,
+		"id/database.sql.age":     false,
+	} {
+		if got := hasParentComponent(key); got != want {
+			t.Errorf("hasParentComponent(%q) = %v, want %v", key, got, want)
+		}
+	}
+}
+
+// TestACancelledContextStopsNewWork.
+//
+// pkg/sftp takes no context, so an in-flight transfer cannot be interrupted --
+// that is a limitation of the library and is documented. What must not happen
+// is *starting* work under a context that has already expired, which is how an
+// operation runs past the deadline the engine set for it.
+func TestACancelledContextStopsNewWork(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	store := &sftpStore{root: "/srv/backups"}
+
+	if err := store.Put(ctx, "id/db.age", strings.NewReader("x"), 1); err == nil {
+		t.Error("Put started under a cancelled context")
+	}
+	if _, err := store.Get(ctx, "id/db.age"); err == nil {
+		t.Error("Get started under a cancelled context")
+	}
+	if _, err := store.Keys(ctx, ""); err == nil {
+		t.Error("Keys started under a cancelled context")
+	}
+	if err := store.Delete(ctx, "id/db.age"); err == nil {
+		t.Error("Delete started under a cancelled context")
+	}
+}

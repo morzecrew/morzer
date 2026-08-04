@@ -20,6 +20,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -163,7 +164,7 @@ func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {
 	}
 
 	client, err := minio.New(endpoint, &minio.Options{
-		Creds: credentials.NewStaticV4(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken),
+		Creds: providerFor(creds),
 		// Always verified. There is no flag that reaches this, for the
 		// same reason no flag skips a release's signature: a target
 		// whose certificate is not checked is a target somebody else
@@ -176,6 +177,27 @@ func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {
 		return nil, domain.BackupError(err, "cannot build a client for %s", endpoint)
 	}
 	return client, nil
+}
+
+// providerFor chooses how the client authenticates.
+//
+// Static credentials when the operator supplied any; the SDK's own chain --
+// environment, then the instance role -- when they supplied none.
+//
+// NewStaticV4 with three empty strings was the bug: it is a *static provider
+// holding nothing*, which signs nothing, so the documented "leave both empty to
+// use the instance's own role" produced unauthenticated requests instead. On an
+// EC2 instance with a role, that is a bucket refusing a backup for a reason the
+// error could not explain.
+func providerFor(creds ports.TargetCredentials) *credentials.Credentials {
+	if creds.AccessKeyID != "" || creds.SecretAccessKey != "" {
+		return credentials.NewStaticV4(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken)
+	}
+	return credentials.NewChainCredentials([]credentials.Provider{
+		&credentials.EnvAWS{},
+		&credentials.EnvMinio{},
+		&credentials.IAM{Client: &http.Client{Timeout: 10 * time.Second}},
+	})
 }
 
 // sharedTransport is the one thing worth sharing between clients: the
@@ -222,6 +244,19 @@ func resolveEndpoint(raw string) (endpoint string, secure bool, err error) {
 		return "", false, domain.Usage("the backup target endpoint %q is not a URL", raw).
 			WithHint("write a host like minio.example:9000, or https://minio.example")
 	}
+
+	// An endpoint is a host, not a URL with a path. The client would drop
+	// anything after the host, so `https://proxy.example/s3` silently became
+	// `proxy.example` -- requests reaching the wrong backend, and an error
+	// message that could never explain why.
+	if strings.Trim(u.Path, "/") != "" || u.RawQuery != "" || u.Fragment != "" {
+		return "", false, domain.Usage(
+			"the backup target endpoint %q has a path, query or fragment", raw).
+			WithHint("an endpoint is a host and optional port; the bucket and prefix " +
+				"come from the s3:// URL. A gateway that lives under a path is " +
+				"not addressable this way")
+	}
+
 	switch u.Scheme {
 	case "https":
 		return u.Host, true, nil
@@ -359,12 +394,25 @@ func (s *bucketStore) resolve(key string) (string, error) {
 	if key == "" {
 		return "", domain.BackupError(nil, "the backup names an empty component path")
 	}
-	if strings.Contains(key, "..") || strings.HasPrefix(key, "/") {
+	// Components rather than a substring, so `notes..age` -- a legal name the
+	// other transports accept -- does not make a backup restorable on one
+	// target and not another.
+	if strings.HasPrefix(key, "/") || hasParentComponent(key) {
 		return "", domain.BackupError(nil,
 			"the backup names a component outside the target: %q", key).
 			WithHint("this backup was not written by this manager; do not restore from it")
 	}
 	return joinKey(s.prefix, key), nil
+}
+
+// hasParentComponent reports whether any path element is "..".
+func hasParentComponent(key string) bool {
+	for _, part := range strings.Split(path.Clean(key), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func joinKey(parts ...string) string {
