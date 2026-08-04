@@ -151,12 +151,22 @@ gets credit for the packages it exercises. Without that the total read 8.7%
 instead of 45% when the floor was first set — it was measuring where tests live
 rather than what they cover.
 
-**The number is lower than the testing behind it.** It counts `go test` only,
-and the acceptance suite runs the built binary — so Compose, systemd, the health
-probes and the CLI wiring barely register. Measured on the same tree: unit tests
-alone 59.5%, the acceptance run alone 47.6%, their union 70.0%. Counting the
-union means building with `-cover`, collecting `GOCOVERDIR` profiles from the
-acceptance run and merging them with `go tool covdata`.
+```sh
+just coverage-gate    # `go test` only — fast, no Docker
+just coverage-union   # every suite, including acceptance — needs Docker
+```
+
+**Two floors, because two things can be measured.** `go test` alone reports
+59.5%; the acceptance suite drives the *built binary*, so what it exercises
+hardest — Compose, systemd, the health probes, the CLI wiring — does not appear
+in that number at all. Instrumenting it with `go build -cover` and unioning the
+profiles gives 70.0%.
+
+CI enforces whichever it has: a change-gated pull request that skipped the
+acceptance job is held to the unit floor, one that ran it to the union floor.
+`tools/covmerge` does the union — the profiles cannot simply be concatenated,
+because `go test` writes `atomic` counts and the instrumented binary writes
+`set`, and the same block appears in both.
 
 [Codecov](https://codecov.io/github/morzecrew/morzer) receives the same profile
 and reports the trend, but it does not gate: a service being down must never be

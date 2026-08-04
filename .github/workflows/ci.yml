@@ -245,12 +245,30 @@ jobs:
           docker compose version
           jq --version
 
-      - run: just acceptance
+      # Instrumented, so what the scenario exercises -- Compose, systemd, the
+      # health probes, the CLI wiring -- reaches the coverage gate. It is the
+      # same code with counters added; `just acceptance` stays uninstrumented
+      # for local runs, so the shape that ships is still exercised by hand.
+      - run: just acceptance-cover
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: acceptance-profile
+          path: acceptance.profile
+          if-no-files-found: error
+          retention-days: 7
 
   coverage:
     name: Coverage floor
-    needs: [changes, test]
-    if: needs.changes.outputs.run_full == 'true' || needs.changes.outputs.code == 'true'
+    # Acceptance is in `needs` for its profile, not for its verdict: the
+    # condition below runs this job whether acceptance ran, was skipped, or
+    # failed, and the floor adjusts to whichever profiles arrived.
+    needs: [changes, test, acceptance]
+    if: >-
+      !cancelled() &&
+      needs.test.result == 'success' &&
+      (needs.changes.outputs.run_full == 'true' || needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -264,7 +282,18 @@ jobs:
       # union is 70.0%. Counting the union needs the binary built with
       # `-cover` and the two profiles merged; until that lands, this number is
       # lower than the testing behind it.
-      COVERAGE_FLOOR: "59"
+      # Two floors, because two things can arrive.
+      #
+      # UNIT_FLOOR measures `go test` alone, which is all a change-gated pull
+      # request that skipped the acceptance job can produce. UNION_FLOOR adds
+      # the acceptance run's own profile, which is where Compose, systemd and
+      # the CLI wiring actually get exercised -- measured at 70.0% against
+      # 59.5% for `go test` alone.
+      #
+      # Floors, not targets. Raised deliberately; lowering either is a
+      # reviewable change in this file rather than a silent drift.
+      UNIT_FLOOR: "59"
+      UNION_FLOOR: "68"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -280,7 +309,36 @@ jobs:
       - name: Install sops
         run: .github/scripts/install-sops.sh "$SOPS_VERSION"
 
-      - run: just coverage-gate "$COVERAGE_FLOOR"
+      - name: Measure `go test` coverage
+        run: just test-cover
+
+      # Present only when the acceptance job ran. `continue-on-error` rather
+      # than a condition on the job's result, so a skipped, failed or
+      # not-yet-uploaded artefact all land in the same place: no file, and the
+      # unit floor below.
+      - name: Fetch the acceptance run's profile
+        id: acceptance_profile
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: acceptance-profile
+
+      - name: Merge the profiles and enforce the floor
+        run: |
+          set -euo pipefail
+          go run ./tools/covmerge union.out coverage.out acceptance.profile
+
+          # Which floor applies is decided by what arrived, not by what was
+          # hoped for. A pull request that skipped acceptance is held to the
+          # unit floor; one that ran it is held to the union floor, which is
+          # nine points higher and the number that reflects the testing.
+          if [ -f acceptance.profile ]; then
+            echo "acceptance profile present: enforcing the union floor"
+            .github/scripts/coverage-floor.sh union.out "$UNION_FLOOR"
+          else
+            echo "no acceptance profile: enforcing the unit floor"
+            .github/scripts/coverage-floor.sh union.out "$UNIT_FLOOR"
+          fi
 
       # Codecov reports the trend and annotates pull requests; the floor above
       # is what actually fails the build. Two mechanisms on purpose: a service
@@ -292,7 +350,7 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.out
+          files: ./union.out
           # Go's own profile format, which Codecov parses directly -- no
           # conversion step to keep in step with the one `just` runs locally.
           disable_search: true
@@ -302,5 +360,7 @@ jobs:
         if: always()
         with:
           name: coverage-profile
-          path: coverage.out
+          path: |
+            coverage.out
+            union.out
           retention-days: 7

@@ -98,9 +98,37 @@ test-cover:
     go test -coverpkg=./internal/... -coverprofile=coverage.out -covermode=atomic ./...
     go tool cover -func=coverage.out | tail -1
 
-# Fail when total coverage drops below the floor.
+# `go test` only. The acceptance suite drives the built binary, so what it
+# exercises hardest does not appear here -- use `coverage-union` for the whole
+# picture.
+
+# Fail when `go test` coverage drops below the floor.
 coverage-gate floor="59": test-cover
     .github/scripts/coverage-floor.sh coverage.out {{floor}}
+
+# The main package has to be instrumented too: with -coverpkg=./internal/...
+# alone nothing registers the meta-data and the run produces no profile at all.
+
+# Run the acceptance scenario against a coverage-instrumented binary.
+acceptance-cover:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf {{dist}}/covdata acceptance.profile
+    mkdir -p {{dist}}/covdata
+    go build -cover -coverpkg=./internal/...,./cmd/... -o {{dist}}/morzer-cover {{cmd}}
+    MORZER="$PWD/{{dist}}/morzer-cover" GOCOVERDIR="$PWD/{{dist}}/covdata" \
+        .github/scripts/acceptance.sh
+    go tool covdata textfmt -i={{dist}}/covdata -o acceptance.profile
+    go tool cover -func=acceptance.profile | tail -1
+
+# The union of the `go test` profile and the acceptance run's. Neither alone
+# describes what is tested: measured on one tree, 59.5% and 47.6% respectively,
+# 70.0% together.
+
+# Fail when coverage across every suite drops below the floor. Needs Docker.
+coverage-union floor="68": test-cover acceptance-cover
+    go run ./tools/covmerge union.out coverage.out acceptance.profile
+    .github/scripts/coverage-floor.sh union.out {{floor}}
 
 # Open the coverage report in a browser.
 cover-html: test-cover

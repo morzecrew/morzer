@@ -1,6 +1,6 @@
 # RFC 0008 — Testing the claims: a coverage programme to 95%
 
-- **Status:** 📝 Draft — execution-ready, five phases, each independently useful.
+- **Status:** 🚧 In progress — P1 shipped 2026-08-04, measured 70.0%. P2–P5 open.
 - **Scope:** Raises statement coverage from a measured 70% to 95%, and — the
   actual point — makes every security property this project advertises name the
   test that enforces it. Covers counting the coverage the acceptance suite
