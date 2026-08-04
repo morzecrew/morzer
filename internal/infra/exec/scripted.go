@@ -39,6 +39,10 @@ type scriptedReply struct {
 	match  string
 	result Result
 	err    error
+
+	// exit is returned alongside the result, for a command that ran and
+	// failed. Distinct from err, which is a command that could not be run.
+	exit *ExitError
 }
 
 // NewScripted returns a runner that succeeds silently until told otherwise.
@@ -71,8 +75,21 @@ func (s *Scripted) OnError(match string, err error) *Scripted {
 }
 
 // OnExit is the common case: a command that ran and failed.
+//
+// It returns an *ExitError alongside the result, because that is what the real
+// runner does and what every caller keys on: an adapter that classifies a
+// failure does it with errors.As, and a fake that set only the exit code would
+// let a test pass while the adapter treated the failure as a success. That is
+// exactly what happened the first time this was used against the secret store.
 func (s *Scripted) OnExit(match string, code int, stderr string) *Scripted {
-	return s.On(match, Result{ExitCode: code, Stderr: stderr})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.replies = append(s.replies, scriptedReply{
+		match:  match,
+		result: Result{ExitCode: code, Stderr: stderr},
+		exit:   &ExitError{ExitCode: code, Stderr: stderr},
+	})
+	return s
 }
 
 // OnOutput is the other common case: a command that ran and printed something.
@@ -103,6 +120,12 @@ func (s *Scripted) Run(ctx context.Context, cmd Command) (Result, error) {
 			res := r.result
 			if res.Duration == 0 {
 				res.Duration = time.Millisecond
+			}
+			if r.exit != nil {
+				exit := *r.exit
+				exit.Argv = cmd.Argv
+				exit.Duration = res.Duration
+				return res, &exit
 			}
 			return res, nil
 		}

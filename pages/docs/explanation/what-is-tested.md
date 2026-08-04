@@ -46,6 +46,10 @@ operation that could destroy or weaken it is a refusal.
 | --- | --- |
 | A generated identity is `0400` in a `0700` directory, and never widened | `TestGenerateIdentityWritesAKeyNobodyElseCanRead` |
 | An identity that exists but cannot be parsed is never replaced | `TestEnsureIdentityRefusesToReplaceOneItCannotParse` |
+| A failed decryption says which of three problems it is: a wrong key, a missing identity, or something else | `TestDecryptionFailuresAreClassifiedByRemedy` |
+| A failed encryption never replaces the existing state with something half-written | `TestEncryptionFailuresAreReported` |
+| A secret the release stopped declaring is removed from the render directory, not left where the product can read it | `TestRenderingRemovesWhatNoDeclarationBacks` |
+| Walking away from the recovery question generates a key rather than waiving one | `TestEndOfInputDoesNotCancelInAccessibleMode` |
 | Creating an identity twice returns the first, never a second key | `TestEnsureIdentityIsIdempotent` |
 | A malformed recipient is refused before it reaches the file | `TestValidateRecipient` |
 | Re-encrypting validates every key before rewriting anything | `TestReencryptForValidatesEveryKeyBeforeTouchingAnything` |
@@ -74,6 +78,9 @@ operation that could destroy or weaken it is a refusal.
 | Rendered secrets are overwritten before removal | `TestRemoveWithOverwriteClearsEveryFile` |
 | A bundle containing a symlink or a device node is refused, not partially copied | `TestCopyTreeRefusesEverythingThatIsNotAFileOrADirectory` |
 | A bundle cannot exhaust the disk or the inode table before anything validates it | `TestCopyTreeEnforcesItsLimits` |
+| Every way an archive can be hostile — an escaping path, a link, a device node, a count or a size — is refused by name | `TestEveryWayAnArchiveCanBeHostileIsRefused` |
+| An archive's own modes are normalised, never trusted | `TestArchiveModesAreNormalisedNotTrusted` |
+| A `Secret` cannot serialise its value, even inside a struct somebody marshals without thinking | `TestASecretNeverSerialisesItsValue` |
 | The content digest covers paths, contents and the executable bit — but not the umask | `TestDigestTreeCoversPathsModesAndContents` |
 | A hook is resolved inside the release, never from `PATH` | `TestAHookPathCannotEscapeTheRelease` |
 | A hook that arrives without the executable bit is a broken bundle, named as one | `TestAHookWithoutTheExecutableBitIsRefused` |
@@ -91,6 +98,12 @@ asserted by *which* refusal fires — not merely that something failed.
 | A signature policy nothing could satisfy is refused before anything is created | `TestInitRefusesAPolicyNothingCouldSatisfy` |
 | An installation is never silently reconfigured by a second `init` | `TestInitCreatesAnInstallationAndRefusesASecond` |
 | A mistyped command is a usage error, not an internal one | `TestUnknownInputIsAUsageErrorNotABug` |
+| An export only the exporting machine could read is refused: that is not a recovery plan | `TestExportRefusesWhenNothingElseCouldReadIt` |
+| A recovered machine keeps the original installation id, or every backup it holds belongs to somebody else | `TestARecoveredMachineKeepsTheOriginalIdentity` |
+| Generating a recovery key does not by itself grant it access | `TestSecretRecipientsAddAndRemove` |
+| A secret value never reaches argv: stdin is the only channel | `TestAPipedSecretIsTakenWhole` |
+| A value larger than a megabyte on stdin is refused rather than read | `TestAnUnreasonablyLargeValueIsRefused` |
+| `secret edit` says it needs a terminal rather than hanging without one | `TestSecretEditRefusesWithoutATerminal` |
 | A rollback with no previous release is refused rather than guessed at | `TestRollbackWithNothingToRollBackTo` |
 | A second operation cannot run against one installation, and is told who holds the lock | `TestTheRefusalNamesWhoHoldsItAndForHowLong` |
 | A lock record left by a killed process is not reported as a live holder | `TestAStaleRecordIsNotReportedAsAHolder` |
@@ -170,6 +183,17 @@ Being explicit about the edges is part of the point.
   is told it worked. Recorded as
   `TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp`, which fails if that
   ever becomes a refusal.
+- **`preflight.NoUnfinishedOperation` is written but never wired in.** It is
+  documented as refusing to start while a previous operation is flagged, and
+  nothing calls it — so `apply` runs straight over an operation that asked for
+  a human. Pinned by `TestAnUnfinishedOperationDoesNotBlockANewOne`, which
+  fails the day it is wired.
+- **Cancelling the `init` wizard is not honoured in accessible mode.** huh's
+  accessible renderer ignores the context and discards each field's error, so
+  ctrl-D completes the form with defaults. What is asserted instead is that the
+  defaults are the safe ones.
+- **`ByteSize` does not round-trip decimal units.** `5GB` marshals as `4.7GiB`.
+  Harmless because sizes are read from a manifest and never written back.
 - **The registry probe's success path is not covered.** `docker manifest
   inspect` speaks HTTPS unless given `--insecure`, which the adapter never
   passes — a reachability probe that accepted plaintext could be answered by

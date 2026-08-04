@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -84,7 +85,7 @@ func newSecretSetCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			value, err := readSecretValue(fmt.Sprintf("value for %s: ", name))
+			value, err := app.readSecretValue(fmt.Sprintf("value for %s: ", name))
 			if err != nil {
 				return err
 			}
@@ -463,16 +464,21 @@ func secretChangeSummary(verb, name string, restarted []string) string {
 }
 
 // readPassword reads from the terminal without echo.
-func readPassword(prompt string) (string, error) {
-	fd := int(os.Stdin.Fd())
-	if !term.IsTerminal(fd) {
+//
+// The reader is passed rather than taken from os.Stdin so that the refusal
+// below -- the path every non-interactive caller hits -- is reachable by
+// something other than a person at a keyboard. Suppressing the echo still
+// needs a real file descriptor, which is why the type assertion is the check.
+func readPassword(in io.Reader, out io.Writer, prompt string) (string, error) {
+	f, ok := in.(*os.File)
+	if !ok || !term.IsTerminal(int(f.Fd())) {
 		return "", domain.Usage("no terminal available to read the value").
 			WithHint("pipe the value on stdin instead: `printf %%s 'value' | morzer secret set <name>`")
 	}
 
-	fmt.Fprint(os.Stderr, prompt)
-	value, err := term.ReadPassword(fd)
-	fmt.Fprintln(os.Stderr)
+	fmt.Fprint(out, prompt)
+	value, err := term.ReadPassword(int(f.Fd()))
+	fmt.Fprintln(out)
 	if err != nil {
 		return "", domain.Internal(err, "cannot read the value")
 	}

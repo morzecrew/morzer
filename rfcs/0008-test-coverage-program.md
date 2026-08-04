@@ -924,3 +924,130 @@ the deliverable; 95% is the proxy. If the two ever conflict — and P11 is where
 they might, since a `MarshalJSON` with a round-trip test raises the number
 without protecting anything an operator cares about — decision 8 already says
 which one wins.
+
+## 18. Amendments from the P6–P11 pass
+
+All six phases ran. What follows is where each landed, what it found, and the
+one phase that did not finish.
+
+### 18.1 P6 — the interactive surface
+
+Shipped as designed. `huh.Form` gained the App's own streams and huh's
+accessible renderer, and the wizard is now driven line by line with no
+pseudo-terminal. `readSecretValue`, `readAll` and `readPassword` take the App's
+reader instead of `os.Stdin`.
+
+**Three findings from huh's accessible renderer**, all upstream and all
+recorded rather than worked around:
+
+- **It builds a fresh `bufio.Scanner` per field.** The first field's scanner
+  buffers the whole reader, so every later field sees EOF. A test fixture that
+  hands back one line per `Read` is the faithful shape — that is what a
+  terminal does — and a single `strings.Reader` silently answers only the first
+  question.
+- **It ignores the context and discards each field's error.** huh's own source
+  says "no way to bubble up errors or signal cancellation". So ctrl-D during
+  the wizard completes the form with defaults rather than aborting, and the
+  three `Interrupted` branches are reachable only at a real terminal. What
+  makes it survivable is what the defaults are, which is now asserted: walking
+  away from the recovery question **generates** a key rather than waiving one.
+- **It prints titles and drops descriptions.** A screen-reader user never heard
+  "Without one, losing this machine loses its secrets permanently." Fixed for
+  that one question by moving the consequence into the title; the general
+  limitation is recorded, because rewriting every description into a title
+  would be working around huh in our own text.
+
+### 18.2 P7 — the rest of the CLI
+
+Shipped. One fixture family — a release store with three versions, a populated
+secret set, an offline recipient, an export from a second machine — and the
+commands driven against it.
+
+Four expectations of mine were wrong, and each is a decision worth having
+written down:
+
+- **`secret generate` on an existing secret is refused.** `rotate` is the
+  deliberate replacement; generating again would silently replace a live
+  credential.
+- **`generate-recovery-key` does not add the key as a recipient.** Two
+  decisions — make me a key, let it read this state — and running them together
+  would mean a key written to the wrong path silently became a recipient.
+- **`secret list` on a machine with no installation succeeds**, answering
+  "nothing". Refusing would make it unusable as the first thing anybody types.
+- **`secret remove` of something absent is a no-op**, because delete is
+  idempotent and refusing would break a clean-up script's second run.
+
+### 18.3 P8 — adapters and infrastructure (partial)
+
+**Two of three pieces shipped.** sops failure modes through `exec.Scripted`,
+and one archive per refusal in `ExtractTarZst`.
+
+**The OCI source was not done.** 44 statements, and it is the last transport
+with no real-service test. `dockerlab` already starts a registry and `oras-go`
+is already a dependency, so nothing blocks it but the work.
+
+Two findings:
+
+- **`exec.Scripted.OnExit` was unfaithful.** It set an exit code but returned
+  no error, while the real runner returns an `*ExitError`. Every adapter that
+  classifies a failure does it with `errors.As`, so the first test written
+  against it passed while the adapter treated the failure as a *success*. Fixed
+  in the fake, and the comment now says why. This is the fake-that-lies hazard
+  the contract-suite discipline exists to catch, found in the fake this
+  programme itself added.
+- **`archive/tar` will not write a lying archive.** `extractFile` bounds the
+  copy as well as checking the declared size, because a header can claim one
+  byte and the stream carry a gigabyte — and the fixture for it cannot be built
+  without hand-rolling tar records. That bound is asserted by reading, not by
+  running, and says so in the test file.
+
+### 18.4 P9 — operation steps
+
+Shipped. Supervisor and renderer failures, a state directory made read-only for
+real, and a host with a supervisor present — which is what made
+`stepInstallUnits` reachable at all.
+
+**One real gap found.** `preflight.NoUnfinishedOperation` exists, is documented
+as refusing to start while a previous operation is flagged, and explains why:
+"proceeding over an unfinished operation would layer new changes on a state
+nobody has confirmed, which is exactly how a recoverable failure becomes an
+unrecoverable one."
+
+**Nothing calls it.** No operation's preflight includes it, so `apply` runs
+straight over an operation that asked for a human. Not fixed here — wiring a
+new refusal into every mutating operation is a behaviour change and belongs in
+its own pull request — and pinned by a test that fails the day it is wired.
+
+That is the second claim-without-enforcement this programme has found, after
+`redactAttr` in §12.
+
+### 18.5 P10 and P11
+
+**P10** covered `tty.Run`'s lifecycle and `Watch`. One fixture note worth
+keeping: bubbletea's cancel reader registers its input with epoll, and
+`/dev/null` cannot be registered — a pipe is the input a test must hand it, or
+the program fails to start for a reason unrelated to what is under test.
+
+**P11** covered the serialisation contracts. One finding: **`ByteSize` does not
+round-trip decimal units.** `5GB` marshals as `4.7GiB` and parses back to
+5046586572 rather than 5000000000. Harmless today because sizes are read from a
+manifest and never written back, and recorded as a test that fails if that
+stops being true.
+
+### 18.6 Measured
+
+| | Before P6 | After P11 |
+| --- | --- | --- |
+| `go test` alone | 79.6% | **84.6%** |
+
+Per phase, `go test` alone: P6 80.8%, P7 82.5%, P8 83.7%, P9 84.3%, P10/P11
+84.6%.
+
+**95% was not reached.** §17.10 said the margin was 107 statements over the
+1048 needed and that two phases underdelivering by 15% would sink it. P8 came
+in with a third of its scope undone, which is more than that on its own.
+
+Decision 7 governs and the floor stops where the testing is. What remains is
+still named rather than waved at: the OCI source, the CLI paths that need a
+running deployment, and the long tail of one-to-three-statement error branches
+that P9 and P11 thinned without clearing.

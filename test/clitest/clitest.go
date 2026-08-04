@@ -78,6 +78,17 @@ func NewInstalled(t *testing.T, extra ...string) *Runner {
 // running `go test` happens to be one.
 func (r *Runner) Run(args ...string) Result {
 	r.t.Helper()
+	return r.RunWithInput("", args...)
+}
+
+// RunWithInput is Run with something on stdin.
+//
+// A `strings.Reader` is not a terminal, which is exactly the signal the piped
+// path keys on: `printf %s 'value' | morzer secret set x` is the only way a
+// script can supply a credential, because a --value flag would put it in the
+// process table.
+func (r *Runner) RunWithInput(input string, args ...string) Result {
+	r.t.Helper()
 
 	var out, errOut bytes.Buffer
 	argv := append([]string{"--root", r.Root, "--plain"}, args...)
@@ -86,7 +97,7 @@ func (r *Runner) Run(args ...string) Result {
 		context.Background(),
 		cli.BuildInfo{Version: "test"},
 		argv,
-		ui.Streams{Out: &out, Err: &errOut},
+		ui.Streams{Out: &out, Err: &errOut, In: strings.NewReader(input)},
 	)
 
 	return Result{
@@ -114,6 +125,48 @@ func (r Result) ExitCode(want int) Result {
 	if r.Code != want {
 		r.t.Fatalf("`morzer %s` exited %d, want %d\n--- stdout ---\n%s--- stderr ---\n%s",
 			strings.Join(r.args, " "), r.Code, want, r.Stdout, r.Stderr)
+	}
+	return r
+}
+
+// Failed asserts the command refused, without pinning which code.
+//
+// For a refusal whose code is the contract, use ExitCode. This is for the ones
+// where the message is the assertion and the code is asserted elsewhere.
+func (r Result) Failed() Result {
+	r.t.Helper()
+	if r.Code == 0 {
+		r.t.Fatalf("`morzer %s` succeeded, and was supposed to refuse\n--- stdout ---\n%s--- stderr ---\n%s",
+			strings.Join(r.args, " "), r.Stdout, r.Stderr)
+	}
+	return r
+}
+
+// OutputContains asserts a string appears on either stream.
+//
+// Where the split matters -- a result on stdout, a diagnostic on stderr --
+// StdoutContains and StderrContains are the assertions to use. This is for
+// text whose stream is not part of the contract.
+func (r Result) OutputContains(want ...string) Result {
+	r.t.Helper()
+	for _, w := range want {
+		if !strings.Contains(r.Stdout, w) && !strings.Contains(r.Stderr, w) {
+			r.t.Errorf("neither stream contains %q:\n--- stdout ---\n%s--- stderr ---\n%s",
+				w, r.Stdout, r.Stderr)
+		}
+	}
+	return r
+}
+
+// FieldLen reads a dotted path and asserts it is a list of the given length.
+func (r Result) FieldLen(path string, want int) Result {
+	r.t.Helper()
+	list, ok := r.Field(path).([]any)
+	if !ok {
+		r.t.Fatalf("%s is not a list:\n%s", path, r.Stdout)
+	}
+	if len(list) != want {
+		r.t.Errorf("%s has %d entries, want %d:\n%s", path, len(list), want, r.Stdout)
 	}
 	return r
 }

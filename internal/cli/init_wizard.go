@@ -14,6 +14,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/release"
+	"github.com/morzecrew/morzer/internal/ui"
 )
 
 // The wizard is a front-end over the flags, never a second path.
@@ -62,6 +63,35 @@ func isInteractive() bool {
 	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 }
 
+// form builds a huh form bound to this run's own streams.
+//
+// Three things it fixes, all of which were `os.Stdin`/`os.Stdout` before:
+// the prompts now go to stderr like every other piece of narration this
+// program emits, the input is the one the App was given, and a stream that
+// cannot be put in raw mode gets huh's accessible renderer instead of a
+// terminal UI that would have nothing to draw on.
+//
+// That last is not a test affordance. Accessible mode is what huh ships for
+// screen readers, and "the input is not a terminal" is the same condition from
+// the form's point of view: prompt on a line, read a line.
+func (a *App) form(fields ...huh.Field) *huh.Form {
+	return huh.NewForm(huh.NewGroup(fields...)).
+		WithTheme(huh.ThemeBase()).
+		WithInput(a.Stream.In).
+		WithOutput(a.Stream.Err).
+		WithAccessible(a.accessibleForms())
+}
+
+// accessibleForms reports whether forms should render line by line.
+func (a *App) accessibleForms() bool {
+	// An operator who exported ACCESSIBLE means it, whatever the streams
+	// look like.
+	if _, set := os.LookupEnv("ACCESSIBLE"); set {
+		return true
+	}
+	return !ui.IsTerminal(a.Stream.In)
+}
+
 // runInitWizard collects what is missing and returns the completed options.
 //
 // Everything already supplied on the command line is left alone: the wizard
@@ -105,8 +135,12 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 	}
 
 	if opts.RecoveryRecipient == "" && !opts.NoRecoveryKey {
+		// The consequence is in the title, not only the description.
+		// huh's accessible renderer -- the one a screen reader gets --
+		// prints titles and drops descriptions, and this is the one
+		// question where not hearing the consequence is expensive.
 		fields = append(fields, huh.NewSelect[string]().
-			Title("Offline recovery key").
+			Title("Offline recovery key (without one, losing this machine loses its secrets)").
 			Description("Without one, losing this machine loses its secrets permanently.").
 			Options(
 				huh.NewOption("Generate one now (recommended)", recoveryChoiceGenerate),
@@ -120,10 +154,7 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 		return opts, nil
 	}
 
-	form := huh.NewForm(huh.NewGroup(fields...)).WithTheme(huh.ThemeBase())
-	// huh honours the accessible mode a screen reader needs when
-	// ACCESSIBLE is set in the environment; nothing here has to do it.
-	if err := form.RunWithContext(ctx); err != nil {
+	if err := app.form(fields...).RunWithContext(ctx); err != nil {
 		return opts, domain.Interrupted("setup was cancelled")
 	}
 
@@ -162,8 +193,7 @@ func resolveRecoveryChoice(
 			Value(&key).
 			Validate(app.Deps.Secrets.ValidateRecipient)
 
-		if err := huh.NewForm(huh.NewGroup(field)).
-			WithTheme(huh.ThemeBase()).RunWithContext(ctx); err != nil {
+		if err := app.form(field).RunWithContext(ctx); err != nil {
 			return opts, domain.Interrupted("setup was cancelled")
 		}
 		opts.RecoveryRecipient = strings.TrimSpace(key)
@@ -184,8 +214,7 @@ func generateRecoveryKey(ctx context.Context, app *App, opts ops.InitOptions) (o
 		Description("The private half. Move it off this machine afterwards.").
 		Value(&path)
 
-	if err := huh.NewForm(huh.NewGroup(field)).
-		WithTheme(huh.ThemeBase()).RunWithContext(ctx); err != nil {
+	if err := app.form(field).RunWithContext(ctx); err != nil {
 		return opts, domain.Interrupted("setup was cancelled")
 	}
 

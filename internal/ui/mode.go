@@ -150,11 +150,29 @@ type Streams struct {
 
 	// Err is diagnostics and progress rendering. Always.
 	Err io.Writer
+
+	// In is where the interactive commands read from: the `init` wizard's
+	// form, and a secret piped to `secret set`.
+	//
+	// It is here rather than being `os.Stdin` at the point of use for the
+	// same reason Out and Err are: a command that reaches past its own
+	// streams is a command nothing can drive except a person at a keyboard.
+	In io.Reader
 }
 
 // DefaultStreams returns the process's own streams.
 func DefaultStreams() Streams {
-	return Streams{Out: os.Stdout, Err: os.Stderr}
+	return Streams{Out: os.Stdout, Err: os.Stderr, In: os.Stdin}
+}
+
+// IsTerminal reports whether a stream is a terminal.
+//
+// Anything that is not an *os.File cannot be one, which is the answer a piped
+// run and a test both need: no raw mode, no echo suppression, and no form that
+// depends on either.
+func IsTerminal(s any) bool {
+	f, ok := s.(*os.File)
+	return ok && isTTY(f)
 }
 
 // TerminalWidth returns a usable width for wrapping.

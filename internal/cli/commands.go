@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -610,44 +610,44 @@ func parseComponents(names []string) ([]ports.Component, error) {
 //
 // stdin is the only supported channel. A --value flag would place the
 // credential in the process table, where any local user can read it.
-func readSecretValue(prompt string) (domain.Secret, error) {
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		return domain.Secret{}, domain.Internal(err, "cannot inspect stdin")
-	}
-
-	// Piped input: read it whole and strip exactly one trailing newline,
-	// which is what `echo secret | morzer secret set x` produces.
-	if info.Mode()&os.ModeCharDevice == 0 {
-		data, err := readAll(os.Stdin)
+func (a *App) readSecretValue(prompt string) (domain.Secret, error) {
+	// Not a terminal means piped: read it whole and strip exactly one
+	// trailing newline, which is what `echo secret | morzer secret set x`
+	// produces.
+	//
+	// The question used to be asked of `os.Stdin` directly, by way of its
+	// mode bits. Asking the App's own reader answers the same question and
+	// gives the piped path -- the one every script takes -- something that
+	// can drive it.
+	if !ui.IsTerminal(a.Stream.In) {
+		data, err := readAll(a.Stream.In)
 		if err != nil {
-			return domain.Secret{}, domain.Internal(err, "cannot read stdin")
+			return domain.Secret{}, err
 		}
 		return domain.NewSecret(strings.TrimSuffix(string(data), "\n")), nil
 	}
 
-	value, err := readPassword(prompt)
+	value, err := readPassword(a.Stream.In, a.Stream.Err, prompt)
 	if err != nil {
 		return domain.Secret{}, err
 	}
 	return domain.NewSecret(value), nil
 }
 
-func readAll(f *os.File) ([]byte, error) {
-	var buf []byte
-	chunk := make([]byte, 4096)
-	for {
-		n, err := f.Read(chunk)
-		buf = append(buf, chunk[:n]...)
-		if err != nil {
-			if err.Error() == "EOF" {
-				return buf, nil
-			}
-			return buf, err
-		}
-		// A secret larger than this is not a secret.
-		if len(buf) > 1<<20 {
-			return nil, domain.Usage("the value on stdin is unreasonably large")
-		}
+// readAll reads a piped secret, bounded.
+//
+// The bound is not politeness: without it, `morzer secret set x < /dev/zero`
+// is the manager filling its own memory. A secret larger than a megabyte is
+// not a secret.
+func readAll(r io.Reader) ([]byte, error) {
+	const max = 1 << 20
+
+	data, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return nil, domain.Internal(err, "cannot read the value")
 	}
+	if len(data) > max {
+		return nil, domain.Usage("the value on stdin is unreasonably large")
+	}
+	return data, nil
 }

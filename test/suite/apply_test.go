@@ -42,7 +42,13 @@ type harness struct {
 	Health  *fakes.Health
 	Backup  *fakes.Backup
 	Locker  *fakes.Locker
-	Events  *events.Collector
+
+	// Supervisor and Renderer are wired only when a test asks: most
+	// operations never touch them, and a host with no systemd is the
+	// default a container deployment has.
+	Supervisor *fakes.Supervisor
+	Renderer   *fakes.Renderer
+	Events     *events.Collector
 
 	Root    string
 	Paths   domain.Paths
@@ -78,16 +84,18 @@ func newHarness(t *testing.T) *harness {
 	runner := infraexec.New()
 
 	h := &harness{
-		t:       t,
-		Runtime: fakes.NewRuntime(),
-		Secrets: fakes.NewSecretStore(),
-		Health:  fakes.NewHealth(),
-		Backup:  fakes.NewBackup(),
-		Locker:  fakes.NewLocker(),
-		Events:  collector,
-		Root:    root,
-		Paths:   paths,
-		Release: rel,
+		t:          t,
+		Runtime:    fakes.NewRuntime(),
+		Secrets:    fakes.NewSecretStore(),
+		Health:     fakes.NewHealth(),
+		Backup:     fakes.NewBackup(),
+		Locker:     fakes.NewLocker(),
+		Supervisor: fakes.NewSupervisor(),
+		Renderer:   fakes.NewRenderer(),
+		Events:     collector,
+		Root:       root,
+		Paths:      paths,
+		Release:    rel,
 	}
 
 	_, redactor := logging.New(logging.Options{Writer: os.Stderr})

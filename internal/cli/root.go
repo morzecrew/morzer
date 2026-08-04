@@ -129,6 +129,12 @@ func Execute(ctx context.Context, build BuildInfo, args []string) int {
 // formatter and the exit-code mapping -- and read back what was written, rather
 // than calling the operation underneath and assuming the wiring above it works.
 func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui.Streams) int {
+	// A caller that named only the writers gets the process's own input, so
+	// adding In to Streams did not silently turn `secret set` into a nil
+	// dereference for anyone already calling this.
+	if streams.In == nil {
+		streams.In = os.Stdin
+	}
 	app := &App{Build: build, Stream: streams}
 	root := newRootCommand(app)
 

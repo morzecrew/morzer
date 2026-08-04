@@ -11,11 +11,11 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ui"
 )
 
 // editFilePrelude is what the operator sees above their secrets.
@@ -56,7 +56,7 @@ func newSecretEditCommand(app *App) *cobra.Command {
 }
 
 func (a *App) editSecrets(ctx context.Context, names []string) error {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	if !ui.IsTerminal(a.Stream.In) {
 		return domain.Usage("`secret edit` needs a terminal").
 			WithHint("there is no sensible non-interactive form of an editor session; " +
 				"use `morzer secret set <name>`, which reads from stdin")
