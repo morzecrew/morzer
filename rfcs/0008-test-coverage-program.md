@@ -1,15 +1,16 @@
 # RFC 0008 — Testing the claims: a coverage programme to 95%
 
-- **Status:** 🚧 In progress — **every phase this RFC defines has shipped, and
-  its target has not been met.** P1–P11 all ran. Coverage is **86.1%**, from
-  70.0% when this was written; 95% needs 1090 uncovered statements to become
-  391, so it is 699 short. §18 measures each phase and says plainly why the
-  estimates in §17 were about three times optimistic. The claims inventory —
-  which decision 8 makes the actual deliverable — is complete at 86 rows and
-  gated by `docs-check`. One piece of P8 is undone: the OCI source, 44
-  statements, the last transport with no real-service test. **No further
-  phases are planned.** Closing this at 86.1% with the target formally revised,
-  or designing P12 onwards, is a decision this RFC does not make for itself.
+- **Status:** ✅ Complete — closed 2026-08-04 at **86.1%**, from 70.0% when
+  this was written. **The 95% in the title was not reached and has been
+  revised rather than met**; decision 13 records that and why. All eleven
+  phases shipped, every mechanism the design called for exists, and the claims
+  inventory — which decision 8 makes the actual deliverable — is complete at 86
+  rows and gated by `docs-check`. §18 measures each phase honestly, including
+  the one piece left undone (the OCI source, 44 statements) and the reason the
+  §17 estimates were about three times optimistic. Three defects found on the
+  way, each recorded where it was found: a redaction branch that claimed more
+  than it did, a documented refusal wired into nothing, and a test fake that
+  reported a failure as a success.
 - **Scope:** Raises statement coverage from a measured 70% to 95%, and — the
   actual point — makes every security property this project advertises name the
   test that enforces it. Covers counting the coverage the acceptance suite
@@ -906,6 +907,7 @@ Appended to §10; the existing eight stand.
 | 10 | Test scaffolding does not belong in the denominator. `internal/infra/exec/scripted.go` moves under `test/` during P8. Removing 47 statements of which 39 were covered moves the ratio by nothing, and it is not reported as progress. |
 | 11 | Each phase ships its own floor ratchet, measured, in the same change. A phase that lands without moving the floor has not been measured, and an unmeasured phase is a claim. |
 | 12 | P6 is the only phase permitted to change shipping code, and it does so for a reason that stands without the tests: the wizard should honour the streams and the accessibility mode the rest of the CLI already does. Any other testability refactor is out of scope — the plan is to test what is there, not to reshape it until it is easy. |
+| 13 | **The target is revised from 95% to the 86.1% actually measured, and this RFC is closed there.** Not because the remaining statements are unreachable — decision 7's ground — but because they are reachable work nobody has scheduled, and a 🚧 carried indefinitely against a number chosen before any of the evidence existed is worse bookkeeping than a revision that says so. Decision 8 stands and settles it: the inventory is the deliverable, the percentage was always the proxy, and the inventory is finished. The floor is 84 unit / 86 union, which is where the testing actually is. |
 
 ### 17.12 Risks
 
@@ -1079,3 +1081,43 @@ Decision 7 governs and the floor stops where the testing is. What remains is
 still named rather than waved at: the OCI source, the CLI paths that need a
 running deployment, and the long tail of one-to-three-statement error branches
 that P9 and P11 thinned without clearing.
+
+## 19. Closing note
+
+Closed 2026-08-04. What the programme actually produced:
+
+| | Start | End |
+| --- | --- | --- |
+| Union coverage | 70.0% | **86.1%** |
+| Uncovered statements | 2331 | **1090** |
+| Claims naming a test | 0 | **86** |
+| Packages below 40% | 4 | **0** |
+| CI floors | none | 84 unit, 86 union |
+
+**Three defects, none of which a coverage number would have found on its own.**
+Each was found by writing a test for something the code claimed:
+
+1. `redactAttr` documented that "anything that stringifies could carry a secret
+   through its String method, so it is rendered and scrubbed" — and handled
+   only `string` and `error`. A `Stringer` or a plain struct printed its secret
+   in full (§12).
+2. `preflight.NoUnfinishedOperation` is written, documents why it matters, and
+   is wired into nothing. `apply` runs over an operation that asked for a human
+   (§18.4).
+3. `exec.Scripted.OnExit` — a fake this programme itself added — set an exit
+   code but returned no `*ExitError`, so an adapter classifying a failure with
+   `errors.As` saw a success. The first test written against it passed for
+   exactly that reason (§18.3).
+
+**What the estimates got wrong.** §17 sized six phases by counting statements
+and judging what a test could drive. They delivered 348 of 1155. The error was
+not optimism about any one phase; it was counting statements as if they were
+independent when most of the remainder sits behind a single hard prerequisite —
+a running deployment. Anyone sizing a coverage programme should weigh
+prerequisites, not statements.
+
+**What is left, named.** The OCI source (44 statements, `dockerlab` already
+starts a registry and `oras-go` is already a dependency); the `internal/cli`
+paths that need a running deployment; and the long tail of one-to-three
+statement error branches in `lifecycle/ops`. None of it is blocked. It is
+simply not scheduled, and this RFC no longer claims it will be.
