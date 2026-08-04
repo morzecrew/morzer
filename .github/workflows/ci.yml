@@ -256,7 +256,15 @@ jobs:
     env:
       # A floor, not a target. Raised deliberately; lowering it is a reviewable
       # change in this file rather than a silent drift.
-      COVERAGE_FLOOR: "50"
+      #
+      # This measures `go test` only. The acceptance suite runs the built
+      # binary, so what it exercises hardest -- Compose, systemd, the health
+      # probes, the CLI wiring -- barely registers here. Measured: unit tests
+      # alone reach 59.5%, the acceptance run alone reaches 47.6%, and their
+      # union is 70.0%. Counting the union needs the binary built with
+      # `-cover` and the two profiles merged; until that lands, this number is
+      # lower than the testing behind it.
+      COVERAGE_FLOOR: "59"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -273,6 +281,22 @@ jobs:
         run: .github/scripts/install-sops.sh "$SOPS_VERSION"
 
       - run: just coverage-gate "$COVERAGE_FLOOR"
+
+      # Codecov reports the trend and annotates pull requests; the floor above
+      # is what actually fails the build. Two mechanisms on purpose: a service
+      # being down, rate-limited or unconfigured must not be able to let an
+      # uncovered change through, and `fail_ci_if_error` is false for the same
+      # reason.
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.out
+          # Go's own profile format, which Codecov parses directly -- no
+          # conversion step to keep in step with the one `just` runs locally.
+          disable_search: true
+          fail_ci_if_error: false
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()

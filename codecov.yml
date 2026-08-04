@@ -1,0 +1,29 @@
+# Codecov reports the trend and annotates pull requests. It does not gate the
+# build: `just coverage-gate` does, in CI and locally, from the same profile.
+#
+# Two mechanisms on purpose. A service that is down, rate-limited or not yet
+# configured must never be able to let an uncovered change through, and a
+# contributor must be able to check the same thing before pushing.
+coverage:
+  status:
+    project:
+      default:
+        # Informational. The authority is COVERAGE_FLOOR in ci.yml, which is a
+        # reviewable change in this repository rather than a setting in a
+        # dashboard.
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# The acceptance suite runs the built binary rather than `go test`, so the
+# adapters it exercises hardest -- Compose, systemd, health -- show low
+# coverage here. That is a measurement limit, not an absence of testing.
+comment:
+  layout: "condensed_header, diff, flags, components"
+  require_changes: true
+
+ignore:
+  - "tools/**"        # build-time helpers; excluded from -coverpkg too
+  - "test/**"         # the suites themselves
+  - "**/*_test.go"

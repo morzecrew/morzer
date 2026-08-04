@@ -141,7 +141,7 @@ real violations that had been described as compliant.
 
 ## Coverage
 
-`just coverage-gate` enforces a floor, currently 50%. It is a floor, not a
+`just coverage-gate` enforces a floor, currently 59%. It is a floor, not a
 target: raise it deliberately, and if a change genuinely lowers it, lower
 `COVERAGE_FLOOR` in `.github/workflows/ci.yml` in the same pull request, so the
 decision is reviewable rather than silent.
@@ -150,6 +150,17 @@ Coverage is measured with `-coverpkg=./internal/...` so the integration suite
 gets credit for the packages it exercises. Without that the total read 8.7%
 instead of 45% when the floor was first set — it was measuring where tests live
 rather than what they cover.
+
+**The number is lower than the testing behind it.** It counts `go test` only,
+and the acceptance suite runs the built binary — so Compose, systemd, the health
+probes and the CLI wiring barely register. Measured on the same tree: unit tests
+alone 59.5%, the acceptance run alone 47.6%, their union 70.0%. Counting the
+union means building with `-cover`, collecting `GOCOVERDIR` profiles from the
+acceptance run and merging them with `go tool covdata`.
+
+[Codecov](https://codecov.io/github/morzecrew/morzer) receives the same profile
+and reports the trend, but it does not gate: a service being down must never be
+able to let an uncovered change through.
 
 ## Go version
 

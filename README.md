@@ -1,6 +1,7 @@
 # morzer
 
 [![CI](https://github.com/morzecrew/morzer/actions/workflows/ci.yml/badge.svg)](https://github.com/morzecrew/morzer/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/github/morzecrew/morzer/graph/badge.svg)](https://codecov.io/github/morzecrew/morzer)
 [![Docs](https://img.shields.io/badge/docs-morzecrew.github.io-blue)](https://morzecrew.github.io/morzer/)
 [![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8)](go.mod)
 [![Licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)

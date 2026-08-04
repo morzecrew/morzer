@@ -99,7 +99,7 @@ test-cover:
     go tool cover -func=coverage.out | tail -1
 
 # Fail when total coverage drops below the floor.
-coverage-gate floor="50": test-cover
+coverage-gate floor="59": test-cover
     .github/scripts/coverage-floor.sh coverage.out {{floor}}
 
 # Open the coverage report in a browser.
