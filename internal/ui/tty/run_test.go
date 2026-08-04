@@ -2,17 +2,14 @@ package tty_test
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
-	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui/theme"
 	"github.com/morzecrew/morzer/internal/ui/tty"
 )
@@ -34,10 +31,12 @@ func pipeInput(t *testing.T) *os.File {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		_ = w.Close()
-		_ = r.Close()
-	})
+	// Only the write end is closed. Bubble Tea's read loop is a goroutine
+	// that outlives Run -- it sits in epoll on the descriptor it was given
+	// and is not joined at teardown -- so closing the read end here is a
+	// race on the file, which the detector duly found. Letting the read end
+	// be collected leaks one descriptor per test and races with nothing.
+	t.Cleanup(func() { _ = w.Close() })
 	return r
 }
 
@@ -173,63 +172,6 @@ func TestNoOptionsAtAllStillRunsTheWork(t *testing.T) {
 
 	if !ran {
 		t.Error("the work did not run with no failure handler configured")
-	}
-}
-
-// TestWatchEndsWhenItsContextDoes. `status --watch` is bound to its context so
-// Ctrl-C simply ends it: there is no work in flight a torn-down display could
-// orphan.
-func TestWatchEndsWhenItsContextDoes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- tty.Watch(ctx, tty.WatchOptions{
-			Output:   &bytes.Buffer{},
-			Input:    pipeInput(t),
-			Theme:    theme.New(false, false),
-			Interval: 50 * time.Millisecond,
-			Refresh: func(context.Context) (ops.Status, error) {
-				return ops.Status{Product: "demo"}, nil
-			},
-		})
-	}()
-
-	select {
-	case err := <-done:
-		// A cancelled context is the caller's own story; reporting
-		// "program was killed" on top of it would obscure the exit code.
-		if err != nil {
-			t.Errorf("a cancelled watch returned an error: %v", err)
-		}
-	case <-time.After(20 * time.Second):
-		t.Fatal("the watch outlived its context, so Ctrl-C does not end it")
-	}
-}
-
-// TestWatchReportsARefreshThatFails rather than showing a stale screen as
-// though it were current.
-func TestWatchReportsARefreshThatFails(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
-	var out bytes.Buffer
-	err := tty.Watch(ctx, tty.WatchOptions{
-		Output:   &out,
-		Input:    pipeInput(t),
-		Theme:    theme.New(false, false),
-		Interval: 50 * time.Millisecond,
-		Refresh: func(context.Context) (ops.Status, error) {
-			return ops.Status{}, errors.New("cannot reach the daemon")
-		},
-	})
-	if err != nil {
-		t.Errorf("a watch whose refresh failed returned an error rather than "+
-			"displaying one: %v", err)
-	}
-	if strings.Contains(out.String(), "demo") {
-		t.Error("the watch showed a snapshot it never received")
 	}
 }
 

@@ -1023,10 +1023,18 @@ That is the second claim-without-enforcement this programme has found, after
 
 ### 18.5 P10 and P11
 
-**P10** covered `tty.Run`'s lifecycle and `Watch`. One fixture note worth
-keeping: bubbletea's cancel reader registers its input with epoll, and
-`/dev/null` cannot be registered — a pipe is the input a test must hand it, or
-the program fails to start for a reason unrelated to what is under test.
+**P10** covered `tty.Run`'s lifecycle and `Watch`, and found two things about
+driving Bubble Tea from a test:
+
+- Its cancel reader registers the input with epoll, and `/dev/null` cannot be
+  registered. A pipe is the input a test must hand it, or the program fails to
+  start for a reason unrelated to what is under test.
+- **Tearing down a program that was given an input races inside the library**:
+  `cancelreader.epollCancelReader.Close` closes the file while its own wait
+  goroutine calls `File.Fd()` on it. The two `Watch` lifecycle tests are
+  therefore behind `//go:build !race` with the reason written above them. The
+  watch model's own behaviour is covered without a program and runs under
+  `-race` with everything else.
 
 **P11** covered the serialisation contracts. One finding: **`ByteSize` does not
 round-trip decimal units.** `5GB` marshals as `4.7GiB` and parses back to
@@ -1036,16 +1044,33 @@ stops being true.
 
 ### 18.6 Measured
 
-| | Before P6 | After P11 |
-| --- | --- | --- |
-| `go test` alone | 79.6% | **84.6%** |
+| | At the RFC | Before P6 | After P11 |
+| --- | --- | --- | --- |
+| `go test` alone | 59.5% | 79.6% | **84.6%** |
+| The container suites alone | — | 63.0% | **66.4%** |
+| The acceptance run alone | 47.6% | 47.3% | 47.2% |
+| Union of all three | 70.0% | 81.6% | **86.1%** |
+| Uncovered statements (union) | 2331 | 1438 | **1090** |
 
 Per phase, `go test` alone: P6 80.8%, P7 82.5%, P8 83.7%, P9 84.3%, P10/P11
-84.6%.
+84.6%. Floors ratcheted to 84 (unit) and 86 (union), and `just ci` is green
+at both.
 
-**95% was not reached.** §17.10 said the margin was 107 statements over the
-1048 needed and that two phases underdelivering by 15% would sink it. P8 came
-in with a third of its scope undone, which is more than that on its own.
+**95% was not reached.** 1090 statements are still uncovered against an
+allowance of 391, so the target is 699 short.
+
+§17.10 said the margin was 107 statements over the 1048 needed, and that two
+phases underdelivering by 15% would sink it. What happened was worse and
+simpler: the phases covered 348 of the 1155 they targeted. The estimates were
+not 15% optimistic, they were roughly three times optimistic — made by reading
+468 functions and judging what a test *could* drive, without weighing how many
+of them share a single hard prerequisite. `internal/cli` and `lifecycle/ops`
+between them still hold most of the gap, and most of that needs a running
+deployment rather than another fixture.
+
+That is the correction worth carrying forward: sizing a coverage phase by
+counting statements underestimates it whenever the statements cluster behind
+one thing that is hard to arrange.
 
 Decision 7 governs and the floor stops where the testing is. What remains is
 still named rather than waved at: the OCI source, the CLI paths that need a

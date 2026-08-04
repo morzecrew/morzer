@@ -319,13 +319,13 @@ jobs:
       # UNION_FLOOR adds their profiles: the container suites drive the
       # adapters against real services, and the acceptance run drives the
       # built binary, which is where the CLI wiring and systemd get exercised.
-      # Measured on one tree: 79.6% for `go test`, 63.0% for the container
-      # suites, 47.3% for acceptance, and 81.6% together.
+      # Measured on one tree: 84.6% for `go test`, 66.4% for the container
+      # suites, 47.2% for acceptance, and 86.1% together.
       #
       # Floors, not targets. Raised deliberately; lowering either is a
       # reviewable change in this file rather than a silent drift.
-      UNIT_FLOOR: "79"
-      UNION_FLOOR: "81"
+      UNIT_FLOOR: "84"
+      UNION_FLOOR: "86"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
