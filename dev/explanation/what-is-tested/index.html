@@ -2251,6 +2251,30 @@ asserted by <em>which</em> refusal fires — not merely that something failed.</
 <td><code>TestAHookThatWritesOutsideTheBackupDirectoryIsRefused</code></td>
 </tr>
 <tr>
+<td>Nothing in a backup is readable without a key except its manifest</td>
+<td><code>TestABackupOfARealDatabaseCanBeRestored</code></td>
+</tr>
+<tr>
+<td>A backup is readable by every recipient of the deployment's secrets, and by nobody else</td>
+<td><code>TestEveryRecipientCanOpenIt</code></td>
+</tr>
+<tr>
+<td>A backup altered by one bit is refused rather than decrypted into altered data</td>
+<td><code>TestAlteredCiphertextIsRefusedRatherThanDecrypted</code></td>
+</tr>
+<tr>
+<td>A truncated backup — an interrupted upload — is refused</td>
+<td><code>TestTruncatedCiphertextIsRefused</code></td>
+</tr>
+<tr>
+<td>A backup is never written in plaintext because the recipient list was unavailable</td>
+<td><code>TestEncryptingToNobodyIsRefused</code></td>
+</tr>
+<tr>
+<td>A backup taken before backups were encrypted still restores</td>
+<td><code>TestASchemaOneBackupStillRestores</code></td>
+</tr>
+<tr>
 <td>Retention never removes the only copy, whatever the policy says</td>
 <td><code>TestPruneNeverRemovesTheOnlyCopy</code></td>
 </tr>

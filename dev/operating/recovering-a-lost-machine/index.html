@@ -1991,11 +1991,16 @@ would work.</p>
 morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.2.0
 </code></pre></div>
 <h3 id="4-restore-the-data">4. Restore the data<a class="headerlink" href="#4-restore-the-data" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key
 </code></pre></div>
 <p>The id is the original one, which is exactly why this works: backups are stamped
 with the installation they came from, and a machine rebuilt with a fresh id
 would have its own backups refused.</p>
+<p><code>--identity</code> for the second reason the recovery key exists. Import generated a
+<strong>new</strong> age identity for this host, and that key was never a recipient of the
+backups the lost machine took — the offline key was. So the same key opens both
+the export and the backups, which is why keeping one off the machine is not
+optional.</p>
 <h3 id="5-check-then-decommission">5. Check, then decommission<a class="headerlink" href="#5-check-then-decommission" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>doctor
 </code></pre></div>

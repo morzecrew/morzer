@@ -740,6 +740,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#everything-in-a-backup-is-encrypted-except-its-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Everything in a backup is encrypted except its manifest
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#verification-is-not-optional" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1677,6 +1688,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#everything-in-a-backup-is-encrypted-except-its-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Everything in a backup is encrypted except its manifest
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#verification-is-not-optional" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1849,6 +1871,26 @@ manifest, and verifies the checksums by re-reading what was written.</p>
 </table>
 <p>The manifest is what makes a backup self-describing: which release took it,
 which database schema was current, and which installation it belongs to.</p>
+<h2 id="everything-in-a-backup-is-encrypted-except-its-manifest">Everything in a backup is encrypted except its manifest<a class="headerlink" href="#everything-in-a-backup-is-encrypted-except-its-manifest" title="Permanent link">&para;</a></h2>
+<p>Each component is encrypted to the same recipients as the secret state — this
+machine's age key plus whatever offline and operator keys <code>secret recipients</code>
+knows about. So a backup you copy to another machine, upload to a bucket, or
+leave on a disk carries no credential and no data with it.</p>
+<p>The manifest stays readable on purpose. <code>morzer backup list</code> works on a machine
+whose key is gone, and an operator looking at a directory of ciphertext can
+still tell what it is and which installation it belongs to.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>list<span class="w">   </span><span class="c1"># who can read this deployment&#39;s backups</span>
+</code></pre></div>
+<p>Two consequences worth knowing before you need them:</p>
+<ul>
+<li><strong>A backup is readable by the recipients it had when it was taken.</strong> Adding
+  a recovery key today does not make yesterday's backups readable by it. Add
+  the key first, then take a backup.</li>
+<li><strong>Verification needs no key.</strong> The checksum is of the stored bytes, so
+  <code>backup verify</code> detects rot without decrypting anything. Tampering is caught
+  separately and more strongly: the encryption is authenticated, so an altered
+  backup fails to decrypt rather than restoring altered data.</li>
+</ul>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--component<span class="w"> </span>database<span class="w"> </span>--component<span class="w"> </span>files
 </code></pre></div>
 <p>Limits it, when a full backup is not what you need.</p>
@@ -1869,10 +1911,15 @@ most recent backup is never pruned</strong>, whatever the number says.</p>
 <h2 id="restoring">Restoring<a class="headerlink" href="#restoring" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
 morzer<span class="w"> </span>restore<span class="w"> </span>--backup<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--identity<span class="w"> </span>~/demo-recovery.key
 </code></pre></div>
 <p>Destructive, and it asks for two things:</p>
 <ul>
 <li><code>--force</code>, which authorises destroying what is currently there.</li>
+<li><code>--identity</code>, when the backup was taken by a machine that no longer exists.
+  A rebuilt machine has a new key that was never a recipient of the old
+  machine's backups; the offline recovery key is what opens them. See
+  <a href="../recovering-a-lost-machine/">recovering a lost machine</a>.</li>
 <li><code>--confirm &lt;installation-id&gt;</code>, typed out. A y/n prompt can be answered by
   reflex; an identifier you have to go and look up cannot.</li>
 </ul>
