@@ -89,6 +89,24 @@ contract-strict:
 test-race:
     CGO_ENABLED=1 go test -race ./...
 
+# The suites behind the `docker` build tag start real containers: Compose
+# projects, Caddy, Redis, Postgres and a registry. They answer the question a
+# fake cannot -- whether what comes back is what the adapter thinks it is.
+#
+# Separate from `test` on purpose, so a contributor without Docker still has a
+# fast loop. Once the tag is set a missing daemon is a failure rather than a
+# skip: having opted in, a run that exercised nothing has to say so.
+
+# Run the suites that need real containers. Needs docker.
+test-docker *args:
+    go test -tags docker -timeout 25m {{args}} ./test/...
+
+# Same, with coverage, for the union.
+test-docker-cover:
+    go test -tags docker -timeout 25m -coverpkg=./internal/... \
+        -coverprofile=docker.out -covermode=atomic ./test/...
+    go tool cover -func=docker.out | tail -1
+
 # -coverpkg attributes coverage to the package whose statements ran, not the
 # package whose test ran. Without it the integration suite gets no credit for
 # exercising ops and the adapters, and the total reads 8.7% instead of 45%.
@@ -121,13 +139,13 @@ acceptance-cover:
     go tool covdata textfmt -i={{dist}}/covdata -o acceptance.profile
     go tool cover -func=acceptance.profile | tail -1
 
-# The union of the `go test` profile and the acceptance run's. Neither alone
-# describes what is tested: measured on one tree, 59.5% and 47.6% respectively,
-# 70.0% together.
+# The union of every profile: `go test`, the container suites, and the
+# acceptance run driving the built binary. No one of them describes what is
+# tested -- measured on one tree, 59.5% and 47.6% gave 70.0% together.
 
 # Fail when coverage across every suite drops below the floor. Needs Docker.
-coverage-union floor="77": test-cover acceptance-cover
-    go run ./tools/covmerge union.out coverage.out acceptance.profile
+coverage-union floor="82": test-cover test-docker-cover acceptance-cover
+    go run ./tools/covmerge union.out coverage.out docker.out acceptance.profile
     .github/scripts/coverage-floor.sh union.out {{floor}}
 
 # Open the coverage report in a browser.
