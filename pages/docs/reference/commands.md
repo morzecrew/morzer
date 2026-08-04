@@ -250,10 +250,54 @@ manifest, and verifies the checksums by re-reading what was written.
 | `--reason` | Why this backup was taken; recorded in its manifest. Default `manual`. |
 | `--no-verify` | Skip re-reading the backup to check its checksums. |
 | `--no-prune` | Skip applying the retention policy afterwards. |
+| `--no-push` | Do not copy the backup to the configured targets; it stays only on this machine. |
+| `--no-prune-remote` | Skip applying the retention policy on the targets. |
 
 ### backup list
 
 Lists backups, newest first.
+
+| Flag | Meaning |
+| --- | --- |
+| `--remote` | List what is on the configured backup targets instead. |
+| `--target` | List one target by URL, whether or not this installation configures it. |
+| `--credentials-file` | YAML file holding the target's credentials, for a machine whose secret state is not readable yet. |
+
+### backup target
+
+Manages where backups are kept besides this machine. See
+[backup target URLs](backup-targets.md).
+
+`morzer backup target add <url>` records a target, checking it answers first.
+`morzer backup target list` shows them and whether each is reachable.
+`morzer backup target remove <url>` stops using one and deletes nothing that is
+already there.
+
+| Flag | Meaning |
+| --- | --- |
+| `--credentials` | Name of a secret holding this target's credential document. |
+
+### backup push
+
+Copies an existing backup to every configured target, verifying it again first.
+Takes a backup id; the most recent when omitted.
+
+The retry for a push that failed. A backup whose push failed is still on this
+machine, verified and correct — what failed was the network or the medium, and
+the remedy should not be taking another backup.
+
+### backup fetch
+
+Copies a backup down from a target into this machine's backup store, and
+verifies it. Takes a backup id; the newest on the target when omitted.
+
+Restoring is a separate command on purpose: a backup that has come back from a
+bucket is one you should be able to look at before it overwrites a database.
+
+| Flag | Meaning |
+| --- | --- |
+| `--target` | Target URL to fetch from; the installation's targets when omitted. |
+| `--credentials-file` | YAML file holding the target's credentials, for a machine whose secret state is not readable yet. |
 
 ### backup verify
 
@@ -262,7 +306,18 @@ when omitted.
 
 ```sh
 morzer backup verify 01J8ZP...
+morzer backup verify --remote
 ```
+
+With `--remote` it checks the copy on the configured targets instead, streaming
+each component through a checksum and keeping nothing. A full transfer, and the
+only thing that notices rot on a target.
+
+| Flag | Meaning |
+| --- | --- |
+| `--remote` | Check the copy on the configured backup targets; a full transfer. |
+| `--target` | Verify on one target by URL, whether or not this installation configures it. |
+| `--credentials-file` | YAML file holding the target's credentials, for a machine whose secret state is not readable yet. |
 
 ## restore
 

@@ -1,6 +1,14 @@
 # RFC 0009 — Backup targets: getting a backup off the machine
 
-- **Status:** 📝 Draft — execution-ready, one milestone in three parts
+- **Status:** ✅ Complete — shipped 2026-08-04, all three phases. `file://`,
+  `ssh://` and `s3://` are wired, the push step fails the backup, `doctor` has
+  both checks, and the recovery scenario fetches from a target instead of
+  copying a directory. Nine divergences and defects are recorded as amendments
+  in §12 — one of them (the push step's failure policy) a defect in this RFC
+  that would have deleted the very backup it was protecting, and three of them
+  defects the real-service suites found: a host-key pin that failed against
+  honest servers, a listing prefix that deleted a neighbouring backup, and a
+  pre-update backup that never left the machine.
 - **Scope:** Adds a `ports.BackupTarget` port and a scheme registry so a backup
   can be copied to somewhere the machine that took it cannot reach: another
   host over SSH, an object store, or a directory on separate media. Covers the
@@ -366,3 +374,161 @@ test is that `Prune` on both sides is driven from the same manifest list.
 P1 is worth landing alone: `file:///mnt/usb/backups` on a machine with a second
 disk is a real improvement over everything on one filesystem, and it exercises
 every part of the design except the network.
+
+**All three shipped together on 2026-08-04.** P1 would have been a reasonable
+stopping point, and the phasing was right about why — but the contract suite made
+the second and third adapters cheap, and both of them found defects the first
+could not have (§12). Landing them separately would have shipped a host-key check
+that fails against honest servers and left it there until somebody used `ssh://`.
+
+---
+
+## 12. Amendments
+
+Append-only. Recorded where execution diverged from the design, so the reasoning
+survives rather than being read back out of the code.
+
+### 2026-08-04 — the push step aborts rather than compensating
+
+§5.4 specified `OnFailure: Compensate` with "the compensation removes the partial
+remote copy". That is wrong, and the paragraph immediately after it says why
+without noticing: *"The local copy is kept either way, so a failed push leaves
+the operator no worse off than today."*
+
+It would not have been. The engine's compensation walks **every** completed step
+newest-first, and the oldest of those is `create-backup`, whose compensation
+deletes the backup it made. A `Compensate` push would therefore have left an
+operator who configured a target with *no backup at all* on a night the target
+was unreachable — strictly worse than having configured nothing, and the exact
+opposite of the promise decision 3 rests on.
+
+Shipped as `OnFailure: Abort`, with the partial remote copies removed inline in
+the step's own error path, where the cleanup can be scoped to what that step
+did. Decision 3 is unchanged: a failed push still fails the backup.
+
+Found by `TestAFailedPushKeepsTheBackupItTook`, which now pins it.
+
+### 2026-08-04 — the port carries the target on every call
+
+§5.1 gave `Push(ctx, local, id)`, which implies an adapter bound to one target.
+The registry in §5.2 dispatches on scheme, so a single `file://` adapter has to
+answer for every `file://` target an installation configures — two of them would
+have collided.
+
+Every method takes a `TargetRef` instead, and `RemoteRef` carries the whole ref
+rather than a URL, so a retention pass authenticates the same way as the push
+that created what it is pruning. This is *closer* to decision 1, not further:
+`ports.ReleaseSource` takes a `Ref` on every call for the same reason.
+
+### 2026-08-04 — the export needed no new fields
+
+§5.5 route 1 proposed "adding the target configuration *and its credentials* to
+the export". Neither was necessary. The export already carries the installation,
+which now carries the target URLs, and already carries the encrypted secret
+state, which carries the credentials. An operator holding an export and the
+offline key can reach the backups, and nothing was added to the export format to
+make that true.
+
+The risk §9 raises — "an export is now enough to read your backups" — stands
+unchanged, and is documented.
+
+Proved end to end by `TestRecoveryFetchesTheBackupFromATarget`.
+
+### 2026-08-04 — the installation schema moved to 3
+
+Not in the design at all, and it should have been. `backup.targets` is a field an
+older manager would ignore: it would read the state, see no targets, take a
+backup, report success, and leave it on the machine the operator configured a
+target to survive. That is exactly the misread the schema version exists to
+prevent, and a worse one than the `settings` → `parameters` change that
+established the precedent, because it is invisible until the disaster.
+
+`InstallationSchemaVersion` is 3, with a no-op 2 → 3 migration. The bump is
+entirely for the other direction: an older manager now refuses the state rather
+than half-reading it.
+
+### 2026-08-04 — `minio-go` is pinned below v7.2.0
+
+§9 anticipated SDK weight and named `minio-go` as the lighter option. It is no
+longer light: from **v7.2.0** it depends on the charmbracelet TUI stack, which
+forces `x/ansi` to a version incompatible with the `lipgloss` this project
+already uses. The build does not merely grow — it stops compiling.
+
+Pinned to **v7.0.95**, the last release before that dependency. Recorded here
+because the next person to run `go get -u` will hit it, and the failure message
+(`cellbuf: not enough arguments in call to b.Italic`) says nothing about
+buckets.
+
+If the pin ever has to move, the fallback §9 already names — shelling out to a
+tool the way `sops` and `docker` are — becomes the cheaper option rather than
+the desperate one.
+
+### 2026-08-04 — the pin decides which host-key algorithms are offered
+
+Not a divergence from the design, which did not go into this detail, but a
+defect the container suite found and worth recording next to decision 4.
+
+A host with both an ed25519 and an RSA key offers whichever it prefers. A client
+that accepts any algorithm but pins only ed25519 gets offered RSA and reports a
+host-key mismatch — a refusal **identical to the one a real attack produces**,
+for a server doing nothing wrong. An operator who sees that twice for no reason
+learns to ignore the one check that matters.
+
+`ssh.ClientConfig.HostKeyAlgorithms` is now derived from the pin itself, with
+`ssh-rsa` expanded to the SHA-2 signature algorithms because SHA-1 is refused by
+every current OpenSSH.
+
+Found by `TestBackupTargetContract_SSH` against a real sshd, which is exactly the
+class of thing RFC 0008 §5.4 argues containers are for: no fake would have
+disagreed with the adapter about which key it was going to be offered.
+
+### 2026-08-04 — remote verification is `backup verify --remote`
+
+§5.6 named `--verify-remote` as a flag on the backup. It shipped as a mode of
+`backup verify` instead, which is where an operator already looks for the
+question it answers, and it takes the same `--target` and `--credentials-file`
+as the other read-only commands.
+
+The substance is unchanged: a full transfer, opt-in per run rather than part of
+every backup, streaming each component through a checksum and keeping nothing.
+It needs no key, because the checksums are of the stored bytes — so an operator
+can verify an off-site archive from a machine that holds nothing at all.
+
+### 2026-08-04 — the pre-update backup is pushed too, and a failure warns
+
+Not in the design, and it should have been. §5.4 covers the backup *operation*
+and says nothing about the backup `update` takes before it converges — which is
+the backup an operator restores from when an update goes wrong, and the one that
+was left on the machine alone.
+
+Two consequences, both found by adding a target step to the acceptance script:
+the moment the deployment is most fragile was the moment its backup was least
+durable, and `backup.target-freshness` failed after every update, correctly.
+
+It is pushed now. A failure **warns rather than failing the update**, and the
+asymmetry with decision 3 is deliberate:
+
+- `morzer backup` exists to produce a durable backup. A copy that never left the
+  machine means it did not do its job, so it fails.
+- `morzer update` exists to install a release. The local copy is what a rollback
+  on this machine uses, and refusing to update because a USB disk was unplugged
+  would block the security fix an operator is trying to apply.
+
+The gap is reported instead — by the warning, which names `morzer backup push`,
+and by `doctor` until it is closed.
+
+### 2026-08-04 — a listing prefix is a string match, not a path one
+
+Found while making the three stores behave alike, and it is worth recording
+because the same mistake is available in any object store.
+
+`Remove` lists everything under `<id>/` and deletes it. On S3 that is a
+`ListObjects` prefix, which matches characters rather than path segments — so
+removing `20260101T000000Z` also matched `20260101T000000Z-copy` and deleted a
+neighbouring backup's components. Ids this manager writes are fixed-length
+timestamps and cannot collide, but `Remove` is driven by ids read from a
+manifest **on the target**, which is a file this manager may not have written.
+
+All three stores now filter after trimming the prefix, and the contract suite
+holds them to it: `removing a backup does not take a neighbour whose id shares
+its prefix`, which fails against the unfixed adapter.

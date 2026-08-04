@@ -131,6 +131,31 @@ A backup that has never been restored is a hope. These run `pg_dump` and
 | Retention never removes the only copy, whatever the policy says | `TestPruneNeverRemovesTheOnlyCopy` |
 | Retention keeps the reasons it was told to keep | `TestPruneKeepsTheReasonsItWasToldTo` |
 
+### Backups that leave the machine
+
+A backup on the disk it protects is not a backup. These claims are about the
+copy that survives the machine — and about what happens when it does not
+arrive.
+
+| Claim | Test |
+| --- | --- |
+| A backup pushed to any target comes back byte for byte | `TestBackupTargetContract_*/a pushed backup comes back byte for byte` |
+| **A backup that did not arrive fails the operation** | `TestAFailedPushFailsTheBackup` |
+| A failed push keeps the backup it took, so the operator is never worse off for having configured a target | `TestAFailedPushKeepsTheBackupItTook` |
+| A failed push removes the copies it did manage to make | `TestAFailedPushRemovesWhatItManagedToCopy` |
+| A transfer interrupted halfway leaves something nobody can restore, rather than something they can | `TestAnInterruptedPushLeavesNothingRestorable` |
+| Only what the manifest names is uploaded, so an interrupted restore's plaintext never reaches a target | `TestBackupTargetContract_*/only what the manifest names is pushed` |
+| **An SSH target whose host key is not the pinned one is refused** | `TestSSHRefusesAHostKeyThatIsNotThePinnedOne` |
+| An SSH target that pins no host key at all is refused, and there is no flag that does not | `TestSSHRefusesATargetWithNoHostKeyPinned` |
+| A pinned host key does not fail against a server that also has other key types | `TestThePinDecidesWhichAlgorithmsAreOffered` |
+| A target URL carrying a password is refused before it reaches installation.yaml | `TestATargetURLIsRefusedWhenItCarriesAPassword` |
+| A target's credentials are registered for redaction before anything can print them | `TestACredentialNeverReachesTheJournalOrALogLine` |
+| A backup on a target is ciphertext apart from its manifest | `TestABackupOnATargetIsUnreadableWithoutAKey` |
+| A backup can be listed from a target by a machine that holds no key | `TestRecoveryFetchesTheBackupFromATarget` |
+| A destroyed machine is rebuilt from an export, an offline key, and a target — nothing copied by hand | `TestRecoveryFetchesTheBackupFromATarget` |
+| A component path in a manifest cannot decide what a fetch writes outside its destination | `TestAFetchCannotBeToldToWriteOutsideItsDestination` |
+| `doctor` fails when a backup never reached a target | `TestDoctorReportsABackupThatNeverLeftTheMachine` |
+
 ### The runtime boundary
 
 | Claim | Test |

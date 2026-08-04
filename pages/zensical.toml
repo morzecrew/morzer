@@ -57,6 +57,7 @@ nav = [
     ] },
     { "Reference" = [
         "reference/commands.md",
+        "reference/backup-targets.md",
         "reference/secret-commands.md",
         "reference/release-commands.md",
         "reference/installation-commands.md",

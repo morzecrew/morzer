@@ -135,10 +135,145 @@ forcing, so a shared flag would mean this check could never apply.
 
 ## Keeping them somewhere else
 
-The manager writes backups under `/var/lib/<product>/backups` and does not
-transport them. Copying them offsite is a job for whatever you already use —
-what matters is that a backup on the same disk as the thing it protects is not
-a backup.
+A backup on the same disk as the thing it protects is not a backup. A **target**
+is somewhere else: another host over SSH, an object store, or a directory on
+separate media.
 
-An [installation export](../reference/installation-commands.md) belongs offsite
-too, and separately from the recovery key that opens it.
+```sh
+morzer backup target add file:///mnt/usb/demo-backups
+morzer backup target add ssh://backups@nas.internal/srv/demo --credentials backup_ssh
+morzer backup target add s3://acme-backups/demo --credentials backup_s3
+morzer backup target list
+morzer backup target remove file:///mnt/usb/demo-backups
+```
+
+Every backup is copied to every configured target after it is verified.
+`morzer backup target add` checks the target answers before recording it, so a
+typo fails at your terminal rather than during a backup three weeks later, and
+`morzer backup target list` shows which of them are reachable right now.
+
+`morzer backup target remove` stops using a target. It deletes nothing that is
+already there.
+
+### A push that fails fails the backup
+
+Not a warning. The point of a target is that the data is somewhere your machine
+failing does not reach, and a green `backup` on a machine whose backups are all
+local is the state this exists to end.
+
+**The local backup is kept.** A failed push leaves you exactly where you were
+before you configured a target, plus an error — so the remedy is not to take
+another backup. `morzer backup push` retries the copy of a backup you already
+have, verifying it again on the way:
+
+```sh
+morzer backup push          # retry the most recent
+morzer backup push <id>
+```
+
+`--no-push` takes a local-only backup for the run, when you already know the
+medium is disconnected. `--no-prune-remote` skips the retention pass on the
+targets; retention there follows the same policy as locally, and never removes
+the most recent backup.
+
+### Credentials
+
+`file://` needs none, which is why it is the target a recovery can always reach.
+
+The others take the `--credentials` flag, naming a secret that holds a small
+YAML document. Set it first:
+
+```sh
+morzer secret set backup_s3
+```
+
+```yaml
+access_key_id: AKIA...
+secret_access_key: ...
+region: eu-central-1      # optional
+endpoint: minio.internal  # optional; for anything that is not AWS
+```
+
+For `ssh://`:
+
+```yaml
+private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  ...
+known_hosts: |
+  nas.internal ssh-ed25519 AAAA...
+```
+
+A name rather than the values, because the URL lives in `installation.yaml`,
+which `doctor` prints and support tickets quote. A URL that carries a password
+is refused for the same reason.
+
+!!! warning "The host key is required"
+
+    `known_hosts` is not optional and no flag disables checking it. An
+    impostor cannot read your backups — they are encrypted to your own
+    recipients — but it can accept every push and answer every listing, and you
+    would believe you had off-site backups you do not have.
+
+    Get the line with `ssh-keyscan`, then check it against the host itself with
+    `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. A keyscan is only as
+    trustworthy as the network you ran it over.
+
+`s3://` speaks to S3 and to everything else that speaks its API: MinIO,
+Cloudflare R2, Backblaze B2, and Google Cloud Storage in interoperability mode.
+Point `endpoint` at them. The bucket must already exist — the manager will not
+create one, because a typo would silently make a new bucket and your backups
+would go somewhere nobody is watching.
+
+### Reading a target
+
+```sh
+morzer backup list --remote
+morzer backup fetch            # the newest on the target
+morzer backup fetch <id>
+```
+
+`--remote` reads only each backup's manifest, which is the one file in a backup
+that is not encrypted — so it works from a machine that has lost every key it
+ever had, which is the machine most likely to be running it.
+
+`backup fetch` brings a backup down into this machine's backup store and
+verifies it. Restoring is a separate step on purpose: a backup that has come
+back from a bucket is one you should be able to look at before it overwrites a
+database.
+
+```sh
+morzer backup verify --remote        # every backup on every target
+morzer backup verify --remote <id>
+```
+
+Checks the copy on the target without keeping it: each component is streamed
+through a checksum and discarded. That is a full transfer, which is the honest
+cost of the claim — a backup nobody has read back is a hope, and copying one to
+a bucket does not change that. It needs no key, because the checksums are of the
+stored bytes.
+
+Worth running on a schedule against your oldest retained backup, which is the
+one most likely to have rotted, and it is the only thing that will notice: the
+local copy can be perfect while the remote one is not.
+
+Both take `--target` to address one target by URL, whether or not this
+installation configures it, and `--credentials-file` to supply that target's
+credentials from a file instead of from the secret store. That pair is the
+escape hatch for a rebuilt machine — see
+[recovering a lost machine](recovering-a-lost-machine.md).
+
+### What doctor says
+
+| Check | When it fails |
+| --- | --- |
+| `backup.target-reachable` | a configured target does not answer, so every backup from now on will fail at the push |
+| `backup.target-freshness` | the most recent backup is not on any target |
+
+Both are failures rather than warnings, and both exit
+[3](../reference/exit-codes.md). The second is the one worth watching: it is the
+failure that hides, because the backup ran, the backup succeeded, and the copy
+that would survive the machine is not there.
+
+An [installation export](../reference/installation-commands.md) belongs on a
+target too, or beside it, and separately from the recovery key that opens it.
