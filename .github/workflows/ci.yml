@@ -292,8 +292,8 @@ jobs:
       #
       # Floors, not targets. Raised deliberately; lowering either is a
       # reviewable change in this file rather than a silent drift.
-      UNIT_FLOOR: "70"
-      UNION_FLOOR: "74"
+      UNIT_FLOOR: "75"
+      UNION_FLOOR: "77"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

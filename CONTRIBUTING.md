@@ -141,7 +141,7 @@ real violations that had been described as compliant.
 
 ## Coverage
 
-`just coverage-gate` enforces a floor, currently 70% for `go test` and 74% across every suite. It is a floor, not a
+`just coverage-gate` enforces a floor, currently 75% for `go test` and 77% across every suite. It is a floor, not a
 target: raise it deliberately, and if a change genuinely lowers it, lower
 `COVERAGE_FLOOR` in `.github/workflows/ci.yml` in the same pull request, so the
 decision is reviewable rather than silent.
@@ -157,10 +157,10 @@ just coverage-union   # every suite, including acceptance — needs Docker
 ```
 
 **Two floors, because two things can be measured.** `go test` alone reports
-71.4%; the acceptance suite drives the *built binary*, so what it exercises
+75.4%; the acceptance suite drives the *built binary*, so what it exercises
 hardest — Compose, systemd, the health probes, the CLI wiring — does not appear
 in that number at all. Instrumenting it with `go build -cover` and unioning the
-profiles gives 74.6%.
+profiles gives 77.4%.
 
 CI enforces whichever it has: a change-gated pull request that skipped the
 acceptance job is held to the unit floor, one that ran it to the union floor.

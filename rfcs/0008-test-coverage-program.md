@@ -1,9 +1,9 @@
 # RFC 0008 — Testing the claims: a coverage programme to 95%
 
-- **Status:** 🚧 In progress — P1, P2 and P5 shipped 2026-08-04; P3 and P4
-  partly. Measured **74.6%**, from 59.5% when this was written. The claims
-  inventory — decision 8's actual deliverable — is complete and gated. The
-  remaining gap to 95% is scoped in §13.
+- **Status:** 🚧 In progress — P1, P2 and P5 complete; P3 and P4 substantially
+  done. Measured **77.4%**, from 59.5% when this was written. The claims
+  inventory is complete and gated. §13 measures what remains and §14 records
+  what the mechanisms turned out to cost.
 - **Scope:** Raises statement coverage from a measured 70% to 95%, and — the
   actual point — makes every security property this project advertises name the
   test that enforces it. Covers counting the coverage the acceptance suite
@@ -474,27 +474,69 @@ little else.
 
 | | At the RFC | Now |
 | --- | --- | --- |
-| `go test` alone | 59.5% | **71.4%** |
-| Union with the acceptance run | 70.0% | **74.6%** |
-| Uncovered statements (union) | 2331 | **1976** |
+| `go test` alone | 59.5% | **75.4%** |
+| Union with the acceptance run | 70.0% | **77.4%** |
+| Uncovered statements (union) | 2331 | **1770** |
 
-The floors are 70 (unit) and 74 (union), ratcheted in the same changes that
-raised them.
+Floors are 75 (unit) and 77 (union), ratcheted in the same changes that raised
+them. Nothing is below 51% any more; at the RFC, four packages were under 40%.
 
-Where the remaining 1976 statements are, and what each needs:
+1379 statements stand between here and 95%, and **604 of them — 44% — are in
+`internal/cli`**, which is 65% covered. What is left there is the interactive
+`init` wizard, and the `update`/`rollback`/`backup`/`restore` command paths,
+which need a running deployment. The acceptance run drives those as a *binary*,
+so they are counted; what is uncovered is the branches it does not take.
 
-| Package | Union | Needs |
-| --- | --- | --- |
-| `internal/adapters/supervisor/systemd` | 37% | a real `systemd`, or the scripted subprocess runner from §5.3 |
-| `internal/adapters/runtime/compose` | 37% | §5.3's subprocess injection; the acceptance run covers the happy paths only |
-| `internal/lifecycle/ops` | ~77% | §5.3's port-level `FailOn` — these are the compensation branches |
-| `internal/release`, `render/gotemplate` | ~52% | malformed-bundle fixtures |
-| `internal/cli` | ~60% | the interactive wizard, and `update`/`rollback` paths needing Docker |
+| Package | Union | Uncovered | Needs |
+| --- | --- | --- | --- |
+| `internal/cli` | 65% | 404 | a wizard harness, and command paths behind Docker |
+| `internal/lifecycle/ops` | ~79% | ~330 | more fault injection through the fakes' `Fail` switch |
+| `internal/domain` | ~84% | ~130 | error-formatting branches |
+| `internal/adapters/backup/hookbackup` | 67% | 68 | a real Postgres, per §5.4 |
+| `internal/lifecycle/preflight` | 68% | 65 | a machine that fails its checks |
 
-**95% is still the target and is not yet demonstrated to be reachable.**
-Decision 7 applies: if the last statements turn out to be unreachable defensive
-code, the floor stops honestly below 95% with the measured reason rather than
-being met by lowering the bar. Nothing so far suggests that — the remaining
-work is the two injection mechanisms §5.3 already designed and did not need for
-this pass, plus the container suites of §5.4 — but it has not been proven
-either, and this RFC will not claim it before it is.
+**95% remains unproven.** Decision 7 stands: if the last statements are
+unreachable defensive code, the floor stops honestly below 95% with the measured
+reason. The evidence so far is encouraging — every mechanism tried has paid —
+but 1379 statements is not a rounding error and this RFC will not claim the
+target before it is met.
+
+## 14. Amendments from the P3 and P4 pass
+
+### Two of the three mechanisms in §5.3 were never needed
+
+§5.3 listed three, cheapest first. The cheapest — provoking real conditions —
+covered `atomicfs`, the redaction routes and the health probers on its own.
+Mechanism 2, a `FailOn` switch on the fakes, **already existed**: `fakes.Runtime`
+has had a `Fail map[string]error` since the engine's fault-injection suite was
+written. The RFC proposed building something the repository already had, which
+is what happens when a design is written from the coverage numbers rather than
+from the test code.
+
+Only mechanism 3 was new. `exec.Scripted` answers on a substring of the command
+line and records what it was asked — no expectation ordering, no verify phase,
+nothing that turns a failed test into a puzzle about the mock. It took two
+packages from 37% to comfortably above the floor, and it is what makes
+`systemd` testable at all: that adapter needs a real init system and root, so
+the acceptance run cannot reach it either.
+
+### The scripted runner tests the reading, not the running
+
+What `systemd` and `compose` mostly do is decide what a tool's output *meant*.
+The interesting answers are the ones a healthy machine never gives: a container
+that exited 137, `compose ps` in the JSON-array shape rather than the
+newline-delimited one, `systemctl show` reporting a unit that failed. Those are
+now pinned, and none of them were reachable before.
+
+### Four test expectations were wrong, and each was checked before changing
+
+`missingkey=error` fires before a `required` helper can run, so `required` is
+for a declared-but-empty value rather than an absent one. `checkServices`
+reports `warn` rather than `fail` — services being down is a finding, not a
+failure of `doctor`. The backup check is `backup.freshness`, not
+`backup.recent`. And under `--verbose`, events legitimately appear *inside* the
+JSON envelope; the contract is one object on stdout, not the absence of
+narration from it.
+
+Each was read out of the code before the test was adjusted, which is the rule
+that keeps this exercise from transcribing bugs into assertions.
