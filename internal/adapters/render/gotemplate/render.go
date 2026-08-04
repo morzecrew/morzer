@@ -62,7 +62,7 @@ func renderHint(err error) string {
 	switch {
 	case strings.Contains(msg, "map has no entry for key"):
 		return "the template referenced a key that the render context does not define. " +
-			"Available top-level fields: Installation, Release, Profile, Paths, Secrets, Domains, Parameters, Env"
+			"Available top-level fields: Installation, Release, Profile, Paths, Secrets, Domains, Parameters"
 	case strings.Contains(msg, "can't evaluate field"):
 		return "the template referenced a field that does not exist on that type; " +
 			"check the field name and its capitalisation"
@@ -90,7 +90,6 @@ type view struct {
 
 	Domains    []string
 	Parameters domain.Parameters
-	Env        map[string]string
 }
 
 // installationView exposes the installation without its Providers block,
@@ -123,11 +122,6 @@ func newView(d ports.TemplateData) view {
 	if params == nil {
 		params = domain.Parameters{}
 	}
-	env := d.Env
-	if env == nil {
-		env = map[string]string{}
-	}
-
 	return view{
 		Installation: installationView{
 			ID:      d.Installation.ID,
@@ -143,7 +137,6 @@ func newView(d ports.TemplateData) view {
 		Secrets:    secrets,
 		Domains:    d.Domains,
 		Parameters: params,
-		Env:        env,
 	}
 }
 

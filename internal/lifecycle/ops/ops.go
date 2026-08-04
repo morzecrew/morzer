@@ -315,19 +315,29 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		return ports.RuntimeConfig{}, err
 	}
 
-	// These are the variables Compose files may interpolate. Secrets are
-	// absent by design: they reach containers as files under /run, never
-	// as environment, so that `docker inspect` cannot print them.
-	env := map[string]string{
-		envName(inst.Product, "DATA_DIR"):    d.Paths.DataDir(),
-		envName(inst.Product, "SECRETS_DIR"): d.Paths.SecretsRenderDir(),
-		envName(inst.Product, "CONFIG_FILE"): d.Paths.ApplicationFile(),
-		envName(inst.Product, "RELEASE_DIR"): rel.Root,
-		envName(inst.Product, "VERSION"):     rel.Version().String(),
-		envName(inst.Product, "PROFILE"):     profile,
+	// The variables Compose files may interpolate. The names are declared in
+	// ports.ComposeVars, which is the published contract and what
+	// `just docs-check` gates; a test asserts this builder produces exactly
+	// that set.
+	//
+	// Secrets are absent by design: they reach containers as files under
+	// /run, never as environment, so that `docker inspect` cannot print
+	// them.
+	values := map[string]string{
+		"DATA_DIR":    d.Paths.DataDir(),
+		"SECRETS_DIR": d.Paths.SecretsRenderDir(),
+		"CONFIG_FILE": d.Paths.ApplicationFile(),
+		"RELEASE_DIR": rel.Root,
+		"VERSION":     rel.Version().String(),
+		"PROFILE":     profile,
 	}
 	if len(inst.Domains) > 0 {
-		env[envName(inst.Product, "DOMAIN")] = inst.Domains[0]
+		values["DOMAIN"] = inst.Domains[0]
+	}
+
+	env := make(map[string]string, len(values))
+	for suffix, value := range values {
+		env[envName(inst.Product, suffix)] = value
 	}
 
 	// Every declared parameter, as <PRODUCT>_PARAM_<NAME>, defaulted when
@@ -430,31 +440,7 @@ func (d *Deps) templateData(
 		Secrets:    secretPaths,
 		Domains:    inst.Domains,
 		Parameters: params,
-		Env:        productEnvOverrides(inst.Product),
 	}, nil
-}
-
-// productEnvOverrides collects <PRODUCT>_* variables from the process
-// environment, which sit between installation.yaml and command-line flags in
-// the precedence order.
-func productEnvOverrides(product string) map[string]string {
-	prefix := ports.HookEnv{Product: product}.Prefix() + "_"
-	out := map[string]string{}
-	for _, kv := range os.Environ() {
-		if k, v, ok := cut(kv, '='); ok && len(k) > len(prefix) && k[:len(prefix)] == prefix {
-			out[k[len(prefix):]] = v
-		}
-	}
-	return out
-}
-
-func cut(s string, sep byte) (before, after string, found bool) {
-	for i := 0; i < len(s); i++ {
-		if s[i] == sep {
-			return s[:i], s[i+1:], true
-		}
-	}
-	return s, "", false
 }
 
 // RuntimeConfigFor exposes runtime configuration assembly to the CLI layer,

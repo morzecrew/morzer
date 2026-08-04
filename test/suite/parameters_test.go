@@ -3,6 +3,8 @@ package suite
 import (
 	"context"
 	"os"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Parameters are the only supported way an operator value reaches a Compose
@@ -159,4 +162,73 @@ func envMap(env []string) map[string]string {
 		}
 	}
 	return out
+}
+
+// TestTheComposeABIMatchesItsDeclaration is what stops ports.ComposeVars
+// becoming a stale list somebody forgot.
+//
+// The declaration is the published contract and what `just docs-check` gates;
+// this asserts the builder produces exactly it. A variable added to one and not
+// the other is either an undocumented ABI addition or a documented one that
+// does not exist, and both are worse than neither.
+func TestTheComposeABIMatchesItsDeclaration(t *testing.T) {
+	h := newHarness(t)
+	inst := h.install()
+
+	cfg, err := h.Deps.RuntimeConfigFor(h.Release, inst)
+	require.NoError(t, err)
+
+	// Everything the builder emitted that is not one of the two documented
+	// families must be a declared fixed name.
+	declared := map[string]bool{}
+	for _, name := range ports.ComposeVarNames(inst.Product) {
+		declared[name] = true
+	}
+
+	var undeclared []string
+	fixed := map[string]bool{}
+	for name := range cfg.Env {
+		switch {
+		case strings.HasPrefix(name, "DEMO_IMAGE_"), strings.HasPrefix(name, "DEMO_PARAM_"):
+			continue // the manifest-driven families
+		case declared[name]:
+			fixed[name] = true
+		default:
+			undeclared = append(undeclared, name)
+		}
+	}
+	sort.Strings(undeclared)
+	assert.Empty(t, undeclared,
+		"the runtime received variables ports.ComposeVars does not declare, "+
+			"so a bundle author has no way to know they exist")
+
+	// And every declared name is actually emitted, so the documented
+	// contract is not promising something a Compose file would never see.
+	// DOMAIN is conditional, and this installation has one.
+	for name := range declared {
+		assert.Contains(t, fixed, name,
+			"%s is declared in the Compose ABI but the builder never sets it", name)
+	}
+}
+
+// TestTheTemplateContextMatchesItsDocumentation gates the other ABI. The render
+// context is what a vendor writes `{{ .Paths.Data }}` against, and it appeared
+// in no page at all until this landed.
+func TestTheTemplateContextMatchesItsDocumentation(t *testing.T) {
+	fields := map[string]bool{}
+	for _, name := range ports.TemplateFields() {
+		fields[name] = true
+	}
+
+	for _, want := range []string{
+		"Installation", "Release", "Profile", "Paths", "Secrets", "Domains", "Parameters",
+	} {
+		assert.Contains(t, fields, want)
+	}
+
+	// Env was removed: it exposed the whole <PRODUCT>_* environment to a
+	// configuration template, which is the unvalidated channel decision 10
+	// closed for Compose. Asserted so it cannot come back unnoticed.
+	assert.NotContains(t, fields, "Env",
+		"the render context must not expose the process environment")
 }

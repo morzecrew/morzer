@@ -2,6 +2,8 @@ package ports
 
 import (
 	"context"
+	"reflect"
+	"sort"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -54,10 +56,6 @@ type TemplateData struct {
 	// installation: every declared name is present, holding either the
 	// operator's value or the release's default.
 	Parameters domain.Parameters `json:"parameters"`
-
-	// Env exposes PRODUCT_* environment overrides so a template can react
-	// to them without the renderer reaching into os.Environ itself.
-	Env map[string]string `json:"env"`
 }
 
 // ReleaseInfo is the release facts templates may use.
@@ -79,4 +77,21 @@ type PathInfo struct {
 	Backups   string `json:"backups"`
 	Secrets   string `json:"secrets"`
 	Generated string `json:"generated"`
+}
+
+// TemplateFields are the top-level names a configuration template may use.
+//
+// The render context is an ABI: a vendor writes `{{ .Paths.Data }}` against it
+// and a rename breaks every bundle in the field. Derived from the struct rather
+// than restated, so the list cannot claim a field that does not exist.
+//
+// `tools/docscheck` gates it, and a test asserts the set is what is documented.
+func TemplateFields() []string {
+	t := reflect.TypeOf(TemplateData{})
+	out := make([]string, 0, t.NumField())
+	for i := range t.NumField() {
+		out = append(out, t.Field(i).Name)
+	}
+	sort.Strings(out)
+	return out
 }

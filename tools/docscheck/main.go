@@ -366,6 +366,8 @@ func checkContracts(rep *report, root string, pages []page) {
 	checkExitCodes(rep, root, pages)
 	checkSchemaFields(rep, pages)
 	checkHookEnv(rep, pages)
+	checkComposeVars(rep, pages)
+	checkTemplateFields(rep, pages)
 }
 
 // checkErrorCodes asserts every domain.Code value is documented. They are part
@@ -567,6 +569,82 @@ func checkHookEnv(rep *report, pages []page) {
 			rep.add("hook ABI", "environment variable `%s` is not documented", key)
 		}
 	}
+}
+
+// checkComposeVars asserts every variable a Compose file may interpolate is
+// documented.
+//
+// The second of the three ABIs a bundle author writes against, and the one that
+// went undocumented longest: `<PRODUCT>_VERSION`, `_PROFILE` and `_DOMAIN`
+// appeared in no page at all while the hook ABI beside them was gated. A vendor
+// had no complete list of what they could interpolate, and adding a variable
+// could not fail the build.
+//
+// The names come from ports.ComposeVars, which a contract test holds to what
+// the builder actually emits.
+func checkComposeVars(rep *report, pages []page) {
+	rep.checks++
+
+	for _, suffix := range ports.ComposeVars {
+		if !namedWithPrefix(pages, suffix) {
+			rep.add("compose ABI", "interpolation variable `%s` is not documented", suffix)
+		}
+	}
+
+	// The two manifest-driven families are documented as patterns, since
+	// their tails are the vendor's own names. Matched as an infix -- a page
+	// writes `<PRODUCT>_IMAGE_<NAME>`, so neither end is a fixed string.
+	for _, pattern := range ports.ComposeVarPatterns {
+		family, _, _ := strings.Cut(pattern, "<") // "IMAGE_"
+		if !namesFamily(pages, family) {
+			rep.add("compose ABI",
+				"the `%s` variable family is not documented", pattern)
+		}
+	}
+}
+
+// namesFamily reports whether some page writes a variable in the given family,
+// under any prefix and with any tail.
+func namesFamily(pages []page, family string) bool {
+	for _, p := range pages {
+		for span := range p.Code {
+			if strings.Contains(span, "_"+family) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checkTemplateFields asserts every top-level name a configuration template may
+// use is documented.
+//
+// The third ABI. A vendor writes `{{ .Paths.Data }}` against it and a rename
+// breaks every bundle in the field, yet it appeared in no page until this
+// check existed.
+func checkTemplateFields(rep *report, pages []page) {
+	rep.checks++
+
+	for _, field := range ports.TemplateFields() {
+		if !namesTemplateField(pages, field) {
+			rep.add("template context",
+				"render context field `.%s` is not documented", field)
+		}
+	}
+}
+
+// namesTemplateField looks for the field written as a template reference, so a
+// page that merely uses the word "Release" in prose does not count as
+// documenting `.Release`.
+func namesTemplateField(pages []page, field string) bool {
+	for _, p := range pages {
+		for span := range p.Code {
+			if span == "."+field || strings.HasPrefix(span, "."+field+".") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // namedWithPrefix reports whether some page names key, allowing a placeholder

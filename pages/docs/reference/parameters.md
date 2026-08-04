@@ -130,6 +130,9 @@ check would then probe a port nothing is listening on.
 
 ## Changing one after install
 
+See [Changing configuration](../operating/changing-configuration.md) for the
+operator's walkthrough. In short:
+
 `morzer config set` takes the deployment lock, validates the value, records it,
 re-renders the configuration and re-creates the services the release says depend
 on it.

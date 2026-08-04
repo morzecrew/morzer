@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A three-tier example bundle with a frontend, a backend and a database. Each application tier publishes its own port from its own parameter, credentials reach only the tier that needs them, and changing one tier's port leaves the others running. It is installed and exercised against real Docker on every change, so the worked example in the documentation is a bundle that runs.
 
+- Complete reference for everything a bundle may reference: the variables Compose files interpolate, the fields a configuration template can use, and where each is available. All three surfaces are now gated, so a name that exists in the code and not in the documentation fails the build, and so does a documented name that does not exist.
+
 - Container images must be pinned by digest. A bare tag is rejected at load time, because an unpinned image makes a release mutable and a mutable release makes rollback meaningless.
 
 - Releases are identified by name and version together with the content digest of the bundle. The same version appearing with a different digest is reported as an error rather than a warning.
@@ -112,6 +114,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The header of the operator-facing installation file no longer claims that editing it overrides release defaults. It never did: the manager reads its own state. The file is now described as a report, and names the command that changes a parameter.
 
 - The free-form `settings` block on an installation is replaced by declared parameters. It reached configuration templates but nothing could set it, so no deployment can depend on it.
+
+### Removed
+
+- The configuration-template render context no longer exposes the process environment. It offered every product-prefixed variable from whichever shell invoked the manager as an unvalidated, unrecorded input to a rendered configuration file — the same channel the container runtime stopped inheriting. Nothing set it deliberately and no template used it.
 
 ### Fixed
 

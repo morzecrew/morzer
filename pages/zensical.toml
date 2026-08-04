@@ -44,6 +44,7 @@ nav = [
         "operating/rolling-back.md",
         "operating/secrets.md",
         "operating/backups.md",
+        "operating/changing-configuration.md",
         "operating/installing-offline.md",
         "operating/recovering-a-lost-machine.md",
     ] },
@@ -63,6 +64,7 @@ nav = [
         "reference/output-modes.md",
         "reference/parameters.md",
         "reference/manifest.md",
+        "reference/variables.md",
         "reference/hooks.md",
     ] },
     { "Explanation" = [

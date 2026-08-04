@@ -1,14 +1,13 @@
 # RFC 0007 — Operator parameters
 
-- **Status:** 🚧 In progress — P1–P4 shipped 2026-08-04. A release declares typed
+- **Status:** ✅ Complete — shipped 2026-08-04. A release declares typed
   parameters; `init --set` and `morzer config list/get/set/unset` record them;
   values reach Compose, templates and hooks as `<PRODUCT>_PARAM_<NAME>`;
-  `requirements.ports` and health URLs follow them; the Compose subprocess no
-  longer inherits the operator's environment; and `doctor` reports an
-  `installation.yaml` edit that decides nothing; and `testdata/bundle-web/` is a
-  three-tier example the acceptance run installs and reconfigures. Only P5 (the
-  remaining docs and the two ABI gates) is open. Divergences are in §13, §14 and
-  §15.
+  `requirements.ports` and health URLs follow them; the runtime no longer
+  inherits the operator's environment; `doctor` reports an `installation.yaml`
+  edit that decides nothing; `testdata/bundle-web/` is a three-tier example the
+  acceptance run installs and reconfigures; and all three bundle-facing ABIs are
+  documented and drift-gated. Divergences are recorded in §13–§16.
 - **Scope:** Gives a release a declared set of knobs an operator may set — ports
   above all — and gives the operator a supported way to set them. Covers the
   manifest's `parameters` block, typed validation, delivery to Compose,
@@ -737,3 +736,73 @@ profiles, and asserts the parameter scoping, the credential isolation and that
 every parameter the template references is declared. It runs in milliseconds
 under `just test`, and the acceptance stage proves the part it cannot: that the
 thing actually starts.
+
+## 16. Amendments from P5
+
+Recorded on completion, 2026-08-04.
+
+### `.Env` is removed, not documented
+
+§13 left the render context's `.Env` field open, noting it was the same
+inherited-environment channel decision 10 closed for Compose. Investigating it
+for this phase found it was `Settings` all over again: wired at one end, set by
+nothing deliberate, used by no fixture template, named on no page, referenced by
+no test. Its own comment claimed a precedence order — "between installation.yaml
+and command-line flags" — that did not exist, because nothing else read it.
+
+Removed, for the same reason `Settings` was: nothing can depend on something
+that was never usable, and a template able to read `os.Environ()` is a second
+unvalidated channel. A test asserts it stays gone.
+
+### Three ABIs, not two
+
+§13 named two undocumented surfaces. There are three, and the third is the one
+this RFC has been adding to all along:
+
+| ABI | Was gated | Is gated |
+| --- | --- | --- |
+| Hook environment | yes, since RFC 0006 | yes |
+| Compose interpolation | no | yes |
+| Template render context | no | yes |
+
+All three are now on one page — `reference/variables.md` — because a vendor's
+actual question is "what can I write, and where", and answering it across three
+pages is how `<PRODUCT>_VERSION`, `_PROFILE` and `_DOMAIN` went undocumented
+while the hook variables beside them were gated.
+
+### The Compose set had to become a declaration to be gateable
+
+`docs-check` reads the hook ABI by *calling* `ports.HookEnvVars`. The Compose
+set could not be read that way: it is built by a method on `ops.Deps`, and
+constructing one means constructing the whole dependency graph.
+
+So the names moved to `ports.ComposeVars`, and `runtimeConfig` builds from
+suffixes rather than from pre-namespaced literals. The obvious risk is a list
+that drifts from the builder, so a contract test asserts the builder emits
+exactly the declared set plus the two manifest-driven families — and it fires
+when a variable is added to either side alone. Verified by perturbation in both
+directions.
+
+The render context needed no such indirection: `ports.TemplateFields` reflects
+over `TemplateData`, so the list cannot claim a field that does not exist.
+
+### The gate matches a template field as a template reference
+
+`.Release` is documented only if a page writes it as `.Release` or
+`.Release.Version` in code, not if the page happens to use the word "release" in
+prose. Same reasoning as the existing rule that a fenced code block does not
+count as documentation of the field it contains: a mention has to be about the
+thing.
+
+## 17. What this RFC did not do
+
+Two limits, recorded so they are known rather than rediscovered:
+
+- **`services:` is not verified against the topology.** A parameter that names
+  one tier while two interpolate it produces a `config set` that reports success
+  and leaves the other tier stale. §15 has the detail; catching it means
+  resolving Compose files and matching interpolations, which is its own RFC.
+- **Nothing warns an operator whose environment variable stopped working.** §9
+  proposed a `doctor` warning for a `<PRODUCT>_*` variable set in the shell but
+  not declared. It is still not built. The failure is a parameter that quietly
+  stops taking effect — visible, but unexplained.
