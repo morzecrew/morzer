@@ -125,6 +125,54 @@ func TestADeadConnectionIsNotReused(t *testing.T) {
 	require.Greater(t, len(dialled), 1, "no second connection was ever dialled")
 }
 
+// TestADeadSFTPSessionUnderALiveTransportIsNotReused.
+//
+// The narrower half of the same defect, and the one waiting on the transport
+// cannot see: the remote sftp-server is OOM-killed, or the server drops the
+// subsystem channel after an idle timeout, and the ssh connection carries on
+// perfectly well underneath. `Wait` never returns, so the cached sftp client
+// stays in the cache as a corpse and every later operation in the process
+// reaches for it -- a push whose components each fail against a session that
+// died between the first two.
+//
+// Only the session channel is closed here; the transport is left up, which is
+// what makes this test about the operation's own error rather than about the
+// transport eviction.
+func TestADeadSFTPSessionUnderALiveTransportIsNotReused(t *testing.T) {
+	client := newSSHKey(t)
+	host := newSSHKey(t)
+
+	root := t.TempDir()
+	lab := startInProcessSSHLab(t, host, client.public, root)
+
+	adapter := sftp.New()
+	t.Cleanup(func() { _ = adapter.Close() })
+
+	ref := ports.TargetRef{
+		Scheme: "ssh", Host: lab.addr, Path: root, User: "ops",
+		URL: "ssh://ops@" + lab.addr + root,
+		Credentials: ports.TargetCredentials{
+			PrivateKey: client.private,
+			KnownHosts: sshKnownHostsLine(t, lab.addr, host.public),
+		},
+	}
+
+	_, err := adapter.List(context.Background(), ref)
+	require.NoError(t, err, "the first listing, over a session that is alive")
+
+	lab.killSFTPSessions()
+
+	// Eventually rather than once, because the first call after the kill is
+	// the one that discovers the session is gone. Without eviction no amount
+	// of waiting helps: every call reaches for the same dead client, and
+	// pkg/sftp answers connection-lost for the life of the process.
+	require.Eventually(t, func() bool {
+		_, listErr := adapter.List(context.Background(), ref)
+		return listErr == nil
+	}, 5*time.Second, 50*time.Millisecond,
+		"the adapter kept reusing an sftp session that had been closed")
+}
+
 // TestATargetPathThatIsAFileSaysSo.
 //
 // The ordinary typo -- a path that names the backup rather than the directory
@@ -196,6 +244,42 @@ func sshKnownHostsLine(t *testing.T, addr string, key ssh.PublicKey) string {
 func startInProcessSSH(t *testing.T, host sshKey, authorized ssh.PublicKey, root string) string {
 	t.Helper()
 
+	return startInProcessSSHLab(t, host, authorized, root).addr
+}
+
+// sshLab is the in-process server with a hand on its session channels.
+//
+// The sftp subsystem can be killed without touching the transport it runs on,
+// which is what a remote sftp-server being OOM-killed looks like from here: the
+// ssh connection is fine, and the sftp session on it is dead.
+type sshLab struct {
+	addr string
+
+	mu       sync.Mutex
+	channels []ssh.Channel
+}
+
+func (l *sshLab) record(ch ssh.Channel) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.channels = append(l.channels, ch)
+}
+
+// killSFTPSessions closes every sftp channel the server has accepted and leaves
+// the ssh transport up.
+func (l *sshLab) killSFTPSessions() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	for _, ch := range l.channels {
+		_ = ch.Close()
+	}
+	l.channels = nil
+}
+
+func startInProcessSSHLab(t *testing.T, host sshKey, authorized ssh.PublicKey, root string) *sshLab {
+	t.Helper()
+
 	cfg := &ssh.ServerConfig{
 		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			if string(key.Marshal()) != string(authorized.Marshal()) {
@@ -214,20 +298,22 @@ func startInProcessSSH(t *testing.T, host sshKey, authorized ssh.PublicKey, root
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 
+	lab := &sshLab{addr: listener.Addr().String()}
+
 	go func() {
 		for {
 			conn, acceptErr := listener.Accept()
 			if acceptErr != nil {
 				return
 			}
-			go serveSSH(conn, cfg)
+			go serveSSH(conn, cfg, lab)
 		}
 	}()
 
-	return listener.Addr().String()
+	return lab
 }
 
-func serveSSH(conn net.Conn, cfg *ssh.ServerConfig) {
+func serveSSH(conn net.Conn, cfg *ssh.ServerConfig, lab *sshLab) {
 	defer func() { _ = conn.Close() }()
 
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, cfg)
@@ -246,6 +332,7 @@ func serveSSH(conn net.Conn, cfg *ssh.ServerConfig) {
 		if acceptErr != nil {
 			return
 		}
+		lab.record(channel)
 
 		go func(in <-chan *ssh.Request) {
 			for req := range in {

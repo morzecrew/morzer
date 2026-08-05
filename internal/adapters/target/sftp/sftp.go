@@ -165,28 +165,52 @@ func (c *connection) close() error {
 
 // store connects, or reuses a connection, and returns the blob.Store over it.
 func (t *Target) store(ctx context.Context, ref ports.TargetRef) (*sftpStore, error) {
-	conn, err := t.connect(ctx, ref)
+	conn, key, err := t.connect(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
-	return &sftpStore{client: conn.client, root: ref.Path, ref: ref, seq: &t.seq}, nil
+	return &sftpStore{
+		client:   conn.client,
+		root:     ref.Path,
+		ref:      ref,
+		seq:      &t.seq,
+		dropDead: func() { t.drop(key, conn) },
+	}, nil
 }
 
-func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection, error) {
+// drop evicts a connection from the cache and closes it, unless somebody else
+// already took it out.
+func (t *Target) drop(key string, conn *connection) {
+	t.mu.Lock()
+	cached := t.conns[key] == conn
+	if cached {
+		delete(t.conns, key)
+	}
+	t.mu.Unlock()
+
+	// Closed outside the lock, and only by whoever removed it, so a
+	// connection is never closed twice and Close is never held up by a
+	// server that has stopped answering.
+	if cached {
+		_ = conn.close()
+	}
+}
+
+func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection, string, error) {
 	// The configuration is built before the cache is consulted, so the cache
 	// key can be derived from the parsed key's *public* half rather than from
 	// the private material. Parsing on a cache hit costs microseconds and
 	// happens a handful of times per backup.
 	cfg, signer, err := t.clientConfig(ref)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	key := connectionKey(ref, signer)
 
 	t.mu.Lock()
 	if conn, ok := t.conns[key]; ok {
 		t.mu.Unlock()
-		return conn, nil
+		return conn, key, nil
 	}
 	t.mu.Unlock()
 
@@ -197,21 +221,21 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 
 	raw, err := t.dialTCP(ctx, addr)
 	if err != nil {
-		return nil, domain.BackupError(err, "cannot reach the backup target %s", ref).
+		return nil, "", domain.BackupError(err, "cannot reach the backup target %s", ref).
 			WithHint("check that the host is up and reachable on its ssh port")
 	}
 
 	sshConn, chans, reqs, err := ssh.NewClientConn(raw, addr, cfg)
 	if err != nil {
 		_ = raw.Close()
-		return nil, t.handshakeError(ref, err)
+		return nil, "", t.handshakeError(ref, err)
 	}
 	client := ssh.NewClient(sshConn, chans, reqs)
 
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
 		_ = client.Close()
-		return nil, domain.BackupError(err,
+		return nil, "", domain.BackupError(err,
 			"connected to %s but could not start an sftp session", ref).
 			WithHint("the target host must run an sftp subsystem; on OpenSSH that is " +
 				"the `Subsystem sftp` line in sshd_config")
@@ -224,7 +248,7 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 	// Another goroutine may have connected while this one was dialling.
 	if existing, ok := t.conns[key]; ok {
 		_ = conn.close()
-		return existing, nil
+		return existing, key, nil
 	}
 	t.conns[key] = conn
 
@@ -246,7 +270,7 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 		}
 	}()
 
-	return conn, nil
+	return conn, key, nil
 }
 
 // connectionKey identifies a connection by everything that authenticated it,
@@ -485,6 +509,15 @@ type sftpStore struct {
 	root   string
 	ref    ports.TargetRef
 
+	// dropDead evicts this connection from the target's cache.
+	//
+	// The sftp subsystem can die while the ssh transport it runs on stays up
+	// -- the remote sftp-server being OOM-killed, or a server closing the
+	// subsystem channel on idle. Nothing ends the transport then, so the
+	// goroutine waiting on it never fires, and the cached client is a corpse
+	// every later operation in the process reaches for.
+	dropDead func()
+
 	// seq names each staging file apart within this process.
 	seq *atomic.Uint64
 }
@@ -674,8 +707,38 @@ func (s *sftpStore) resolve(key string) (string, error) {
 	return path.Join(s.root, clean), nil
 }
 
+// unreachable diagnoses a failed operation, and evicts the connection if the
+// failure means there is no longer one.
+//
+// Every operation's error passes through here, which is the only place a dead
+// session becomes visible when the transport under it is still up.
 func (s *sftpStore) unreachable(cause error, format string, args ...any) error {
+	if s.dropDead != nil && connectionIsGone(cause) {
+		s.dropDead()
+	}
 	return domain.BackupError(cause, format, args...).
 		WithHint("check that the target account can write to %s and that the "+
 			"filesystem is not full", s.root)
+}
+
+// connectionIsGone reports whether a failure means the session is over, rather
+// than that the target refused the work.
+//
+// The distinction is the whole point: a permission error or a full disk is
+// about the target and reconnecting changes nothing, while these mean every
+// later operation on this client will fail the same way for as long as the
+// process lives. pkg/sftp answers with ErrSSHFxConnectionLost once its reader
+// has seen the channel end -- that is what a killed remote sftp-server looks
+// like from here -- and with the read error itself for whichever request was in
+// flight when it happened.
+//
+// Evicting a connection that was in fact healthy costs one reconnection. Not
+// evicting a dead one costs every remaining step of the command.
+func connectionIsGone(err error) bool {
+	return errors.Is(err, sftp.ErrSSHFxConnectionLost) ||
+		errors.Is(err, sftp.ErrSSHFxNoConnection) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, io.ErrClosedPipe) ||
+		errors.Is(err, net.ErrClosed)
 }

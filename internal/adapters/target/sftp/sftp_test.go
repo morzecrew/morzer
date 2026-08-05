@@ -5,10 +5,14 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"fmt"
+	"io"
+	"io/fs"
 	"net"
 	"strings"
 	"testing"
 
+	pkgsftp "github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -265,6 +269,39 @@ func TestATargetThatCannotBeDialledSaysSo(t *testing.T) {
 	}
 	if !strings.Contains(domain.AsError(err).Hint, "ssh port") {
 		t.Errorf("hint = %q", domain.AsError(err).Hint)
+	}
+}
+
+// TestOnlyADeadConnectionIsEvicted.
+//
+// A cached connection has to be dropped when the session behind it is gone, or
+// every later operation in the process talks to a corpse. It must *not* be
+// dropped for a permission error or a full disk: those are about the target,
+// reconnecting fixes nothing, and throwing away a working connection in the
+// middle of a push buys a reconnection per component.
+func TestOnlyADeadConnectionIsEvicted(t *testing.T) {
+	for name, tc := range map[string]struct {
+		cause error
+		evict bool
+	}{
+		"the sftp session was closed under us": {pkgsftp.ErrSSHFxConnectionLost, true},
+		"a wrapped connection loss":            {fmt.Errorf("stat: %w", pkgsftp.ErrSSHFxConnectionLost), true},
+		"the channel gave eof":                 {io.EOF, true},
+		"the socket was closed":                {net.ErrClosed, true},
+		"the target refused the write":         {fs.ErrPermission, false},
+		"the file is not there":                {fs.ErrNotExist, false},
+		"the server said failure":              {pkgsftp.ErrSSHFxFailure, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var evicted bool
+			store := &sftpStore{root: "/srv/backups", dropDead: func() { evicted = true }}
+
+			_ = store.unreachable(tc.cause, "cannot write to the target")
+
+			if evicted != tc.evict {
+				t.Errorf("evicted = %v, want %v for %v", evicted, tc.evict, tc.cause)
+			}
+		})
 	}
 }
 

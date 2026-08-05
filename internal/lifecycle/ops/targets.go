@@ -2,7 +2,9 @@ package ops
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -680,17 +682,39 @@ func safeBackupID(id string) error {
 // entirely while the command's own help said it verified checksums, so the one
 // fetch nobody could double-check by hand was the one that was never checked.
 func (d *Deps) verifyFetched(ctx context.Context, dir string, manifest ports.BackupManifest) error {
+	// The manifest that arrived, not the one the listing reported.
+	//
+	// They are usually the same file, and the difference still matters: the
+	// listing was read before the transfer, from a medium this deployment
+	// does not control, and what `backup list` and `restore` read afterwards
+	// is the copy sitting in the directory about to be promoted. Checking the
+	// earlier one meant checking a manifest nothing later reads.
+	staged, err := readFetchedManifest(dir)
+	if err != nil {
+		return err
+	}
+	// Ahead of either verifier, because it is the same hazard for both: a
+	// directory promoted under one id whose manifest describes another makes
+	// `restore --backup <id>` read a header for a backup it is not restoring.
+	if staged.ID != "" && staged.ID != manifest.ID {
+		return domain.BackupError(domain.ErrDigestMismatch,
+			"the backup fetched as %s carries a manifest naming %s", manifest.ID, staged.ID).
+			WithHint("the target changed while it was being read, or this backup was " +
+				"not written by this manager; do not restore from it")
+	}
+
 	if d.Backup != nil {
+		// The engine reads the manifest out of the directory too, so both
+		// paths verify the same file.
 		return d.Backup.Verify(ctx,
 			ports.BackupRef{ID: manifest.ID, Path: dir, At: manifest.CreatedAt})
 	}
 
-	// The same checks the engine's own Verify makes, against the manifest
-	// that came down with the backup. Digests are of the stored bytes, so
-	// this needs no key -- which is the property that makes it usable on a
-	// machine that has nothing yet.
+	// The same checks the engine's own Verify makes. Digests are of the
+	// stored bytes, so this needs no key -- which is the property that makes
+	// it usable on a machine that has nothing yet.
 	var problems []string
-	for _, c := range manifest.Components {
+	for _, c := range staged.Components {
 		path := filepath.Join(dir, filepath.FromSlash(c.Path))
 		info, err := os.Stat(path)
 		switch {
@@ -727,6 +751,37 @@ func (d *Deps) verifyFetched(ctx context.Context, dir string, manifest ports.Bac
 				"run `morzer backup verify --remote` to see which")
 	}
 	return nil
+}
+
+// readFetchedManifest reads the manifest out of a staged backup.
+//
+// Bounded, like every other read of a manifest that came from a target: it is
+// kilobytes of JSON, and a target that answers with something else must not be
+// able to exhaust this machine's memory on the way to being refused.
+func readFetchedManifest(dir string) (ports.BackupManifest, error) {
+	path := filepath.Join(dir, ports.BackupManifestFileName)
+
+	f, err := os.Open(path)
+	if err != nil {
+		return ports.BackupManifest{}, domain.BackupError(err,
+			"the fetched backup has no readable %s", ports.BackupManifestFileName).
+			WithHint("a backup without its manifest is not restorable; " +
+				"run `morzer backup list --remote` to see what the target holds")
+	}
+	defer func() { _ = f.Close() }()
+
+	data, err := io.ReadAll(io.LimitReader(f, 1<<20))
+	if err != nil {
+		return ports.BackupManifest{}, domain.BackupError(err, "cannot read %s", path)
+	}
+
+	var manifest ports.BackupManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return ports.BackupManifest{}, domain.BackupError(err,
+			"the fetched %s is not a valid backup manifest", ports.BackupManifestFileName).
+			WithHint("this backup was not written by this manager; do not restore from it")
+	}
+	return manifest, nil
 }
 
 // findRemote locates a backup across the targets, or the newest one when no id

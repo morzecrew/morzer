@@ -2,7 +2,9 @@ package suite
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1259,4 +1261,122 @@ func TestAFetchAcceptsADigestSpelledTheOtherWay(t *testing.T) {
 
 	_, err = os.Stat(filepath.Join(h.Paths.BackupsDir(), ref.ID))
 	require.NoError(t, err, "the backup was not promoted into the store")
+}
+
+// TestAFetchIsVerifiedAgainstTheManifestThatArrived.
+//
+// A target is a medium this deployment does not control, and it is read twice:
+// once to list it, once to fetch. The manifest that ends up in the backup store
+// is the one the fetch brought down, and that is the file `backup list` and
+// `restore` read afterwards -- so verifying the copy from the earlier listing
+// checked a manifest nothing later reads, and promoted a directory whose own
+// manifest had never been compared to its bytes. The engine's Verify always
+// read it from the directory; the fallback did not.
+//
+// Driven by a target whose two reads deliberately disagree, which is what a
+// medium changing under the manager looks like from here.
+func TestAFetchIsVerifiedAgainstTheManifestThatArrived(t *testing.T) {
+	const id = "20260101T000000Z"
+	body := []byte("the bytes that actually arrived")
+	arrived := fmt.Sprintf("sha256:%x", sha256.Sum256(body))
+	other := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("something else entirely")))
+
+	component := func(digest string) ports.ComponentRecord {
+		return ports.ComponentRecord{
+			Component: ports.ComponentDatabase,
+			Path:      "db.sql.age",
+			Size:      int64(len(body)),
+			SHA256:    digest,
+		}
+	}
+
+	for name, tc := range map[string]struct {
+		staged ports.BackupManifest
+		refuse string
+	}{
+		// The listing says the bytes are right, the manifest that came
+		// down says they are not. Sizes agree, so the digest is the only
+		// thing that can catch it.
+		"the staged manifest disagrees about a digest": {
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{component(other)},
+			},
+			refuse: "does not match its manifest",
+		},
+		// A manifest naming another backup, promoted under this id, would
+		// make `restore --backup` read a header describing something else.
+		"the staged manifest names another backup": {
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: "20250101T000000Z",
+				Components: []ports.ComponentRecord{component(arrived)},
+			},
+			refuse: "naming",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			inst, _ := h.withTargets(t)
+
+			h.Deps.Targets = &targetWithSwappedManifest{
+				listed: ports.BackupManifest{
+					SchemaVersion: 2, ID: id,
+					Components: []ports.ComponentRecord{component(arrived)},
+				},
+				staged: tc.staged,
+				body:   body,
+			}
+			inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+			require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+			// No release installed: the fallback verifier is the one
+			// that runs, and the only one that reads this manifest.
+			h.Deps.Backup = nil
+
+			_, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+			require.Error(t, err,
+				"a backup was promoted although the manifest it carries was never "+
+					"checked against the files beside it")
+			assert.Contains(t, domain.AsError(err).Message, tc.refuse)
+
+			_, statErr := os.Stat(filepath.Join(h.Paths.BackupsDir(), id))
+			assert.True(t, os.IsNotExist(statErr),
+				"the backup was left in the store, where `restore` can select it")
+		})
+	}
+}
+
+// targetWithSwappedManifest lists one manifest and delivers another, which is
+// what a target rewritten between the two reads looks like from this layer.
+type targetWithSwappedManifest struct {
+	ports.BackupTarget
+	listed ports.BackupManifest
+	staged ports.BackupManifest
+	body   []byte
+}
+
+func (t *targetWithSwappedManifest) Schemes() []string { return []string{"memory"} }
+
+func (t *targetWithSwappedManifest) List(
+	ctx context.Context, ref ports.TargetRef,
+) ([]ports.BackupManifest, error) {
+	return []ports.BackupManifest{t.listed}, nil
+}
+
+func (t *targetWithSwappedManifest) Fetch(
+	ctx context.Context, ref ports.RemoteRef, destDir string,
+) error {
+	if err := os.MkdirAll(destDir, 0o700); err != nil {
+		return err
+	}
+	for _, c := range t.staged.Components {
+		if err := os.WriteFile(filepath.Join(destDir, c.Path), t.body, 0o600); err != nil {
+			return err
+		}
+	}
+	data, err := json.Marshal(t.staged)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(destDir, ports.BackupManifestFileName), data, 0o600)
 }

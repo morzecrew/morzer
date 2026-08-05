@@ -215,11 +215,14 @@ func TestATargetRegistryClosesEveryTarget(t *testing.T) {
 	// Schemes and Close: a nil embed makes every promoted method a panic
 	// waiting for the first person to add an assertion.
 	//
-	// Both fail, and that is deliberate. The registry iterates a map, so
-	// which target is closed first is not something a test can decide -- and
-	// with only one failing, half the runs closed it last and proved
-	// nothing. With both failing, "the second was closed" can only be true
-	// if the loop carried on past the first failure.
+	// Both fail, and that is deliberate. Close walks the targets in the
+	// order they were registered, so `first` does fail first today -- but a
+	// test that depends on the order proves nothing the day the order
+	// changes, and it changed once already: this loop used to iterate the
+	// scheme map, where half the runs closed the failing target last and the
+	// assertion below held for the wrong reason. With both failing, "the
+	// second was closed" can only be true if the loop carried on past a
+	// failure, whichever one it met first.
 	first := &closableTarget{BackupTarget: fakes.NewBackupTarget(), scheme: "one", err: assertError}
 	second := &closableTarget{BackupTarget: fakes.NewBackupTarget(), scheme: "two", err: assertError}
 

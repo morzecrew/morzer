@@ -208,6 +208,53 @@ func TestAWriteOrADeleteCannotBeSteeredOutOfTheTargetByASymlink(t *testing.T) {
 	}
 }
 
+// TestASymlinkNestedUnderTheBackupDirectoryStillCannotSteerAWriteOrADelete.
+//
+// The neighbouring test puts the link at the backup directory, the one place a
+// key's own first component names. A manifest is a file on the medium, so its
+// component paths can be nested -- `20260101T000000Z/sub/database.sql.age` --
+// and then the escaping link is an intermediate component the key never shows
+// and no lexical check can see. os.Root resolves every component against the
+// directory it opened, not the path string, so this is the same refusal; the
+// case is pinned because a prune that walks out through a link two levels down
+// deletes just as much as one that walks out at the top.
+func TestASymlinkNestedUnderTheBackupDirectoryStillCannotSteerAWriteOrADelete(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "20260101T000000Z"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "20260101T000000Z", "sub")); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(outside, "database.sql.age")
+	if err := os.WriteFile(victim, []byte("not yours"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := &dirStore{root: root, target: New()}
+	const key = "20260101T000000Z/sub/database.sql.age"
+
+	if err := store.Delete(ctx, key); err == nil {
+		t.Error("a delete through a symlink nested under the backup directory reported success")
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Errorf("a prune deleted a file outside the target: %v", err)
+	}
+
+	if err := store.Put(ctx, key, strings.NewReader("ciphertext"), 10); err == nil {
+		t.Error("a push through a symlink nested under the backup directory succeeded")
+	}
+	body, err := os.ReadFile(victim)
+	if err != nil {
+		t.Fatalf("the push removed a file outside the target: %v", err)
+	}
+	if string(body) != "not yours" {
+		t.Errorf("the push overwrote a file outside the target: %q", body)
+	}
+}
+
 // TestASymlinkedTargetListsWhatWasPushedToIt.
 //
 // A symlink is an ordinary way to name a mounted medium, and writing through
