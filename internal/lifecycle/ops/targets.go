@@ -804,7 +804,14 @@ func sameComponents(listed, staged ports.BackupManifest) error {
 			problems = append(problems, fmt.Sprintf(
 				"%s: the listing said %d bytes, the copy that arrived says %d",
 				path, c.Size, arrived.Size))
-		case c.SHA256 != "" && arrived.SHA256 != "" &&
+		// A checksum in one reading and none in the other is a
+		// disagreement too, and the one that matters most: verification
+		// skips a component whose record carries no checksum, so a
+		// manifest rewritten to drop them keeps every size intact and
+		// turns the digest pass into a loop that checks nothing. Comparing
+		// only two non-empty digests left the cheapest possible edit
+		// unopposed.
+		case c.SHA256 != arrived.SHA256 &&
 			!atomicfs.SameDigest(c.SHA256, arrived.SHA256):
 			problems = append(problems, path+": the two readings of the manifest disagree on its checksum")
 		}

@@ -1332,6 +1332,32 @@ func TestAFetchRefusesABackupThatChangedWhileItWasBeingFetched(t *testing.T) {
 			},
 			refuse: "disagree on its checksum",
 		},
+		// The cheapest edit of all, and for a while the only one that got
+		// through: keep the size, delete the checksum. Verification skips
+		// a component that records none, so a comparison that only looked
+		// at two non-empty digests left the whole digest pass disarmed.
+		"the copy that arrived records no checksum at all": {
+			listed: []ports.ComponentRecord{component(arrived)},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{component("")},
+			},
+			refuse: "disagree on its checksum",
+		},
+		// Size is compared before any checksum is, so this is refused
+		// whether or not the copy that arrived records one.
+		"the two readings disagree about a size": {
+			listed: []ports.ComponentRecord{component(arrived)},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{{
+					Component: ports.ComponentDatabase,
+					Path:      "db.sql.age",
+					Size:      int64(len(body)) + 1,
+				}},
+			},
+			refuse: "the listing said",
+		},
 		// A manifest naming another backup, promoted under this id, would
 		// make `restore --backup` read a header describing something else.
 		"the copy that arrived names another backup": {
