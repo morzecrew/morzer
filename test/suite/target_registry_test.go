@@ -41,11 +41,14 @@ func TestATargetRegistryRefusesANilTarget(t *testing.T) {
 // deduplicating the close loop through a set keyed by the interface turned the
 // shutdown path into a crash for a target that had done nothing wrong.
 func TestATargetRegistryClosesATargetThatIsNotComparable(t *testing.T) {
-	var closed bool
+	var closes int
 	odd := unhashableTarget{
 		BackupTarget: fakes.NewBackupTarget(),
-		schemes:      []string{"one", "two"},
-		closed:       &closed,
+		// Two schemes, so the count below means something: the set that
+		// used to deduplicate this loop is gone, and what replaced it is
+		// one entry per target rather than per scheme.
+		schemes: []string{"one", "two"},
+		closes:  &closes,
 	}
 
 	registry, err := target.NewRegistry(odd)
@@ -55,22 +58,23 @@ func TestATargetRegistryClosesATargetThatIsNotComparable(t *testing.T) {
 	require.NotPanics(t, func() { closeErr = registry.Close() },
 		"a target whose type is not comparable must still close")
 	require.NoError(t, closeErr)
-	assert.True(t, closed, "the target must be closed")
+	assert.Equal(t, 1, closes,
+		"a target answering for two schemes must be closed once, not once per scheme")
 }
 
 // unhashableTarget is a target on a value receiver holding a slice, which makes
-// the type unusable as a map key. closed is a pointer because the registry
+// the type unusable as a map key. closes is a pointer because the registry
 // stores a copy of the value.
 type unhashableTarget struct {
 	*fakes.BackupTarget
 	schemes []string
-	closed  *bool
+	closes  *int
 }
 
 var _ ports.BackupTarget = unhashableTarget{}
 
 func (u unhashableTarget) Schemes() []string { return u.schemes }
 func (u unhashableTarget) Close() error {
-	*u.closed = true
+	*u.closes++
 	return nil
 }

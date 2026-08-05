@@ -709,7 +709,13 @@ func (d *Deps) verifyFetched(ctx context.Context, dir string, manifest ports.Bac
 			problems = append(problems, c.Path+": unreadable")
 			continue
 		}
-		if sum != c.SHA256 {
+		// SameDigest, not a string comparison: it lowercases and drops a
+		// `sha256:` prefix, which the engine's Verify and the remote one
+		// both do. A plain `!=` here made the same backup verify on the
+		// target and fail the moment it landed -- and "your only backup is
+		// damaged" is the worst sentence to be wrong about, on the machine
+		// where it is the only copy left.
+		if !atomicfs.SameDigest(sum, c.SHA256) {
 			problems = append(problems, c.Path+": checksum does not match the manifest")
 		}
 	}

@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1208,4 +1209,54 @@ func TestDoctorDoesNotPassFreshnessItCouldNotCheck(t *testing.T) {
 	check := findCheck(t, report, "backup.target-freshness")
 	assert.Equal(t, string(events.CheckFail), check.Status,
 		"doctor reported no problem with a question it could not answer")
+}
+
+// TestAFetchAcceptsADigestSpelledTheOtherWay.
+//
+// A manifest records a checksum as text, and `sha256:ABCD…` and `abcd…` are the
+// same checksum. The engine's own verification and the remote one both compare
+// them through the digest normaliser; the fallback that runs when no release is
+// installed compared the strings, so a backup that verified on the target
+// failed the moment it landed -- on the machine where it is the only copy left,
+// with the one message an operator cannot ignore.
+func TestAFetchAcceptsADigestSpelledTheOtherWay(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	require.NoError(t, os.RemoveAll(h.Backup.Dir(ref.ID)))
+
+	// The same digests, spelled the way a different writer might: bare hex,
+	// upper case, no `sha256:` prefix. The bytes on the target are untouched.
+	manifestPath := filepath.Join(offsite, ref.ID, ports.BackupManifestFileName)
+	raw, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+
+	var manifest ports.BackupManifest
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+	require.NotEmpty(t, manifest.Components)
+	for i, c := range manifest.Components {
+		require.NotEmpty(t, c.SHA256, "the fixture recorded no checksum to respell")
+		manifest.Components[i].SHA256 = strings.ToUpper(strings.TrimPrefix(c.SHA256, "sha256:"))
+	}
+	respelled, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, respelled, 0o600))
+
+	// No release installed, so the fallback verifier is the one that runs.
+	h.Deps.Backup = nil
+
+	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.NoError(t, err,
+		"an intact backup was refused because its manifest spelled the checksum "+
+			"differently than this one comparison expected")
+
+	_, err = os.Stat(filepath.Join(h.Paths.BackupsDir(), ref.ID))
+	require.NoError(t, err, "the backup was not promoted into the store")
 }

@@ -3,13 +3,16 @@
 - **Status:** ✅ Complete — shipped 2026-08-04, all three phases. `file://`,
   `ssh://` and `s3://` are wired, the push step fails the backup, `doctor` has
   both checks, and the recovery scenario fetches from a target instead of
-  copying a directory. §12 records ten dated amendments — nine individual items
-  plus one grouping six defects found by auditing the shipped implementation on
-  2026-08-05 — one of them (the push step's failure policy) a defect in this RFC
-  that would have deleted the very backup it was protecting, and three of them
-  defects the real-service suites found: a host-key pin that failed against
-  honest servers, a listing prefix that deleted a neighbouring backup, and a
-  pre-update backup that never left the machine.
+  copying a directory. §12 records twelve dated amendments — eleven individual
+  items plus one grouping six defects found by auditing the shipped
+  implementation on 2026-08-05 — one of them (the push step's failure policy) a
+  defect in this RFC that would have deleted the very backup it was protecting,
+  and three of them defects the real-service suites found: a host-key pin that
+  failed against honest servers, a listing prefix that deleted a neighbouring
+  backup, and a pre-update backup that never left the machine. The last two
+  amendments reverse decisions made earlier in the same branch: a failed push
+  now keeps the copies that landed whole, and `backup.target-freshness` is
+  judged per target rather than across them.
 - **Scope:** Adds a `ports.BackupTarget` port and a scheme registry so a backup
   can be copied to somewhere the machine that took it cannot reach: another
   host over SSH, an object store, or a directory on separate media. Covers the
