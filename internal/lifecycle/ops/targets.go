@@ -641,9 +641,25 @@ func FetchRemote(ctx context.Context, d *Deps, opts FetchOptions) (Result, error
 	// reads that directory and `restore` picks from it, so promoting first and
 	// verifying second left a corrupt backup selectable by the very command
 	// the verification exists to protect.
-	if err := d.verifyFetched(ctx, staging, manifest); err != nil {
+	staged, err := d.verifyFetched(ctx, staging, manifest)
+	if err != nil {
 		_ = atomicfs.RemoveAll(staging)
 		return Result{}, err
+	}
+
+	// A manifest that names no backup is given the id it was listed under.
+	//
+	// `backup list` reads the id out of the manifest, not out of the
+	// directory it is in, so a manifest with an empty id promoted as it
+	// arrived becomes a local backup listed with no id at all -- present on
+	// disk and impossible to name, so `restore --backup <id>` cannot select
+	// the thing the operator just fetched. The remote listing already fills
+	// the id in from the directory; this writes down what it filled in.
+	if staged.ID == "" {
+		if err := adoptBackupID(staging, manifest.ID); err != nil {
+			_ = atomicfs.RemoveAll(staging)
+			return Result{}, err
+		}
 	}
 
 	if err := os.Rename(staging, dest); err != nil {
@@ -681,7 +697,9 @@ func safeBackupID(id string) error {
 // what comes *before* installing one. That path used to skip verification
 // entirely while the command's own help said it verified checksums, so the one
 // fetch nobody could double-check by hand was the one that was never checked.
-func (d *Deps) verifyFetched(ctx context.Context, dir string, manifest ports.BackupManifest) error {
+func (d *Deps) verifyFetched(
+	ctx context.Context, dir string, manifest ports.BackupManifest,
+) (ports.BackupManifest, error) {
 	// The manifest that arrived, not the one the listing reported.
 	//
 	// They are usually the same file, and the difference still matters: the
@@ -691,22 +709,25 @@ func (d *Deps) verifyFetched(ctx context.Context, dir string, manifest ports.Bac
 	// earlier one meant checking a manifest nothing later reads.
 	staged, err := readFetchedManifest(dir)
 	if err != nil {
-		return err
+		return ports.BackupManifest{}, err
 	}
 	// Ahead of either verifier, because it is the same hazard for both: a
 	// directory promoted under one id whose manifest describes another makes
 	// `restore --backup <id>` read a header for a backup it is not restoring.
 	if staged.ID != "" && staged.ID != manifest.ID {
-		return domain.BackupError(domain.ErrDigestMismatch,
+		return ports.BackupManifest{}, domain.BackupError(domain.ErrDigestMismatch,
 			"the backup fetched as %s carries a manifest naming %s", manifest.ID, staged.ID).
 			WithHint("the target changed while it was being read, or this backup was " +
 				"not written by this manager; do not restore from it")
+	}
+	if err := sameComponents(manifest, staged); err != nil {
+		return ports.BackupManifest{}, err
 	}
 
 	if d.Backup != nil {
 		// The engine reads the manifest out of the directory too, so both
 		// paths verify the same file.
-		return d.Backup.Verify(ctx,
+		return staged, d.Backup.Verify(ctx,
 			ports.BackupRef{ID: manifest.ID, Path: dir, At: manifest.CreatedAt})
 	}
 
@@ -744,11 +765,95 @@ func (d *Deps) verifyFetched(ctx context.Context, dir string, manifest ports.Bac
 		}
 	}
 	if len(problems) > 0 {
-		return domain.BackupError(domain.ErrDigestMismatch,
+		return ports.BackupManifest{}, domain.BackupError(domain.ErrDigestMismatch,
 			"the fetched backup %s does not match its manifest: %s",
 			manifest.ID, strings.Join(problems, "; ")).
 			WithHint("the copy on the target is damaged, or the transfer was; " +
 				"run `morzer backup verify --remote` to see which")
+	}
+	return staged, nil
+}
+
+// sameComponents refuses a backup whose parts changed between being listed and
+// being fetched.
+//
+// Both reads are of the same file on the same medium, so in the ordinary case
+// there is nothing to compare. The case worth refusing is the one where they
+// differ: a fetch copies what the manifest it reads names, so a manifest
+// rewritten in between -- keeping its id, dropping a component -- produces a
+// directory that is internally consistent, verifies against itself, and is
+// missing a part of the backup the operator was shown. Verified, complete and
+// short by one component is the worst of the three states to promote, because
+// nothing downstream will ever question it again.
+func sameComponents(listed, staged ports.BackupManifest) error {
+	index := func(m ports.BackupManifest) map[string]ports.ComponentRecord {
+		out := make(map[string]ports.ComponentRecord, len(m.Components))
+		for _, c := range m.Components {
+			out[c.Path] = c
+		}
+		return out
+	}
+	want, got := index(listed), index(staged)
+
+	var problems []string
+	for path, c := range want {
+		switch arrived, ok := got[path]; {
+		case !ok:
+			problems = append(problems, path+": named by the listing and not by the copy that arrived")
+		case c.Size != arrived.Size:
+			problems = append(problems, fmt.Sprintf(
+				"%s: the listing said %d bytes, the copy that arrived says %d",
+				path, c.Size, arrived.Size))
+		case c.SHA256 != "" && arrived.SHA256 != "" &&
+			!atomicfs.SameDigest(c.SHA256, arrived.SHA256):
+			problems = append(problems, path+": the two readings of the manifest disagree on its checksum")
+		}
+	}
+	for path := range got {
+		if _, ok := want[path]; !ok {
+			problems = append(problems, path+": in the copy that arrived and not in the listing")
+		}
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+
+	sort.Strings(problems)
+	return domain.BackupError(domain.ErrDigestMismatch,
+		"the backup %s changed on the target while it was being fetched: %s",
+		listed.ID, strings.Join(problems, "; ")).
+		WithHint("read it again with `morzer backup list --remote`; something is " +
+			"writing to that target, and what arrived here is not what was offered")
+}
+
+// adoptBackupID records an id in a staged manifest that carries none.
+//
+// Edited as a JSON object rather than through the manifest struct, so a field
+// this manager does not know about is not dropped on the way through. The
+// backup is still in its staging directory, so this rewrites nothing anybody
+// can yet read.
+func adoptBackupID(dir, id string) error {
+	path := filepath.Join(dir, ports.BackupManifestFileName)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return domain.BackupError(err, "cannot read the fetched %s",
+			ports.BackupManifestFileName)
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return domain.BackupError(err, "the fetched %s is not a valid backup manifest",
+			ports.BackupManifestFileName)
+	}
+	raw["id"] = id
+
+	out, err := json.Marshal(raw)
+	if err != nil {
+		return domain.Internal(err, "cannot record the id of the fetched backup")
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		return domain.BackupError(err, "cannot record the id of the fetched backup")
 	}
 	return nil
 }

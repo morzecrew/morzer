@@ -1263,19 +1263,22 @@ func TestAFetchAcceptsADigestSpelledTheOtherWay(t *testing.T) {
 	require.NoError(t, err, "the backup was not promoted into the store")
 }
 
-// TestAFetchIsVerifiedAgainstTheManifestThatArrived.
+// TestAFetchRefusesABackupThatChangedWhileItWasBeingFetched.
 //
-// A target is a medium this deployment does not control, and it is read twice:
-// once to list it, once to fetch. The manifest that ends up in the backup store
-// is the one the fetch brought down, and that is the file `backup list` and
-// `restore` read afterwards -- so verifying the copy from the earlier listing
-// checked a manifest nothing later reads, and promoted a directory whose own
-// manifest had never been compared to its bytes. The engine's Verify always
-// read it from the directory; the fallback did not.
+// A target is a medium this deployment does not control, and a fetch reads it
+// twice: once to list it, once to copy it. Everything the copy does is driven
+// by the manifest it reads on the second pass, so a manifest rewritten in
+// between decides what arrives -- and the result is internally consistent
+// whatever it says. A component quietly dropped from it produces a directory
+// that verifies against itself, lists as a backup, and is missing a part of the
+// one the operator was shown. Verified, complete-looking and short by one
+// component is the worst of those states, because nothing downstream questions
+// it again.
 //
-// Driven by a target whose two reads deliberately disagree, which is what a
-// medium changing under the manager looks like from here.
-func TestAFetchIsVerifiedAgainstTheManifestThatArrived(t *testing.T) {
+// So the two readings are compared, and any disagreement refuses the fetch. The
+// stub target here is one whose two reads differ on purpose, which is what a
+// medium changing under the manager looks like from this layer.
+func TestAFetchRefusesABackupThatChangedWhileItWasBeingFetched(t *testing.T) {
 	const id = "20260101T000000Z"
 	body := []byte("the bytes that actually arrived")
 	arrived := fmt.Sprintf("sha256:%x", sha256.Sum256(body))
@@ -1289,24 +1292,50 @@ func TestAFetchIsVerifiedAgainstTheManifestThatArrived(t *testing.T) {
 			SHA256:    digest,
 		}
 	}
+	second := ports.ComponentRecord{
+		Component: ports.ComponentFiles,
+		Path:      "files.tar.age",
+		Size:      int64(len(body)),
+		SHA256:    arrived,
+	}
 
 	for name, tc := range map[string]struct {
+		listed []ports.ComponentRecord
 		staged ports.BackupManifest
 		refuse string
 	}{
-		// The listing says the bytes are right, the manifest that came
-		// down says they are not. Sizes agree, so the digest is the only
-		// thing that can catch it.
-		"the staged manifest disagrees about a digest": {
+		// The one the whole comparison exists for: the listing offered two
+		// components, the fetch was driven by a manifest naming one, and
+		// what landed agrees with itself perfectly.
+		"a component the listing named is not in the copy that arrived": {
+			listed: []ports.ComponentRecord{component(arrived), second},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{component(arrived)},
+			},
+			refuse: "named by the listing and not by the copy that arrived",
+		},
+		"a component nobody offered arrived anyway": {
+			listed: []ports.ComponentRecord{component(arrived)},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{component(arrived), second},
+			},
+			refuse: "in the copy that arrived and not in the listing",
+		},
+		// Sizes agree, so the digest is the only thing that can catch it.
+		"the two readings disagree about a digest": {
+			listed: []ports.ComponentRecord{component(arrived)},
 			staged: ports.BackupManifest{
 				SchemaVersion: 2, ID: id,
 				Components: []ports.ComponentRecord{component(other)},
 			},
-			refuse: "does not match its manifest",
+			refuse: "disagree on its checksum",
 		},
 		// A manifest naming another backup, promoted under this id, would
 		// make `restore --backup` read a header describing something else.
-		"the staged manifest names another backup": {
+		"the copy that arrived names another backup": {
+			listed: []ports.ComponentRecord{component(arrived)},
 			staged: ports.BackupManifest{
 				SchemaVersion: 2, ID: "20250101T000000Z",
 				Components: []ports.ComponentRecord{component(arrived)},
@@ -1320,8 +1349,7 @@ func TestAFetchIsVerifiedAgainstTheManifestThatArrived(t *testing.T) {
 
 			h.Deps.Targets = &targetWithSwappedManifest{
 				listed: ports.BackupManifest{
-					SchemaVersion: 2, ID: id,
-					Components: []ports.ComponentRecord{component(arrived)},
+					SchemaVersion: 2, ID: id, Components: tc.listed,
 				},
 				staged: tc.staged,
 				body:   body,
@@ -1379,4 +1407,59 @@ func (t *targetWithSwappedManifest) Fetch(
 		return err
 	}
 	return os.WriteFile(filepath.Join(destDir, ports.BackupManifestFileName), data, 0o600)
+}
+
+// TestAFetchedBackupWithNoIdInItsManifestIsStillSelectable.
+//
+// `backup list` reads a backup's id out of its manifest, not out of the
+// directory the manifest sits in. A remote listing is more forgiving: it fills
+// an absent id in from the directory name, so a manifest without one is
+// perfectly visible with `backup list --remote` and has an id an operator can
+// type.
+//
+// Promoting that manifest as it arrived produced a local backup listed with no
+// id at all -- on the disk, and impossible to name, so `restore --backup` could
+// not select the thing that had just been fetched. What the listing filled in
+// is now written down.
+func TestAFetchedBackupWithNoIdInItsManifestIsStillSelectable(t *testing.T) {
+	const id = "20260101T000000Z"
+	body := []byte("ciphertext")
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(body))
+
+	components := []ports.ComponentRecord{{
+		Component: ports.ComponentDatabase,
+		Path:      "db.sql.age",
+		Size:      int64(len(body)),
+		SHA256:    digest,
+	}}
+
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	h.Deps.Targets = &targetWithSwappedManifest{
+		// What a remote listing reports: the id filled in from the
+		// directory the manifest was found in.
+		listed: ports.BackupManifest{SchemaVersion: 2, ID: id, Components: components},
+		// What is actually on the medium: a manifest naming no backup.
+		staged: ports.BackupManifest{SchemaVersion: 2, Components: components},
+		body:   body,
+	}
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+	h.Deps.Backup = nil
+
+	result, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.NoError(t, err, "a backup whose manifest carries no id was refused")
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+	assert.Equal(t, id, ref.ID)
+
+	raw, err := os.ReadFile(filepath.Join(h.Paths.BackupsDir(), id, ports.BackupManifestFileName))
+	require.NoError(t, err)
+
+	var promoted ports.BackupManifest
+	require.NoError(t, json.Unmarshal(raw, &promoted))
+	assert.Equal(t, id, promoted.ID,
+		"the promoted manifest names no backup, so `backup list` shows an empty id "+
+			"and `restore --backup` cannot select what was just fetched")
 }
