@@ -16,6 +16,7 @@ package localdir
 
 import (
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -142,6 +143,9 @@ type dirStore struct {
 var _ blob.Store = (*dirStore)(nil)
 
 func (s *dirStore) Put(ctx context.Context, key string, r io.Reader, size int64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	path, err := s.resolve(key)
 	if err != nil {
 		return err
@@ -198,6 +202,9 @@ func (s *dirStore) Put(ctx context.Context, key string, r io.Reader, size int64)
 // target's own directory, and the kernel refuses a traversal the path string
 // never showed.
 func (s *dirStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if _, err := s.resolve(key); err != nil {
 		return nil, err
 	}
@@ -210,7 +217,7 @@ func (s *dirStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	f, err := root.Open(filepath.FromSlash(key))
 	if err != nil {
 		_ = root.Close()
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			// Passed through unwrapped so blob can tell "not there"
 			// from "the medium is gone".
 			return nil, err
@@ -234,6 +241,9 @@ func (f rootFile) Close() error {
 }
 
 func (s *dirStore) Keys(ctx context.Context, prefix string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var out []string
 
 	err := filepath.WalkDir(s.root, func(p string, entry fs.DirEntry, err error) error {
@@ -247,10 +257,14 @@ func (s *dirStore) Keys(ctx context.Context, prefix string) ([]string, error) {
 		if relErr != nil {
 			return relErr
 		}
+		// Staging files are listed, not filtered. The filter that used to
+		// be here matched `.partial`, a name no staging file has carried
+		// since they became unique per write -- and reviving it would be
+		// worse than deleting it. Everything that reads Keys is
+		// manifest-driven; the one caller that sees these keys is Remove,
+		// which must delete them, or an interrupted push leaves a
+		// directory nothing ever cleans up.
 		key := filepath.ToSlash(rel)
-		if strings.HasSuffix(key, ".partial") {
-			return nil // an upload that did not finish
-		}
 		if prefix != "" && !strings.HasPrefix(key, prefix) {
 			return nil
 		}
@@ -269,6 +283,9 @@ func (s *dirStore) Keys(ctx context.Context, prefix string) ([]string, error) {
 }
 
 func (s *dirStore) Delete(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	path, err := s.resolve(key)
 	if err != nil {
 		return err

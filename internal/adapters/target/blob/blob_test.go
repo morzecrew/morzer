@@ -58,3 +58,27 @@ func TestSafeDestinationAcceptsWhatABackupActuallyContains(t *testing.T) {
 		}
 	}
 }
+
+// TestOnlyParentComponentsAreRefused. The rule every transport applies to a key
+// out of a manifest, tested once, here, beside the contract it belongs to.
+//
+// It used to live twice -- once in the SFTP adapter and once in S3 -- and the
+// two had already disagreed: a substring test for ".." rejected `notes..age` on
+// one and accepted it on the other, so whether a backup could be restored
+// depended on which transport had carried it.
+func TestOnlyParentComponentsAreRefused(t *testing.T) {
+	for key, want := range map[string]bool{
+		"../.ssh/authorized_keys":     true,
+		"../secrets":                  true,
+		"id/../../etc/shadow":         true,
+		"..":                          true,
+		"notes..age":                  false,
+		"database..dump":              false,
+		"id/database.sql.age":         false,
+		"id/nested..name/file.tar.gz": false,
+	} {
+		if got := HasParentComponent(key); got != want {
+			t.Errorf("HasParentComponent(%q) = %v, want %v", key, got, want)
+		}
+	}
+}

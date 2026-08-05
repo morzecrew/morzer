@@ -47,6 +47,11 @@ const Scheme = "ssh"
 // DefaultPort is used when the URL names no port.
 const DefaultPort = "22"
 
+// posixRenameExtension is the OpenSSH extension that makes replacing a file
+// atomic. The constant is spelled out because pkg/sftp keeps its own copy
+// behind an internal package.
+const posixRenameExtension = "posix-rename@openssh.com"
+
 // Target is the SFTP backup target.
 //
 // Connections are cached per host so one backup does not open a session per
@@ -222,6 +227,25 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 		return existing, nil
 	}
 	t.conns[key] = conn
+
+	// A cached connection is dropped from the cache when it dies, so the
+	// next operation dials a fresh one instead of reusing a corpse. Without
+	// this, one dropped TCP connection -- a NAT timing out during a long
+	// push -- failed every later step of the same command, including the
+	// ones that would otherwise have recovered.
+	//
+	// Waiting on the connection costs nothing and asks the server nothing;
+	// a liveness probe before each use would be a round trip per operation
+	// that is still racing the answer it gets.
+	go func() {
+		_ = client.Wait()
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if t.conns[key] == conn {
+			delete(t.conns, key)
+		}
+	}()
+
 	return conn, nil
 }
 
@@ -507,7 +531,18 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	// rename path stays for servers without it. That window is narrower than
 	// it was, not closed: a server that lacks the extension cannot offer an
 	// atomic replace at all.
-	if err := s.client.PosixRename(tmp, target); err != nil {
+	//
+	// Which path is taken is decided by what the server *advertised*, not by
+	// whether PosixRename failed. Falling back on any failure meant a
+	// permission error or a full disk deleted the existing component and
+	// then failed the rename too -- destroying a good copy in the name of
+	// avoiding exactly that.
+	if _, ok := s.client.HasExtension(posixRenameExtension); ok {
+		if err := s.client.PosixRename(tmp, target); err != nil {
+			_ = s.client.Remove(tmp)
+			return s.unreachable(err, "cannot replace %s on the target", key)
+		}
+	} else {
 		if removeErr := s.client.Remove(target); removeErr != nil &&
 			!errors.Is(removeErr, fs.ErrNotExist) {
 			_ = s.client.Remove(tmp)
@@ -581,8 +616,16 @@ func (s *sftpStore) Keys(ctx context.Context, prefix string) ([]string, error) {
 			continue
 		}
 
+		// Staging files are listed rather than filtered out. The filter
+		// that used to be here matched `.partial`, which no staging file
+		// has been called since the names became unique per write -- so it
+		// was dead, and reviving it would be worse than deleting it.
+		// Everything that reads Keys is manifest-driven: List looks only
+		// at manifests, Fetch and Verify at what a manifest names. The one
+		// caller that sees these keys is Remove, which must delete them,
+		// or an interrupted push leaves a directory nothing ever cleans.
 		key := strings.TrimPrefix(strings.TrimPrefix(walker.Path(), s.root), "/")
-		if key == "" || strings.HasSuffix(key, ".partial") {
+		if key == "" {
 			continue
 		}
 		if prefix != "" && !strings.HasPrefix(key, prefix) {
@@ -623,22 +666,12 @@ func (s *sftpStore) resolve(key string) (string, error) {
 	if clean == "/" {
 		return "", domain.BackupError(nil, "the backup names an empty component path")
 	}
-	if key == "" || hasParentComponent(key) {
+	if key == "" || blob.HasParentComponent(key) {
 		return "", domain.BackupError(nil,
 			"the backup names a component outside the target: %q", key).
 			WithHint("this backup was not written by this manager; do not restore from it")
 	}
 	return path.Join(s.root, clean), nil
-}
-
-// hasParentComponent reports whether any path element is "..".
-func hasParentComponent(key string) bool {
-	for _, part := range strings.Split(path.Clean(key), "/") {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *sftpStore) unreachable(cause error, format string, args ...any) error {

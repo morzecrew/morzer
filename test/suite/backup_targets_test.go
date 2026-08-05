@@ -335,6 +335,20 @@ func TestRetentionFailingOnATargetDoesNotFailTheBackup(t *testing.T) {
 		ports.TargetRef{Scheme: "memory", Path: "/backups"})
 	require.NoError(t, err)
 	assert.Len(t, manifests, 2)
+
+	// And the operator was told. "Continue" is the right call for retention,
+	// but a step that fails silently is indistinguishable from one that
+	// worked -- and a target nobody prunes fills up, which surfaces much
+	// later as a failed push during an incident.
+	var warned bool
+	for _, e := range h.Events.Events() {
+		if e.Level == events.LevelWarn && strings.Contains(e.Message, "prune-remote-backups") {
+			warned = true
+		}
+	}
+	assert.True(t, warned,
+		"retention failed on the target and the backup was reported as a plain "+
+			"success, so nobody learns the target is filling up")
 }
 
 // TestFetchBringsABackupBackAndVerifiesIt. The recovery move: the machine is
@@ -924,12 +938,14 @@ func TestACorruptFetchNeverReachesTheBackupStore(t *testing.T) {
 	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
 	require.Error(t, err, "a corrupt backup was fetched without complaint")
 
-	entries, readErr := os.ReadDir(h.Paths.BackupsDir())
-	if readErr == nil {
-		for _, e := range entries {
-			assert.NotEqual(t, ref.ID, e.Name(),
-				"a backup that failed verification was left in the store, where "+
-					"`restore` can select it")
-		}
+	// Required rather than tolerated: a store that cannot be read would have
+	// skipped the assertion below and reported a pass, which is the one
+	// outcome worse than a failure here.
+	entries, err := os.ReadDir(h.Paths.BackupsDir())
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.NotEqual(t, ref.ID, e.Name(),
+			"a backup that failed verification was left in the store, where "+
+				"`restore` can select it")
 	}
 }

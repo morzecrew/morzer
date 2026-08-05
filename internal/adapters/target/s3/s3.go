@@ -20,7 +20,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
-	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -52,8 +51,12 @@ const DefaultRegion = "us-east-1"
 // opens nothing. What is actually worth reusing is the connection pool, and
 // that lives in the transport below, which is shared.
 type Target struct {
-	mu        sync.Mutex
-	transport http.RoundTripper
+	mu sync.Mutex
+
+	// transports is keyed by whether the endpoint is https, because the two
+	// are not interchangeable: only the secure one carries a TLS
+	// configuration.
+	transports map[bool]http.RoundTripper
 }
 
 func New() *Target { return &Target{} }
@@ -207,12 +210,17 @@ func providerFor(creds ports.TargetCredentials) *credentials.Credentials {
 // SDK's carries proxy support, connection tuning and TLS settings that a
 // four-line struct silently drops -- and an operator behind a proxy would meet
 // that as "cannot reach the backup target" with no hint that a proxy exists.
+// One transport per configuration, not one overall: minio.DefaultTransport
+// builds a TLS configuration only for the secure case, so a single cache handed
+// a plaintext MinIO target's transport to the AWS target that followed it --
+// dropping the minimum TLS version and any CA from SSL_CERT_FILE, and doing so
+// depending on which target happened to be reached first.
 func (t *Target) sharedTransport(secure bool) (http.RoundTripper, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.transport != nil {
-		return t.transport, nil
+	if tr, ok := t.transports[secure]; ok {
+		return tr, nil
 	}
 	tr, err := minio.DefaultTransport(secure)
 	if err != nil {
@@ -221,7 +229,10 @@ func (t *Target) sharedTransport(secure bool) (http.RoundTripper, error) {
 	tr.ResponseHeaderTimeout = 60 * time.Second
 	tr.IdleConnTimeout = 90 * time.Second
 
-	t.transport = tr
+	if t.transports == nil {
+		t.transports = map[bool]http.RoundTripper{}
+	}
+	t.transports[secure] = tr
 	return tr, nil
 }
 
@@ -397,22 +408,12 @@ func (s *bucketStore) resolve(key string) (string, error) {
 	// Components rather than a substring, so `notes..age` -- a legal name the
 	// other transports accept -- does not make a backup restorable on one
 	// target and not another.
-	if strings.HasPrefix(key, "/") || hasParentComponent(key) {
+	if strings.HasPrefix(key, "/") || blob.HasParentComponent(key) {
 		return "", domain.BackupError(nil,
 			"the backup names a component outside the target: %q", key).
 			WithHint("this backup was not written by this manager; do not restore from it")
 	}
 	return joinKey(s.prefix, key), nil
-}
-
-// hasParentComponent reports whether any path element is "..".
-func hasParentComponent(key string) bool {
-	for _, part := range strings.Split(path.Clean(key), "/") {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
 }
 
 func joinKey(parts ...string) string {

@@ -107,12 +107,48 @@ func TestTheConnectionPoolIsSharedRatherThanTheClient(t *testing.T) {
 	if _, err := target.client(ref); err != nil {
 		t.Fatal(err)
 	}
+	first := target.transports[false]
+	if first == nil {
+		t.Fatal("no shared transport, so every client opens its own connection pool")
+	}
+
 	if _, err := target.client(ref); err != nil {
 		t.Fatal(err)
 	}
+	if target.transports[false] != first {
+		t.Error("the second client built its own transport, so the pool is not shared")
+	}
+}
 
-	if target.transport == nil {
-		t.Fatal("no shared transport, so every client opens its own connection pool")
+// TestAPlaintextTargetDoesNotDisarmATLSOne.
+//
+// minio.DefaultTransport builds a TLS configuration only for the secure case,
+// so one cache for both meant the first target reached decided what the second
+// one got. An http:// MinIO in a test suite, then an https:// bucket in
+// production, and the production client is using a transport with no TLS
+// configuration at all.
+func TestAPlaintextTargetDoesNotDisarmATLSOne(t *testing.T) {
+	target := New()
+	creds := ports.TargetCredentials{AccessKeyID: "AKIA", SecretAccessKey: "s3kr3t"}
+
+	plain := ports.TargetRef{Scheme: "s3", Credentials: creds}
+	plain.Credentials.Endpoint = "http://minio.example:9000"
+	if _, err := target.client(plain); err != nil {
+		t.Fatal(err)
+	}
+
+	secure := ports.TargetRef{Scheme: "s3", Credentials: creds}
+	secure.Credentials.Endpoint = "https://s3.example"
+	if _, err := target.client(secure); err != nil {
+		t.Fatal(err)
+	}
+
+	if target.transports[true] == target.transports[false] {
+		t.Fatal("the https target reused the plaintext target's transport")
+	}
+	tr, ok := target.transports[true].(*http.Transport)
+	if !ok || tr.TLSClientConfig == nil {
+		t.Fatal("the https target's transport carries no TLS configuration")
 	}
 }
 
@@ -306,24 +342,5 @@ func TestSuppliedCredentialsWinOverTheEnvironment(t *testing.T) {
 	}
 	if value.AccessKeyID != "AKIACONFIGURED" {
 		t.Errorf("access key = %q, want the configured one", value.AccessKeyID)
-	}
-}
-
-// TestOnlyParentComponentsAreRefused. A substring test for ".." rejected
-// `notes..age`, a legal name the filesystem target accepts -- so a backup was
-// restorable or not depending on which transport carried it.
-func TestOnlyParentComponentsAreRefused(t *testing.T) {
-	for key, want := range map[string]bool{
-		"../secrets":                  true,
-		"id/../../etc/passwd":         true,
-		"..":                          true,
-		"notes..age":                  false,
-		"database..dump":              false,
-		"id/database.sql.age":         false,
-		"id/nested..name/file.tar.gz": false,
-	} {
-		if got := hasParentComponent(key); got != want {
-			t.Errorf("hasParentComponent(%q) = %v, want %v", key, got, want)
-		}
 	}
 }

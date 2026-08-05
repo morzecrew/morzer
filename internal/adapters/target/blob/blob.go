@@ -61,6 +61,26 @@ type Store interface {
 	Delete(ctx context.Context, key string) error
 }
 
+// HasParentComponent reports whether any element of a key is "..".
+//
+// Every store resolves keys that arrived in a manifest, and a manifest on a
+// target is a file this manager may not have written: `../../.ssh/authorized_keys`
+// as a component name must not be a way for whoever controls the target to
+// decide what a fetch reads or a removal deletes.
+//
+// It lives beside the contract rather than once per transport because the two
+// copies had already disagreed once. A substring test for ".." rejected
+// `notes..age` on one adapter and accepted it on another, which made a backup
+// restorable or not depending on which transport had happened to carry it.
+func HasParentComponent(key string) bool {
+	for _, part := range strings.Split(path.Clean(key), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
 // Push copies a local backup directory to the store.
 //
 // Two rules, and both of them matter more than the transport underneath.

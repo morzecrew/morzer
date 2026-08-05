@@ -268,25 +268,6 @@ func TestATargetThatCannotBeDialledSaysSo(t *testing.T) {
 	}
 }
 
-// TestOnlyParentComponentsAreRefused. The same rule the other two transports
-// apply: a component name containing dots is legal, a `..` path element is not.
-// A substring test made a backup restorable or not depending on which transport
-// happened to carry it.
-func TestOnlyParentComponentsAreRefused(t *testing.T) {
-	for key, want := range map[string]bool{
-		"../.ssh/authorized_keys": true,
-		"id/../../etc/shadow":     true,
-		"..":                      true,
-		"notes..age":              false,
-		"database..dump":          false,
-		"id/database.sql.age":     false,
-	} {
-		if got := hasParentComponent(key); got != want {
-			t.Errorf("hasParentComponent(%q) = %v, want %v", key, got, want)
-		}
-	}
-}
-
 // TestACancelledContextStopsNewWork.
 //
 // pkg/sftp takes no context, so an in-flight transfer cannot be interrupted --

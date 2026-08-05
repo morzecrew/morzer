@@ -214,7 +214,13 @@ func TestATargetRegistryClosesEveryTarget(t *testing.T) {
 	// The embedded fake is initialised even though this test calls only
 	// Schemes and Close: a nil embed makes every promoted method a panic
 	// waiting for the first person to add an assertion.
-	first := &closableTarget{BackupTarget: fakes.NewBackupTarget(), scheme: "one"}
+	//
+	// Both fail, and that is deliberate. The registry iterates a map, so
+	// which target is closed first is not something a test can decide -- and
+	// with only one failing, half the runs closed it last and proved
+	// nothing. With both failing, "the second was closed" can only be true
+	// if the loop carried on past the first failure.
+	first := &closableTarget{BackupTarget: fakes.NewBackupTarget(), scheme: "one", err: assertError}
 	second := &closableTarget{BackupTarget: fakes.NewBackupTarget(), scheme: "two", err: assertError}
 
 	registry, err := target.NewRegistry(first, second)
@@ -330,6 +336,39 @@ func TestAComponentTheManifestNamesButIsNotThere(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Hint, "backup verify",
 		"the remedy is the command that would have caught this before the push")
+}
+
+// TestRemovalTakesTheLeftoversOfAnInterruptedPushWithIt.
+//
+// A push that dies mid-file leaves a staging file beside the component it was
+// becoming. Listing used to filter those out, which sounds tidy and is not:
+// removal deletes what listing reports, so a filtered staging file was one
+// nothing would ever delete, in a directory nothing would ever be able to
+// remove. Everything that reads a backup is manifest-driven and ignores them
+// anyway.
+func TestRemovalTakesTheLeftoversOfAnInterruptedPushWithIt(t *testing.T) {
+	local := writeTestBackup(t, "20260101T000000Z", map[string]string{
+		"database.sql.age": "ciphertext",
+	})
+
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	ref, err := ports.TargetURL("file://" + offsite)
+	require.NoError(t, err)
+
+	remote, err := localdir.New().Push(context.Background(), ref, local, "20260101T000000Z")
+	require.NoError(t, err)
+
+	// What an interrupted transfer leaves: the staging name Put writes to,
+	// under the backup it was pushing.
+	leftover := filepath.Join(offsite, remote.ID, ".database.sql.age.partial-1234")
+	require.NoError(t, os.WriteFile(leftover, []byte("half a component"), 0o600))
+
+	require.NoError(t, localdir.New().Remove(context.Background(), remote))
+
+	_, statErr := os.Stat(filepath.Join(offsite, remote.ID))
+	assert.True(t, os.IsNotExist(statErr),
+		"the backup directory outlived the backup, because something in it was "+
+			"never listed and so was never deleted")
 }
 
 // TestATargetOnAReadOnlyMediumFailsRatherThanHalfWriting. The ordinary shape of
