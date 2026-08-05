@@ -4,17 +4,19 @@ package suite
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/morzecrew/morzer/internal/adapters/target/sftp"
 	"github.com/morzecrew/morzer/internal/domain"
@@ -302,24 +304,28 @@ func TestSSHSurvivesATargetThatGoesAwayMidPush(t *testing.T) {
 }
 
 // generateSSHKey returns an ed25519 keypair in the formats sshd and the adapter
-// each want.
+// each want: an OpenSSH private key, and one authorized_keys line.
+//
+// Generated in this process rather than by shelling out to `ssh-keygen`. These
+// suites are meant to need a docker daemon and nothing else, and a host tool
+// nobody declared is one a minimal runner does not have -- where the whole
+// ssh:// suite would fail to start rather than report anything about the
+// adapter. The formats are OpenSSH's either way: x/crypto writes them, and the
+// sshd in the container is the thing that decides whether they are right.
 func generateSSHKey(t *testing.T) (private, public string) {
 	t.Helper()
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "id_ed25519")
-
-	cmd := exec.CommandContext(context.Background(),
-		"ssh-keygen", "-t", "ed25519", "-N", "", "-C", "morzer-test", "-f", path)
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "ssh-keygen: %s", out)
-
-	privateBytes, err := os.ReadFile(path)
-	require.NoError(t, err)
-	publicBytes, err := os.ReadFile(path + ".pub")
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 
-	return string(privateBytes), strings.TrimSpace(string(publicBytes))
+	block, err := ssh.MarshalPrivateKey(priv, "morzer-test")
+	require.NoError(t, err)
+
+	signer, err := ssh.NewSignerFromKey(priv)
+	require.NoError(t, err)
+
+	return string(pem.EncodeToMemory(block)),
+		strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey()))) + " morzer-test"
 }
 
 // waitForSSH blocks until the server accepts connections.
