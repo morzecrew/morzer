@@ -28,6 +28,10 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/adapters/source/oci"
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
+	"github.com/morzecrew/morzer/internal/adapters/target"
+	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
+	"github.com/morzecrew/morzer/internal/adapters/target/s3"
+	"github.com/morzecrew/morzer/internal/adapters/target/sftp"
 	"github.com/morzecrew/morzer/internal/adapters/verify"
 	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
 	"github.com/morzecrew/morzer/internal/adapters/verify/minisign"
@@ -177,7 +181,8 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	return domain.ExitCode(err)
 }
 
-// closeSources releases anything a release source is holding.
+// closeSources releases anything a release source or a backup target is
+// holding: a downloaded bundle, an SSH connection.
 //
 // Only the network transports have anything to release, so this is a type
 // assertion rather than a port method: making every source implement Close so
@@ -187,9 +192,16 @@ func (a *App) closeSources() {
 	if a.Deps == nil {
 		return
 	}
-	if closer, ok := a.Deps.Source.(io.Closer); ok {
+	for what, holder := range map[string]any{
+		"a release source": a.Deps.Source,
+		"a backup target":  a.Deps.Targets,
+	} {
+		closer, ok := holder.(io.Closer)
+		if !ok {
+			continue
+		}
 		if err := closer.Close(); err != nil && a.log != nil {
-			a.log.Debug("cannot clean up a release source", "error", err)
+			a.log.Debug("cannot clean up "+what, "error", err)
 		}
 	}
 }
@@ -454,6 +466,13 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		return err
 	}
 
+	// The same shape again, for the other direction: where a backup goes
+	// once it has been taken.
+	targets, err := target.NewRegistry(localdir.New(), sftp.New(), s3.New())
+	if err != nil {
+		return err
+	}
+
 	deps := &ops.Deps{
 		Paths:   paths,
 		State:   stateStore,
@@ -461,6 +480,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		Runtime: runtime,
 		Secrets: secrets,
 		Source:  sources,
+		Targets: targets,
 		// Both, always. The checksum verifier answers "is this the
 		// artifact I was told to expect"; minisign answers "did a key
 		// this machine trusts publish it". A build with only the first

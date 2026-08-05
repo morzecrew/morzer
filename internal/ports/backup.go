@@ -73,6 +73,16 @@ type BackupRef struct {
 
 func (r BackupRef) IsZero() bool { return r.ID == "" }
 
+// BackupManifestFileName is the self-describing header inside every backup,
+// wherever the backup is.
+//
+// It lives here rather than with the engine that writes it because it is the
+// one name a backup engine and every backup target have to agree on: a target
+// enumerates a remote store by reading these and nothing else, which is what
+// makes listing a bucket cost no decryption and work from a machine that has
+// lost its key.
+const BackupManifestFileName = "backup.json"
+
 // BackupManifest is the self-describing header every backup carries. It is
 // what makes a restore onto a different VM safe: the manager can check
 // compatibility before touching anything.

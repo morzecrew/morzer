@@ -279,7 +279,7 @@ func updateSteps(
 	steps := []engine.Step{
 		stepVerifyBundle(d, inst, source, opts),
 		stepCheckCompatibility(d, from, staged),
-		stepPreUpdateBackup(d, from, staged, opts),
+		stepPreUpdateBackup(d, inst, from, staged, opts),
 		stepStageUpdate(d, from, source, staged, opts),
 	}
 
@@ -380,7 +380,13 @@ func stepCheckCompatibility(d *Deps, from domain.ReleaseRecord, staged domain.Re
 // It has no Compensate on purpose: a backup taken immediately before a failed
 // update is the most valuable artifact in the system at that moment, and its
 // `pre-update` reason exempts it from retention pruning.
-func stepPreUpdateBackup(d *Deps, from domain.ReleaseRecord, staged domain.Release, opts UpdateOptions) engine.Step {
+func stepPreUpdateBackup(
+	d *Deps,
+	inst domain.Installation,
+	from domain.ReleaseRecord,
+	staged domain.Release,
+	opts UpdateOptions,
+) engine.Step {
 	return engine.Step{
 		ID:          "pre-update-backup",
 		Description: "pre-update backup",
@@ -416,6 +422,8 @@ func stepPreUpdateBackup(d *Deps, from domain.ReleaseRecord, staged domain.Relea
 			}
 			st.Set(engine.KeyBackupRef, ref)
 			st.Detail("%s", ref.ID)
+
+			d.pushPreUpdateBackup(ctx, st, inst, ref)
 			return nil
 		},
 	}

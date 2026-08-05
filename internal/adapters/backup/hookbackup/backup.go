@@ -31,8 +31,8 @@ import (
 const Name = "hooks"
 
 // ManifestFileName is the self-describing header inside every backup
-// directory.
-const ManifestFileName = "backup.json"
+// directory. The name is the port's, because a backup target reads it too.
+const ManifestFileName = ports.BackupManifestFileName
 
 // BackupManifestSchemaVersion versions that header.
 //

@@ -107,7 +107,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reporting of measured sizes such as free disk space in readable units, while values declared in a manifest keep their exact written form.
 
+- Backup targets: somewhere a backup is kept that is not the machine that took it. `morzer backup target add` accepts `file://` for a second disk or removable media, `ssh://` for another host, and `s3://` for S3 and everything that speaks its API, including MinIO, R2, B2 and Google Cloud Storage in interoperability mode.
+
+- Every backup is copied to every configured target after it is verified, and a push that fails fails the backup. Reporting success for data that is still only on the machine that will die is the state targets exist to end. The local copy is kept either way, so a failed push leaves an operator no worse off than before they configured one. Two exceptions warn instead: a backup taken with the push disabled, and the backup taken before an update.
+
+- Retrying a copy that failed with `morzer backup push`, which verifies the backup again and sends it without taking a new one. The data on disk is already correct; what failed was the medium.
+
+- Reading a target with `morzer backup list --remote` and `morzer backup fetch`. Listing transfers only each backup's manifest, which is the one file in a backup that is not encrypted, so it works from a machine that has lost every key it ever had.
+
+- Diagnostics reporting a target that cannot be reached and a backup that never arrived on one. Both fail rather than warn: the second is the failure that hides, because the backup ran, the backup succeeded, and the copy that would survive the machine is not there.
+
+- Retention applies on targets as well as locally, under the same policy and with the same refusal to remove the most recent backup or one taken before an update.
+
+- Checking the copy on a target with `morzer backup verify --remote`, which streams each component through a checksum and keeps nothing. It needs no key, so an off-site archive can be checked from a machine that holds none, and it is the only thing that notices rot on a target while the local copy is still perfect.
+
+- The backup taken before an update is copied to the targets too. A failure warns rather than blocking the update: the local copy is what a rollback on this machine uses, and refusing to install a fix because a disk was unplugged helps nobody.
+
 ### Changed
+
+- The installation state format moved to schema 3 for backup targets. An older manager refuses a newer state rather than reading it, seeing no targets, and quietly leaving every backup on the machine a target was configured to survive.
 
 - The container runtime no longer inherits the whole environment of whoever invoked the manager. It receives an allow-list of what a tool needs to run, plus the release's declared parameters. Any product-prefixed variable set in a shell used to interpolate into Compose files unvalidated and unrecorded.
 
@@ -137,6 +155,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Backups are encrypted to the same recipients as the secret state, so nothing in a backup is readable without a key except its manifest. Previously a backup held the database dump in plaintext, which mattered little while backups stayed on the machine and matters a great deal once one leaves it.
 
 - Restoring accepts `--identity` for the case the recovery design exists for: a rebuilt machine has a new key that was never a recipient of the lost machine's backups, and the offline key is what opens them.
+
+- A second SSH backup target on the same host is handshaked in its own right, so its host key is checked rather than inherited from the first target's connection.
+
+- An SSH backup target must pin its host key, and no flag disables checking it. An impostor cannot read a backup, which is encrypted to the deployment's own recipients, but it can accept every push and answer every listing while an operator believes they have off-site copies they do not have.
+
+- Target credentials are named rather than written into the installation, and a target URL carrying a password is refused. The URL is stored on disk, printed by diagnostics and quoted in support requests.
+
+- Only the components a backup's manifest names are copied to a target. A backup directory can hold decrypted files left by an interrupted restore, and copying everything found there would put a plaintext database dump on a second machine.
 
 - Rendered secrets are written read-only to the owner inside an owner-only directory on temporary storage, and files no longer backed by a declaration are removed so stale credentials do not linger.
 

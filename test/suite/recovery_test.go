@@ -17,6 +17,8 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
+	"github.com/morzecrew/morzer/internal/adapters/target"
+	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -83,6 +85,7 @@ func newMachine(t *testing.T, root string) *machine {
 		Health:         fakes.NewHealth(),
 		Renderer:       gotemplate.New(),
 		Source:         local.New(),
+		Targets:        mustTargetRegistry(t),
 		Verifier:       checksum.New(),
 		Supervisor:     fakes.NewSupervisor(),
 		Hooks:          hooks.NewRunner(runner),
@@ -96,6 +99,18 @@ func newMachine(t *testing.T, root string) *machine {
 	}
 
 	return &machine{t: t, Root: root, Paths: paths, Deps: deps, Secrets: secrets, Runtime: runtime}
+}
+
+// mustTargetRegistry builds the production target registry.
+//
+// The real one, with the real file:// adapter: the recovery scenario is the
+// only place that proves a backup can come back from somewhere the lost machine
+// could not reach, and it would prove nothing against a fake.
+func mustTargetRegistry(t *testing.T) ports.BackupTarget {
+	t.Helper()
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	return registry
 }
 
 // wireBackupEngine attaches the real hook-driven backup engine, which is what
@@ -401,6 +416,169 @@ func TestRecoveryKeepsBackupsRestorable(t *testing.T) {
 	restored, err := os.ReadFile(filepath.Join(rebuilt.Paths.DataDir(), "marker"))
 	require.NoError(t, err, "the restore hook must have written the data back")
 	assert.Equal(t, "from-the-lost-machine", strings.TrimSpace(string(restored)))
+}
+
+// TestRecoveryFetchesTheBackupFromATarget is the test the whole targets
+// mechanism is for, and it is the one above with the pretending removed.
+//
+// The test above copies a directory with copyTree and calls it "offsite". That
+// copy is the feature: it is what an operator does by hand, or by a cron job
+// nobody tests, and the manager has no idea whether it happened. Here the
+// manager does it -- and the rebuilt machine gets the backup back the same way.
+//
+// It also proves route 1 of the credential problem end to end, and proves it
+// with no new machinery: the export already carries the installation, which now
+// carries the target URLs, and already carries the encrypted secret state, which
+// carries the credentials. An operator holding an export and the offline key can
+// reach the backups. Nothing was added to the export format to make that true.
+func TestRecoveryFetchesTheBackupFromATarget(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+	origin.wireBackupEngine(ctx)
+
+	// The target is on separate media, which is the case file:// exists for
+	// and the one a recovery can always reach: no credential, no network, no
+	// account with anybody.
+	offsite := filepath.Join(t.TempDir(), "offsite")
+
+	originInst, err := origin.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	originInst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, origin.Deps.State.SaveInstallation(ctx, originInst))
+
+	require.NoError(t, os.MkdirAll(origin.Paths.DataDir(), 0o750))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(origin.Paths.DataDir(), "marker"), []byte("from-the-lost-machine"), 0o640))
+
+	backupResult, err := ops.Backup(ctx, origin.Deps, ops.BackupOptions{
+		Reason: "pre-recovery", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, domain.StatusSucceeded, backupResult.Record.Status)
+	require.Contains(t, backupResult.Summary, "copied to",
+		"the backup did not report leaving the machine")
+
+	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
+	_, err = ops.Export(ctx, origin.Deps, ops.ExportOptions{Path: exportPath})
+	require.NoError(t, err)
+
+	// The machine is destroyed. Nothing is copied by hand this time: what
+	// survives is the export, the offline key, and whatever is on the target.
+	require.NoError(t, os.RemoveAll(origin.Root))
+
+	rebuilt := newMachine(t, t.TempDir())
+	export, err := ops.LoadExport(exportPath)
+	require.NoError(t, err)
+	_, err = ops.Import(ctx, rebuilt.Deps, ops.ImportOptions{
+		SourcePath:   exportPath,
+		Export:       export,
+		IdentityFile: recoveryPath,
+	})
+	require.NoError(t, err)
+
+	// The import brought the target configuration with it, because the
+	// target lives in the installation and the installation is in the
+	// export. The operator does not have to remember where their backups
+	// went -- which is exactly the thing nobody remembers during an
+	// incident.
+	rebuiltInst, err := rebuilt.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	require.Len(t, rebuiltInst.Backup.Targets, 1,
+		"the rebuilt machine does not know where its backups are")
+
+	// Listing works before a release is installed and before anything is
+	// decrypted: the manifest is the one plaintext file in a backup.
+	remote, err := ops.ListRemote(ctx, rebuilt.Deps, ops.TargetOptions{})
+	require.NoError(t, err)
+	require.Len(t, remote, 1)
+	backupID := remote[0].Manifest.ID
+
+	stageRelease(t, ctx, rebuilt)
+	applyRelease(t, ctx, rebuilt)
+	rebuilt.wireBackupEngine(ctx)
+
+	fetched, err := ops.FetchRemote(ctx, rebuilt.Deps, ops.FetchOptions{})
+	require.NoError(t, err, "the backup could not be brought back from the target")
+	require.Contains(t, fetched.Summary, backupID)
+
+	restoreResult, err := ops.Restore(ctx, rebuilt.Deps, ops.RestoreOptions{
+		Options:                 ops.Options{Force: true},
+		ConfirmedInstallationID: rebuiltInst.ID,
+		// The offline key, because the rebuilt machine's own identity was
+		// never a recipient of the lost machine's backups.
+		IdentityFile: recoveryPath,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, restoreResult.Record.Status)
+
+	restored, err := os.ReadFile(filepath.Join(rebuilt.Paths.DataDir(), "marker"))
+	require.NoError(t, err)
+	assert.Equal(t, "from-the-lost-machine", strings.TrimSpace(string(restored)),
+		"the data that came back from the target is not the data that went to it")
+}
+
+// TestABackupOnATargetIsUnreadableWithoutAKey is what makes the target safe to
+// use at all.
+//
+// A directory on removable media, a second VM, a bucket: all of them are places
+// the deployment does not control. The backup goes there encrypted to this
+// deployment's own age recipients, so what an operator leaves behind is
+// ciphertext and one plaintext manifest naming the product and the date.
+func TestABackupOnATargetIsUnreadableWithoutAKey(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	_, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+	origin.wireBackupEngine(ctx)
+
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	inst, err := origin.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, origin.Deps.State.SaveInstallation(ctx, inst))
+
+	require.NoError(t, os.MkdirAll(origin.Paths.DataDir(), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(origin.Paths.DataDir(), "marker"),
+		[]byte("SENSITIVE-CUSTOMER-DATA"), 0o640))
+
+	_, err = ops.Backup(ctx, origin.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+
+	var manifests, ciphertext int
+	require.NoError(t, filepath.WalkDir(offsite, func(p string, e os.DirEntry, err error) error {
+		if err != nil || e.IsDir() {
+			return err
+		}
+		data, readErr := os.ReadFile(p)
+		require.NoError(t, readErr)
+
+		if filepath.Base(p) == ports.BackupManifestFileName {
+			manifests++
+			// The manifest is deliberately readable, and this is the
+			// disclosure that buys: `backup list --remote` works from
+			// a machine that has lost every key.
+			assert.Contains(t, string(data), "demo")
+			return nil
+		}
+		ciphertext++
+		assert.NotContains(t, string(data), "SENSITIVE-CUSTOMER-DATA",
+			"%s on the target carries readable plaintext", p)
+		// Positively encrypted, not merely free of one known string: a
+		// component written in some third format would pass the check above
+		// while being perfectly readable to whoever found it.
+		assert.True(t, strings.HasPrefix(string(data), "age-encryption.org/"),
+			"%s on the target is not an age file", p)
+		return nil
+	}))
+
+	assert.Equal(t, 1, manifests)
+	assert.Positive(t, ciphertext, "the target holds no components at all")
 }
 
 // TestBackupsAreRefusedByAFreshlyInitialisedMachine is the negative control for

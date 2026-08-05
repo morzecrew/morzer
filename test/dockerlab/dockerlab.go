@@ -46,6 +46,17 @@ const (
 	ImageCaddy    = "caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648"
 	ImagePostgres = "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15"
 	ImageRegistry = "registry@sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33"
+
+	// ImageMinIO backs the s3:// target suite. MinIO speaks the same API as
+	// S3, R2, B2 and GCS interoperability mode, which is the whole reason
+	// one adapter answers for all of them -- so proving the adapter against
+	// MinIO is proving it against the API rather than against one vendor.
+	ImageMinIO = "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+
+	// ImageOpenSSH backs the ssh:// target suite: a real sshd with a real
+	// host key, which is the only way to test that a *changed* host key is
+	// refused.
+	ImageOpenSSH = "linuxserver/openssh-server@sha256:96b9a4d3b5106746d08d43a6911650d4d21f7d5c7f2ac9660e792bdb5e63157c"
 )
 
 // counter names projects and containers apart within a run. Not a random

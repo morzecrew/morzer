@@ -26,6 +26,12 @@ would be a file nobody takes often enough.
     machine's entire root, rebuild from the export and the offline key, and
     assert the secrets come back readable by the new host's own key.
 
+    `TestRecoveryFetchesTheBackupFromATarget` runs the whole of it, including
+    step 4: the backup is pushed to a target, the machine is destroyed, and the
+    rebuilt one lists and fetches it back with nothing copied by hand. That test
+    used to copy a directory and call it "offsite"; it does not have to pretend
+    any more.
+
     A recovery procedure nobody has executed is a procedure you find out about
     during an incident.
 
@@ -93,7 +99,50 @@ morzer release verify ./demo-1.2.0     # confirm the digest matches the export
 morzer update ./demo-1.2.0
 ```
 
-### 4. Restore the data
+### 4. Get the backup back
+
+If your backups go to a [target](backups.md), the import already brought its
+address with it — the target lives in the installation, and the installation was
+in the export. You do not have to remember where they went, which is the thing
+nobody remembers during an incident.
+
+```sh
+morzer backup list --remote
+morzer backup fetch <id>
+```
+
+Listing needs no key at all: it reads each backup's manifest, and the manifest is
+the one file in a backup that is not encrypted.
+
+??? note "If the target needs credentials the machine cannot read yet"
+
+    The circle to break: the bucket's keys are secrets, the secrets are in the
+    encrypted state, and on a machine where import has not run there is nothing
+    to decrypt them with. Three ways through, in the order to try them.
+
+    **From the export.** `installation import` restored the secret state, so the
+    credentials are already there. This is the ordinary path and it needs
+    nothing extra.
+
+    **From a file.** When the export is gone or the credentials in it are stale:
+
+    ```sh
+    morzer backup list --remote --target s3://acme-backups/demo \
+        --credentials-file ./creds.yaml
+    morzer backup fetch <id> --target s3://acme-backups/demo \
+        --credentials-file ./creds.yaml
+    ```
+
+    A file rather than a flag, because a flag is visible in `ps` to everyone on
+    the machine.
+
+    **From nothing.** A `file://` target on removable media needs no credential.
+    That is why it is worth having one even if your real backups go to a bucket.
+
+If you copied backups off by hand instead, put them under
+`/var/lib/<product>/backups` now.
+
+### 5. Restore the data
 
 ```sh
 morzer restore --force --confirm <installation-id> --identity ~/recovery.key
@@ -109,7 +158,7 @@ backups the lost machine took — the offline key was. So the same key opens bot
 the export and the backups, which is why keeping one off the machine is not
 optional.
 
-### 5. Check, then decommission
+### 6. Check, then decommission
 
 ```sh
 morzer doctor

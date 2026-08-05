@@ -13,7 +13,13 @@ import (
 // unknown fields, so without the bump an older manager would read a newer
 // state file, see no `settings`, and silently run the whole deployment on
 // default parameters -- a wrong port rather than a refusal.
-const InstallationSchemaVersion = 2
+//
+// Bumped to 3 when `backup.targets` arrived, for exactly the same reason and a
+// worse consequence: an older manager reads the state, sees no targets, takes a
+// backup, reports success, and leaves it on the machine the operator configured
+// a target to survive. A refusal naming the manager version is the only honest
+// answer, because the failure is otherwise invisible until the disaster.
+const InstallationSchemaVersion = 3
 
 // Installation is the machine-specific state of one deployment. It is the
 // only place operator intent is recorded; everything else is derived from it
@@ -49,7 +55,44 @@ type Installation struct {
 	// template context but had no writer, no schema, no documentation and
 	// no test -- it was never settable, so nothing can depend on it.
 	Parameters map[string]string `yaml:"parameters" json:"parameters,omitempty"`
+
+	// Backup is where this deployment's backups go besides this disk.
+	//
+	// In the installation rather than the release manifest, and deliberately:
+	// a vendor cannot know whether their customer has a second VM, a NAS or a
+	// bucket, and a manifest that named one would be a vendor deciding where
+	// an operator's data is kept.
+	Backup BackupConfig `yaml:"backup" json:"backup,omitempty"`
 }
+
+// BackupConfig is the operator's backup arrangement beyond the local disk.
+type BackupConfig struct {
+	// Targets are pushed to, in order, after every backup is verified.
+	//
+	// Several are allowed and each is pushed to. An operator who configured
+	// two targets wants two copies, so one of them failing fails the backup
+	// -- see the push step, which is where that is enforced.
+	Targets []BackupTargetConfig `yaml:"targets" json:"targets,omitempty"`
+}
+
+// BackupTargetConfig is one place backups are kept.
+type BackupTargetConfig struct {
+	// URL is where, as file://, ssh:// or s3://.
+	URL string `yaml:"url" json:"url"`
+
+	// Credentials names a secret holding the credential document for this
+	// target. Empty for file://, which needs none.
+	//
+	// A name rather than the values: this file is a report an operator reads
+	// and `morzer doctor` prints, and a bucket key in it would be a bucket
+	// key in every support ticket. The values live in the encrypted secret
+	// state, which is also what carries them into an export -- and therefore
+	// to the rebuilt machine that has to reach the target to recover.
+	Credentials string `yaml:"credentials,omitempty" json:"credentials,omitempty"`
+}
+
+// HasTargets reports whether any off-machine copy is configured.
+func (b BackupConfig) HasTargets() bool { return len(b.Targets) > 0 }
 
 // Policy is operator-set behaviour that overrides release defaults. These are
 // decisions about *this machine*, so they live with the installation rather
@@ -170,6 +213,27 @@ func (i Installation) Validate() error {
 		if strings.TrimSpace(key) == "" {
 			v.add(fmt.Sprintf("policy.signing_keys[%d]", n), "is empty")
 		}
+	}
+
+	// A target is checked where it is written, not where it is used. The
+	// alternative is a typo that surfaces during the nightly backup weeks
+	// later, in the one operation whose whole purpose is to still work.
+	seen := make(map[string]bool, len(i.Backup.Targets))
+	for n, t := range i.Backup.Targets {
+		field := fmt.Sprintf("backup.targets[%d]", n)
+
+		parsed, err := ParseBackupTarget(t.URL)
+		if err != nil {
+			v.add(field+".url", "%s", AsError(err).Message)
+			continue
+		}
+		if seen[parsed.Canonical()] {
+			// Two identical targets would be pushed to twice and
+			// pruned twice, and the second pass would report
+			// removing what the first already removed.
+			v.add(field+".url", "is listed twice")
+		}
+		seen[parsed.Canonical()] = true
 	}
 
 	return v.err()

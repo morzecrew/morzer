@@ -45,9 +45,16 @@ type Deps struct {
 	State  ports.StateStore
 	Locker ports.Locker
 
-	Runtime    ports.Runtime
-	Secrets    ports.SecretStore
-	Backup     ports.BackupEngine
+	Runtime ports.Runtime
+	Secrets ports.SecretStore
+	Backup  ports.BackupEngine
+
+	// Targets is the registry of places a backup can be kept that are not
+	// this machine. Nil in a build or a test that configures none, which is
+	// why every use checks: an installation with no targets must keep
+	// working exactly as it did before they existed.
+	Targets ports.BackupTarget
+
 	Source     ports.ReleaseSource
 	Verifier   ports.Verifier
 	Health     ports.HealthWaiter

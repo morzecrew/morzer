@@ -127,6 +127,12 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if d.Backup != nil {
 		checks = append(checks, d.checkLastBackup(inst))
 	}
+	if d.Targets != nil {
+		checks = append(checks, d.checkBackupTargets(inst))
+		if inst.Backup.HasTargets() && d.Backup != nil {
+			checks = append(checks, d.checkBackupTargetFreshness(inst))
+		}
+	}
 
 	return checks
 }
@@ -892,6 +898,167 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 					"%s", strings.Join(problems, "; "))
 			}
 			return preflight.OK("all units loaded")
+		},
+	}
+}
+
+// checkBackupTargets reports whether every configured target answers.
+//
+// The question is "would tonight's backup leave this machine", and the moment to
+// ask is while the machine is still here. An unmounted disk or an expired access
+// key is invisible until a push fails -- and a push failing fails the backup, so
+// an operator would rather be told now than at 03:00.
+//
+// A target that cannot be reached is a `fail` rather than a `warn`. This is not
+// the registry-reachability case, where needing the network is normal: an
+// unreachable target means the deployment's data is on one disk, which is the
+// state configuring a target was meant to end.
+func (d *Deps) checkBackupTargets(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "backup.target-reachable",
+		Category:    preflight.CategoryBackup,
+		Description: "every configured backup target is reachable",
+		// Fatal, so the runner does not downgrade the refusal to a
+		// warning. An unreachable target means every backup from now on
+		// fails at the push step, and a monitoring system watching
+		// doctor's exit code should hear about that before the backup
+		// does.
+		Fatal: true,
+		Run: func(ctx context.Context) events.CheckResult {
+			if !inst.Backup.HasTargets() {
+				// Not a finding. Plenty of deployments keep
+				// backups on one machine on purpose, and a
+				// warning nobody can act on is a warning
+				// everybody learns to ignore. checkLastBackup
+				// already covers having no backups at all.
+				return preflight.OK("no off-machine target is configured")
+			}
+
+			// Scaled by the number of targets, because the probe walks
+			// them in turn: one shared budget meant a slow first target
+			// spent it, and every healthy target after was reported as
+			// unreachable for no reason of its own.
+			probeCtx, cancel := context.WithTimeout(ctx,
+				time.Duration(max(1, len(inst.Backup.Targets)))*30*time.Second)
+			defer cancel()
+
+			statuses := d.TargetStatuses(probeCtx, inst)
+			var problems, reached []string
+			for _, s := range statuses {
+				if !s.Reachable {
+					problems = append(problems, fmt.Sprintf("%s (%s)", s.URL, s.Error))
+					continue
+				}
+				reached = append(reached, fmt.Sprintf("%s: %d backup(s)", s.URL, s.Backups))
+			}
+
+			if len(problems) > 0 {
+				return preflight.Fail(
+					"until this is fixed every backup will fail at the push step, "+
+						"because a backup that did not leave the machine is not "+
+						"the backup that was asked for",
+					"cannot reach %s", strings.Join(problems, "; "))
+			}
+			return preflight.OK("%s", strings.Join(reached, "; "))
+		},
+	}
+}
+
+// checkBackupTargetFreshness reports a local backup that never reached a
+// target.
+//
+// This is the failure the whole targets mechanism exists to prevent, and it is
+// the one that hides: the backup ran, the backup succeeded, the file is there,
+// and the copy that would survive the machine is not. `fail` rather than `warn`,
+// for the same reason.
+func (d *Deps) checkBackupTargetFreshness(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "backup.target-freshness",
+		Category:    preflight.CategoryBackup,
+		Description: "the most recent backup reached a target",
+		// Fatal for the same reason, and a stronger one: this is the
+		// failure that hides. The backup ran, it succeeded, the file is
+		// there -- and the copy that would survive the machine is not.
+		Fatal: true,
+		Run: func(ctx context.Context) events.CheckResult {
+			local, err := d.Backup.List(ctx)
+			if err != nil {
+				return preflight.Warn("", "cannot list local backups: %s",
+					domain.AsError(err).Message)
+			}
+			if len(local) == 0 {
+				// checkLastBackup already says there are none,
+				// and saying it twice helps nobody.
+				return preflight.OK("not checked: there are no backups yet")
+			}
+			newest := local[0]
+
+			// Per target, for the same reason as the check above.
+			probeCtx, cancel := context.WithTimeout(ctx,
+				time.Duration(max(1, len(inst.Backup.Targets)))*30*time.Second)
+			defer cancel()
+
+			remote, err := ListRemote(probeCtx, d, TargetOptions{})
+			if err != nil {
+				// A failure, not a warning, even though the
+				// reachability check above usually says the same
+				// thing first. This check is fatal because it is
+				// the failure that hides, and "could not tell"
+				// downgraded to a warning is a green report for a
+				// question nobody answered -- which is the one
+				// outcome this check exists to prevent.
+				return preflight.Fail(
+					"see the target-reachable check above for why",
+					"cannot tell whether %s left this machine: %s",
+					newest.ID, domain.AsError(err).Message)
+			}
+
+			// Every configured target, not any of them. A push writes
+			// to all of them, and a push that failed part-way leaves the
+			// backup on the targets it reached -- so "it is on one of
+			// them" is exactly the state that needs reporting, not the
+			// state that clears the check.
+			// Keyed on the canonical form rather than on the string
+			// either side happened to render, so a target does not read
+			// as missing its own backup over a trailing slash.
+			present := make(map[string]bool, len(remote))
+			for _, r := range remote {
+				if r.Manifest.ID != newest.ID {
+					continue
+				}
+				if ref, perr := ports.TargetURL(r.Target); perr == nil {
+					present[ref.Canonical()] = true
+				}
+			}
+
+			var missing, holding []string
+			for _, cfg := range inst.Backup.Targets {
+				ref, perr := ports.TargetURL(cfg.URL)
+				if perr != nil {
+					// A target whose URL does not parse is
+					// already reported by the check above.
+					continue
+				}
+				if present[ref.Canonical()] {
+					holding = append(holding, ref.String())
+					continue
+				}
+				missing = append(missing, ref.String())
+			}
+
+			if len(missing) == 0 {
+				return preflight.OK("%s is on %s", newest.ID, strings.Join(holding, ", "))
+			}
+			if len(holding) == 0 {
+				return preflight.Fail(
+					fmt.Sprintf("run `morzer backup push %s`", newest.ID),
+					"the most recent backup (%s) is on no target, so every copy of "+
+						"this deployment's data is on this machine", newest.ID)
+			}
+			return preflight.Fail(
+				fmt.Sprintf("run `morzer backup push %s`", newest.ID),
+				"the most recent backup (%s) reached %s but not %s",
+				newest.ID, strings.Join(holding, ", "), strings.Join(missing, ", "))
 		},
 	}
 }

@@ -1,0 +1,1491 @@
+package suite
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/morzecrew/morzer/internal/adapters/target"
+	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
+)
+
+// withTargets wires a real target registry and a directory target, and points
+// the fake backup engine at a real directory so a push has something to move.
+//
+// The registry and the adapter are the production ones. Only the backup engine
+// is fake, because what these tests are about is the *operation* -- what the
+// step engine does when a push fails -- and not what a hook writes.
+func (h *harness) withTargets(t *testing.T) (inst domain.Installation, offsite string) {
+	t.Helper()
+
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+
+	h.Backup.Root = filepath.Join(h.Root, "var", "backups")
+	require.NoError(t, os.MkdirAll(h.Backup.Root, 0o700))
+
+	offsite = filepath.Join(t.TempDir(), "offsite")
+
+	inst = h.install()
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	return inst, offsite
+}
+
+func TestABackupReachesItsTarget(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+	})
+	require.NoError(t, err)
+
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok, "the backup operation returned no backup reference")
+	assert.Contains(t, result.Summary, "copied to",
+		"a backup that went off the machine and one that did not must not read alike")
+
+	// The backup is on the target, whole, and its manifest is readable
+	// there without a key.
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, ref.ID, manifests[0].ID)
+
+	// And the local copy is still there. A target is a second copy, not a
+	// move: the fast restore is from the local disk.
+	_, err = os.Stat(h.Backup.Dir(ref.ID))
+	require.NoError(t, err, "pushing a backup must not remove it from this machine")
+}
+
+// TestAFailedPushFailsTheBackup is decision 3 of RFC 0009, and the reason the
+// whole mechanism is worth having.
+//
+// Retention failing is Continue: a disk fuller than intended is a smaller
+// problem than a red backup. This is not that. The operation's purpose is that
+// the data is somewhere the machine's failure does not reach, and a green
+// `backup` on a machine whose backups are all local is exactly the state an
+// operator would find out about during the disaster.
+func TestAFailedPushFailsTheBackup(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	// A target on a path that cannot be created: the ordinary shape of an
+	// unmounted disk or a revoked credential.
+	blocked := filepath.Join(h.Root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory"), 0o600))
+
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + filepath.Join(blocked, "backups")}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.Error(t, err, "the backup was reported as succeeding although it never left the machine")
+
+	assert.Equal(t, "push-backup", failedStepID(result.Record),
+		"the failure must be attributed to the push, not to the backup itself")
+
+	// The remedy is in the message, and it is not "take another backup":
+	// the data is on the disk, correct and verified, and what failed was the
+	// medium.
+	assert.Contains(t, domain.AsError(err).Hint, "backup push",
+		"the refusal must name the retry; a failed push is not a failed backup")
+}
+
+// TestAFailedPushKeepsTheBackupItTook is the promise the previous test's
+// remedy depends on, and it is not free.
+//
+// The obvious `OnFailure: Compensate` rolls back every completed step
+// newest-first, and the oldest of those is create-backup, whose compensation
+// deletes the backup. That would leave an operator who configured a target with
+// *no* backup on a night the target was unreachable -- strictly worse than
+// having configured nothing at all.
+func TestAFailedPushKeepsTheBackupItTook(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	blocked := filepath.Join(h.Root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory"), 0o600))
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + filepath.Join(blocked, "backups")},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.Error(t, err)
+
+	local, err := h.Backup.List(context.Background())
+	require.NoError(t, err)
+	require.Len(t, local, 1,
+		"the failed push took the backup with it; the operator is worse off than "+
+			"before they configured a target")
+
+	_, err = os.Stat(h.Backup.Dir(local[0].ID))
+	require.NoError(t, err, "the backup directory was removed by compensation")
+}
+
+// TestAFailedPushKeepsWhatLandedWhole.
+//
+// The cleanup after a failed push is scoped to the target that failed. The
+// copies that already landed on the targets before it are complete -- the
+// manifest is written last, so a copy that lists at all is a copy that finished
+// -- and verified, because verification runs before the push step.
+//
+// This reverses what the step used to do, and the reason is a failure mode with
+// a long fuse. Three targets with the third permanently unreachable meant every
+// nightly backup was written to the two good media and then deleted from them
+// again, so a deployment with two working targets kept nothing off the machine
+// at all: strictly worse than never having configured the third. The operation
+// still fails, `doctor` still reports which target is missing the backup, and
+// `backup push` still copies it everywhere -- but what survived is kept.
+//
+// The half-written copy on the target that failed is still removed, and would
+// be unlistable even if it were not.
+func TestAFailedPushKeepsWhatLandedWhole(t *testing.T) {
+	h := newHarness(t)
+	inst, good := h.withTargets(t)
+
+	blocked := filepath.Join(h.Root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory"), 0o600))
+
+	// The good one first, so it succeeds before the bad one fails.
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + good},
+		{URL: "file://" + filepath.Join(blocked, "backups")},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.Error(t, err, "a target that could not be written to must fail the backup")
+
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, good))
+	require.NoError(t, err)
+	require.Len(t, manifests, 1,
+		"the copy that reached a working target was deleted because a different "+
+			"target failed; repeat that nightly and the deployment keeps no "+
+			"off-machine backup at all")
+}
+
+// TestAnInstallationWithNoTargetsIsUnchanged. Everything above has to be
+// invisible to the deployments that keep backups on one machine on purpose.
+func TestAnInstallationWithNoTargetsIsUnchanged(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	// Deliberately no target registry at all, which is also what a build
+	// without one looks like.
+	h.Deps.Targets = nil
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, result.Summary, "copied to")
+
+	for _, step := range result.Record.Steps {
+		assert.NotEqual(t, "push-backup", step.ID,
+			"a deployment with no targets must not acquire a push step")
+	}
+}
+
+// TestPushIsTheRetryForAFailedPush. The documented remedy, and it must not
+// need another backup.
+func TestPushIsTheRetryForAFailedPush(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	// A backup taken with the push turned off: the state a failed push
+	// leaves behind.
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: false,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok, "the backup operation returned no backup reference")
+
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+	require.Empty(t, manifests)
+
+	pushed, err := ops.Push(context.Background(), h.Deps, ops.PushOptions{})
+	require.NoError(t, err)
+	assert.Contains(t, pushed.Summary, ref.ID)
+
+	manifests, err = localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	assert.Equal(t, ref.ID, manifests[0].ID)
+
+	// Verified before it is copied, for the same reason the operation
+	// verifies before it pushes.
+	assert.Positive(t, h.Backup.Verified[ref.ID])
+}
+
+// TestRetentionOnATargetKeepsTheSamePolicyAsLocally, and never the most recent
+// backup.
+func TestRetentionOnATargetKeepsTheSamePolicyAsLocally(t *testing.T) {
+	h := newHarness(t)
+	inst, offsite := h.withTargets(t)
+
+	inst.Policy.RetainBackups = 2
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	var ids []string
+	for range 4 {
+		result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+			Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+		})
+		require.NoError(t, err)
+		ref, ok := result.Data.(ports.BackupRef)
+		require.True(t, ok)
+		ids = append(ids, ref.ID)
+	}
+
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+	require.Len(t, manifests, 2, "the target kept a different number of backups than the policy says")
+
+	// The newest is always among them. Retention that could remove the most
+	// recent backup is retention that can leave a deployment with nothing.
+	assert.Equal(t, ids[len(ids)-1], manifests[0].ID)
+}
+
+// TestAPreUpdateBackupIsExemptOnTheTargetToo. The exemption exists so the
+// backup guarding an update survives until the update is confirmed good, and it
+// would be worth very little if it survived only on the machine being updated.
+func TestAPreUpdateBackupIsExemptOnTheTargetToo(t *testing.T) {
+	h := newHarness(t)
+	inst, offsite := h.withTargets(t)
+
+	inst.Policy.RetainBackups = 1
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	guard, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "pre-update", Verify: true, Prune: true, Push: true, PruneRemote: true,
+	})
+	require.NoError(t, err)
+	guardRef, ok := guard.Data.(ports.BackupRef)
+	require.True(t, ok)
+	guardID := guardRef.ID
+
+	for range 2 {
+		_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+			Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+		})
+		require.NoError(t, err)
+	}
+
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+
+	var found bool
+	for _, m := range manifests {
+		if m.ID == guardID {
+			found = true
+		}
+	}
+	assert.True(t, found,
+		"the pre-update backup was pruned from the target; it is the one an "+
+			"operator reaches for when the update they were guarding goes wrong")
+}
+
+// TestRetentionFailingOnATargetDoesNotFailTheBackup.
+//
+// Unlike the push, this is `Continue`: the backup was taken and it is off the
+// machine, which is everything the operation promised. A target that stays
+// fuller than intended is a warning, not a failed backup.
+//
+// Driven by a target that accepts every push and refuses every removal, rather
+// than by a read-only directory. A read-only directory breaks the push too, so
+// the test could only assert "one of two things happened" -- which is a test
+// that passes whichever way the code behaves.
+func TestRetentionFailingOnATargetDoesNotFailTheBackup(t *testing.T) {
+	h := newHarness(t)
+	inst := h.install()
+
+	fake := fakes.NewBackupTarget()
+	h.Deps.Targets = fake
+	h.Backup.Root = filepath.Join(h.Root, "var", "backups")
+	require.NoError(t, os.MkdirAll(h.Backup.Root, 0o700))
+
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+	inst.Policy.RetainBackups = 1
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+	})
+	require.NoError(t, err)
+
+	fake.FailRemoveWith = domain.BackupError(nil, "the target refuses deletions")
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+	})
+	require.NoError(t, err,
+		"a target that would not prune failed the backup it had just accepted")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+	assert.Contains(t, result.Summary, "copied to")
+
+	// Both backups are still there: the prune failed, which is the point.
+	manifests, err := fake.List(context.Background(),
+		ports.TargetRef{Scheme: "memory", Path: "/backups"})
+	require.NoError(t, err)
+	assert.Len(t, manifests, 2)
+
+	// And the operator was told. "Continue" is the right call for retention,
+	// but a step that fails silently is indistinguishable from one that
+	// worked -- and a target nobody prunes fills up, which surfaces much
+	// later as a failed push during an incident.
+	var warned bool
+	for _, e := range h.Events.Events() {
+		if e.Level == events.LevelWarn && strings.Contains(e.Message, "prune-remote-backups") {
+			warned = true
+		}
+	}
+	assert.True(t, warned,
+		"retention failed on the target and the backup was reported as a plain "+
+			"success, so nobody learns the target is filling up")
+}
+
+// TestFetchBringsABackupBackAndVerifiesIt. The recovery move: the machine is
+// new, the backup is on the target, and the operator wants to look at it before
+// it overwrites anything.
+func TestFetchBringsABackupBackAndVerifiesIt(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok, "the backup operation returned no backup reference")
+
+	// Simulate the rebuilt machine: the local copy is gone, the target's is
+	// not.
+	require.NoError(t, os.RemoveAll(h.Backup.Dir(ref.ID)))
+
+	fetched, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.NoError(t, err)
+	assert.Contains(t, fetched.Summary, ref.ID)
+
+	dest := filepath.Join(h.Paths.BackupsDir(), ref.ID)
+	for _, name := range []string{ports.BackupManifestFileName, "db.sql.age"} {
+		_, err := os.Stat(filepath.Join(dest, name))
+		require.NoError(t, err, "%s did not come back", name)
+	}
+}
+
+// TestAnInterruptedFetchLeavesNothingInTheBackupStore. The store is what
+// `backup list` and `restore` read; a half-fetched directory in it is a backup
+// somebody selects.
+func TestAnInterruptedFetchLeavesNothingInTheBackupStore(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	_, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err, "fetching from an empty target must be an error")
+
+	// Required rather than tolerated. A store that could not be read would
+	// have skipped the loop and reported a pass, which is the one outcome
+	// worse than a failure: it is indistinguishable from a clean store.
+	entries, err := os.ReadDir(h.Paths.BackupsDir())
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.NotContains(t, e.Name(), ".fetching",
+			"a staging directory was left in the backup store")
+	}
+}
+
+// TestATargetsCredentialsComeFromTheSecretStore, and are named rather than
+// written into installation.yaml.
+func TestATargetsCredentialsComeFromTheSecretStore(t *testing.T) {
+	h := newHarness(t)
+	inst, offsite := h.withTargets(t)
+
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + offsite, Credentials: "backup_creds"},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	// Not set yet: the refusal has to name the secret, because "cannot read
+	// credentials" without a name is a support ticket.
+	_, err := ops.ListRemote(context.Background(), h.Deps, ops.TargetOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "backup_creds")
+	assert.Contains(t, domain.AsError(err).Hint, "secret set")
+
+	require.NoError(t, h.Secrets.Set(context.Background(), "backup_creds",
+		domain.NewSecret("access_key_id: AKIAEXAMPLE\nsecret_access_key: s3kr3t\n")))
+
+	_, err = ops.ListRemote(context.Background(), h.Deps, ops.TargetOptions{})
+	require.NoError(t, err)
+}
+
+// TestACredentialNeverReachesTheJournalOrALogLine. The values are registered
+// for redaction the moment they are read, before anything can print them.
+func TestACredentialNeverReachesTheJournalOrALogLine(t *testing.T) {
+	h := newHarness(t)
+	inst, offsite := h.withTargets(t)
+
+	const password = "correct-horse-battery-staple"
+
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + offsite, Credentials: "backup_creds"},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+	require.NoError(t, h.Secrets.Set(context.Background(), "backup_creds",
+		domain.NewSecret("access_key_id: AKIAEXAMPLE\nsecret_access_key: "+password+"\n")))
+
+	_, err := ops.ListRemote(context.Background(), h.Deps, ops.TargetOptions{})
+	require.NoError(t, err)
+
+	for _, value := range h.Deps.Redactor.Values() {
+		if value == password {
+			return
+		}
+	}
+	t.Fatal("the target's secret key was not registered for redaction, so a log " +
+		"line or a subprocess argument could print it")
+}
+
+// TestAMalformedCredentialDocumentIsRefusedWithoutQuotingIt. A YAML decoder's
+// error names the line it failed on, and that line is the credential.
+func TestAMalformedCredentialDocumentIsRefusedWithoutQuotingIt(t *testing.T) {
+	const password = "correct-horse-battery-staple"
+
+	_, err := ops.ParseTargetCredentials("access_key_id: [unclosed\nsecret: " + password)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error()+domain.AsError(err).Hint, password,
+		"the refusal quoted the document it was refusing")
+	assert.Contains(t, domain.AsError(err).Hint, "access_key_id",
+		"the refusal must say what a good document looks like")
+}
+
+// TestDoctorReportsATargetThatCannotBeReached. A fail rather than a warn: an
+// unreachable target means the data is on one disk, which is the state
+// configuring one was meant to end.
+func TestDoctorReportsATargetThatCannotBeReached(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	blocked := filepath.Join(h.Root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory"), 0o600))
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + filepath.Join(blocked, "backups")},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	result := findCheck(t, report, "backup.target-reachable")
+	assert.Equal(t, string(events.CheckFail), result.Status)
+	assert.Contains(t, result.Remedy, "push step",
+		"the remedy must say what happens if this is left alone")
+}
+
+// TestDoctorReportsABackupThatNeverLeftTheMachine. This is the failure the
+// whole mechanism exists to prevent, and the one that hides: the backup ran, it
+// succeeded, and the copy that would survive the machine is not there.
+func TestDoctorReportsABackupThatNeverLeftTheMachine(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: false,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok, "the backup operation returned no backup reference")
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	check := findCheck(t, report, "backup.target-freshness")
+	assert.Equal(t, string(events.CheckFail), check.Status)
+	assert.Contains(t, check.Remedy, "backup push "+ref.ID,
+		"the remedy must name the command that fixes it, with the id")
+}
+
+// TestDoctorIsSilentAboutTargetsWhenNoneAreConfigured. A warning nobody can act
+// on is a warning everybody learns to ignore.
+func TestDoctorIsSilentAboutTargetsWhenNoneAreConfigured(t *testing.T) {
+	h := newHarness(t)
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	h.install()
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	check := findCheck(t, report, "backup.target-reachable")
+	assert.Equal(t, string(events.CheckOK), check.Status)
+
+	for _, r := range report.Results {
+		assert.NotEqual(t, "backup.target-freshness", r.ID,
+			"freshness against a target that does not exist is not a question")
+	}
+}
+
+// TestAddingATargetChecksItBeforeRecordingIt. A typo that only fails at push
+// time fails during the nightly backup, weeks later.
+func TestAddingATargetChecksItBeforeRecordingIt(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	blocked := filepath.Join(h.Root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory"), 0o600))
+
+	_, err := ops.TargetAdd(context.Background(), h.Deps, ops.TargetAddOptions{
+		URL: "file://" + filepath.Join(blocked, "backups"),
+	})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Hint, "not added")
+
+	inst, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	for _, cfg := range inst.Backup.Targets {
+		assert.NotContains(t, cfg.URL, "blocked",
+			"a target that does not answer was recorded anyway")
+	}
+}
+
+// TestRemovingATargetLeavesWhatIsAlreadyThere. An operator retiring one medium
+// for another wants the old copies exactly where they are.
+func TestRemovingATargetLeavesWhatIsAlreadyThere(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+
+	result, err := ops.TargetRemove(context.Background(), h.Deps, ops.Options{}, "file://"+offsite)
+	require.NoError(t, err)
+	assert.Contains(t, result.Summary, "left alone")
+
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+	assert.Len(t, manifests, 1,
+		"removing a target from the configuration deleted an off-site archive")
+}
+
+// TestATargetIsRefusedWhenTheInstallationAlreadyHasIt. Two identical targets
+// would be pushed to twice and pruned twice, and the second pass would report
+// removing what the first already removed.
+func TestATargetIsRefusedWhenTheInstallationAlreadyHasIt(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	_, err := ops.TargetAdd(context.Background(), h.Deps, ops.TargetAddOptions{
+		URL: "file://" + offsite,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already")
+}
+
+// TestAnInstallationWithABadTargetIsRefusedWhereItIsWritten, rather than during
+// the operation whose whole purpose is to still work.
+func TestAnInstallationWithABadTargetIsRefusedWhereItIsWritten(t *testing.T) {
+	inst := domain.Installation{
+		SchemaVersion: domain.InstallationSchemaVersion,
+		ID:            "inst_x",
+		Product:       "demo",
+		Backup: domain.BackupConfig{Targets: []domain.BackupTargetConfig{
+			{URL: "/mnt/usb/backups"}, // no scheme
+		}},
+	}
+	err := inst.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "backup.targets[0].url")
+
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file:///mnt/a"},
+		{URL: "file:///mnt/a"},
+	}
+	err = inst.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "twice")
+}
+
+// TestAnInstallationFromANewerSchemaIsRefused, which is what makes the bump to
+// schema 3 do its job: an older manager reading a state it does not understand
+// would see no targets, take a backup, report success, and leave it on the
+// machine the operator configured a target to survive.
+//
+// The refusal is the mechanism; that targets are what arrived at schema 3 is
+// asserted separately below, because a test named for one and checking the
+// other is a test nobody can maintain.
+func TestAnInstallationFromANewerSchemaIsRefused(t *testing.T) {
+	require.GreaterOrEqual(t, domain.InstallationSchemaVersion, 3,
+		"backup targets arrived at schema 3")
+
+	inst := domain.Installation{
+		SchemaVersion: domain.InstallationSchemaVersion + 1,
+		ID:            "inst_x",
+		Product:       "demo",
+		Backup: domain.BackupConfig{
+			Targets: []domain.BackupTargetConfig{{URL: "file:///mnt/backups"}},
+		},
+	}
+	err := inst.Validate()
+	require.Error(t, err)
+	assert.Contains(t, strings.ToLower(err.Error()), "newer manager")
+}
+
+func mustTarget(t *testing.T, dir string) ports.TargetRef {
+	t.Helper()
+	ref, err := ports.TargetURL("file://" + dir)
+	require.NoError(t, err)
+	return ref
+}
+
+// failedStepID names the step a record blames, so a test can assert the failure
+// was attributed where an operator would look.
+func failedStepID(record domain.OperationRecord) string {
+	for _, step := range record.Steps {
+		if step.Status == domain.StepFailed {
+			return step.ID
+		}
+	}
+	return ""
+}
+
+// TestFetchRefusesToOverwriteALocalBackup. The local copy is the one that has
+// been verified on this machine; silently replacing it with bytes that just
+// arrived over a network is not a thing a fetch should decide.
+func TestFetchRefusesToOverwriteALocalBackup(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	// The backup store is where `backup list` and `restore` read from, so a
+	// fetch has to place it there -- and the local copy of this id is
+	// already there.
+	dest := filepath.Join(h.Paths.BackupsDir(), ref.ID)
+	require.NoError(t, os.MkdirAll(dest, 0o700))
+
+	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{
+		BackupID: ref.ID,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), ref.ID)
+	assert.Contains(t, domain.AsError(err).Hint, "restore it with",
+		"the refusal must point at what the operator probably meant")
+}
+
+// TestFetchingAnIdThatIsNotOnTheTargetNamesTheTarget, so an operator can tell
+// "wrong id" from "wrong target".
+func TestFetchingAnIdThatIsNotOnTheTargetNamesTheTarget(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+
+	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{
+		BackupID: "20991231T235959Z",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "20991231T235959Z")
+	assert.Contains(t, err.Error(), offsite)
+}
+
+// TestNamingAConfiguredTargetPicksUpItsCredentials.
+//
+// `--target` is a filter in the ordinary case and a complete specification in
+// the recovery case. When the URL matches something the installation already
+// configures, the stored credentials come with it -- otherwise an operator who
+// typed the URL to narrow a listing would be told their credentials are
+// missing.
+func TestNamingAConfiguredTargetPicksUpItsCredentials(t *testing.T) {
+	h := newHarness(t)
+	inst, offsite := h.withTargets(t)
+
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + offsite, Credentials: "backup_creds"},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+	require.NoError(t, h.Secrets.Set(context.Background(), "backup_creds",
+		domain.NewSecret("access_key_id: AKIAEXAMPLE\nsecret_access_key: s3kr3t\n")))
+
+	_, err := ops.ListRemote(context.Background(), h.Deps, ops.TargetOptions{
+		URL: "file://" + offsite,
+	})
+	require.NoError(t, err)
+
+	// A URL the installation does not configure is still addressable: that
+	// is the recovery case, and it must not need the installation to agree.
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+	require.NoError(t, os.MkdirAll(elsewhere, 0o700))
+	_, err = ops.ListRemote(context.Background(), h.Deps, ops.TargetOptions{
+		URL: "file://" + elsewhere,
+	})
+	require.NoError(t, err)
+}
+
+// TestTargetListReportsWhatDoctorReports, so `backup target list` and the
+// doctor check cannot disagree about whether a target answers.
+func TestTargetListReportsWhatDoctorReports(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	statuses, err := ops.TargetList(context.Background(), h.Deps)
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	assert.True(t, statuses[0].Reachable)
+	assert.Zero(t, statuses[0].Backups)
+
+	_, err = ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+
+	statuses, err = ops.TargetList(context.Background(), h.Deps)
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	assert.Equal(t, 1, statuses[0].Backups)
+	assert.NotEmpty(t, statuses[0].Latest)
+}
+
+// TestVerifyingATargetReadsTheBackupBack, which is the whole claim: a backup
+// nobody has read back is a hope, and copying one to a bucket does not change
+// that.
+func TestVerifyingATargetReadsTheBackupBack(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	verified, err := ops.VerifyRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.NoError(t, err)
+	assert.Contains(t, verified.Summary, "1 backup(s)")
+
+	// Rot on the target: one byte changed in a component nobody has read
+	// since it was written. This is the state the check exists to find, and
+	// the local copy is untouched, so nothing else would notice.
+	component := filepath.Join(offsite, ref.ID, "db.sql.age")
+	data, err := os.ReadFile(component)
+	require.NoError(t, err)
+	data[len(data)/2] ^= 0x01
+	require.NoError(t, os.WriteFile(component, data, 0o600))
+
+	_, err = ops.VerifyRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err, "a corrupted copy on the target passed verification")
+	assert.Contains(t, err.Error(), "checksum mismatch")
+	assert.Contains(t, domain.AsError(err).Hint, "check the local copy too")
+
+	// The local copy is still fine, which is the point of checking both.
+	require.NoError(t, h.Deps.Backup.Verify(context.Background(), ref))
+}
+
+// TestVerifyingATargetNoticesAMissingComponent, which is what a push that was
+// interrupted after the manifest somehow would leave, and what a partial
+// deletion leaves.
+func TestVerifyingATargetNoticesAMissingComponent(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	require.NoError(t, os.Remove(filepath.Join(offsite, ref.ID, "db.sql.age")))
+
+	_, err = ops.VerifyRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing")
+}
+
+// TestThePreUpdateBackupReachesTheTarget.
+//
+// This is the backup an operator restores from when an update goes wrong, so
+// leaving it on the machine alone means the moment the deployment is most
+// fragile is the moment its backup is least durable.
+func TestThePreUpdateBackupReachesTheTarget(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	result, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
+		Ref: stageUpgradeSource(t, h),
+	})
+	require.NoError(t, err, "%s", result.Record.Error)
+
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+	require.Len(t, manifests, 1,
+		"the pre-update backup never left the machine")
+	assert.Equal(t, "pre-update", manifests[0].Reason)
+}
+
+// TestAPreUpdateBackupThatCannotBePushedWarnsRatherThanFailingTheUpdate.
+//
+// The asymmetry with `morzer backup` is deliberate and worth pinning. That
+// operation exists to produce a durable backup, so a copy that never left the
+// machine means it did not do its job. This one exists to install a release,
+// and refusing to update because a USB disk was unplugged would block the
+// security fix an operator is applying. The gap is reported instead -- here,
+// and by `doctor` until `backup push` closes it.
+func TestAPreUpdateBackupThatCannotBePushedWarnsRatherThanFailingTheUpdate(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	blocked := filepath.Join(h.Root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory"), 0o600))
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + filepath.Join(blocked, "backups")},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	result, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
+		Ref: stageUpgradeSource(t, h),
+	})
+	require.NoError(t, err,
+		"an unreachable target blocked an update; the operator cannot apply a fix")
+
+	var warned bool
+	for _, e := range h.Events.Events() {
+		if e.Level == events.LevelWarn && strings.Contains(e.Message, "backup push") {
+			warned = true
+		}
+	}
+	assert.True(t, warned,
+		"the update succeeded without telling the operator their pre-update "+
+			"backup is only on the machine being updated")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+}
+
+// TestRetentionNeverRemovesTheLastCopyOnATarget, whatever the policy says.
+//
+// A policy of zero is a configuration mistake, and honouring it literally on a
+// target would delete the only copy that survives the machine — which is worse
+// than the same mistake locally, because the local one is at least still on a
+// disk the operator is looking at.
+func TestRetentionNeverRemovesTheLastCopyOnATarget(t *testing.T) {
+	h := newHarness(t)
+	inst, offsite := h.withTargets(t)
+
+	// Zero is not reachable through `policy.retain_backups`, which Validate
+	// refuses below zero and treats zero as unset -- so it is exercised
+	// where it could actually arrive: a manifest declaring it.
+	inst.Policy.RetainBackups = 0
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	for range 3 {
+		_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+			Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+		})
+		require.NoError(t, err)
+	}
+
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+	assert.NotEmpty(t, manifests,
+		"retention emptied the target; the deployment's only off-machine copy is gone")
+
+	// And what survives is whole rather than merely listed.
+	require.NoError(t, localdir.New().Verify(context.Background(),
+		ports.RemoteRef{Target: mustTarget(t, offsite), ID: manifests[0].ID}))
+}
+
+// TestACorruptFetchNeverReachesTheBackupStore.
+//
+// The store is what `backup list` reads and `restore` picks from. Promoting the
+// fetched directory and verifying afterwards left a corrupt backup selectable by
+// the very command the verification exists to protect.
+func TestACorruptFetchNeverReachesTheBackupStore(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	require.NoError(t, os.RemoveAll(h.Backup.Dir(ref.ID)))
+
+	// Rot on the target, after the manifest recorded the digest.
+	component := filepath.Join(offsite, ref.ID, "db.sql.age")
+	require.NoError(t, os.WriteFile(component, []byte("not what was pushed"), 0o600))
+
+	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err, "a corrupt backup was fetched without complaint")
+
+	// Required rather than tolerated: a store that cannot be read would have
+	// skipped the assertion below and reported a pass, which is the one
+	// outcome worse than a failure here.
+	entries, err := os.ReadDir(h.Paths.BackupsDir())
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.NotEqual(t, ref.ID, e.Name(),
+			"a backup that failed verification was left in the store, where "+
+				"`restore` can select it")
+	}
+}
+
+// TestPushWaitsForTheDeploymentLock.
+//
+// `backup push` writes to every target and reads the backup store, which is
+// exactly what the scheduled backup is doing at the same moment: one copying a
+// backup to a target while the other's retention pass prunes that target, each
+// acting on a listing the other has just changed. It ran outside the lock, so
+// `--wait` and `--timeout` were flags that did nothing.
+func TestPushWaitsForTheDeploymentLock(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: false,
+	})
+	require.NoError(t, err)
+
+	h.Locker.FailAcquire = true
+
+	_, err = ops.Push(context.Background(), h.Deps, ops.PushOptions{})
+	require.Error(t, err, "a push ran while another operation held the deployment lock")
+	assert.Equal(t, domain.CodeLocked, domain.AsError(err).Code,
+		"a busy lock has to stay distinguishable from a failed push, or a timer "+
+			"retries on the wrong signal")
+}
+
+// TestAddingATargetRechecksUnderTheLock.
+//
+// The duplicate check runs before the lock is taken, so a second `target add`
+// for the same URL that started while the first was still writing found nothing
+// and appended anyway.
+//
+// What is at stake is the refusal, not the file: saving an installation that
+// lists one target twice is refused by validation either way. Without the
+// recheck the operator is told "manifest is invalid: backup.targets[2].url: is
+// listed twice" -- a corrupt-configuration error naming an array index, for a
+// target they simply already have.
+//
+// Driven by a locker that records the competing add at the moment this one
+// starts waiting, which is the window the check has to close.
+func TestAddingATargetRechecksUnderTheLock(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	second := filepath.Join(t.TempDir(), "second")
+	url := "file://" + second
+
+	h.Deps.Locker = &lockerThatRaces{Locker: h.Locker, at: func() {
+		current := inst
+		current.Backup.Targets = append(current.Backup.Targets,
+			domain.BackupTargetConfig{URL: url})
+		require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), current))
+	}}
+
+	_, err := ops.TargetAdd(context.Background(), h.Deps, ops.TargetAddOptions{URL: url})
+	require.Error(t, err, "the same target was added twice")
+	assert.Contains(t, domain.AsError(err).Message, "already a backup target")
+
+	after, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, after.Backup.Targets, 2,
+		"the target was recorded twice, so every backup now pushes to it twice")
+}
+
+// lockerThatRaces runs at() while the lock is being acquired: the moment a
+// concurrent command has finished writing and this one is about to read.
+type lockerThatRaces struct {
+	*fakes.Locker
+	at func()
+}
+
+func (l *lockerThatRaces) Acquire(
+	ctx context.Context, name string, opts ports.LockOptions,
+) (func() error, error) {
+	l.at()
+	return l.Locker.Acquire(ctx, name, opts)
+}
+
+// TestAFetchedBackupIsVerifiedWithNoReleaseInstalled.
+//
+// The rebuilt machine is the whole point of `backup fetch`: no release is
+// installed yet, so there is no backup engine, and fetching is what comes
+// before installing one. Verification used to be skipped exactly there, while
+// the command's help said it verified checksums -- so the one fetch nobody
+// could check by hand was the one that was never checked.
+func TestAFetchedBackupIsVerifiedWithNoReleaseInstalled(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	require.NoError(t, os.RemoveAll(h.Backup.Dir(ref.ID)))
+
+	// Rot on the target, after the manifest recorded the digest.
+	component := filepath.Join(offsite, ref.ID, "db.sql.age")
+	require.NoError(t, os.WriteFile(component, []byte("not what was pushed"), 0o600))
+
+	// No release, so no backup engine -- the state of a machine that is
+	// being rebuilt.
+	h.Deps.Backup = nil
+
+	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err,
+		"a damaged backup was fetched without complaint because no release was "+
+			"installed to verify it")
+
+	entries, err := os.ReadDir(h.Paths.BackupsDir())
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.NotEqual(t, ref.ID, e.Name(),
+			"a backup that failed verification was left in the store")
+	}
+}
+
+// TestAFetchRefusesABackupIdThatIsAPath.
+//
+// The id comes out of a manifest on a target, which is a file this manager may
+// not have written, and it decides every local path a fetch builds -- including
+// the staging directory that is deleted before the transfer starts. An id of
+// `../../evil` made that a RemoveAll outside the backup store.
+//
+// Driven by a target that answers with the hostile manifest directly, because
+// what is being tested is that this layer refuses it whatever the transport
+// below happens to catch.
+func TestAFetchRefusesABackupIdThatIsAPath(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	// Something to lose, one level up from the backup store.
+	outside := filepath.Join(filepath.Dir(h.Paths.BackupsDir()), "evil.fetching")
+	require.NoError(t, os.MkdirAll(outside, 0o700))
+
+	h.Deps.Targets = &targetWithHostileID{id: "../evil"}
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	_, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err, "a backup id that is a path was fetched")
+
+	_, statErr := os.Stat(outside)
+	require.NoError(t, statErr,
+		"the fetch deleted a directory outside the backup store, named by a "+
+			"manifest on the target")
+}
+
+// targetWithHostileID answers every listing with one manifest whose id is a
+// path. Nothing else about it needs to work: the refusal must come before the
+// first transfer.
+type targetWithHostileID struct {
+	ports.BackupTarget
+	id string
+}
+
+func (t *targetWithHostileID) Schemes() []string { return []string{"memory"} }
+
+func (t *targetWithHostileID) List(
+	ctx context.Context, ref ports.TargetRef,
+) ([]ports.BackupManifest, error) {
+	return []ports.BackupManifest{{ID: t.id, SchemaVersion: 2}}, nil
+}
+
+// Fetch refuses, which is what the transports do with a key like this. It is
+// implemented so that removing the guard above fails this test at the
+// assertion about what was deleted, rather than somewhere earlier: the
+// dangerous line runs *before* any transport is asked anything.
+func (t *targetWithHostileID) Fetch(ctx context.Context, ref ports.RemoteRef, destDir string) error {
+	return domain.BackupError(nil, "the backup names a component outside the target")
+}
+
+// TestDoctorReportsABackupThatReachedOnlyOneTarget.
+//
+// A push writes to every configured target, so "the newest backup is on one of
+// them" is a finding, not a pass. It is also the state a failed push now leaves
+// deliberately -- the copies that landed whole are kept -- which makes this
+// check the thing that tells an operator the deployment is half-covered.
+func TestDoctorReportsABackupThatReachedOnlyOneTarget(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	// A second target, added after the backup was taken: reachable, empty,
+	// and exactly what an operator has just before their first push to it.
+	second := filepath.Join(t.TempDir(), "second")
+	require.NoError(t, os.MkdirAll(second, 0o700))
+	inst.Backup.Targets = append(inst.Backup.Targets,
+		domain.BackupTargetConfig{URL: "file://" + second})
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	check := findCheck(t, report, "backup.target-freshness")
+	assert.Equal(t, string(events.CheckFail), check.Status,
+		"one target holding the newest backup cleared a check that every target "+
+			"is supposed to satisfy")
+	assert.Contains(t, check.Message, second,
+		"the report must name the target that is missing it, or the operator "+
+			"cannot tell which medium to look at")
+	assert.Contains(t, check.Remedy, "backup push "+ref.ID)
+}
+
+// TestDoctorDoesNotPassFreshnessItCouldNotCheck.
+//
+// This check is fatal because it is the failure that hides. A listing that
+// failed was reported as a warning, which is a green report for a question
+// nobody answered -- the same outcome as "the backup is safely off the machine",
+// printed for the case where nothing is known.
+func TestDoctorDoesNotPassFreshnessItCouldNotCheck(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+
+	// The medium goes away after the backup reached it: an unmounted disk,
+	// a revoked credential, a host that stopped answering.
+	blocked := filepath.Join(h.Root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory"), 0o600))
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + filepath.Join(blocked, "backups")},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	check := findCheck(t, report, "backup.target-freshness")
+	assert.Equal(t, string(events.CheckFail), check.Status,
+		"doctor reported no problem with a question it could not answer")
+}
+
+// TestAFetchAcceptsADigestSpelledTheOtherWay.
+//
+// A manifest records a checksum as text, and `sha256:ABCD…` and `abcd…` are the
+// same checksum. The engine's own verification and the remote one both compare
+// them through the digest normaliser; the fallback that runs when no release is
+// installed compared the strings, so a backup that verified on the target
+// failed the moment it landed -- on the machine where it is the only copy left,
+// with the one message an operator cannot ignore.
+func TestAFetchAcceptsADigestSpelledTheOtherWay(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	require.NoError(t, os.RemoveAll(h.Backup.Dir(ref.ID)))
+
+	// The same digests, spelled the way a different writer might: bare hex,
+	// upper case, no `sha256:` prefix. The bytes on the target are untouched.
+	manifestPath := filepath.Join(offsite, ref.ID, ports.BackupManifestFileName)
+	raw, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+
+	var manifest ports.BackupManifest
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+	require.NotEmpty(t, manifest.Components)
+	for i, c := range manifest.Components {
+		require.NotEmpty(t, c.SHA256, "the fixture recorded no checksum to respell")
+		manifest.Components[i].SHA256 = strings.ToUpper(strings.TrimPrefix(c.SHA256, "sha256:"))
+	}
+	respelled, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, respelled, 0o600))
+
+	// No release installed, so the fallback verifier is the one that runs.
+	h.Deps.Backup = nil
+
+	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.NoError(t, err,
+		"an intact backup was refused because its manifest spelled the checksum "+
+			"differently than this one comparison expected")
+
+	_, err = os.Stat(filepath.Join(h.Paths.BackupsDir(), ref.ID))
+	require.NoError(t, err, "the backup was not promoted into the store")
+}
+
+// TestAFetchRefusesABackupThatChangedWhileItWasBeingFetched.
+//
+// A target is a medium this deployment does not control, and a fetch reads it
+// twice: once to list it, once to copy it. Everything the copy does is driven
+// by the manifest it reads on the second pass, so a manifest rewritten in
+// between decides what arrives -- and the result is internally consistent
+// whatever it says. A component quietly dropped from it produces a directory
+// that verifies against itself, lists as a backup, and is missing a part of the
+// one the operator was shown. Verified, complete-looking and short by one
+// component is the worst of those states, because nothing downstream questions
+// it again.
+//
+// So the two readings are compared, and any disagreement refuses the fetch. The
+// stub target here is one whose two reads differ on purpose, which is what a
+// medium changing under the manager looks like from this layer.
+func TestAFetchRefusesABackupThatChangedWhileItWasBeingFetched(t *testing.T) {
+	const id = "20260101T000000Z"
+	body := []byte("the bytes that actually arrived")
+	arrived := fmt.Sprintf("sha256:%x", sha256.Sum256(body))
+	other := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("something else entirely")))
+
+	component := func(digest string) ports.ComponentRecord {
+		return ports.ComponentRecord{
+			Component: ports.ComponentDatabase,
+			Path:      "db.sql.age",
+			Size:      int64(len(body)),
+			SHA256:    digest,
+		}
+	}
+	second := ports.ComponentRecord{
+		Component: ports.ComponentFiles,
+		Path:      "files.tar.age",
+		Size:      int64(len(body)),
+		SHA256:    arrived,
+	}
+
+	for name, tc := range map[string]struct {
+		listed []ports.ComponentRecord
+		staged ports.BackupManifest
+		refuse string
+	}{
+		// The one the whole comparison exists for: the listing offered two
+		// components, the fetch was driven by a manifest naming one, and
+		// what landed agrees with itself perfectly.
+		"a component the listing named is not in the copy that arrived": {
+			listed: []ports.ComponentRecord{component(arrived), second},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{component(arrived)},
+			},
+			refuse: "named by the listing and not by the copy that arrived",
+		},
+		"a component nobody offered arrived anyway": {
+			listed: []ports.ComponentRecord{component(arrived)},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{component(arrived), second},
+			},
+			refuse: "in the copy that arrived and not in the listing",
+		},
+		// Sizes agree, so the digest is the only thing that can catch it.
+		"the two readings disagree about a digest": {
+			listed: []ports.ComponentRecord{component(arrived)},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{component(other)},
+			},
+			refuse: "disagree on its checksum",
+		},
+		// The cheapest edit of all, and for a while the only one that got
+		// through: keep the size, delete the checksum. Verification skips
+		// a component that records none, so a comparison that only looked
+		// at two non-empty digests left the whole digest pass disarmed.
+		"the copy that arrived records no checksum at all": {
+			listed: []ports.ComponentRecord{component(arrived)},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{component("")},
+			},
+			refuse: "disagree on its checksum",
+		},
+		// Size is compared before any checksum is, so this is refused
+		// whether or not the copy that arrived records one.
+		"the two readings disagree about a size": {
+			listed: []ports.ComponentRecord{component(arrived)},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: id,
+				Components: []ports.ComponentRecord{{
+					Component: ports.ComponentDatabase,
+					Path:      "db.sql.age",
+					Size:      int64(len(body)) + 1,
+				}},
+			},
+			refuse: "the listing said",
+		},
+		// A manifest naming another backup, promoted under this id, would
+		// make `restore --backup` read a header describing something else.
+		"the copy that arrived names another backup": {
+			listed: []ports.ComponentRecord{component(arrived)},
+			staged: ports.BackupManifest{
+				SchemaVersion: 2, ID: "20250101T000000Z",
+				Components: []ports.ComponentRecord{component(arrived)},
+			},
+			refuse: "naming",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			inst, _ := h.withTargets(t)
+
+			h.Deps.Targets = &targetWithSwappedManifest{
+				listed: ports.BackupManifest{
+					SchemaVersion: 2, ID: id, Components: tc.listed,
+				},
+				staged: tc.staged,
+				body:   body,
+			}
+			inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+			require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+			// No release installed: the fallback verifier is the one
+			// that runs, and the only one that reads this manifest.
+			h.Deps.Backup = nil
+
+			_, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+			require.Error(t, err,
+				"a backup was promoted although the manifest it carries was never "+
+					"checked against the files beside it")
+			assert.Contains(t, domain.AsError(err).Message, tc.refuse)
+
+			_, statErr := os.Stat(filepath.Join(h.Paths.BackupsDir(), id))
+			assert.True(t, os.IsNotExist(statErr),
+				"the backup was left in the store, where `restore` can select it")
+		})
+	}
+}
+
+// targetWithSwappedManifest lists one manifest and delivers another, which is
+// what a target rewritten between the two reads looks like from this layer.
+type targetWithSwappedManifest struct {
+	ports.BackupTarget
+	listed ports.BackupManifest
+	staged ports.BackupManifest
+	body   []byte
+}
+
+func (t *targetWithSwappedManifest) Schemes() []string { return []string{"memory"} }
+
+func (t *targetWithSwappedManifest) List(
+	ctx context.Context, ref ports.TargetRef,
+) ([]ports.BackupManifest, error) {
+	return []ports.BackupManifest{t.listed}, nil
+}
+
+func (t *targetWithSwappedManifest) Fetch(
+	ctx context.Context, ref ports.RemoteRef, destDir string,
+) error {
+	if err := os.MkdirAll(destDir, 0o700); err != nil {
+		return err
+	}
+	for _, c := range t.staged.Components {
+		if err := os.WriteFile(filepath.Join(destDir, c.Path), t.body, 0o600); err != nil {
+			return err
+		}
+	}
+	data, err := json.Marshal(t.staged)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(destDir, ports.BackupManifestFileName), data, 0o600)
+}
+
+// TestAFetchedBackupWithNoIdInItsManifestIsStillSelectable.
+//
+// `backup list` reads a backup's id out of its manifest, not out of the
+// directory the manifest sits in. A remote listing is more forgiving: it fills
+// an absent id in from the directory name, so a manifest without one is
+// perfectly visible with `backup list --remote` and has an id an operator can
+// type.
+//
+// Promoting that manifest as it arrived produced a local backup listed with no
+// id at all -- on the disk, and impossible to name, so `restore --backup` could
+// not select the thing that had just been fetched. What the listing filled in
+// is now written down.
+func TestAFetchedBackupWithNoIdInItsManifestIsStillSelectable(t *testing.T) {
+	const id = "20260101T000000Z"
+	body := []byte("ciphertext")
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(body))
+
+	components := []ports.ComponentRecord{{
+		Component: ports.ComponentDatabase,
+		Path:      "db.sql.age",
+		Size:      int64(len(body)),
+		SHA256:    digest,
+	}}
+
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	h.Deps.Targets = &targetWithSwappedManifest{
+		// What a remote listing reports: the id filled in from the
+		// directory the manifest was found in.
+		listed: ports.BackupManifest{SchemaVersion: 2, ID: id, Components: components},
+		// What is actually on the medium: a manifest naming no backup.
+		staged: ports.BackupManifest{SchemaVersion: 2, Components: components},
+		body:   body,
+	}
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+	h.Deps.Backup = nil
+
+	result, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.NoError(t, err, "a backup whose manifest carries no id was refused")
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+	assert.Equal(t, id, ref.ID)
+
+	raw, err := os.ReadFile(filepath.Join(h.Paths.BackupsDir(), id, ports.BackupManifestFileName))
+	require.NoError(t, err)
+
+	var promoted ports.BackupManifest
+	require.NoError(t, json.Unmarshal(raw, &promoted))
+	assert.Equal(t, id, promoted.ID,
+		"the promoted manifest names no backup, so `backup list` shows an empty id "+
+			"and `restore --backup` cannot select what was just fetched")
+}
