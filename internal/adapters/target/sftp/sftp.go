@@ -133,16 +133,29 @@ func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
 }
 
 // Close releases every cached connection.
+//
+// The cache is emptied under the lock and the connections are closed after it
+// is released, the same way `drop` does. Closing writes a disconnect to the
+// wire, and a host that has stopped answering without closing its socket -- an
+// unplugged NAS, a firewall that black-holes rather than refuses -- can hold
+// that write for a long time. Holding the mutex across it means an operation
+// still finishing, or the goroutine watching a connection die, waits on a
+// server that is never going to reply, at the moment the command is trying to
+// exit.
 func (t *Target) Close() error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
+	doomed := make([]*connection, 0, len(t.conns))
+	for key, conn := range t.conns {
+		doomed = append(doomed, conn)
+		delete(t.conns, key)
+	}
+	t.mu.Unlock()
 
 	var errs []error
-	for key, conn := range t.conns {
+	for _, conn := range doomed {
 		if err := conn.close(); err != nil {
 			errs = append(errs, err)
 		}
-		delete(t.conns, key)
 	}
 	return errors.Join(errs...)
 }

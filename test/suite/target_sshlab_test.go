@@ -267,14 +267,24 @@ func (l *sshLab) record(ch ssh.Channel) {
 
 // killSFTPSessions closes every sftp channel the server has accepted and leaves
 // the ssh transport up.
+//
+// The channels are taken out of the lab first and closed after the lock is
+// released. Closing writes to the transport, which can block, and `record` --
+// the server's accept path -- wants the same mutex: the next session would then
+// be waiting on a close that is waiting on the wire. In this test that is not
+// merely untidy, because the next session is the reconnection the caller is
+// about to require, and a stalled accept would fail it with the message that
+// accuses the adapter of reusing a dead session. A flake indistinguishable from
+// the regression it is watching for is the worst shape a test can take.
 func (l *sshLab) killSFTPSessions() {
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	doomed := l.channels
+	l.channels = nil
+	l.mu.Unlock()
 
-	for _, ch := range l.channels {
+	for _, ch := range doomed {
 		_ = ch.Close()
 	}
-	l.channels = nil
 }
 
 func startInProcessSSHLab(t *testing.T, host sshKey, authorized ssh.PublicKey, root string) *sshLab {
