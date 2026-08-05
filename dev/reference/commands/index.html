@@ -18,7 +18,7 @@
         <link rel="prev" href="../../authoring/publishing/">
       
       
-        <link rel="next" href="../secret-commands/">
+        <link rel="next" href="../backup-targets/">
       
       
         
@@ -1249,6 +1249,39 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#backup-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup push
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup fetch
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#backup-verify" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1290,6 +1323,35 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backup-targets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backup target URLs
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1922,6 +1984,39 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#backup-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup push
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup fetch
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#backup-verify" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2459,15 +2554,124 @@ manifest, and verifies the checksums by re-reading what was written.</p>
 <td><code>--no-prune</code></td>
 <td>Skip applying the retention policy afterwards.</td>
 </tr>
+<tr>
+<td><code>--no-push</code></td>
+<td>Do not copy the backup to the configured targets; it stays only on this machine.</td>
+</tr>
+<tr>
+<td><code>--no-prune-remote</code></td>
+<td>Skip applying the retention policy on the targets.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="backup-list">backup list<a class="headerlink" href="#backup-list" title="Permanent link">&para;</a></h3>
 <p>Lists backups, newest first.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--remote</code></td>
+<td>List what is on the configured backup targets instead.</td>
+</tr>
+<tr>
+<td><code>--target</code></td>
+<td>List one target by URL, whether or not this installation configures it.</td>
+</tr>
+<tr>
+<td><code>--credentials-file</code></td>
+<td><abbr title="YAML Ain't Markup Language">YAML</abbr> file holding the target's credentials, for a machine whose secret state is not readable yet.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backup-target">backup target<a class="headerlink" href="#backup-target" title="Permanent link">&para;</a></h3>
+<p>Manages where backups are kept besides this machine. See
+<a href="../backup-targets/">backup target URLs</a>.</p>
+<p><code>morzer backup target add &lt;url&gt;</code> records a target, checking it answers first.
+<code>morzer backup target list</code> shows them and whether each is reachable.
+<code>morzer backup target remove &lt;url&gt;</code> stops using one and deletes nothing that is
+already there.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--credentials</code></td>
+<td>Name of a secret holding this target's credential document.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backup-push">backup push<a class="headerlink" href="#backup-push" title="Permanent link">&para;</a></h3>
+<p>Copies an existing backup to every configured target, verifying it again first.
+Takes a backup id; the most recent when omitted.</p>
+<p>This is the retry for a push that failed. A backup whose push failed is still on
+this machine, verified and correct — what failed was the network or the medium,
+and the remedy should not be taking another backup.</p>
+<h3 id="backup-fetch">backup fetch<a class="headerlink" href="#backup-fetch" title="Permanent link">&para;</a></h3>
+<p>Copies a backup down from a target into this machine's backup store, and
+verifies it. Takes a backup id; the newest on the target when omitted.</p>
+<p>Restoring is a separate command on purpose: a backup that has come back from a
+bucket is one you should be able to look at before it overwrites a database.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--target</code></td>
+<td>Target URL to fetch from; the installation's targets when omitted.</td>
+</tr>
+<tr>
+<td><code>--credentials-file</code></td>
+<td><abbr title="YAML Ain't Markup Language">YAML</abbr> file holding the target's credentials, for a machine whose secret state is not readable yet.</td>
+</tr>
+</tbody>
+</table>
 <h3 id="backup-verify">backup verify<a class="headerlink" href="#backup-verify" title="Permanent link">&para;</a></h3>
-<p>Re-reads a backup and checks its checksums. Takes a backup id; the most recent
-when omitted.</p>
+<p>Re-reads a backup and checks its checksums. Takes a backup id; locally, the most
+recent backup when omitted.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>01J8ZP...
+morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>--remote
 </code></pre></div>
+<p>With <code>--remote</code> it checks the copy on the configured targets instead, streaming
+each component through a checksum and keeping nothing. A full transfer, and the
+only thing that notices rot on a target.</p>
+<p>Omitting the id means something different in each mode: locally it verifies the
+most recent backup, and with <code>--remote</code> it verifies <strong>every</strong> backup on every
+configured target, which is what a scheduled check wants.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--remote</code></td>
+<td>Check the copy on the configured backup targets; a full transfer.</td>
+</tr>
+<tr>
+<td><code>--target</code></td>
+<td>Verify on one target by URL, whether or not this installation configures it.</td>
+</tr>
+<tr>
+<td><code>--credentials-file</code></td>
+<td><abbr title="YAML Ain't Markup Language">YAML</abbr> file holding the target's credentials, for a machine whose secret state is not readable yet.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="restore">restore<a class="headerlink" href="#restore" title="Permanent link">&para;</a></h2>
 <p>Restores from a backup.</p>
 <p>Destructive: it requires <code>--force</code> <strong>and</strong> <code>--confirm &lt;installation-id&gt;</code>, typed
@@ -2572,13 +2776,13 @@ check compatibility programmatically rather than by trial and error.</p>
         
         
           
-          <a href="../secret-commands/" class="md-footer__link md-footer__link--next" aria-label="Next: secret">
+          <a href="../backup-targets/" class="md-footer__link md-footer__link--next" aria-label="Next: Backup target URLs">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                secret
+                Backup target URLs
               </div>
             </div>
             <div class="md-footer__button md-icon">

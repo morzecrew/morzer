@@ -1063,6 +1063,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../reference/backup-targets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backup target URLs
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reference/secret-commands/" class="md-nav__link">
         
   
@@ -1614,6 +1643,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#backups-that-leave-the-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Backups that leave the machine
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-runtime-boundary" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1790,6 +1830,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Backups, against a real database
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backups-that-leave-the-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Backups that leave the machine
       </span>
     </span>
   </a>
@@ -2281,6 +2332,92 @@ asserted by <em>which</em> refusal fires — not merely that something failed.</
 <tr>
 <td>Retention keeps the reasons it was told to keep</td>
 <td><code>TestPruneKeepsTheReasonsItWasToldTo</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="backups-that-leave-the-machine">Backups that leave the machine<a class="headerlink" href="#backups-that-leave-the-machine" title="Permanent link">&para;</a></h3>
+<p>A backup on the disk it protects is not a backup. These claims are about the
+copy that survives the machine — and about what happens when it does not
+arrive.</p>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A backup pushed to any target comes back byte for byte</td>
+<td><code>TestBackupTargetContract_LocalDir/a pushed backup comes back byte for byte</code></td>
+</tr>
+<tr>
+<td><strong>A backup that did not arrive fails the operation</strong></td>
+<td><code>TestAFailedPushFailsTheBackup</code></td>
+</tr>
+<tr>
+<td>A failed push keeps the backup it took, so the operator is never worse off for having configured a target</td>
+<td><code>TestAFailedPushKeepsTheBackupItTook</code></td>
+</tr>
+<tr>
+<td>A failed push keeps the copies that landed whole, and cleans up only the target that failed</td>
+<td><code>TestAFailedPushKeepsWhatLandedWhole</code></td>
+</tr>
+<tr>
+<td>Doctor reports a backup that reached one target but not another</td>
+<td><code>TestDoctorReportsABackupThatReachedOnlyOneTarget</code></td>
+</tr>
+<tr>
+<td>A fetch is verified before it is promoted, with or without a release installed to verify it</td>
+<td><code>TestAFetchedBackupIsVerifiedWithNoReleaseInstalled</code></td>
+</tr>
+<tr>
+<td>A transfer interrupted halfway leaves something nobody can restore, rather than something they can</td>
+<td><code>TestAnInterruptedPushLeavesNothingRestorable</code></td>
+</tr>
+<tr>
+<td>Only what the manifest names is uploaded, so an interrupted restore's plaintext never reaches a target</td>
+<td><code>TestBackupTargetContract_LocalDir/only what the manifest names is pushed</code></td>
+</tr>
+<tr>
+<td><strong>An SSH target whose host key is not the pinned one is refused</strong></td>
+<td><code>TestSSHRefusesAHostKeyThatIsNotThePinnedOne</code></td>
+</tr>
+<tr>
+<td>An SSH target that pins no host key at all is refused, and there is no flag that does not</td>
+<td><code>TestSSHRefusesATargetWithNoHostKeyPinned</code></td>
+</tr>
+<tr>
+<td>A pinned host key does not fail against a server that also has other key types</td>
+<td><code>TestThePinDecidesWhichAlgorithmsAreOffered</code></td>
+</tr>
+<tr>
+<td>A target URL carrying a password is refused before it reaches installation.yaml</td>
+<td><code>TestATargetURLIsRefusedWhenItCarriesAPassword</code></td>
+</tr>
+<tr>
+<td>A target's credentials are registered for redaction before anything can print them</td>
+<td><code>TestACredentialNeverReachesTheJournalOrALogLine</code></td>
+</tr>
+<tr>
+<td>A backup on a target is ciphertext apart from its manifest</td>
+<td><code>TestABackupOnATargetIsUnreadableWithoutAKey</code></td>
+</tr>
+<tr>
+<td>A backup can be listed from a target by a machine that holds no key</td>
+<td><code>TestRecoveryFetchesTheBackupFromATarget</code></td>
+</tr>
+<tr>
+<td>A destroyed machine is rebuilt from an export, an offline key, and a target — nothing copied by hand</td>
+<td><code>TestRecoveryFetchesTheBackupFromATarget</code></td>
+</tr>
+<tr>
+<td>A component path in a manifest cannot decide what a fetch writes outside its destination</td>
+<td><code>TestAFetchCannotBeToldToWriteOutsideItsDestination</code></td>
+</tr>
+<tr>
+<td><code>doctor</code> fails when a backup never reached a target</td>
+<td><code>TestDoctorReportsABackupThatNeverLeftTheMachine</code></td>
 </tr>
 </tbody>
 </table>

@@ -900,10 +900,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-restore-the-data" class="md-nav__link">
+  <a href="#4-get-the-backup-back" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        4. Restore the data
+        4. Get the backup back
       </span>
     </span>
   </a>
@@ -911,10 +911,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-check-then-decommission" class="md-nav__link">
+  <a href="#5-restore-the-data" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        5. Check, then decommission
+        5. Restore the data
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-check-then-decommission" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Check, then decommission
       </span>
     </span>
   </a>
@@ -1233,6 +1244,35 @@
     
   
   Commands
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/backup-targets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backup target URLs
 
     
   </span>
@@ -1811,10 +1851,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-restore-the-data" class="md-nav__link">
+  <a href="#4-get-the-backup-back" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        4. Restore the data
+        4. Get the backup back
       </span>
     </span>
   </a>
@@ -1822,10 +1862,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-check-then-decommission" class="md-nav__link">
+  <a href="#5-restore-the-data" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        5. Check, then decommission
+        5. Restore the data
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-check-then-decommission" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Check, then decommission
       </span>
     </span>
   </a>
@@ -1949,6 +2000,11 @@ would be a file nobody takes often enough.</p>
 real age keys on every CI run: create an installation, export it, delete the
 machine's entire root, rebuild from the export and the offline key, and
 assert the secrets come back readable by the new host's own key.</p>
+<p><code>TestRecoveryFetchesTheBackupFromATarget</code> runs the whole of it, including
+step 4: the backup is pushed to a target, the machine is destroyed, and the
+rebuilt one lists and fetches it back with nothing copied by hand. That test
+used to copy a directory and call it "offsite"; it does not have to pretend
+any more.</p>
 <p>A recovery procedure nobody has executed is a procedure you find out about
 during an incident.</p>
 </div>
@@ -1990,7 +2046,38 @@ would work.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./demo-1.2.0<span class="w">     </span><span class="c1"># confirm the digest matches the export</span>
 morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.2.0
 </code></pre></div>
-<h3 id="4-restore-the-data">4. Restore the data<a class="headerlink" href="#4-restore-the-data" title="Permanent link">&para;</a></h3>
+<h3 id="4-get-the-backup-back">4. Get the backup back<a class="headerlink" href="#4-get-the-backup-back" title="Permanent link">&para;</a></h3>
+<p>If your backups go to a <a href="../backups/">target</a>, the import already brought its
+address with it — the target lives in the installation, and the installation was
+in the export. You do not have to remember where they went, which is the thing
+nobody remembers during an incident.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>list<span class="w"> </span>--remote
+morzer<span class="w"> </span>backup<span class="w"> </span>fetch<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<p>Listing needs no key at all: it reads each backup's manifest, and the manifest is
+the one file in a backup that is not encrypted.</p>
+<details class="note">
+<summary>If the target needs credentials the machine cannot read yet</summary>
+<p>The circle to break: the bucket's keys are secrets, the secrets are in the
+encrypted state, and on a machine where import has not run there is nothing
+to decrypt them with. Three ways through, in the order to try them.</p>
+<p><strong>From the export.</strong> <code>installation import</code> restored the secret state, so the
+credentials are already there. This is the ordinary path and it needs
+nothing extra.</p>
+<p><strong>From a file.</strong> When the export is gone or the credentials in it are stale:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>list<span class="w"> </span>--remote<span class="w"> </span>--target<span class="w"> </span>s3://acme-backups/demo<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--credentials-file<span class="w"> </span>./creds.yaml
+morzer<span class="w"> </span>backup<span class="w"> </span>fetch<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--target<span class="w"> </span>s3://acme-backups/demo<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--credentials-file<span class="w"> </span>./creds.yaml
+</code></pre></div>
+<p>A file rather than a flag, because a flag is visible in <code>ps</code> to everyone on
+the machine.</p>
+<p><strong>From nothing.</strong> A <code>file://</code> target on removable media needs no credential.
+That is why it is worth having one even if your real backups go to a bucket.</p>
+</details>
+<p>If you copied backups off by hand instead, put them under
+<code>/var/lib/&lt;product&gt;/backups</code> now.</p>
+<h3 id="5-restore-the-data">5. Restore the data<a class="headerlink" href="#5-restore-the-data" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key
 </code></pre></div>
 <p>The id is the original one, which is exactly why this works: backups are stamped
@@ -2001,7 +2088,7 @@ would have its own backups refused.</p>
 backups the lost machine took — the offline key was. So the same key opens both
 the export and the backups, which is why keeping one off the machine is not
 optional.</p>
-<h3 id="5-check-then-decommission">5. Check, then decommission<a class="headerlink" href="#5-check-then-decommission" title="Permanent link">&para;</a></h3>
+<h3 id="6-check-then-decommission">6. Check, then decommission<a class="headerlink" href="#6-check-then-decommission" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>doctor
 </code></pre></div>
 <p>Then <strong>decommission the old machine</strong> if any part of it still exists. Two live
