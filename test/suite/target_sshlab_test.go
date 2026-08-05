@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -361,4 +362,74 @@ func serveSSH(conn net.Conn, cfg *ssh.ServerConfig, lab *sshLab) {
 			_ = server.Serve()
 		}(channel)
 	}
+}
+
+// TestAConnectionDialledAcrossCloseIsNotLeaked.
+//
+// Dialling happens outside the target's lock, because it is the slow part and
+// holding the mutex across it would serialise every target a backup touches.
+// The consequence is that a connection can arrive *after* Close has emptied the
+// cache: it would be filed in a map nothing will empty again, holding an ssh
+// session and its watching goroutine open with no reference left to reach it.
+//
+// The race is made deterministic here by a dialler the test holds shut until
+// Close has run, which is the interleaving that would otherwise happen rarely
+// and never reproducibly.
+func TestAConnectionDialledAcrossCloseIsNotLeaked(t *testing.T) {
+	client := newSSHKey(t)
+	host := newSSHKey(t)
+
+	root := t.TempDir()
+	addr := startInProcessSSH(t, host, client.public, root)
+
+	dialling := make(chan struct{})
+	release := make(chan struct{})
+	var closed atomic.Bool
+
+	adapter := sftp.New().WithDialer(func(ctx context.Context, network, address string) (net.Conn, error) {
+		close(dialling)
+		<-release
+
+		conn, err := (&net.Dialer{}).DialContext(ctx, network, address)
+		if err != nil {
+			return nil, err
+		}
+		return &watchedConn{Conn: conn, closed: &closed}, nil
+	})
+
+	ref := ports.TargetRef{
+		Scheme: "ssh", Host: addr, Path: root, User: "ops",
+		URL: "ssh://ops@" + addr + root,
+		Credentials: ports.TargetCredentials{
+			PrivateKey: client.private,
+			KnownHosts: sshKnownHostsLine(t, addr, host.public),
+		},
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := adapter.List(context.Background(), ref)
+		done <- err
+	}()
+
+	<-dialling
+	require.NoError(t, adapter.Close(), "close found nothing to close, and must still succeed")
+	close(release)
+
+	require.Error(t, <-done,
+		"a target that had been closed handed out a connection anyway")
+	require.True(t, closed.Load(),
+		"the connection dialled across Close was cached instead, so it stays open "+
+			"with nothing left holding a reference to it")
+}
+
+// watchedConn records whether the connection under it was ever closed.
+type watchedConn struct {
+	net.Conn
+	closed *atomic.Bool
+}
+
+func (c *watchedConn) Close() error {
+	c.closed.Store(true)
+	return c.Conn.Close()
 }

@@ -52,6 +52,12 @@ const DefaultPort = "22"
 // behind an internal package.
 const posixRenameExtension = "posix-rename@openssh.com"
 
+// errClosedTarget refuses work on a target that has been shut down. Internal
+// rather than a backup error: nothing about the target is wrong, and no
+// operator action can help -- something asked this adapter for a connection
+// after the command that owned it had finished with it.
+var errClosedTarget = domain.Internal(nil, "this backup target has been closed")
+
 // Target is the SFTP backup target.
 //
 // Connections are cached per host so one backup does not open a session per
@@ -59,6 +65,13 @@ const posixRenameExtension = "posix-rename@openssh.com"
 type Target struct {
 	mu    sync.Mutex
 	conns map[string]*connection
+
+	// closed is set by Close, and is what stops a connection being cached
+	// after it has run. Dialling happens outside the lock -- it is the slow
+	// part, and holding the mutex across it would serialise every target --
+	// so a connection that was in flight when Close ran arrives afterwards,
+	// with nothing left to close it.
+	closed bool
 
 	// seq names staging files apart, so two writes to one path cannot
 	// truncate each other.
@@ -144,6 +157,7 @@ func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
 // exit.
 func (t *Target) Close() error {
 	t.mu.Lock()
+	t.closed = true
 	doomed := make([]*connection, 0, len(t.conns))
 	for key, conn := range t.conns {
 		doomed = append(doomed, conn)
@@ -221,6 +235,10 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 	key := connectionKey(ref, signer)
 
 	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return nil, "", errClosedTarget
+	}
 	if conn, ok := t.conns[key]; ok {
 		t.mu.Unlock()
 		return conn, key, nil
@@ -257,6 +275,14 @@ func (t *Target) connect(ctx context.Context, ref ports.TargetRef) (*connection,
 	conn := &connection{client: sftpClient, ssh: client}
 
 	t.mu.Lock()
+	// Close ran while this one was dialling. The cache it emptied will never
+	// be emptied again, so caching this connection now would leave it open
+	// for the life of the process with nothing holding a reference to it.
+	if t.closed {
+		t.mu.Unlock()
+		_ = conn.close()
+		return nil, "", errClosedTarget
+	}
 	defer t.mu.Unlock()
 	// Another goroutine may have connected while this one was dialling.
 	if existing, ok := t.conns[key]; ok {
