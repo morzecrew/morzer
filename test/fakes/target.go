@@ -41,10 +41,6 @@ type BackupTarget struct {
 	// target that accepts a push and refuses a prune -- the case that
 	// separates "the backup is safe" from "the disk is tidy".
 	FailRemoveWith error
-
-	// Pushes counts successful pushes, so a test can assert a re-push
-	// happened rather than inferring it from the contents.
-	Pushes int
 }
 
 func NewBackupTarget() *BackupTarget {
@@ -59,13 +55,7 @@ func (t *BackupTarget) Push(ctx context.Context, ref ports.TargetRef, localDir, 
 	if t.FailWith != nil {
 		return ports.RemoteRef{}, t.FailWith
 	}
-	remote, err := blob.Push(ctx, t.store(ref), ref, localDir, id)
-	if err == nil {
-		t.mu.Lock()
-		t.Pushes++
-		t.mu.Unlock()
-	}
-	return remote, err
+	return blob.Push(ctx, t.store(ref), ref, localDir, id)
 }
 
 func (t *BackupTarget) List(ctx context.Context, ref ports.TargetRef) ([]ports.BackupManifest, error) {

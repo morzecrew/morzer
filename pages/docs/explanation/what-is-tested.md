@@ -142,7 +142,9 @@ arrive.
 | A backup pushed to any target comes back byte for byte | `TestBackupTargetContract_LocalDir/a pushed backup comes back byte for byte` |
 | **A backup that did not arrive fails the operation** | `TestAFailedPushFailsTheBackup` |
 | A failed push keeps the backup it took, so the operator is never worse off for having configured a target | `TestAFailedPushKeepsTheBackupItTook` |
-| A failed push removes the copies it did manage to make | `TestAFailedPushRemovesWhatItManagedToCopy` |
+| A failed push keeps the copies that landed whole, and cleans up only the target that failed | `TestAFailedPushKeepsWhatLandedWhole` |
+| Doctor reports a backup that reached one target but not another | `TestDoctorReportsABackupThatReachedOnlyOneTarget` |
+| A fetch is verified before it is promoted, with or without a release installed to verify it | `TestAFetchedBackupIsVerifiedWithNoReleaseInstalled` |
 | A transfer interrupted halfway leaves something nobody can restore, rather than something they can | `TestAnInterruptedPushLeavesNothingRestorable` |
 | Only what the manifest names is uploaded, so an interrupted restore's plaintext never reaches a target | `TestBackupTargetContract_LocalDir/only what the manifest names is pushed` |
 | **An SSH target whose host key is not the pinned one is refused** | `TestSSHRefusesAHostKeyThatIsNotThePinnedOne` |

@@ -262,11 +262,9 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	for _, existing := range inst.Backup.Targets {
-		if parsed, perr := ports.TargetURL(existing.URL); perr == nil && parsed.Canonical() == ref.Canonical() {
-			return Result{}, domain.Usage("%s is already a backup target", ref).
-				WithHint("run `morzer backup target list` to see them all")
-		}
+	if alreadyATarget(inst, ref) {
+		return Result{}, domain.Usage("%s is already a backup target", ref).
+			WithHint("run `morzer backup target list` to see them all")
 	}
 
 	cfg := domain.BackupTargetConfig{URL: ref.String(), Credentials: opts.Credentials}
@@ -302,6 +300,22 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 			if err != nil {
 				return err
 			}
+			// Checked again against that fresh copy. The check at the
+			// top ran against an installation loaded before the lock,
+			// so a second `target add` for the same URL passed it and
+			// appended anyway.
+			//
+			// The duplicate does not reach the file -- validation
+			// refuses to save an installation that lists one target
+			// twice -- so this is about which refusal an operator
+			// reads. Without it they get "manifest is invalid:
+			// backup.targets[2].url: is listed twice", which describes
+			// a corrupt configuration and names an array index, for
+			// what is simply a target they already have.
+			if alreadyATarget(current, ref) {
+				return domain.Usage("%s is already a backup target", ref).
+					WithHint("run `morzer backup target list` to see them all")
+			}
 			current.Backup.Targets = append(current.Backup.Targets, cfg)
 			return d.saveInstallation(ctx, current)
 		}); err != nil {
@@ -312,6 +326,21 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 		Summary: fmt.Sprintf("backup target %s added; the next backup will be copied there", ref),
 		Data:    cfg,
 	}, nil
+}
+
+// alreadyATarget reports whether this installation already keeps backups there.
+//
+// By canonical form, not by the string an operator typed: `file:///mnt/a`,
+// `file://localhost/mnt/a` and `file:///mnt/a/` are one directory, and letting
+// all three in meant pushing to it three times.
+func alreadyATarget(inst domain.Installation, ref ports.TargetRef) bool {
+	for _, existing := range inst.Backup.Targets {
+		if parsed, err := ports.TargetURL(existing.URL); err == nil &&
+			parsed.Canonical() == ref.Canonical() {
+			return true
+		}
+	}
+	return false
 }
 
 // TargetRemove stops keeping backups at a target.
@@ -575,6 +604,16 @@ func FetchRemote(ctx context.Context, d *Deps, opts FetchOptions) (Result, error
 		return Result{}, err
 	}
 
+	// The id decides where every local path below points, and it arrived in a
+	// manifest on a target -- a file this manager may not have written. An id
+	// of `../../etc` made the staging path `/etc.fetching`, which the very
+	// next line hands to RemoveAll before any adapter has looked at it. The
+	// adapters do refuse a traversing key, but that refusal comes later, and
+	// this layer must not depend on being saved by the one below it.
+	if err := safeBackupID(manifest.ID); err != nil {
+		return Result{}, err
+	}
+
 	dest := filepath.Join(d.Paths.BackupsDir(), manifest.ID)
 	if _, err := os.Stat(dest); err == nil {
 		return Result{}, domain.BackupError(nil,
@@ -600,12 +639,9 @@ func FetchRemote(ctx context.Context, d *Deps, opts FetchOptions) (Result, error
 	// reads that directory and `restore` picks from it, so promoting first and
 	// verifying second left a corrupt backup selectable by the very command
 	// the verification exists to protect.
-	if d.Backup != nil {
-		staged := ports.BackupRef{ID: manifest.ID, Path: staging, At: manifest.CreatedAt}
-		if err := d.Backup.Verify(ctx, staged); err != nil {
-			_ = atomicfs.RemoveAll(staging)
-			return Result{}, err
-		}
+	if err := d.verifyFetched(ctx, staging, manifest); err != nil {
+		_ = atomicfs.RemoveAll(staging)
+		return Result{}, err
 	}
 
 	if err := os.Rename(staging, dest); err != nil {
@@ -618,6 +654,73 @@ func FetchRemote(ctx context.Context, d *Deps, opts FetchOptions) (Result, error
 		Summary: fmt.Sprintf("backup %s fetched from %s", manifest.ID, target),
 		Data:    ref,
 	}, nil
+}
+
+// safeBackupID refuses an id that would take a local path somewhere else.
+//
+// Ids this manager writes are timestamps. This is about the ones it reads: a
+// manifest on a target is a file somebody else's machine may have written.
+func safeBackupID(id string) error {
+	if id == "" || id == "." || id == ".." ||
+		strings.ContainsAny(id, `/\`) || strings.HasPrefix(id, ".") {
+		return domain.BackupError(nil,
+			"the target names a backup whose id is not a backup id: %q", id).
+			WithHint("this backup was not written by this manager; do not fetch it")
+	}
+	return nil
+}
+
+// verifyFetched checks a staged backup before it is promoted into the store.
+//
+// The backup engine does it when there is one. When there is not, this does,
+// and the difference matters more than it looks: the engine needs an installed
+// release, and the machine where `backup fetch` is most likely to be running is
+// the rebuilt one where no release is installed yet -- fetching the backup is
+// what comes *before* installing one. That path used to skip verification
+// entirely while the command's own help said it verified checksums, so the one
+// fetch nobody could double-check by hand was the one that was never checked.
+func (d *Deps) verifyFetched(ctx context.Context, dir string, manifest ports.BackupManifest) error {
+	if d.Backup != nil {
+		return d.Backup.Verify(ctx,
+			ports.BackupRef{ID: manifest.ID, Path: dir, At: manifest.CreatedAt})
+	}
+
+	// The same checks the engine's own Verify makes, against the manifest
+	// that came down with the backup. Digests are of the stored bytes, so
+	// this needs no key -- which is the property that makes it usable on a
+	// machine that has nothing yet.
+	var problems []string
+	for _, c := range manifest.Components {
+		path := filepath.Join(dir, filepath.FromSlash(c.Path))
+		info, err := os.Stat(path)
+		switch {
+		case err != nil:
+			problems = append(problems, c.Path+": missing")
+			continue
+		case c.Size > 0 && info.Size() != c.Size:
+			problems = append(problems, fmt.Sprintf("%s: size is %d, manifest says %d",
+				c.Path, info.Size(), c.Size))
+			continue
+		case c.SHA256 == "":
+			continue
+		}
+		sum, err := atomicfs.DigestFile(path)
+		if err != nil {
+			problems = append(problems, c.Path+": unreadable")
+			continue
+		}
+		if sum != c.SHA256 {
+			problems = append(problems, c.Path+": checksum does not match the manifest")
+		}
+	}
+	if len(problems) > 0 {
+		return domain.BackupError(domain.ErrDigestMismatch,
+			"the fetched backup %s does not match its manifest: %s",
+			manifest.ID, strings.Join(problems, "; ")).
+			WithHint("the copy on the target is damaged, or the transfer was; " +
+				"run `morzer backup verify --remote` to see which")
+	}
+	return nil
 }
 
 // findRemote locates a backup across the targets, or the newest one when no id

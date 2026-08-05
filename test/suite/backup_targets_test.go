@@ -140,10 +140,24 @@ func TestAFailedPushKeepsTheBackupItTook(t *testing.T) {
 	require.NoError(t, err, "the backup directory was removed by compensation")
 }
 
-// TestAFailedPushRemovesWhatItManagedToCopy. Compensation cleans up the
-// targets that did succeed, so a backup the operation refused does not exist
-// half-copied on one of them.
-func TestAFailedPushRemovesWhatItManagedToCopy(t *testing.T) {
+// TestAFailedPushKeepsWhatLandedWhole.
+//
+// The cleanup after a failed push is scoped to the target that failed. The
+// copies that already landed on the targets before it are complete -- the
+// manifest is written last, so a copy that lists at all is a copy that finished
+// -- and verified, because verification runs before the push step.
+//
+// This reverses what the step used to do, and the reason is a failure mode with
+// a long fuse. Three targets with the third permanently unreachable meant every
+// nightly backup was written to the two good media and then deleted from them
+// again, so a deployment with two working targets kept nothing off the machine
+// at all: strictly worse than never having configured the third. The operation
+// still fails, `doctor` still reports which target is missing the backup, and
+// `backup push` still copies it everywhere -- but what survived is kept.
+//
+// The half-written copy on the target that failed is still removed, and would
+// be unlistable even if it were not.
+func TestAFailedPushKeepsWhatLandedWhole(t *testing.T) {
 	h := newHarness(t)
 	inst, good := h.withTargets(t)
 
@@ -160,13 +174,14 @@ func TestAFailedPushRemovesWhatItManagedToCopy(t *testing.T) {
 	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
 		Reason: "manual", Verify: true, Push: true,
 	})
-	require.Error(t, err)
+	require.Error(t, err, "a target that could not be written to must fail the backup")
 
 	manifests, err := localdir.New().List(context.Background(), mustTarget(t, good))
 	require.NoError(t, err)
-	assert.Empty(t, manifests,
-		"a backup the operation refused was left on one of the targets; someone "+
-			"will eventually restore from a backup the manager says does not exist")
+	require.Len(t, manifests, 1,
+		"the copy that reached a working target was deleted because a different "+
+			"target failed; repeat that nightly and the deployment keeps no "+
+			"off-machine backup at all")
 }
 
 // TestAnInstallationWithNoTargetsIsUnchanged. Everything above has to be
@@ -390,12 +405,14 @@ func TestAnInterruptedFetchLeavesNothingInTheBackupStore(t *testing.T) {
 	_, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
 	require.Error(t, err, "fetching from an empty target must be an error")
 
+	// Required rather than tolerated. A store that could not be read would
+	// have skipped the loop and reported a pass, which is the one outcome
+	// worse than a failure: it is indistinguishable from a clean store.
 	entries, err := os.ReadDir(h.Paths.BackupsDir())
-	if err == nil {
-		for _, e := range entries {
-			assert.NotContains(t, e.Name(), ".fetching",
-				"a staging directory was left in the backup store")
-		}
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.NotContains(t, e.Name(), ".fetching",
+			"a staging directory was left in the backup store")
 	}
 }
 
@@ -948,4 +965,247 @@ func TestACorruptFetchNeverReachesTheBackupStore(t *testing.T) {
 			"a backup that failed verification was left in the store, where "+
 				"`restore` can select it")
 	}
+}
+
+// TestPushWaitsForTheDeploymentLock.
+//
+// `backup push` writes to every target and reads the backup store, which is
+// exactly what the scheduled backup is doing at the same moment: one copying a
+// backup to a target while the other's retention pass prunes that target, each
+// acting on a listing the other has just changed. It ran outside the lock, so
+// `--wait` and `--timeout` were flags that did nothing.
+func TestPushWaitsForTheDeploymentLock(t *testing.T) {
+	h := newHarness(t)
+	h.withTargets(t)
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: false,
+	})
+	require.NoError(t, err)
+
+	h.Locker.FailAcquire = true
+
+	_, err = ops.Push(context.Background(), h.Deps, ops.PushOptions{})
+	require.Error(t, err, "a push ran while another operation held the deployment lock")
+	assert.Equal(t, domain.CodeLocked, domain.AsError(err).Code,
+		"a busy lock has to stay distinguishable from a failed push, or a timer "+
+			"retries on the wrong signal")
+}
+
+// TestAddingATargetRechecksUnderTheLock.
+//
+// The duplicate check runs before the lock is taken, so a second `target add`
+// for the same URL that started while the first was still writing found nothing
+// and appended anyway.
+//
+// What is at stake is the refusal, not the file: saving an installation that
+// lists one target twice is refused by validation either way. Without the
+// recheck the operator is told "manifest is invalid: backup.targets[2].url: is
+// listed twice" -- a corrupt-configuration error naming an array index, for a
+// target they simply already have.
+//
+// Driven by a locker that records the competing add at the moment this one
+// starts waiting, which is the window the check has to close.
+func TestAddingATargetRechecksUnderTheLock(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	second := filepath.Join(t.TempDir(), "second")
+	url := "file://" + second
+
+	h.Deps.Locker = &lockerThatRaces{Locker: h.Locker, at: func() {
+		current := inst
+		current.Backup.Targets = append(current.Backup.Targets,
+			domain.BackupTargetConfig{URL: url})
+		require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), current))
+	}}
+
+	_, err := ops.TargetAdd(context.Background(), h.Deps, ops.TargetAddOptions{URL: url})
+	require.Error(t, err, "the same target was added twice")
+	assert.Contains(t, domain.AsError(err).Message, "already a backup target")
+
+	after, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, after.Backup.Targets, 2,
+		"the target was recorded twice, so every backup now pushes to it twice")
+}
+
+// lockerThatRaces runs at() while the lock is being acquired: the moment a
+// concurrent command has finished writing and this one is about to read.
+type lockerThatRaces struct {
+	*fakes.Locker
+	at func()
+}
+
+func (l *lockerThatRaces) Acquire(
+	ctx context.Context, name string, opts ports.LockOptions,
+) (func() error, error) {
+	l.at()
+	return l.Locker.Acquire(ctx, name, opts)
+}
+
+// TestAFetchedBackupIsVerifiedWithNoReleaseInstalled.
+//
+// The rebuilt machine is the whole point of `backup fetch`: no release is
+// installed yet, so there is no backup engine, and fetching is what comes
+// before installing one. Verification used to be skipped exactly there, while
+// the command's help said it verified checksums -- so the one fetch nobody
+// could check by hand was the one that was never checked.
+func TestAFetchedBackupIsVerifiedWithNoReleaseInstalled(t *testing.T) {
+	h := newHarness(t)
+	_, offsite := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	require.NoError(t, os.RemoveAll(h.Backup.Dir(ref.ID)))
+
+	// Rot on the target, after the manifest recorded the digest.
+	component := filepath.Join(offsite, ref.ID, "db.sql.age")
+	require.NoError(t, os.WriteFile(component, []byte("not what was pushed"), 0o600))
+
+	// No release, so no backup engine -- the state of a machine that is
+	// being rebuilt.
+	h.Deps.Backup = nil
+
+	_, err = ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err,
+		"a damaged backup was fetched without complaint because no release was "+
+			"installed to verify it")
+
+	entries, err := os.ReadDir(h.Paths.BackupsDir())
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.NotEqual(t, ref.ID, e.Name(),
+			"a backup that failed verification was left in the store")
+	}
+}
+
+// TestAFetchRefusesABackupIdThatIsAPath.
+//
+// The id comes out of a manifest on a target, which is a file this manager may
+// not have written, and it decides every local path a fetch builds -- including
+// the staging directory that is deleted before the transfer starts. An id of
+// `../../evil` made that a RemoveAll outside the backup store.
+//
+// Driven by a target that answers with the hostile manifest directly, because
+// what is being tested is that this layer refuses it whatever the transport
+// below happens to catch.
+func TestAFetchRefusesABackupIdThatIsAPath(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	// Something to lose, one level up from the backup store.
+	outside := filepath.Join(filepath.Dir(h.Paths.BackupsDir()), "evil.fetching")
+	require.NoError(t, os.MkdirAll(outside, 0o700))
+
+	h.Deps.Targets = &targetWithHostileID{id: "../evil"}
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	_, err := ops.FetchRemote(context.Background(), h.Deps, ops.FetchOptions{})
+	require.Error(t, err, "a backup id that is a path was fetched")
+
+	_, statErr := os.Stat(outside)
+	require.NoError(t, statErr,
+		"the fetch deleted a directory outside the backup store, named by a "+
+			"manifest on the target")
+}
+
+// targetWithHostileID answers every listing with one manifest whose id is a
+// path. Nothing else about it needs to work: the refusal must come before the
+// first transfer.
+type targetWithHostileID struct {
+	ports.BackupTarget
+	id string
+}
+
+func (t *targetWithHostileID) Schemes() []string { return []string{"memory"} }
+
+func (t *targetWithHostileID) List(
+	ctx context.Context, ref ports.TargetRef,
+) ([]ports.BackupManifest, error) {
+	return []ports.BackupManifest{{ID: t.id, SchemaVersion: 2}}, nil
+}
+
+// Fetch refuses, which is what the transports do with a key like this. It is
+// implemented so that removing the guard above fails this test at the
+// assertion about what was deleted, rather than somewhere earlier: the
+// dangerous line runs *before* any transport is asked anything.
+func (t *targetWithHostileID) Fetch(ctx context.Context, ref ports.RemoteRef, destDir string) error {
+	return domain.BackupError(nil, "the backup names a component outside the target")
+}
+
+// TestDoctorReportsABackupThatReachedOnlyOneTarget.
+//
+// A push writes to every configured target, so "the newest backup is on one of
+// them" is a finding, not a pass. It is also the state a failed push now leaves
+// deliberately -- the copies that landed whole are kept -- which makes this
+// check the thing that tells an operator the deployment is half-covered.
+func TestDoctorReportsABackupThatReachedOnlyOneTarget(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+	ref, ok := result.Data.(ports.BackupRef)
+	require.True(t, ok)
+
+	// A second target, added after the backup was taken: reachable, empty,
+	// and exactly what an operator has just before their first push to it.
+	second := filepath.Join(t.TempDir(), "second")
+	require.NoError(t, os.MkdirAll(second, 0o700))
+	inst.Backup.Targets = append(inst.Backup.Targets,
+		domain.BackupTargetConfig{URL: "file://" + second})
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	check := findCheck(t, report, "backup.target-freshness")
+	assert.Equal(t, string(events.CheckFail), check.Status,
+		"one target holding the newest backup cleared a check that every target "+
+			"is supposed to satisfy")
+	assert.Contains(t, check.Message, second,
+		"the report must name the target that is missing it, or the operator "+
+			"cannot tell which medium to look at")
+	assert.Contains(t, check.Remedy, "backup push "+ref.ID)
+}
+
+// TestDoctorDoesNotPassFreshnessItCouldNotCheck.
+//
+// This check is fatal because it is the failure that hides. A listing that
+// failed was reported as a warning, which is a green report for a question
+// nobody answered -- the same outcome as "the backup is safely off the machine",
+// printed for the case where nothing is known.
+func TestDoctorDoesNotPassFreshnessItCouldNotCheck(t *testing.T) {
+	h := newHarness(t)
+	inst, _ := h.withTargets(t)
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Push: true,
+	})
+	require.NoError(t, err)
+
+	// The medium goes away after the backup reached it: an unmounted disk,
+	// a revoked credential, a host that stopped answering.
+	blocked := filepath.Join(h.Root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("not a directory"), 0o600))
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "file://" + filepath.Join(blocked, "backups")},
+	}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	check := findCheck(t, report, "backup.target-freshness")
+	assert.Equal(t, string(events.CheckFail), check.Status,
+		"doctor reported no problem with a question it could not answer")
 }

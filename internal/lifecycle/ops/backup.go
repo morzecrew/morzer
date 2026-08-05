@@ -131,44 +131,89 @@ func Push(ctx context.Context, d *Deps, opts PushOptions) (Result, error) {
 			WithHint("add one with `morzer backup target add file:///mnt/backups`")
 	}
 
-	ref, err := d.resolveBackupRef(ctx, opts.BackupID)
+	// Bounded by `--timeout`, like every other operation. It is applied to
+	// the context here because that flag otherwise reaches only the step
+	// engine, which this command does not run: an operator who bounded a
+	// push to five minutes got no bound at all, and a target that accepts a
+	// connection and then stops answering held the command open indefinitely.
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+
+	var out Result
+	// Under the deployment lock, like every other command that writes. A
+	// manual push used to run beside the scheduled backup: the push copying
+	// a backup to a target while the backup's retention pass pruned that
+	// same target, each acting on a listing the other had just changed. It
+	// also made `--wait` a flag that did nothing, because nothing waited.
+	err = d.withLock(ctx, d.newOpID(), domain.OpTypeBackup, opts.Options,
+		func(ctx context.Context) error {
+			// Read again inside the lock. With `--wait` the lock is held
+			// by somebody else for as long as their operation takes, and
+			// the target list read before that wait is the list as it was
+			// minutes ago -- including targets since removed.
+			inst, err := d.loadInstallation(ctx)
+			if err != nil {
+				return err
+			}
+
+			ref, err := d.resolveBackupRef(ctx, opts.BackupID)
+			if err != nil {
+				return err
+			}
+
+			// Verified before it is copied, for the same reason the backup
+			// operation verifies before it pushes: a backup that fails its
+			// checksums must not be put anywhere a restore might find it.
+			if err := d.Backup.Verify(ctx, ref); err != nil {
+				return err
+			}
+
+			targets, err := d.resolveTargets(ctx, inst)
+			if err != nil {
+				return err
+			}
+
+			// After resolving and verifying, so a dry run still answers the
+			// questions worth asking -- does the backup exist, does it
+			// verify, where would it go -- and before the one thing that
+			// writes.
+			if opts.DryRun {
+				out = Result{
+					Summary: fmt.Sprintf("would copy backup %s to %s",
+						ref.ID, targetSummary(targets)),
+					Data: ref,
+				}
+				return nil
+			}
+
+			for _, target := range targets {
+				if _, err := d.Targets.Push(ctx, target, ref.Path, ref.ID); err != nil {
+					// Only this target's partial write is removed.
+					// The copies already placed on the targets
+					// before it are complete and verified, and
+					// deleting them would leave the deployment
+					// with less off-machine data than the retry
+					// started with.
+					d.unpush(ctx, []ports.RemoteRef{{Target: target, ID: ref.ID}})
+
+					return domain.BackupError(err,
+						"cannot copy backup %s to %s", ref.ID, target)
+				}
+			}
+
+			out = Result{
+				Summary: fmt.Sprintf("backup %s copied to %s", ref.ID, targetSummary(targets)),
+				Data:    ref,
+			}
+			return nil
+		})
 	if err != nil {
 		return Result{}, err
 	}
-
-	// Verified before it is copied, for the same reason the backup
-	// operation verifies before it pushes: a backup that fails its
-	// checksums must not be put anywhere a restore might find it.
-	if err := d.Backup.Verify(ctx, ref); err != nil {
-		return Result{}, err
-	}
-
-	targets, err := d.resolveTargets(ctx, inst)
-	if err != nil {
-		return Result{}, err
-	}
-
-	// After resolving and verifying, so a dry run still answers the questions
-	// worth asking -- does the backup exist, does it verify, where would it
-	// go -- and before the one thing that writes.
-	if opts.DryRun {
-		return Result{
-			Summary: fmt.Sprintf("would copy backup %s to %s", ref.ID, targetSummary(targets)),
-			Data:    ref,
-		}, nil
-	}
-
-	for _, target := range targets {
-		if _, err := d.Targets.Push(ctx, target, ref.Path, ref.ID); err != nil {
-			return Result{}, domain.BackupError(err,
-				"cannot copy backup %s to %s", ref.ID, target)
-		}
-	}
-
-	return Result{
-		Summary: fmt.Sprintf("backup %s copied to %s", ref.ID, targetSummary(targets)),
-		Data:    ref,
-	}, nil
+	return out, nil
 }
 
 // backupSteps assembles the sequence.
@@ -236,12 +281,21 @@ func stepPushBackup(d *Deps, inst domain.Installation) engine.Step {
 			for _, target := range targets {
 				remote, pushErr := d.Targets.Push(ctx, target, ref.Path, ref.ID)
 				if pushErr != nil {
-					// What did land is removed, including
-					// whatever this target managed before it
-					// failed: a half-pushed backup that
-					// looks like a backup is something
-					// somebody eventually restores.
-					d.unpush(ctx, append(pushed, ports.RemoteRef{Target: target, ID: ref.ID}))
+					// Only this target's partial write is
+					// removed -- not the copies that already
+					// landed whole on the targets before it.
+					//
+					// Removing those too was a defect with a
+					// long fuse. Three targets and the third
+					// permanently unreachable meant every
+					// nightly backup was copied to the two
+					// good media and then deleted from them,
+					// so a deployment with two working
+					// targets kept no off-machine copy at
+					// all -- worse than having none
+					// configured, and invisible until the
+					// machine was gone.
+					d.unpush(ctx, []ports.RemoteRef{{Target: target, ID: ref.ID}})
 
 					return domain.BackupError(pushErr,
 						"the backup was taken but could not be copied to %s", target).

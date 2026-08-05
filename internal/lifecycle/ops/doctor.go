@@ -1000,30 +1000,65 @@ func (d *Deps) checkBackupTargetFreshness(inst domain.Installation) preflight.Ch
 
 			remote, err := ListRemote(probeCtx, d, TargetOptions{})
 			if err != nil {
-				// The reachability check above already reported
-				// why, and a second failure saying the same
-				// thing sends an operator looking for two
-				// problems.
-				return preflight.Warn("see the target-reachable check above",
-					"not checked: no target answered")
+				// A failure, not a warning, even though the
+				// reachability check above usually says the same
+				// thing first. This check is fatal because it is
+				// the failure that hides, and "could not tell"
+				// downgraded to a warning is a green report for a
+				// question nobody answered -- which is the one
+				// outcome this check exists to prevent.
+				return preflight.Fail(
+					"see the target-reachable check above for why",
+					"cannot tell whether %s left this machine: %s",
+					newest.ID, domain.AsError(err).Message)
 			}
 
+			// Every configured target, not any of them. A push writes
+			// to all of them, and a push that failed part-way leaves the
+			// backup on the targets it reached -- so "it is on one of
+			// them" is exactly the state that needs reporting, not the
+			// state that clears the check.
+			// Keyed on the canonical form rather than on the string
+			// either side happened to render, so a target does not read
+			// as missing its own backup over a trailing slash.
+			present := make(map[string]bool, len(remote))
 			for _, r := range remote {
-				if r.Manifest.ID == newest.ID {
-					return preflight.OK("%s is on %s", newest.ID, r.Target)
+				if r.Manifest.ID != newest.ID {
+					continue
+				}
+				if ref, perr := ports.TargetURL(r.Target); perr == nil {
+					present[ref.Canonical()] = true
 				}
 			}
 
-			if len(remote) == 0 {
+			var missing, holding []string
+			for _, cfg := range inst.Backup.Targets {
+				ref, perr := ports.TargetURL(cfg.URL)
+				if perr != nil {
+					// A target whose URL does not parse is
+					// already reported by the check above.
+					continue
+				}
+				if present[ref.Canonical()] {
+					holding = append(holding, ref.String())
+					continue
+				}
+				missing = append(missing, ref.String())
+			}
+
+			if len(missing) == 0 {
+				return preflight.OK("%s is on %s", newest.ID, strings.Join(holding, ", "))
+			}
+			if len(holding) == 0 {
 				return preflight.Fail(
 					fmt.Sprintf("run `morzer backup push %s`", newest.ID),
-					"the target holds no backups at all, so every copy of this "+
-						"deployment's data is on this machine")
+					"the most recent backup (%s) is on no target, so every copy of "+
+						"this deployment's data is on this machine", newest.ID)
 			}
 			return preflight.Fail(
 				fmt.Sprintf("run `morzer backup push %s`", newest.ID),
-				"the most recent backup (%s) is not on any target; the newest one "+
-					"that is, is %s", newest.ID, remote[0].Manifest.ID)
+				"the most recent backup (%s) reached %s but not %s",
+				newest.ID, strings.Join(holding, ", "), strings.Join(missing, ", "))
 		},
 	}
 }

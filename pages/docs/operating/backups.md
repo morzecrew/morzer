@@ -257,10 +257,10 @@ Worth running on a schedule against your oldest retained backup, which is the
 one most likely to have rotted, and it is the only thing that will notice: the
 local copy can be perfect while the remote one is not.
 
-Both take `--target` to address one target by URL, whether or not this
-installation configures it, and `--credentials-file` to supply that target's
-credentials from a file instead of from the secret store. That pair is the
-escape hatch for a rebuilt machine — see
+`backup list`, `backup fetch` and `backup verify` all take `--target` to address
+one target by URL, whether or not this installation configures it, and
+`--credentials-file` to supply that target's credentials from a file instead of
+from the secret store. That pair is the escape hatch for a rebuilt machine — see
 [recovering a lost machine](recovering-a-lost-machine.md).
 
 ### What doctor says

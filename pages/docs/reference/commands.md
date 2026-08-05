@@ -282,9 +282,9 @@ already there.
 Copies an existing backup to every configured target, verifying it again first.
 Takes a backup id; the most recent when omitted.
 
-The retry for a push that failed. A backup whose push failed is still on this
-machine, verified and correct — what failed was the network or the medium, and
-the remedy should not be taking another backup.
+This is the retry for a push that failed. A backup whose push failed is still on
+this machine, verified and correct — what failed was the network or the medium,
+and the remedy should not be taking another backup.
 
 ### backup fetch
 

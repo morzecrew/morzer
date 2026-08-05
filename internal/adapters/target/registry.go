@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -22,6 +23,13 @@ import (
 // Registry dispatches to the target registered for a URL's scheme.
 type Registry struct {
 	byScheme map[string]ports.BackupTarget
+
+	// registered is the argument list, in order, one entry per target
+	// however many schemes it claims. Close walks it rather than
+	// deduplicating the scheme map through a set keyed by the interface
+	// value: hashing an interface whose dynamic type is not comparable
+	// panics, and shutdown is the worst place to find that out.
+	registered []ports.BackupTarget
 }
 
 var _ ports.BackupTarget = (*Registry)(nil)
@@ -32,12 +40,18 @@ var _ ports.BackupTarget = (*Registry)(nil)
 // resolution, and an empty registry means a build in which every configured
 // target would fail at push time -- late, during the nightly backup, rather
 // than at startup with the rest.
+//
+// A nil target is the same kind of mistake, and is refused rather than skipped
+// for the same reason: dropping it quietly leaves a build whose sftp:// URLs
+// fail at push time as though the transport had never been compiled in. The
+// check cannot be t == nil alone -- a nil *sftp.Target satisfies the interface,
+// registers happily, and panics at shutdown when Close dereferences it.
 func NewRegistry(targets ...ports.BackupTarget) (*Registry, error) {
 	r := &Registry{byScheme: make(map[string]ports.BackupTarget, len(targets))}
 
 	for _, t := range targets {
-		if t == nil {
-			continue
+		if isNil(t) {
+			return nil, domain.Internal(nil, "a nil backup target was registered")
 		}
 		schemes := t.Schemes()
 		if len(schemes) == 0 {
@@ -50,12 +64,27 @@ func NewRegistry(targets ...ports.BackupTarget) (*Registry, error) {
 			}
 			r.byScheme[scheme] = t
 		}
+		r.registered = append(r.registered, t)
 	}
 
 	if len(r.byScheme) == 0 {
 		return nil, domain.Internal(nil, "no backup targets were registered")
 	}
 	return r, nil
+}
+
+// isNil reports a target that carries no value. An interface holding a typed
+// nil pointer is not == nil, so the plain comparison lets one through.
+func isNil(t ports.BackupTarget) bool {
+	if t == nil {
+		return true
+	}
+	switch v := reflect.ValueOf(t); v.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // Schemes lists what this build can push to, sorted.
@@ -127,17 +156,13 @@ var _ io.Closer = (*Registry)(nil)
 // Close releases anything a target holds -- an SSH connection above all.
 //
 // Every target is closed even after one fails, so a transport that cannot tidy
-// up does not leave the next one's socket open.
+// up does not leave the next one's socket open. Each target appears once in
+// registered however many schemes it answers for, so the loop needs no
+// deduplication of its own.
 func (r *Registry) Close() error {
 	var errs []error
-	seen := make(map[ports.BackupTarget]bool, len(r.byScheme))
 
-	for _, t := range r.byScheme {
-		if seen[t] {
-			continue // one target may answer for several schemes
-		}
-		seen[t] = true
-
+	for _, t := range r.registered {
 		if closer, ok := t.(io.Closer); ok {
 			if err := closer.Close(); err != nil {
 				errs = append(errs, err)

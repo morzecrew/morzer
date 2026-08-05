@@ -595,3 +595,46 @@ for the same reason an earlier one did: they asserted on a fetch, and a fetch
 refuses before it writes. Both were rewritten to assert where the decision is
 actually made, and both were re-verified by breaking the fix and watching them
 fail.
+
+### 2026-08-05 — a failed push keeps the copies that landed whole
+
+The first amendment above replaced `Compensate` with `Abort` and removed the
+partial remote copies inline. "Partial" was read too broadly in the code that
+followed: the cleanup removed the backup from **every** target the step had
+already written to, not only from the one that failed.
+
+That is a failure mode with a long fuse. Three targets with the third
+permanently unreachable meant every nightly backup was copied to the two good
+media and then deleted from them again — so a deployment with two working
+targets kept no off-machine copy at all, which is strictly worse than never
+having configured the third, and invisible until the machine was gone.
+
+A copy that finished is not wreckage. The manifest is written last, so a copy
+that lists at all is complete; verification runs before the push step, so it is
+verified. Keeping it is the same rule the local copy already has under decision
+3 — the backup is kept either way — applied to the targets that worked.
+
+Shipped as a cleanup scoped to the failing target, in both the push step and the
+standalone `backup push`, which previously cleaned up nothing at all. Decision 3
+is unchanged: a failed push still fails the backup. What changes is what an
+operator has afterwards.
+
+`TestAFailedPushRemovesWhatItManagedToCopy` pinned the old behaviour and was
+replaced by `TestAFailedPushKeepsWhatLandedWhole`, which fails when the cleanup
+is widened again.
+
+### 2026-08-05 — `backup.target-freshness` is per target, and fails when it cannot tell
+
+§5.6 says the check compares "the remote's newest manifest" to the local one,
+which the implementation read as *any* target holding the newest backup. A push
+writes to every configured target, and — after the amendment above — a push that
+fails part-way now deliberately leaves the backup on the targets it reached. So
+"it is on one of them" is precisely the state that needs reporting, not the one
+that clears the check. It is now evaluated per configured target, and the
+failure names which ones are missing it.
+
+A listing that failed was also reported as a `warn` on the grounds that
+`backup.target-reachable` had already said why. That made a fatal check report
+green for a question nobody answered, which is the failure this check exists to
+catch, wearing the colour of the state it is meant to distinguish from. It is
+now a `fail` that points at the reachability check for the cause.

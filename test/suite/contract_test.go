@@ -167,7 +167,14 @@ func walkKeys(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
 	err := filepath.WalkDir(root, func(p string, e fs.DirEntry, err error) error {
-		if err != nil || e.IsDir() {
+		// Returned rather than skipped. The keys are the only witness the
+		// suite has for what a push left on the target, so an entry the
+		// walk could not read would drop out of the list silently and a
+		// pushed plaintext component would pass as "not there".
+		if err != nil {
+			return err
+		}
+		if e.IsDir() {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, p)

@@ -107,8 +107,22 @@ func Push(ctx context.Context, s Store, ref ports.TargetRef, localDir, id string
 
 	names := make([]string, 0, len(manifest.Components))
 	for _, c := range manifest.Components {
-		if c.Path == "" || c.Path == ports.BackupManifestFileName {
-			continue
+		// Refused rather than skipped. Skipping them published a
+		// manifest naming a component the push had not uploaded: the
+		// backup listed on the target as if it were whole and failed
+		// at the fetch, which is the run where finding out is too
+		// late.
+		if c.Path == "" {
+			return ports.RemoteRef{}, domain.BackupError(nil,
+				"the backup names a component with no path").
+				WithHint("this backup was not written by this manager; do not push it")
+		}
+		if c.Path == ports.BackupManifestFileName {
+			return ports.RemoteRef{}, domain.BackupError(nil,
+				"the backup names a component called %s, which is the manifest's own name",
+				ports.BackupManifestFileName).
+				WithHint("the component would be overwritten by the manifest; " +
+					"check what the backup hook wrote")
 		}
 		names = append(names, c.Path)
 	}
@@ -147,9 +161,17 @@ func Push(ctx context.Context, s Store, ref ports.TargetRef, localDir, id string
 
 // List reads every manifest on the target, newest first.
 //
-// Only manifests are transferred. A directory without a readable one is skipped
-// rather than reported: it is a push that was interrupted, and `backup list`
-// has to stay usable while one is in flight.
+// Only manifests are transferred. A directory without a manifest is skipped
+// rather than reported: it is a push that was interrupted or a removal in
+// flight, and `backup list` has to stay usable while either is happening.
+//
+// A manifest that is there and cannot be read is not the same thing, and used
+// to be treated as if it were. A target that stopped answering halfway through
+// a listing then produced a short list and no error, and nothing downstream can
+// tell a short list from a complete one: `backup list --remote` hides backups
+// on the machine most likely to be looking for them, `backup fetch` with no id
+// picks "the newest" out of whatever happened to be readable, and remote
+// retention prunes from a view missing the backups it was counting.
 func List(ctx context.Context, s Store) ([]ports.BackupManifest, error) {
 	keys, err := s.Keys(ctx, "")
 	if err != nil {
@@ -171,10 +193,30 @@ func List(ctx context.Context, s Store) ([]ports.BackupManifest, error) {
 
 		manifest, err := readManifest(ctx, s, key)
 		if err != nil {
-			continue
+			// Not-found is the one case that is not a failure to
+			// read: Remove deletes the manifest first, so a listing
+			// that overlaps a removal sees a key whose object has
+			// already gone.
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			return nil, err
 		}
-		if manifest.ID == "" {
+
+		switch manifest.ID {
+		case id:
+		case "":
 			manifest.ID = id
+		default:
+			// Skipped, because the id in a listing is what every
+			// later operation resolves: retention removes it, fetch
+			// and verify read it. Trusting an id that names a
+			// different directory pointed all three at that other
+			// backup -- so pruning this one deleted the other, which
+			// is how retention takes a backup nobody asked it to
+			// touch. A manifest this manager wrote always sits under
+			// its own id.
+			continue
 		}
 		out = append(out, manifest)
 	}
