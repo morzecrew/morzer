@@ -1,0 +1,612 @@
+package hookbackup
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/agecrypt"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/ports"
+)
+
+// VolumeDir is the subdirectory volume tarballs live under inside a backup.
+//
+// A directory rather than a flat name, so a volume called `database` cannot
+// collide with the hook's `database.sql`, and so an operator listing a backup
+// can see at a glance which parts the manager took and which the product did.
+const VolumeDir = "volumes"
+
+// plannedVolume is one volume the backup decided to capture, and how.
+type plannedVolume struct {
+	volume      ports.NamedVolume
+	consistency ports.Consistency
+}
+
+// volumePlan is what a backup decided to do about the project's storage,
+// before it does any of it.
+//
+// Deciding first and acting second is what makes the space check possible --
+// the total is knowable before a byte is written -- and what lets the manifest
+// record the volumes that were deliberately skipped alongside the ones that
+// were taken.
+type volumePlan struct {
+	capture    []plannedVolume
+	uncaptured []ports.UncapturedVolume
+}
+
+// hasCold reports whether anything in the plan needs its writers stopped.
+func (p volumePlan) hasCold() bool {
+	for _, v := range p.capture {
+		if v.consistency == ports.ConsistencyCold {
+			return true
+		}
+	}
+	return false
+}
+
+// quiesceServices is every service that must be stopped, deduplicated across
+// the cold volumes and sorted.
+//
+// The union, stopped once, rather than a stop-and-start per volume: the total
+// downtime is the same either way, and one window is less disruptive than five
+// -- and far less confusing to somebody watching the deployment while it
+// happens.
+func (p volumePlan) quiesceServices() []string {
+	set := map[string]bool{}
+	for _, v := range p.capture {
+		if v.consistency != ports.ConsistencyCold {
+			continue
+		}
+		for _, s := range v.volume.Services {
+			set[s] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for s := range set {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// planVolumes decides what to capture and what to leave, and why.
+//
+// The default is cold, and that is the whole safety argument. A volume the
+// vendor has not classified is one the manager knows nothing about, and reading
+// an unknown volume live produces a crash-consistent copy -- which for anything
+// with a write-ahead log or a rebuilt index is a copy that restores nine times
+// out of ten. The safe default is the slow one.
+func planVolumes(
+	storage ports.ProjectStorage, spec domain.BackupSpec, allowDowntime bool,
+) volumePlan {
+	var plan volumePlan
+
+	for _, vol := range storage.Volumes {
+		switch spec.Consistency(vol.Name) {
+		case domain.VolumeExclude:
+			plan.uncaptured = append(plan.uncaptured, ports.UncapturedVolume{
+				Volume:   vol.Name,
+				Kind:     ports.VolumeKindNamed,
+				Services: vol.Services,
+				Reason: "the release declares `consistency: exclude` for it, " +
+					"so its data belongs to the backup hook",
+			})
+
+		case domain.VolumeHot:
+			plan.capture = append(plan.capture, plannedVolume{
+				volume: vol, consistency: ports.ConsistencyHot,
+			})
+
+		default:
+			// Cold. Stopping a service is the one thing a backup does
+			// that an operator can feel, so an operator who has said
+			// not to gets a named omission rather than a silent
+			// downgrade to a hot copy. A hot copy of an undeclared
+			// volume is precisely the thing nobody may take on the
+			// vendor's behalf.
+			if !allowDowntime {
+				plan.uncaptured = append(plan.uncaptured, ports.UncapturedVolume{
+					Volume:   vol.Name,
+					Kind:     ports.VolumeKindNamed,
+					Services: vol.Services,
+					Reason: "it is undeclared, so it can only be captured with " +
+						"its services stopped, and this backup was told not to " +
+						"stop anything",
+				})
+				continue
+			}
+			plan.capture = append(plan.capture, plannedVolume{
+				volume: vol, consistency: ports.ConsistencyCold,
+			})
+		}
+	}
+
+	// A bind mount is an arbitrary host path: it can be `/`, it can be a
+	// network mount, it can be shared with something the manager knows
+	// nothing about. Capturing one means the manager deciding how much of
+	// somebody's filesystem to copy. Reported so an operator is not
+	// silently short a volume they thought was covered.
+	for _, bind := range storage.Binds {
+		plan.uncaptured = append(plan.uncaptured, ports.UncapturedVolume{
+			Volume:   bind.Source,
+			Kind:     ports.VolumeKindBind,
+			Services: bind.Services,
+			Reason: "it is a bind mount to a host path, which the manager " +
+				"never captures",
+		})
+	}
+
+	return plan
+}
+
+// checkVolumeNames refuses a volume whose name would not stay inside the backup
+// directory when it becomes a filename.
+//
+// A volume name is release-supplied: it comes out of a Compose file somebody
+// else wrote. Compose is unlikely to accept `../../etc/cron.d/x` as a volume
+// key, but "the other tool probably rejects it" is not a containment argument,
+// and this is the one place a release's own string becomes a path the manager
+// writes to. The same rule `recordArtifacts` applies to a hook's artifacts.
+func checkVolumeNames(storage ports.ProjectStorage) error {
+	for _, vol := range storage.Volumes {
+		if safeVolumeName(vol.Name) {
+			continue
+		}
+		return domain.BackupError(domain.ErrPathEscape,
+			"the release declares a volume named %q, which is not a usable file name",
+			vol.Name).
+			WithHint("volume names become file names inside the backup, so they must " +
+				"not contain a path separator")
+	}
+	return nil
+}
+
+// safeVolumeName reports whether a name is a single, ordinary path element.
+func safeVolumeName(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.ContainsRune(name, filepath.Separator) || strings.Contains(name, "/") {
+		return false
+	}
+	// Cleaning must be a no-op: anything it changes was not a plain name.
+	return filepath.Clean(name) == name
+}
+
+// volumeCapabilities is the pair of optional capabilities volume capture needs.
+type volumeCapabilities struct {
+	inspector ports.VolumeInspector
+	capturer  ports.VolumeCapturer
+}
+
+// volumeSupport reports whether this engine can read volumes at all.
+//
+// Both capabilities or neither: a runtime that can enumerate volumes but not
+// read them could produce a manifest full of volumes it did not capture, which
+// reads exactly like a backup that covered them.
+func (e *Engine) volumeSupport() (volumeCapabilities, bool) {
+	if e.runtime == nil {
+		return volumeCapabilities{}, false
+	}
+	inspector, okI := e.runtime.(ports.VolumeInspector)
+	capturer, okC := e.runtime.(ports.VolumeCapturer)
+	if !okI || !okC {
+		return volumeCapabilities{}, false
+	}
+	return volumeCapabilities{inspector: inspector, capturer: capturer}, true
+}
+
+// captureVolumes copies the project's named volumes into the backup directory.
+//
+// Returns the component records and the storage it deliberately did not take.
+// Everything it writes is plaintext at this point; the caller encrypts it with
+// everything else, so a volume tarball is protected by exactly the same
+// mechanism as the database dump beside it.
+func (e *Engine) captureVolumes(
+	ctx context.Context, dir string,
+) (records []ports.ComponentRecord, uncaptured []ports.UncapturedVolume, err error) {
+	caps, ok := e.volumeSupport()
+	if !ok {
+		return nil, nil, nil
+	}
+
+	storage, err := caps.inspector.Volumes(ctx, e.runtimeConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := checkVolumeNames(storage); err != nil {
+		return nil, nil, err
+	}
+
+	plan := planVolumes(storage, e.release.Manifest.Backup, e.allowDowntime)
+	if len(plan.capture) == 0 {
+		return nil, plan.uncaptured, nil
+	}
+
+	if err := e.checkVolumeSpace(ctx, caps.capturer, plan); err != nil {
+		return nil, nil, err
+	}
+
+	if err := atomicfs.MkdirAll(filepath.Join(dir, VolumeDir), 0o700); err != nil {
+		return nil, nil, err
+	}
+
+	// Hot volumes first, outside the downtime window. There is no reason
+	// for a volume the vendor said may be read live to be read while the
+	// product is down.
+	for _, planned := range plan.capture {
+		if planned.consistency != ports.ConsistencyHot {
+			continue
+		}
+		rec, err := e.captureOne(ctx, caps.capturer, dir, planned)
+		if err != nil {
+			return nil, nil, err
+		}
+		records = append(records, rec)
+	}
+
+	if plan.hasCold() {
+		cold, err := e.captureCold(ctx, caps.capturer, dir, plan)
+		if err != nil {
+			return nil, nil, err
+		}
+		records = append(records, cold...)
+	}
+
+	return records, plan.uncaptured, nil
+}
+
+// captureCold stops the writers, copies, and starts them again.
+//
+// The restart is deferred and unconditional. A backup that failed partway
+// through and left the product stopped would have turned a routine nightly job
+// into an outage, and the operator would find out from their users.
+func (e *Engine) captureCold(
+	ctx context.Context, capturer ports.VolumeCapturer, dir string, plan volumePlan,
+) (records []ports.ComponentRecord, err error) {
+	// Only the services that are actually up.
+	//
+	// A service that is already stopped needs no stopping, and starting it
+	// afterwards would have a backup starting a product its operator had
+	// deliberately taken down. Worse, `compose start` on a service with no
+	// container at all fails outright -- so a backup taken before
+	// maintenance, of a deployment that was already down, captured its
+	// volumes perfectly and then deleted them while reporting that it could
+	// not start what was never running.
+	services, err := e.runningAmong(ctx, plan.quiesceServices())
+	if err != nil {
+		return nil, err
+	}
+
+	if len(services) > 0 {
+		if stopErr := e.runtime.Stop(ctx, e.runtimeConfig, services, e.stopTimeout()); stopErr != nil {
+			return nil, domain.BackupError(stopErr,
+				"cannot stop %s to read its volumes", joinServices(services)).
+				WithHint("the services are still running and no volume was captured; " +
+					"declare `consistency: hot` in the release manifest for volumes " +
+					"that may be read live")
+		}
+
+		defer func() {
+			// A detached context, because the commonest reason a
+			// capture failed is that this one was cancelled -- and
+			// starting the product back up on a dead context fails
+			// instantly, leaving it stopped. Bounded, so a runtime
+			// that has stopped answering cannot hold a failed
+			// backup open indefinitely.
+			resumeCtx, cancel := detach(ctx, resumeTimeout)
+			defer cancel()
+
+			if startErr := e.runtime.Start(resumeCtx, e.runtimeConfig, services); startErr != nil {
+				// Reported, and it outranks whatever else went
+				// wrong: a failed backup is a problem for
+				// tomorrow, and a product that is still down is
+				// a problem right now.
+				err = domain.BackupError(startErr,
+					"the backup stopped %s to read a volume and could not start them again",
+					joinServices(services)).
+					WithHint("the deployment is down; run `morzer apply` to bring it back up")
+			}
+		}()
+	}
+
+	for _, planned := range plan.capture {
+		if planned.consistency != ports.ConsistencyCold {
+			continue
+		}
+		rec, captureErr := e.captureOne(ctx, capturer, dir, planned)
+		if captureErr != nil {
+			return nil, captureErr
+		}
+		records = append(records, rec)
+	}
+	return records, nil
+}
+
+// captureOne reads a single volume and records it.
+func (e *Engine) captureOne(
+	ctx context.Context, capturer ports.VolumeCapturer, dir string, planned plannedVolume,
+) (ports.ComponentRecord, error) {
+	rel := filepath.Join(VolumeDir, planned.volume.Name+".tar")
+	path := filepath.Join(dir, rel)
+
+	if err := capturer.CaptureVolume(ctx, e.runtimeConfig, planned.volume.Actual, path); err != nil {
+		// The cause's remedy is kept: the commonest one is "pull the
+		// helper image", and an operator who loses that sentence to a
+		// wrap is left with a diagnosis and nothing to do about it.
+		return ports.ComponentRecord{}, domain.BackupError(err,
+			"cannot capture volume %s", planned.volume.Name).WithHintFrom(err)
+	}
+
+	size, err := fileSize(path)
+	if err != nil {
+		return ports.ComponentRecord{}, err
+	}
+	sum, err := atomicfs.DigestFile(path)
+	if err != nil {
+		return ports.ComponentRecord{}, err
+	}
+
+	return ports.ComponentRecord{
+		Component: ports.ComponentVolumes,
+		Path:      rel,
+		Size:      size,
+		SHA256:    sum,
+		Volume: &ports.VolumeRecord{
+			Volume:      planned.volume.Name,
+			Actual:      planned.volume.Actual,
+			Services:    planned.volume.Services,
+			Consistency: planned.consistency,
+		},
+	}, nil
+}
+
+// checkVolumeSpace refuses a backup that will not fit, before anything is
+// written.
+//
+// "No space left on device" halfway through a hundred-gigabyte copy is a worse
+// message than a refusal naming both numbers, and it arrives after the product
+// has already been stopped.
+func (e *Engine) checkVolumeSpace(
+	ctx context.Context, capturer ports.VolumeCapturer, plan volumePlan,
+) error {
+	var total, largest int64
+	var overflowed bool
+	for _, planned := range plan.capture {
+		size, err := capturer.VolumeSize(ctx, e.runtimeConfig, planned.volume.Actual)
+		if err != nil {
+			// Not fatal. A backup refused because the manager could
+			// not measure a volume would be a backup refused for a
+			// reason that has nothing to do with whether it fits,
+			// and the copy itself will fail honestly if it does not.
+			return nil
+		}
+		if size < 0 || total > math.MaxInt64-size {
+			// A total that wrapped would come out negative and
+			// compare as *smaller* than the free space, turning a
+			// refusal into a pass -- the one direction this check
+			// must never fail in.
+			overflowed = true
+			break
+		}
+		total += size
+		if size > largest {
+			largest = size
+		}
+	}
+	if total == 0 && !overflowed {
+		return nil
+	}
+
+	free, err := atomicfs.FreeSpace(e.paths.BackupsDir())
+	if err != nil {
+		return nil
+	}
+
+	// The largest volume counted twice: encryption writes the ciphertext
+	// beside the plaintext and removes the plaintext afterwards, one
+	// component at a time, so the high-water mark is everything plus one
+	// more copy of the biggest.
+	// Saturating rather than wrapping: a requirement no disk can satisfy
+	// must compare as larger than the free space, not as negative.
+	required := int64(math.MaxInt64)
+	if !overflowed && total <= math.MaxInt64-largest {
+		required = total + largest
+	}
+	if free >= required {
+		return nil
+	}
+
+	return domain.BackupError(nil,
+		"this backup needs about %s for the project's volumes and %s is free on %s",
+		domain.ByteSize(required), domain.ByteSize(free), e.paths.BackupsDir()).
+		WithHint("prune old backups (`morzer backup list`), give %s more room, or "+
+			"exclude a volume in the release manifest -- nothing has been "+
+			"written and nothing has been stopped",
+			e.paths.BackupsDir())
+}
+
+// restoreVolumes writes the backup's volume tarballs back.
+//
+// Volumes before the hook, because this is the failure worth having first: a
+// volume that will not restore stops the operation while the database is still
+// the one that was there, and a database the hook has begun overwriting cannot
+// be put back by anything.
+func (e *Engine) restoreVolumes(
+	ctx context.Context, staged string, manifest ports.BackupManifest, opts ports.RestoreOptions,
+) error {
+	volumes := manifest.VolumeRecords()
+	if len(volumes) == 0 {
+		return nil
+	}
+	if !componentSelected(opts.Components, ports.ComponentVolumes) {
+		return nil
+	}
+
+	caps, ok := e.volumeSupport()
+	if !ok {
+		return domain.BackupError(domain.ErrUnsupported,
+			"this backup contains %d volume(s) but the configured runtime cannot write them",
+			len(volumes)).
+			WithHint("restore the rest with `--component database,config,secrets`, " +
+				"and put the volumes back by hand")
+	}
+
+	if err := e.refuseRunningMounts(ctx, volumes); err != nil {
+		return err
+	}
+
+	// The current project's names, so a restore writes into the volumes
+	// this deployment actually uses rather than the ones the backup was
+	// taken from. They differ whenever the project has been renamed, and
+	// writing into the recorded name would create a stray volume nothing
+	// mounts -- a restore that reports success and changes nothing.
+	actual := e.currentVolumeNames(ctx, caps.inspector)
+
+	for _, c := range volumes {
+		target := c.Volume.Actual
+		if live, ok := actual[c.Volume.Volume]; ok {
+			target = live
+		}
+
+		path := filepath.Join(staged, strings.TrimSuffix(c.Path, agecrypt.Extension))
+		if err := caps.capturer.RestoreVolume(ctx, e.runtimeConfig, target, path); err != nil {
+			return domain.BackupError(err,
+				"cannot restore volume %s", c.Volume.Volume).WithHintFrom(err)
+		}
+	}
+	return nil
+}
+
+// refuseRunningMounts is decision 6: a volume is never written while a
+// container has it open.
+//
+// Untarring into a volume a running container is reading is how a restore
+// corrupts the thing it was restoring, and the container would then be holding
+// file handles to files that no longer exist. The refusal names the services,
+// because "stop the services" is not an instruction anybody can follow.
+func (e *Engine) refuseRunningMounts(ctx context.Context, volumes []ports.ComponentRecord) error {
+	running, err := e.runningServices(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Collected across every volume before reporting, so an operator stops
+	// everything once rather than discovering the next name after each
+	// retry.
+	blockers := map[string][]string{}
+	for _, c := range volumes {
+		for _, service := range c.Volume.Services {
+			if running[service] {
+				blockers[service] = append(blockers[service], c.Volume.Volume)
+			}
+		}
+	}
+	if len(blockers) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(blockers))
+	for service := range blockers {
+		names = append(names, service)
+	}
+	sort.Strings(names)
+
+	details := make([]string, 0, len(names))
+	for _, service := range names {
+		mounted := blockers[service]
+		sort.Strings(mounted)
+		details = append(details, fmt.Sprintf("%s (%s)", service, strings.Join(mounted, ", ")))
+	}
+
+	return domain.BackupError(nil,
+		"cannot restore a volume while the services mounting it are running: %s",
+		strings.Join(details, ", ")).
+		WithHint("stop them first -- `morzer restore` does this for you, so this "+
+			"message means %s was still up when the volume was about to be "+
+			"written", joinServices(names))
+}
+
+// runningServices is the set of services the runtime reports as running.
+//
+// A failure is an error rather than an empty set, and both callers depend on
+// that: one is deciding what to stop before writing, the other is deciding
+// whether writing is safe at all, and "cannot tell" answered as "nothing is
+// running" would let both proceed against a live product.
+func (e *Engine) runningServices(ctx context.Context) (map[string]bool, error) {
+	states, err := e.runtime.Status(ctx, e.runtimeConfig)
+	if err != nil {
+		return nil, domain.BackupError(err,
+			"cannot tell which services are running, so a volume cannot be read or "+
+				"written safely")
+	}
+
+	running := make(map[string]bool, len(states))
+	for _, s := range states {
+		if s.State == "running" {
+			running[s.Name] = true
+		}
+	}
+	return running, nil
+}
+
+// runningAmong narrows a list of services to those currently up, preserving
+// order.
+func (e *Engine) runningAmong(ctx context.Context, services []string) ([]string, error) {
+	if len(services) == 0 {
+		return nil, nil
+	}
+	running, err := e.runningServices(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]string, 0, len(services))
+	for _, s := range services {
+		if running[s] {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// currentVolumeNames maps each logical volume name to its name in the runtime
+// right now. Best effort: a project that cannot be resolved falls back to what
+// the backup recorded.
+func (e *Engine) currentVolumeNames(ctx context.Context, inspector ports.VolumeInspector) map[string]string {
+	storage, err := inspector.Volumes(ctx, e.runtimeConfig)
+	if err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(storage.Volumes))
+	for _, v := range storage.Volumes {
+		out[v.Name] = v.Actual
+	}
+	return out
+}
+
+// componentSelected reports whether a component is in scope. An empty
+// selection is everything, matching RestoreOptions.Components.
+func componentSelected(selected []ports.Component, want ports.Component) bool {
+	if len(selected) == 0 {
+		return true
+	}
+	for _, c := range selected {
+		if c == want {
+			return true
+		}
+	}
+	return false
+}
+
+func joinServices(services []string) string {
+	if len(services) == 0 {
+		return "the project"
+	}
+	return strings.Join(services, ", ")
+}

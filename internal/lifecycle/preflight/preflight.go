@@ -21,6 +21,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/infra/tools"
 )
 
@@ -315,35 +316,10 @@ func Disk(path string, required domain.ByteSize) Check {
 
 // FreeSpace returns the bytes available to an unprivileged process.
 //
-// Bavail rather than Bfree: the difference is the reserved blocks only root
-// may use, and reporting those as available would let a non-root operation
-// pass preflight and then fail on ENOSPC.
-func FreeSpace(path string) (int64, error) {
-	var stat syscall.Statfs_t
-	target := path
-	for {
-		if err := syscall.Statfs(target, &stat); err == nil {
-			break
-		}
-		// The path may not exist yet on a fresh install; walk up to the
-		// nearest existing ancestor, which is on the same filesystem
-		// the directory will be created on.
-		parent := parentDir(target)
-		if parent == target {
-			return 0, fmt.Errorf("cannot stat any ancestor of %s", path)
-		}
-		target = parent
-	}
-	//nolint:gosec // Bavail and Bsize are non-negative in practice.
-	return int64(stat.Bavail) * stat.Bsize, nil
-}
-
-func parentDir(p string) string {
-	if i := strings.LastIndexByte(strings.TrimSuffix(p, "/"), '/'); i > 0 {
-		return p[:i]
-	}
-	return "/"
-}
+// The implementation moved to atomicfs so an adapter can reach it -- a volume
+// capture measures before it copies. This stays as the name preflight's own
+// callers already use.
+func FreeSpace(path string) (int64, error) { return atomicfs.FreeSpace(path) }
 
 // Ports checks that the ports a release needs are free.
 //

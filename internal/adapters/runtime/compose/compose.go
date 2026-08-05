@@ -40,6 +40,10 @@ type Runtime struct {
 
 	// redact is the secret list handed to every subprocess.
 	redact []string
+
+	// helperImage is the container a volume's contents are read and
+	// written through. Empty means DefaultHelperImage.
+	helperImage string
 }
 
 // New returns a Compose runtime.
@@ -258,6 +262,38 @@ func (r *Runtime) Restart(ctx context.Context, cfg ports.RuntimeConfig, services
 	argv := append(r.args(cfg, "restart"), services...)
 	if _, err := r.runner.Run(ctx, r.command(cfg, 10*time.Minute, argv...)); err != nil {
 		return wrapExit(err, "cannot restart services", "")
+	}
+	return nil
+}
+
+// Stop halts services without removing anything.
+//
+// `compose stop` rather than `compose down`: down removes containers and
+// networks, and the caller here means to put back exactly what it took away.
+func (r *Runtime) Stop(ctx context.Context, cfg ports.RuntimeConfig, services []string, timeout time.Duration) error {
+	argv := r.args(cfg, "stop")
+	if timeout > 0 {
+		argv = append(argv, "--timeout", strconv.Itoa(int(timeout.Seconds())))
+	}
+	argv = append(argv, services...)
+
+	if _, err := r.runner.Run(ctx, r.command(cfg, 15*time.Minute, argv...)); err != nil {
+		return wrapExit(err, "cannot stop services", "")
+	}
+	return nil
+}
+
+// Start starts what Stop halted.
+//
+// `compose start` and emphatically not `compose up`: up reconciles against the
+// declared configuration and will recreate a container whose definition has
+// drifted. Resuming a stack after a backup must not be the thing that applies a
+// change nobody asked for.
+func (r *Runtime) Start(ctx context.Context, cfg ports.RuntimeConfig, services []string) error {
+	argv := append(r.args(cfg, "start"), services...)
+	if _, err := r.runner.Run(ctx, r.command(cfg, 15*time.Minute, argv...)); err != nil {
+		return wrapExit(err, "cannot start services",
+			"run `morzer status` for per-service state, or `docker compose logs` for detail")
 	}
 	return nil
 }

@@ -123,9 +123,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The backup taken before an update is copied to the targets too. A failure warns rather than blocking the update: the local copy is what a rollback on this machine uses, and refusing to install a fix because a disk was unplugged helps nobody.
 
+- Backups now include the project's named volumes, which the manager reads for itself rather than through the release's hook. A hook is usually written by somebody thinking about the database, and the uploads volume, the generated thumbnails, the certificate store and the queue's spool are not in the dump — nobody notices until a restore produces a working database and an application with no files.
+
+- A release that declares no backup operation at all can now produce a restorable backup, since the volumes are something the manager can read without a client for whatever wrote them. Previously such a release had a backup command with nothing behind it.
+
+- A volume the release has not classified is captured with the services that mount it stopped, so nothing is writing while it is read. Only those services are stopped, and every such volume in one backup shares a single stop and start.
+
+- A release can declare `consistency: hot` for a volume that may be read while the product runs, and `consistency: exclude` for one its backup hook owns. Hot is a claim the vendor makes about their own product and is recorded in every backup manifest taken under it; the manager never assumes it. Copying a live volume yields a crash-consistent copy — what a power cut would have left — so this does not replace a backup hook for anything with a transaction log.
+
+- `morzer backup --no-downtime` never stops a service. Volumes that would need it are skipped and named in the backup manifest rather than copied live, because taking a hot copy of a volume nobody classified would be the manager making the vendor's claim on their behalf.
+
+- The backup manifest records what was left out and why, alongside what was taken: a volume the release excludes, one skipped for downtime, and every bind mount. A backup that silently covers less than it appears to is the failure this exists to prevent.
+
+- Bind mounts are reported and never captured. A bind mount is an arbitrary host path that may be enormous, shared, or outside anything the manager manages, so copying one is the operator's to arrange.
+
+- Restoring a volume is refused while any service that mounts it is running, named by service. A restored volume holds exactly what the backup held, rather than merging with what was there: a volume matching no point in time, beside a database restored to an exact one, is how a record without its file is made.
+
+- Volumes are read and written through a small helper container pinned by digest, rather than through the host's storage directory, which is an implementation detail and unreadable under a rootless or remote daemon. The source is mounted read-only. A diagnostic reports the image when it is absent, with the command to pull it, so an air-gapped machine learns about it before backup night rather than during it.
+
+- A backup that would not fit is refused before anything is written or stopped, naming what it needs and what is free. A diagnostic also warns when keeping the configured number of backups will not fit, since retention counts backups rather than bytes and volume backups are much larger than database dumps.
+
 ### Changed
 
 - The installation state format moved to schema 3 for backup targets. An older manager refuses a newer state rather than reading it, seeing no targets, and quietly leaving every backup on the machine a target was configured to survive.
+
+- The backup manifest format moved to schema 3 for volume components. An older manager refuses such a backup rather than restoring the database, silently omitting the volumes it does not know how to write, and reporting success. Backups written under earlier schemas still restore.
 
 - The container runtime no longer inherits the whole environment of whoever invoked the manager. It receives an allow-list of what a tool needs to run, plus the release's declared parameters. Any product-prefixed variable set in a shell used to interpolate into Compose files unvalidated and unrecorded.
 

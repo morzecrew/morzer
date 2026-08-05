@@ -511,8 +511,20 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	return nil
 }
 
+// backupEngineOption adjusts how the backup adapter is wired.
+//
+// Variadic rather than a parameter, because a dozen commands attach the engine
+// and exactly one of them -- `morzer backup` -- has anything to say about it.
+type backupEngineOption func(*hookbackup.Config)
+
+// withDowntime decides whether the backup may stop services to read a volume
+// the release has not declared safe to read live.
+func withDowntime(allowed bool) backupEngineOption {
+	return func(cfg *hookbackup.Config) { cfg.AllowDowntime = allowed }
+}
+
 // attachBackupEngine wires the backup adapter once a release is known.
-func (a *App) attachBackupEngine(ctx context.Context) error {
+func (a *App) attachBackupEngine(ctx context.Context, opts ...backupEngineOption) error {
 	d := a.Deps
 
 	inst, err := d.State.LoadInstallation(ctx)
@@ -533,12 +545,32 @@ func (a *App) attachBackupEngine(ctx context.Context) error {
 		return err
 	}
 
-	d.Backup = hookbackup.New(hookbackup.Config{
+	// The runtime, so a backup can read the project's named volumes and a
+	// restore can write them back. A failure to assemble the project
+	// configuration is not fatal here: it means a parameter will not
+	// resolve, which the operations that actually touch the runtime report
+	// far better than a backup engine constructor could -- and `backup
+	// list` on a broken installation must keep working.
+	runtimeConfig, cfgErr := d.RuntimeConfigFor(rel, inst)
+	runtime := d.Runtime
+	if cfgErr != nil {
+		runtime = nil
+	}
+
+	cfg := hookbackup.Config{
 		Hooks:          d.Hooks,
 		Release:        rel,
 		Installation:   inst,
 		Paths:          d.Paths,
 		ManagerVersion: a.Build.Version,
+
+		Runtime:       runtime,
+		RuntimeConfig: runtimeConfig,
+
+		// The default, and the safe one: an undeclared volume is
+		// captured with its services stopped rather than skipped. See
+		// `morzer backup --no-downtime` for the other choice.
+		AllowDowntime: true,
 
 		// A backup is encrypted to whoever can already read this
 		// deployment's secrets -- this machine's key plus whatever
@@ -556,7 +588,13 @@ func (a *App) attachBackupEngine(ctx context.Context) error {
 			}
 			return keys, nil
 		},
-	})
+	}
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	d.Backup = hookbackup.New(cfg)
 	return nil
 }
 

@@ -106,6 +106,28 @@ func (e *Error) WithHint(format string, args ...any) *Error {
 	return &c
 }
 
+// WithHintFrom returns a copy carrying the cause's remedy, when the cause has
+// one and this error does not.
+//
+// Wrapping is how an error gains context on the way out, and AsError reports
+// the outermost structured error -- so a wrap with no hint of its own silently
+// discards the one sentence that told the operator what to do. That is not
+// hypothetical: "the volume helper image is not on this machine" carried
+// `docker pull <ref>`, and wrapping it as "cannot capture volume uploads" left
+// an air-gapped operator with a diagnosis and no remedy.
+func (e *Error) WithHintFrom(cause error) *Error {
+	if e.Hint != "" || cause == nil {
+		return e
+	}
+	inner := AsError(cause)
+	if inner == nil || inner.Hint == "" {
+		return e
+	}
+	c := *e
+	c.Hint = inner.Hint
+	return &c
+}
+
 // WithOp returns a copy tagged with the operation and step it arose in. The
 // engine calls this as errors travel outward, so the operator gets a location
 // without every call site having to thread the operation through.

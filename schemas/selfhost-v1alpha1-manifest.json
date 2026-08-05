@@ -10,6 +10,30 @@
       ],
       "type": "string"
     },
+    "backup": {
+      "additionalProperties": false,
+      "properties": {
+        "volumes": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "consistency": {
+                "description": "How this volume may be read. `cold` is the default and needs no declaration: the services mounting it are stopped for the copy. `hot` claims a copy taken while they run is usable. `exclude` keeps the manager out of it entirely.",
+                "enum": [
+                  "cold",
+                  "hot",
+                  "exclude"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
     "compatibility": {
       "additionalProperties": false,
       "properties": {

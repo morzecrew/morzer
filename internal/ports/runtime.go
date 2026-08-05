@@ -42,6 +42,25 @@ type Runtime interface {
 	// Restart restarts the named services, or all of them when empty.
 	Restart(ctx context.Context, cfg RuntimeConfig, services []string) error
 
+	// Stop halts the named services without removing their containers,
+	// networks or volumes. Empty stops the whole project.
+	//
+	// Distinct from Down, which tears the project down: this is the half of
+	// the pair that a backup uses to quiesce writers before reading their
+	// storage, and it has to be reversible by Start without recreating
+	// anything.
+	Stop(ctx context.Context, cfg RuntimeConfig, services []string, timeout time.Duration) error
+
+	// Start starts services Stop halted, without reconciling against the
+	// declared configuration.
+	//
+	// Deliberately not Up: Up converges, which may recreate a container
+	// whose definition has drifted. Resuming a stack after a backup must
+	// put back exactly what was stopped -- an operation that quietly
+	// recreated a container as a side effect of taking a backup would be a
+	// backup that changed the deployment.
+	Start(ctx context.Context, cfg RuntimeConfig, services []string) error
+
 	// RunOneShot runs a service to completion -- migrations, admin jobs.
 	RunOneShot(ctx context.Context, cfg RuntimeConfig, service string, opts RunOptions) (ExitResult, error)
 
@@ -197,6 +216,92 @@ type ImageInspector interface {
 	// cannot be checked is reported as an error rather than as absent:
 	// "not here" and "cannot tell" lead an operator to different actions.
 	HasImage(ctx context.Context, imageRef string) (bool, error)
+}
+
+// VolumeInspector reports the storage a project's resolved configuration
+// declares.
+//
+// Read-only and cheap, so `doctor` can ask it on every invocation. It is what
+// makes "which of this deployment's volumes is no backup covering" an
+// answerable question rather than something an operator discovers during a
+// restore.
+type VolumeInspector interface {
+	Volumes(ctx context.Context, cfg RuntimeConfig) (ProjectStorage, error)
+}
+
+// VolumeCapturer reads and writes a volume's contents.
+//
+// Optional for the same reason as RegistryProber: a runtime with no volume
+// concept has nothing to answer. Callers type-assert and say plainly what they
+// cannot do rather than failing obscurely.
+//
+// The implementation must not depend on the host's storage layout.
+// /var/lib/docker/volumes is an implementation detail, and it is unreadable
+// under a rootless daemon or a remote one -- so a volume is read the way
+// anything else reads one, through a container that mounts it.
+type VolumeCapturer interface {
+	// CaptureVolume writes the volume's contents to destPath as an
+	// uncompressed tar. The volume is mounted read-only: a helper that
+	// misbehaves must not be able to write into the product's data.
+	CaptureVolume(ctx context.Context, cfg RuntimeConfig, volume, destPath string) error
+
+	// RestoreVolume replaces the volume's contents with the tar at
+	// srcPath.
+	//
+	// Replaces, not merges. A restore that left files the backup does not
+	// contain would produce a volume matching no point in time, which
+	// beside a database restored to an exact one is how dangling
+	// references are made.
+	RestoreVolume(ctx context.Context, cfg RuntimeConfig, volume, srcPath string) error
+
+	// VolumeSize reports how many bytes the volume holds, so a backup that
+	// will not fit can be refused before it is started rather than
+	// discovered halfway through.
+	VolumeSize(ctx context.Context, cfg RuntimeConfig, volume string) (int64, error)
+
+	// HelperImage is the image the three methods above run. Reported by
+	// `doctor` so an operator preparing an air-gapped machine learns which
+	// image to cache before backup night rather than during it.
+	HelperImage() string
+}
+
+// ProjectStorage is everything a project's resolved configuration mounts.
+type ProjectStorage struct {
+	// Volumes are the named volumes, sorted by name so plans and manifests
+	// do not shuffle between runs.
+	Volumes []NamedVolume
+
+	// Binds are host paths mounted into containers. Reported, never
+	// captured -- see UncapturedVolume.
+	Binds []BindMount
+}
+
+// NamedVolume is one named volume and who writes to it.
+type NamedVolume struct {
+	// Name is the key in the project's `volumes:` block.
+	Name string
+
+	// Actual is the volume's name in the runtime, normally the project
+	// name and Name joined -- and something else entirely when the volume
+	// is external or names itself.
+	Actual string
+
+	// External marks a volume the project uses but does not own. It is
+	// still captured: the data is the deployment's whether or not Compose
+	// created the volume.
+	External bool
+
+	// Services are the services that mount it, sorted.
+	Services []string
+}
+
+// BindMount is a host path a service mounts.
+type BindMount struct {
+	// Source is the host path.
+	Source string
+
+	// Services are the services that mount it, sorted.
+	Services []string
 }
 
 // ToolInfo is a resolved external binary. The lifecycle layer uses it for

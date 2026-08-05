@@ -45,11 +45,28 @@ const (
 	ComponentConfig   Component = "config"  // installation.yaml, application.yaml
 	ComponentSecrets  Component = "secrets" // the encrypted SOPS file only
 	ComponentManifest Component = "manifest"
+
+	// ComponentVolumes is the contents of the project's named volumes,
+	// read by the manager rather than produced by a hook.
+	//
+	// Distinct from ComponentFiles, which is whatever the hook chose to
+	// write: the two have different consistency stories, and a restore has
+	// to tell them apart. A `files` artifact is a file the hook produced
+	// deliberately and can put back; a `volumes` tarball is a copy of
+	// storage the manager took, and putting it back means writing into a
+	// volume that nothing may have open.
+	ComponentVolumes Component = "volumes"
 )
 
 // AllComponents is the default scope of a full backup.
+//
+// Volumes are in it. A release whose hook dumps its database and forgets the
+// uploads volume is the common case rather than the exceptional one, and a
+// backup that quietly omits the uploads is one that passes verification and
+// does not work.
 var AllComponents = []Component{
-	ComponentDatabase, ComponentFiles, ComponentConfig, ComponentSecrets, ComponentManifest,
+	ComponentDatabase, ComponentFiles, ComponentConfig, ComponentSecrets,
+	ComponentManifest, ComponentVolumes,
 }
 
 // Scope selects what a backup covers.
@@ -98,6 +115,21 @@ type BackupManifest struct {
 	Labels         map[string]string `json:"labels,omitempty"`
 	ManagerVersion string            `json:"manager_version"`
 	Reason         string            `json:"reason,omitempty"`
+
+	// Uncaptured names the project storage this backup did not include and
+	// why. Empty when everything in scope was captured.
+	Uncaptured []UncapturedVolume `json:"uncaptured,omitempty"`
+}
+
+// VolumeRecords returns the volume components of a backup, in manifest order.
+func (m BackupManifest) VolumeRecords() []ComponentRecord {
+	var out []ComponentRecord
+	for _, c := range m.Components {
+		if c.Component == ComponentVolumes && c.Volume != nil {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // ComponentRecord is one part of a backup with its checksum.
@@ -119,7 +151,89 @@ type ComponentRecord struct {
 	// know what to do with a file it did not write, and reading that off a
 	// filename is how a renamed artifact becomes an unreadable backup.
 	Encryption Encryption `json:"encryption,omitempty"`
+
+	// Volume describes the volume this component holds, set only on
+	// ComponentVolumes records.
+	Volume *VolumeRecord `json:"volume,omitempty"`
 }
+
+// Consistency is what a volume copy is worth.
+//
+// It is recorded per volume rather than per backup because one backup holds
+// both kinds: an uploads volume the vendor declared safe to read live, and a
+// queue spool the manager stopped a service to read.
+type Consistency string
+
+const (
+	// ConsistencyCold means nothing was writing to the volume: every
+	// service that mounts it was stopped for the duration of the copy.
+	// This is what an undeclared volume gets.
+	ConsistencyCold Consistency = "cold"
+
+	// ConsistencyHot means the volume was read while its services ran, so
+	// the copy is crash-consistent -- byte-for-byte what a power cut would
+	// have left, not what a clean shutdown would have.
+	//
+	// It is only ever set because the release manifest declared it. The
+	// manager does not decide that a volume is safe to read live; the
+	// vendor claims it, and this field records the claim so an incident
+	// review can see who made it.
+	ConsistencyHot Consistency = "hot"
+)
+
+// VolumeRecord is what a restore needs in order to be safe, and what an
+// operator needs in order to know what they have.
+type VolumeRecord struct {
+	// Volume is the Compose volume name, as the project's configuration
+	// spells it.
+	Volume string `json:"volume"`
+
+	// Actual is the volume's real name in the container runtime, normally
+	// the project name and the volume name joined. It is what a restore
+	// writes into.
+	Actual string `json:"actual,omitempty"`
+
+	// Services are the services that mount it, from the resolved
+	// configuration.
+	//
+	// Not decoration. It is what lets a restore refuse to write into a
+	// volume a container has open, and what lets an operator see from the
+	// manifest alone which services were stopped to take this copy.
+	Services []string `json:"services,omitempty"`
+
+	Consistency Consistency `json:"consistency"`
+}
+
+// UncapturedVolume is storage the backup deliberately did not include.
+//
+// A backup that silently omits a volume is the failure this whole component
+// exists to prevent, so what was left out is recorded beside what was taken
+// in. An operator reading a manifest after an incident can see that the
+// uploads volume was excluded by the vendor, or that a bind mount was never a
+// candidate, rather than inferring it from an absence.
+type UncapturedVolume struct {
+	// Volume is the volume name, or the host path for a bind mount.
+	Volume string `json:"volume"`
+
+	// Kind is "volume" or "bind".
+	Kind string `json:"kind"`
+
+	// Services are the services that mount it.
+	Services []string `json:"services,omitempty"`
+
+	// Reason is why it was not captured, in words an operator can act on.
+	Reason string `json:"reason"`
+}
+
+const (
+	// VolumeKindNamed is a named volume the runtime manages.
+	VolumeKindNamed = "volume"
+
+	// VolumeKindBind is a host path mounted into a container. Never
+	// captured: it is an arbitrary path that may be enormous, may be
+	// shared, and may be outside anything the manager manages.
+	VolumeKindBind = "bind"
+)
 
 // Encryption is how one component is stored.
 type Encryption string

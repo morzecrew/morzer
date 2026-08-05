@@ -56,6 +56,20 @@ type Command struct {
 
 	Stdin io.Reader
 
+	// Stdout receives the child's standard output verbatim when set,
+	// instead of it being scanned into lines.
+	//
+	// It exists for the output that is not text: a volume's contents arrive
+	// as a tar stream on stdout, and the line scanner would both corrupt it
+	// (splitting on 0x0a bytes that are data) and hold a hundred gigabytes
+	// in memory to do it. Redaction is deliberately not applied -- a binary
+	// stream cannot be searched for secrets line by line, and the callers
+	// that use this pipe bytes to a file rather than to a log.
+	//
+	// Stderr is unaffected and is still scanned, so a failing command still
+	// reports why.
+	Stdout io.Writer
+
 	// Timeout bounds the run independently of the context. Zero means only
 	// the context governs.
 	Timeout time.Duration
@@ -256,9 +270,31 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 		stderrBuf = newBoundedBuffer(maxCapture)
 	)
 
+	var streamErr error
+
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
+		if cmd.Stdout != nil {
+			// Raw, because the caller asked for bytes rather than
+			// lines.
+			_, streamErr = io.Copy(cmd.Stdout, stdoutPipe)
+			if streamErr != nil {
+				// Closed rather than drained. Something must
+				// happen to the pipe -- an unread one blocks the
+				// child forever and Wait with it -- and the
+				// reason this write failed is usually a full
+				// disk, at which point reading the remaining
+				// hundred gigabytes into io.Discard is a long
+				// wait for an outcome already decided. Closing
+				// makes the child's next write fail instead.
+				//
+				// Wait closes it again and ignores the error, so
+				// the double close is safe.
+				_ = stdoutPipe.Close()
+			}
+			return
+		}
 		scanLines(stdoutPipe, func(text string) {
 			text = redactor.string(text)
 			if cmd.CaptureOutput {
@@ -313,6 +349,19 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 		default:
 			return result, domain.Interrupted("%s was cancelled", strings.Join(safeArgv, " "))
 		}
+	}
+
+	// Before the exit status, because when both are set the write failure
+	// caused the exit: closing the pipe is what kills the child, so a full
+	// disk during a volume capture surfaces as "exited with code 141"
+	// unless this is checked first. That sends an operator looking for a
+	// bug in tar instead of at their disk.
+	//
+	// Reporting success here at all is how a full disk produces a truncated
+	// tarball that verifies against a checksum taken of the truncation.
+	if streamErr != nil {
+		return result, domain.RuntimeError(streamErr,
+			"cannot store the output of %s", strings.Join(safeArgv, " "))
 	}
 
 	if waitErr != nil {

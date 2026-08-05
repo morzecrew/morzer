@@ -23,6 +23,10 @@ services:
     volumes:
       - ${DEMO_CONFIG_FILE:-/etc/demo/application.yaml}:/etc/demo/application.yaml:ro
       - ${DEMO_DATA_DIR:-/var/lib/demo/data}:/var/lib/demo:rw
+      # Carried forward from 1.2.0. A release that drops a named volume is a
+      # release whose backups stop covering it, so the two versions of this
+      # fixture declare the same storage.
+      - uploads:/var/lib/demo/uploads
     secrets:
       - db_password
       - session_key
@@ -31,6 +35,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+volumes:
+  uploads: {}
 
 secrets:
   db_password:

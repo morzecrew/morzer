@@ -400,14 +400,26 @@ func newBackupCommand(app *App) *cobra.Command {
 		noPrune       bool
 		noPush        bool
 		noPruneRemote bool
+		noDowntime    bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "backup",
-		Short: "Back up the database, files, configuration and secret state",
-		Args:  cobra.NoArgs,
+		Short: "Back up the database, volumes, configuration and secret state",
+		Long: "Backs up what the release's hook produces, the project's named\n" +
+			"volumes, the configuration and the encrypted secret state.\n\n" +
+			"A volume the release has not declared safe to read live is captured\n" +
+			"with the services that mount it stopped, because a copy taken while\n" +
+			"something is writing is crash-consistent rather than\n" +
+			"application-consistent -- what a power cut would have left. Use\n" +
+			"--no-downtime to skip those volumes instead; they are then named in\n" +
+			"the backup's manifest as uncaptured, so nothing is lost silently.\n\n" +
+			"This does not replace the backup hook for anything with a\n" +
+			"transaction log. A volume copy of a running database is not a\n" +
+			"database backup.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := app.attachBackupEngine(cmd.Context()); err != nil {
+			if err := app.attachBackupEngine(cmd.Context(), withDowntime(!noDowntime)); err != nil {
 				return err
 			}
 
@@ -433,7 +445,13 @@ func newBackupCommand(app *App) *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&reason, "reason", "manual", "why this backup was taken; recorded in its manifest")
 	f.StringSliceVar(&components, "component", nil,
-		"limit the backup to these components: database, files, config, secrets, manifest")
+		"limit the backup to these components: database, files, config, secrets, manifest, volumes")
+	// Named for what it costs, like --no-push: an operator reaching for
+	// this is choosing a backup that omits volumes over one that briefly
+	// stops services, and the help text should say so rather than leaving
+	// them to find out from the manifest afterwards.
+	f.BoolVar(&noDowntime, "no-downtime", false,
+		"never stop a service to read a volume; volumes that would need it are skipped and reported")
 	f.BoolVar(&noVerify, "no-verify", false, "skip re-reading the backup to check its checksums")
 	f.BoolVar(&noPrune, "no-prune", false, "skip applying the retention policy afterwards")
 	// Named for what it costs rather than for what it does: an operator
@@ -644,8 +662,12 @@ func newRestoreCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "restore",
 		Short: "Restore from a backup",
-		Long: "Verifies the backup, stops writers, restores the database and files,\n" +
-			"re-applies the release and runs the smoke test.\n\n" +
+		Long: "Verifies the backup, stops writers, restores the volumes and then the\n" +
+			"database and files, re-applies the release and runs the smoke test.\n\n" +
+			"A restored volume holds exactly what the backup held: anything written\n" +
+			"to it since is gone, rather than left beside data restored to an\n" +
+			"earlier moment. Writing into a volume is refused while a service that\n" +
+			"mounts it is running, which is why the services are stopped first.\n\n" +
 			"Destructive: requires --force and --confirm <installation-id>.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -674,7 +696,8 @@ func newRestoreCommand(app *App) *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&backupID, "backup", "", "backup id; the most recent when omitted")
 	f.StringVar(&confirm, "confirm", "", "the installation id, typed to confirm a destructive restore")
-	f.StringSliceVar(&components, "component", nil, "limit the restore to these components")
+	f.StringSliceVar(&components, "component", nil,
+		"limit the restore to these components: database, files, config, secrets, manifest, volumes")
 	f.StringVar(&identity, "identity", "",
 		"age identity that can decrypt the backup; defaults to this machine's own key")
 	f.BoolVar(&crossInst, "allow-cross-installation", false,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -92,6 +93,15 @@ func Backup(ctx context.Context, d *Deps, opts BackupOptions) (Result, error) {
 	ref := engine.MustGet[ports.BackupRef](result.State, engine.KeyBackupRef)
 	out.Summary = fmt.Sprintf("backup %s created (%s)", ref.ID, domain.ByteSize(ref.Size))
 
+	// What happened to the volumes, said out loud rather than left in the
+	// manifest. An operator whose uploads volume was skipped because the
+	// vendor excluded it has to learn that from the command that took the
+	// backup, not from a file they will read for the first time during a
+	// restore.
+	if summary := d.volumeSummary(ctx, ref); summary != "" {
+		out.Summary += ", " + summary
+	}
+
 	// Where it went is the part worth saying out loud. A backup on one disk
 	// and a backup in two places read the same in a log otherwise, and the
 	// difference is the whole point of having configured a target.
@@ -105,6 +115,64 @@ func Backup(ctx context.Context, d *Deps, opts BackupOptions) (Result, error) {
 
 	out.Data = ref
 	return out, nil
+}
+
+// volumeSummary describes what the backup did about the project's storage.
+//
+// Best effort, and deliberately: this runs after a backup has succeeded, and a
+// manifest that will not re-read is a reason to say less, not a reason to
+// report the backup as failed.
+func (d *Deps) volumeSummary(ctx context.Context, ref ports.BackupRef) string {
+	manifest, err := d.Backup.Inspect(ctx, ref)
+	if err != nil {
+		return ""
+	}
+
+	var hot, cold int
+	for _, c := range manifest.VolumeRecords() {
+		if c.Volume.Consistency == ports.ConsistencyHot {
+			hot++
+			continue
+		}
+		cold++
+	}
+
+	var parts []string
+	switch {
+	case cold > 0 && hot > 0:
+		parts = append(parts, fmt.Sprintf("%d volume(s): %d cold, %d hot", cold+hot, cold, hot))
+	case cold > 0:
+		parts = append(parts, fmt.Sprintf("%d volume(s) captured cold", cold))
+	case hot > 0:
+		parts = append(parts, fmt.Sprintf("%d volume(s) captured hot", hot))
+	}
+
+	// Named, not counted. "2 volumes were not captured" tells an operator
+	// they have a problem without telling them which one, which is the
+	// worst of both messages.
+	if skipped := uncapturedNames(manifest.Uncaptured); skipped != "" {
+		parts = append(parts, "not captured: "+skipped)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// uncapturedNames lists what was left out, bounded so a project with fifty
+// bind mounts does not produce a summary line nobody reads.
+func uncapturedNames(uncaptured []ports.UncapturedVolume) string {
+	const limit = 4
+
+	names := make([]string, 0, len(uncaptured))
+	for _, u := range uncaptured {
+		names = append(names, u.Volume)
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	if len(names) > limit {
+		extra := len(names) - limit
+		names = append(names[:limit], fmt.Sprintf("and %d more", extra))
+	}
+	return strings.Join(names, ", ")
 }
 
 // PushOptions configures a push of a backup that already exists.

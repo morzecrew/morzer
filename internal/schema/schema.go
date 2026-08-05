@@ -209,6 +209,16 @@ func stringSchema(t reflect.Type) map[string]any {
 			values[i] = string(pt)
 		}
 		out["enum"] = values
+	case reflect.TypeOf(domain.VolumeCold):
+		values := make([]string, len(domain.VolumeConsistencies))
+		for i, c := range domain.VolumeConsistencies {
+			values[i] = string(c)
+		}
+		out["enum"] = values
+		out["description"] = "How this volume may be read. `cold` is the default " +
+			"and needs no declaration: the services mounting it are stopped for " +
+			"the copy. `hot` claims a copy taken while they run is usable. " +
+			"`exclude` keeps the manager out of it entirely."
 	case reflect.TypeOf(domain.PortSpec("")):
 		out["description"] = "A port number, or a {{ .Parameters.<name> }} reference."
 		out["examples"] = []string{"18080", "{{ .Parameters.http_port }}"}
