@@ -241,7 +241,7 @@ func (e *Engine) runStep(ctx context.Context, step Step, st *State, idx, total i
 		done, err := step.Check(stepCtx, st)
 		if err != nil {
 			log.Debug("step check failed", "error", err)
-			return finish(domain.StepFailed, e.classify(err, step))
+			return finish(domain.StepFailed, e.classify(ctx, err, step))
 		}
 		if done {
 			rec.Steps[idx].Message = "already satisfied"
@@ -253,7 +253,7 @@ func (e *Engine) runStep(ctx context.Context, step Step, st *State, idx, total i
 	if step.Execute != nil {
 		if err := step.Execute(stepCtx, st); err != nil {
 			log.Debug("step execute failed", "error", err)
-			return finish(domain.StepFailed, e.classify(err, step))
+			return finish(domain.StepFailed, e.classify(ctx, err, step))
 		}
 	}
 
@@ -262,7 +262,7 @@ func (e *Engine) runStep(ctx context.Context, step Step, st *State, idx, total i
 	if step.Verify != nil {
 		if err := step.Verify(stepCtx, st); err != nil {
 			log.Debug("step verify failed", "error", err)
-			return finish(domain.StepFailed, e.classify(err, step))
+			return finish(domain.StepFailed, e.classify(ctx, err, step))
 		}
 	}
 
@@ -272,12 +272,27 @@ func (e *Engine) runStep(ctx context.Context, step Step, st *State, idx, total i
 // classify turns a context cancellation into an interruption rather than a
 // step failure. A tool killed by our own SIGTERM must not be reported as a
 // broken tool.
-func (e *Engine) classify(err error, step Step) error {
+//
+// Only the *parent* context decides that: the operator's signal or the
+// operation's --timeout. A step exceeding its own per-step budget while the
+// operation is live is an ordinary step failure -- treating it as an
+// interruption would skip compensation, which for a rollback whose
+// start-services step timed out means a moved release pointer nothing rolls
+// back.
+func (e *Engine) classify(parent context.Context, err error, step Step) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return interruptedErr(err, step.ID)
+	isCtx := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	if !isCtx {
+		return err
+	}
+	if parent.Err() != nil {
+		return interruptedErr(parent.Err(), step.ID)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return domain.Internal(err, "step %q timed out", step.ID).
+			WithHint("the step's failure policy applies; investigate why it is slow")
 	}
 	return err
 }

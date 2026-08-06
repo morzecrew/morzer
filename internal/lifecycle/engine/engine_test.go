@@ -376,19 +376,23 @@ func TestJournalFailureDoesNotFailTheOperation(t *testing.T) {
 	assert.Equal(t, []string{"work"}, tr.executed)
 }
 
-func TestStepTimeoutBecomesInterruption(t *testing.T) {
+// An *operation-level* timeout is the parent context expiring, which is an
+// interruption -- the same classification the operator's signal gets. The
+// per-step budget is deliberately different; see
+// TestAStepTimeoutIsAFailureThatCompensates.
+func TestOperationTimeoutBecomesInterruption(t *testing.T) {
 	eng, _, _ := newEngine()
 	tr := &tracker{}
 
 	slow := step(tr, "slow", false, true)
-	slow.Timeout = 10 * time.Millisecond
 	slow.Execute = func(ctx context.Context, st *State) error {
 		tr.executed = append(tr.executed, "slow")
 		<-ctx.Done()
 		return ctx.Err()
 	}
 
-	result, err := eng.Run(context.Background(), operation(slow), Options{})
+	result, err := eng.Run(context.Background(), operation(slow),
+		Options{Timeout: 10 * time.Millisecond})
 	require.Error(t, err)
 	assert.Equal(t, domain.StatusInterrupted, result.Record.Status)
 	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err))
@@ -597,6 +601,66 @@ func TestResumeRefusesWhenTheStepListChanged(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
 	assert.Empty(t, tr.executed)
+}
+
+// A step exceeding its own budget while the operation is live is a step
+// failure: the OnFailure policy applies and compensation runs. Treating it as
+// an interruption -- which skips compensation -- left a rollback whose
+// start-services step timed out with the release pointer moved and nothing
+// rolling it back.
+func TestAStepTimeoutIsAFailureThatCompensates(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	slow := Step{
+		ID: "slow", Description: "step slow", Idempotent: true,
+		OnFailure: Compensate,
+		Timeout:   30 * time.Millisecond,
+		Execute: func(ctx context.Context, st *State) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+
+	result, err := eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), slow), Options{})
+
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, domain.ErrInterrupted),
+		"a per-step timeout with a live operation is not an interruption")
+	assert.Equal(t, domain.StatusCompensated, result.Record.Status,
+		"the completed step must be compensated after a step timeout")
+	assert.Equal(t, []string{"a"}, tr.compensated)
+}
+
+// The operator's signal -- parent context cancelled -- stays an interruption,
+// with compensation deliberately not run.
+func TestParentCancellationDuringAStepIsAnInterruption(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	blocking := Step{
+		ID: "blocking", Description: "step blocking", Idempotent: true,
+		OnFailure: Compensate,
+		// A generous per-step budget, so the parent's cancellation is
+		// unambiguously what stops it.
+		Timeout: time.Minute,
+		Execute: func(stepCtx context.Context, st *State) error {
+			cancel()
+			<-stepCtx.Done()
+			return stepCtx.Err()
+		},
+	}
+
+	result, err := eng.Run(ctx, operation(step(tr, "a", false, true), blocking), Options{})
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrInterrupted),
+		"the operator's cancellation must classify as an interruption")
+	assert.Equal(t, domain.StatusInterrupted, result.Record.Status)
+	assert.Empty(t, tr.compensated,
+		"an interrupted operation does not compensate; that is --resume's job")
 }
 
 func TestResumeWithoutPriorIsAUsageError(t *testing.T) {
