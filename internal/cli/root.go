@@ -143,9 +143,12 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	root := newRootCommand(app)
 
 	// Flag errors are the one case where printing usage helps: the operator
-	// mistyped something and the valid options are the answer.
+	// mistyped something and the valid options are the answer. It goes to
+	// stderr explicitly -- cobra's Usage() writes to the out-writer, and
+	// stdout belongs to results: a piped consumer (`--json | jq`) must
+	// never receive help text in its data stream because of a typo.
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, ferr error) error {
-		_ = cmd.Usage()
+		fmt.Fprint(cmd.ErrOrStderr(), cmd.UsageString())
 		return ferr
 	})
 
@@ -235,6 +238,8 @@ func classifyCLIError(err error) error {
 		"accepts ",
 		"requires at least",
 		"unknown subcommand",
+		// MarkFlagsMutuallyExclusive violations, e.g. -v with -q.
+		"if any flags in the group",
 	} {
 		if strings.Contains(msg, prefix) {
 			return domain.Usage("%s", msg).
@@ -281,6 +286,15 @@ func newRootCommand(app *App) *cobra.Command {
 		},
 	}
 
+	// `--version` is near-universal convention and cobra provides it from
+	// the Version field. The guard keeps CommandTree() -- built with an
+	// empty BuildInfo for the documentation checker -- identical to what it
+	// was, while every real invocation has a version ("dev" at minimum).
+	if app.Build.Version != "" {
+		root.Version = app.Build.Version
+		root.SetVersionTemplate("morzer {{.Version}}\n")
+	}
+
 	f := &app.Flags
 	pf := root.PersistentFlags()
 	pf.BoolVar(&f.json, "json", false, "machine-readable output; stdout carries exactly one JSON object")
@@ -306,6 +320,10 @@ func newRootCommand(app *App) *cobra.Command {
 	// root and without touching the host's /etc.
 	pf.StringVar(&f.root, "root", "", "prefix for all managed paths (for testing)")
 	_ = pf.MarkHidden("root")
+
+	// Stating the contract beats resolving the conflict silently: before
+	// this, `-v -q` meant quiet and nothing said so.
+	root.MarkFlagsMutuallyExclusive("verbose", "quiet")
 
 	root.AddCommand(
 		newInitCommand(app),
@@ -338,9 +356,17 @@ func (a *App) setup(ctx context.Context) error {
 	})
 
 	// The logger writes to stderr always. stdout is the result.
-	logFormat := logging.FormatText
-	if f.logFormat == "json" {
+	var logFormat logging.Format
+	switch f.logFormat {
+	case "", "text":
+		logFormat = logging.FormatText
+	case "json":
 		logFormat = logging.FormatJSON
+	default:
+		// A typo silently meaning "text" would hold until the day
+		// someone greps the logs it should have structured.
+		return domain.Usage("invalid --log-format %q", f.logFormat).
+			WithHint("valid formats: text, json")
 	}
 	logWriter := a.Stream.Err
 	if a.Mode == ui.ModeJSON && !f.verbose {
