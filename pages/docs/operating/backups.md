@@ -40,14 +40,20 @@ store, or the queue's spool directory — and nobody notices until a restore
 produces a working database and an application with no files.
 
 So the manager reads the project's named volumes itself. Each becomes one
-component:
+component.
+
+Every example below is the same deployment: four named volumes — `uploads`,
+`caddy_data`, `spool` and `pgdata` — and one bind mount at `/srv/legacy`. The
+release excludes `pgdata`, which is why three volumes end up in the backup and
+the bind mount is not one of them:
 
 ```
 20260805T174743Z/
   backup.json
   database.sql.age            from the hook
-  volumes/uploads.tar.age     read by the manager
-  volumes/caddy_data.tar.age
+  volumes/caddy_data.tar.age  read by the manager
+  volumes/spool.tar.age
+  volumes/uploads.tar.age
 ```
 
 This also means a release that ships **no backup hook at all** can still produce
@@ -85,6 +91,8 @@ backup:
     pgdata:     { consistency: exclude } # the backup hook owns this
 ```
 
+Nothing is said about `spool`, so `spool` is the one this deployment stops for.
+
 `hot` is a claim the **vendor** makes about their own product, not a guess the
 manager makes on their behalf — which is why the default is the slow one. The
 backup manifest records which claim applied to each volume, so a post-incident
@@ -121,11 +129,20 @@ morzer backup --no-downtime
 never silently downgraded to a hot copy: that would be the manager making the
 vendor's claim for them, which is the one thing this design refuses to do.
 
-`morzer backup` tells you either way:
+`morzer backup` tells you either way. The ordinary run, which stops whatever
+mounts `spool` for as long as the copy takes:
 
 ```
-backup 20260805T174743Z created (1.4GiB), 3 volume(s): 2 cold, 1 hot,
+backup 20260805T174743Z created (1.4GiB), 3 volume(s): 1 cold, 2 hot,
   not captured: pgdata, /srv/legacy
+```
+
+and the same deployment with the flag, which stops nothing and says what that
+cost:
+
+```
+backup 20260805T181102Z created (1.2GiB), 2 volume(s) captured hot,
+  not captured: pgdata, spool, /srv/legacy
 ```
 
 ### What is never captured
@@ -142,11 +159,17 @@ backup 20260805T174743Z created (1.4GiB), 3 volume(s): 2 cold, 1 hot,
 `morzer doctor` reports all of this, so you find out while you can do something
 about it:
 
+```text
+[warn] every named volume is covered by a backup
+       3 of 4 named volume(s) captured -- pgdata excluded by the release;
+       /srv/legacy are bind mounts and are never captured
+       → an excluded volume is the vendor saying its backup hook owns that
+         data; a bind mount is yours to copy. Make sure something does.
 ```
-backup   ✓ 2 named volume(s) captured
-backup   ! 1 of 3 named volume(s) captured — pgdata excluded by the release;
-           /srv/legacy are bind mounts and are never captured
-```
+
+Three of four, not two: `doctor` counts what a backup is configured to capture,
+and `--no-downtime` is a decision made per run rather than something the
+deployment records. A volume that flag skips still counts as covered here.
 
 ### Restoring a volume
 

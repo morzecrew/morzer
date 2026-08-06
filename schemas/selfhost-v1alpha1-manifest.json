@@ -27,6 +27,9 @@
                 "type": "string"
               }
             },
+            "required": [
+              "consistency"
+            ],
             "type": "object"
           },
           "type": "object"

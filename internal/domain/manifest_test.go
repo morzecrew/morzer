@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -73,6 +74,32 @@ func TestUnknownAPIVersionIsRejectedActionably(t *testing.T) {
 	// has to go looking.
 	e := AsError(err)
 	assert.Contains(t, e.Hint, string(APIVersionV1Alpha1))
+}
+
+// TestARemedySurvivesAWrapThatHasNoneOfItsOwn. The hint is written where the
+// failure is diagnosed and the operator reads it several wraps later, so every
+// wrap in between is a chance to lose the one sentence that says what to do.
+func TestARemedySurvivesAWrapThatHasNoneOfItsOwn(t *testing.T) {
+	// Three deep, with the remedy only at the bottom: errors.As -- what
+	// AsError uses -- stops at the outermost *Error, which here is the
+	// hint-less middle wrap.
+	inner := RuntimeError(nil, "the volume helper image is not on this machine").
+		WithHint("docker pull the helper image on a machine with a registry, then load it here")
+	middle := BackupError(inner, "cannot capture volume uploads")
+	outer := BackupError(middle, "backup failed").WithHintFrom(middle)
+
+	assert.Equal(t, inner.Hint, outer.Hint,
+		"the remedy was dropped behind a wrap that carried none, which leaves an "+
+			"air-gapped operator with a diagnosis and nothing to do about it")
+
+	// A wrap that has its own remedy keeps it: it is closer to what the
+	// operator asked for than the cause's.
+	own := BackupError(middle, "backup failed").WithHint("free disk space and run it again")
+	assert.Equal(t, "free disk space and run it again", own.WithHintFrom(middle).Hint)
+
+	// And a chain with nothing to carry stays empty, rather than gaining a
+	// blank remedy line for the operator to read.
+	assert.Empty(t, BackupError(nil, "backup failed").WithHintFrom(errors.New("plain")).Hint)
 }
 
 func TestPathsMayNotEscapeTheReleaseRoot(t *testing.T) {

@@ -3,7 +3,9 @@ package compose
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,18 +32,43 @@ const DefaultHelperImage = "busybox@sha256:9db7b59979c38555a39def84a31fb98b52969
 //
 // The escape hatch for the operator whose registry does not carry busybox, or
 // whose air-gapped mirror carries something else: any image with a POSIX `tar`,
-// `du` and `sh` will do.
+// `du` and `sh` will do -- pinned by digest, like everything else this manager
+// runs.
 func WithHelperImage(ref string) Option {
 	return func(r *Runtime) {
 		// Trimmed once and *stored* trimmed. It arrives from an
 		// environment variable, and a systemd `Environment=` line
 		// carrying a trailing space would otherwise reach `docker run`
 		// with the space attached, failing as an image nobody can find.
+		//
+		// Stored even when it is not a digest, and refused later in
+		// requireHelper. An Option cannot report an error, and both
+		// alternatives are worse than a late refusal: running the
+		// default instead would mount the product's data into an image
+		// the operator did not ask for, and it would do it without
+		// saying so.
 		if trimmed := strings.TrimSpace(ref); trimmed != "" {
 			r.helperImage = trimmed
 		}
 	}
 }
+
+// digestPinned matches an image reference pinned by digest.
+//
+// The rule the manifest holds every release image to, applied to the one image
+// the manager runs on its own behalf. A tag names whatever the registry served
+// that night, and this image runs with the product's data mounted -- so
+// `busybox:latest` means two backups a week apart can be taken by two different
+// programs, with no record of which.
+var digestPinned = regexp.MustCompile(`^[^\s@]+@sha256:[a-f0-9]{64}$`)
+
+// helperImageEnv is the variable an operator sets to reach WithHelperImage.
+//
+// Spelled here rather than imported from the CLI that reads it, because the CLI
+// imports this package. Named in the refusal all the same: an operator told
+// only that "the helper image" is wrong has to go looking for which knob set
+// it, and they are reading the message at 3am because a backup stopped.
+const helperImageEnv = "MORZER_VOLUME_HELPER_IMAGE"
 
 // HelperImage reports the image this runtime reads volumes through.
 func (r *Runtime) HelperImage() string {
@@ -142,9 +169,7 @@ func parseStorage(raw string) (ports.ProjectStorage, error) {
 		declared, ok := doc.Volumes[name]
 		actual := declared.Name
 		if !ok || actual == "" {
-			// Compose's own default when the resolved document
-			// does not spell it out.
-			actual = doc.Name + "_" + name
+			actual = resolvedName(doc.Name, name, ok && declared.External)
 		}
 		out.Volumes = append(out.Volumes, ports.NamedVolume{
 			Name:     name,
@@ -161,7 +186,7 @@ func parseStorage(raw string) (ports.ProjectStorage, error) {
 		}
 		actual := declared.Name
 		if actual == "" {
-			actual = doc.Name + "_" + name
+			actual = resolvedName(doc.Name, name, declared.External)
 		}
 		out.Volumes = append(out.Volumes, ports.NamedVolume{
 			Name: name, Actual: actual, External: declared.External,
@@ -187,6 +212,23 @@ func parseStorage(raw string) (ports.ProjectStorage, error) {
 	})
 
 	return out, nil
+}
+
+// resolvedName is the runtime name of a volume whose resolved document does not
+// spell one out.
+//
+// Compose's own defaults, and they differ by ownership. A volume the project
+// declares is created as `project_key`; an *external* one is a volume the
+// project does not own and does not rename, so its name is the key exactly as
+// written. Prefixing an external volume would name something that does not
+// exist -- and `docker run --volume` creates a missing volume rather than
+// failing, so the backup would succeed and hold an empty tar of a volume nobody
+// mounts, which is only discovered by a restore that brings back nothing.
+func resolvedName(project, key string, external bool) string {
+	if external {
+		return key
+	}
+	return project + "_" + key
 }
 
 func addUser(index map[string]map[string]bool, key, service string) {
@@ -241,6 +283,12 @@ func (r *Runtime) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 			"check that the Docker daemon is running and that "+shortImage(r.HelperImage())+" is available")
 	}
 	if err := out.Close(); err != nil {
+		// Removed like every other failure here, and for the reason
+		// this function writes the tar itself: a close that failed is
+		// a write that did not land, so what is on disk is a truncated
+		// plaintext copy of the product's data that nothing downstream
+		// will encrypt or delete. A failed capture leaves nothing.
+		_ = os.Remove(destPath)
 		return domain.RuntimeError(err, "cannot finish writing %s", destPath)
 	}
 	return nil
@@ -288,16 +336,43 @@ func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 
 // VolumeSize reports how many bytes a volume occupies.
 //
-// `du` measures blocks rather than apparent size, so a sparse file reads small
-// and a directory of tiny files reads large. Both errors are in the safe
-// direction for the only question this answers -- will the backup fit -- since
-// the tar that follows is bounded by what the filesystem actually holds.
+// It answers one question -- will the backup fit -- and only one direction of
+// wrong is dangerous. A size that reads too low passes the space check and then
+// fills the disk during the copy, which happens after the services have already
+// been stopped; a size that reads too high refuses a backup early, in front of
+// an operator who can look at `df`. So this errs high wherever it must choose.
 func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volume string) (int64, error) {
 	if err := r.requireHelper(ctx); err != nil {
 		return 0, err
 	}
 
-	cmd := r.helperCommand(cfg, volume, true, "du", "-sk", "/src")
+	// Two readings, and the larger wins, because each one is wrong in a
+	// different direction and the safe answer is the bigger.
+	//
+	// `du -sk` counts allocated blocks, which reads *small* for a sparse
+	// file: an image with holes can occupy four kilobytes of blocks and tar
+	// to a hundred megabytes. Apparent size fixes that and is wrong the
+	// other way -- two hundred two-byte files are five kilobytes apparent
+	// and eight hundred of blocks, which is nearer what tar writes.
+	//
+	// Getting apparent size portably is the fiddly part, and the ordering
+	// below is load-bearing. GNU spells it `--apparent-size`. busybox
+	// rejects that and spells it `-b`. But GNU *also* accepts `-b`, where it
+	// additionally means `--block-size=1` -- so `du -skb` reports KiB on
+	// busybox and **bytes** on GNU, and a form that tried `-b` first would
+	// read a thousand times high on GNU and refuse every backup. Trying the
+	// GNU spelling first means GNU never reaches `-b`; busybox fails it and
+	// does. Verified against both.
+	//
+	// Still not an exact bound -- tar adds a 512-byte header per entry --
+	// but it errs high, which is the direction that refuses early in front
+	// of an operator rather than filling the disk after the services are
+	// already stopped. An exact answer means `tar | wc -c`, which reads the
+	// whole volume an extra time.
+	const measure = `{ du -sk --apparent-size /src 2>/dev/null || ` +
+		`du -skb /src 2>/dev/null; }; du -sk /src`
+
+	cmd := r.helperCommand(cfg, volume, true, "sh", "-c", measure)
 	cmd.CaptureOutput = true
 	cmd.Timeout = 30 * time.Minute
 	cmd.OnLine = nil
@@ -306,16 +381,63 @@ func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volum
 	if err != nil {
 		return 0, wrapExit(err, "cannot measure volume "+volume, "")
 	}
+	return largestSize(volume, res.Stdout)
+}
 
-	fields := strings.Fields(res.Stdout)
-	if len(fields) == 0 {
+// maxMeasurableKiB is the largest KiB figure that still converts to bytes.
+//
+// The port promises bytes, and the conversion is a multiplication by 1024: a
+// figure past this wraps to a negative number, which every space check reads as
+// *smaller* than the free space and lets through. A refusal naming the number is
+// the only safe reading of a size nothing can express.
+const maxMeasurableKiB = math.MaxInt64 / 1024
+
+// largestSize turns du's output into bytes, taking the largest size it reported.
+func largestSize(volume, stdout string) (int64, error) {
+	largest := int64(-1)
+	var firstField string
+
+	for _, line := range strings.Split(stdout, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if firstField == "" {
+			firstField = fields[0]
+		}
+		// A line that is not a measurement is skipped rather than
+		// refused: the first `du` may have printed a diagnostic on its
+		// way to failing, and the measurement that matters is behind
+		// it. Nothing parsing at all is still an error below.
+		kib, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			continue
+		}
+		if kib < 0 {
+			return 0, domain.RuntimeError(nil,
+				"cannot measure volume %s: du reported %d KiB, and a volume "+
+					"cannot hold a negative number of bytes", volume, kib)
+		}
+		if kib > maxMeasurableKiB {
+			return 0, domain.RuntimeError(nil,
+				"cannot measure volume %s: du reported %d KiB, which is more "+
+					"than a byte count can hold", volume, kib)
+		}
+		if kib > largest {
+			largest = kib
+		}
+	}
+
+	if firstField == "" {
 		return 0, domain.RuntimeError(nil, "cannot measure volume %s: no output from du", volume)
 	}
-	kib, err := strconv.ParseInt(fields[0], 10, 64)
-	if err != nil {
-		return 0, domain.RuntimeError(err, "cannot measure volume %s: %q is not a size", volume, fields[0])
+	if largest < 0 {
+		// Zero would pass every space check in silence, which is the
+		// one answer worse than refusing.
+		return 0, domain.RuntimeError(nil,
+			"cannot measure volume %s: %q is not a size", volume, firstField)
 	}
-	return kib * 1024, nil
+	return largest * 1024, nil
 }
 
 // helperCommand builds a `docker run` that mounts one volume.
@@ -350,14 +472,35 @@ func (r *Runtime) helperCommand(
 	return cmd
 }
 
-// requireHelper refuses before running anything when the image is not local.
+// requireHelper refuses before running anything when the image cannot be
+// trusted to be the same image next time, or is not on this machine.
 //
-// The alternative is `docker run` trying to pull it, which on the machine this
-// matters for -- air-gapped, or backing up at 3am on a flaky link -- produces a
-// registry error in the middle of a backup instead of a sentence naming the one
-// command that fixes it.
+// The second is why it exists: the alternative is `docker run` trying to pull
+// it, which on the machine this matters for -- air-gapped, or backing up at 3am
+// on a flaky link -- produces a registry error in the middle of a backup
+// instead of a sentence naming the one command that fixes it. It is also the
+// last point at which an override that was never a digest can be caught, since
+// the Option that took it could not refuse.
 func (r *Runtime) requireHelper(ctx context.Context) error {
 	ref := r.HelperImage()
+
+	// Before asking whether the image is here, because the dangerous case
+	// is the one where it *is*: a tag that resolves locally runs, and runs
+	// whatever the last `docker pull` put under that name. The refusal is
+	// deliberate -- quietly using the default instead would take the backup
+	// through an image the operator did not choose, and the operator would
+	// go on believing their own was in use.
+	if !digestPinned.MatchString(ref) {
+		return domain.ValidationError(nil,
+			"the volume helper image %q is not pinned by digest", ref).
+			WithHint("volumes are read through this image with the product's "+
+				"data mounted, so it must name a digest: set %s to a "+
+				"`name@sha256:...` reference. `docker image inspect "+
+				"--format '{{index .RepoDigests 0}}' %s` prints the digest "+
+				"of the tag you have; leaving the variable unset uses the "+
+				"pinned busybox this manager ships with",
+				helperImageEnv, ref)
+	}
 
 	present, err := r.HasImage(ctx, ref)
 	if err != nil {

@@ -38,16 +38,25 @@ type Manifest struct {
 	APIVersion APIVersion `yaml:"api_version" json:"api_version"`
 	Kind       string     `yaml:"kind" json:"kind"`
 
-	Metadata      Metadata                  `yaml:"metadata" json:"metadata"`
-	Providers     Providers                 `yaml:"providers" json:"providers"`
-	Runtime       RuntimeSpec               `yaml:"runtime" json:"runtime"`
-	Requirements  Requirements              `yaml:"requirements" json:"requirements"`
-	Parameters    map[string]ParameterSpec  `yaml:"parameters" json:"parameters,omitempty"`
-	Images        map[string]string         `yaml:"images" json:"images"`
-	Configuration []ConfigurationFile       `yaml:"configuration" json:"configuration"`
-	Secrets       SecretsSpec               `yaml:"secrets" json:"secrets"`
-	Operations    map[string]OperationSpec  `yaml:"operations" json:"operations"`
-	Backup        BackupSpec                `yaml:"backup" json:"backup,omitempty"`
+	Metadata      Metadata                 `yaml:"metadata" json:"metadata"`
+	Providers     Providers                `yaml:"providers" json:"providers"`
+	Runtime       RuntimeSpec              `yaml:"runtime" json:"runtime"`
+	Requirements  Requirements             `yaml:"requirements" json:"requirements"`
+	Parameters    map[string]ParameterSpec `yaml:"parameters" json:"parameters,omitempty"`
+	Images        map[string]string        `yaml:"images" json:"images"`
+	Configuration []ConfigurationFile      `yaml:"configuration" json:"configuration"`
+	Secrets       SecretsSpec              `yaml:"secrets" json:"secrets"`
+	Operations    map[string]OperationSpec `yaml:"operations" json:"operations"`
+
+	// omitzero rather than omitempty: omitempty does not omit an empty
+	// struct, so every release -- including the ones written before this
+	// section existed -- grew a `"backup": {}` in `release show --json`,
+	// announcing a section the manifest never declared to whatever parses
+	// that output. omitzero keeps the struct (a pointer would make
+	// `m.Backup.Volumes` a nil dereference for every caller) and omits it
+	// when the vendor declared nothing.
+	Backup BackupSpec `yaml:"backup" json:"backup,omitzero"`
+
 	Health        HealthSpec                `yaml:"health" json:"health"`
 	Compatibility Compatibility             `yaml:"compatibility" json:"compatibility"`
 	Retention     Retention                 `yaml:"retention" json:"retention"`
@@ -229,7 +238,9 @@ type BackupSpec struct {
 	Volumes map[string]VolumeSpec `yaml:"volumes" json:"volumes,omitempty"`
 }
 
-// VolumeSpec is one volume's declaration.
+// VolumeSpec is one volume's declaration. Listing a volume here means saying
+// something about it: the consistency is required, because the way to ask for
+// the default is to leave the volume out.
 type VolumeSpec struct {
 	Consistency VolumeConsistency `yaml:"consistency" json:"consistency,omitempty"`
 }
@@ -512,7 +523,25 @@ func (m *Manifest) Validate() error {
 			v.add("backup.volumes", "has an entry with an empty volume name")
 		}
 		switch spec.Consistency {
-		case VolumeCold, VolumeHot, VolumeExclude, "":
+		case VolumeCold, VolumeHot, VolumeExclude:
+		case "":
+			// An entry that declares nothing is refused rather than
+			// defaulted to cold, and the generated schema requires
+			// the key for the same reason. Leaving a volume out of
+			// this map is already how a vendor asks for the default,
+			// so a volume listed with no consistency is a
+			// half-finished edit or a value that templated away to
+			// empty -- both leave the vendor believing they declared
+			// something they did not.
+			//
+			// The schema said this from the start: its enum is the
+			// three values, so `consistency: ""` failed in an editor
+			// and passed here. A loader more permissive than the
+			// published schema is the disagreement this repository
+			// generates the schema to avoid, and the strict side is
+			// the right one to settle on.
+			v.add(field+".consistency", "is required (%s); omit the volume entirely for the default",
+				joinConsistencies(VolumeConsistencies))
 		default:
 			v.add(field+".consistency", "must be %s, got %q",
 				joinConsistencies(VolumeConsistencies), spec.Consistency)

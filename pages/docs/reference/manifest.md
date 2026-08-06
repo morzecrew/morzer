@@ -202,11 +202,13 @@ itself rather than through the backup hook.
 | --- | --- | --- |
 | `volumes` | map | Keyed by the volume's name in the Compose `volumes:` block. |
 
-Each entry takes one field:
+Each entry takes one field, and it is **required** — an entry that names a
+volume without saying anything about it is refused at load. Leaving the volume
+out of the map entirely is how you ask for the default:
 
-| Field | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `consistency` | enum | `cold` | `cold`, `hot` or `exclude`. |
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `consistency` | enum | ✅ | `cold`, `hot` or `exclude`. |
 
 | Value | Meaning |
 | --- | --- |
@@ -223,7 +225,10 @@ backup:
 ```
 
 The map is partial: declare only the volumes that need something other than the
-default. A volume named here that the project does not declare is ignored.
+default of `cold`. A volume named here that the project does not declare is
+ignored by the backup, and reported by `morzer doctor` — a typo in this map
+otherwise does nothing at all, which for an intended `exclude` means the
+manager captures a database volume the hook already owns.
 
 `hot` is a claim about the product, not a performance hint — see
 [declaring volume consistency](../authoring/backing-up-volumes.md) for what it

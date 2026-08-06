@@ -10,8 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/state"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/clitest"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // `doctor` is what an operator runs when something is wrong, so its behaviour
@@ -172,6 +175,156 @@ func TestDoctorReportsThatNoBackupExists(t *testing.T) {
 	found := findResult(t, report, "backup.freshness")
 	assert.NotEqual(t, "ok", found.Status)
 	assert.Contains(t, found.Remedy, "morzer backup")
+}
+
+// backupsOfSize is the backup engine the growth check reads, with sizes the
+// test chooses.
+//
+// The shared fake reports every backup as a kilobyte, which cannot express the
+// only case backup.growth exists for: a backup large enough that the retention
+// count stops fitting on the disk.
+type backupsOfSize struct {
+	*fakes.Backup
+	refs []ports.BackupRef
+}
+
+func (b backupsOfSize) List(context.Context) ([]ports.BackupRef, error) { return b.refs, nil }
+
+// seedBackups points the deps at backups of the given sizes, newest first.
+func seedBackups(t *testing.T, h *harness, keep int, sizes ...int64) {
+	t.Helper()
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Policy.RetainBackups = keep
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	refs := make([]ports.BackupRef, 0, len(sizes))
+	for i, size := range sizes {
+		refs = append(refs, ports.BackupRef{
+			ID:   "backup-" + string(rune('a'+i)),
+			At:   domain.NewTime(h.Deps.Now()),
+			Size: size,
+		})
+	}
+	h.Deps.Backup = backupsOfSize{Backup: h.Backup, refs: refs}
+}
+
+// TestDoctorDoesNotReportARetentionPolicyThatCannotFitAsSatisfied is the
+// overflow case.
+//
+// Four backups of four exbibytes is a requirement no disk can meet, and it is
+// also the multiplication that wraps int64 back to exactly zero -- at which
+// point the shortfall came out negative, compared as satisfied, and the check
+// reported ok about a policy that can never be met.
+func TestDoctorDoesNotReportARetentionPolicyThatCannotFitAsSatisfied(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	const huge = int64(1) << 62 // four of these is 2^64
+	seedBackups(t, h, 4, huge)
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	found := findResult(t, report, "backup.growth")
+	assert.Equal(t, "warn", found.Status,
+		"a retention policy no disk can satisfy was reported as fitting")
+	assert.Contains(t, found.Message, "keeping 4 backups")
+	assert.NotEmpty(t, found.Remedy)
+}
+
+// TestDoctorWarnsWhenTheNextBackupWillNotFitEvenThoughRetentionIsFull is the
+// steady state, which is where an installation spends its whole life.
+//
+// Retention is full, so there is no further growth to make room for -- and the
+// next backup still has to be written in full before the oldest one is pruned.
+// Comparing only against the remaining growth reported ok the night before
+// ENOSPC.
+func TestDoctorWarnsWhenTheNextBackupWillNotFitEvenThoughRetentionIsFull(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	const petabyte = int64(1) << 50
+	seedBackups(t, h, 2, petabyte, petabyte)
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	found := findResult(t, report, "backup.growth")
+	assert.Equal(t, "warn", found.Status,
+		"a disk with less free space than one backup was reported as fitting")
+	// The message says which of the two conditions tripped, because the
+	// remedies differ: this one is not fixed by lowering retention.
+	assert.Contains(t, found.Message, "the next backup")
+	assert.NotEmpty(t, found.Remedy)
+}
+
+// The backup engine is wired in the CLI layer, and what it should do with a
+// project configuration that will not assemble depends on which command asked
+// for it -- so the two tests below drive `morzer` itself.
+
+// breakTheProjectConfiguration leaves the installation holding a parameter the
+// release does not declare, and returns its name.
+//
+// What a release that dropped a parameter leaves behind on a machine whose
+// operator had set it. Nothing else is disturbed: the release on disk is still
+// exactly the one that was installed.
+func breakTheProjectConfiguration(t *testing.T, r *clitest.Runner) string {
+	t.Helper()
+	const name = "a_parameter_a_newer_release_dropped"
+
+	ctx := context.Background()
+	store := state.New(domain.PathsUnder(r.Root, "demo"))
+
+	inst, err := store.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{name: "1"}
+	require.NoError(t, store.SaveInstallation(ctx, inst))
+
+	return name
+}
+
+// TestTakingABackupRefusesWhenTheProjectConfigurationWillNotResolve pins the
+// refusal, because the alternative is silent and unrecoverable.
+//
+// Without the project configuration the engine cannot read the project's named
+// volumes, so a release with a backup hook produces a backup holding that
+// hook's database dump, none of the volumes, and a success message. The
+// operator finds out during a restore.
+func TestTakingABackupRefusesWhenTheProjectConfigurationWillNotResolve(t *testing.T) {
+	r := clitest.NewInstalled(t)
+	name := breakTheProjectConfiguration(t, r)
+
+	// The parameter is named, because "the configuration is broken" is not
+	// something anybody can act on.
+	r.Run("backup").Failed().OutputContains(name)
+
+	// And a restore, for the same reason in the other direction: it would
+	// put the database back and silently leave every volume as it is.
+	r.Run("restore").Failed().OutputContains(name)
+}
+
+// TestReadOnlyBackupCommandsStillWorkWhenTheProjectConfigurationWillNotResolve
+// is the other half of the same decision.
+//
+// A configuration that will not resolve is exactly when an operator runs these,
+// and a `backup list` that refuses would hide the backups they are trying to
+// restore from.
+func TestReadOnlyBackupCommandsStillWorkWhenTheProjectConfigurationWillNotResolve(t *testing.T) {
+	r := clitest.NewInstalled(t)
+	breakTheProjectConfiguration(t, r)
+
+	r.Run("backup", "list").ExitCode(0).OutputContains("no backups")
+
+	// `doctor` most of all. Its backup checks exist only while an engine is
+	// attached, so the freshness check appearing at all is the evidence that
+	// the attach stayed tolerant -- and the coverage check is where the
+	// configuration failure is reported by name.
+	r.Run("doctor").OutputContains(
+		"a recent backup exists",
+		"cannot resolve the project")
 }
 
 // TestStatusOnAMachineWhoseRuntimeIsUnreachable pins that `status` degrades

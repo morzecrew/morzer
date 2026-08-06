@@ -216,35 +216,58 @@ func (e *Engine) volumeSupport() (volumeCapabilities, bool) {
 	return volumeCapabilities{inspector: inspector, capturer: capturer}, true
 }
 
-// captureVolumes copies the project's named volumes into the backup directory.
+// volumeCapture is a decided plan together with the capabilities that will
+// carry it out.
+//
+// The pair exists because deciding and copying happen at different moments. The
+// decision -- what to take, and whether it fits -- has to come before the
+// release's backup hook writes its first byte, since the hook's own artifacts
+// land on the disk the space check is about. The copy has to come after it,
+// because a cold capture stops services and the hook needs the stack up.
+type volumeCapture struct {
+	caps volumeCapabilities
+	plan volumePlan
+}
+
+// planVolumeCapture reads the project's storage, decides what to capture, and
+// refuses a backup that will not fit -- without writing or stopping anything.
+func (e *Engine) planVolumeCapture(ctx context.Context) (volumeCapture, error) {
+	caps, ok := e.volumeSupport()
+	if !ok {
+		return volumeCapture{}, nil
+	}
+
+	storage, err := caps.inspector.Volumes(ctx, e.runtimeConfig)
+	if err != nil {
+		return volumeCapture{}, err
+	}
+	if err := checkVolumeNames(storage); err != nil {
+		return volumeCapture{}, err
+	}
+
+	plan := planVolumes(storage, e.release.Manifest.Backup, e.allowDowntime)
+	if len(plan.capture) == 0 {
+		return volumeCapture{caps: caps, plan: plan}, nil
+	}
+
+	if err := e.checkVolumeSpace(ctx, caps.capturer, plan); err != nil {
+		return volumeCapture{}, err
+	}
+	return volumeCapture{caps: caps, plan: plan}, nil
+}
+
+// captureVolumes copies the planned volumes into the backup directory.
 //
 // Returns the component records and the storage it deliberately did not take.
 // Everything it writes is plaintext at this point; the caller encrypts it with
 // everything else, so a volume tarball is protected by exactly the same
 // mechanism as the database dump beside it.
 func (e *Engine) captureVolumes(
-	ctx context.Context, dir string,
+	ctx context.Context, dir string, capture volumeCapture,
 ) (records []ports.ComponentRecord, uncaptured []ports.UncapturedVolume, err error) {
-	caps, ok := e.volumeSupport()
-	if !ok {
-		return nil, nil, nil
-	}
-
-	storage, err := caps.inspector.Volumes(ctx, e.runtimeConfig)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := checkVolumeNames(storage); err != nil {
-		return nil, nil, err
-	}
-
-	plan := planVolumes(storage, e.release.Manifest.Backup, e.allowDowntime)
+	caps, plan := capture.caps, capture.plan
 	if len(plan.capture) == 0 {
 		return nil, plan.uncaptured, nil
-	}
-
-	if err := e.checkVolumeSpace(ctx, caps.capturer, plan); err != nil {
-		return nil, nil, err
 	}
 
 	if err := atomicfs.MkdirAll(filepath.Join(dir, VolumeDir), 0o700); err != nil {
@@ -475,7 +498,10 @@ func (e *Engine) restoreVolumes(
 	// The project as it is *now*, not as the backup recorded it. Two things
 	// depend on it: which volume to write into, and which services must be
 	// out of the way first.
-	live := e.currentVolumes(ctx, caps.inspector)
+	live, err := e.currentVolumes(ctx, caps.inspector)
+	if err != nil {
+		return err
+	}
 
 	if err := e.refuseOccupiedVolumes(ctx, volumes, live); err != nil {
 		return err
@@ -578,13 +604,24 @@ func (e *Engine) occupiedServices(ctx context.Context) (map[string]ports.Service
 }
 
 // quiesceAmong narrows a list of services to those that must be stopped for a
-// capture and can be started again, preserving order.
+// capture and can be started again, preserving order -- and refuses when one of
+// them holds a volume open and cannot be stopped.
 //
 // A paused service is included, because it holds the volume open and must be
 // out of the way before it is read. It comes back *running* rather than paused,
 // which is a change to how the operator left the deployment -- and the lesser
 // evil beside recording a copy as `cold` that was taken while a container had
 // the volume open mid-write.
+//
+// A service the runtime reports as `removing`, or in any state this manager has
+// never seen, is the same evil arrived at by omission. It occupies the volume
+// (ports.ServiceState.OccupiesVolume counts an unknown state as occupied) but
+// cannot be quiesced (ports.ServiceState.Quiescible does not), and dropping it
+// from the list left the capture reading a volume a container still had open
+// while the manifest called the result `cold`. That is the one claim the whole
+// component rests on, so this refuses instead, naming the service and the state
+// it is in -- `removing` is transient and the remedy is to wait, which nobody
+// can act on without being told which container it is.
 func (e *Engine) quiesceAmong(ctx context.Context, services []string) ([]string, error) {
 	if len(services) == 0 {
 		return nil, nil
@@ -595,27 +632,59 @@ func (e *Engine) quiesceAmong(ctx context.Context, services []string) ([]string,
 	}
 
 	out := make([]string, 0, len(services))
+	var stuck []string
 	for _, s := range services {
-		if state, up := occupied[s]; up && state.Quiescible() {
+		state, up := occupied[s]
+		switch {
+		case !up:
+			// Already down: nothing to stop, and nothing holding
+			// the volume.
+		case !state.Quiescible():
+			stuck = append(stuck, fmt.Sprintf("%s is %s", s, state.State))
+		default:
 			out = append(out, s)
 		}
+	}
+
+	if len(stuck) > 0 {
+		return nil, domain.BackupError(nil,
+			"cannot take a cold copy while a service that holds the volume open "+
+				"cannot be stopped: %s", strings.Join(stuck, ", ")).
+			WithHint("nothing was stopped and the backup was abandoned; `removing` " +
+				"is transient, so wait for the container to finish going away and " +
+				"run the backup again -- or declare `consistency: hot` in the " +
+				"release manifest for the volumes that may be read live")
 	}
 	return out, nil
 }
 
 // currentVolumes maps each logical volume name to the project's current view of
-// it. Best effort: a project that cannot be resolved falls back to what the
-// backup recorded.
-func (e *Engine) currentVolumes(ctx context.Context, inspector ports.VolumeInspector) map[string]ports.NamedVolume {
+// it.
+//
+// An error rather than an empty map, and it is the same reasoning as
+// occupiedServices: "cannot tell" answered as "nothing here" lets a restore
+// proceed on an answer nobody has. What it proceeded on was the volume name the
+// backup recorded -- which for a project that has since been renamed is a
+// volume no container mounts, so the restore untarred somebody's uploads into
+// storage nothing reads, reported success, and changed nothing the deployment
+// uses. A refusal the operator can act on is the only honest outcome.
+func (e *Engine) currentVolumes(
+	ctx context.Context, inspector ports.VolumeInspector,
+) (map[string]ports.NamedVolume, error) {
 	storage, err := inspector.Volumes(ctx, e.runtimeConfig)
 	if err != nil {
-		return nil
+		return nil, domain.BackupError(err,
+			"cannot read the project's volumes, so a restore cannot tell which "+
+				"volume to write into").
+			WithHint("nothing was written; the name recorded in the backup belongs " +
+				"to the project as it was configured then, and writing into it " +
+				"blind would fill a volume nothing mounts")
 	}
 	out := make(map[string]ports.NamedVolume, len(storage.Volumes))
 	for _, v := range storage.Volumes {
 		out[v.Name] = v
 	}
-	return out
+	return out, nil
 }
 
 // mountingServices is who mounts this volume *now*, falling back to who mounted
@@ -627,8 +696,13 @@ func (e *Engine) currentVolumes(ctx context.Context, inspector ports.VolumeInspe
 // volume that new service is holding open -- the same blindness as checking
 // only for `running`, arriving by a different route.
 //
-// The recorded list is the fallback rather than the source: when the project
-// cannot be resolved, what the backup knew is better than knowing nothing.
+// The recorded list is the fallback rather than the source, and it covers the
+// opposite case: the project resolved fine and no longer declares this volume
+// at all, because the release dropped it. The containers that mounted it may
+// still be there, so what the backup knew is better than knowing nothing. A
+// project that cannot be resolved is not this case and never reaches here --
+// currentVolumes refuses the restore outright, because falling back for *every*
+// volume would write a renamed project's data into storage nothing mounts.
 func mountingServices(c ports.ComponentRecord, live map[string]ports.NamedVolume) []string {
 	if v, ok := live[c.Volume.Volume]; ok {
 		return v.Services

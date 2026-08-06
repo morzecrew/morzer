@@ -122,6 +122,14 @@ type BackupManifest struct {
 }
 
 // VolumeRecords returns the volume components of a backup, in manifest order.
+//
+// A record with no volume metadata is skipped rather than reported, because
+// this is the accessor that only ever *reads*: `backup inspect` and the summary
+// line after a backup. A listing that is one volume short is a poorer answer
+// than it should be; a listing that refuses to render is no answer at all.
+//
+// Anything that acts on the result calls CheckVolumeRecords first, so the
+// narrowing here is never what a restore proceeds on.
 func (m BackupManifest) VolumeRecords() []ComponentRecord {
 	var out []ComponentRecord
 	for _, c := range m.Components {
@@ -130,6 +138,33 @@ func (m BackupManifest) VolumeRecords() []ComponentRecord {
 		}
 	}
 	return out
+}
+
+// CheckVolumeRecords refuses a manifest whose volume components do not say
+// which volume they hold.
+//
+// The metadata is everything a restore needs: the volume to write into and the
+// services that must be out of the way first. Without it there is nothing to
+// restore *to* -- and because VolumeRecords narrows silently, such a manifest
+// restored the database, skipped the volume entirely, and reported success. An
+// operator would learn about it from the application, not from the manager.
+//
+// It lives beside VolumeRecords rather than in the engine because it is the
+// same invariant seen from the writing side, and keeping the pair together is
+// what makes the narrowing above safe to read.
+func (m BackupManifest) CheckVolumeRecords() error {
+	for _, c := range m.Components {
+		if c.Component != ComponentVolumes || c.Volume != nil {
+			continue
+		}
+		return domain.BackupError(domain.ErrValidation,
+			"backup %s records %q as a volume but does not say which volume it holds",
+			m.ID, c.Path).
+			WithHint("this manifest is damaged and the volume in it cannot be put " +
+				"back; restore the rest with `--component database,config,secrets` " +
+				"and take a fresh backup")
+	}
+	return nil
 }
 
 // ComponentRecord is one part of a backup with its checksum.

@@ -321,6 +321,11 @@ type VolumeCapturer interface {
 	// VolumeSize reports how many bytes the volume holds, so a backup that
 	// will not fit can be refused before it is started rather than
 	// discovered halfway through.
+	//
+	// A bound rather than a measurement, and one that must err high. Only
+	// one direction is dangerous: a size reported too small passes the
+	// space check and fills the disk during the copy, which happens after
+	// the services have been stopped for it.
 	VolumeSize(ctx context.Context, cfg RuntimeConfig, volume string) (int64, error)
 
 	// HelperImage is the image the three methods above run. Reported by

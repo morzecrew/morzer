@@ -219,19 +219,21 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 	// PID, so the whole tree can be signalled at once.
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Cancel signals the group rather than the process. The negative PID
-	// is the kernel's convention for "this process group".
-	c.Cancel = func() error {
+	// signalGroup signals the group rather than the process. The negative
+	// PID is the kernel's convention for "this process group".
+	signalGroup := func(sig syscall.Signal) error {
 		if c.Process == nil {
 			return nil
 		}
-		if err := syscall.Kill(-c.Process.Pid, syscall.SIGTERM); err != nil {
+		if err := syscall.Kill(-c.Process.Pid, sig); err != nil {
 			// The group may already be gone; fall back to the
-			// process so cancellation is not silently a no-op.
-			return c.Process.Signal(syscall.SIGTERM)
+			// process so the signal is not silently a no-op.
+			return c.Process.Signal(sig)
 		}
 		return nil
 	}
+
+	c.Cancel = func() error { return signalGroup(syscall.SIGTERM) }
 
 	// WaitDelay escalates to SIGKILL when the grace period expires. Go
 	// kills only the direct child, so the group is killed here too.
@@ -259,6 +261,36 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 	pgid := 0
 	if c.Process != nil {
 		pgid = c.Process.Pid
+	}
+
+	// waited is closed once Wait has returned, so the escalation below does
+	// not outlive the process it was watching.
+	waited := make(chan struct{})
+
+	// terminate stops the group once a write failure has already decided the
+	// outcome of the run.
+	//
+	// Closing the pipe is not enough on its own: it only makes the child's
+	// next write fail, and a child that ignores SIGPIPE -- a shell pipeline
+	// with a trap, anything that installs its own handler -- keeps running,
+	// so Wait blocks until it finishes on its own. A volume capture that
+	// filled the disk would hang there instead of returning the storage
+	// error, which is the failure this exists to avoid.
+	//
+	// SIGTERM first, because the child is usually `docker run` and killing
+	// it outright leaves the container behind; SIGKILL once the grace period
+	// is up, for the child that ignores that too.
+	terminate := func() {
+		_ = signalGroup(syscall.SIGTERM)
+		go func() {
+			timer := time.NewTimer(grace)
+			defer timer.Stop()
+			select {
+			case <-waited:
+			case <-timer.C:
+				_ = signalGroup(syscall.SIGKILL)
+			}
+		}()
 	}
 
 	var (
@@ -292,6 +324,10 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 				// Wait closes it again and ignores the error, so
 				// the double close is safe.
 				_ = stdoutPipe.Close()
+
+				// And the child is stopped, because a closed
+				// pipe alone only asks.
+				terminate()
 			}
 			return
 		}
@@ -320,6 +356,7 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 
 	wg.Wait()
 	waitErr := c.Wait()
+	close(waited)
 	duration := time.Since(started)
 
 	// Whatever happened, make sure nothing from this group survives. A

@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -1290,10 +1291,28 @@ func (d *Deps) checkBackupGrowth(inst domain.Installation, rel domain.Release) p
 			}
 
 			keep := inst.RetentionBackups(rel.Manifest)
-			required := largest * int64(keep)
+
+			// Saturating, the way checkVolumeSpace does it. A
+			// hundred-gigabyte backup times a retention count in the
+			// hundreds overflows int64, and a wrapped product comes out
+			// negative -- which makes the shortfall below negative too,
+			// so a policy no disk on earth could satisfy compares as
+			// satisfied and this check reports ok. That is the one
+			// direction it must never fail in.
+			required := int64(math.MaxInt64)
+			if keep > 0 && largest <= math.MaxInt64/int64(keep) {
+				required = largest * int64(keep)
+			}
 
 			var held int64
 			for _, b := range backups {
+				if b.Size <= 0 {
+					continue
+				}
+				if held > math.MaxInt64-b.Size {
+					held = math.MaxInt64
+					break
+				}
 				held += b.Size
 			}
 			free, err := atomicfs.FreeSpace(d.Paths.BackupsDir())
@@ -1301,18 +1320,43 @@ func (d *Deps) checkBackupGrowth(inst domain.Installation, rel domain.Release) p
 				return preflight.OK("cannot measure free space")
 			}
 
-			// What retention still has to make room for, beyond what is
-			// already on the disk.
-			if remaining := required - held; remaining > free {
+			// Two ways this disk runs out, and they are different
+			// questions.
+			//
+			// The first is the policy as a whole: what retention still
+			// has to make room for, beyond what is already here.
+			//
+			// The second is the very next backup on its own. Pruning
+			// happens after a backup is written and never before -- the
+			// new copy has to be on the disk beside the old ones before
+			// retention can remove any of them -- so a retention set
+			// that is already full needs a whole backup of headroom
+			// regardless. Reporting only the first meant that the
+			// steady state, which is where an installation spends its
+			// entire life, was the state this check could not see: it
+			// said ok the night before ENOSPC.
+			remaining := required - held
+			switch {
+			case remaining > free:
 				return preflight.Warn(
 					"lower retention (`policy.retain_backups`), push to a target and "+
 						"prune locally, or exclude a large volume in the release manifest",
 					"keeping %d backups of %s needs about %s more than the %s free on %s",
 					keep, domain.ByteSize(largest), domain.ByteSize(remaining-free),
 					domain.ByteSize(free), d.Paths.BackupsDir())
+			case free < largest:
+				return preflight.Warn(
+					"free space, push to a target and prune locally, or exclude a "+
+						"large volume in the release manifest",
+					"the %d backups retained already fit, but the next backup of about "+
+						"%s does not: only %s is free on %s, and a backup is written "+
+						"in full before the oldest one is pruned",
+					keep, domain.ByteSize(largest), domain.ByteSize(free),
+					d.Paths.BackupsDir())
+			default:
+				return preflight.OK("%d backups of up to %s fit in the %s free",
+					keep, domain.ByteSize(largest), domain.ByteSize(free))
 			}
-			return preflight.OK("%d backups of up to %s fit in the %s free",
-				keep, domain.ByteSize(largest), domain.ByteSize(free))
 		},
 	}
 }

@@ -179,6 +179,22 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			"operations.migrate.timeout",
 		},
 
+		// backup.volumes -- a claim about reading a volume live, so the
+		// two plausible typos both fail towards a backup the vendor
+		// believes is fast and correct
+		"a volume listed with no consistency": {
+			func(m *Manifest) {
+				m.Backup = BackupSpec{Volumes: map[string]VolumeSpec{"uploads": {}}}
+			},
+			"backup.volumes.uploads.consistency",
+		},
+		"a consistency that is none of the three": {
+			func(m *Manifest) {
+				m.Backup = BackupSpec{Volumes: map[string]VolumeSpec{"uploads": {Consistency: "warm"}}}
+			},
+			"backup.volumes.uploads.consistency",
+		},
+
 		// health
 		"a health check with no name": {
 			func(m *Manifest) {
@@ -310,6 +326,33 @@ func TestDefaultsAreAppliedBeforeValidation(t *testing.T) {
 	}
 	if m.Retention.Releases < 1 || m.Retention.Backups < 1 {
 		t.Error("the retention defaults would delete the only copy of something")
+	}
+}
+
+// TestTheLoaderAndTheGeneratedSchemaAgreeOnConsistency. The schema's enum is
+// the three values and nothing else, so anything the loader accepts here that
+// the enum does not is a document an editor refuses and the manager takes --
+// or the reverse, which is worse.
+func TestTheLoaderAndTheGeneratedSchemaAgreeOnConsistency(t *testing.T) {
+	for _, c := range VolumeConsistencies {
+		m := validManifest()
+		m.Backup = BackupSpec{Volumes: map[string]VolumeSpec{"uploads": {Consistency: c}}}
+		if err := m.Validate(); err != nil {
+			t.Errorf("%q is in the schema's enum and was refused by the loader: %v", c, err)
+		}
+	}
+
+	// Absence from the map is how a vendor asks for the default, and it
+	// stays legal -- the rule is about a volume listed and left blank.
+	m := validManifest()
+	m.Backup = BackupSpec{Volumes: map[string]VolumeSpec{}}
+	if err := m.Validate(); err != nil {
+		t.Errorf("an empty backup section was refused, so a release that declares "+
+			"nothing about its volumes cannot be published: %v", err)
+	}
+	if got := m.Backup.Consistency("anything"); got != VolumeCold {
+		t.Errorf("an undeclared volume resolves to %q; anything but cold makes the "+
+			"vendor's claim on their behalf", got)
 	}
 }
 

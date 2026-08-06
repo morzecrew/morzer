@@ -227,6 +227,25 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 	var records []ports.ComponentRecord
 	var schemaAtBackup int
 
+	// Decided before the hook runs, not after. Decision 8 promises that a
+	// backup which will not fit is refused "before anything is written", and
+	// the hook's database dump lands on the very disk the space check is
+	// about: measuring afterwards meant an operator whose disk was too small
+	// paid for a full pg_dump before being told so, and got the refusal with
+	// the dump still occupying the space it was refused for.
+	//
+	// Only the decision moves. The copy itself stays after the hook, because
+	// a cold capture stops services and the hook has to run against a stack
+	// that is up.
+	var capture volumeCapture
+	if wantVolumes {
+		planned, planErr := e.planVolumeCapture(ctx)
+		if planErr != nil {
+			return fail(planErr)
+		}
+		capture = planned
+	}
+
 	if hasHook {
 		env := e.hookEnv(ports.PhaseBackup, dir)
 		env.Extra = map[string]string{
@@ -250,13 +269,13 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		records = append(records, hookRecords...)
 	}
 
-	// After the hook, because a cold capture stops services and the hook
+	// The copy, after the hook: a cold capture stops services and the hook
 	// has to run against a stack that is up. The hook is authoritative for
 	// anything with a transaction log; volumes cover what it does not.
 	var uncaptured []ports.UncapturedVolume
 	var capturedVolumes int
 	if wantVolumes {
-		volumeRecords, skipped, err := e.captureVolumes(ctx, dir)
+		volumeRecords, skipped, err := e.captureVolumes(ctx, dir, capture)
 		if err != nil {
 			return fail(err)
 		}
@@ -645,6 +664,15 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 				"`morzer installation import <export> --identity <key>` first, which " +
 				"restores the original id. Otherwise pass --allow-cross-installation " +
 				"to restore another deployment's data on purpose.")
+	}
+
+	// Before the gate below and before anything is staged, because that gate
+	// counts volumes and the count is exactly what a damaged record makes a
+	// lie: a manifest whose volume component names no volume would otherwise
+	// read as a backup that simply has none, and the restore would run the
+	// hook, return zero, and leave the volume as it found it.
+	if err := manifest.CheckVolumeRecords(); err != nil {
+		return err
 	}
 
 	spec, hasHook := e.release.Manifest.Operation(domain.OpRestore)

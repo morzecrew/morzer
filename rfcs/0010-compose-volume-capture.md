@@ -234,9 +234,12 @@ So the helper image:
 - is **busybox or equivalent** — `tar` and nothing else. The smaller the image,
   the smaller the thing an operator has to trust and cache.
 
-An escape hatch for the operator whose registry is not reachable: a
-configuration key naming a different image, since any image with a POSIX `tar`
-will do.
+An escape hatch for the operator whose registry is not reachable:
+`MORZER_VOLUME_HELPER_IMAGE` names a different image, since any image with a
+POSIX `tar` will do. An environment variable rather than a state field, because
+the backup that needs it is the scheduled one: a systemd drop-in reaches that
+without regenerating a unit or migrating state. §12 records how it got there:
+the hatch existed in the code first and was reachable from nothing.
 
 ### 5.5 Size, which is where the existing design stops working
 
@@ -316,9 +319,16 @@ in the operating guide rather than a footnote; and the manifest records which
 volumes were captured how, so a post-incident review can see what was promised.
 
 **Downtime by default will surprise people.** §5.2 (b) means a release that
-declares nothing gets its stack stopped during a backup. That is the safe
+declares nothing has services stopped during a backup. That is the safe
 behaviour and it is the wrong behaviour for somebody running a nightly backup
-of a busy service. It is the open decision for exactly this reason.
+of a busy service. Accepted rather than designed away — decision 10 — with
+three things holding it down: only the services that mount a cold volume are
+stopped rather than the whole stack, they are stopped once for all of them
+rather than once per volume, and `--no-downtime` is the operator's way out.
+The risk that remains is real and is now shaped differently: `--no-downtime`
+**skips and reports** rather than downgrading to a hot copy, so the operator
+who cannot afford the window gets a backup that is honestly short a volume, and
+the only way to have both is the vendor declaring `hot`.
 
 **The helper image is a new supply-chain edge.** One more digest to pin, one
 more thing to have cached offline, one more image an attacker would like to

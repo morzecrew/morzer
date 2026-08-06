@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,9 +48,41 @@ type volumeFixture struct {
 	paths    domain.Paths
 }
 
+// recordingHooks is a backup hook that writes a dump and counts its own runs.
+//
+// The count is the assertion: it is what tells "the hook never ran" apart from
+// "the hook ran and its output was thrown away", which is the whole difference
+// between refusing before anything is written and refusing after.
+type recordingHooks struct {
+	ran int
+}
+
+func (h *recordingHooks) Run(
+	_ context.Context, _ domain.Release, _ []string, env ports.HookEnv, _ time.Duration,
+) (ports.HookOutcome, error) {
+	h.ran++
+
+	path := filepath.Join(env.BackupDir, "database.sql")
+	if err := os.WriteFile(path, []byte("-- the product's database\n"), 0o600); err != nil {
+		return ports.HookOutcome{}, err
+	}
+	return ports.HookOutcome{Result: ports.HookResult{
+		Artifacts: []ports.HookArtifact{{Name: "db", Path: "database.sql"}},
+	}}, nil
+}
+
 // newVolumeFixture wires the real engine to a fake runtime, with real age keys
 // so the encryption assertions mean something.
 func newVolumeFixture(t *testing.T, spec domain.BackupSpec, allowDowntime bool) *volumeFixture {
+	t.Helper()
+	return newVolumeFixtureWithHook(t, spec, allowDowntime, nil)
+}
+
+// newVolumeFixtureWithHook is the same fixture for the vendor who *did* write a
+// backup hook, so a test can assert what the manager does before running it.
+func newVolumeFixtureWithHook(
+	t *testing.T, spec domain.BackupSpec, allowDowntime bool, hook *recordingHooks,
+) *volumeFixture {
 	t.Helper()
 
 	root := t.TempDir()
@@ -82,13 +115,21 @@ func newVolumeFixture(t *testing.T, spec domain.BackupSpec, allowDowntime bool) 
 			Backup:   spec,
 		},
 	}
+	var hooks ports.HookRunner
+	if hook != nil {
+		hooks = hook
+		rel.Manifest.Operations = map[string]domain.OperationSpec{
+			domain.OpBackup: {Kind: domain.OperationKindHook, Command: []string{"hooks/backup"}},
+		}
+	}
 
 	return &volumeFixture{
 		engine: hookbackup.New(hookbackup.Config{
-			// No hook runner, because the release declares no backup
-			// operation: this fixture is the vendor who never wrote
-			// one, which is half of what volumes are for.
-			Hooks:          nil,
+			// Nil unless a test asked for a hook, because the
+			// release then declares no backup operation: this
+			// fixture is the vendor who never wrote one, which is
+			// half of what volumes are for.
+			Hooks:          hooks,
 			Release:        rel,
 			Installation:   domain.Installation{ID: "inst-volumes", Product: "demo"},
 			Paths:          paths,
@@ -432,6 +473,108 @@ func TestAVolumeIsRestoredOnceItsServicesAreStopped(t *testing.T) {
 			"changed nothing")
 }
 
+// stripVolumeMetadata removes a volume component's `volume` object from a
+// backup's manifest, producing the malformed schema-3 backup a partial write or
+// a hand-edited manifest would leave.
+func stripVolumeMetadata(t *testing.T, dir, name string) {
+	t.Helper()
+
+	path := filepath.Join(dir, ports.BackupManifestFileName)
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var manifest map[string]any
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+
+	components, ok := manifest["components"].([]any)
+	require.True(t, ok, "the manifest has no component list to damage")
+
+	stripped := false
+	for _, entry := range components {
+		c, ok := entry.(map[string]any)
+		if !ok || c["component"] != string(ports.ComponentVolumes) {
+			continue
+		}
+		volume, ok := c["volume"].(map[string]any)
+		if !ok || volume["volume"] != name {
+			continue
+		}
+		delete(c, "volume")
+		stripped = true
+	}
+	require.True(t, stripped, "volume %q is not in the manifest, so nothing was damaged", name)
+
+	edited, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, edited, 0o600))
+}
+
+// A volume component that does not say which volume it holds is a backup this
+// manager cannot fully restore, and it has to refuse rather than narrow.
+//
+// The accessor that finds volume records skips a record with no metadata, which
+// is the right answer for a listing and the wrong one for a restore: the backup
+// read as one that simply had no volumes, so the restore put back everything
+// else and reported success with the product's files still missing.
+func TestAVolumeComponentWithNoMetadataIsRefusedRatherThanSkipped(t *testing.T) {
+	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+	ctx := context.Background()
+
+	ref, err := f.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+
+	stripVolumeMetadata(t, ref.Path, "uploads")
+
+	// Everything down and the volume moved on, so the damaged record is the
+	// only thing that can stop the restore -- and the only thing that can
+	// explain the volume still holding the newer bytes afterwards.
+	require.NoError(t, f.runtime.Stop(ctx, ports.RuntimeConfig{}, nil, 0))
+	f.runtime.VolumeContents["demo_uploads"] = "written-since-the-backup"
+
+	err = f.engine.Restore(ctx, ref, ports.RestoreOptions{
+		IdentityFile: f.identity, TargetInstallationID: "inst-volumes",
+	})
+
+	require.Error(t, err,
+		"a backup whose volume component names no volume restored the rest and "+
+			"reported success, leaving the volume data behind")
+	assert.Contains(t, err.Error(), "does not say which volume it holds")
+	assert.Equal(t, "written-since-the-backup", f.runtime.VolumeContents["demo_uploads"],
+		"the damaged record was acted on rather than refused")
+}
+
+// A restore must refuse when it cannot resolve the project, rather than falling
+// back to the volume name the backup recorded.
+//
+// For a project renamed since the backup, that name is a volume no container
+// mounts: the restore untarred somebody's uploads into storage nothing reads,
+// reported success, and changed nothing the deployment uses.
+func TestARestoreIsRefusedWhenTheProjectsVolumesCannotBeRead(t *testing.T) {
+	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+	ctx := context.Background()
+
+	ref, err := f.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, f.runtime.Stop(ctx, ports.RuntimeConfig{}, nil, 0))
+	f.runtime.VolumeContents["demo_uploads"] = "written-since-the-backup"
+	f.runtime.Fail["Volumes"] = assert.AnError
+
+	err = f.engine.Restore(ctx, ref, ports.RestoreOptions{
+		IdentityFile: f.identity, TargetInstallationID: "inst-volumes",
+	})
+
+	require.Error(t, err,
+		"a restore wrote a volume back without being able to confirm the project "+
+			"still mounts it")
+	assert.Contains(t, err.Error(), "which volume to write into")
+
+	assert.NotContains(t, f.runtime.Calls, "RestoreVolume:demo_uploads",
+		"the restore wrote into the name the backup remembered, which for a "+
+			"renamed project is a volume nothing mounts")
+	assert.Equal(t, "written-since-the-backup", f.runtime.VolumeContents["demo_uploads"])
+}
+
 // A restore that does not want the volumes must not pay for them. Staging
 // decrypts every component the hook might read; a volume is not one of those,
 // and a hundred gigabytes of uploads decrypted to be deleted unread is a long
@@ -532,6 +675,71 @@ func TestABackupThatWillNotFitIsRefusedBeforeAnythingIsWritten(t *testing.T) {
 	backups, err := f.engine.List(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, backups)
+}
+
+// ...and "before anything is written" includes the release's own backup hook,
+// which dumps a database onto the very disk the check is about.
+//
+// Measured after the hook, an operator whose disk was too small paid for a full
+// pg_dump before being told the backup would not fit -- and was told so while
+// the dump was still occupying the space it was refused for.
+func TestABackupThatWillNotFitIsRefusedBeforeTheHookRuns(t *testing.T) {
+	hook := &recordingHooks{}
+	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, hook)
+
+	f.runtime.VolumeSizes = map[string]int64{"demo_uploads": 1 << 50}
+
+	_, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "needs about")
+
+	assert.Zero(t, hook.ran,
+		"the product dumped its database for a backup the manager already knew "+
+			"would not fit, and the dump was written to the disk it did not fit on")
+	assert.NotContains(t, f.runtime.Calls, "Stop",
+		"the product was stopped for a backup that was then refused")
+}
+
+// A cold capture must refuse when something holding one of its volumes cannot
+// be stopped.
+//
+// `removing` occupies the volume but cannot be quiesced -- stopping it and
+// starting it back fails, because by then there is no container. Omitting it
+// from the stop list meant the copy was taken while that container still had
+// the volume open, and the manifest recorded the result as `cold`: the one
+// claim the whole component rests on, made about a copy that does not have it.
+func TestAColdCaptureIsRefusedWhenAServiceCannotBeStopped(t *testing.T) {
+	for _, state := range []string{ports.StateRemoving, "a-state-from-a-later-runtime"} {
+		t.Run(state, func(t *testing.T) {
+			f := newVolumeFixture(t, domain.BackupSpec{}, true)
+			f.runtime.Services["worker"] = ports.ServiceState{Name: "worker", State: state}
+
+			_, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+
+			require.Error(t, err,
+				"a volume was copied while %s held it open and the manifest called "+
+					"the copy cold", "worker")
+			message := err.Error()
+			assert.Contains(t, message, "worker", "the refusal does not name the service")
+			assert.Contains(t, message, state,
+				"the refusal does not say what state the service is in, so the "+
+					"operator cannot tell whether waiting will help")
+			assert.Contains(t, message, "cold copy")
+
+			// And it has to say what to do, because `removing` is
+			// transient and "retry" is the answer.
+			hint := domain.AsError(err).Hint
+			assert.Contains(t, hint, "again",
+				"the refusal leaves the operator with a diagnosis and nothing to do")
+
+			assert.NotContains(t, f.runtime.Calls, "CaptureVolume:demo_uploads",
+				"the volume was read anyway")
+
+			backups, listErr := f.engine.List(context.Background())
+			require.NoError(t, listErr)
+			assert.Empty(t, backups, "a backup claiming a cold copy it did not take survived")
+		})
+	}
 }
 
 // A failure during a cold capture must not leave the product stopped.

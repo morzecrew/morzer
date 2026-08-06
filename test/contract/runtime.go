@@ -1,10 +1,15 @@
 package contract
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -265,17 +270,50 @@ func runVolumeSuite(t *testing.T, newRuntime RuntimeFactory) {
 		require.NotEmpty(t, storage.Volumes)
 		volume := storage.Volumes[0].Actual
 
-		tarball := filepath.Join(t.TempDir(), "volume.tar")
-		require.NoError(t, capturer.CaptureVolume(ctx, cfg, volume, tarball))
+		dir := t.TempDir()
 
-		// The discriminating detail: a capture that wrote nothing would
-		// still "succeed", and the restore below would still "work".
-		info, err := os.Stat(tarball)
-		require.NoError(t, err, "CaptureVolume reported success and wrote no file")
-		assert.Positive(t, info.Size(), "the captured tarball is empty")
+		// Known bytes go in through RestoreVolume and come back out
+		// through CaptureVolume, because those two are the whole
+		// vocabulary: a contract that reached into the volume any other
+		// way -- a shell in a container, a path on the host -- would be
+		// asserting against one implementation's plumbing rather than
+		// against the port.
+		known := writeTar(t, filepath.Join(dir, "known.tar"), volumeFixture)
+		require.NoError(t, capturer.RestoreVolume(ctx, cfg, volume, known))
 
-		require.NoError(t, capturer.RestoreVolume(ctx, cfg, volume, tarball),
+		captured := filepath.Join(dir, "captured.tar")
+		require.NoError(t, capturer.CaptureVolume(ctx, cfg, volume, captured))
+		require.Equal(t, volumeFixture, tarContents(t, captured),
+			"the capture does not hold what the volume holds, so every backup "+
+				"this runtime takes stores something other than the volume it names")
+
+		// The volume is changed under the capture, and the second
+		// capture has to follow it. This is the leg that cannot pass
+		// vacuously: a CaptureVolume that wrote a constant, an empty
+		// archive, or the previous tarball again would satisfy every
+		// other assertion here and fail this one, because the expected
+		// contents are no longer the contents that were there before.
+		other := writeTar(t, filepath.Join(dir, "other.tar"), replacementFixture)
+		require.NoError(t, capturer.RestoreVolume(ctx, cfg, volume, other))
+
+		changed := filepath.Join(dir, "changed.tar")
+		require.NoError(t, capturer.CaptureVolume(ctx, cfg, volume, changed))
+		require.Equal(t, replacementFixture, tarContents(t, changed),
+			"the volume's contents changed and the capture did not: a backup "+
+				"taken tonight would hold what the volume held some other night")
+
+		// And back, from the runtime's own tarball -- the artifact a
+		// backup encrypts and a restore replays. Anything the capture
+		// dropped or the restore mangled shows up as a difference here
+		// rather than as a volume nobody looks inside until an incident.
+		require.NoError(t, capturer.RestoreVolume(ctx, cfg, volume, captured),
 			"a tarball this runtime produced was refused by the same runtime")
+
+		final := filepath.Join(dir, "final.tar")
+		require.NoError(t, capturer.CaptureVolume(ctx, cfg, volume, final))
+		assert.Equal(t, volumeFixture, tarContents(t, final),
+			"a volume restored from this runtime's own capture came back holding "+
+				"something else, so a restore returns data the backup never held")
 	})
 
 	t.Run("a volume's size is reported in bytes", func(t *testing.T) {
@@ -312,4 +350,134 @@ func runVolumeSuite(t *testing.T, newRuntime RuntimeFactory) {
 		assert.Regexp(t, `^[^\s@]+@sha256:[a-f0-9]{64}$`, capturer.HelperImage(),
 			"the volume helper image is not pinned by digest")
 	})
+}
+
+// volumeFixture and replacementFixture are two different volumes' worth of
+// contents, as file name to bytes.
+//
+// Two of them, and deliberately disjoint in both names and contents, because
+// "the capture holds this" is only a claim about the capture if a capture that
+// ignored the volume entirely would fail it. The second also drops a file the
+// first had, so the port's promise that RestoreVolume *replaces* rather than
+// merges is asserted rather than assumed.
+//
+// The bytes carry a newline and a NUL so that "byte for byte" means bytes: the
+// helper's tar arrives on a pipe, and a reader that scanned it for lines would
+// corrupt exactly this.
+var (
+	volumeFixture = map[string]string{
+		"ledger.csv":       "invoice-0000-4471,4471.00\ninvoice-0000-4472,\x00\x01\x02,end\n",
+		"notes/README.txt": "the quarterly report lives here",
+	}
+	replacementFixture = map[string]string{
+		"receipts.csv": "refund-0000-0001,-12.50\n",
+	}
+)
+
+// writeTar builds a tarball holding files and returns its path.
+//
+// RestoreVolume is the only way into a volume the port offers, and it takes a
+// tar -- so the suite has to make one. USTAR with a fixed modification time and
+// an explicit entry for every parent directory, because it is read back by
+// whatever `tar` the runtime's helper image carries, and the fewer extensions
+// and conveniences that has to supply, the fewer implementations this battery
+// quietly excludes.
+func writeTar(t *testing.T, path string, files map[string]string) string {
+	t.Helper()
+
+	modTime := time.Unix(1_700_000_000, 0).UTC()
+	buf := &bytes.Buffer{}
+	tw := tar.NewWriter(buf)
+
+	for _, dir := range parentDirs(files) {
+		require.NoError(t, tw.WriteHeader(&tar.Header{
+			Name:     dir + "/",
+			Mode:     0o755,
+			Typeflag: tar.TypeDir,
+			ModTime:  modTime,
+			Format:   tar.FormatUSTAR,
+		}))
+	}
+	for _, name := range sortedNames(files) {
+		body := files[name]
+		require.NoError(t, tw.WriteHeader(&tar.Header{
+			Name:     name,
+			Mode:     0o644,
+			Size:     int64(len(body)),
+			Typeflag: tar.TypeReg,
+			ModTime:  modTime,
+			Format:   tar.FormatUSTAR,
+		}))
+		_, err := tw.Write([]byte(body))
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, tw.Close())
+	require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o600))
+	return path
+}
+
+// tarContents reads a captured tarball back into file name to bytes.
+//
+// Regular files only, and names normalised: a helper that runs `tar -C /src -cf
+// - .` reports its entries as `./ledger.csv` beside directory entries the
+// volume's data does not depend on. Comparing the files rather than the archive
+// bytes is deliberate -- two tars of identical contents differ in entry order
+// and in the timestamps an extraction stamped on them, so byte equality would
+// be a flake rather than a check.
+func tarContents(t *testing.T, path string) map[string]string {
+	t.Helper()
+
+	f, err := os.Open(path)
+	require.NoError(t, err, "CaptureVolume reported success and wrote no file")
+	defer func() { _ = f.Close() }()
+
+	out := map[string]string{}
+	tr := tar.NewReader(f)
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err,
+			"%s is not a readable tar, so nothing downstream could restore it", path)
+
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+		body, err := io.ReadAll(tr)
+		require.NoError(t, err)
+		out[strings.TrimPrefix(header.Name, "./")] = string(body)
+	}
+	return out
+}
+
+// parentDirs lists every directory the files sit in, shallowest first, so a tar
+// never names a directory before it has created it.
+func parentDirs(files map[string]string) []string {
+	set := map[string]bool{}
+	for name := range files {
+		parts := strings.Split(name, "/")
+		for i := 1; i < len(parts); i++ {
+			set[strings.Join(parts[:i], "/")] = true
+		}
+	}
+
+	out := make([]string, 0, len(set))
+	for dir := range set {
+		out = append(out, dir)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sortedNames keeps the archive deterministic: a tarball that differed between
+// runs would make a failure here impossible to compare against the last one.
+func sortedNames(files map[string]string) []string {
+	out := make([]string, 0, len(files))
+	for name := range files {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }

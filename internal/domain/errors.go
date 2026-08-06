@@ -119,13 +119,46 @@ func (e *Error) WithHintFrom(cause error) *Error {
 	if e.Hint != "" || cause == nil {
 		return e
 	}
-	inner := AsError(cause)
-	if inner == nil || inner.Hint == "" {
+	hint := firstHint(cause)
+	if hint == "" {
 		return e
 	}
 	c := *e
-	c.Hint = inner.Hint
+	c.Hint = hint
 	return &c
+}
+
+// firstHint walks a cause chain for the nearest remedy.
+//
+// The whole chain, not the outermost *Error: errors.As -- what AsError uses --
+// stops at the first structured error it meets, so a hint behind an
+// intermediate wrap that has none is discarded. Two wraps is the normal depth
+// once an adapter's error passes through a capture step on its way to the
+// operator, which is precisely the case WithHintFrom exists to survive.
+//
+// The []error branch is not optional: every constructed Error wraps
+// `fmt.Errorf("%w: %w", sentinel, cause)`, so the cause hangs off a
+// multi-unwrap node and a single-Unwrap walk would never reach it.
+func firstHint(err error) string {
+	for err != nil {
+		if e, ok := err.(*Error); ok && e.Hint != "" {
+			return e.Hint
+		}
+		switch u := err.(type) {
+		case interface{ Unwrap() error }:
+			err = u.Unwrap()
+		case interface{ Unwrap() []error }:
+			for _, w := range u.Unwrap() {
+				if hint := firstHint(w); hint != "" {
+					return hint
+				}
+			}
+			return ""
+		default:
+			return ""
+		}
+	}
+	return ""
 }
 
 // WithOp returns a copy tagged with the operation and step it arose in. The
