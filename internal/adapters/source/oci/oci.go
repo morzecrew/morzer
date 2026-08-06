@@ -23,15 +23,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/credentials"
+	"oras.land/oras-go/v2/registry/remote/errcode"
 	"oras.land/oras-go/v2/registry/remote/retry"
 
 	"github.com/morzecrew/morzer/internal/adapters/source"
@@ -375,21 +378,47 @@ func (s *Source) writeLayer(ctx context.Context, repo Registry, layer ocispec.De
 	return nil
 }
 
+// registryError turns a transport failure into the one sentence that names the
+// operator's next move.
+//
+// Classified by the status the registry actually returned, never by what the
+// error's text happens to spell. The text carries the request URL, and the URL
+// carries a digest: 64 hex characters, so about one release in seventy has
+// "404" somewhere inside it -- and reading that as a status told an operator
+// whose credentials had expired to go and check a reference that was correct.
+// The repository path and the port are in there too. Substring matching cannot
+// tell a status from the address it was returned from.
 func registryError(err error, reference string) error {
-	msg := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(msg, "not found") || strings.Contains(msg, "404"):
+	missing := func() error {
 		return domain.ValidationError(domain.ErrReleaseNotFound,
 			"no artifact at %s", reference).
 			WithHint("check the reference; a tag may have been moved or removed")
-	case strings.Contains(msg, "unauthorized") || strings.Contains(msg, "401") ||
-		strings.Contains(msg, "denied") || strings.Contains(msg, "403"):
-		return domain.ValidationError(err, "access to %s was refused", reference).
-			WithHint("run `docker login <registry>` as the user the manager runs as; " +
-				"credentials are read from the ambient Docker configuration")
-	default:
+	}
+
+	var response *errcode.ErrorResponse
+	if errors.As(err, &response) {
+		switch response.StatusCode {
+		case http.StatusNotFound:
+			return missing()
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return domain.ValidationError(err, "access to %s was refused", reference).
+				WithHint("run `docker login <registry>` as the user the manager runs as; " +
+					"credentials are read from the ambient Docker configuration")
+		}
 		return domain.RuntimeError(err, "cannot reach %s", reference)
 	}
+
+	// A tag that resolves to nothing never becomes a response: the client
+	// reports its own sentinel, which is the other way a missing release
+	// arrives here.
+	if errors.Is(err, errdef.ErrNotFound) {
+		return missing()
+	}
+
+	// No status and no sentinel is a transport failure -- a refused
+	// connection, a name that does not resolve, an expired certificate.
+	// Guessing at those from their text is what this stopped doing.
+	return domain.RuntimeError(err, "cannot reach %s", reference)
 }
 
 // defaultRepository opens a registry repository with ambient credentials.

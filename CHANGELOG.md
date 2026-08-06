@@ -172,6 +172,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Secret generation no longer hangs when a release declares an alphabet whose length divides 256 evenly, such as the common 64-character case. Rejection sampling computed a cutoff that overflowed to zero, so every random draw was discarded and generation never terminated.
 
+- A registry pull refused for credentials now says to run `docker login` whatever the bundle's digest happens to be. The failure was classified by searching the error's text for `404` and `not found` before `401` and `unauthorized`, and that text carries the request URL: a digest is 64 hex characters, so roughly one release in seventy contains `404` somewhere inside it. Those releases reported an expired login as a missing artifact and sent the operator to check a reference that was correct. The status the registry returned is now read from the response itself.
+
 ### Security
 
 - Secret values never reach process arguments, logs, the operation journal or machine-readable output. The secret type renders as redacted anywhere it is printed, and a redacting log handler plus subprocess output scrubbing back it up.
