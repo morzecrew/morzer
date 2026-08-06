@@ -229,6 +229,8 @@ arrive.
 | `doctor` works on a machine where every adapter is broken — the only kind anyone runs it on | `TestDoctorSurvivesEveryAdapterBeingBroken` |
 | An absent healthcheck reads as "no probe", not as "unhealthy" — against real Docker | `TestComposeStatusReportsRealHealth` |
 | A journal line half-written by a crash does not make `status` unusable | `TestACorruptFinalJournalLineIsDiscardedNotFatal` |
+| An operation flagged for a human blocks `apply` until it is cleared | `TestAnUnfinishedOperationBlocksANewOne` |
+| A crash mid-operation leaves a journal `--resume` continues from | `TestResumeStartsFromTheStepThatDidNotFinish` |
 
 ## What a test in this table has to do
 
@@ -257,11 +259,6 @@ Being explicit about the edges is part of the point.
   is told it worked. Recorded as
   `TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp`, which fails if that
   ever becomes a refusal.
-- **`preflight.NoUnfinishedOperation` is written but never wired in.** It is
-  documented as refusing to start while a previous operation is flagged, and
-  nothing calls it — so `apply` runs straight over an operation that asked for
-  a human. Pinned by `TestAnUnfinishedOperationDoesNotBlockANewOne`, which
-  fails the day it is wired.
 - **Cancelling the `init` wizard is not honoured in accessible mode.** huh's
   accessible renderer ignores the context and discards each field's error, so
   ctrl-D completes the form with defaults. What is asserted instead is that the
