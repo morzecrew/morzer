@@ -39,16 +39,15 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	if err := d.gateUnfinished(ctx, opts.Resume); err != nil {
-		return Result{}, err
-	}
-
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
 	if opts.Resume {
 		if prior, err = d.findResumable(ctx, domain.OpTypeApply); err != nil {
 			return Result{}, err
 		}
+	}
+	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
+		return Result{}, err
 	}
 
 	op := engine.Operation{
@@ -62,6 +61,13 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeApply, opts, func(ctx context.Context) error {
+		// Re-checked under the lock: with --wait, another process can
+		// journal a wreck between the early check and this acquisition,
+		// then die -- and the whole point of the gate is not driving
+		// over exactly that.
+		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
+			return err
+		}
 		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts, inst.ID, prior))
 		return err
@@ -760,24 +766,36 @@ func (d *Deps) resolveCurrentRelease(ctx context.Context, record domain.ReleaseR
 // exactly how a recoverable failure becomes an unrecoverable one. It runs
 // before the engine journals anything: a refusal that recorded an operation of
 // its own would become the newest record of its type and shadow the very wreck
-// `--resume` needs to find. Resume is exempt, because it is the human
-// continuing exactly the operation this would otherwise point at.
-func (d *Deps) gateUnfinished(ctx context.Context, resume bool) error {
-	if resume {
-		return nil
-	}
+// `--resume` needs to find. A resume is exempt from exactly one record -- the
+// one it is continuing -- and no other: a crashed update must still block an
+// `apply --resume` that would mutate over it.
+func (d *Deps) gateUnfinished(ctx context.Context, exclude string) error {
 	unfinished, err := d.State.UnfinishedOperations(ctx)
 	if err != nil {
 		return err
 	}
-	if len(unfinished) == 0 {
+	others := make([]domain.OperationRecord, 0, len(unfinished))
+	for _, rec := range unfinished {
+		if rec.ID != exclude {
+			others = append(others, rec)
+		}
+	}
+	if len(others) == 0 {
 		return nil
 	}
-	res := preflight.NoUnfinishedOperation(unfinished).Run(ctx)
+	res := preflight.NoUnfinishedOperation(others).Run(ctx)
 	if res.Status != events.CheckFail {
 		return nil
 	}
 	return domain.Preflight(nil, "%s", res.Message).WithHint("%s", res.Remedy)
+}
+
+// excludeID names the record a resume is continuing, or nothing.
+func excludeID(prior *domain.OperationRecord) string {
+	if prior == nil {
+		return ""
+	}
+	return prior.ID
 }
 
 // findResumable locates the operation --resume should continue.

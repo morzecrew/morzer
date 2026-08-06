@@ -64,16 +64,15 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		return Result{}, err
 	}
 
-	if err := d.gateUnfinished(ctx, opts.Resume); err != nil {
-		return Result{}, err
-	}
-
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
 	if opts.Resume {
 		if prior, err = d.findResumable(ctx, domain.OpTypeUpdate); err != nil {
 			return Result{}, err
 		}
+	}
+	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
+		return Result{}, err
 	}
 
 	op := engine.Operation{
@@ -88,6 +87,10 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeUpdate, opts.Options, func(ctx context.Context) error {
+		// Re-checked under the lock; see the same recheck in Apply.
+		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
+			return err
+		}
 		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
 		return err

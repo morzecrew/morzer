@@ -206,7 +206,9 @@ func (d *Deps) fillBackupStatus(ctx context.Context, out *Status, inst domain.In
 	}
 }
 
-// ClearIntervention marks a requires-manual-intervention operation as resolved.
+// ClearIntervention marks a requires-manual-intervention operation as
+// resolved, or writes off a record a stopped process left journaled as
+// running.
 //
 // It is deliberately explicit and deliberately manual: the flag exists to stop
 // automation proceeding over a state a human has not looked at, so nothing but
@@ -222,9 +224,7 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 	// Two kinds of record can be acknowledged: one flagged for manual
 	// intervention, and one a dead process left journaled as running --
 	// which, when its in-flight step is not safe to repeat, `--resume`
-	// rightly refuses, leaving this as the only road back. Clearing a
-	// genuinely live operation's record is confusing but not unsafe: the
-	// deployment flock, not the journal, is what serialises mutation.
+	// rightly refuses, leaving this as the only road back.
 	var target *domain.OperationRecord
 	for i := range unfinished {
 		st := unfinished[i].Status
@@ -239,9 +239,22 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 	if target == nil {
 		if opID != "" {
 			return Result{}, domain.Usage(
-				"operation %s is not flagged as requiring manual intervention", opID)
+				"operation %s is not flagged for manual intervention, nor abandoned mid-run", opID)
 		}
-		return Result{Summary: "no operations require manual intervention"}, nil
+		return Result{Summary: "no operations require attention"}, nil
+	}
+
+	// A running record whose process is genuinely alive holds the
+	// deployment lock; acknowledging it out from under a live operation
+	// would open the gate mid-mutation. The probe is best-effort -- when it
+	// cannot answer, the flock still serialises any actual mutation.
+	if target.Status == domain.StatusRunning {
+		if owner, held, err := d.Locker.Owner(ctx, "deployment"); err == nil && held {
+			return Result{}, domain.Locked(
+				"operation %s appears to be live: the deployment lock is held by PID %d",
+				target.ID, owner.PID).
+				WithHint("wait for it to finish, or stop that process first")
+		}
 	}
 
 	resolved := *target
@@ -256,8 +269,13 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 		return Result{}, err
 	}
 
-	return Result{
-		Record:  resolved,
-		Summary: "cleared the manual-intervention flag on operation " + resolved.ID,
-	}, nil
+	// The two acknowledgements are different acts and the operator should
+	// be able to tell which one happened: a flag was cleared, or an
+	// abandoned run was written off.
+	summary := "cleared the manual-intervention flag on operation " + resolved.ID
+	if target.Status == domain.StatusRunning {
+		summary = "acknowledged operation " + resolved.ID +
+			", which a stopped process left journaled as still running"
+	}
+	return Result{Record: resolved, Summary: summary}, nil
 }

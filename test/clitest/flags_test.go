@@ -34,6 +34,9 @@ func TestLogFormatRefusesAValueNobodyDefined(t *testing.T) {
 	r.Run("--log-format", "banana", "version").
 		ExitCode(2).
 		StderrContains("invalid --log-format", "text, json")
+
+	// Explicitly empty is a mistake too, not a silent alias for text.
+	r.Run("--log-format=", "version").ExitCode(2)
 }
 
 func TestVerboseAndQuietRefuseToCombine(t *testing.T) {
@@ -52,5 +55,5 @@ func TestBareClearInterventionSelectsRatherThanFailing(t *testing.T) {
 	// clean no-op.
 	r.Run("status", "--clear-intervention").
 		ExitCode(0).
-		StderrContains("no operations require manual intervention")
+		StderrContains("no operations require attention")
 }

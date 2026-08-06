@@ -354,11 +354,43 @@ func TestAnAbandonedRunningOperationCanBeCleared(t *testing.T) {
 	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
 	require.Error(t, err, "apply proceeded over a record a dead process left running")
 
+	// Resume genuinely refuses this record -- it journaled no steps this
+	// manager can continue from -- which is why acknowledging it has to be
+	// the road back.
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}})
+	require.Error(t, err, "an empty running record was resumed")
+
 	_, err = ops.ClearIntervention(ctx, h.Deps, "op-dead-process")
 	require.NoError(t, err, "the abandoned running record could not be acknowledged")
 
 	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err, "clearing the abandoned record must let the next operation run")
+}
+
+// TestResumeIsExemptFromOnlyItsOwnWreck: `apply --resume` continues one
+// specific operation; a crashed *update* still needing attention must block it
+// like any other mutation, or resume becomes a gate bypass.
+func TestResumeIsExemptFromOnlyItsOwnWreck(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-stuck-update", Type: domain.OpTypeUpdate,
+			Status: domain.StatusManualIntervention, StartedAt: domain.NewTime(time.Now()),
+		}))
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-crashed-apply", Type: domain.OpTypeApply,
+			Status: domain.StatusRunning, StartedAt: domain.NewTime(time.Now().Add(time.Second)),
+		}))
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{Resume: true})
+	require.Error(t, err, "apply --resume drove over another operation's wreck")
+	assert.Contains(t, domain.AsError(err).Error(), "op-stuck-update",
+		"the refusal must name the blocking operation, not the one being resumed")
 }
 
 // TestClearingTheInterventionFlagMarksItResolved. The flag is what `doctor` and

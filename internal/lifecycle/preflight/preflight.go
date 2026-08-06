@@ -479,9 +479,17 @@ func NoUnfinishedOperation(records []domain.OperationRecord) Check {
 						"then clear the flag with `morzer status --clear-intervention`",
 					"operation %s (%s) requires manual intervention", rec.ID, rec.Type)
 			}
-			return Fail(
-				fmt.Sprintf("resume it with `morzer %s --resume`, "+
-					"or investigate with `morzer doctor`", rec.Type),
+			// Only apply and update implement --resume; advertising it
+			// for a crashed backup or restore would send the operator
+			// down a road that does not exist.
+			remedy := "investigate with `morzer doctor`, then acknowledge the record " +
+				"with `morzer status --clear-intervention`"
+			switch rec.Type {
+			case domain.OpTypeApply, domain.OpTypeUpdate:
+				remedy = fmt.Sprintf("resume it with `morzer %s --resume`, "+
+					"or investigate with `morzer doctor`", rec.Type)
+			}
+			return Fail(remedy,
 				"operation %s (%s) did not finish", rec.ID, rec.Type)
 		},
 	}
