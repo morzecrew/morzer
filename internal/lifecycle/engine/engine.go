@@ -146,8 +146,18 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 	var failure error
 	var failedIdx = -1
 
-	for i := startAt; i < len(op.Steps); i++ {
+	for i := 0; i < len(op.Steps); i++ {
 		step := op.Steps[i]
+
+		// On resume, completed non-idempotent work keeps its journaled
+		// credit -- the refusal rules in resumePoint exist so it is
+		// never repeated. Completed *idempotent* steps re-run instead:
+		// their effects are declared safe to repeat, and re-running is
+		// what rebuilds the in-memory step state later steps consume,
+		// which the journal does not carry across processes.
+		if i < startAt && !step.Idempotent {
+			continue
+		}
 
 		// Check cancellation between steps as well as inside them: a
 		// signal arriving while a step was running should not start the
@@ -482,21 +492,45 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 	idx, resumable := prior.FirstIncompleteStep()
 	if !resumable {
 		return 0, domain.Usage("operation %s cannot be resumed safely", prior.ID).
-			WithHint("its completed steps include work that is not safe to repeat; " +
-				"run `morzer doctor` and start a fresh operation")
+			WithHint("its journal holds a step in a state this manager cannot " +
+				"continue from; run `morzer doctor` and start a fresh operation")
 	}
 	if idx >= len(op.Steps) {
 		return 0, domain.Usage("operation %s has no incomplete steps left", prior.ID)
 	}
 
-	// Every step before the resume point must be idempotent, because
-	// resuming asserts that replaying up to here would have been safe.
-	for i := 0; i < idx && i < len(op.Steps); i++ {
-		if !op.Steps[i].Idempotent {
+	// The step list being resumed must be the list that was interrupted.
+	// Credit for completed steps is carried by position, so after a manager
+	// upgrade that inserted, removed or reordered steps, that credit would
+	// land on the wrong steps -- silently skipping or re-running a mutating
+	// one.
+	if len(prior.Steps) != len(op.Steps) {
+		return 0, domain.Usage(
+			"operation %s journaled %d steps but this manager plans %d",
+			prior.ID, len(prior.Steps), len(op.Steps)).
+			WithHint("the step list changed since the operation was interrupted; " +
+				"run `morzer doctor` and start a fresh operation")
+	}
+	for i := 0; i <= idx; i++ {
+		if op.Steps[i].ID != prior.Steps[i].ID {
 			return 0, domain.Usage(
-				"cannot resume past step %q, which is not safe to repeat", op.Steps[i].ID).
-				WithHint("run `morzer doctor`, repair manually, then start a fresh operation")
+				"operation %s journaled step %d as %q but this manager plans %q",
+				prior.ID, i+1, prior.Steps[i].ID, op.Steps[i].ID).
+				WithHint("the step list changed since the operation was interrupted; " +
+					"run `morzer doctor` and start a fresh operation")
 		}
+	}
+
+	// Completed steps are never re-run, so their idempotency does not
+	// matter here. The step being re-run is the safety question: journaled
+	// Pending it never started, but Running, Interrupted or Failed may have
+	// applied part of its effect before the stop, and re-applying is only
+	// safe when the step declares itself idempotent.
+	if prev := prior.Steps[idx].Status; prev != domain.StepPending && !op.Steps[idx].Idempotent {
+		return 0, domain.Usage(
+			"cannot resume: step %q was %s when the operation stopped and is not safe to repeat",
+			op.Steps[idx].ID, prev).
+			WithHint("run `morzer doctor`, repair manually, then start a fresh operation")
 	}
 
 	// Carry the prior run's step outcomes forward so the journal shows one

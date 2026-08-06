@@ -116,18 +116,15 @@ func (r OperationRecord) Duration() time.Duration {
 // FirstIncompleteStep returns the index of the step --resume should continue
 // from, and whether resuming is possible at all.
 //
-// Resume is permitted only when every step before the resume point is
-// idempotent: replaying a non-idempotent step would apply its effect twice,
-// which is precisely the situation the operator is trying to escape.
+// A completed step -- succeeded or skipped -- is never re-run on resume, so
+// nothing here depends on its idempotency. Whether the step *at* the resume
+// point is safe to re-run depends on the step list being resumed, which the
+// engine has and this record does not; that check is the engine's.
 func (r OperationRecord) FirstIncompleteStep() (idx int, resumable bool) {
 	for i, s := range r.Steps {
 		switch s.Status {
 		case StepSucceeded, StepSkipped:
-			if !s.Idempotent {
-				// A completed non-idempotent step is fine -- we will
-				// not re-run it. Keep scanning.
-				continue
-			}
+			// Never re-run; keep scanning.
 		case StepPending, StepRunning, StepFailed, StepInterrupted:
 			return i, true
 		case StepCompensated:

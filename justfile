@@ -74,7 +74,7 @@ contract-strict:
     set -euo pipefail
     out=$(mktemp)
     trap 'rm -f "$out"' EXIT
-    go test ./test/suite/ -run 'Contract|Recovery|Import|Backups' -v 2>&1 | tee "$out"
+    go test ./test/suite/ -run 'Contract|Recovery|Import|Backups|Resume' -v 2>&1 | tee "$out"
     if grep -q -- '--- SKIP' "$out"; then
         echo >&2
         echo "error: a suite that needs a real adapter skipped, so it went unexercised." >&2

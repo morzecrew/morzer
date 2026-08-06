@@ -470,13 +470,106 @@ func TestResumeContinuesFromFirstIncompleteStep(t *testing.T) {
 	result, err := eng.Run(context.Background(), op, Options{Resume: true, Prior: &prior})
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"c", "d"}, tr.executed,
-		"resume must skip the steps that already completed")
+	// Completed idempotent steps re-run: safe by declaration, and the only
+	// way the in-memory state they produce exists in the resuming process.
+	assert.Equal(t, []string{"a", "b", "c", "d"}, tr.executed,
+		"resume must rebuild step state by re-running idempotent steps")
 	assert.Equal(t, "op_test", result.Record.ID,
 		"a resumed run continues the same operation rather than starting a new one")
 }
 
-func TestResumeRefusesWhenAnEarlierStepIsNotIdempotent(t *testing.T) {
+// A completed non-idempotent step is never re-run by resume, so it must not
+// block one. This is what makes an update interrupted after its pre-update
+// backup -- non-idempotent, completed, and at index 2 of everything that
+// follows -- resumable at all.
+func TestResumeSkipsACompletedNonIdempotentStep(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusInterrupted,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			{ID: "a", Status: domain.StepSucceeded, Idempotent: false},
+			{ID: "b", Status: domain.StepInterrupted, Idempotent: true},
+		},
+	}
+
+	notIdempotent := step(tr, "a", false, true)
+	notIdempotent.Idempotent = false
+
+	result, err := eng.Run(context.Background(),
+		operation(notIdempotent, step(tr, "b", false, true)),
+		Options{Resume: true, Prior: &prior})
+
+	require.NoError(t, err, "a completed non-idempotent step blocked a resume that would never re-run it")
+	assert.Equal(t, []string{"b"}, tr.executed,
+		"resume must re-run only the step that did not finish")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+}
+
+// The step at the resume point is the one resume re-runs, and the one whose
+// effect may be half-applied: the process died while it was journaled as
+// running. Re-applying is only safe when the step declares it.
+func TestResumeRefusesToReRunANonIdempotentStepThatWasRunning(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusRunning,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			{ID: "a", Status: domain.StepSucceeded, Idempotent: true},
+			{ID: "b", Status: domain.StepRunning, Idempotent: false},
+		},
+	}
+
+	notIdempotent := step(tr, "b", false, true)
+	notIdempotent.Idempotent = false
+
+	_, err := eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), notIdempotent),
+		Options{Resume: true, Prior: &prior})
+
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+	assert.Empty(t, tr.executed, "nothing must run when resume is refused")
+}
+
+// A non-idempotent step journaled as pending never started, so re-"running"
+// it is running it for the first time -- refusal would make any operation
+// with a non-idempotent step unresumable even when the crash landed before it.
+func TestResumeRunsAPendingNonIdempotentStep(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusInterrupted,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			{ID: "a", Status: domain.StepSucceeded, Idempotent: true},
+			{ID: "b", Status: domain.StepPending, Idempotent: false},
+		},
+	}
+
+	notIdempotent := step(tr, "b", false, true)
+	notIdempotent.Idempotent = false
+
+	result, err := eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), notIdempotent),
+		Options{Resume: true, Prior: &prior})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, tr.executed,
+		"the idempotent step re-runs to rebuild state; the pending one runs for the first time")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+}
+
+// Completed-step credit is carried by position, so a step list that changed
+// since the interruption -- a manager upgrade inserting or reordering steps --
+// would apply that credit to the wrong steps. Refused, both by ID and by
+// length.
+func TestResumeRefusesWhenTheStepListChanged(t *testing.T) {
 	eng, _, _ := newEngine()
 	tr := &tracker{}
 
@@ -489,19 +582,21 @@ func TestResumeRefusesWhenAnEarlierStepIsNotIdempotent(t *testing.T) {
 		},
 	}
 
-	// The first step is not safe to repeat, so resuming past it would
-	// apply its effect twice -- which is the situation the operator is
-	// trying to escape.
-	notIdempotent := step(tr, "a", false, true)
-	notIdempotent.Idempotent = false
-
+	// Same length, different step at the resume point.
 	_, err := eng.Run(context.Background(),
-		operation(notIdempotent, step(tr, "b", false, true)),
+		operation(step(tr, "a", false, true), step(tr, "renamed", false, true)),
 		Options{Resume: true, Prior: &prior})
-
 	require.Error(t, err)
 	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
-	assert.Empty(t, tr.executed, "nothing must run when resume is refused")
+	assert.Empty(t, tr.executed)
+
+	// A different number of steps.
+	_, err = eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), step(tr, "b", false, true), step(tr, "c", false, true)),
+		Options{Resume: true, Prior: &prior})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+	assert.Empty(t, tr.executed)
 }
 
 func TestResumeWithoutPriorIsAUsageError(t *testing.T) {

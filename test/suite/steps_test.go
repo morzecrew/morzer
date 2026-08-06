@@ -191,28 +191,69 @@ func TestDoctorReportsUnitsAndBackups(t *testing.T) {
 
 // TestResumeStartsFromTheStepThatDidNotFinish is the whole point of the
 // journal: after a crash, `--resume` picks up rather than starting over.
+//
+// The crash is simulated as the artifact it leaves -- a journal record whose
+// status is still running, with one step journaled as in flight -- because a
+// failed apply compensates cleanly and leaves nothing to resume, which is how
+// an earlier version of this test managed to skip on every run for as long as
+// nobody noticed. The step list comes from a real apply, so a pipeline change
+// breaks this fixture loudly rather than silently diverging from it.
 func TestResumeStartsFromTheStepThatDidNotFinish(t *testing.T) {
 	h := newHarness(t)
 	h.install()
 	h.setHookEnv()
+	ctx := context.Background()
 
-	// A first apply that fails partway, leaving a record.
-	h.Runtime.Fail["Up"] = domain.RuntimeError(errInjected, "the daemon refused")
-	first, _ := ops.Apply(context.Background(), h.Deps, ops.Options{})
-	require.NotEqual(t, domain.StatusSucceeded, first.Record.Status)
-
-	// The journal now holds something an operator could resume.
-	unfinished, err := h.Deps.State.UnfinishedOperations(context.Background())
+	// A clean apply, to learn the step list a real journal record holds.
+	clean, err := ops.Apply(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
-	if len(unfinished) == 0 {
-		t.Skip("the failed apply compensated cleanly, so there is nothing to resume")
-	}
+	require.Equal(t, domain.StatusSucceeded, clean.Record.Status)
 
-	// With the fault cleared, a resume completes rather than refusing.
-	delete(h.Runtime.Fail, "Up")
-	second, err := ops.Apply(context.Background(), h.Deps, ops.Options{Resume: true})
+	// The record a SIGKILL mid-`start-services` leaves behind: the
+	// operation still running, that step in flight, everything after it
+	// pending. AppendOperation is exactly the write the dying process had
+	// already completed.
+	crashed := clean.Record
+	crashed.ID = "op-killed-mid-apply"
+	crashed.Status = domain.StatusRunning
+	crashed.FinishedAt = domain.Time{}
+	crashed.Steps = append([]domain.StepRecord(nil), clean.Record.Steps...)
+	resumeFrom := -1
+	for i := range crashed.Steps {
+		switch {
+		case crashed.Steps[i].ID == "start-services":
+			resumeFrom = i
+			crashed.Steps[i].Status = domain.StepRunning
+		case resumeFrom == -1:
+			crashed.Steps[i].Status = domain.StepSucceeded
+		default:
+			crashed.Steps[i].Status = domain.StepPending
+		}
+	}
+	require.NotEqual(t, -1, resumeFrom,
+		"the apply pipeline no longer has a start-services step; update this fixture")
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, crashed))
+
+	unfinished, err := h.Deps.State.UnfinishedOperations(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, unfinished, "a running record must surface as unfinished")
+
+	// The resume continues that operation rather than refusing or starting
+	// a new one.
+	second, err := ops.Apply(ctx, h.Deps, ops.Options{Resume: true})
 	require.NoError(t, err, "an operation that could be resumed was refused")
 	assert.Equal(t, domain.StatusSucceeded, second.Record.Status)
+	assert.Equal(t, crashed.ID, second.Record.ID,
+		"a resumed run continues the same operation rather than starting a new one")
+
+	// Every step before the crash point is either carried as its journaled
+	// credit or re-ran cleanly; none may end the resumed run failed.
+	for i := 0; i < resumeFrom; i++ {
+		s := second.Record.Steps[i]
+		assert.Contains(t,
+			[]domain.StepStatus{domain.StepSucceeded, domain.StepSkipped}, s.Status,
+			"step %q did not come through the resume cleanly", s.ID)
+	}
 }
 
 // TestAnUnfinishedOperationDoesNotBlockANewOne records a gap, not a design.
