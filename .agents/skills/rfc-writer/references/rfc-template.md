@@ -14,6 +14,8 @@ Copy the skeleton below into `NNNN-kebab-title.md`. Replace `<placeholders>`, de
   uses to decide whether to read the rest.>
 - **Related:** <Links to the code being touched (relative paths into the repo),
   other RFCs by number, prior art, external docs.>
+- **Discussion:** <Optional — link to the PR / issue / thread where the design
+  was or is being debated. Delete if none.>
 - **Origin:** <Optional — where the design was ported or generalized from:
   a sibling project, a spike, a production incident. Delete if none.>
 
@@ -54,7 +56,9 @@ implementer a re-investigation.>
 schemas, wire formats, config shapes — in code blocks; prose alone drifts.
 State failure semantics explicitly (what raises, what is refused, what fails
 closed). Where a decision was contested, keep one sentence on the rejected
-alternative and why it lost.>
+alternative and why it lost; when the choice shaped the design, give it an
+`### Alternatives considered` subsection that states each alternative's
+trade-off, not just its rejection — that is what stops re-litigation.>
 
 ### 5.1 <Component / workstream>
 
@@ -82,13 +86,19 @@ worded carefully (e.g. migration honesty, threat-model caveats).>
   security theater"), operational risks. Each with the mitigation or the
   explicit acceptance.>
 
-## 10. Decisions
+## 10. Unresolved questions
+
+- <What must be settled before the design counts as locked, vs. what
+  implementation is free to settle. Name each unknown and who/what resolves
+  it. An empty section is a claim — only make it if true.>
+
+## 11. Decisions
 
 | # | Decision |
 | --- | --- |
-| 1 | <One locked decision per row, self-contained, with the load-bearing rationale compressed in. This table is the contract: pickup should require reading it, not re-deriving it.> |
+| 1 | <One locked decision per row, self-contained, with the load-bearing rationale compressed in — and, where a decision constrains the future non-obviously, its consequence ("locks us to X; changing later means Y"). This table is the contract: pickup should require reading it, not re-deriving it.> |
 
-## 11. Phasing
+## 12. Phasing
 
 <What lands first, what is gated on what, what is demand-gated. "P1 = W1+W2"
 style is fine if the workstreams are named in §5.>
@@ -105,7 +115,8 @@ style is fine if the workstreams are named in §5.>
   Prefer an annotated true status over a clean false one.
 - **Amendments over rewrites:** once an RFC leaves Draft, record divergences
   as dated notes in the status line or the affected section. The decision
-  table is append-only — a reversed decision gets a new row, not an edit.
+  table is append-only — a reversed decision gets a new row citing the row it
+  reverses, not an edit. History someone relied on stays readable.
 - **Index row:** written at the same time as the RFC. The one-liner must be
   self-contained — a reader scanning the index should not need to open the
   file to know what it decided.
