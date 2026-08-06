@@ -338,6 +338,26 @@ type ProjectStorage struct {
 	// Binds are host paths mounted into containers. Reported, never
 	// captured -- see UncapturedVolume.
 	Binds []BindMount
+
+	// Anonymous are volumes a service mounts without naming, sorted.
+	//
+	// Reported and never captured, for a reason worth stating: the runtime
+	// invents a name that changes when the container is recreated, so there
+	// is nothing a later restore could put the contents back into. Silence
+	// would be worse than the limitation -- a vendor who wrote `- /data`
+	// instead of `- data:/data` has a volume holding real data that no
+	// backup covers and none can.
+	Anonymous []AnonymousVolume
+}
+
+// AnonymousVolume is an unnamed mount: real storage with no stable identity.
+type AnonymousVolume struct {
+	// Service is the service that mounts it.
+	Service string
+
+	// Target is the path it is mounted at inside the container, which is
+	// the only handle an operator has for finding it.
+	Target string
 }
 
 // NamedVolume is one named volume and who writes to it.

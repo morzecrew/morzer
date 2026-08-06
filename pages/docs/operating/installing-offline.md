@@ -48,6 +48,11 @@ through a container, so a backup on a disconnected machine that never pulled it
 captures nothing. It is the one image that is not in the release manifest, which
 is exactly why it is easy to miss.
 
+**Preload the reference `doctor` prints, not `busybox`.** If this deployment sets
+`MORZER_VOLUME_HELPER_IMAGE`, that is the image volume capture will run, and the
+default busybox is not pulled at all. `doctor` reports whichever one is
+configured, so its output is the reference to copy — checking it beats assuming.
+
 ## Prepare the artifacts
 
 On a machine that *does* have a network:
@@ -62,13 +67,17 @@ morzer release show 1.3.0 | grep -A20 images
 docker pull registry.example/demo/app@sha256:…
 docker pull registry.example/demo/db@sha256:…
 # 3. The manager's volume helper image, which is not in the manifest.
-#    `morzer doctor` prints the exact digest-pinned reference.
-docker pull busybox@sha256:…
+#    Take the exact reference from `morzer doctor` -- it is busybox unless
+#    MORZER_VOLUME_HELPER_IMAGE names another, and then it is that one.
+HELPER=$(morzer doctor --json |
+    jq -r '.data.results[] | select(.id == "backup.volume-helper") | .detail' |
+    grep -o '[^ ]*@sha256:[a-f0-9]*')
+docker pull "$HELPER"
 
 docker save -o images.tar \
     registry.example/demo/app@sha256:… \
     registry.example/demo/db@sha256:… \
-    busybox@sha256:…
+    "$HELPER"
 ```
 
 Copy `demo-1.3.0.tar.zst` and `images.tar` to the target machine, along with

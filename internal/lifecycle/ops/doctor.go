@@ -1201,6 +1201,40 @@ func (d *Deps) checkVolumeCoverage(inst domain.Installation, rel domain.Release)
 					strings.Join(binds, ", ")))
 			}
 
+			// An anonymous volume cannot be captured at all, and the
+			// remedy belongs to the vendor rather than the operator --
+			// so the operator has to be able to see it in order to ask.
+			var anon []string
+			for _, a := range storage.Anonymous {
+				anon = append(anon, fmt.Sprintf("%s at %s", a.Service, a.Target))
+			}
+			if len(anon) > 0 {
+				notes = append(notes, fmt.Sprintf(
+					"%s mount anonymous volumes, which no backup can capture",
+					strings.Join(anon, ", ")))
+			}
+
+			// A declaration naming a volume the project does not have
+			// is a vendor typo that silently does nothing: `uplods:
+			// {consistency: exclude}` leaves the real pgdata being
+			// captured, and nothing says so.
+			declared := map[string]bool{}
+			for _, vol := range storage.Volumes {
+				declared[vol.Name] = true
+			}
+			var phantom []string
+			for name := range rel.Manifest.Backup.Volumes {
+				if name != "" && !declared[name] {
+					phantom = append(phantom, name)
+				}
+			}
+			sort.Strings(phantom)
+			if len(phantom) > 0 {
+				notes = append(notes, fmt.Sprintf(
+					"the release declares backup.volumes for %s, which this project "+
+						"does not define", strings.Join(phantom, ", ")))
+			}
+
 			captured := len(storage.Volumes) - len(excluded)
 			if len(notes) == 0 {
 				return preflight.OK("%d named volume(s) captured", captured)

@@ -273,11 +273,27 @@ func (r *Runtime) Restart(ctx context.Context, cfg ports.RuntimeConfig, services
 func (r *Runtime) Stop(ctx context.Context, cfg ports.RuntimeConfig, services []string, timeout time.Duration) error {
 	argv := r.args(cfg, "stop")
 	if timeout > 0 {
-		argv = append(argv, "--timeout", strconv.Itoa(int(timeout.Seconds())))
+		// Rounded up, never down to zero. Compose takes whole seconds,
+		// so a sub-second grace truncates to `--timeout 0` -- which is
+		// an immediate SIGKILL, the opposite of the small grace the
+		// caller asked for.
+		seconds := int(timeout.Seconds())
+		if seconds < 1 {
+			seconds = 1
+		}
+		argv = append(argv, "--timeout", strconv.Itoa(seconds))
 	}
 	argv = append(argv, services...)
 
-	if _, err := r.runner.Run(ctx, r.command(cfg, 15*time.Minute, argv...)); err != nil {
+	// The subprocess bound has to outlast the grace Compose was given, or
+	// the runner kills the CLI mid-stop and the services stay up while the
+	// caller is told they were stopped.
+	limit := timeout + 5*time.Minute
+	if limit < 15*time.Minute {
+		limit = 15 * time.Minute
+	}
+
+	if _, err := r.runner.Run(ctx, r.command(cfg, limit, argv...)); err != nil {
 		return wrapExit(err, "cannot stop services", "")
 	}
 	return nil

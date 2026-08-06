@@ -141,6 +141,21 @@ func planVolumes(
 		})
 	}
 
+	// An anonymous volume holds real data and cannot be put back: the
+	// runtime invents a name that changes when the container is recreated,
+	// so a restore would have nowhere to write it. Recorded anyway, because
+	// the operator's remedy -- ask the vendor to name it -- only exists if
+	// they know.
+	for _, anon := range storage.Anonymous {
+		plan.uncaptured = append(plan.uncaptured, ports.UncapturedVolume{
+			Volume:   anon.Target,
+			Kind:     ports.VolumeKindAnonymous,
+			Services: []string{anon.Service},
+			Reason: "it is an anonymous volume, which is renamed whenever its " +
+				"container is recreated, so no restore could put it back",
+		})
+	}
+
 	return plan
 }
 
@@ -457,21 +472,19 @@ func (e *Engine) restoreVolumes(
 				"and put the volumes back by hand")
 	}
 
-	if err := e.refuseOccupiedVolumes(ctx, volumes); err != nil {
+	// The project as it is *now*, not as the backup recorded it. Two things
+	// depend on it: which volume to write into, and which services must be
+	// out of the way first.
+	live := e.currentVolumes(ctx, caps.inspector)
+
+	if err := e.refuseOccupiedVolumes(ctx, volumes, live); err != nil {
 		return err
 	}
 
-	// The current project's names, so a restore writes into the volumes
-	// this deployment actually uses rather than the ones the backup was
-	// taken from. They differ whenever the project has been renamed, and
-	// writing into the recorded name would create a stray volume nothing
-	// mounts -- a restore that reports success and changes nothing.
-	actual := e.currentVolumeNames(ctx, caps.inspector)
-
 	for _, c := range volumes {
 		target := c.Volume.Actual
-		if live, ok := actual[c.Volume.Volume]; ok {
-			target = live
+		if v, ok := live[c.Volume.Volume]; ok {
+			target = v.Actual
 		}
 
 		path := filepath.Join(staged, strings.TrimSuffix(c.Path, agecrypt.Extension))
@@ -491,7 +504,9 @@ func (e *Engine) restoreVolumes(
 // to files that no longer exist. The refusal names the services and the state
 // each is in, because "stop the services" is not an instruction anybody can
 // follow -- and because a paused one does not look stopped or running.
-func (e *Engine) refuseOccupiedVolumes(ctx context.Context, volumes []ports.ComponentRecord) error {
+func (e *Engine) refuseOccupiedVolumes(
+	ctx context.Context, volumes []ports.ComponentRecord, live map[string]ports.NamedVolume,
+) error {
 	occupied, err := e.occupiedServices(ctx)
 	if err != nil {
 		return err
@@ -502,7 +517,7 @@ func (e *Engine) refuseOccupiedVolumes(ctx context.Context, volumes []ports.Comp
 	// retry.
 	blockers := map[string][]string{}
 	for _, c := range volumes {
-		for _, service := range c.Volume.Services {
+		for _, service := range mountingServices(c, live) {
 			if _, up := occupied[service]; up {
 				blockers[service] = append(blockers[service], c.Volume.Volume)
 			}
@@ -588,19 +603,37 @@ func (e *Engine) quiesceAmong(ctx context.Context, services []string) ([]string,
 	return out, nil
 }
 
-// currentVolumeNames maps each logical volume name to its name in the runtime
-// right now. Best effort: a project that cannot be resolved falls back to what
-// the backup recorded.
-func (e *Engine) currentVolumeNames(ctx context.Context, inspector ports.VolumeInspector) map[string]string {
+// currentVolumes maps each logical volume name to the project's current view of
+// it. Best effort: a project that cannot be resolved falls back to what the
+// backup recorded.
+func (e *Engine) currentVolumes(ctx context.Context, inspector ports.VolumeInspector) map[string]ports.NamedVolume {
 	storage, err := inspector.Volumes(ctx, e.runtimeConfig)
 	if err != nil {
 		return nil
 	}
-	out := make(map[string]string, len(storage.Volumes))
+	out := make(map[string]ports.NamedVolume, len(storage.Volumes))
 	for _, v := range storage.Volumes {
-		out[v.Name] = v.Actual
+		out[v.Name] = v
 	}
 	return out
+}
+
+// mountingServices is who mounts this volume *now*, falling back to who mounted
+// it when the backup was taken.
+//
+// The live list is the one that matters. A release that has since added a
+// service on the same volume records nothing about it in an old backup, so a
+// refusal reading only the recorded list would let the restore untar into a
+// volume that new service is holding open -- the same blindness as checking
+// only for `running`, arriving by a different route.
+//
+// The recorded list is the fallback rather than the source: when the project
+// cannot be resolved, what the backup knew is better than knowing nothing.
+func mountingServices(c ports.ComponentRecord, live map[string]ports.NamedVolume) []string {
+	if v, ok := live[c.Volume.Volume]; ok {
+		return v.Services
+	}
+	return c.Volume.Services
 }
 
 // componentSelected reports whether a component is in scope. An empty

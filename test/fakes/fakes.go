@@ -250,9 +250,12 @@ func (r *Runtime) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 
 	r.mu.Lock()
 	r.Calls = append(r.Calls, "CaptureVolume:"+volume)
+	// OccupiesVolume, not Running: an unhealthy container is not "running"
+	// but still holds its files open, and a witness that excluded it would
+	// let a capture look cold while something had the volume.
 	var running []string
 	for name, state := range r.Services {
-		if state.Running() {
+		if state.OccupiesVolume() {
 			running = append(running, name)
 		}
 	}

@@ -402,6 +402,17 @@ beside files it does, producing a volume that matches no point in time — and
 beside a database restored to an exact one, that is how a record without its
 file is made. The volume is emptied first.
 
+That makes `RestoreVolume` **destructive and unrecoverable**, which §5.3 does not
+say and should: the volume is emptied *before* the tar is extracted, so a
+failure partway through leaves the volume holding neither what it had nor all of
+what the backup held. There is no rollback and no staging copy — the manager
+does not have a second volume's worth of space to promise one. The mitigations
+are the ones already in the path rather than a repair: the backup is verified and
+decrypted before anything is emptied, the restore is refused while any service
+holds the volume open, and the whole operation is behind `--force` and a typed
+installation id. An operator whose restore fails here restores again from the
+same backup; the volume is not left in a state anything else can use.
+
 **The space check saturates rather than wraps.** Found by the test for decision
 8: summing volume sizes overflowed `int64`, came out negative, compared as
 *smaller* than the free space, and turned the refusal into a pass. The one
@@ -500,6 +511,16 @@ unconditionally, and `compose start` on a service with no container exits
 non-zero: so the backup captured its volumes perfectly, then deleted them and
 reported that it could not bring back a product nobody had taken down. It also
 means a backup no longer starts a service the operator had deliberately stopped.
+
+**The container packages share one Docker daemon and were racing for it.** The
+contract battery added several project lifecycles to `test/suite`, and
+`test/clitest` — which contains no Docker reference and reads as a pure CLI
+suite — began failing with "cannot restart services". It reaches Docker without
+looking like it: `secret rotate` shells out to `docker compose restart` through
+the real adapter and expects exit zero. Reproduced deterministically by putting a
+failing `docker` shim on PATH, which produces that exact error. The fix is `-p 1`
+on the docker-tagged recipes: Go runs packages in parallel by default, and these
+cannot be. The coupling predates this work; the load that exposed it does not.
 
 **The stop timeout is injectable, and finding out why cost an hour.** A service
 gets two minutes to shut down cleanly before it is killed — generous on purpose,

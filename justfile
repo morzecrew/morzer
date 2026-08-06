@@ -97,13 +97,20 @@ test-race:
 # fast loop. Once the tag is set a missing daemon is a failure rather than a
 # skip: having opted in, a run that exercised nothing has to say so.
 
+# -p 1 because every package here shares one Docker daemon. Go runs packages in
+# parallel by default, and `clitest` reaches Docker without looking like it does
+# -- `secret rotate` shells out to `docker compose restart` -- so a container
+# suite saturating the daemon makes it fail with "cannot restart services".
+# Serialising costs the difference between the longest suite and their sum,
+# which is seconds; the flake it removes costs a re-run.
+
 # Run the suites that need real containers. Needs docker.
 test-docker *args:
-    go test -tags docker -timeout 25m {{args}} ./test/...
+    go test -tags docker -p 1 -timeout 25m {{args}} ./test/...
 
 # Same, with coverage, for the union.
 test-docker-cover:
-    go test -tags docker -timeout 25m -coverpkg=./internal/... \
+    go test -tags docker -p 1 -timeout 25m -coverpkg=./internal/... \
         -coverprofile=docker.out -covermode=atomic ./test/...
     go tool cover -func=docker.out | tail -1
 

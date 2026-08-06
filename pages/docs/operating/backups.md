@@ -50,8 +50,12 @@ component:
   volumes/caddy_data.tar.age
 ```
 
-This also means a release that ships **no backup hook at all** still produces a
-restorable backup, which it previously could not.
+This also means a release that ships **no backup hook at all** can still produce
+a restorable backup, which it previously could not — as long as there is
+something for the manager to capture. A release with no hook *and* no named
+volume produces no backup: `morzer backup` refuses rather than writing a
+directory holding your configuration and none of your product's data. Bind
+mounts and excluded volumes do not count towards it.
 
 !!! warning "This does not replace your database backup"
 
@@ -149,6 +153,12 @@ backup   ! 1 of 3 named volume(s) captured — pgdata excluded by the release;
 A volume is **replaced**, not merged: after a restore it holds exactly what the
 backup held. A volume left holding files the backup does not contain, beside a
 database restored to an exact moment, is how a record without its file is made.
+
+The volume is emptied *before* the backup is extracted into it, so a failure
+partway through leaves neither the old contents nor all of the new ones, and
+there is nothing to roll back to. The backup is verified and decrypted before
+anything is emptied, so the usual answer to a failure here is to run the same
+restore again.
 
 Restoring into a volume is **refused while any service that mounts it still
 holds it open**, named by service and by the state it is in — untarring into a

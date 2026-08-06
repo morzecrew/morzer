@@ -107,6 +107,27 @@ func TestABindMountIsReportedAndNeverCaptured(t *testing.T) {
 	assert.Equal(t, []string{"app"}, bind.Services)
 }
 
+// An anonymous volume holds real data and no restore can put it back, so the
+// only thing the manager can do for the operator is say so. Tracking it in a map
+// nothing reads -- which is what this did -- means the data is absent from every
+// backup and absent from every report of what is absent.
+func TestAnAnonymousVolumeIsReportedAsUncapturable(t *testing.T) {
+	storage := storageFixture()
+	storage.Anonymous = []ports.AnonymousVolume{{Service: "app", Target: "/scratch"}}
+
+	plan := planVolumes(storage, domain.BackupSpec{}, true)
+
+	for _, v := range plan.capture {
+		assert.NotEqual(t, "/scratch", v.volume.Name, "an anonymous volume was captured")
+	}
+
+	anon := uncaptured(t, plan, "/scratch")
+	assert.Equal(t, ports.VolumeKindAnonymous, anon.Kind)
+	assert.Equal(t, []string{"app"}, anon.Services)
+	assert.Contains(t, anon.Reason, "recreated",
+		"the reason does not explain why naming the volume is the remedy")
+}
+
 // --no-downtime skips; it never downgrades to a hot copy. Silently taking a hot
 // copy of an undeclared volume would be the manager making the vendor's claim
 // for them, which is exactly what decision 5 forbids.

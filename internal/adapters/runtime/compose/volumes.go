@@ -33,8 +33,12 @@ const DefaultHelperImage = "busybox@sha256:9db7b59979c38555a39def84a31fb98b52969
 // `du` and `sh` will do.
 func WithHelperImage(ref string) Option {
 	return func(r *Runtime) {
-		if strings.TrimSpace(ref) != "" {
-			r.helperImage = ref
+		// Trimmed once and *stored* trimmed. It arrives from an
+		// environment variable, and a systemd `Environment=` line
+		// carrying a trailing space would otherwise reach `docker run`
+		// with the space attached, failing as an image nobody can find.
+		if trimmed := strings.TrimSpace(ref); trimmed != "" {
+			r.helperImage = trimmed
 		}
 	}
 }
@@ -103,7 +107,7 @@ func parseStorage(raw string) (ports.ProjectStorage, error) {
 	// because that is the list a restore refuses against.
 	volumeUsers := map[string]map[string]bool{}
 	bindUsers := map[string]map[string]bool{}
-	anonymous := map[string]bool{}
+	var anonymous []ports.AnonymousVolume
 
 	for service, spec := range doc.Services {
 		for _, mount := range spec.Volumes {
@@ -114,7 +118,12 @@ func parseStorage(raw string) (ports.ProjectStorage, error) {
 					// name that changes when the container
 					// is recreated, so there is nothing to
 					// capture that could later be restored.
-					anonymous[service+" at "+mount.Target] = true
+					// Reported rather than dropped, so the
+					// operator learns their data is in no
+					// backup instead of discovering it.
+					anonymous = append(anonymous, ports.AnonymousVolume{
+						Service: service, Target: mount.Target,
+					})
 					continue
 				}
 				addUser(volumeUsers, mount.Source, service)
@@ -165,9 +174,17 @@ func parseStorage(raw string) (ports.ProjectStorage, error) {
 		})
 	}
 
+	out.Anonymous = anonymous
+
 	// Sorted, so a backup manifest and a plan read the same between runs.
 	sort.Slice(out.Volumes, func(i, j int) bool { return out.Volumes[i].Name < out.Volumes[j].Name })
 	sort.Slice(out.Binds, func(i, j int) bool { return out.Binds[i].Source < out.Binds[j].Source })
+	sort.Slice(out.Anonymous, func(i, j int) bool {
+		if out.Anonymous[i].Service != out.Anonymous[j].Service {
+			return out.Anonymous[i].Service < out.Anonymous[j].Service
+		}
+		return out.Anonymous[i].Target < out.Anonymous[j].Target
+	})
 
 	return out, nil
 }

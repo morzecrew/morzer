@@ -323,6 +323,8 @@ func TestRestoringIntoAPausedVolumeIsRefused(t *testing.T) {
 
 	states, err := lab.runtime.Status(ctx, lab.cfg)
 	require.NoError(t, err)
+	require.NotEmpty(t, states,
+		"the project reports no services, so the pause below proves nothing")
 	for _, s := range states {
 		require.Equal(t, "paused", s.State, "the fixture did not actually pause %s", s.Name)
 	}

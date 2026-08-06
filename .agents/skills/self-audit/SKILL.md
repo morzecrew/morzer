@@ -7,7 +7,11 @@ description: Adversarially audit your own just-finished work — a branch after 
 
 A self-audit is a deliberate post-execution pass where you become the adversary of your own work. The deliverable is finished — the RFC executed, the fix series written, the document drafted — and before it merges or ships, you re-enter it with one assumption: **it contains defects, and your job is to find them.** Not to confirm correctness, not to summarize what was done — to find what's wrong.
 
-This works because the author's blind spots are systematic, not random. The same few places hide defects every time, so an audit that walks those places deliberately finds real bugs that the writing pass — and often the test suite — missed. On substantial branches (thousands of lines), a competent self-audit that finds *nothing* is evidence of a shallow audit, not a clean branch.
+This works because the author's blind spots are systematic, not random. The same few places hide defects every time, so an audit that walks those places deliberately finds real bugs that the writing pass — and often the test suite — missed.
+
+What makes an audit credible is the **evidence**, not the body count. Report which passes you walked, what you ran, and what each one showed — a clean pass named alongside the probe that would have caught something is worth more than a finding manufactured to look thorough. If a large branch comes back clean, say so plainly and show the work that earns it; do not inflate a nitpick into a defect to meet a quota. (This is the same discipline `reading-isnt-proof` applies to a green battery: a clean result honestly reported is a finished job, not an empty one.)
+
+Being unable to point at *any* evidence — no suite run, no sabotage, no coverage of the new lines — is the actual tell of a shallow audit.
 
 ## Use this skill when
 
@@ -86,5 +90,5 @@ The passes generalize: spec fidelity (§1) and prose honesty (§7) apply verbati
 
 - **Fix as you find, on the same branch.** The work is your own and unmerged — clear defects get fixed immediately, then re-audited (§8). Leave open only what genuinely needs the user's decision (a spec change, a scope call), and say so.
 - **Report findings, not activities.** For each finding: where, what's wrong, why it matters (the concrete failure it causes), and its status — fixed or open. Rank by severity.
-- **State the scope and the residue.** What was audited, what wasn't, and what you'd still distrust. "No findings" on a large branch demands an explanation of why the audit is believed thorough rather than shallow.
+- **State the scope and the residue.** What was audited, what wasn't, and what you'd still distrust. "No findings" is a legitimate result — report it plainly, with the passes walked and the evidence that backs each one, so a reader can tell a thorough audit from a shallow one.
 - **Distill rules.** When a finding generalizes, record it as a one-line rule ("any suffix/subset helper needs its empty case decided explicitly"; "test a wrapper against every state of the vocabulary it wraps") — these compound across future work. If the project keeps notes or memory, put them there.

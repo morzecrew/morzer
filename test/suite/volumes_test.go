@@ -192,6 +192,11 @@ func TestAColdVolumeIsReadWithItsServicesStopped(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, volume := range []string{"demo_uploads", "demo_pgdata", "demo_cache"} {
+		// Required before the emptiness check, which a volume that was
+		// never captured at all would also satisfy -- a missing key and
+		// "nothing was running" are the same nil.
+		require.Contains(t, f.runtime.CaptureWitness, volume,
+			"%s was never captured, so this says nothing about consistency", volume)
 		assert.Empty(t, f.runtime.CaptureWitness[volume],
 			"%s was read while %v were running, so the copy is crash-consistent "+
 				"and the manifest calls it cold", volume, f.runtime.CaptureWitness[volume])
@@ -307,6 +312,43 @@ func TestRestoringAVolumeIsRefusedWhileItsServicesRun(t *testing.T) {
 	assert.Contains(t, message, "is running",
 		"the refusal does not say what state the service is in, which is the "+
 			"difference between `stop it` and `unpause it`")
+}
+
+// The refusal has to read who mounts the volume *now*, not who mounted it when
+// the backup was taken.
+//
+// A release that adds a service on an existing volume records nothing about it
+// in an older backup, so a refusal consulting only the recorded list would untar
+// straight into a volume the new service is holding open -- the same blindness
+// as checking only for `running`, reached by a different route.
+func TestRestoringAVolumeConsidersServicesAddedSinceTheBackup(t *testing.T) {
+	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+	ctx := context.Background()
+
+	ref, err := f.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+
+	// Everything the backup knew about is stopped, so the recorded list
+	// alone would raise no objection.
+	require.NoError(t, f.runtime.Stop(ctx, ports.RuntimeConfig{}, nil, 0))
+
+	// The release grew a service that mounts uploads, and it is running.
+	f.runtime.Storage.Volumes = []ports.NamedVolume{
+		{Name: "cache", Actual: "demo_cache", Services: []string{"worker"}},
+		{Name: "pgdata", Actual: "demo_pgdata", Services: []string{"db"}},
+		{Name: "uploads", Actual: "demo_uploads", Services: []string{"app", "thumbnailer", "worker"}},
+	}
+	f.runtime.Services["thumbnailer"] = ports.ServiceState{
+		Name: "thumbnailer", State: ports.StateRunning,
+	}
+
+	err = f.engine.Restore(ctx, ref, ports.RestoreOptions{
+		IdentityFile: f.identity, TargetInstallationID: "inst-volumes",
+	})
+
+	require.Error(t, err, "a restore wrote into a volume a newly added service was holding")
+	assert.Contains(t, err.Error(), "thumbnailer",
+		"the refusal named only the services the backup remembered")
 }
 
 // A paused container is frozen mid-write with its handles open. It is neither

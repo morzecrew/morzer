@@ -212,8 +212,15 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 	// A failed backup leaves nothing useful behind, and a partial backup
 	// directory that looks like a backup is worse than no backup at all --
 	// someone will eventually try to restore it.
+	//
+	// Overwriting, not just unlinking. What is in the directory at this
+	// point is plaintext: the hook's database dump and the volume tarballs,
+	// before encryption. The success path already overwrites exactly these
+	// bytes as it encrypts each one, so unlinking them here would leave a
+	// failed backup's product data more recoverable from free blocks than a
+	// successful one's.
 	fail := func(err error) (ports.BackupRef, error) {
-		_ = atomicfs.RemoveAll(dir)
+		_ = atomicfs.RemoveWithOverwrite(dir)
 		return ports.BackupRef{}, err
 	}
 

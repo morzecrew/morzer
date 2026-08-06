@@ -233,6 +233,12 @@ const (
 	// captured: it is an arbitrary path that may be enormous, may be
 	// shared, and may be outside anything the manager manages.
 	VolumeKindBind = "bind"
+
+	// VolumeKindAnonymous is a volume a service mounts without naming.
+	// Never captured, and unlike a bind mount no declaration could change
+	// that: the runtime renames it whenever the container is recreated, so
+	// a restore would have nowhere to put the contents back.
+	VolumeKindAnonymous = "anonymous"
 )
 
 // Encryption is how one component is stored.
