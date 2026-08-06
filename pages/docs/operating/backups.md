@@ -153,8 +153,12 @@ backup 20260805T181102Z created (1.2GiB), 2 volume(s) captured hot,
   `morzer doctor`, never copied. Copying one is yours to arrange.
 - **Volumes the release excludes.** `consistency: exclude` is the vendor saying
   their backup hook owns that data.
-- **`tmpfs` mounts and anonymous volumes**, which hold nothing that outlives the
-  container or nothing that could be put back.
+- **`tmpfs` mounts**, which hold nothing that outlives the container.
+- **Anonymous volumes** — a mount written `- /data` rather than `- data:/data`.
+  These *do* persist, which is what makes them worth reporting: the runtime
+  invents a name that changes when the container is recreated, so there is no
+  stable target a restore could write back into. `morzer doctor` names them, and
+  the remedy belongs to the vendor — give the volume a name.
 
 `morzer doctor` reports all of this, so you find out while you can do something
 about it:

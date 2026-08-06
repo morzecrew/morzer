@@ -1145,7 +1145,12 @@ func (d *Deps) checkVolumeHelperImage(inst domain.Installation, rel domain.Relea
 					"%s is not on this machine, so a backup cannot capture volumes",
 					shortRef(ref))
 			}
-			return preflight.OK("%s is local", shortRef(ref))
+			// The full pinned reference, not shortRef. Every other
+			// check abbreviates because it names several images for
+			// orientation; this one exists so an operator can copy the
+			// single identifier they must pull before going offline,
+			// and a digest they have to reconstruct is not that.
+			return preflight.OK("%s is local", ref)
 		},
 	}
 }
@@ -1178,7 +1183,13 @@ func (d *Deps) checkVolumeCoverage(inst domain.Installation, rel domain.Release)
 				return preflight.Warn("", "cannot read the project's volumes: %s",
 					domain.AsError(err).Message)
 			}
-			if len(storage.Volumes) == 0 && len(storage.Binds) == 0 {
+			// Anonymous volumes and declarations naming a volume the
+			// project does not have are both reported below, so a
+			// project holding only those must not short-circuit here:
+			// a deployment whose data lives entirely on anonymous
+			// volumes would otherwise get a clean bill of health.
+			if len(storage.Volumes) == 0 && len(storage.Binds) == 0 &&
+				len(storage.Anonymous) == 0 && len(rel.Manifest.Backup.Volumes) == 0 {
 				return preflight.OK("the project declares no volumes")
 			}
 
@@ -1317,7 +1328,14 @@ func (d *Deps) checkBackupGrowth(inst domain.Installation, rel domain.Release) p
 			}
 			free, err := atomicfs.FreeSpace(d.Paths.BackupsDir())
 			if err != nil {
-				return preflight.OK("cannot measure free space")
+				// Not OK: nothing was measured, so nothing was
+				// checked, and a green line here reads as "retention
+				// fits" to whoever is deciding whether to intervene.
+				return preflight.Warn(
+					"check the backup directory is readable; until it is, "+
+						"nothing is watching this disk fill up",
+					"cannot measure free space on %s: %s",
+					d.Paths.BackupsDir(), err)
 			}
 
 			// Two ways this disk runs out, and they are different

@@ -280,7 +280,14 @@ func breakTheProjectConfiguration(t *testing.T, r *clitest.Runner) string {
 
 	inst, err := store.LoadInstallation(ctx)
 	require.NoError(t, err)
-	inst.Parameters = map[string]string{name: "1"}
+	// Added to whatever the installation already holds rather than
+	// replacing it: the scenario is one parameter the release dropped
+	// *alongside* the declared ones, and wiping the rest would also remove
+	// the values that make the deployment resolvable in the first place.
+	if inst.Parameters == nil {
+		inst.Parameters = map[string]string{}
+	}
+	inst.Parameters[name] = "1"
 	require.NoError(t, store.SaveInstallation(ctx, inst))
 
 	return name

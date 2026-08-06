@@ -70,8 +70,10 @@ docker pull registry.example/demo/db@sha256:…
 #    Take the exact reference from `morzer doctor` -- it is busybox unless
 #    MORZER_VOLUME_HELPER_IMAGE names another, and then it is that one.
 HELPER=$(morzer doctor --json |
-    jq -r '.data.results[] | select(.id == "backup.volume-helper") | .detail' |
-    grep -o '[^ ]*@sha256:[a-f0-9]*')
+    jq -r '.data.results[] | select(.id == "backup.volume-helper")
+           | .message, .remedy' |
+    grep -o '[^ ]*@sha256:[a-f0-9]\{64\}' | head -1)
+test -n "$HELPER" || { echo "doctor did not report a helper image" >&2; exit 1; }
 docker pull "$HELPER"
 
 docker save -o images.tar \
@@ -138,8 +140,12 @@ not a recovery.
   `docker pull` command rather than a registry error. It does not quietly
   produce a backup missing the volumes, because a backup that silently covers
   less than it claims is the failure the whole component exists to prevent. If
-  you deliberately want one anyway, scope it:
+  you deliberately want one anyway, scope the volumes out:
   `morzer backup --component database --component config --component secrets`.
+  That only helps a release **with** a backup hook. One without a hook has
+  nothing left to put in a backup once volumes are excluded, so it is refused
+  rather than given an empty one — for such a release the helper image is not
+  optional.
 
 ## Verifying without the network either
 

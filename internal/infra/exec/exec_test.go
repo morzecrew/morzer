@@ -126,6 +126,13 @@ func TestAWriteFailureStopsAChildThatIgnoresTheClosedPipe(t *testing.T) {
 			// over: nothing about the pipe will end this process.
 			Argv:   []string{"sh", "-c", `trap "" PIPE; yes morzer | head -c 200000; sleep 30`},
 			Stdout: w,
+			// Explicit, so the escalation from SIGTERM to SIGKILL
+			// stays well inside this test's deadline. Left at
+			// DefaultGrace the test would pass only because this
+			// child honours SIGTERM, and would start failing the
+			// day the fixture ignores that too -- for a reason
+			// that has nothing to do with what it asserts.
+			GraceTimeout: 200 * time.Millisecond,
 		})
 		done <- err
 	}()

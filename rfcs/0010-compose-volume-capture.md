@@ -202,15 +202,23 @@ A volume is not on the host filesystem in any way the manager may rely on
 under rootless or a remote daemon). The supported way is a container:
 
 ```sh
-docker run --rm \
+docker run --rm --network none \
   -v <volume>:/src:ro \
-  -v <staging>:/dst \
-  <helper-image> tar -C /src -cf /dst/<volume>.tar .
+  <helper-image> tar -C /src -cf - .        # the tar comes out on stdout
 ```
 
 Read-only on the source, so a helper that misbehaves cannot write into the
-product's data. The tarball lands in staging, then goes through the same
-encryption every other component does.
+product's data. The tarball goes through the same encryption every other
+component does.
+
+!!! note "Superseded during implementation"
+
+    This section originally mounted a staging directory and had the helper write
+    `/dst/<volume>.tar` into it. That puts a **root-owned** file in a directory
+    the manager may not run as root in — so the manager could then neither
+    overwrite nor remove it, and the plaintext copy of somebody's uploads would
+    outlive the backup that encrypted it. The helper streams to stdout and the
+    manager writes the file itself. §12 records what that cost.
 
 Restore is the same in reverse, and **refuses while any service in
 `VolumeRecord.Services` is running**. Untarring into a volume a container has
