@@ -451,6 +451,24 @@ manifest, the SOPS file — are still unreserved and stay that way; they are
 kilobytes, and a reservation is only useful while it is a model rather than a
 pad, since every byte over-reserved refuses a backup that would have fitted.
 
+**A volume's measured size was not the upper bound the port promises.** `du`
+measures contents; `tar` writes contents *plus* a header per entry, padding to
+the next 512-byte block, a trailer, and padding out to the blocking factor. For
+almost any volume the block rounding `du` already does hides that, which is why
+it survived — but a volume of files that land exactly on a block boundary has no
+slack left, and 256 four-kilobyte files measured 11% under what the capture then
+wrote. Two more holes turned up once it was measured rather than reasoned about:
+sparse files (apparent size counts the bytes, `tar` rounds them up) and paths
+over 100 bytes (`tar` emits a long-name pseudo-entry). The helper now counts the
+volume's entries and their path bytes in the same pass and budgets the worst case
+for each. It over-estimates a typical volume several-fold, which is the direction
+that refuses in front of an operator rather than filling the disk after the
+services are already stopped; the exact answer is `tar | wc -c`, which reads the
+whole volume a second time. A helper image that cannot walk the volume at all —
+an override without `find` — reports zero entries and is refused, because the
+number it could still produce is exactly the under-estimate this exists to
+prevent and is indistinguishable from a correct one.
+
 **Wrapping an error dropped its remedy.** Also found by a test — the one for the
 air-gapped machine. "The helper image is not here" carried `docker pull <ref>`
 as its hint; wrapping it as "cannot capture volume uploads" produced an error

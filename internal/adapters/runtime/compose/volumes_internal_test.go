@@ -2,6 +2,8 @@ package compose
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -387,22 +389,33 @@ func TestACaptureThatCannotBeFinishedLeavesNothingBehind(t *testing.T) {
 			"where nothing downstream will encrypt or remove it")
 }
 
+// helperMeasurement is what the measure script prints: the entry count and the
+// bytes its paths occupy, then whatever `du` readings the helper managed.
+//
+// busybox `wc -lc` pads its columns, and `printf` passes the padding through --
+// so the fixtures carry it, because a parser that only worked on tidy output
+// would work on nothing this helper produces.
+func helperMeasurement(entries, pathBytes int, du string) string {
+	return fmt.Sprintf("entries    %d    %d\n%s", entries, pathBytes, du)
+}
+
 func TestAVolumeIsMeasuredInBytes(t *testing.T) {
 	runner := exec.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	// busybox `du -sk` reports KiB and the path it was given.
-	runner.OnOutput("docker run", "2048\t/src\n")
+	runner.OnOutput("docker run", helperMeasurement(1, 5, "2048\t/src\n"))
 	r := New(runner)
 
 	size, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
 	require.NoError(t, err)
-	assert.Equal(t, int64(2048*1024), size, "du reports KiB; the space check compares bytes")
+	assert.Equal(t, int64(2048*1024)+tarEntryFraming+5+tarArchiveFraming, size,
+		"du reports KiB; the space check compares bytes")
 }
 
 func TestOutputThatIsNotASizeIsAnErrorRatherThanZero(t *testing.T) {
 	runner := exec.NewScripted()
 	runner.On("image inspect", exec.Result{})
-	runner.OnOutput("docker run", "du: unrecognised option\n")
+	runner.OnOutput("docker run", helperMeasurement(1, 5, "du: unrecognised option\n"))
 	r := New(runner)
 
 	// Zero would pass every space check silently, which is worse than a
@@ -410,6 +423,107 @@ func TestOutputThatIsNotASizeIsAnErrorRatherThanZero(t *testing.T) {
 	_, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not a size")
+}
+
+// The defect this whole measurement exists to avoid, at the size where it bites.
+//
+// `du` measures contents. `tar` writes contents *plus* a 512-byte header per
+// entry, a trailer, and padding -- and a volume whose files are exact multiples
+// of the block size has no rounding slack left to hide that in. A million
+// four-kilobyte files read as 4 GiB of contents and tar to about 4.5 GiB, so a
+// size that stopped at the readings admits a backup 12% larger than the disk it
+// was checked against, and the copy fails with the services already stopped.
+func TestASizeCoversTheFramingTarAddsToTheContentsItMeasured(t *testing.T) {
+	const (
+		entries   = 1_000_000
+		pathBytes = 20_000_000
+		contents  = int64(4) << 30
+	)
+
+	runner := exec.NewScripted()
+	runner.On("image inspect", exec.Result{})
+	runner.OnOutput("docker run",
+		helperMeasurement(entries, pathBytes, fmt.Sprintf("%d\t/src\n", contents/1024)))
+	r := New(runner)
+
+	size, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
+	require.NoError(t, err)
+
+	// What busybox and GNU tar both write for that volume: a header per
+	// entry, the contents, the 1024-byte trailer.
+	realTar := contents + 512*entries + 1024
+	assert.GreaterOrEqual(t, size, realTar,
+		"a volume of %d files measured %d bytes and tars to at least %d, so the "+
+			"space check budgets less than the copy writes", entries, size, realTar)
+}
+
+// A helper that cannot count entries has to refuse, not answer.
+//
+// The number it could still produce -- the readings alone -- is exactly the
+// under-estimate this exists to prevent, and it would be indistinguishable from
+// a correct one. The space check treats a volume it cannot measure as one it
+// need not check, so refusing costs the check; answering costs the disk.
+func TestAMeasurementWithoutAnEntryCountIsRefused(t *testing.T) {
+	cases := map[string]string{
+		"no entries line": "2048\t/src\n2048\t/src\n",
+		"truncated":       "entries\n2048\t/src\n",
+		"not a number":    "entries wc: not found\n2048\t/src\n",
+		"negative":        "entries -1 -1\n2048\t/src\n",
+		// What a helper image without `find` actually prints, and the
+		// only one of these that parses: `wc` counts the nothing that
+		// a missing command wrote and reports it perfectly. The count
+		// includes the mount point itself, so even an empty volume is
+		// one entry -- zero is a helper that never walked it.
+		"find missing": "entries 0 0\n2048\t/src\n",
+	}
+
+	for name, stdout := range cases {
+		t.Run(name, func(t *testing.T) {
+			runner := exec.NewScripted()
+			runner.On("image inspect", exec.Result{})
+			runner.OnOutput("docker run", stdout)
+			r := New(runner)
+
+			size, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
+			require.Error(t, err, "a bound was reported that nothing bounded the framing of")
+			assert.Zero(t, size)
+		})
+	}
+}
+
+// The framing is added to a reading that is already near the ceiling, so it is
+// the addition that overflows. A total that wrapped would come out negative,
+// and every space check reads a negative as smaller than the free space --
+// which is how a refusal became a pass once already.
+func TestAFramingThatCannotBeAddedSaturatesRatherThanWrapping(t *testing.T) {
+	runner := exec.NewScripted()
+	runner.On("image inspect", exec.Result{})
+	runner.OnOutput("docker run",
+		helperMeasurement(math.MaxInt64/2, math.MaxInt64/2,
+			fmt.Sprintf("%d\t/src\n", int64(maxMeasurableKiB))))
+	r := New(runner)
+
+	size, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
+	require.NoError(t, err)
+	assert.Equal(t, int64(math.MaxInt64), size,
+		"a requirement no disk can satisfy must compare as larger than the free "+
+			"space, not as negative")
+}
+
+// The entry count travels in the same stream as the sizes and must never be
+// read as one. largestSize takes the largest number it is shown, so an unlabelled
+// count of ten million files would be budgeted as ten gigabytes of contents.
+func TestTheEntryCountIsNotMistakenForASize(t *testing.T) {
+	runner := exec.NewScripted()
+	runner.On("image inspect", exec.Result{})
+	runner.OnOutput("docker run", helperMeasurement(10_000_000, 100, "16\t/src\n"))
+	r := New(runner)
+
+	size, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
+	require.NoError(t, err)
+	assert.Equal(t, int64(16*1024)+10_000_000*tarEntryFraming+100+tarArchiveFraming, size,
+		"the entry count was read as a KiB figure, so a volume of many small "+
+			"files is refused for being thousands of times its own size")
 }
 
 // A sparse file occupies far fewer blocks than it tars to. Budgeting the block
@@ -424,10 +538,10 @@ func TestAVolumeIsMeasuredByWhicheverReadingIsLarger(t *testing.T) {
 	}{
 		// A 40 MiB sparse image occupying a megabyte of blocks: the
 		// tar carries the holes as zeroes, so the blocks are a lie.
-		"a sparse file": {"40960\t/src\n1024\t/src\n", 40960 * 1024},
+		"a sparse file": {helperMeasurement(2, 12, "40960\t/src\n1024\t/src\n"), 40960 * 1024},
 		// Thousands of tiny files, each rounded up to a filesystem
 		// block, plus a tar header apiece.
-		"a directory of tiny files": {"128\t/src\n4096\t/src\n", 4096 * 1024},
+		"a directory of tiny files": {helperMeasurement(2, 12, "128\t/src\n4096\t/src\n"), 4096 * 1024},
 	}
 
 	for name, tc := range cases {
@@ -439,7 +553,7 @@ func TestAVolumeIsMeasuredByWhicheverReadingIsLarger(t *testing.T) {
 
 			size, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, size,
+			assert.Equal(t, tc.want+2*tarEntryFraming+12+tarArchiveFraming, size,
 				"the smaller reading was budgeted, so a volume is allowed "+
 					"onto a disk it does not fit on and the copy fails "+
 					"with the services already stopped")
@@ -447,6 +561,9 @@ func TestAVolumeIsMeasuredByWhicheverReadingIsLarger(t *testing.T) {
 			argv := helperArgv(t, runner)
 			assert.Contains(t, argv, "--apparent-size",
 				"nothing asks for the size tar will write, so a sparse volume measures small")
+			assert.Contains(t, argv, "find /src | wc -lc",
+				"nothing counts the entries, so the framing tar adds to them is "+
+					"unbounded and a volume of block-aligned files measures short")
 			assert.Contains(t, argv, "du -skb",
 				"only the GNU spelling of apparent size is tried, so a busybox "+
 					"helper -- which is the default one -- measures blocks "+
@@ -471,7 +588,7 @@ func TestAVolumeIsMeasuredByWhicheverReadingIsLarger(t *testing.T) {
 func TestTheGNUSpellingOfApparentSizeIsTriedFirst(t *testing.T) {
 	runner := exec.NewScripted()
 	runner.On("image inspect", exec.Result{})
-	runner.OnOutput("docker run", "1\t/src\n1\t/src\n")
+	runner.OnOutput("docker run", helperMeasurement(1, 5, "1\t/src\n1\t/src\n"))
 	r := New(runner)
 
 	_, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")

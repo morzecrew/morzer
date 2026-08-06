@@ -32,8 +32,9 @@ const DefaultHelperImage = "busybox@sha256:9db7b59979c38555a39def84a31fb98b52969
 //
 // The escape hatch for the operator whose registry does not carry busybox, or
 // whose air-gapped mirror carries something else: any image with a POSIX `tar`,
-// `du` and `sh` will do -- pinned by digest, like everything else this manager
-// runs.
+// `du`, `find`, `wc` and `sh` will do -- pinned by digest, like everything else
+// this manager runs. `find` and `wc` are there for the measurement alone, which
+// has to count a volume's entries to bound what tar's framing adds to them.
 func WithHelperImage(ref string) Option {
 	return func(r *Runtime) {
 		// Trimmed once and *stored* trimmed. It arrives from an
@@ -345,7 +346,8 @@ func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 	return nil
 }
 
-// VolumeSize reports how many bytes a volume occupies.
+// VolumeSize reports an upper bound on the bytes a capture of this volume
+// writes.
 //
 // It answers one question -- will the backup fit -- and only one direction of
 // wrong is dangerous. A size that reads too low passes the space check and then
@@ -375,12 +377,26 @@ func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volum
 	// GNU spelling first means GNU never reaches `-b`; busybox fails it and
 	// does. Verified against both.
 	//
-	// Still not an exact bound -- tar adds a 512-byte header per entry --
-	// but it errs high, which is the direction that refuses early in front
-	// of an operator rather than filling the disk after the services are
-	// already stopped. An exact answer means `tar | wc -c`, which reads the
-	// whole volume an extra time.
-	const measure = `{ du -sk --apparent-size /src 2>/dev/null || ` +
+	// Neither reading says anything about tar's own framing, and that is
+	// why the entries are counted too. `du` measures contents; tar writes
+	// contents *plus* a header per entry, a trailer, and padding -- so a
+	// volume of files that are exact multiples of the block size measures
+	// perfectly and tars to more than was budgeted. A million four-kilobyte
+	// files read as 4 GiB and tar to 4.5 GiB, which is the one direction
+	// this must never be wrong in.
+	//
+	// A third traversal, and the cheapest of the three: it stats nothing
+	// and reads no file contents, only the directory entries the other two
+	// already walked. The exact answer is `tar | wc -c`, which reads every
+	// byte of the volume a second time -- on the machine this matters for,
+	// that is the difference between a measurement and a second backup.
+	//
+	// Counted before the sizes so the shell's exit status still comes from
+	// `du -sk /src`: it is the reading no implementation can lack, and a
+	// helper that failed at it must fail the command rather than report
+	// whatever the optional ones managed.
+	const measure = `printf 'entries %s\n' "$(find /src | wc -lc)"; ` +
+		`{ du -sk --apparent-size /src 2>/dev/null || ` +
 		`du -skb /src 2>/dev/null; }; du -sk /src`
 
 	cmd := r.helperCommand(cfg, volume, true, "sh", "-c", measure)
@@ -392,7 +408,136 @@ func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volum
 	if err != nil {
 		return 0, wrapExit(err, "cannot measure volume "+volume, "")
 	}
-	return largestSize(volume, res.Stdout)
+	return volumeBound(volume, res.Stdout)
+}
+
+// volumeBound is the helper's output read as the upper bound the port promises:
+// the larger of the two content readings, plus the framing tar wraps it in.
+//
+// Two errors, and the content one is reported first. A helper whose `du` printed
+// a diagnostic instead of a number has a problem worth naming, and the missing
+// entry count is a consequence of it rather than the fault.
+func volumeBound(volume, stdout string) (int64, error) {
+	sizes, framingLine := splitFraming(stdout)
+
+	contents, err := largestSize(volume, sizes)
+	if err != nil {
+		return 0, err
+	}
+	framing, err := tarFraming(volume, framingLine)
+	if err != nil {
+		return 0, err
+	}
+	return saturatingAdd(contents, framing), nil
+}
+
+// framingMarker labels the entry-count line so it cannot be mistaken for a size.
+//
+// largestSize takes the largest number it is shown, and an entry count is not a
+// KiB figure: a volume of ten million files would be read as ten gigabytes of
+// contents. The label keeps the two vocabularies apart in the one stream the
+// helper has to say both things on.
+const framingMarker = "entries"
+
+// splitFraming separates the labelled entry-count line from the size readings.
+func splitFraming(stdout string) (sizes, framing string) {
+	var kept []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == framingMarker {
+			framing = line
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n"), framing
+}
+
+// The framing tar wraps a volume's contents in, which no `du` reading accounts
+// for. Each figure is a worst case, because the whole number is one:
+//
+//   - per entry, a 512-byte header; up to 511 bytes padding the last block of
+//     its contents (`du --apparent-size` counts the bytes, tar rounds them up);
+//     and, for a path over 100 bytes, GNU tar's long-name pseudo-entry -- its
+//     own 512-byte header and the path padded to another 512. The path itself
+//     is counted separately, from the same `find`, since it has no fixed size.
+//   - per archive, a 1024-byte zero trailer and the padding out to the blocking
+//     factor, 20 blocks in both GNU and busybox tar.
+//
+// Roughly four times what an ordinary volume of short-named, unsparse files
+// actually costs. That is the direction to be wrong in: `du`'s block reading
+// already rounds every small file up to a filesystem block, so this figure was
+// never tight -- and the alternative to a worst case is a bound that holds for
+// the volumes somebody thought of.
+const (
+	tarEntryFraming   = 2048
+	tarArchiveFraming = 1024 + 10240
+)
+
+// tarFraming reads the entry count and the bytes their paths occupy, and
+// returns what tar will add on top of the contents.
+func tarFraming(volume, line string) (int64, error) {
+	fields := strings.Fields(line)
+	if len(fields) < 3 {
+		return 0, domain.RuntimeError(nil,
+			"cannot measure volume %s: the helper did not report how many entries "+
+				"it holds, so what `tar` adds on top of them cannot be bounded",
+			volume).
+			WithHint("the volume helper image needs `find` and `wc` beside `du`, `tar` " +
+				"and `sh`; a measurement that only counted the contents would let " +
+				"a backup start that does not fit")
+	}
+
+	entries, entriesErr := strconv.ParseInt(fields[1], 10, 64)
+	pathBytes, pathErr := strconv.ParseInt(fields[2], 10, 64)
+	if entriesErr != nil || pathErr != nil || entries < 0 || pathBytes < 0 {
+		return 0, domain.RuntimeError(nil,
+			"cannot measure volume %s: %q is not an entry count", volume, strings.TrimSpace(line))
+	}
+
+	// Zero is not a small volume, it is a missing `find`.
+	//
+	// The count includes /src itself, so a helper that can walk the volume
+	// reports at least one entry even when the volume is empty. A helper
+	// that cannot reports nothing, `wc` counts the nothing, and the line
+	// parses perfectly as `entries 0 0` -- leaving the bound at the bare
+	// per-archive figure and quietly back to measuring contents alone,
+	// which is the failure this whole reading exists to remove. Silent and
+	// in the dangerous direction is the worst pair available, so it is
+	// spelled out as the same missing tool the count above names.
+	if entries < 1 {
+		return 0, domain.RuntimeError(nil,
+			"cannot measure volume %s: the helper reported no entries at all, "+
+				"not even the mount point, so it cannot be walking the volume",
+			volume).
+			WithHint("the volume helper image needs `find` and `wc` beside `du`, `tar` " +
+				"and `sh`; a measurement that only counted the contents would let " +
+				"a backup start that does not fit")
+	}
+
+	// Saturating, not wrapping, and deliberately not a refusal. A sum that
+	// wrapped would come out negative and read as *smaller* than the free
+	// space; a refusal would be no better, because the space check treats a
+	// volume it cannot measure as one it need not check -- so the honest
+	// answer to "more bytes than a byte count holds" is the largest one
+	// there is, which no disk satisfies.
+	return saturatingAdd(saturatingMul(entries, tarEntryFraming),
+		saturatingAdd(pathBytes, tarArchiveFraming)), nil
+}
+
+// saturatingAdd and saturatingMul stop at MaxInt64 rather than wrapping. Both
+// take non-negative arguments only; every caller has already refused a negative.
+func saturatingAdd(a, b int64) int64 {
+	if a > math.MaxInt64-b {
+		return math.MaxInt64
+	}
+	return a + b
+}
+
+func saturatingMul(a, b int64) int64 {
+	if b != 0 && a > math.MaxInt64/b {
+		return math.MaxInt64
+	}
+	return a * b
 }
 
 // maxMeasurableKiB is the largest KiB figure that still converts to bytes.

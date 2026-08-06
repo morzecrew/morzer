@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -338,6 +339,44 @@ func runVolumeSuite(t *testing.T, newRuntime RuntimeFactory) {
 			"a negative size would make the space check let any backup through")
 	})
 
+	t.Run("a volume's size is an upper bound on the capture it will produce", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+		capturer, ok := rt.(ports.VolumeCapturer)
+		require.True(t, ok, "this runtime cannot capture volumes")
+		inspector, ok := rt.(ports.VolumeInspector)
+		require.True(t, ok, "this runtime cannot report volumes")
+
+		require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{Wait: true}))
+
+		storage, err := inspector.Volumes(ctx, cfg)
+		require.NoError(t, err)
+		require.NotEmpty(t, storage.Volumes)
+		volume := storage.Volumes[0].Actual
+
+		dir := t.TempDir()
+		loaded := writeTar(t, filepath.Join(dir, "bound.tar"), blockAlignedFixture())
+		require.NoError(t, capturer.RestoreVolume(ctx, cfg, volume, loaded))
+
+		size, err := capturer.VolumeSize(ctx, cfg, volume)
+		require.NoError(t, err)
+
+		captured := filepath.Join(dir, "captured.tar")
+		require.NoError(t, capturer.CaptureVolume(ctx, cfg, volume, captured))
+
+		info, err := os.Stat(captured)
+		require.NoError(t, err)
+
+		// The whole promise, and the only direction that costs anything.
+		// A size that reads low passes the space check and then fills the
+		// disk during the copy -- which happens after the services have
+		// been stopped for it, so the operator meets it as an outage
+		// rather than as a refusal.
+		assert.GreaterOrEqual(t, size, info.Size(),
+			"VolumeSize promised %d bytes and the capture wrote %d: a backup this "+
+				"size is admitted onto a disk that cannot hold it, and the copy "+
+				"fails with the product already down", size, info.Size())
+	})
+
 	t.Run("the helper image is named and pinned by digest", func(t *testing.T) {
 		rt, _ := newRuntime(t)
 		capturer, ok := rt.(ports.VolumeCapturer)
@@ -373,6 +412,30 @@ var (
 		"receipts.csv": "refund-0000-0001,-12.50\n",
 	}
 )
+
+// blockAlignedFixture is the volume that catches a size which is a measurement
+// rather than a bound: many files, each an exact multiple of the filesystem
+// block size.
+//
+// That is the shape with no slack in it. A `du` reading rounds every file up to
+// a block, which hides tar's 512-byte-per-entry header behind the rounding for
+// almost any other contents -- a volume of 40-byte files is measured at a
+// kilobyte apiece and tars to a tenth of that. Files that land exactly on a
+// block boundary round up to nothing, so what tar adds is all that is left, and
+// a size that forgot to add it comes out about 11% short.
+//
+// 256 of them, at 4 KiB: enough that the framing exceeds the one directory's
+// worth of block rounding that is the only slack left, on any filesystem whose
+// block size is 4 KiB or less. On one with larger blocks the reading is
+// over-generous instead and the assertion passes without proving anything --
+// the promise still holds, it is only this fixture that stops being sharp.
+func blockAlignedFixture() map[string]string {
+	files := make(map[string]string, 256)
+	for i := range 256 {
+		files[fmt.Sprintf("block-%03d.dat", i)] = strings.Repeat("x", 4096)
+	}
+	return files
+}
 
 // writeTar builds a tarball holding files and returns its path.
 //
