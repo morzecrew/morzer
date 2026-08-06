@@ -211,9 +211,15 @@ func TestASpaceRequirementThatCannotBeSummedComesOutLargerThanAnyDisk(t *testing
 // The zero value is what a backup with nothing to reserve for carries: a runtime
 // with no volume capability, or a plan that captures none. A dump the hook wrote
 // must not conjure a requirement out of that -- there are no volumes to hold
-// room for -- so the reservation stays nothing however large the dump is. A
-// volume the manager could not measure no longer reaches here at all;
-// checkVolumeSpace refuses it.
+// room for -- so the reservation stays nothing however large the dump is.
+//
+// It is also what a plan carries when every measurement was *skipped*: a volume
+// whose sizing did not run is exempted rather than refused, and a plan in which
+// all of them were exempted sums to nothing and comes back here. That path
+// reserves nothing and takes the backup anyway, which is the exemption's known
+// cost -- narrowed to the volumes it belongs to, not removed. A measurement
+// that ran and could not be read is the other case, and checkVolumeSpace
+// refuses that one before it reaches this.
 func TestABackupWithNoVolumesToReserveForReservesNothingWhateverTheHookWrote(t *testing.T) {
 	assert.Zero(t, volumeSpace{}.required(1<<40))
 }

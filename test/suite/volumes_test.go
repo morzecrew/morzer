@@ -1063,3 +1063,71 @@ func TestAVolumeBackupDeclaresASchemaAnOlderManagerRefuses(t *testing.T) {
 		"volumes shipped without bumping the backup manifest schema, so a "+
 			"manager that predates them would restore this backup and lose them")
 }
+
+// Ctrl-C during a backup is the operator's own doing, and every volume
+// operation runs a container -- so an interruption arrives as a failure from one
+// of them, and whichever one it reaches must not dress it up as a diagnosis.
+//
+// The exit code was never what broke: it matches the interruption sentinel
+// through any number of wraps, and the step engine asks the same way. What a
+// wrap replaces is the sentence the operator reads and the `code` field
+// anything machine-readable sorts on -- so a cancelled backup reported itself
+// as "cannot capture volume uploads" with a remedy for a helper image that was
+// never the problem.
+func TestAnInterruptedBackupIsNotReportedAsAVolumeFailure(t *testing.T) {
+	// Each volume operation the engine can be interrupted inside of, and
+	// the fake's method name for it. Measuring runs before the copy and the
+	// copy before anything else, so each needs its own run to be reached.
+	for _, method := range []string{"VolumeSize", "CaptureVolume", "Status"} {
+		t.Run(method, func(t *testing.T) {
+			f := newVolumeFixture(t, domain.BackupSpec{}, true)
+			f.runtime.Fail[method] = domain.Interrupted("docker run was cancelled")
+
+			_, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+
+			require.Error(t, err)
+			structured := domain.AsError(err)
+			assert.Equal(t, domain.CodeInterrupted, structured.Code,
+				"a backup the operator stopped reports itself as a %s failure, and "+
+					"machine-readable output carries that code out to whatever "+
+					"reads it", structured.Code)
+			assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err))
+			assert.Empty(t, structured.Hint,
+				"the operator was handed a remedy for a problem they do not have")
+		})
+	}
+}
+
+// The restore side of the same rule, and it needs its own test because the two
+// paths reach different call sites: a backup reads the project's volumes and
+// returns that failure untouched, while a restore wraps it in order to explain
+// which volume it could not identify. Only the wrapped one can lose the
+// interruption.
+func TestAnInterruptedRestoreIsNotReportedAsAVolumeFailure(t *testing.T) {
+	for _, method := range []string{"Volumes", "RestoreVolume"} {
+		t.Run(method, func(t *testing.T) {
+			f := newVolumeFixture(t, domain.BackupSpec{}, true)
+			ctx := context.Background()
+
+			ref, err := f.engine.Create(ctx, ports.Scope{}, nil)
+			require.NoError(t, err)
+
+			// Stopped first: a restore refuses outright while anything
+			// holds the volume, and that refusal would mask the one
+			// under test.
+			require.NoError(t, f.runtime.Stop(ctx, ports.RuntimeConfig{}, nil, 0))
+			f.runtime.Fail[method] = domain.Interrupted("docker run was cancelled")
+
+			err = f.engine.Restore(ctx, ref, ports.RestoreOptions{
+				IdentityFile: f.identity, TargetInstallationID: "inst-volumes",
+			})
+
+			require.Error(t, err)
+			structured := domain.AsError(err)
+			assert.Equal(t, domain.CodeInterrupted, structured.Code,
+				"a restore the operator stopped reports itself as a %s failure",
+				structured.Code)
+			assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err))
+		})
+	}
+}

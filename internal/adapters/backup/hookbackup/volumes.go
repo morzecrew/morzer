@@ -432,6 +432,27 @@ func (e *Engine) captureCold(
 	return records, nil
 }
 
+// unlessInterrupted returns the cause untouched when the operator stopped the
+// operation, and the wrapped failure otherwise.
+//
+// An interruption is not a diagnosis. Every volume operation here runs a
+// container, so Ctrl-C during a backup arrives as one of these errors -- and
+// re-typing it left `morzer backup` reporting "cannot capture volume uploads"
+// with a hint about pulling the helper image, for a copy the operator stopped
+// on purpose. The remedy names a problem nobody has.
+//
+// The exit code was never the casualty: ExitCode matches the interruption
+// sentinel through the whole chain, and the step engine asks the same way. What
+// the wrap replaces is the message an operator reads and the `code` field
+// anything machine-readable sorts on, which is the reason to keep the cause
+// rather than decorate it.
+func unlessInterrupted(cause error, wrapped *domain.Error) error {
+	if domain.AsError(cause).Code == domain.CodeInterrupted {
+		return cause
+	}
+	return wrapped
+}
+
 // captureOne reads a single volume and records it.
 func (e *Engine) captureOne(
 	ctx context.Context, capturer ports.VolumeCapturer, dir string, planned plannedVolume,
@@ -443,8 +464,8 @@ func (e *Engine) captureOne(
 		// The cause's remedy is kept: the commonest one is "pull the
 		// helper image", and an operator who loses that sentence to a
 		// wrap is left with a diagnosis and nothing to do about it.
-		return ports.ComponentRecord{}, domain.BackupError(err,
-			"cannot capture volume %s", planned.volume.Name).WithHintFrom(err)
+		return ports.ComponentRecord{}, unlessInterrupted(err, domain.BackupError(err,
+			"cannot capture volume %s", planned.volume.Name).WithHintFrom(err))
 	}
 
 	size, err := fileSize(path)
@@ -506,10 +527,10 @@ func (e *Engine) checkVolumeSpace(
 				// captureOne keeps it: the commonest one is
 				// "pull the helper image", and this refusal now
 				// arrives before that one would have.
-				return volumeSpace{}, domain.BackupError(err,
+				return volumeSpace{}, unlessInterrupted(err, domain.BackupError(err,
 					"cannot measure volume %s, so this backup cannot be told "+
 						"whether it fits", planned.volume.Name).
-					WithHintFrom(err)
+					WithHintFrom(err))
 			}
 			// The measurement did not run, so nothing is known
 			// about this volume -- but everything is still known
@@ -655,8 +676,8 @@ func (e *Engine) restoreVolumes(
 
 		path := filepath.Join(staged, strings.TrimSuffix(c.Path, agecrypt.Extension))
 		if err := caps.capturer.RestoreVolume(ctx, e.runtimeConfig, target, path); err != nil {
-			return domain.BackupError(err,
-				"cannot restore volume %s", c.Volume.Volume).WithHintFrom(err)
+			return unlessInterrupted(err, domain.BackupError(err,
+				"cannot restore volume %s", c.Volume.Volume).WithHintFrom(err))
 		}
 	}
 	return nil
@@ -729,9 +750,9 @@ func (e *Engine) refuseOccupiedVolumes(
 func (e *Engine) occupiedServices(ctx context.Context) (map[string]ports.ServiceState, error) {
 	states, err := e.runtime.Status(ctx, e.runtimeConfig)
 	if err != nil {
-		return nil, domain.BackupError(err,
+		return nil, unlessInterrupted(err, domain.BackupError(err,
 			"cannot tell which services are running, so a volume cannot be read or "+
-				"written safely")
+				"written safely"))
 	}
 
 	occupied := make(map[string]ports.ServiceState, len(states))
@@ -813,12 +834,12 @@ func (e *Engine) currentVolumes(
 ) (map[string]ports.NamedVolume, error) {
 	storage, err := inspector.Volumes(ctx, e.runtimeConfig)
 	if err != nil {
-		return nil, domain.BackupError(err,
+		return nil, unlessInterrupted(err, domain.BackupError(err,
 			"cannot read the project's volumes, so a restore cannot tell which "+
 				"volume to write into").
-			WithHint("nothing was written; the name recorded in the backup belongs " +
-				"to the project as it was configured then, and writing into it " +
-				"blind would fill a volume nothing mounts")
+			WithHint("nothing was written; the name recorded in the backup belongs "+
+				"to the project as it was configured then, and writing into it "+
+				"blind would fill a volume nothing mounts"))
 	}
 	out := make(map[string]ports.NamedVolume, len(storage.Volumes))
 	for _, v := range storage.Volumes {

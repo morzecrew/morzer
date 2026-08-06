@@ -477,6 +477,18 @@ An operator on the machine where that message matters most got a diagnosis and
 nothing to do about it. `domain.Error.WithHintFrom` now carries a cause's remedy
 through a wrap that has none of its own.
 
+**The same wrap turned an interruption into a diagnosis.** The other half of the
+sentence above, found once the space check began refusing rather than swallowing.
+Every volume operation runs a container, so Ctrl-C during a backup arrives as a
+failure from one of them — and wrapping it as "cannot capture volume uploads"
+told an operator who had stopped the backup themselves that their helper image
+needed pulling. The exit code was never the casualty: `ExitCode` matches the
+interruption sentinel through any number of wraps, and the step engine asks the
+same way. What the wrap replaces is the sentence a human reads and the `code`
+field anything machine-readable sorts on. The five sites that wrap a runtime
+failure now return an interruption unchanged, which is the rule
+`compose.wrapExit` already followed one layer down.
+
 **The backup manifest records what was *not* captured.** Not in the RFC. §8 says
 a bind mount is "reported", and the only place a report survives to be read
 during an incident is the manifest itself — so `Uncaptured` names every volume
