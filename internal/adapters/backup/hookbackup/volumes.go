@@ -2,6 +2,7 @@ package hookbackup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -252,10 +253,11 @@ type volumeSpace struct {
 	// letting a wrapped total be carried forward as a number.
 	overflowed bool
 
-	// measured separates "the volumes need nothing" from "the manager could
-	// not measure them". Only the first may lower a reservation: a backup
-	// refused because a volume could not be sized would be refused for a
-	// reason that has nothing to do with whether it fits.
+	// measured separates "the volumes need nothing" from "there is nothing
+	// here to reserve for" -- a runtime with no volume capability, or a
+	// plan that captures nothing. Only a measured space may set a
+	// reservation, because recheckVolumeSpace has no way to tell a genuine
+	// zero from an absent one and would treat both as satisfied.
 	measured bool
 }
 
@@ -474,6 +476,24 @@ func (e *Engine) captureOne(
 // "No space left on device" halfway through a hundred-gigabyte copy is a worse
 // message than a refusal naming both numbers, and it arrives after the product
 // has already been stopped.
+//
+// A volume that cannot be measured refuses the whole backup, and the exemption
+// below is deliberately narrow. This used to abandon the entire reservation on
+// any measurement error -- every volume's, not just the one that failed -- on
+// the reasoning that "the copy itself will fail honestly if it does not fit".
+// It does not: for a cold capture the copy happens after the services are
+// stopped, so honesty there costs an outage. And the reasoning was written when
+// the only plausible failure was a flaky `docker run`. The measurement has since
+// grown failures that leave the *capture* working -- a helper image without
+// `find`, a `du` whose output will not parse, a figure too large to express --
+// so the gate was disabled precisely in the cases where the copy went ahead
+// unbudgeted.
+//
+// The exemption is marked by the implementation rather than inferred here
+// (ports.VolumeCapturer.VolumeSize), and it is the permissive side that carries
+// the mark. An error this does not recognise refuses, which is the same shape
+// the volume-occupancy predicates use: a state nobody enumerated must land on
+// the safe side rather than the convenient one.
 func (e *Engine) checkVolumeSpace(
 	ctx context.Context, capturer ports.VolumeCapturer, plan volumePlan,
 ) (volumeSpace, error) {
@@ -481,11 +501,24 @@ func (e *Engine) checkVolumeSpace(
 	for _, planned := range plan.capture {
 		size, err := capturer.VolumeSize(ctx, e.runtimeConfig, planned.volume.Actual)
 		if err != nil {
-			// Not fatal. A backup refused because the manager could
-			// not measure a volume would be a backup refused for a
-			// reason that has nothing to do with whether it fits,
-			// and the copy itself will fail honestly if it does not.
-			return volumeSpace{}, nil
+			if !errors.Is(err, domain.ErrMeasureIncomplete) {
+				// The cause's remedy is kept for the reason
+				// captureOne keeps it: the commonest one is
+				// "pull the helper image", and this refusal now
+				// arrives before that one would have.
+				return volumeSpace{}, domain.BackupError(err,
+					"cannot measure volume %s, so this backup cannot be told "+
+						"whether it fits", planned.volume.Name).
+					WithHintFrom(err)
+			}
+			// The measurement did not run, so nothing is known
+			// about this volume -- but everything is still known
+			// about the others, and abandoning their figures too is
+			// what turned one unmeasurable volume into no gate at
+			// all. Reserving less than the truth is a hole; it is
+			// the hole that was already here, now confined to the
+			// one volume it belongs to.
+			continue
 		}
 		if size < 0 || space.total > math.MaxInt64-size {
 			// A total that wrapped would come out negative and
@@ -505,7 +538,12 @@ func (e *Engine) checkVolumeSpace(
 
 	free, err := e.freeSpace(e.paths.BackupsDir())
 	if err != nil {
-		return volumeSpace{}, nil
+		// The measurement survives the failed reading. A `statfs` that
+		// did not answer says nothing about the volumes, and returning
+		// the zero value here threw away sizes that were already known
+		// -- which disabled the check made *after* the hook as well, the
+		// one that still has a free figure to compare them against.
+		return space, nil
 	}
 
 	// Nothing has been written yet, so the largest component that will be
@@ -537,9 +575,13 @@ func (e *Engine) checkVolumeSpace(
 // the largest volume there would leave that difference unclaimed and meet ENOSPC
 // during encryption -- after the copy, and after the downtime the copy cost.
 //
-// Unmeasurable free space is not fatal here for the same reason it is not in
-// checkVolumeSpace: a backup refused because the manager could not read `df` is
-// refused for a reason that has nothing to do with whether it fits.
+// Unmeasurable free space is not fatal here, unlike an unmeasurable volume in
+// checkVolumeSpace. The two are not the same question: a volume nobody could
+// size leaves the requirement unknown, so proceeding means proceeding on no
+// figure at all, while a `statfs` that did not answer leaves a requirement that
+// was already checked once against a disk that held it. Refusing a second time
+// on a reading the operator cannot influence would refuse a backup the first
+// gate admitted.
 func (e *Engine) recheckVolumeSpace(space volumeSpace, largestWritten int64) error {
 	required := space.required(largestWritten)
 	if required <= 0 {
@@ -550,8 +592,13 @@ func (e *Engine) recheckVolumeSpace(space volumeSpace, largestWritten int64) err
 		return nil
 	}
 
+	// "about %s", not "%s more": the figure is the whole requirement, and
+	// an operator reading it as the shortfall would free the wrong amount
+	// -- the gap is what is left after subtracting what is already there.
+	// The same shape as the message before the hook ran, deliberately, so
+	// the two read as one check made twice rather than two figures.
 	return domain.BackupError(nil,
-		"this backup needs about %s more and only %s is free on %s now that the "+
+		"this backup needs about %s and only %s is free on %s now that the "+
 			"backup hook has written its own output",
 		domain.ByteSize(required), domain.ByteSize(free), e.paths.BackupsDir()).
 		WithHint("the volumes fit when this backup started; what the hook wrote used " +

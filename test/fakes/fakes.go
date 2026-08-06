@@ -72,6 +72,13 @@ type Runtime struct {
 	// a volume larger than any disk without allocating one.
 	VolumeSizes map[string]int64
 
+	// VolumeSizeErrors fails the measurement of one volume while the rest
+	// still measure, which is the shape the space check has to survive: a
+	// single unmeasurable volume must not decide anything about the ones
+	// beside it. Keyed by actual volume name; Fail["VolumeSize"] is the
+	// blunter version that fails them all.
+	VolumeSizeErrors map[string]error
+
 	// HelperMissing simulates the air-gapped machine: every volume
 	// operation refuses with the pull command instead of running.
 	HelperMissing bool
@@ -303,6 +310,9 @@ func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volum
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err, ok := r.VolumeSizeErrors[volume]; ok {
+		return 0, err
+	}
 	if size, ok := r.VolumeSizes[volume]; ok {
 		return size, nil
 	}

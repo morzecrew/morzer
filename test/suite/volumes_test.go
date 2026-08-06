@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -673,14 +675,27 @@ func TestNoDowntimeSkipsUndeclaredVolumesAndSaysSo(t *testing.T) {
 
 // The air-gapped machine, which is the one this matters for. It must learn
 // which image to pull, not read a Docker error.
+//
+// It is now the space check that catches it rather than the capture, because
+// the measurement runs through the same image and refuses first. That is the
+// same message a step earlier: nothing the hook wrote, nothing stopped. Asserted
+// rather than assumed, since "refusing early costs nothing here" is the whole
+// reason the check may refuse on a measurement at all.
 func TestAMissingHelperImageFailsWithThePullCommand(t *testing.T) {
-	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+	hook := &recordingHooks{}
+	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, hook, nil)
 	f.runtime.HelperMissing = true
 
 	_, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not on this machine")
+
+	assert.Zero(t, hook.ran,
+		"the product dumped its database for a backup that could never have "+
+			"captured a volume")
+	assert.NotContains(t, f.runtime.Calls, "Stop",
+		"the product was stopped for a backup that was then refused")
 
 	// The remedy, and it has to survive the wrap on the way out. The hint is
 	// what the CLI prints under the message, so an error that loses it
@@ -812,6 +827,152 @@ func TestABackupThatFitsWithRoomForOneEncryptedCopyIsTaken(t *testing.T) {
 	manifest, err := f.engine.Inspect(context.Background(), ref)
 	require.NoError(t, err)
 	assert.Len(t, manifest.VolumeRecords(), 3)
+}
+
+// unreadableMeasurement is what the compose adapter returns when the helper ran
+// and its answer could not be used: an image without `find`, a `du` whose output
+// will not parse, a figure past what a byte count holds. Each is a fixed
+// property of the helper in this environment and says the same thing tomorrow.
+func unreadableMeasurement(message, hint string) error {
+	return domain.RuntimeError(nil, "%s", message).WithHint("%s", hint)
+}
+
+// measurementDidNotRun is the other shape: the `docker run` that would have
+// measured never completed, so nothing was learned about the volume and it may
+// well work next time.
+func measurementDidNotRun(volume string) error {
+	return domain.RuntimeError(
+		fmt.Errorf("%w: %w", domain.ErrMeasureIncomplete, errors.New("exited with code 1")),
+		"cannot measure volume %s", volume)
+}
+
+// A volume the manager cannot measure refuses the backup, and refuses it at the
+// only moment where a refusal is free.
+//
+// This used to be waved through -- and worse, waved the *whole* reservation
+// through with it -- on the reasoning that a backup refused over a measurement
+// is refused for a reason that has nothing to do with whether it fits, and that
+// the copy would fail honestly if it did not. It would: after the hook has
+// dumped the database and after the services have been stopped for the copy. The
+// honest failure costs an outage that was already paid for, which is the whole
+// reason the gate is in front of both.
+func TestAVolumeThatCannotBeMeasuredRefusesTheBackupBeforeAnythingIsWritten(t *testing.T) {
+	cases := map[string]struct{ message, hint string }{
+		// The helper image an operator overrode with something that has
+		// no `find`. `tar` is still there, so the capture would have
+		// worked -- and gone ahead unbudgeted.
+		"a helper image that cannot walk the volume": {
+			message: "cannot measure volume demo_uploads: the helper reported no " +
+				"entries at all, not even the mount point",
+			hint: "the volume helper image needs `find` and `wc` beside `du`",
+		},
+		// The inversion this gate exists to prevent, arrived at from the
+		// other end: a volume too large to express as bytes disabled the
+		// check instead of failing it.
+		"a size no byte count can hold": {
+			message: "cannot measure volume demo_uploads: du reported " +
+				"9223372036854775807 KiB, which is more than a byte count can hold",
+			hint: "volumes are measured with `du` inside the helper image",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			hook := &recordingHooks{}
+			// Room for a thousand of this deployment, so the refusal
+			// is unambiguously about the measurement rather than
+			// about the disk.
+			free := func(string) (int64, error) { return 1 << 40, nil }
+			f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, hook, free)
+			f.runtime.VolumeSizeErrors = map[string]error{
+				"demo_uploads": unreadableMeasurement(tc.message, tc.hint),
+			}
+
+			_, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+
+			require.Error(t, err,
+				"a volume nobody could size was copied onto a disk nobody checked")
+			assert.Contains(t, err.Error(), "cannot measure volume uploads",
+				"the refusal does not name the volume it could not measure")
+			assert.Contains(t, err.Error(), tc.message,
+				"the adapter's own diagnosis was lost on the way out")
+			assert.Contains(t, domain.AsError(err).Hint, tc.hint,
+				"the refusal carries no remedy, so an operator has a diagnosis "+
+					"and nothing to do about it")
+
+			assert.Zero(t, hook.ran,
+				"the product dumped its database for a backup the manager was "+
+					"never going to be able to check")
+			assert.NotContains(t, f.runtime.Calls, "Stop",
+				"the product was stopped for a backup that was then refused")
+			assert.NotContains(t, f.runtime.Calls, "CaptureVolume:demo_pgdata",
+				"a volume was copied for a backup that was then refused")
+
+			backups, listErr := f.engine.List(context.Background())
+			require.NoError(t, listErr)
+			assert.Empty(t, backups, "the refused backup was left where a restore could find it")
+		})
+	}
+}
+
+// One volume nobody could measure decides nothing about the volumes beside it.
+//
+// This is the defect at its sharpest. A single failed measurement returned the
+// zero value for the *whole* plan, so a petabyte volume that measured perfectly
+// well was carried into the capture with no reservation at all -- and then the
+// services were stopped and the copy began. The failure it was protecting
+// against arrived anyway, one step later and with the downtime already spent.
+func TestOneUnmeasurableVolumeDoesNotDisableTheCheckOnTheOnesBesideIt(t *testing.T) {
+	free := func(string) (int64, error) { return 1 << 30, nil }
+	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, nil, free)
+
+	f.runtime.VolumeSizes = map[string]int64{"demo_uploads": 1 << 50}
+	f.runtime.VolumeSizeErrors = map[string]error{
+		"demo_cache": measurementDidNotRun("demo_cache"),
+	}
+
+	_, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+
+	require.Error(t, err,
+		"a cache volume that could not be measured abandoned the reservation for "+
+			"the petabyte beside it, and the backup went on to stop the product "+
+			"and copy it")
+	message := err.Error()
+	assert.Contains(t, message, "needs about", "the refusal does not say how much it needs")
+	assert.Contains(t, message, "TiB",
+		"the volume that measured fine was not counted, so the figure is a few "+
+			"dozen bytes of simulated contents rather than a petabyte")
+
+	assert.NotContains(t, f.runtime.Calls, "Stop",
+		"the product was stopped for a backup that was then refused")
+	assert.NotContains(t, f.runtime.Calls, "CaptureVolume:demo_uploads")
+}
+
+// ...and the other direction, which is what stops this becoming a blanket
+// refusal.
+//
+// A `docker run` that exits non-zero on one awkward volume says nothing about
+// the volume: it may work tomorrow, and the deployment was backing up fine
+// yesterday. Refusing every backup over it would trade a disk that might fill
+// for data that certainly goes stale, so the volume goes unbudgeted -- alone,
+// rather than taking the gate down with it -- and the backup is taken.
+func TestABackupThatFitsIsStillTakenWhenOneMeasurementDidNotRun(t *testing.T) {
+	free := func(string) (int64, error) { return 1 << 30, nil }
+	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, nil, free)
+
+	f.runtime.VolumeSizeErrors = map[string]error{
+		"demo_cache": measurementDidNotRun("demo_cache"),
+	}
+
+	ref, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+	require.NoError(t, err,
+		"a deployment whose helper exited non-zero on one volume stopped backing "+
+			"up altogether, which is the failure the refusal was meant to avoid")
+
+	manifest, err := f.engine.Inspect(context.Background(), ref)
+	require.NoError(t, err)
+	assert.Len(t, manifest.VolumeRecords(), 3,
+		"the volume that could not be measured was not captured either")
 }
 
 // A cold capture must refuse when something holding one of its volumes cannot

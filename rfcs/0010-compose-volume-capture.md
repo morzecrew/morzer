@@ -588,3 +588,40 @@ every component, because the hook ABI predates scoping and a hook that reads
 more than it was told to would break. Volumes are new, so no hook can be reading
 them — and a `--component database` restore that decrypted a hundred gigabytes
 of uploads in order to delete them unread is a long wait for nothing.
+
+**A volume that cannot be measured now refuses the backup, and one that could
+not be measured *this time* no longer decides anything about the volumes beside
+it.** The space check treated any `VolumeSize` error as permission to abandon the
+entire reservation — not the failed volume's, all of them — on the reasoning
+that a backup refused over a measurement is refused for a reason that has
+nothing to do with whether it fits, and that the copy would fail honestly if it
+did not. The second half is where it breaks: for a cold capture the copy happens
+*after* the services are stopped, so honesty there costs an outage that has
+already been paid for.
+
+The reasoning was also written when the only plausible failure was a flaky
+`docker run`. The measurement has since grown failures that leave the *capture*
+working — a helper image without `find`, a `du` whose output will not parse, a
+KiB figure too large to convert — so the gate was being disabled by precisely
+the cases where the copy then went ahead unbudgeted. The last of those was the
+inversion outright: a volume too large to express as a byte count switched the
+check off instead of failing it.
+
+Refusing on every error was not the answer either. A `du` that exits non-zero on
+one awkward volume would then block every backup of a deployment that had been
+backing up fine, trading a disk that might fill for data that certainly goes
+stale. So the two are distinguished, and — following the same rule the
+volume-occupancy predicates already follow — it is the *permissive* side that is
+enumerated: `ports.VolumeCapturer.VolumeSize` refuses by default, and an
+implementation marks `domain.ErrMeasureIncomplete` on the one case where the
+measurement never ran. Anything unrecognised, from any implementation, lands on
+the safe side. A marked failure leaves that volume unbudgeted and no more: the
+hole that was already there, confined to the volume it belongs to instead of
+taking every other volume's figure down with it.
+
+Two smaller things fell out. A `statfs` that fails at the pre-hook gate used to
+discard the volume sizes with it, which disabled the check made *after* the hook
+as well — the one that still has a free figure to compare them against; the
+measurement now survives the failed reading. And the refusals that read `du`'s
+output carried no hint, which was survivable while they only switched a check
+off and is not now that they stop a backup.

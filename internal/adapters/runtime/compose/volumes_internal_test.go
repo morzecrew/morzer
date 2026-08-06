@@ -630,6 +630,77 @@ func TestASizeThatCannotBecomeAByteCountIsRefused(t *testing.T) {
 	}
 }
 
+// The space check refuses on a measurement it cannot read and steps past one
+// that never ran, and it can only tell them apart if this adapter marks them
+// apart.
+//
+// The mark is on the permissive side deliberately. A helper that ran and printed
+// something unusable will print the same thing tomorrow -- it is the image or
+// the override, and it is a refusal the operator can fix -- whereas a `docker
+// run` that did not complete has said nothing about the volume at all, and
+// refusing every backup of a deployment over it is its own failure.
+func TestAMeasurementThatNeverRanIsMarkedApartFromOneThatRanAndCouldNotBeRead(t *testing.T) {
+	t.Run("the measurement never ran", func(t *testing.T) {
+		runner := exec.NewScripted()
+		runner.On("image inspect", exec.Result{})
+		runner.OnExit("docker run", 1, "du: /src: Operation not permitted")
+		r := New(runner)
+
+		_, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrMeasureIncomplete,
+			"a helper that exited non-zero on one awkward volume refuses every "+
+				"backup of the deployment, including the ones that fit")
+	})
+
+	// Every reading that came back and could not be used. Each is a fixed
+	// property of the helper image, so marking any of them would put the
+	// space check back where it was: disabled by exactly the failures that
+	// leave the *capture* working.
+	unreadable := map[string]string{
+		"no entry count":        "2048\t/src\n2048\t/src\n",
+		"a helper without find": "entries 0 0\n2048\t/src\n",
+		"du printed no size":    helperMeasurement(1, 5, "du: unrecognised option\n"),
+		"du printed nothing":    helperMeasurement(1, 5, ""),
+		"a figure too large to express": helperMeasurement(1, 5,
+			"9223372036854775807\t/src\n"),
+	}
+	for name, stdout := range unreadable {
+		t.Run(name, func(t *testing.T) {
+			runner := exec.NewScripted()
+			runner.On("image inspect", exec.Result{})
+			runner.OnOutput("docker run", stdout)
+			r := New(runner)
+
+			_, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, domain.ErrMeasureIncomplete,
+				"the space check will step past this and admit the backup with "+
+					"the volume unbudgeted, which is what it did before")
+			assert.NotEmpty(t, domain.AsError(err).Hint,
+				"this refuses a backup, so it has to say what to do about it")
+		})
+	}
+}
+
+// A cancelled backup is not a volume that cannot be measured.
+//
+// Marking it would have the space check stepping past the cancellation and
+// answering on behalf of an operation that is already over -- and the mark
+// would travel out to `morzer backup` as a runtime failure rather than an
+// interruption, which is a different exit code.
+func TestACancelledMeasurementIsAnInterruptionRatherThanAnUnmeasuredVolume(t *testing.T) {
+	runner := exec.NewScripted()
+	runner.On("image inspect", exec.Result{})
+	runner.OnError("docker run", domain.Interrupted("docker run was cancelled"))
+	r := New(runner)
+
+	_, err := r.VolumeSize(context.Background(), ports.RuntimeConfig{}, "demo_uploads")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, domain.ErrMeasureIncomplete)
+	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err))
+}
+
 // `compose stop`/`start`, not `down`/`up`: down removes containers and networks,
 // and up reconciles against the declared configuration, so resuming a stack
 // after a backup could recreate a container whose definition had drifted.

@@ -326,6 +326,18 @@ type VolumeCapturer interface {
 	// one direction is dangerous: a size reported too small passes the
 	// space check and fills the disk during the copy, which happens after
 	// the services have been stopped for it.
+	//
+	// An error refuses the backup. That is the default because the
+	// alternative is a backup admitted onto a disk nobody checked, and it
+	// applies to every failure an implementation does not explicitly
+	// exempt -- including ones it has not thought of. The one exemption is
+	// domain.ErrMeasureIncomplete, which an implementation wraps when the
+	// measurement did not *run*: nothing was learned about the volume, it
+	// may work next time, and refusing every backup of a deployment over a
+	// helper that exits non-zero on one awkward volume is its own failure.
+	// A measurement that ran and produced something unusable is not that
+	// case and must not be marked -- it is a property of this helper in
+	// this environment, and it will produce the same nothing tomorrow.
 	VolumeSize(ctx context.Context, cfg RuntimeConfig, volume string) (int64, error)
 
 	// HelperImage is the image the three methods above run. Reported by

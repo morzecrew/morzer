@@ -73,6 +73,19 @@ var (
 	ErrToolMissing         = errors.New("required tool missing")
 	ErrToolIncompatible    = errors.New("required tool version incompatible")
 	ErrOperationIncomplete = errors.New("a previous operation did not finish")
+
+	// ErrMeasureIncomplete marks a measurement that did not run, as opposed
+	// to one that ran and could not produce an answer.
+	//
+	// The distinction exists for the backup space check, and only the
+	// permissive side is marked. A measurement the manager could not even
+	// attempt says nothing about the volume and may recur or not; a
+	// measurement that ran and returned something unusable is a property of
+	// this helper in this environment, and will say the same thing
+	// tomorrow. The check refuses on anything it does not recognise, so a
+	// failure mode nobody has thought of yet -- and every other
+	// implementation of the port -- lands on the safe side by default.
+	ErrMeasureIncomplete = errors.New("the measurement did not run")
 )
 
 // Error is the manager's structured error. Message says what happened; Hint

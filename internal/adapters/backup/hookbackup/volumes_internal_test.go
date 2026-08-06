@@ -205,11 +205,16 @@ func TestASpaceRequirementThatCannotBeSummedComesOutLargerThanAnyDisk(t *testing
 		"volumes that could not be summed reserved a partial figure")
 }
 
-// Unmeasurable is not the same as zero. checkVolumeSpace deliberately declines
-// to refuse a backup it could not measure -- that refusal would be about the
-// manager, not about whether the backup fits -- and knowing the size of the
-// hook's dump does not change what is unknown about the volumes.
-func TestVolumesThatCouldNotBeMeasuredReserveNothingWhateverTheHookWrote(t *testing.T) {
+// An absent measurement is not the same as zero, and the difference is what
+// keeps the recheck honest.
+//
+// The zero value is what a backup with nothing to reserve for carries: a runtime
+// with no volume capability, or a plan that captures none. A dump the hook wrote
+// must not conjure a requirement out of that -- there are no volumes to hold
+// room for -- so the reservation stays nothing however large the dump is. A
+// volume the manager could not measure no longer reaches here at all;
+// checkVolumeSpace refuses it.
+func TestABackupWithNoVolumesToReserveForReservesNothingWhateverTheHookWrote(t *testing.T) {
 	assert.Zero(t, volumeSpace{}.required(1<<40))
 }
 

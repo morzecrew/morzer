@@ -288,12 +288,32 @@ func hermeticBundle(t *testing.T) string {
 	dir := filepath.Join(t.TempDir(), "bundle")
 	copyDir(t, bundlePath(t), dir)
 
+	// The comment goes with the declaration it describes. A fixture that
+	// still explains the named volume it no longer has is a fixture that
+	// lies to whoever reads it next -- most likely someone reading it
+	// *because* a test failed against it, and now looking for capture
+	// behaviour that was deliberately removed.
 	strip(t, filepath.Join(dir, "compose", "compose.yaml"),
-		"      - uploads:/var/lib/demo/uploads\n")
+		"      # A named volume, so the bundle exercises the one kind of storage the\n"+
+			"      # manager backs up for itself. The two mounts above are bind mounts,\n"+
+			"      # which are reported by `doctor` and never captured -- a product whose\n"+
+			"      # data lives on one is a product with data in no backup.\n"+
+			"      - uploads:/var/lib/demo/uploads\n")
 	strip(t, filepath.Join(dir, "compose", "compose.yaml"),
 		"volumes:\n  uploads: {}\n\n")
 	strip(t, filepath.Join(dir, "manifest.yaml"),
-		"backup:\n  volumes:\n    uploads: {consistency: hot}\n\n")
+		"# What the manager may do about this project's named volumes, which it captures\n"+
+			"# itself rather than through the backup hook above.\n"+
+			"#\n"+
+			"# A volume left out of this map is captured *cold*: the services that mount it\n"+
+			"# are stopped for the copy. That is correct for every volume and slow for some,\n"+
+			"# so a vendor declares only where they want something else.\n"+
+			"#\n"+
+			"# `consistency: hot` is a claim that a copy taken while the product is running\n"+
+			"# is a usable one -- true for files written once and never modified, false for\n"+
+			"# anything with a write-ahead log. It is the vendor's claim, not the manager's\n"+
+			"# guess, and every backup manifest records which one applied.\n"+
+			"backup:\n  volumes:\n    uploads: {consistency: hot}\n\n")
 
 	return dir
 }

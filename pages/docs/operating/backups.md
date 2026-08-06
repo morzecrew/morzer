@@ -208,7 +208,10 @@ docker pull busybox@sha256:...   # doctor prints the exact reference
 ```
 
 If your registry does not carry busybox, name a different image. Any image with
-a POSIX `tar`, `du` and `sh` will do:
+a POSIX `tar`, `du`, `find`, `wc` and `sh` will do — `find` and `wc` are for the
+size check, which counts a volume's entries to bound what `tar` adds on top of
+them. An image missing them measures nothing, and a backup that cannot be
+measured is refused rather than started:
 
 ```sh
 MORZER_VOLUME_HELPER_IMAGE=registry.internal/toolbox@sha256:... morzer backup
@@ -235,6 +238,11 @@ backups rather than bytes. Two things follow:
 - A backup that would not fit is **refused before anything is written or
   stopped**, naming both figures — `needs about 140GiB and 60GiB is free` is a
   better message than `no space left on device` halfway through.
+- A volume the manager cannot **measure** is refused the same way and for the
+  same reason — starting the copy anyway means finding out it does not fit once
+  the services are already stopped. The message names the volume and the remedy,
+  which is nearly always the helper image. A measurement that simply did not run
+  is not this case: that volume goes unbudgeted and the backup is still taken.
 - `morzer doctor` warns when keeping `retention.backups` of them will not fit.
 
 If a volume is large enough for this to bite, the answers are lower retention,

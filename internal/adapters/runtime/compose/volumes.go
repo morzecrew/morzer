@@ -3,6 +3,7 @@ package compose
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"regexp"
@@ -406,9 +407,26 @@ func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volum
 
 	res, err := r.runner.Run(ctx, cmd)
 	if err != nil {
-		return 0, wrapExit(err, "cannot measure volume "+volume, "")
+		// The only failure here the space check may proceed past, and it
+		// is marked at the one place that knows the measurement never
+		// ran. Everything below this line ran it and could not read the
+		// answer, which is a property of the helper rather than of the
+		// attempt, and refuses.
+		return 0, wrapExit(measureIncomplete(err), "cannot measure volume "+volume, "")
 	}
 	return volumeBound(volume, res.Stdout)
+}
+
+// measureIncomplete marks a failure to run the measurement at all.
+//
+// An interruption is left unmarked: a cancelled backup is not a volume that
+// cannot be measured, and letting the space check step past it would have the
+// check answering on behalf of an operation that is already over.
+func measureIncomplete(err error) error {
+	if domain.AsError(err).Code == domain.CodeInterrupted {
+		return err
+	}
+	return fmt.Errorf("%w: %w", domain.ErrMeasureIncomplete, err)
 }
 
 // volumeBound is the helper's output read as the upper bound the port promises:
@@ -548,6 +566,21 @@ func saturatingMul(a, b int64) int64 {
 // the only safe reading of a size nothing can express.
 const maxMeasurableKiB = math.MaxInt64 / 1024
 
+// unreadableSize refuses a `du` reading, carrying the one remedy every such
+// refusal shares.
+//
+// A hint rather than a bare diagnosis, because these now stop a backup instead
+// of quietly disabling the space check: an operator told only that a number
+// could not be read has nothing to act on, and the thing to act on is always
+// the same -- the image the volume is measured through.
+func unreadableSize(format string, args ...any) error {
+	return domain.RuntimeError(nil, format, args...).
+		WithHint("volumes are measured with `du` inside the helper image -- the one "+
+			"%s names, or the pinned busybox this manager ships with when it is "+
+			"unset -- and its output has to be a plain KiB figure. Nothing was "+
+			"written and nothing was stopped", helperImageEnv)
+}
+
 // largestSize turns du's output into bytes, taking the largest size it reported.
 func largestSize(volume, stdout string) (int64, error) {
 	largest := int64(-1)
@@ -570,12 +603,12 @@ func largestSize(volume, stdout string) (int64, error) {
 			continue
 		}
 		if kib < 0 {
-			return 0, domain.RuntimeError(nil,
+			return 0, unreadableSize(
 				"cannot measure volume %s: du reported %d KiB, and a volume "+
 					"cannot hold a negative number of bytes", volume, kib)
 		}
 		if kib > maxMeasurableKiB {
-			return 0, domain.RuntimeError(nil,
+			return 0, unreadableSize(
 				"cannot measure volume %s: du reported %d KiB, which is more "+
 					"than a byte count can hold", volume, kib)
 		}
@@ -585,12 +618,12 @@ func largestSize(volume, stdout string) (int64, error) {
 	}
 
 	if firstField == "" {
-		return 0, domain.RuntimeError(nil, "cannot measure volume %s: no output from du", volume)
+		return 0, unreadableSize("cannot measure volume %s: no output from du", volume)
 	}
 	if largest < 0 {
 		// Zero would pass every space check in silence, which is the
 		// one answer worse than refusing.
-		return 0, domain.RuntimeError(nil,
+		return 0, unreadableSize(
 			"cannot measure volume %s: %q is not a size", volume, firstField)
 	}
 	return largest * 1024, nil
