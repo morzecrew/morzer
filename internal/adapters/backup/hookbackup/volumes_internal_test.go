@@ -1,6 +1,7 @@
 package hookbackup
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -189,6 +190,27 @@ func TestAVolumeNameThatWouldEscapeTheBackupIsRefused(t *testing.T) {
 		require.Error(t, err, "volume name %q was accepted", name)
 		assert.Contains(t, err.Error(), "not a usable file name")
 	}
+}
+
+// The requirement saturates rather than wrapping, and an int64 wrap already
+// broke this once: a total that came out negative compared as *smaller* than the
+// free space and turned a refusal into a pass. The largest component now comes
+// from outside the volume plan too, so it is a second way into the same sum.
+func TestASpaceRequirementThatCannotBeSummedComesOutLargerThanAnyDisk(t *testing.T) {
+	measured := volumeSpace{total: math.MaxInt64 - 10, largest: 10, measured: true}
+
+	assert.Equal(t, int64(math.MaxInt64), measured.required(math.MaxInt64),
+		"a dump that overflows the sum reserved a wrapped figure")
+	assert.Equal(t, int64(math.MaxInt64), volumeSpace{overflowed: true, measured: true}.required(0),
+		"volumes that could not be summed reserved a partial figure")
+}
+
+// Unmeasurable is not the same as zero. checkVolumeSpace deliberately declines
+// to refuse a backup it could not measure -- that refusal would be about the
+// manager, not about whether the backup fits -- and knowing the size of the
+// hook's dump does not change what is unknown about the volumes.
+func TestVolumesThatCouldNotBeMeasuredReserveNothingWhateverTheHookWrote(t *testing.T) {
+	assert.Zero(t, volumeSpace{}.required(1<<40))
 }
 
 func TestOrdinaryVolumeNamesArePermitted(t *testing.T) {

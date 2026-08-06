@@ -228,10 +228,51 @@ type volumeCapture struct {
 	caps volumeCapabilities
 	plan volumePlan
 
-	// required is the peak the planned copies need, measured before the
-	// hook ran. Kept so it can be checked again afterwards against the
-	// space the hook left behind.
-	required int64
+	// space is what the planned copies need, measured before the hook ran.
+	// Kept so it can be checked again afterwards against the space the hook
+	// left behind -- and against the size of what the hook left there.
+	space volumeSpace
+}
+
+// volumeSpace is what the planned volume copies will need, kept as the numbers
+// the requirement is built from rather than as their sum.
+//
+// The sum is a high-water mark, not a total: encryptComponents writes each
+// ciphertext beside its plaintext and removes the plaintext afterwards, one
+// component at a time, so the peak is everything plus one more copy of the
+// largest *component*. Collapsing it to `total + largest volume` before the hook
+// has run assumes the largest component is a volume, and the hook's database
+// dump is a component too -- routinely the biggest one in the backup. Keeping
+// the parts lets the check after the hook name the real largest.
+type volumeSpace struct {
+	total   int64
+	largest int64
+
+	// overflowed records that the volumes could not be summed, rather than
+	// letting a wrapped total be carried forward as a number.
+	overflowed bool
+
+	// measured separates "the volumes need nothing" from "the manager could
+	// not measure them". Only the first may lower a reservation: a backup
+	// refused because a volume could not be sized would be refused for a
+	// reason that has nothing to do with whether it fits.
+	measured bool
+}
+
+// required is the free space a capture still needs, given the largest single
+// component already on disk that encryption will have to duplicate.
+//
+// Saturating, like the sum it is built from: a requirement no disk can satisfy
+// must compare as larger than the free space, never as negative.
+func (s volumeSpace) required(largestWritten int64) int64 {
+	if !s.measured {
+		return 0
+	}
+	largest := max(s.largest, largestWritten)
+	if s.overflowed || s.total > math.MaxInt64-largest {
+		return math.MaxInt64
+	}
+	return s.total + largest
 }
 
 // planVolumeCapture reads the project's storage, decides what to capture, and
@@ -255,11 +296,11 @@ func (e *Engine) planVolumeCapture(ctx context.Context) (volumeCapture, error) {
 		return volumeCapture{caps: caps, plan: plan}, nil
 	}
 
-	required, err := e.checkVolumeSpace(ctx, caps.capturer, plan)
+	space, err := e.checkVolumeSpace(ctx, caps.capturer, plan)
 	if err != nil {
 		return volumeCapture{}, err
 	}
-	return volumeCapture{caps: caps, plan: plan, required: required}, nil
+	return volumeCapture{caps: caps, plan: plan, space: space}, nil
 }
 
 // captureVolumes copies the planned volumes into the backup directory.
@@ -268,8 +309,13 @@ func (e *Engine) planVolumeCapture(ctx context.Context) (volumeCapture, error) {
 // Everything it writes is plaintext at this point; the caller encrypts it with
 // everything else, so a volume tarball is protected by exactly the same
 // mechanism as the database dump beside it.
+//
+// largestWritten is the biggest component already in the backup directory --
+// the hook's dump, in practice. It is the caller's to supply because only the
+// caller knows what was recorded, and it belongs in the space check because
+// encryption duplicates it.
 func (e *Engine) captureVolumes(
-	ctx context.Context, dir string, capture volumeCapture,
+	ctx context.Context, dir string, capture volumeCapture, largestWritten int64,
 ) (records []ports.ComponentRecord, uncaptured []ports.UncapturedVolume, err error) {
 	caps, plan := capture.caps, capture.plan
 	if len(plan.capture) == 0 {
@@ -284,7 +330,7 @@ func (e *Engine) captureVolumes(
 	// a disk the hook has since filled. Re-reading free space costs one
 	// statfs and no re-measuring, and it is the last moment before the part
 	// that stops services and writes gigabytes.
-	if err := e.recheckVolumeSpace(capture.required); err != nil {
+	if err := e.recheckVolumeSpace(capture.space, largestWritten); err != nil {
 		return nil, nil, err
 	}
 
@@ -430,9 +476,8 @@ func (e *Engine) captureOne(
 // has already been stopped.
 func (e *Engine) checkVolumeSpace(
 	ctx context.Context, capturer ports.VolumeCapturer, plan volumePlan,
-) (int64, error) {
-	var total, largest int64
-	var overflowed bool
+) (volumeSpace, error) {
+	var space volumeSpace
 	for _, planned := range plan.capture {
 		size, err := capturer.VolumeSize(ctx, e.runtimeConfig, planned.volume.Actual)
 		if err != nil {
@@ -440,45 +485,39 @@ func (e *Engine) checkVolumeSpace(
 			// not measure a volume would be a backup refused for a
 			// reason that has nothing to do with whether it fits,
 			// and the copy itself will fail honestly if it does not.
-			return 0, nil
+			return volumeSpace{}, nil
 		}
-		if size < 0 || total > math.MaxInt64-size {
+		if size < 0 || space.total > math.MaxInt64-size {
 			// A total that wrapped would come out negative and
 			// compare as *smaller* than the free space, turning a
 			// refusal into a pass -- the one direction this check
 			// must never fail in.
-			overflowed = true
+			space.overflowed = true
 			break
 		}
-		total += size
-		if size > largest {
-			largest = size
-		}
+		space.total += size
+		space.largest = max(space.largest, size)
 	}
-	if total == 0 && !overflowed {
-		return 0, nil
+	if space.total == 0 && !space.overflowed {
+		return volumeSpace{}, nil
 	}
+	space.measured = true
 
-	free, err := atomicfs.FreeSpace(e.paths.BackupsDir())
+	free, err := e.freeSpace(e.paths.BackupsDir())
 	if err != nil {
-		return 0, nil
+		return volumeSpace{}, nil
 	}
 
-	// The largest volume counted twice: encryption writes the ciphertext
-	// beside the plaintext and removes the plaintext afterwards, one
-	// component at a time, so the high-water mark is everything plus one
-	// more copy of the biggest.
-	// Saturating rather than wrapping: a requirement no disk can satisfy
-	// must compare as larger than the free space, not as negative.
-	required := int64(math.MaxInt64)
-	if !overflowed && total <= math.MaxInt64-largest {
-		required = total + largest
-	}
+	// Nothing has been written yet, so the largest component that will be
+	// duplicated is the largest volume. What the hook is about to write is
+	// not sizeable from here -- measuring a database dump means taking it --
+	// and is why this requirement is checked again once it exists.
+	required := space.required(0)
 	if free >= required {
-		return required, nil
+		return space, nil
 	}
 
-	return required, domain.BackupError(nil,
+	return space, domain.BackupError(nil,
 		"this backup needs about %s for the project's volumes and %s is free on %s",
 		domain.ByteSize(required), domain.ByteSize(free), e.paths.BackupsDir()).
 		WithHint("prune old backups (`morzer backup list`), give %s more room, or "+
@@ -487,29 +526,40 @@ func (e *Engine) checkVolumeSpace(
 			e.paths.BackupsDir())
 }
 
-// recheckVolumeSpace re-verifies the planned requirement against the space
-// that is actually left.
+// recheckVolumeSpace re-verifies the requirement against the space that is
+// actually left, now that the hook's own output is on the disk.
+//
+// Two things change between the two checks, and the second is the one that is
+// easy to miss. The dump's bytes are gone from the free figure, which is what
+// re-reading it is for. But the dump has also *become* a component, and
+// encryption duplicates the largest one: a dump bigger than every volume, which
+// is the ordinary case, moves the high-water mark by the difference. Reserving
+// the largest volume there would leave that difference unclaimed and meet ENOSPC
+// during encryption -- after the copy, and after the downtime the copy cost.
 //
 // Unmeasurable free space is not fatal here for the same reason it is not in
 // checkVolumeSpace: a backup refused because the manager could not read `df` is
 // refused for a reason that has nothing to do with whether it fits.
-func (e *Engine) recheckVolumeSpace(required int64) error {
+func (e *Engine) recheckVolumeSpace(space volumeSpace, largestWritten int64) error {
+	required := space.required(largestWritten)
 	if required <= 0 {
 		return nil
 	}
-	free, err := atomicfs.FreeSpace(e.paths.BackupsDir())
+	free, err := e.freeSpace(e.paths.BackupsDir())
 	if err != nil || free >= required {
 		return nil
 	}
 
 	return domain.BackupError(nil,
-		"the volumes need about %s and only %s is free on %s now that the "+
+		"this backup needs about %s more and only %s is free on %s now that the "+
 			"backup hook has written its own output",
 		domain.ByteSize(required), domain.ByteSize(free), e.paths.BackupsDir()).
-		WithHint("the volumes fit when this backup started; the hook's dump used " +
-			"the room they needed. Prune old backups, give the directory more " +
-			"space, or exclude a volume in the release manifest -- nothing has " +
-			"been stopped and no volume has been copied.")
+		WithHint("the volumes fit when this backup started; what the hook wrote used " +
+			"the room they needed. The figure covers the volumes plus one more " +
+			"copy of the largest component, which encryption writes beside the " +
+			"original before removing it. Prune old backups, give the directory " +
+			"more space, or exclude a volume in the release manifest -- nothing " +
+			"has been stopped and no volume has been copied.")
 }
 
 // restoreVolumes writes the backup's volume tarballs back.

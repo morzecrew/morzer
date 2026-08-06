@@ -1,6 +1,7 @@
 package suite
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -55,6 +56,11 @@ type volumeFixture struct {
 // between refusing before anything is written and refusing after.
 type recordingHooks struct {
 	ran int
+
+	// dump is how many bytes of database to write. Zero writes a token one;
+	// a test about disk space says how big, because the dump's size is the
+	// thing being reasoned about.
+	dump int
 }
 
 func (h *recordingHooks) Run(
@@ -62,8 +68,13 @@ func (h *recordingHooks) Run(
 ) (ports.HookOutcome, error) {
 	h.ran++
 
+	contents := []byte("-- the product's database\n")
+	if h.dump > 0 {
+		contents = bytes.Repeat([]byte("x"), h.dump)
+	}
+
 	path := filepath.Join(env.BackupDir, "database.sql")
-	if err := os.WriteFile(path, []byte("-- the product's database\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
 		return ports.HookOutcome{}, err
 	}
 	return ports.HookOutcome{Result: ports.HookResult{
@@ -75,13 +86,18 @@ func (h *recordingHooks) Run(
 // so the encryption assertions mean something.
 func newVolumeFixture(t *testing.T, spec domain.BackupSpec, allowDowntime bool) *volumeFixture {
 	t.Helper()
-	return newVolumeFixtureWithHook(t, spec, allowDowntime, nil)
+	return newVolumeFixtureWithHook(t, spec, allowDowntime, nil, nil)
 }
 
 // newVolumeFixtureWithHook is the same fixture for the vendor who *did* write a
 // backup hook, so a test can assert what the manager does before running it.
+//
+// free stubs the free-space reading, and nil uses the real filesystem. A space
+// check measured against the host's own disk is a check whose test passes on the
+// machine that wrote it and fails on a bigger one.
 func newVolumeFixtureWithHook(
 	t *testing.T, spec domain.BackupSpec, allowDowntime bool, hook *recordingHooks,
+	free func(string) (int64, error),
 ) *volumeFixture {
 	t.Helper()
 
@@ -138,6 +154,7 @@ func newVolumeFixtureWithHook(
 			RuntimeConfig:  ports.RuntimeConfig{Project: "demo"},
 			AllowDowntime:  allowDowntime,
 			Now:            func() time.Time { return time.Now().UTC() },
+			FreeSpace:      free,
 			Recipients: func(context.Context) ([]string, error) {
 				return []string{public}, nil
 			},
@@ -713,7 +730,7 @@ func TestABackupThatWillNotFitIsRefusedBeforeAnythingIsWritten(t *testing.T) {
 // the dump was still occupying the space it was refused for.
 func TestABackupThatWillNotFitIsRefusedBeforeTheHookRuns(t *testing.T) {
 	hook := &recordingHooks{}
-	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, hook)
+	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, hook, nil)
 
 	f.runtime.VolumeSizes = map[string]int64{"demo_uploads": 1 << 50}
 
@@ -726,6 +743,75 @@ func TestABackupThatWillNotFitIsRefusedBeforeTheHookRuns(t *testing.T) {
 			"would not fit, and the dump was written to the disk it did not fit on")
 	assert.NotContains(t, f.runtime.Calls, "Stop",
 		"the product was stopped for a backup that was then refused")
+}
+
+// The volumes are copied in plaintext and then encrypted one component at a
+// time, each ciphertext written beside its plaintext -- so the space a capture
+// needs is the volumes plus one more copy of the largest *component*.
+//
+// After a hook has run, the largest component is normally its database dump and
+// not any volume. Reserving `volumes + largest volume` at the recheck left the
+// difference unclaimed: the copy went ahead, the product was stopped for it, and
+// the backup met "no space left on device" while encrypting the dump -- the one
+// point where a refusal costs an outage that has already been paid for.
+func TestTheHooksOwnOutputIsCountedBeforeTheVolumesAreCopied(t *testing.T) {
+	// A dump far larger than any volume in the fixture, which is the
+	// ordinary shape: the volumes here are a few dozen bytes of simulated
+	// contents apiece.
+	hook := &recordingHooks{dump: 64 << 10}
+
+	// Roomy before the hook, and afterwards more than the volumes need but
+	// less than encrypting the dump will: the exact window the reservation
+	// used to miss.
+	var reads int
+	free := func(string) (int64, error) {
+		reads++
+		if reads == 1 {
+			return 1 << 30, nil
+		}
+		return 4 << 10, nil
+	}
+	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, hook, free)
+
+	_, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+
+	require.Error(t, err,
+		"the backup went on to stop the product and copy its volumes with no room "+
+			"left to encrypt the dump the hook had just written")
+	message := err.Error()
+	assert.Contains(t, message, "needs about", "the refusal does not say how much it needs")
+	assert.Contains(t, message, "is free on", "the refusal does not say how much there is")
+
+	assert.Equal(t, 1, hook.ran, "the hook is what produced the dump being accounted for")
+	assert.NotContains(t, f.runtime.Calls, "Stop",
+		"the product was stopped for a backup that was then refused")
+	assert.NotContains(t, f.runtime.Calls, "CaptureVolume:demo_uploads",
+		"a volume was copied for a backup that was then refused")
+
+	backups, listErr := f.engine.List(context.Background())
+	require.NoError(t, listErr)
+	assert.Empty(t, backups, "the refused backup was left where a restore could find it")
+}
+
+// ...and the other direction, which costs an operator just as much: a
+// reservation that pads rather than models refuses backups that would have
+// fitted. Room for the volumes and one more copy of the dump is enough, and
+// nothing beyond it may be demanded.
+func TestABackupThatFitsWithRoomForOneEncryptedCopyIsTaken(t *testing.T) {
+	hook := &recordingHooks{dump: 64 << 10}
+
+	// The volumes are tens of bytes, so this is the dump's ciphertext and
+	// very little else -- and deliberately far short of the dump plus every
+	// component at once, which is what reserving a sum would need.
+	free := func(string) (int64, error) { return 80 << 10, nil }
+	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, hook, free)
+
+	ref, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+	require.NoError(t, err, "a backup that fits was refused")
+
+	manifest, err := f.engine.Inspect(context.Background(), ref)
+	require.NoError(t, err)
+	assert.Len(t, manifest.VolumeRecords(), 3)
 }
 
 // A cold capture must refuse when something holding one of its volumes cannot

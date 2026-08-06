@@ -64,6 +64,12 @@ type Engine struct {
 	newID          func() string
 	now            func() time.Time
 
+	// freeSpace reports the bytes available where backups are written.
+	// Injectable for the same reason as the clock: a space check whose
+	// verdict depends on the host's real disk is a check whose test passes
+	// or fails on which machine happened to run it.
+	freeSpace func(string) (int64, error)
+
 	// recipients answers who may read a backup. It is a function rather
 	// than a list because the answer changes: `secret recipients add` is a
 	// command, and a backup taken after it must be readable by the key it
@@ -135,6 +141,11 @@ type Config struct {
 
 	NewID func() string
 	Now   func() time.Time
+
+	// FreeSpace reports the bytes available on the filesystem holding a
+	// path. Injectable for the same reason as the clock; see
+	// Engine.freeSpace. Zero uses the real filesystem.
+	FreeSpace func(string) (int64, error)
 }
 
 func New(cfg Config) *Engine {
@@ -147,6 +158,7 @@ func New(cfg Config) *Engine {
 		newID:          cfg.NewID,
 		now:            cfg.Now,
 		recipients:     cfg.Recipients,
+		freeSpace:      cfg.FreeSpace,
 		runtime:        cfg.Runtime,
 		runtimeConfig:  cfg.RuntimeConfig,
 		allowDowntime:  cfg.AllowDowntime,
@@ -155,6 +167,9 @@ func New(cfg Config) *Engine {
 	}
 	if e.now == nil {
 		e.now = time.Now
+	}
+	if e.freeSpace == nil {
+		e.freeSpace = atomicfs.FreeSpace
 	}
 	if e.newID == nil {
 		e.newID = func() string { return e.now().UTC().Format("20060102T150405Z") }
@@ -275,7 +290,10 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 	var uncaptured []ports.UncapturedVolume
 	var capturedVolumes int
 	if wantVolumes {
-		volumeRecords, skipped, err := e.captureVolumes(ctx, dir, capture)
+		// What the hook wrote goes into the space check the copy makes
+		// for itself: it is on the disk now, it is sizeable now, and
+		// encryption will duplicate it.
+		volumeRecords, skipped, err := e.captureVolumes(ctx, dir, capture, largestComponent(records))
 		if err != nil {
 			return fail(err)
 		}
@@ -456,6 +474,26 @@ func recordArtifacts(dir string, artifacts []ports.HookArtifact) ([]ports.Compon
 		})
 	}
 	return out, nil
+}
+
+// largestComponent is the biggest single recorded file.
+//
+// The biggest, not the sum, and that is the whole point of it: encryptComponents
+// works through the components one at a time, writing a ciphertext beside a
+// plaintext and removing the plaintext before starting the next, so what a space
+// check has to reserve on top of the bytes already there is one more copy of the
+// largest -- never one more copy of all of them. Reserving the sum would refuse
+// backups that fit.
+//
+// Only recorded components count. A file a hook wrote and did not report is
+// never encrypted, so it never gets a second copy: it is already subtracted from
+// the free space and adds nothing to the peak.
+func largestComponent(records []ports.ComponentRecord) int64 {
+	var largest int64
+	for _, rec := range records {
+		largest = max(largest, rec.Size)
+	}
+	return largest
 }
 
 // backupRecipients answers who may read this backup, and refuses to proceed

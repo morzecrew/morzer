@@ -436,6 +436,21 @@ same backup; the volume is not left in a state anything else can use.
 *smaller* than the free space, and turned the refusal into a pass. The one
 direction that check must never fail in.
 
+**The space check reserves one more copy of the largest *component*, not of the
+largest volume.** Decision 8's figure is `volumes + largest volume`, because
+encryption writes a ciphertext beside its plaintext and removes the plaintext
+afterwards. That is the right shape and the wrong term: the components encryption
+walks include the hook's database dump, which is routinely larger than any
+volume. The pre-hook gate cannot know that — sizing a dump means taking it — but
+the check made again after the hook can, since the dump is on disk and its size
+was already recorded. Reserving the largest volume there left `dump − largest
+volume` unclaimed, and the shortfall surfaced as `no space left on device` during
+encryption: after the copy, and after the downtime the copy cost. The recheck now
+takes the larger of the two. The manager's own artifacts — configuration,
+manifest, the SOPS file — are still unreserved and stay that way; they are
+kilobytes, and a reservation is only useful while it is a model rather than a
+pad, since every byte over-reserved refuses a backup that would have fitted.
+
 **Wrapping an error dropped its remedy.** Also found by a test — the one for the
 air-gapped machine. "The helper image is not here" carried `docker pull <ref>`
 as its hint; wrapping it as "cannot capture volume uploads" produced an error
