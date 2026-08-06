@@ -116,20 +116,26 @@ func (r OperationRecord) Duration() time.Duration {
 // FirstIncompleteStep returns the index of the step --resume should continue
 // from, and whether resuming is possible at all.
 //
-// A completed step -- succeeded or skipped -- is never re-run on resume, so
-// nothing here depends on its idempotency. Whether the step *at* the resume
-// point is safe to re-run depends on the step list being resumed, which the
-// engine has and this record does not; that check is the engine's.
+// The whole list is validated, not only the prefix before the resume point: a
+// status this build does not recognise, or a step compensation already
+// unwound, poisons the record wherever it sits, because the journal was
+// written by a run this manager cannot fully interpret. What happens to the
+// steps *before* the returned index is the engine's decision, not this
+// record's -- completed idempotent steps re-run to rebuild in-memory step
+// state, completed non-idempotent ones keep their journaled credit.
 func (r OperationRecord) FirstIncompleteStep() (idx int, resumable bool) {
+	idx, resumable = len(r.Steps), false
 	for i, s := range r.Steps {
 		switch s.Status {
 		case StepSucceeded, StepSkipped:
-			// Never re-run; keep scanning.
+			// Completed; keep scanning.
 		case StepPending, StepRunning, StepFailed, StepInterrupted:
-			return i, true
+			if !resumable {
+				idx, resumable = i, true
+			}
 		case StepCompensated:
-			// Compensation already undid the work; resuming from a
-			// compensated step would race its own cleanup.
+			// Compensation already undid work in this record;
+			// resuming would race its own cleanup.
 			return i, false
 		default:
 			// A status this build does not recognise: a journal
@@ -139,7 +145,7 @@ func (r OperationRecord) FirstIncompleteStep() (idx int, resumable bool) {
 			return i, false
 		}
 	}
-	return len(r.Steps), false
+	return idx, resumable
 }
 
 // StepRecord is the journaled state of one step.

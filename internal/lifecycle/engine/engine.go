@@ -510,15 +510,14 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 			WithHint("its journal holds a step in a state this manager cannot " +
 				"continue from; run `morzer doctor` and start a fresh operation")
 	}
-	if idx >= len(op.Steps) {
-		return 0, domain.Usage("operation %s has no incomplete steps left", prior.ID)
-	}
 
-	// The step list being resumed must be the list that was interrupted.
-	// Credit for completed steps is carried by position, so after a manager
-	// upgrade that inserted, removed or reordered steps, that credit would
-	// land on the wrong steps -- silently skipping or re-running a mutating
-	// one.
+	// The step list being resumed must be the list that was interrupted --
+	// checked in full, before the resume index is even ranged over, so a
+	// journal with *more* steps than this manager plans reports the real
+	// problem rather than "no incomplete steps left". Credit for completed
+	// steps is carried by position: after a manager upgrade that inserted,
+	// removed or reordered steps, that credit would land on the wrong steps
+	// and silently skip or re-run a mutating one.
 	if len(prior.Steps) != len(op.Steps) {
 		return 0, domain.Usage(
 			"operation %s journaled %d steps but this manager plans %d",
@@ -526,7 +525,7 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 			WithHint("the step list changed since the operation was interrupted; " +
 				"run `morzer doctor` and start a fresh operation")
 	}
-	for i := 0; i <= idx; i++ {
+	for i := range op.Steps {
 		if op.Steps[i].ID != prior.Steps[i].ID {
 			return 0, domain.Usage(
 				"operation %s journaled step %d as %q but this manager plans %q",
@@ -535,16 +534,22 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 					"run `morzer doctor` and start a fresh operation")
 		}
 	}
+	if idx >= len(op.Steps) {
+		return 0, domain.Usage("operation %s has no incomplete steps left", prior.ID)
+	}
 
-	// Completed steps are never re-run, so their idempotency does not
-	// matter here. The step being re-run is the safety question: journaled
-	// Pending it never started, but Running, Interrupted or Failed may have
-	// applied part of its effect before the stop, and re-applying is only
-	// safe when the step declares itself idempotent.
-	if prev := prior.Steps[idx].Status; prev != domain.StepPending && !op.Steps[idx].Idempotent {
+	// The step being re-run is the safety question: journaled Pending it
+	// never started, but Running, Interrupted or Failed may have applied
+	// part of its effect before the stop, and re-applying is only safe when
+	// *both* sides declare it -- the current step for the code that will
+	// run now, and the journaled record for the code that half-ran then. A
+	// manager upgrade that reclassified a step as idempotent must not
+	// retroactively bless the old implementation's half-applied effect.
+	if prev := prior.Steps[idx]; prev.Status != domain.StepPending &&
+		(!op.Steps[idx].Idempotent || !prev.Idempotent) {
 		return 0, domain.Usage(
 			"cannot resume: step %q was %s when the operation stopped and is not safe to repeat",
-			op.Steps[idx].ID, prev).
+			op.Steps[idx].ID, prev.Status).
 			WithHint("run `morzer doctor`, repair manually, then acknowledge the record " +
 				"with `morzer status --clear-intervention` and start a fresh operation")
 	}

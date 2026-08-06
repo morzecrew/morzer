@@ -601,6 +601,52 @@ func TestResumeRefusesWhenTheStepListChanged(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
 	assert.Empty(t, tr.executed)
+
+	// A mismatch *after* the resume point: those steps run too, so the
+	// identity check covers the whole list, not only the prefix.
+	tail := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusInterrupted,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			{ID: "a", Status: domain.StepSucceeded, Idempotent: true},
+			{ID: "b", Status: domain.StepInterrupted, Idempotent: true},
+			{ID: "c", Status: domain.StepPending, Idempotent: true},
+		},
+	}
+	_, err = eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), step(tr, "b", false, true), step(tr, "swapped", false, true)),
+		Options{Resume: true, Prior: &tail})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+	assert.Empty(t, tr.executed)
+}
+
+// A manager upgrade that reclassifies a step as idempotent must not
+// retroactively bless the old implementation's half-applied effect: the
+// journaled declaration refuses alongside the current one.
+func TestResumeHonoursTheJournaledIdempotencyDeclaration(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusRunning,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			{ID: "a", Status: domain.StepSucceeded, Idempotent: true},
+			// Journaled by a manager whose "b" was not safe to repeat.
+			{ID: "b", Status: domain.StepRunning, Idempotent: false},
+		},
+	}
+
+	// This build's "b" claims idempotency -- for its own implementation,
+	// which is not the one that half-ran.
+	_, err := eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), step(tr, "b", false, true)),
+		Options{Resume: true, Prior: &prior})
+
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+	assert.Empty(t, tr.executed, "nothing must run when resume is refused")
 }
 
 // A step exceeding its own budget while the operation is live is a step
