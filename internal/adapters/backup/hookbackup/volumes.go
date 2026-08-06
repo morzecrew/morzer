@@ -278,7 +278,7 @@ func (e *Engine) captureCold(
 	// maintenance, of a deployment that was already down, captured its
 	// volumes perfectly and then deleted them while reporting that it could
 	// not start what was never running.
-	services, err := e.runningAmong(ctx, plan.quiesceServices())
+	services, err := e.quiesceAmong(ctx, plan.quiesceServices())
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +457,7 @@ func (e *Engine) restoreVolumes(
 				"and put the volumes back by hand")
 	}
 
-	if err := e.refuseRunningMounts(ctx, volumes); err != nil {
+	if err := e.refuseOccupiedVolumes(ctx, volumes); err != nil {
 		return err
 	}
 
@@ -483,15 +483,16 @@ func (e *Engine) restoreVolumes(
 	return nil
 }
 
-// refuseRunningMounts is decision 6: a volume is never written while a
+// refuseOccupiedVolumes is decision 6: a volume is never written while a
 // container has it open.
 //
-// Untarring into a volume a running container is reading is how a restore
-// corrupts the thing it was restoring, and the container would then be holding
-// file handles to files that no longer exist. The refusal names the services,
-// because "stop the services" is not an instruction anybody can follow.
-func (e *Engine) refuseRunningMounts(ctx context.Context, volumes []ports.ComponentRecord) error {
-	running, err := e.runningServices(ctx)
+// Untarring into a volume a container is reading is how a restore corrupts the
+// thing it was restoring, and the container would then be holding file handles
+// to files that no longer exist. The refusal names the services and the state
+// each is in, because "stop the services" is not an instruction anybody can
+// follow -- and because a paused one does not look stopped or running.
+func (e *Engine) refuseOccupiedVolumes(ctx context.Context, volumes []ports.ComponentRecord) error {
+	occupied, err := e.occupiedServices(ctx)
 	if err != nil {
 		return err
 	}
@@ -502,7 +503,7 @@ func (e *Engine) refuseRunningMounts(ctx context.Context, volumes []ports.Compon
 	blockers := map[string][]string{}
 	for _, c := range volumes {
 		for _, service := range c.Volume.Services {
-			if running[service] {
+			if _, up := occupied[service]; up {
 				blockers[service] = append(blockers[service], c.Volume.Volume)
 			}
 		}
@@ -521,24 +522,30 @@ func (e *Engine) refuseRunningMounts(ctx context.Context, volumes []ports.Compon
 	for _, service := range names {
 		mounted := blockers[service]
 		sort.Strings(mounted)
-		details = append(details, fmt.Sprintf("%s (%s)", service, strings.Join(mounted, ", ")))
+		details = append(details, fmt.Sprintf("%s is %s (%s)",
+			service, occupied[service], strings.Join(mounted, ", ")))
 	}
 
 	return domain.BackupError(nil,
-		"cannot restore a volume while the services mounting it are running: %s",
+		"cannot restore a volume while a service that mounts it still holds it open: %s",
 		strings.Join(details, ", ")).
 		WithHint("stop them first -- `morzer restore` does this for you, so this "+
 			"message means %s was still up when the volume was about to be "+
 			"written", joinServices(names))
 }
 
-// runningServices is the set of services the runtime reports as running.
+// occupiedServices maps each service that may still hold a volume open to the
+// state the runtime reports for it.
 //
-// A failure is an error rather than an empty set, and both callers depend on
+// The state is carried rather than discarded because the refusal quotes it: an
+// operator told to stop a service that is already paused has been given the
+// wrong instruction.
+//
+// A failure is an error rather than an empty map, and both callers depend on
 // that: one is deciding what to stop before writing, the other is deciding
 // whether writing is safe at all, and "cannot tell" answered as "nothing is
 // running" would let both proceed against a live product.
-func (e *Engine) runningServices(ctx context.Context) (map[string]bool, error) {
+func (e *Engine) occupiedServices(ctx context.Context) (map[string]string, error) {
 	states, err := e.runtime.Status(ctx, e.runtimeConfig)
 	if err != nil {
 		return nil, domain.BackupError(err,
@@ -546,29 +553,87 @@ func (e *Engine) runningServices(ctx context.Context) (map[string]bool, error) {
 				"written safely")
 	}
 
-	running := make(map[string]bool, len(states))
+	occupied := make(map[string]string, len(states))
 	for _, s := range states {
-		if s.State == "running" {
-			running[s.Name] = true
+		if occupiesVolume(s.State) {
+			occupied[s.Name] = s.State
 		}
 	}
-	return running, nil
+	return occupied, nil
 }
 
-// runningAmong narrows a list of services to those currently up, preserving
-// order.
-func (e *Engine) runningAmong(ctx context.Context, services []string) ([]string, error) {
+// occupiesVolume reports whether a container in this state may still hold a
+// volume open.
+//
+// Enumerated by what does *not* occupy rather than by what does, so a state
+// this manager has never seen -- a new one from a later Compose -- refuses a
+// restore instead of permitting one. The refusal is the safe direction.
+//
+// `paused` is the case that motivated writing this down. A paused container is
+// frozen mid-write with its file handles open, so it is neither safe to read
+// its volume as though nothing were writing nor safe to untar over it -- and a
+// check for `running` alone lets both through. It was reachable: `docker
+// compose pause` is a thing an operator does during maintenance, which is
+// exactly when they also take a backup.
+func occupiesVolume(state string) bool {
+	switch normaliseState(state) {
+	case "exited", "created", "dead", "":
+		// Nothing started, nothing left running, or no container at
+		// all: no handles into the volume.
+		return false
+	default:
+		// running, paused, restarting, removing -- and anything new.
+		return true
+	}
+}
+
+// quiescible reports whether a service in this state can be stopped for a
+// capture *and put back afterwards*.
+//
+// Deliberately narrower than occupiesVolume, and conservative in the opposite
+// direction. The two questions are not the same one: the refusal asks "might
+// this hold the volume open", where an unrecognised state must count; the
+// quiesce asks "can I stop this and restore it", where an unrecognised state
+// must not.
+//
+// `removing` is why the split exists. It occupies the volume, so a restore
+// refuses against it -- but stopping it and then starting it back fails, because
+// by then there is no container. That turned a transient state into a failed
+// nightly backup reporting "the deployment is down" about a deployment that was
+// fine.
+func quiescible(state string) bool {
+	switch normaliseState(state) {
+	case "running", "paused", "restarting":
+		return true
+	default:
+		return false
+	}
+}
+
+func normaliseState(state string) string {
+	return strings.ToLower(strings.TrimSpace(state))
+}
+
+// quiesceAmong narrows a list of services to those that must be stopped for a
+// capture and can be started again, preserving order.
+//
+// A paused service is included, because it holds the volume open and must be
+// out of the way before it is read. It comes back *running* rather than paused,
+// which is a change to how the operator left the deployment -- and the lesser
+// evil beside recording a copy as `cold` that was taken while a container had
+// the volume open mid-write.
+func (e *Engine) quiesceAmong(ctx context.Context, services []string) ([]string, error) {
 	if len(services) == 0 {
 		return nil, nil
 	}
-	running, err := e.runningServices(ctx)
+	occupied, err := e.occupiedServices(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	out := make([]string, 0, len(services))
 	for _, s := range services {
-		if running[s] {
+		if state, up := occupied[s]; up && quiescible(state) {
 			out = append(out, s)
 		}
 	}

@@ -247,6 +247,7 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 	// has to run against a stack that is up. The hook is authoritative for
 	// anything with a transaction log; volumes cover what it does not.
 	var uncaptured []ports.UncapturedVolume
+	var capturedVolumes int
 	if wantVolumes {
 		volumeRecords, skipped, err := e.captureVolumes(ctx, dir)
 		if err != nil {
@@ -254,6 +255,22 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		}
 		records = append(records, volumeRecords...)
 		uncaptured = skipped
+		capturedVolumes = len(volumeRecords)
+	}
+
+	// The refusal is about what was captured, not about what was intended.
+	//
+	// The gate above passes when volumes are merely *in scope*, which they
+	// always are -- so a release with no hook whose project keeps its data
+	// on bind mounts got as far as here and produced a backup holding the
+	// configuration and nothing of the product. `backup list` offers that,
+	// and somebody eventually restores it.
+	if !hasHook && capturedVolumes == 0 {
+		return fail(domain.BackupError(domain.ErrUnsupported,
+			"this release declares no backup operation and the backup captured nothing").
+			WithHint("add a `backup` entry under `operations` in the release " +
+				"manifest, or move the product's data onto a named volume -- " +
+				"bind mounts are never captured"))
 	}
 
 	// The manager copies the parts it owns; the hook is responsible only

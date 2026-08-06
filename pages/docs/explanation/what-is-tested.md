@@ -145,6 +145,10 @@ is allowed to cost.
 | **A volume the release has not declared safe is read with its services stopped** | `TestAColdVolumeIsReadWithItsServicesStopped` |
 | A volume is only ever read live because the release declared `consistency: hot` | `TestHotIsOnlyEverWhatTheManifestDeclared` |
 | **Restoring into a volume is refused while a service that mounts it runs, named by service** | `TestRestoringIntoARunningVolumeIsRefusedByName` |
+| **A paused container counts as holding the volume open, for the restore refusal and for the capture** | `TestRestoringIntoAPausedVolumeIsRefused` |
+| A paused service is stopped before its volume is read, so `cold` means cold | `TestAPausedServiceIsStoppedBeforeItsVolumeIsRead` |
+| A backup that captured nothing is refused, even when volumes were in scope | `TestABackupWithNothingCapturedIsRefusedEvenWhenVolumesWereInScope` |
+| The two service-state predicates are conservative in opposite directions, so an unknown state refuses a restore and is never stopped | `TestTheTwoStatePredicatesAreConservativeInOppositeDirections` |
 | The helper container cannot write into the volume it is reading | `TestTheHelperCannotWriteIntoTheVolumeItIsReading` |
 | A bind mount is reported and never captured, so nobody is silently short a mount | `TestABindMountIsReportedAndNeverCaptured` |
 | A release cannot name a volume whose name would write outside the backup directory | `TestAVolumeNameThatWouldEscapeTheBackupIsRefused` |

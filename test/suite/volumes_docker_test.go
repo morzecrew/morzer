@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -153,6 +154,27 @@ func (l *volumeLab) read(t *testing.T, name string) (string, error) {
 	return strings.TrimSpace(res.Stdout), nil
 }
 
+// actualName resolves a volume's name in the runtime, which is the project
+// prefix plus the key -- but only ever read from the adapter, never assembled
+// here, so a test cannot pass against a name production would not use.
+func (l *volumeLab) actualName(t *testing.T, name string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	storage, err := l.runtime.Volumes(ctx, l.cfg)
+	require.NoError(t, err)
+
+	for _, v := range storage.Volumes {
+		if v.Name == name {
+			require.NotEmpty(t, v.Actual)
+			return v.Actual
+		}
+	}
+	t.Fatalf("the project declares no volume %q; it has %+v", name, storage.Volumes)
+	return ""
+}
+
 func (l *volumeLab) exec(t *testing.T, service string, argv ...string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -267,15 +289,69 @@ func TestRestoringIntoARunningVolumeIsRefusedByName(t *testing.T) {
 	require.Error(t, err, "a restore wrote into a volume a container had open")
 
 	message := err.Error()
-	assert.Contains(t, message, "while the services mounting it are running")
-	assert.Contains(t, message, "app")
-	assert.Contains(t, message, "sidecar")
+	assert.Contains(t, message, "still holds it open")
+	assert.Contains(t, message, "app is running")
+	assert.Contains(t, message, "sidecar is running")
 	assert.Contains(t, message, "uploads")
 
 	// And it refused before writing: the file is untouched.
 	got, err := lab.read(t, "keep.txt")
 	require.NoError(t, err)
 	assert.Equal(t, "still-here", got)
+}
+
+// A paused container is neither running nor stopped: it is frozen mid-write
+// with its file handles open. A refusal that checked only for `running` let a
+// restore untar straight over a volume two paused containers were holding, and
+// reported success.
+//
+// Against real Docker because that is where the state name comes from -- the
+// runtime reports "paused", and nothing in the manager had ever seen it.
+func TestRestoringIntoAPausedVolumeIsRefused(t *testing.T) {
+	lab := startVolumeProject(t, domain.BackupSpec{})
+	ctx := context.Background()
+
+	lab.write(t, "keep.txt", "still-here")
+
+	ref, err := lab.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+
+	// Both, because one running service would block the restore on its own
+	// and hide whether the paused one was ever considered.
+	require.NoError(t, lab.pause(t, "pause"))
+	t.Cleanup(func() { _ = lab.pause(t, "unpause") })
+
+	states, err := lab.runtime.Status(ctx, lab.cfg)
+	require.NoError(t, err)
+	for _, s := range states {
+		require.Equal(t, "paused", s.State, "the fixture did not actually pause %s", s.Name)
+	}
+
+	err = lab.engine.Restore(ctx, ref, ports.RestoreOptions{
+		IdentityFile: lab.identity, TargetInstallationID: "inst-volume-lab",
+	})
+	require.Error(t, err, "a restore wrote into a volume a paused container held open")
+	assert.Contains(t, err.Error(), "is paused",
+		"the refusal does not say the service is paused, so the operator is "+
+			"told to stop something that is already not running")
+}
+
+// pause runs `compose pause`/`unpause`, which the Runtime port does not expose
+// -- it is not an operation the manager performs, only one it must survive.
+func (l *volumeLab) pause(t *testing.T, verb string) error {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	cmd := osexec.CommandContext(ctx, "docker", "compose",
+		"--project-name", l.cfg.Project,
+		"--project-directory", l.cfg.WorkingDir,
+		"--file", l.cfg.Files[0], verb, "app", "sidecar")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("compose %s: %w\n%s", verb, err, out)
+	}
+	return nil
 }
 
 // Decision 3: the source is mounted read-only, so a helper that misbehaves
@@ -286,16 +362,7 @@ func TestTheHelperCannotWriteIntoTheVolumeItIsReading(t *testing.T) {
 
 	lab.write(t, "original.txt", "unmodified")
 
-	storage, err := lab.runtime.Volumes(ctx, lab.cfg)
-	require.NoError(t, err)
-
-	var uploads string
-	for _, v := range storage.Volumes {
-		if v.Name == "uploads" {
-			uploads = v.Actual
-		}
-	}
-	require.NotEmpty(t, uploads)
+	uploads := lab.actualName(t, "uploads")
 
 	// The same mount the capture uses, asked to write. Reaching into the
 	// adapter's own mount rather than approximating it is the point: this
@@ -391,16 +458,7 @@ func TestAVolumeIsMeasuredBeforeItIsCopied(t *testing.T) {
 	// empty directory.
 	lab.exec(t, "app", "sh", "-c", "dd if=/dev/zero of=/data/blob bs=1024 count=2048")
 
-	storage, err := lab.runtime.Volumes(ctx, lab.cfg)
-	require.NoError(t, err)
-
-	var uploads string
-	for _, v := range storage.Volumes {
-		if v.Name == "uploads" {
-			uploads = v.Actual
-		}
-	}
-	require.NotEmpty(t, uploads)
+	uploads := lab.actualName(t, "uploads")
 
 	size, err := lab.runtime.VolumeSize(ctx, lab.cfg, uploads)
 	require.NoError(t, err)

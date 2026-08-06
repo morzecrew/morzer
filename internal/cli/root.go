@@ -452,6 +452,12 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	runtime := compose.New(runner,
 		compose.WithOutputSink(outputSink),
 		compose.WithRedaction(redactor.Values()),
+		// The escape hatch RFC 0010 §5.4 asks for, for the operator whose
+		// registry does not carry busybox. An environment variable rather
+		// than a flag or a state field: the backup that needs it is the
+		// scheduled one, and a systemd `Environment=` override reaches
+		// that without regenerating a unit or migrating any state.
+		compose.WithHelperImage(os.Getenv(VolumeHelperImageEnv)),
 	)
 	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile())
 	hookRunner := hooks.NewRunner(runner,
@@ -510,6 +516,14 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	a.Deps = deps
 	return nil
 }
+
+// VolumeHelperImageEnv names an image to read and write volumes through,
+// instead of the digest-pinned busybox the manager defaults to.
+//
+// For the operator whose registry does not carry busybox, or whose air-gapped
+// mirror carries something else. Any image with a POSIX `tar`, `du` and `sh`
+// will do. Empty or unset means the default.
+const VolumeHelperImageEnv = "MORZER_VOLUME_HELPER_IMAGE"
 
 // backupEngineOption adjusts how the backup adapter is wired.
 //

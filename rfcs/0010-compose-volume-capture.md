@@ -442,6 +442,32 @@ not be the thing that applies a change nobody asked for.
 it copies, and an adapter may not import the lifecycle layer. `preflight.FreeSpace`
 remains as a delegating name so its callers did not move with it.
 
+**A paused container is neither running nor stopped, and both halves missed it.**
+Found by the self-audit, and the worst defect in the branch. The refusal and the
+quiesce both asked `state == "running"`, so a paused service — frozen mid-write
+with its file handles open — was invisible to both: a restore untarred straight
+over a volume two paused containers were holding and reported success, and a
+cold capture read a volume a paused container had open while recording the copy
+as `cold`, which is the one claim the whole component rests on. The predicate is
+now written as what does *not* occupy a volume (exited, created, dead, absent),
+so a state this manager has never seen refuses rather than permits. `docker
+compose pause` is a thing operators do during maintenance, which is exactly when
+they also take a backup.
+
+**The no-hook refusal checked intent rather than outcome.** Also found by the
+audit. The gate passed when volumes were merely *in scope* — which they always
+are — so a release with no hook whose data lives on bind mounts got past it and
+produced a backup holding the configuration and nothing of the product. `backup
+list` offers that, and somebody eventually restores it. The refusal now fires on
+what was actually captured.
+
+**§5.4's escape hatch was written and never wired.** `WithHelperImage` existed,
+was called only from its own tests, and carried a doc comment describing itself
+as "the escape hatch for the operator" — an operator who had no way to reach it.
+It is now `MORZER_VOLUME_HELPER_IMAGE`, an environment variable rather than a
+flag or a state field, because the backup that needs it is the scheduled one and
+a systemd drop-in reaches that without regenerating a unit or migrating state.
+
 **A volume name is release-supplied and becomes a path.** Not considered in the
 RFC. The name comes out of a Compose file somebody else wrote and is joined into
 the backup directory as `volumes/<name>.tar`, so a name containing a separator

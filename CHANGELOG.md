@@ -141,6 +141,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Volumes are read and written through a small helper container pinned by digest, rather than through the host's storage directory, which is an implementation detail and unreadable under a rootless or remote daemon. The source is mounted read-only. A diagnostic reports the image when it is absent, with the command to pull it, so an air-gapped machine learns about it before backup night rather than during it.
 
+- `MORZER_VOLUME_HELPER_IMAGE` names a different image to read volumes through, for the operator whose registry does not carry busybox. Any image with a POSIX `tar`, `du` and `sh` will do. An environment variable rather than a setting, because the backup that needs it is usually the scheduled one and a systemd drop-in reaches that without regenerating a unit.
+
+- A service that is paused counts as holding its volumes open: it is stopped before one is read, and a restore into one is refused. A paused container is frozen mid-write with its file handles open, so treating it as neither running nor stopped would let a restore write over a volume something still held.
+
 - A backup that would not fit is refused before anything is written or stopped, naming what it needs and what is free. A diagnostic also warns when keeping the configured number of backups will not fit, since retention counts backups rather than bytes and volume backups are much larger than database dumps.
 
 ### Changed

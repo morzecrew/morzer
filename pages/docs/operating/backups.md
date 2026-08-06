@@ -91,6 +91,10 @@ once rather than once per volume — so capturing a certificate store stops the
 web server, not the database. Services that are already stopped are left alone:
 a backup never starts something you had deliberately taken down.
 
+A **paused** service is not stopped, but it is not ignored either. It still
+holds the volume open, frozen mid-write, so it is stopped for the copy like a
+running one — and comes back running rather than paused.
+
 !!! tip "If the pause is longer than you expect"
 
     A container is stopped with `SIGTERM` and then killed after two minutes. A
@@ -146,10 +150,11 @@ A volume is **replaced**, not merged: after a restore it holds exactly what the
 backup held. A volume left holding files the backup does not contain, beside a
 database restored to an exact moment, is how a record without its file is made.
 
-Restoring into a volume is **refused while any service that mounts it is
-running**, named by service — untarring into a volume a container has open is
-how a restore corrupts the thing it was restoring. `morzer restore` stops the
-services for you, so seeing this message means something was still up.
+Restoring into a volume is **refused while any service that mounts it still
+holds it open**, named by service and by the state it is in — untarring into a
+volume a container has open is how a restore corrupts the thing it was
+restoring. Paused counts as holding it open. `morzer restore` stops the services
+for you, so seeing this message means something was still up.
 
 ### The helper image
 
@@ -164,6 +169,24 @@ not during a backup:
 ```sh
 docker pull busybox@sha256:...   # doctor prints the exact reference
 ```
+
+If your registry does not carry busybox, name a different image. Any image with
+a POSIX `tar`, `du` and `sh` will do:
+
+```sh
+MORZER_VOLUME_HELPER_IMAGE=registry.internal/toolbox@sha256:... morzer backup
+```
+
+An environment variable rather than a setting, because the backup that needs it
+is usually the scheduled one — add it to the timer's unit with a drop-in:
+
+```ini
+# /etc/systemd/system/demo-backup.service.d/helper-image.conf
+[Service]
+Environment=MORZER_VOLUME_HELPER_IMAGE=registry.internal/toolbox@sha256:...
+```
+
+Pin it by digest. It runs with your data mounted.
 
 See [installing offline](installing-offline.md).
 

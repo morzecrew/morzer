@@ -157,6 +157,32 @@ func TestABackupWithNoHookAndNoVolumesIsRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "declares no backup operation")
 }
 
+// The refusal has to be about what was captured, not about what was intended.
+//
+// A release with no hook whose project declares no named volumes -- everything
+// on bind mounts, which the example bundle itself did until this RFC -- passed
+// the front gate because volumes were *in scope*, and produced a backup holding
+// configuration and nothing of the product. `backup list` offers it, and
+// somebody eventually restores it.
+func TestABackupWithNothingCapturedIsRefusedEvenWhenVolumesWereInScope(t *testing.T) {
+	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+
+	// A project that mounts only bind mounts: volumes are in scope, the
+	// capability is there, and there is nothing to take.
+	f.runtime.Storage = ports.ProjectStorage{
+		Binds: []ports.BindMount{{Source: "/srv/legacy", Services: []string{"app"}}},
+	}
+
+	_, err := f.engine.Create(context.Background(), ports.Scope{}, nil)
+
+	require.Error(t, err, "a backup holding no product data was reported as a backup")
+	assert.Contains(t, err.Error(), "captured nothing")
+
+	backups, listErr := f.engine.List(context.Background())
+	require.NoError(t, listErr)
+	assert.Empty(t, backups, "the empty backup was left where a restore could find it")
+}
+
 // The consistency claim, asserted at the instant it has to be true.
 func TestAColdVolumeIsReadWithItsServicesStopped(t *testing.T) {
 	f := newVolumeFixture(t, domain.BackupSpec{}, true)
@@ -273,11 +299,74 @@ func TestRestoringAVolumeIsRefusedWhileItsServicesRun(t *testing.T) {
 
 	require.Error(t, err)
 	message := err.Error()
-	assert.Contains(t, message, "while the services mounting it are running")
+	assert.Contains(t, message, "still holds it open")
 	for _, service := range []string{"app", "worker", "db"} {
 		assert.Contains(t, message, service, "the refusal does not name %s", service)
 	}
 	assert.Contains(t, message, "uploads", "the refusal does not name the volume at risk")
+	assert.Contains(t, message, "is running",
+		"the refusal does not say what state the service is in, which is the "+
+			"difference between `stop it` and `unpause it`")
+}
+
+// A paused container is frozen mid-write with its handles open. It is neither
+// running nor stopped, and a check for `running` alone let a restore untar
+// straight over a volume two paused containers were holding -- silently,
+// because nothing in the refusal path looked at any other state.
+func TestRestoringAVolumeIsRefusedWhileItsServicesArePaused(t *testing.T) {
+	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+	ctx := context.Background()
+
+	ref, err := f.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+
+	for name := range f.runtime.Services {
+		f.runtime.Services[name] = ports.ServiceState{Name: name, State: "paused"}
+	}
+
+	err = f.engine.Restore(ctx, ref, ports.RestoreOptions{
+		IdentityFile: f.identity, TargetInstallationID: "inst-volumes",
+	})
+
+	require.Error(t, err, "a restore wrote into a volume a paused container held open")
+	assert.Contains(t, err.Error(), "is paused",
+		"the refusal does not say the service is paused, so the operator is "+
+			"told to stop something that is already not running")
+}
+
+// The same gap on the capture side: a paused service was not stopped, so its
+// volume was read while a container had it open and the manifest recorded the
+// copy as `cold` -- which is the one claim the whole component rests on.
+func TestAPausedServiceIsStoppedBeforeItsVolumeIsRead(t *testing.T) {
+	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+	ctx := context.Background()
+
+	f.runtime.Services["worker"] = ports.ServiceState{Name: "worker", State: "paused"}
+
+	_, err := f.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+
+	assert.Contains(t, f.runtime.Calls, "Stop:app,db,worker",
+		"the paused service was left holding the volume it mounts; the runtime "+
+			"was asked to stop %v", f.runtime.Calls)
+}
+
+// ...and a state that means "there is nothing there" must still not be started.
+func TestAnExitedServiceIsNotStartedByABackup(t *testing.T) {
+	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+	ctx := context.Background()
+
+	for name := range f.runtime.Services {
+		f.runtime.Services[name] = ports.ServiceState{Name: name, State: "exited"}
+	}
+
+	_, err := f.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+
+	assert.NotContains(t, f.runtime.Calls, "Stop",
+		"a backup stopped services that were already down")
+	assert.NotContains(t, f.runtime.Calls, "Start",
+		"a backup started a product the operator had taken down")
 }
 
 func TestAVolumeIsRestoredOnceItsServicesAreStopped(t *testing.T) {

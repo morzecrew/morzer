@@ -178,6 +178,42 @@ func TestOrdinaryVolumeNamesArePermitted(t *testing.T) {
 	}
 }
 
+// The two state predicates are conservative in opposite directions, and that is
+// the point rather than an inconsistency.
+//
+// `occupiesVolume` decides whether writing is safe, so an unrecognised state
+// must count as occupied and refuse. `quiescible` decides whether a service can
+// be stopped *and put back*, so an unrecognised state must not be touched.
+// Collapsing them into one predicate is how `removing` -- which occupies a
+// volume but cannot be started again -- turned a transient state into a failed
+// backup claiming the deployment was down.
+func TestTheTwoStatePredicatesAreConservativeInOppositeDirections(t *testing.T) {
+	cases := []struct {
+		state     string
+		occupies  bool
+		quiescent bool
+	}{
+		{"running", true, true},
+		{"paused", true, true},
+		{"restarting", true, true},
+		{"removing", true, false},
+		{"exited", false, false},
+		{"created", false, false},
+		{"dead", false, false},
+		{"", false, false},
+		{"  RUNNING  ", true, true},
+		// A state no version of this manager has seen.
+		{"hibernating", true, false},
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.occupies, occupiesVolume(c.state),
+			"occupiesVolume(%q): an unrecognised state must refuse a restore", c.state)
+		assert.Equal(t, c.quiescent, quiescible(c.state),
+			"quiescible(%q): an unrecognised state must not be stopped", c.state)
+	}
+}
+
 // A declaration for a volume the project does not have is not an error --
 // releases drop volumes -- but it must not conjure one into the capture list.
 func TestADeclarationForAnAbsentVolumeCapturesNothing(t *testing.T) {
