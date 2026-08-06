@@ -442,6 +442,23 @@ not be the thing that applies a change nobody asked for.
 it copies, and an adapter may not import the lifecycle layer. `preflight.FreeSpace`
 remains as a delegating name so its callers did not move with it.
 
+**The new port had two implementations and no shared battery.** `VolumeInspector`,
+`VolumeCapturer` and the added `Stop`/`Start` are one contract implemented by
+`compose.Runtime` and by the in-memory fake — and every consistency assertion in
+this RFC's work was made against the fake, which was never checked against the
+real adapter on any of it. `test/contract/runtime.go` existed and was not
+extended. Fixed by adding fourteen legs run against both, which found that the
+fake did **not** honour the port's promise that `Volumes` are sorted: it returned
+insertion order, so a test could depend on an ordering production never produces,
+and a regression in the adapter's sorting would have been invisible to every
+fake-backed test. The backup manifest records volume components in that order.
+
+The state predicates moved to `ports.ServiceState` in the same change. They read
+the runtime's own vocabulary, so the runtime's port is where they belong — and it
+is what lets the contract suite hold every implementation to one reading of
+`exited` versus `paused`, rather than the backup engine holding a private opinion
+about strings another package produces.
+
 **A paused container is neither running nor stopped, and both halves missed it.**
 Found by the self-audit, and the worst defect in the branch. The refusal and the
 quiesce both asked `state == "running"`, so a paused service — frozen mid-write

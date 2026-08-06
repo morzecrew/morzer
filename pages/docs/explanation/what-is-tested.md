@@ -148,7 +148,12 @@ is allowed to cost.
 | **A paused container counts as holding the volume open, for the restore refusal and for the capture** | `TestRestoringIntoAPausedVolumeIsRefused` |
 | A paused service is stopped before its volume is read, so `cold` means cold | `TestAPausedServiceIsStoppedBeforeItsVolumeIsRead` |
 | A backup that captured nothing is refused, even when volumes were in scope | `TestABackupWithNothingCapturedIsRefusedEvenWhenVolumesWereInScope` |
-| The two service-state predicates are conservative in opposite directions, so an unknown state refuses a restore and is never stopped | `TestTheTwoStatePredicatesAreConservativeInOppositeDirections` |
+| The two service-state predicates are conservative in opposite directions, so an unknown state refuses a restore and is never stopped | `TestTheTwoServiceStatePredicatesAreConservativeInOppositeDirections` |
+| An unhealthy container still counts as holding its volume open | `TestAnUnhealthyServiceStillOccupiesItsVolume` |
+| **After `Stop`, every runtime reports a state the manager reads as having released its volumes** — asserted against the fake and real Docker from one suite | `TestRuntimeContract_Compose/stop_releases_the_volumes_without_removing_the_services` |
+| `Stop` halts without removing, so `Start` has something to put back | `TestRuntimeContract_Compose/start_puts_back_what_stop_halted` |
+| Every runtime reports its volumes sorted, so two backups of an unchanged project record the same order | `TestRuntimeContract_Compose/the_project's_volumes_are_reported_sorted` |
+| A tarball a runtime produced is accepted by the same runtime, and is not empty | `TestRuntimeContract_Compose/a_captured_volume_restores_byte_for_byte` |
 | The helper container cannot write into the volume it is reading | `TestTheHelperCannotWriteIntoTheVolumeItIsReading` |
 | A bind mount is reported and never captured, so nobody is silently short a mount | `TestABindMountIsReportedAndNeverCaptured` |
 | A release cannot name a volume whose name would write outside the backup directory | `TestAVolumeNameThatWouldEscapeTheBackupIsRefused` |

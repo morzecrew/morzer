@@ -221,7 +221,34 @@ func TestStateStoreContract_Filesystem(t *testing.T) {
 
 func TestRuntimeContract_Fake(t *testing.T) {
 	contract.RunRuntimeSuite(t, func(t *testing.T) (ports.Runtime, ports.RuntimeConfig) {
-		return fakes.NewRuntime(), ports.RuntimeConfig{Project: "demo"}
+		rt := fakes.NewRuntime()
+
+		// Named volumes and bind mounts, mirroring the Compose project
+		// the same suite runs against under the `docker` tag. Without
+		// them the volume legs would have nothing to assert, and the
+		// suite says so rather than passing empty.
+		//
+		// Deliberately in the wrong order, and with unsorted service
+		// lists. The port promises sorted output and the Compose adapter
+		// sorts; a fixture already in order would let the sortedness leg
+		// pass without the fake doing anything, which is how that
+		// divergence survived in the first place.
+		rt.Storage = ports.ProjectStorage{
+			Volumes: []ports.NamedVolume{
+				{Name: "uploads", Actual: "demo_uploads", Services: []string{"web", "cache"}},
+				{Name: "data", Actual: "demo_data", Services: []string{"web"}},
+			},
+			Binds: []ports.BindMount{
+				{Source: "/var/run/docker.sock", Services: []string{"web"}},
+				{Source: "/etc/hostname", Services: []string{"web"}},
+			},
+		}
+		rt.VolumeContents = map[string]string{
+			"demo_data":    "the-quarterly-report.pdf",
+			"demo_uploads": "invoice-0000-4471.pdf",
+		}
+
+		return rt, ports.RuntimeConfig{Project: "demo"}
 	})
 }
 

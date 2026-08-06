@@ -12,6 +12,7 @@ package ports
 import (
 	"context"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -188,6 +189,69 @@ type ServiceState struct {
 // probe is not evidence of illness.
 func (s ServiceState) Running() bool {
 	return s.State == "running" && s.Health != HealthUnhealthy
+}
+
+// OccupiesVolume reports whether this service may still hold a volume open.
+//
+// Deliberately not Running(): an unhealthy container still holds its files, and
+// a *paused* one is frozen mid-write with its handles open -- neither running
+// nor stopped. A restore that asked Running() would untar straight over a
+// volume a paused container was holding.
+//
+// Enumerated by what does *not* occupy, so a state this manager has never seen
+// -- a new one from a later runtime -- refuses a restore rather than permitting
+// one. Refusing is the safe direction.
+//
+// It lives on the port rather than in the backup engine because the states are
+// the runtime's vocabulary, and every implementation of Runtime is held to the
+// same reading of them by the contract suite.
+func (s ServiceState) OccupiesVolume() bool {
+	switch normaliseServiceState(s.State) {
+	case StateExited, StateCreated, StateDead, "":
+		// Nothing started, nothing left running, or no container at
+		// all: no handles into the volume.
+		return false
+	default:
+		// running, paused, restarting, removing -- and anything new.
+		return true
+	}
+}
+
+// Quiescible reports whether this service can be stopped for a backup *and
+// started again afterwards*.
+//
+// Narrower than OccupiesVolume, and conservative in the opposite direction. The
+// two questions are not the same one: "might this hold the volume open" must
+// count an unrecognised state, while "can I stop this and put it back" must
+// not.
+//
+// `removing` is why the pair exists. It occupies the volume, so a restore
+// refuses against it -- but stopping it and starting it back fails, because by
+// then there is no container to start. Collapsing the two turned a transient
+// state into a failed nightly backup reporting that the deployment was down.
+func (s ServiceState) Quiescible() bool {
+	switch normaliseServiceState(s.State) {
+	case StateRunning, StatePaused, StateRestarting:
+		return true
+	default:
+		return false
+	}
+}
+
+// The container states a runtime may report. Compose lowercases them; the
+// vocabulary is Docker's and these are the ones the manager reasons about.
+const (
+	StateRunning    = "running"
+	StatePaused     = "paused"
+	StateRestarting = "restarting"
+	StateRemoving   = "removing"
+	StateExited     = "exited"
+	StateCreated    = "created"
+	StateDead       = "dead"
+)
+
+func normaliseServiceState(state string) string {
+	return strings.ToLower(strings.TrimSpace(state))
 }
 
 // RegistryProber is an optional capability a Runtime may implement: checking

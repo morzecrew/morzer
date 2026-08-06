@@ -206,11 +206,34 @@ func (r *Runtime) stopTargets(services []string) []string {
 	return out
 }
 
+// Volumes reports the configured storage, sorted.
+//
+// Sorted on the way out rather than returned as set, because the port promises
+// it and the Compose adapter delivers it. A fake that handed back insertion
+// order let a test depend on an ordering production does not produce -- and the
+// backup manifest records volume components in exactly this order, so "two
+// backups of an unchanged project look the same" was being asserted against the
+// one implementation that did not guarantee it.
 func (r *Runtime) Volumes(ctx context.Context, cfg ports.RuntimeConfig) (ports.ProjectStorage, error) {
 	if err := r.record("Volumes"); err != nil {
 		return ports.ProjectStorage{}, err
 	}
-	return r.Storage, nil
+
+	out := ports.ProjectStorage{
+		Volumes: append([]ports.NamedVolume(nil), r.Storage.Volumes...),
+		Binds:   append([]ports.BindMount(nil), r.Storage.Binds...),
+	}
+	sort.Slice(out.Volumes, func(i, j int) bool { return out.Volumes[i].Name < out.Volumes[j].Name })
+	sort.Slice(out.Binds, func(i, j int) bool { return out.Binds[i].Source < out.Binds[j].Source })
+	for i := range out.Volumes {
+		out.Volumes[i].Services = append([]string(nil), out.Volumes[i].Services...)
+		sort.Strings(out.Volumes[i].Services)
+	}
+	for i := range out.Binds {
+		out.Binds[i].Services = append([]string(nil), out.Binds[i].Services...)
+		sort.Strings(out.Binds[i].Services)
+	}
+	return out, nil
 }
 
 func (r *Runtime) HelperImage() string { return "busybox@sha256:" + strings.Repeat("f", 64) }
