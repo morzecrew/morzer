@@ -219,9 +219,16 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 		return Result{}, err
 	}
 
+	// Two kinds of record can be acknowledged: one flagged for manual
+	// intervention, and one a dead process left journaled as running --
+	// which, when its in-flight step is not safe to repeat, `--resume`
+	// rightly refuses, leaving this as the only road back. Clearing a
+	// genuinely live operation's record is confusing but not unsafe: the
+	// deployment flock, not the journal, is what serialises mutation.
 	var target *domain.OperationRecord
 	for i := range unfinished {
-		if !unfinished[i].Status.NeedsAttention() {
+		st := unfinished[i].Status
+		if !st.NeedsAttention() && st != domain.StatusRunning {
 			continue
 		}
 		if opID == "" || unfinished[i].ID == opID {

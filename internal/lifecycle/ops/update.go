@@ -64,6 +64,10 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		return Result{}, err
 	}
 
+	if err := d.gateUnfinished(ctx, opts.Resume); err != nil {
+		return Result{}, err
+	}
+
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
 	if opts.Resume {

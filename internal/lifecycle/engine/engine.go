@@ -545,7 +545,8 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 		return 0, domain.Usage(
 			"cannot resume: step %q was %s when the operation stopped and is not safe to repeat",
 			op.Steps[idx].ID, prev).
-			WithHint("run `morzer doctor`, repair manually, then start a fresh operation")
+			WithHint("run `morzer doctor`, repair manually, then acknowledge the record " +
+				"with `morzer status --clear-intervention` and start a fresh operation")
 	}
 
 	// Carry the prior run's step outcomes forward so the journal shows one

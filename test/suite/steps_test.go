@@ -334,6 +334,33 @@ func TestAnUnfinishedOperationBlocksANewOne(t *testing.T) {
 	require.NoError(t, err, "clearing the flag must let the next operation run")
 }
 
+// TestAnAbandonedRunningOperationCanBeCleared: a SIGKILL leaves a record
+// journaled as running forever. When its in-flight step is not safe to repeat,
+// `--resume` rightly refuses -- so acknowledging the record with
+// `--clear-intervention` must be the road back, or the gate would block every
+// future operation with no exit.
+func TestAnAbandonedRunningOperationCanBeCleared(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-dead-process", Type: domain.OpTypeUpdate,
+			Status: domain.StatusRunning, StartedAt: domain.NewTime(time.Now()),
+		}))
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err, "apply proceeded over a record a dead process left running")
+
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-dead-process")
+	require.NoError(t, err, "the abandoned running record could not be acknowledged")
+
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "clearing the abandoned record must let the next operation run")
+}
+
 // TestClearingTheInterventionFlagMarksItResolved. The flag is what `doctor` and
 // `status` keep surfacing, so clearing it has to actually clear it -- even
 // though nothing currently blocks on it.

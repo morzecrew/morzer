@@ -101,6 +101,12 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		return Result{Data: report}, err
 	}
 
+	// Rollback does not resume, so the gate is unconditional: a rollback
+	// over a state a human has not acknowledged is still driving over it.
+	if err := d.gateUnfinished(ctx, false); err != nil {
+		return Result{}, err
+	}
+
 	opID := d.newOpID()
 	op := engine.Operation{
 		ID:          opID,

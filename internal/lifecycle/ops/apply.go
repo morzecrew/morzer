@@ -39,6 +39,10 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
+	if err := d.gateUnfinished(ctx, opts.Resume); err != nil {
+		return Result{}, err
+	}
+
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
 	if opts.Resume {
@@ -130,33 +134,10 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 		OnFailure:   engine.Abort,
 		Timeout:     3 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			var checks []preflight.Check
-
-			// The one gate that guards intent rather than capacity: an
-			// operation still flagged as needing a human, or one a dead
-			// process left journaled as running, must stop automation
-			// here -- a reboot's `apply --startup` above all. Resume is
-			// exempt because it *is* the human continuing exactly that
-			// operation; the record this run journaled for itself
-			// before its first step is excluded for the same reason.
-			if !opts.Resume {
-				unfinished, err := d.State.UnfinishedOperations(ctx)
-				if err != nil {
-					return err
-				}
-				others := make([]domain.OperationRecord, 0, len(unfinished))
-				for _, rec := range unfinished {
-					if rec.ID != st.OpID {
-						others = append(others, rec)
-					}
-				}
-				checks = append(checks, preflight.NoUnfinishedOperation(others))
-			}
-
-			checks = append(checks,
+			checks := []preflight.Check{
 				preflight.Architecture(rel.Manifest.Requirements),
 				preflight.OperatingSystem(rel.Manifest.Requirements),
-			)
+			}
 			checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
 			checks = append(checks,
 				preflight.Disk(d.Paths.VarDir, rel.Manifest.Requirements.Disk),
@@ -769,6 +750,34 @@ func (d *Deps) resolveCurrentRelease(ctx context.Context, record domain.ReleaseR
 			WithHint("the release directory has been modified; reinstall the bundle")
 	}
 	return rel, nil
+}
+
+// gateUnfinished refuses to start a new operation while a previous one still
+// needs a human, or was left journaled as running by a process that died.
+//
+// It is the one gate that guards intent rather than capacity -- a reboot's
+// `apply --startup` proceeding over a state flagged for manual intervention is
+// exactly how a recoverable failure becomes an unrecoverable one. It runs
+// before the engine journals anything: a refusal that recorded an operation of
+// its own would become the newest record of its type and shadow the very wreck
+// `--resume` needs to find. Resume is exempt, because it is the human
+// continuing exactly the operation this would otherwise point at.
+func (d *Deps) gateUnfinished(ctx context.Context, resume bool) error {
+	if resume {
+		return nil
+	}
+	unfinished, err := d.State.UnfinishedOperations(ctx)
+	if err != nil {
+		return err
+	}
+	if len(unfinished) == 0 {
+		return nil
+	}
+	res := preflight.NoUnfinishedOperation(unfinished).Run(ctx)
+	if res.Status != events.CheckFail {
+		return nil
+	}
+	return domain.Preflight(nil, "%s", res.Message).WithHint("%s", res.Remedy)
 }
 
 // findResumable locates the operation --resume should continue.
