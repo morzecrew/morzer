@@ -43,6 +43,7 @@ published version stays readable until it is explicitly deprecated.
 | `configuration` | list | | Templates rendered to absolute paths on the host. |
 | `secrets` | table | | Where the encrypted state lives and where it renders. |
 | `operations` | map | | Named lifecycle operations: migrate, smoke test, backup, restore. |
+| `backup` | table | | What the manager may do about the project's volumes. |
 | `health` | table | | How to tell whether the product is working. |
 | `compatibility` | table | | What this release can be installed over, and rolled back from. |
 | `retention` | table | | How many releases and backups to keep. |
@@ -191,6 +192,47 @@ A map of well-known name to how it runs. The manager looks up `migrate`,
 The two kinds are not collapsed into one field because their failure semantics
 differ: a hook runs on the host and sees the host's filesystem, a runtime
 service runs on the application network and sees the container's.
+
+## backup
+
+What the manager may do about the project's named volumes, which it captures
+itself rather than through the backup hook.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `volumes` | map | Keyed by the volume's name in the Compose `volumes:` block. |
+
+Each entry takes one field, and it is **required** — an entry that names a
+volume without saying anything about it is refused at load. Leaving the volume
+out of the map entirely is how you ask for the default:
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `consistency` | enum | ✅ | `cold`, `hot` or `exclude`. |
+
+| Value | Meaning |
+| --- | --- |
+| `cold` | The services mounting the volume are stopped for the copy. The default, and correct for every volume. |
+| `hot` | The vendor claims a copy taken while the product runs is usable. True for write-once files, false for anything with a write-ahead log. |
+| `exclude` | The manager never reads or writes this volume. Expected for a database's storage, which the backup hook owns. |
+
+```yaml
+backup:
+  volumes:
+    uploads:    { consistency: hot }
+    caddy_data: { consistency: hot }
+    pgdata:     { consistency: exclude }
+```
+
+The map is partial: declare only the volumes that need something other than the
+default of `cold`. A volume named here that the project does not declare is
+ignored by the backup, and reported by `morzer doctor` — a typo in this map
+otherwise does nothing at all, which for an intended `exclude` means the
+manager captures a database volume the hook already owns.
+
+`hot` is a claim about the product, not a performance hint — see
+[declaring volume consistency](../authoring/backing-up-volumes.md) for what it
+commits a vendor to. Bind mounts are never captured and have no declaration.
 
 ## health
 

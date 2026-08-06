@@ -89,6 +89,21 @@ operations:
     command: ["hooks/restore"]
     timeout: 120m
 
+# What the manager may do about this project's named volumes, which it captures
+# itself rather than through the backup hook above.
+#
+# A volume left out of this map is captured *cold*: the services that mount it
+# are stopped for the copy. That is correct for every volume and slow for some,
+# so a vendor declares only where they want something else.
+#
+# `consistency: hot` is a claim that a copy taken while the product is running
+# is a usable one -- true for files written once and never modified, false for
+# anything with a write-ahead log. It is the vendor's claim, not the manager's
+# guess, and every backup manifest records which one applied.
+backup:
+  volumes:
+    uploads: {consistency: hot}
+
 health:
   checks:
     # Follows the parameter too. A probe on a port the deployment does not

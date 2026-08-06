@@ -38,15 +38,25 @@ type Manifest struct {
 	APIVersion APIVersion `yaml:"api_version" json:"api_version"`
 	Kind       string     `yaml:"kind" json:"kind"`
 
-	Metadata      Metadata                  `yaml:"metadata" json:"metadata"`
-	Providers     Providers                 `yaml:"providers" json:"providers"`
-	Runtime       RuntimeSpec               `yaml:"runtime" json:"runtime"`
-	Requirements  Requirements              `yaml:"requirements" json:"requirements"`
-	Parameters    map[string]ParameterSpec  `yaml:"parameters" json:"parameters,omitempty"`
-	Images        map[string]string         `yaml:"images" json:"images"`
-	Configuration []ConfigurationFile       `yaml:"configuration" json:"configuration"`
-	Secrets       SecretsSpec               `yaml:"secrets" json:"secrets"`
-	Operations    map[string]OperationSpec  `yaml:"operations" json:"operations"`
+	Metadata      Metadata                 `yaml:"metadata" json:"metadata"`
+	Providers     Providers                `yaml:"providers" json:"providers"`
+	Runtime       RuntimeSpec              `yaml:"runtime" json:"runtime"`
+	Requirements  Requirements             `yaml:"requirements" json:"requirements"`
+	Parameters    map[string]ParameterSpec `yaml:"parameters" json:"parameters,omitempty"`
+	Images        map[string]string        `yaml:"images" json:"images"`
+	Configuration []ConfigurationFile      `yaml:"configuration" json:"configuration"`
+	Secrets       SecretsSpec              `yaml:"secrets" json:"secrets"`
+	Operations    map[string]OperationSpec `yaml:"operations" json:"operations"`
+
+	// omitzero rather than omitempty: omitempty does not omit an empty
+	// struct, so every release -- including the ones written before this
+	// section existed -- grew a `"backup": {}` in `release show --json`,
+	// announcing a section the manifest never declared to whatever parses
+	// that output. omitzero keeps the struct (a pointer would make
+	// `m.Backup.Volumes` a nil dereference for every caller) and omits it
+	// when the vendor declared nothing.
+	Backup BackupSpec `yaml:"backup" json:"backup,omitzero"`
+
 	Health        HealthSpec                `yaml:"health" json:"health"`
 	Compatibility Compatibility             `yaml:"compatibility" json:"compatibility"`
 	Retention     Retention                 `yaml:"retention" json:"retention"`
@@ -207,6 +217,73 @@ const (
 	OpRestore   = "restore"
 	OpPreflight = "preflight"
 )
+
+// BackupSpec is what the release says about backing up storage the manager can
+// reach without a client for whatever wrote it.
+//
+// It exists because the manager cannot answer the one question that decides
+// whether a volume copy is worth anything: is it safe to read this while the
+// product is writing to it. The vendor knows. Postgres' data directory is not;
+// a directory of uploaded files that are written once and never modified is.
+// So the vendor declares, the manager enforces, and the backup manifest
+// records which claim was made -- the same shape as parameters, for the same
+// reason.
+type BackupSpec struct {
+	// Volumes classifies the project's named volumes by the key they have
+	// in the Compose `volumes:` block.
+	//
+	// Partial by design: a volume absent from this map is captured cold,
+	// which is correct for every volume and slow for some. A vendor
+	// declares only where they want something other than the safe default.
+	Volumes map[string]VolumeSpec `yaml:"volumes" json:"volumes,omitempty"`
+}
+
+// VolumeSpec is one volume's declaration. Listing a volume here means saying
+// something about it: the consistency is required, because the way to ask for
+// the default is to leave the volume out.
+type VolumeSpec struct {
+	Consistency VolumeConsistency `yaml:"consistency" json:"consistency,omitempty"`
+}
+
+// VolumeConsistency is a vendor's claim about reading one volume live.
+type VolumeConsistency string
+
+const (
+	// VolumeCold is the default and needs no declaration: the services
+	// that mount the volume are stopped for the duration of the copy.
+	VolumeCold VolumeConsistency = "cold"
+
+	// VolumeHot claims the volume may be read while its services run.
+	//
+	// The vendor is promising that a crash-consistent copy of this volume
+	// is a usable one -- true for write-once files, false for anything
+	// with a write-ahead log or an index it rebuilds on start.
+	VolumeHot VolumeConsistency = "hot"
+
+	// VolumeExclude keeps the manager out of a volume entirely, which is
+	// the expected declaration for a database's storage: the hook owns it,
+	// and a second copy taken by other means invites somebody to restore
+	// the wrong one.
+	VolumeExclude VolumeConsistency = "exclude"
+)
+
+// VolumeConsistencies is every legal value, for validation and for the
+// generated schema.
+var VolumeConsistencies = []VolumeConsistency{VolumeCold, VolumeHot, VolumeExclude}
+
+// Consistency resolves a volume's declared consistency, defaulting to cold.
+//
+// The default is the slow one on purpose. A manager that guessed `hot` for an
+// undeclared volume would be making the vendor's claim on their behalf, and
+// would be wrong exactly where it costs the most -- a database volume nobody
+// remembered to exclude.
+func (b BackupSpec) Consistency(volume string) VolumeConsistency {
+	spec, ok := b.Volumes[volume]
+	if !ok || spec.Consistency == "" {
+		return VolumeCold
+	}
+	return spec.Consistency
+}
 
 type HealthSpec struct {
 	Checks []HealthCheck `yaml:"checks" json:"checks,omitempty"`
@@ -433,6 +510,44 @@ func (m *Manifest) Validate() error {
 		}
 	}
 
+	// backup.volumes
+	//
+	// A misspelled consistency is refused here rather than defaulted. The
+	// two plausible typos -- `warm`, and `hot` under the wrong volume name
+	// -- both fail towards a backup the vendor believes is fast and
+	// correct, and silently defaulting to cold would hide the first while
+	// silently accepting the second.
+	for name, spec := range m.Backup.Volumes {
+		field := "backup.volumes." + name
+		if name == "" {
+			v.add("backup.volumes", "has an entry with an empty volume name")
+		}
+		switch spec.Consistency {
+		case VolumeCold, VolumeHot, VolumeExclude:
+		case "":
+			// An entry that declares nothing is refused rather than
+			// defaulted to cold, and the generated schema requires
+			// the key for the same reason. Leaving a volume out of
+			// this map is already how a vendor asks for the default,
+			// so a volume listed with no consistency is a
+			// half-finished edit or a value that templated away to
+			// empty -- both leave the vendor believing they declared
+			// something they did not.
+			//
+			// The schema said this from the start: its enum is the
+			// three values, so `consistency: ""` failed in an editor
+			// and passed here. A loader more permissive than the
+			// published schema is the disagreement this repository
+			// generates the schema to avoid, and the strict side is
+			// the right one to settle on.
+			v.add(field+".consistency", "is required (%s); omit the volume entirely for the default",
+				joinConsistencies(VolumeConsistencies))
+		default:
+			v.add(field+".consistency", "must be %s, got %q",
+				joinConsistencies(VolumeConsistencies), spec.Consistency)
+		}
+	}
+
 	// health
 	seenCheck := map[string]bool{}
 	for i, c := range m.Health.Checks {
@@ -526,6 +641,14 @@ func joinAPIVersions(vs []APIVersion) string {
 	out := make([]string, len(vs))
 	for i, v := range vs {
 		out[i] = string(v)
+	}
+	return strings.Join(out, ", ")
+}
+
+func joinConsistencies(vs []VolumeConsistency) string {
+	out := make([]string, len(vs))
+	for i, v := range vs {
+		out[i] = strconv.Quote(string(v))
 	}
 	return strings.Join(out, ", ")
 }

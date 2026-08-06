@@ -1,6 +1,8 @@
 # RFC 0010 — Capturing Compose volumes
 
-- **Status:** 📝 Draft — **design locked, one decision deliberately open** (§5.2)
+- **Status:** ✅ Complete — shipped 2026-08-05. Decision 10 resolved in favour of
+  cold-by-default (§5.2 b), refined to per-service quiescing; §12 records what
+  the implementation changed about the design.
 - **Scope:** Lets a backup include the contents of the Compose project's
   volumes, so a release that ships no backup hook — or one that covers only its
   database — still produces a restorable backup. Covers how a volume is read
@@ -177,11 +179,21 @@ exactly — the vendor declares, the manager enforces, the operator sees the
 result — and it degrades to (a) for a release that declares nothing, which is
 every release that exists today.
 
-**This is the open decision.** (b) means downtime by default and a manifest
-field vendors must learn. Somebody has to decide whether a nightly backup that
-stops the stack for ninety seconds is acceptable for this product's audience.
-It is not a decision this RFC should make alone, and it is the reason the
-status line says design-locked-with-one-open.
+**This was the open decision, and it was resolved in favour of (b).** The
+argument that carried it: reliability first, with the flexibility made explicit
+on both sides rather than assumed. The vendor declares `hot` and `exclude`; the
+operator has `--no-downtime`, which **skips and reports** rather than silently
+downgrading to a hot copy.
+
+Two refinements the implementation added, both recorded in §12:
+
+- **Only the services that mount a cold volume are stopped**, not the whole
+  stack. `VolumeRecord.Services` already existed to make a restore refusal
+  precise, and it makes the quiesce precise for free — capturing a certificate
+  store stops the web server, not the database.
+- **All cold volumes share one stop-and-start**, so a project with four
+  undeclared volumes has one downtime window rather than four. The total is the
+  same; the number of dips an operator sees is not.
 
 ### 5.3 Reading a volume
 
@@ -190,15 +202,23 @@ A volume is not on the host filesystem in any way the manager may rely on
 under rootless or a remote daemon). The supported way is a container:
 
 ```sh
-docker run --rm \
+docker run --rm --network none \
   -v <volume>:/src:ro \
-  -v <staging>:/dst \
-  <helper-image> tar -C /src -cf /dst/<volume>.tar .
+  <helper-image> tar -C /src -cf - .        # the tar comes out on stdout
 ```
 
 Read-only on the source, so a helper that misbehaves cannot write into the
-product's data. The tarball lands in staging, then goes through the same
-encryption every other component does.
+product's data. The tarball goes through the same encryption every other
+component does.
+
+!!! note "Superseded during implementation"
+
+    This section originally mounted a staging directory and had the helper write
+    `/dst/<volume>.tar` into it. That puts a **root-owned** file in a directory
+    the manager may not run as root in — so the manager could then neither
+    overwrite nor remove it, and the plaintext copy of somebody's uploads would
+    outlive the backup that encrypted it. The helper streams to stdout and the
+    manager writes the file itself. §12 records what that cost.
 
 Restore is the same in reverse, and **refuses while any service in
 `VolumeRecord.Services` is running**. Untarring into a volume a container has
@@ -222,9 +242,12 @@ So the helper image:
 - is **busybox or equivalent** — `tar` and nothing else. The smaller the image,
   the smaller the thing an operator has to trust and cache.
 
-An escape hatch for the operator whose registry is not reachable: a
-configuration key naming a different image, since any image with a POSIX `tar`
-will do.
+An escape hatch for the operator whose registry is not reachable:
+`MORZER_VOLUME_HELPER_IMAGE` names a different image, since any image with a
+POSIX `tar` will do. An environment variable rather than a state field, because
+the backup that needs it is the scheduled one: a systemd drop-in reaches that
+without regenerating a unit or migrating state. §12 records how it got there:
+the hatch existed in the code first and was reachable from nothing.
 
 ### 5.5 Size, which is where the existing design stops working
 
@@ -304,9 +327,16 @@ in the operating guide rather than a footnote; and the manifest records which
 volumes were captured how, so a post-incident review can see what was promised.
 
 **Downtime by default will surprise people.** §5.2 (b) means a release that
-declares nothing gets its stack stopped during a backup. That is the safe
+declares nothing has services stopped during a backup. That is the safe
 behaviour and it is the wrong behaviour for somebody running a nightly backup
-of a busy service. It is the open decision for exactly this reason.
+of a busy service. Accepted rather than designed away — decision 10 — with
+three things holding it down: only the services that mount a cold volume are
+stopped rather than the whole stack, they are stopped once for all of them
+rather than once per volume, and `--no-downtime` is the operator's way out.
+The risk that remains is real and is now shaped differently: `--no-downtime`
+**skips and reports** rather than downgrading to a hot copy, so the operator
+who cannot afford the window gets a backup that is honestly short a volume, and
+the only way to have both is the vendor declaring `hot`.
 
 **The helper image is a new supply-chain edge.** One more digest to pin, one
 more thing to have cached offline, one more image an attacker would like to
@@ -331,17 +361,279 @@ when they arrive.
 | 7 | The helper image is pinned by digest in the manager's source, checked locally before use, and reported by `doctor` when absent — so an air-gapped install learns about it before it needs it. |
 | 8 | A backup that would not fit is refused **before** anything is written, with the required and available figures in the message. |
 | 9 | This does not replace the hook for anything with a transaction log, and the documentation says so where an operator will read it rather than in a footnote. |
-| 10 | **Open:** whether cold-by-default is acceptable for this product's audience, or whether the first milestone should ship (c) — complement-only — and defer stopping the stack. §5.2. |
+| 10 | **Resolved: cold-by-default**, per §5.2 (b) with (a) as its default, refined so that only the services mounting a cold volume are stopped rather than the whole stack. The operator's escape hatch is `--no-downtime`, which **skips and reports** a volume rather than downgrading it to a hot copy — because a hot copy of an undeclared volume is the vendor's claim being made on their behalf, which decision 5 forbids. |
+| 11 | `volumes` is in `AllComponents`, so every backup captures them without being asked. The motivating failure is an operator who does not know their uploads are missing; an opt-in component would have left them exactly where they were. |
 
 ## 11. Phasing
 
-| Phase | What | Gated on |
-| --- | --- | --- |
-| **P1** | Enumerate volumes, capture cold, encrypt, record in the manifest, restore with the running-service refusal | Decision 10 |
-| **P2** | The `backup.volumes` manifest declaration, `hot` and `exclude`, the vendor-facing docs | P1 |
-| **P3** | The space check, the `doctor` growth warning, the helper-image checks | P1 |
+| Phase | What | Gated on | Status |
+| --- | --- | --- | --- |
+| **P1** | Enumerate volumes, capture cold, encrypt, record in the manifest, restore with the running-service refusal | Decision 10 | ✅ |
+| **P2** | The `backup.volumes` manifest declaration, `hot` and `exclude`, the vendor-facing docs | P1 | ✅ |
+| **P3** | The space check, the `doctor` growth warning, the helper-image checks | P1 | ✅ |
 
-**P1 is gated on decision 10 and should not start before it is made.** Building
-cold-by-default and then discovering the audience will not accept the downtime
-means rebuilding it as a complement-only feature, and the two have different
-manifests, different components and different documentation.
+P1 was gated on decision 10 for a reason that held: cold-by-default and
+complement-only have different manifests, different components and different
+documentation, and building one to discover the other was wanted means building
+it twice. The decision was made first, and all three phases shipped together.
+
+## 12. What the implementation changed
+
+Written after building it. Everything here is a place where the design above was
+incomplete or wrong, kept rather than edited away so the next reader can see
+which parts of an RFC survive contact.
+
+**Quiescing is per service, not per project.** §5.2 (a) says `compose stop` →
+copy → `compose start`, meaning the whole stack. The implementation stops only
+the services that mount the cold volumes, because §5.1 was already recording
+`VolumeRecord.Services` to make the restore refusal precise and the same list
+makes the capture precise for nothing. Strictly less disruptive and no less
+correct: a volume is only written by containers that mount it.
+
+**One downtime window, not one per volume.** The cold volumes' services are
+unioned and stopped once. Hot volumes are captured *before* the window opens,
+because there is no reason for a volume the vendor said may be read live to be
+read while the product is down.
+
+**The helper writes to stdout, not to a staging bind mount.** §5.3's
+`docker run -v <staging>:/dst ... tar -cf /dst/<volume>.tar` puts a root-owned
+file into a directory the manager may not run as root in — and the manager then
+cannot overwrite or remove it, so the plaintext copy of somebody's uploads
+survives the backup that encrypted it. The tar comes out on stdout instead and
+the manager writes the file itself. That needed `exec.Command.Stdout`, a raw
+byte path added alongside the line scanner, which would otherwise have split the
+stream on 0x0a bytes that are data and held the whole volume in memory to do it.
+
+Two things fell out of that pipe which the RFC did not anticipate. A write
+failure — a disk filling partway through a capture — used to be invisible: the
+process exited zero and the truncated tarball was checksummed as if it were the
+volume, so it verified. It now fails the command. And the pipe is *closed* on
+that failure rather than drained, because draining meant reading the remaining
+hundred gigabytes into `io.Discard` for an outcome already decided. Closing it
+kills the child with SIGPIPE, which is why the write error has to be reported
+ahead of the exit status: otherwise a full disk surfaces as "exited with code
+141" and sends an operator looking for a bug in `tar`.
+
+**A restore replaces rather than merges.** §5.3 says "the same in reverse",
+which read as untar-over-the-top. That leaves files the backup does not contain
+beside files it does, producing a volume that matches no point in time — and
+beside a database restored to an exact one, that is how a record without its
+file is made. The volume is emptied first.
+
+That makes `RestoreVolume` **destructive and unrecoverable**, which §5.3 does not
+say and should: the volume is emptied *before* the tar is extracted, so a
+failure partway through leaves the volume holding neither what it had nor all of
+what the backup held. There is no rollback and no staging copy — the manager
+does not have a second volume's worth of space to promise one. The mitigations
+are the ones already in the path rather than a repair: the backup is verified and
+decrypted before anything is emptied, the restore is refused while any service
+holds the volume open, and the whole operation is behind `--force` and a typed
+installation id. An operator whose restore fails here restores again from the
+same backup; the volume is not left in a state anything else can use.
+
+**The space check saturates rather than wraps.** Found by the test for decision
+8: summing volume sizes overflowed `int64`, came out negative, compared as
+*smaller* than the free space, and turned the refusal into a pass. The one
+direction that check must never fail in.
+
+**The space check reserves one more copy of the largest *component*, not of the
+largest volume.** Decision 8's figure is `volumes + largest volume`, because
+encryption writes a ciphertext beside its plaintext and removes the plaintext
+afterwards. That is the right shape and the wrong term: the components encryption
+walks include the hook's database dump, which is routinely larger than any
+volume. The pre-hook gate cannot know that — sizing a dump means taking it — but
+the check made again after the hook can, since the dump is on disk and its size
+was already recorded. Reserving the largest volume there left `dump − largest
+volume` unclaimed, and the shortfall surfaced as `no space left on device` during
+encryption: after the copy, and after the downtime the copy cost. The recheck now
+takes the larger of the two. The manager's own artifacts — configuration,
+manifest, the SOPS file — are still unreserved and stay that way; they are
+kilobytes, and a reservation is only useful while it is a model rather than a
+pad, since every byte over-reserved refuses a backup that would have fitted.
+
+**A volume's measured size was not the upper bound the port promises.** `du`
+measures contents; `tar` writes contents *plus* a header per entry, padding to
+the next 512-byte block, a trailer, and padding out to the blocking factor. For
+almost any volume the block rounding `du` already does hides that, which is why
+it survived — but a volume of files that land exactly on a block boundary has no
+slack left, and 256 four-kilobyte files measured 11% under what the capture then
+wrote. Two more holes turned up once it was measured rather than reasoned about:
+sparse files (apparent size counts the bytes, `tar` rounds them up) and paths
+over 100 bytes (`tar` emits a long-name pseudo-entry). The helper now counts the
+volume's entries and their path bytes in the same pass and budgets the worst case
+for each. It over-estimates a typical volume several-fold, which is the direction
+that refuses in front of an operator rather than filling the disk after the
+services are already stopped; the exact answer is `tar | wc -c`, which reads the
+whole volume a second time. A helper image that cannot walk the volume at all —
+an override without `find` — reports zero entries and is refused, because the
+number it could still produce is exactly the under-estimate this exists to
+prevent and is indistinguishable from a correct one.
+
+**Wrapping an error dropped its remedy.** Also found by a test — the one for the
+air-gapped machine. "The helper image is not here" carried `docker pull <ref>`
+as its hint; wrapping it as "cannot capture volume uploads" produced an error
+whose hint was empty, because `AsError` reports the outermost structured error.
+An operator on the machine where that message matters most got a diagnosis and
+nothing to do about it. `domain.Error.WithHintFrom` now carries a cause's remedy
+through a wrap that has none of its own.
+
+**The same wrap turned an interruption into a diagnosis.** The other half of the
+sentence above, found once the space check began refusing rather than swallowing.
+Every volume operation runs a container, so Ctrl-C during a backup arrives as a
+failure from one of them — and wrapping it as "cannot capture volume uploads"
+told an operator who had stopped the backup themselves that their helper image
+needed pulling. The exit code was never the casualty: `ExitCode` matches the
+interruption sentinel through any number of wraps, and the step engine asks the
+same way. What the wrap replaces is the sentence a human reads and the `code`
+field anything machine-readable sorts on. The five sites that wrap a runtime
+failure now return an interruption unchanged, which is the rule
+`compose.wrapExit` already followed one layer down.
+
+**The backup manifest records what was *not* captured.** Not in the RFC. §8 says
+a bind mount is "reported", and the only place a report survives to be read
+during an incident is the manifest itself — so `Uncaptured` names every volume
+left out and why: excluded by the vendor, skipped by `--no-downtime`, or a bind
+mount that was never a candidate.
+
+**The backup manifest schema went to 3.** Not called for in the RFC, and
+necessary: a manager that predates volumes reads a schema-2 backup, does not
+know what `ComponentVolumes` means, decrypts the tarballs into the staging
+directory and hands them to a restore hook that was never told about them. The
+database comes back, the uploads do not, and nothing says so.
+
+**A missing helper image fails the whole backup.** The alternative — take
+everything else and omit the volumes — was considered and rejected: a backup
+that silently covers less than it claims is the failure this component exists to
+prevent. The operator who wants one anyway scopes it with `--component`.
+
+**`Stop` and `Start` joined the `Runtime` port.** `Down`/`Up` were the only pair
+available and both are wrong here: `Down` removes containers and networks, and
+`Up` reconciles against the declared configuration, so resuming a stack after a
+backup could recreate a container whose definition had drifted. A backup must
+not be the thing that applies a change nobody asked for.
+
+**`FreeSpace` moved from `preflight` to `atomicfs`.** An adapter measures before
+it copies, and an adapter may not import the lifecycle layer. `preflight.FreeSpace`
+remains as a delegating name so its callers did not move with it.
+
+**The new port had two implementations and no shared battery.** `VolumeInspector`,
+`VolumeCapturer` and the added `Stop`/`Start` are one contract implemented by
+`compose.Runtime` and by the in-memory fake — and every consistency assertion in
+this RFC's work was made against the fake, which was never checked against the
+real adapter on any of it. `test/contract/runtime.go` existed and was not
+extended. Fixed by adding fourteen legs run against both, which found that the
+fake did **not** honour the port's promise that `Volumes` are sorted: it returned
+insertion order, so a test could depend on an ordering production never produces,
+and a regression in the adapter's sorting would have been invisible to every
+fake-backed test. The backup manifest records volume components in that order.
+
+The state predicates moved to `ports.ServiceState` in the same change. They read
+the runtime's own vocabulary, so the runtime's port is where they belong — and it
+is what lets the contract suite hold every implementation to one reading of
+`exited` versus `paused`, rather than the backup engine holding a private opinion
+about strings another package produces.
+
+**A paused container is neither running nor stopped, and both halves missed it.**
+Found by the self-audit, and the worst defect in the branch. The refusal and the
+quiesce both asked `state == "running"`, so a paused service — frozen mid-write
+with its file handles open — was invisible to both: a restore untarred straight
+over a volume two paused containers were holding and reported success, and a
+cold capture read a volume a paused container had open while recording the copy
+as `cold`, which is the one claim the whole component rests on. The predicate is
+now written as what does *not* occupy a volume (exited, created, dead, absent),
+so a state this manager has never seen refuses rather than permits. `docker
+compose pause` is a thing operators do during maintenance, which is exactly when
+they also take a backup.
+
+**The no-hook refusal checked intent rather than outcome.** Also found by the
+audit. The gate passed when volumes were merely *in scope* — which they always
+are — so a release with no hook whose data lives on bind mounts got past it and
+produced a backup holding the configuration and nothing of the product. `backup
+list` offers that, and somebody eventually restores it. The refusal now fires on
+what was actually captured.
+
+**§5.4's escape hatch was written and never wired.** `WithHelperImage` existed,
+was called only from its own tests, and carried a doc comment describing itself
+as "the escape hatch for the operator" — an operator who had no way to reach it.
+It is now `MORZER_VOLUME_HELPER_IMAGE`, an environment variable rather than a
+flag or a state field, because the backup that needs it is the scheduled one and
+a systemd drop-in reaches that without regenerating a unit or migrating state.
+
+**A volume name is release-supplied and becomes a path.** Not considered in the
+RFC. The name comes out of a Compose file somebody else wrote and is joined into
+the backup directory as `volumes/<name>.tar`, so a name containing a separator
+would write outside it. Compose is unlikely to accept one — and "the other tool
+probably rejects it" is not a containment argument, which is the same reasoning
+`blob.Fetch` records for the guard it applies to component paths. Refused by
+name, the way a hook artifact outside the backup directory already is.
+
+**Only the services that are actually running are stopped.** Found by asking
+what a backup of an already-stopped deployment does — a normal thing to take
+before maintenance. The quiesce stopped and started the whole service list
+unconditionally, and `compose start` on a service with no container exits
+non-zero: so the backup captured its volumes perfectly, then deleted them and
+reported that it could not bring back a product nobody had taken down. It also
+means a backup no longer starts a service the operator had deliberately stopped.
+
+**The container packages share one Docker daemon and were racing for it.** The
+contract battery added several project lifecycles to `test/suite`, and
+`test/clitest` — which contains no Docker reference and reads as a pure CLI
+suite — began failing with "cannot restart services". It reaches Docker without
+looking like it: `secret rotate` shells out to `docker compose restart` through
+the real adapter and expects exit zero. Reproduced deterministically by putting a
+failing `docker` shim on PATH, which produces that exact error. The fix is `-p 1`
+on the docker-tagged recipes: Go runs packages in parallel by default, and these
+cannot be. The coupling predates this work; the load that exposed it does not.
+
+**The stop timeout is injectable, and finding out why cost an hour.** A service
+gets two minutes to shut down cleanly before it is killed — generous on purpose,
+because a database being quiesced for a volume copy is exactly the process that
+should be allowed to flush. But the container fixture's PID 1 is a shell loop,
+and the kernel does not deliver a signal with a default action to PID 1, so it
+never sees SIGTERM and every quiesce waited out the full two minutes. Setting
+`stop_grace_period` in the fixture's Compose file does not help: `compose stop
+--timeout` overrides it. Injecting the timeout took the container suite from
+742 seconds to 189.
+
+**A restore scoped away from volumes does not decrypt them.** Staging decrypts
+every component, because the hook ABI predates scoping and a hook that reads
+more than it was told to would break. Volumes are new, so no hook can be reading
+them — and a `--component database` restore that decrypted a hundred gigabytes
+of uploads in order to delete them unread is a long wait for nothing.
+
+**A volume that cannot be measured now refuses the backup, and one that could
+not be measured *this time* no longer decides anything about the volumes beside
+it.** The space check treated any `VolumeSize` error as permission to abandon the
+entire reservation — not the failed volume's, all of them — on the reasoning
+that a backup refused over a measurement is refused for a reason that has
+nothing to do with whether it fits, and that the copy would fail honestly if it
+did not. The second half is where it breaks: for a cold capture the copy happens
+*after* the services are stopped, so honesty there costs an outage that has
+already been paid for.
+
+The reasoning was also written when the only plausible failure was a flaky
+`docker run`. The measurement has since grown failures that leave the *capture*
+working — a helper image without `find`, a `du` whose output will not parse, a
+KiB figure too large to convert — so the gate was being disabled by precisely
+the cases where the copy then went ahead unbudgeted. The last of those was the
+inversion outright: a volume too large to express as a byte count switched the
+check off instead of failing it.
+
+Refusing on every error was not the answer either. A `du` that exits non-zero on
+one awkward volume would then block every backup of a deployment that had been
+backing up fine, trading a disk that might fill for data that certainly goes
+stale. So the two are distinguished, and — following the same rule the
+volume-occupancy predicates already follow — it is the *permissive* side that is
+enumerated: `ports.VolumeCapturer.VolumeSize` refuses by default, and an
+implementation marks `domain.ErrMeasureIncomplete` on the one case where the
+measurement never ran. Anything unrecognised, from any implementation, lands on
+the safe side. A marked failure leaves that volume unbudgeted and no more: the
+hole that was already there, confined to the volume it belongs to instead of
+taking every other volume's figure down with it.
+
+Two smaller things fell out. A `statfs` that fails at the pre-hook gate used to
+discard the volume sizes with it, which disabled the check made *after* the hook
+as well — the one that still has a free figure to compare them against; the
+measurement now survives the failed reading. And the refusals that read `du`'s
+output carried no hint, which was survivable while they only switched a check
+off and is not now that they stop a backup.

@@ -91,6 +91,12 @@ operations:
     command: ["hooks/restore"]
     timeout: 120m
 
+# Unchanged from 1.2.0: the uploads volume holds files written once and never
+# modified, so a copy taken while the product runs is a usable one.
+backup:
+  volumes:
+    uploads: {consistency: hot}
+
 health:
   checks:
     # Follows the parameter too. A probe on a port the deployment does not

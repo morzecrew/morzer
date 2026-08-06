@@ -13,6 +13,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +49,39 @@ type Runtime struct {
 
 	// OneShotResults maps a service name to its exit result.
 	OneShotResults map[string]ports.ExitResult
+
+	// Storage is what Volumes reports.
+	Storage ports.ProjectStorage
+
+	// VolumeContents is the simulated contents of each volume, keyed by
+	// its actual name. A capture writes this to a file; a restore reads it
+	// back, so a round trip through the backup engine really does move
+	// bytes.
+	VolumeContents map[string]string
+
+	// CaptureWitness records which services were running at the instant
+	// each volume was captured.
+	//
+	// It is how a test asserts the thing the RFC's whole argument rests
+	// on: that a cold volume was read with nothing writing to it. Polling
+	// status from another goroutine would answer the same question less
+	// precisely and only sometimes.
+	CaptureWitness map[string][]string
+
+	// VolumeSizes overrides what VolumeSize reports, so a test can present
+	// a volume larger than any disk without allocating one.
+	VolumeSizes map[string]int64
+
+	// VolumeSizeErrors fails the measurement of one volume while the rest
+	// still measure, which is the shape the space check has to survive: a
+	// single unmeasurable volume must not decide anything about the ones
+	// beside it. Keyed by actual volume name; Fail["VolumeSize"] is the
+	// blunter version that fails them all.
+	VolumeSizeErrors map[string]error
+
+	// HelperMissing simulates the air-gapped machine: every volume
+	// operation refuses with the pull command instead of running.
+	HelperMissing bool
 }
 
 func NewRuntime() *Runtime {
@@ -55,12 +90,16 @@ func NewRuntime() *Runtime {
 		Fail:           map[string]error{},
 		OneShotResults: map[string]ports.ExitResult{},
 		ValidateResult: ports.Rendered{Services: []string{"app", "db"}},
+		VolumeContents: map[string]string{},
+		CaptureWitness: map[string][]string{},
 	}
 }
 
 var (
-	_ ports.Runtime        = (*Runtime)(nil)
-	_ ports.ImageInspector = (*Runtime)(nil)
+	_ ports.Runtime         = (*Runtime)(nil)
+	_ ports.ImageInspector  = (*Runtime)(nil)
+	_ ports.VolumeInspector = (*Runtime)(nil)
+	_ ports.VolumeCapturer  = (*Runtime)(nil)
 )
 
 func (r *Runtime) record(method string) error {
@@ -129,6 +168,169 @@ func (r *Runtime) Restart(ctx context.Context, cfg ports.RuntimeConfig, services
 	defer r.mu.Unlock()
 	r.Calls = append(r.Calls, "Restart:"+strings.Join(services, ","))
 	return nil
+}
+
+func (r *Runtime) Stop(ctx context.Context, cfg ports.RuntimeConfig, services []string, timeout time.Duration) error {
+	if err := r.record("Stop"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Calls = append(r.Calls, "Stop:"+strings.Join(services, ","))
+
+	for _, name := range r.stopTargets(services) {
+		r.Services[name] = ports.ServiceState{Name: name, State: "exited"}
+	}
+	return nil
+}
+
+func (r *Runtime) Start(ctx context.Context, cfg ports.RuntimeConfig, services []string) error {
+	if err := r.record("Start"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Calls = append(r.Calls, "Start:"+strings.Join(services, ","))
+
+	for _, name := range r.stopTargets(services) {
+		r.Services[name] = ports.ServiceState{
+			Name: name, State: "running", Health: ports.HealthHealthy,
+		}
+	}
+	return nil
+}
+
+// stopTargets resolves an empty service list to the whole project, matching
+// what `compose stop` and `compose start` do. Callers must hold the lock.
+func (r *Runtime) stopTargets(services []string) []string {
+	if len(services) > 0 {
+		return services
+	}
+	out := make([]string, 0, len(r.Services))
+	for name := range r.Services {
+		out = append(out, name)
+	}
+	return out
+}
+
+// Volumes reports the configured storage, sorted.
+//
+// Sorted on the way out rather than returned as set, because the port promises
+// it and the Compose adapter delivers it. A fake that handed back insertion
+// order let a test depend on an ordering production does not produce -- and the
+// backup manifest records volume components in exactly this order, so "two
+// backups of an unchanged project look the same" was being asserted against the
+// one implementation that did not guarantee it.
+func (r *Runtime) Volumes(ctx context.Context, cfg ports.RuntimeConfig) (ports.ProjectStorage, error) {
+	if err := r.record("Volumes"); err != nil {
+		return ports.ProjectStorage{}, err
+	}
+
+	out := ports.ProjectStorage{
+		Volumes:   append([]ports.NamedVolume(nil), r.Storage.Volumes...),
+		Binds:     append([]ports.BindMount(nil), r.Storage.Binds...),
+		Anonymous: append([]ports.AnonymousVolume(nil), r.Storage.Anonymous...),
+	}
+	sort.Slice(out.Volumes, func(i, j int) bool { return out.Volumes[i].Name < out.Volumes[j].Name })
+	sort.Slice(out.Binds, func(i, j int) bool { return out.Binds[i].Source < out.Binds[j].Source })
+	for i := range out.Volumes {
+		out.Volumes[i].Services = append([]string(nil), out.Volumes[i].Services...)
+		sort.Strings(out.Volumes[i].Services)
+	}
+	for i := range out.Binds {
+		out.Binds[i].Services = append([]string(nil), out.Binds[i].Services...)
+		sort.Strings(out.Binds[i].Services)
+	}
+	sort.Slice(out.Anonymous, func(i, j int) bool {
+		if out.Anonymous[i].Service != out.Anonymous[j].Service {
+			return out.Anonymous[i].Service < out.Anonymous[j].Service
+		}
+		return out.Anonymous[i].Target < out.Anonymous[j].Target
+	})
+	return out, nil
+}
+
+func (r *Runtime) HelperImage() string { return "busybox@sha256:" + strings.Repeat("f", 64) }
+
+// CaptureVolume writes the simulated contents out, recording who was running
+// while it did.
+func (r *Runtime) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, volume, destPath string) error {
+	if err := r.record("CaptureVolume"); err != nil {
+		return err
+	}
+	if err := r.helperPresent(); err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	r.Calls = append(r.Calls, "CaptureVolume:"+volume)
+	// OccupiesVolume, not Running: an unhealthy container is not "running"
+	// but still holds its files open, and a witness that excluded it would
+	// let a capture look cold while something had the volume.
+	var running []string
+	for name, state := range r.Services {
+		if state.OccupiesVolume() {
+			running = append(running, name)
+		}
+	}
+	sort.Strings(running)
+	r.CaptureWitness[volume] = running
+	contents := r.VolumeContents[volume]
+	r.mu.Unlock()
+
+	return os.WriteFile(destPath, []byte(contents), 0o600)
+}
+
+func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, volume, srcPath string) error {
+	if err := r.record("RestoreVolume"); err != nil {
+		return err
+	}
+	if err := r.helperPresent(); err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Calls = append(r.Calls, "RestoreVolume:"+volume)
+	r.VolumeContents[volume] = string(data)
+	return nil
+}
+
+func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volume string) (int64, error) {
+	if err := r.record("VolumeSize"); err != nil {
+		return 0, err
+	}
+	if err := r.helperPresent(); err != nil {
+		return 0, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err, ok := r.VolumeSizeErrors[volume]; ok {
+		return 0, err
+	}
+	if size, ok := r.VolumeSizes[volume]; ok {
+		return size, nil
+	}
+	return int64(len(r.VolumeContents[volume])), nil
+}
+
+// helperPresent reproduces the adapter's refusal on a machine that has never
+// pulled the helper image, so the offline path is exercised without a daemon.
+func (r *Runtime) helperPresent() error {
+	r.mu.Lock()
+	missing := r.HelperMissing
+	r.mu.Unlock()
+	if !missing {
+		return nil
+	}
+	return domain.RuntimeError(domain.ErrToolMissing,
+		"the volume helper image %s is not on this machine", r.HelperImage()).
+		WithHint("run `docker pull %s` while this machine has a network", r.HelperImage())
 }
 
 func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, service string, opts ports.RunOptions) (ports.ExitResult, error) {

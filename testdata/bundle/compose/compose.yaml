@@ -23,6 +23,11 @@ services:
     volumes:
       - ${DEMO_CONFIG_FILE:-/etc/demo/application.yaml}:/etc/demo/application.yaml:ro
       - ${DEMO_DATA_DIR:-/var/lib/demo/data}:/var/lib/demo:rw
+      # A named volume, so the bundle exercises the one kind of storage the
+      # manager backs up for itself. The two mounts above are bind mounts,
+      # which are reported by `doctor` and never captured -- a product whose
+      # data lives on one is a product with data in no backup.
+      - uploads:/var/lib/demo/uploads
     secrets:
       - db_password
       - session_key
@@ -31,6 +36,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+volumes:
+  uploads: {}
 
 secrets:
   db_password:

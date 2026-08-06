@@ -45,6 +45,43 @@ func TestPortSpecRefusesWhatIsNeither(t *testing.T) {
 	}
 }
 
+// TestAManifestWithNoBackupSectionDoesNotGrowOne. `release show --json` is
+// parsed by other people's scripts, and encoding/json does not omit an empty
+// struct under omitempty -- so an optional section tagged that way appears in
+// every release ever written, including the ones from before it existed.
+func TestAManifestWithNoBackupSectionDoesNotGrowOne(t *testing.T) {
+	// Decoded rather than searched as text: `providers.backup` is a
+	// different field of the same name, and a substring match would pass
+	// while the section was still there.
+	sections := func(m Manifest) map[string]json.RawMessage {
+		out, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]json.RawMessage
+		if err := json.Unmarshal(out, &doc); err != nil {
+			t.Fatal(err)
+		}
+		return doc
+	}
+
+	if section, ok := sections(validManifest())["backup"]; ok {
+		t.Errorf("a release that declares no backup section publishes %s anyway, "+
+			"so every consumer of --json sees a section its manifest never had",
+			section)
+	}
+
+	// And a declared one is still published, or the omission would hide
+	// what the vendor did say.
+	m := validManifest()
+	m.Backup = BackupSpec{Volumes: map[string]VolumeSpec{"uploads": {Consistency: VolumeHot}}}
+	section, ok := sections(m)["backup"]
+	if !ok || !strings.Contains(string(section), `"consistency":"hot"`) {
+		t.Errorf("a declared consistency is missing from --json (%s), so nothing "+
+			"downstream can tell how the volume was captured", section)
+	}
+}
+
 func TestDurationRoundTripsThroughText(t *testing.T) {
 	cases := map[string]time.Duration{
 		"30s":   30 * time.Second,

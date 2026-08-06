@@ -131,6 +131,47 @@ A backup that has never been restored is a hope. These run `pg_dump` and
 | Retention never removes the only copy, whatever the policy says | `TestPruneNeverRemovesTheOnlyCopy` |
 | Retention keeps the reasons it was told to keep | `TestPruneKeepsTheReasonsItWasToldTo` |
 
+### Volumes
+
+The manager reads the project's named volumes itself, which is the part a backup
+hook usually forgets. These claims are about what that copy is worth and what it
+is allowed to cost.
+
+| Claim | Test |
+| --- | --- |
+| **A volume destroyed entirely comes back from a backup, against real Docker** | `TestAVolumeSurvivesBeingDestroyedAndRestored` |
+| A restored volume matches the backup exactly, rather than merging with what was there | `TestARestoredVolumeMatchesTheBackupExactly` |
+| A volume tarball is encrypted, and the files in it do not appear in the backup | `TestARealVolumeTarballIsEncrypted` |
+| **A volume the release has not declared safe is read with its services stopped** | `TestAColdVolumeIsReadWithItsServicesStopped` |
+| A volume is only ever read live because the release declared `consistency: hot` | `TestHotIsOnlyEverWhatTheManifestDeclared` |
+| **Restoring into a volume is refused while a service that mounts it runs, named by service** | `TestRestoringIntoARunningVolumeIsRefusedByName` |
+| **A paused container counts as holding the volume open, for the restore refusal and for the capture** | `TestRestoringIntoAPausedVolumeIsRefused` |
+| A paused service is stopped before its volume is read, so `cold` means cold | `TestAPausedServiceIsStoppedBeforeItsVolumeIsRead` |
+| A backup that captured nothing is refused, even when volumes were in scope | `TestABackupWithNothingCapturedIsRefusedEvenWhenVolumesWereInScope` |
+| The two service-state predicates are conservative in opposite directions, so an unknown state refuses a restore and is never stopped | `TestTheTwoServiceStatePredicatesAreConservativeInOppositeDirections` |
+| An unhealthy container still counts as holding its volume open | `TestAnUnhealthyServiceStillOccupiesItsVolume` |
+| **After `Stop`, every runtime reports a state the manager reads as having released its volumes** — asserted against the fake and real Docker from one suite | `TestRuntimeContract_Compose/stop_releases_the_volumes_without_removing_the_services` |
+| `Stop` halts without removing, so `Start` has something to put back | `TestRuntimeContract_Compose/start_puts_back_what_stop_halted` |
+| Every runtime reports its volumes sorted, so two backups of an unchanged project record the same order | `TestRuntimeContract_Compose/the_project's_volumes_are_reported_sorted` |
+| A tarball a runtime produced is accepted by the same runtime, and is not empty | `TestRuntimeContract_Compose/a_captured_volume_restores_byte_for_byte` |
+| The helper container cannot write into the volume it is reading | `TestTheHelperCannotWriteIntoTheVolumeItIsReading` |
+| A bind mount is reported and never captured, so nobody is silently short a mount | `TestABindMountIsReportedAndNeverCaptured` |
+| A release cannot name a volume whose name would write outside the backup directory | `TestAVolumeNameThatWouldEscapeTheBackupIsRefused` |
+| The helper is read-only on the source and has no network, asserted on the argv that enforces it | `TestAVolumeIsReadThroughAReadOnlyMount` |
+| Resuming a stack after a backup uses `stop`/`start`, so a backup never recreates a container | `TestQuiescingUsesStopAndStartRatherThanDownAndUp` |
+| A restore scoped away from volumes does not decrypt them | `TestARestoreScopedAwayFromVolumesDoesNotTouchThem` |
+| A tar stream survives the pipe intact, rather than being re-terminated by a line scanner | `TestStdoutReceivesBytesTheLineScannerWouldHaveMangled` |
+| **A disk that fills mid-capture fails the command rather than storing a truncated tarball** | `TestAWriteFailureFailsTheCommandThatSucceeded` |
+| `--no-downtime` skips a volume and records it, rather than quietly taking a hot copy | `TestNoDowntimeSkipsRatherThanCapturingHot` |
+| A backup that would not fit is refused before anything is written or stopped, naming both figures | `TestABackupThatWillNotFitIsRefusedBeforeAnythingIsWritten` |
+| A failed capture starts the services back up, so a backup never becomes an outage | `TestAFailedCaptureStillStartsTheServicesBackUp` |
+| A backup of an already-stopped deployment succeeds, and does not start what nobody had running | `TestABackupOfAStoppedDeploymentSucceeds` |
+| An absent helper image fails with the command to pull it, not a Docker error | `TestAMissingHelperImageFailsWithThePullCommand` |
+| A release with no backup hook still produces a restorable backup | `TestAReleaseWithNoBackupHookStillProducesABackup` |
+| A backup with nothing in it is still a refusal | `TestABackupWithNoHookAndNoVolumesIsRefused` |
+| The manifest records what was captured, how, and what was not | `TestARealProjectsStorageIsRecordedAccurately` |
+| A backup holding volumes declares a schema an older manager refuses rather than half-restores | `TestAVolumeBackupDeclaresASchemaAnOlderManagerRefuses` |
+
 ### Backups that leave the machine
 
 A backup on the disk it protects is not a backup. These claims are about the

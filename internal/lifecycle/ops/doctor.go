@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -119,6 +120,15 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			d.checkServices(inst, rel),
 			d.checkHealth(inst, rel),
 		)
+		if d.Runtime != nil {
+			checks = append(checks,
+				d.checkVolumeHelperImage(inst, rel),
+				d.checkVolumeCoverage(inst, rel),
+			)
+			if d.Backup != nil {
+				checks = append(checks, d.checkBackupGrowth(inst, rel))
+			}
+		}
 	}
 
 	if d.Supervisor != nil {
@@ -1092,6 +1102,301 @@ func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
 					age.Round(time.Hour), stale)
 			}
 			return preflight.OK("%s, %s old", latest.ID, age.Round(time.Minute))
+		},
+	}
+}
+
+// checkVolumeHelperImage reports the volume helper image when it is not local.
+//
+// It exists for the machine that is about to lose its network, not the one that
+// already has: volumes are read through a container, so an air-gapped install
+// whose helper image was never pulled discovers it on backup night. Asking
+// while there is still a network to answer with is the entire point.
+//
+// A warning rather than a failure, matching runtime.images-local: needing a
+// pull is the normal state of a machine that has just been installed.
+// volumeHelperImageEnv is the variable an operator sets to override the image
+// volumes are read through.
+//
+// Spelled here rather than imported: the CLI owns the name and imports this
+// package, and the adapter that reads it is below this layer. Named in the
+// remedy regardless -- a diagnostic that says an image is wrong without saying
+// which knob set it leaves the operator hunting.
+const volumeHelperImageEnv = "MORZER_VOLUME_HELPER_IMAGE"
+
+func (d *Deps) checkVolumeHelperImage(inst domain.Installation, rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "backup.volume-helper",
+		Category:    preflight.CategoryBackup,
+		Description: "the volume helper image is available offline",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			capturer, ok := d.Runtime.(ports.VolumeCapturer)
+			if !ok {
+				return preflight.OK("the configured runtime does not capture volumes")
+			}
+			inspector, ok := d.Runtime.(ports.ImageInspector)
+			if !ok {
+				return preflight.OK("the configured runtime cannot inspect local images")
+			}
+
+			ref := capturer.HelperImage()
+
+			// The same rule the capture enforces, applied here so it
+			// is found now rather than during a backup. A runtime that
+			// cannot answer is not interrogated -- the pinning rule is
+			// this adapter's, not the port's.
+			if pinner, ok := d.Runtime.(interface{ HelperImagePinned() bool }); ok && !pinner.HelperImagePinned() {
+				return preflight.Fail(
+					fmt.Sprintf("unset %s to use the image this manager ships, or "+
+						"pin the one you want: `docker image inspect --format "+
+						"'{{index .RepoDigests 0}}' %s`", volumeHelperImageEnv, ref),
+					"the volume helper image %s is not pinned by digest, so every "+
+						"backup will refuse to capture volumes", ref)
+			}
+
+			present, err := inspector.HasImage(ctx, ref)
+			if err != nil {
+				return preflight.Warn("check that the Docker daemon is running: `docker info`",
+					"cannot tell whether %s is here: %s", shortRef(ref), domain.AsError(err).Message)
+			}
+			if !present {
+				return preflight.Warn(
+					fmt.Sprintf("run `docker pull %s` -- do it now rather than "+
+						"during a backup on a machine that has lost its network", ref),
+					"%s is not on this machine, so a backup cannot capture volumes",
+					shortRef(ref))
+			}
+			// The full pinned reference, not shortRef. Every other
+			// check abbreviates because it names several images for
+			// orientation; this one exists so an operator can copy the
+			// single identifier they must pull before going offline,
+			// and a digest they have to reconstruct is not that.
+			return preflight.OK("%s is local", ref)
+		},
+	}
+}
+
+// checkVolumeCoverage reports project storage no backup would capture.
+//
+// The question it answers is the one the whole volumes component exists for: is
+// there data in this deployment that a restore would not bring back. A vendor
+// who excluded a volume meant to, and a bind mount was never a candidate -- but
+// an operator should know both before they need to know them.
+func (d *Deps) checkVolumeCoverage(inst domain.Installation, rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "backup.volume-coverage",
+		Category:    preflight.CategoryBackup,
+		Description: "every named volume is covered by a backup",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			inspector, ok := d.Runtime.(ports.VolumeInspector)
+			if !ok {
+				return preflight.OK("the configured runtime does not report volumes")
+			}
+
+			cfg, err := d.runtimeConfig(rel, inst, "")
+			if err != nil {
+				return preflight.Warn("", "cannot resolve the project: %s",
+					domain.AsError(err).Message)
+			}
+			storage, err := inspector.Volumes(ctx, cfg)
+			if err != nil {
+				return preflight.Warn("", "cannot read the project's volumes: %s",
+					domain.AsError(err).Message)
+			}
+			// Anonymous volumes and declarations naming a volume the
+			// project does not have are both reported below, so a
+			// project holding only those must not short-circuit here:
+			// a deployment whose data lives entirely on anonymous
+			// volumes would otherwise get a clean bill of health.
+			if len(storage.Volumes) == 0 && len(storage.Binds) == 0 &&
+				len(storage.Anonymous) == 0 && len(rel.Manifest.Backup.Volumes) == 0 {
+				return preflight.OK("the project declares no volumes")
+			}
+
+			var excluded, binds []string
+			for _, vol := range storage.Volumes {
+				if rel.Manifest.Backup.Consistency(vol.Name) == domain.VolumeExclude {
+					excluded = append(excluded, vol.Name)
+				}
+			}
+			for _, bind := range storage.Binds {
+				binds = append(binds, bind.Source)
+			}
+
+			var notes []string
+			if len(excluded) > 0 {
+				notes = append(notes, fmt.Sprintf("%s excluded by the release",
+					strings.Join(excluded, ", ")))
+			}
+			if len(binds) > 0 {
+				notes = append(notes, fmt.Sprintf("%s are bind mounts and are never captured",
+					strings.Join(binds, ", ")))
+			}
+
+			// An anonymous volume cannot be captured at all, and the
+			// remedy belongs to the vendor rather than the operator --
+			// so the operator has to be able to see it in order to ask.
+			var anon []string
+			for _, a := range storage.Anonymous {
+				anon = append(anon, fmt.Sprintf("%s at %s", a.Service, a.Target))
+			}
+			if len(anon) > 0 {
+				notes = append(notes, fmt.Sprintf(
+					"%s mount anonymous volumes, which no backup can capture",
+					strings.Join(anon, ", ")))
+			}
+
+			// A declaration naming a volume the project does not have
+			// is a vendor typo that silently does nothing: `uplods:
+			// {consistency: exclude}` leaves the real pgdata being
+			// captured, and nothing says so.
+			declared := map[string]bool{}
+			for _, vol := range storage.Volumes {
+				declared[vol.Name] = true
+			}
+			var phantom []string
+			for name := range rel.Manifest.Backup.Volumes {
+				if name != "" && !declared[name] {
+					phantom = append(phantom, name)
+				}
+			}
+			sort.Strings(phantom)
+			if len(phantom) > 0 {
+				notes = append(notes, fmt.Sprintf(
+					"the release declares backup.volumes for %s, which this project "+
+						"does not define", strings.Join(phantom, ", ")))
+			}
+
+			captured := len(storage.Volumes) - len(excluded)
+			if len(notes) == 0 {
+				return preflight.OK("%d named volume(s) captured", captured)
+			}
+
+			// "0 of 0 named volumes captured" is what a project with
+			// nothing but bind mounts used to report, which reads as a
+			// failure to capture rather than as nothing to capture.
+			coverage := fmt.Sprintf("%d of %d named volume(s) captured",
+				captured, len(storage.Volumes))
+			if len(storage.Volumes) == 0 {
+				coverage = "this project declares no named volumes"
+			}
+
+			return preflight.Warn(
+				"an excluded volume is the vendor saying its backup hook owns that "+
+					"data; a bind mount is yours to copy. Make sure something does.",
+				"%s -- %s", coverage, strings.Join(notes, "; "))
+		},
+	}
+}
+
+// checkBackupGrowth warns when the retention count will not fit.
+//
+// Retention counts backups, not bytes, and that was fine for a directory of
+// database dumps. A hundred gigabytes of uploads copied nightly is a different
+// shape of problem, and the first sign of it should not be a backup that fails
+// on ENOSPC at 3am.
+func (d *Deps) checkBackupGrowth(inst domain.Installation, rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "backup.growth",
+		Category:    preflight.CategoryBackup,
+		Description: "the retention policy fits on this disk",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			backups, err := d.Backup.List(ctx)
+			if err != nil || len(backups) == 0 {
+				return preflight.OK("no backups to measure yet")
+			}
+
+			// The largest, not the mean. Retention keeps N backups and
+			// the question is whether N of them fit; averaging over a
+			// history that predates the volumes component would answer
+			// a question about the past.
+			var largest int64
+			for _, b := range backups {
+				if b.Size > largest {
+					largest = b.Size
+				}
+			}
+			if largest == 0 {
+				return preflight.OK("no backups to measure yet")
+			}
+
+			keep := inst.RetentionBackups(rel.Manifest)
+
+			// Saturating, the way checkVolumeSpace does it. A
+			// hundred-gigabyte backup times a retention count in the
+			// hundreds overflows int64, and a wrapped product comes out
+			// negative -- which makes the shortfall below negative too,
+			// so a policy no disk on earth could satisfy compares as
+			// satisfied and this check reports ok. That is the one
+			// direction it must never fail in.
+			required := int64(math.MaxInt64)
+			if keep > 0 && largest <= math.MaxInt64/int64(keep) {
+				required = largest * int64(keep)
+			}
+
+			var held int64
+			for _, b := range backups {
+				if b.Size <= 0 {
+					continue
+				}
+				if held > math.MaxInt64-b.Size {
+					held = math.MaxInt64
+					break
+				}
+				held += b.Size
+			}
+			free, err := d.freeSpace(d.Paths.BackupsDir())
+			if err != nil {
+				// Not OK: nothing was measured, so nothing was
+				// checked, and a green line here reads as "retention
+				// fits" to whoever is deciding whether to intervene.
+				return preflight.Warn(
+					"check the backup directory is readable; until it is, "+
+						"nothing is watching this disk fill up",
+					"cannot measure free space on %s: %s",
+					d.Paths.BackupsDir(), err)
+			}
+
+			// Two ways this disk runs out, and they are different
+			// questions.
+			//
+			// The first is the policy as a whole: what retention still
+			// has to make room for, beyond what is already here.
+			//
+			// The second is the very next backup on its own. Pruning
+			// happens after a backup is written and never before -- the
+			// new copy has to be on the disk beside the old ones before
+			// retention can remove any of them -- so a retention set
+			// that is already full needs a whole backup of headroom
+			// regardless. Reporting only the first meant that the
+			// steady state, which is where an installation spends its
+			// entire life, was the state this check could not see: it
+			// said ok the night before ENOSPC.
+			remaining := required - held
+			switch {
+			case remaining > free:
+				return preflight.Warn(
+					"lower retention (`policy.retain_backups`), push to a target and "+
+						"prune locally, or exclude a large volume in the release manifest",
+					"keeping %d backups of %s needs about %s more than the %s free on %s",
+					keep, domain.ByteSize(largest), domain.ByteSize(remaining-free),
+					domain.ByteSize(free), d.Paths.BackupsDir())
+			case free < largest:
+				return preflight.Warn(
+					"free space, push to a target and prune locally, or exclude a "+
+						"large volume in the release manifest",
+					"the %d backups retained already fit, but the next backup of about "+
+						"%s does not: only %s is free on %s, and a backup is written "+
+						"in full before the oldest one is pruned",
+					keep, domain.ByteSize(largest), domain.ByteSize(free),
+					d.Paths.BackupsDir())
+			default:
+				return preflight.OK("%d backups of up to %s fit in the %s free",
+					keep, domain.ByteSize(largest), domain.ByteSize(free))
+			}
 		},
 	}
 }

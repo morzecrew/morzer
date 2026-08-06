@@ -140,6 +140,19 @@ var scalarSchemas = map[reflect.Type]map[string]any{
 	},
 }
 
+// requiredFields lists, per struct type, the keys the loader refuses to see
+// missing. Nothing in the Go shape carries that -- an absent string and an
+// empty one decode alike -- so it is stated here, next to the type it
+// constrains.
+//
+// backup.volumes is the case: a volume listed with no consistency is refused
+// by Manifest.Validate, because leaving the volume out of the map is already
+// how a vendor asks for the default. Without this the editor would accept an
+// entry the manager rejects.
+var requiredFields = map[reflect.Type][]string{
+	reflect.TypeOf(domain.VolumeSpec{}): {"consistency"},
+}
+
 // schemaFor renders a Go type as a JSON Schema node.
 func schemaFor(t reflect.Type) map[string]any {
 	for t.Kind() == reflect.Pointer {
@@ -209,6 +222,16 @@ func stringSchema(t reflect.Type) map[string]any {
 			values[i] = string(pt)
 		}
 		out["enum"] = values
+	case reflect.TypeOf(domain.VolumeCold):
+		values := make([]string, len(domain.VolumeConsistencies))
+		for i, c := range domain.VolumeConsistencies {
+			values[i] = string(c)
+		}
+		out["enum"] = values
+		out["description"] = "How this volume may be read. `cold` is the default " +
+			"and needs no declaration: the services mounting it are stopped for " +
+			"the copy. `hot` claims a copy taken while they run is usable. " +
+			"`exclude` keeps the manager out of it entirely."
 	case reflect.TypeOf(domain.PortSpec("")):
 		out["description"] = "A port number, or a {{ .Parameters.<name> }} reference."
 		out["examples"] = []string{"18080", "{{ .Parameters.http_port }}"}
@@ -245,7 +268,7 @@ func structSchema(t reflect.Type) map[string]any {
 	}
 	sort.Strings(names)
 
-	return map[string]any{
+	out := map[string]any{
 		"type":       "object",
 		"properties": props,
 		// The loader rejects an unknown field outright, so the schema
@@ -253,6 +276,10 @@ func structSchema(t reflect.Type) map[string]any {
 		// refuses would be worse than no editor support at all.
 		"additionalProperties": false,
 	}
+	if req, ok := requiredFields[t]; ok {
+		out["required"] = req
+	}
+	return out
 }
 
 func isAny(t reflect.Type) bool {

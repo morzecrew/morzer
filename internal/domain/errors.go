@@ -73,6 +73,19 @@ var (
 	ErrToolMissing         = errors.New("required tool missing")
 	ErrToolIncompatible    = errors.New("required tool version incompatible")
 	ErrOperationIncomplete = errors.New("a previous operation did not finish")
+
+	// ErrMeasureIncomplete marks a measurement that did not run, as opposed
+	// to one that ran and could not produce an answer.
+	//
+	// The distinction exists for the backup space check, and only the
+	// permissive side is marked. A measurement the manager could not even
+	// attempt says nothing about the volume and may recur or not; a
+	// measurement that ran and returned something unusable is a property of
+	// this helper in this environment, and will say the same thing
+	// tomorrow. The check refuses on anything it does not recognise, so a
+	// failure mode nobody has thought of yet -- and every other
+	// implementation of the port -- lands on the safe side by default.
+	ErrMeasureIncomplete = errors.New("the measurement did not run")
 )
 
 // Error is the manager's structured error. Message says what happened; Hint
@@ -104,6 +117,61 @@ func (e *Error) WithHint(format string, args ...any) *Error {
 	c := *e
 	c.Hint = fmt.Sprintf(format, args...)
 	return &c
+}
+
+// WithHintFrom returns a copy carrying the cause's remedy, when the cause has
+// one and this error does not.
+//
+// Wrapping is how an error gains context on the way out, and AsError reports
+// the outermost structured error -- so a wrap with no hint of its own silently
+// discards the one sentence that told the operator what to do. That is not
+// hypothetical: "the volume helper image is not on this machine" carried
+// `docker pull <ref>`, and wrapping it as "cannot capture volume uploads" left
+// an air-gapped operator with a diagnosis and no remedy.
+func (e *Error) WithHintFrom(cause error) *Error {
+	if e.Hint != "" || cause == nil {
+		return e
+	}
+	hint := firstHint(cause)
+	if hint == "" {
+		return e
+	}
+	c := *e
+	c.Hint = hint
+	return &c
+}
+
+// firstHint walks a cause chain for the nearest remedy.
+//
+// The whole chain, not the outermost *Error: errors.As -- what AsError uses --
+// stops at the first structured error it meets, so a hint behind an
+// intermediate wrap that has none is discarded. Two wraps is the normal depth
+// once an adapter's error passes through a capture step on its way to the
+// operator, which is precisely the case WithHintFrom exists to survive.
+//
+// The []error branch is not optional: every constructed Error wraps
+// `fmt.Errorf("%w: %w", sentinel, cause)`, so the cause hangs off a
+// multi-unwrap node and a single-Unwrap walk would never reach it.
+func firstHint(err error) string {
+	for err != nil {
+		if e, ok := err.(*Error); ok && e.Hint != "" {
+			return e.Hint
+		}
+		switch u := err.(type) {
+		case interface{ Unwrap() error }:
+			err = u.Unwrap()
+		case interface{ Unwrap() []error }:
+			for _, w := range u.Unwrap() {
+				if hint := firstHint(w); hint != "" {
+					return hint
+				}
+			}
+			return ""
+		default:
+			return ""
+		}
+	}
+	return ""
 }
 
 // WithOp returns a copy tagged with the operation and step it arose in. The

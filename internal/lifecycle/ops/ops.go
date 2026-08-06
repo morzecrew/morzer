@@ -81,6 +81,12 @@ type Deps struct {
 	// Now is the clock. Injectable for the same reason.
 	Now func() time.Time
 
+	// FreeSpace reports the bytes available on the filesystem holding a
+	// path. Injectable for the same reason as the clock: a diagnostic whose
+	// verdict depends on the host's real disk is a diagnostic whose test
+	// passes or fails on which machine ran it.
+	FreeSpace func(string) (int64, error)
+
 	// ManagerPath is the absolute path of this binary, embedded in the
 	// supervisor units so they do not depend on PATH.
 	ManagerPath string
@@ -142,6 +148,14 @@ type Options struct {
 // file order.
 func NewOperationID(t time.Time) string {
 	return "op_" + ulid.MustNew(ulid.Timestamp(t), rand.Reader).String()
+}
+
+// freeSpace reports the bytes available where backups are written.
+func (d *Deps) freeSpace(path string) (int64, error) {
+	if d.FreeSpace != nil {
+		return d.FreeSpace(path)
+	}
+	return atomicfs.FreeSpace(path)
 }
 
 func (d *Deps) now() time.Time {

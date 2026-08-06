@@ -14,7 +14,9 @@ morzer backup verify <id>
 
 The manager does not know how to back your product up — it coordinates the
 release's own `backup` hook, wraps what that produces in a self-describing
-manifest, and verifies the checksums by re-reading what was written.
+manifest, and verifies the checksums by re-reading what was written. It does
+know how to read the project's **volumes**, which is the part the hook usually
+forgets.
 
 ## What a backup contains
 
@@ -22,12 +24,229 @@ manifest, and verifies the checksums by re-reading what was written.
 | --- | --- |
 | `database` | the release's backup hook |
 | `files` | the release's backup hook |
+| `volumes` | the project's named volumes, read by the manager |
 | `config` | the rendered configuration |
 | `secrets` | the encrypted secret state, as it is on disk |
 | `manifest` | the release identity, schema version, checksums, installation id |
 
 The manifest is what makes a backup self-describing: which release took it,
 which database schema was current, and which installation it belongs to.
+
+## Volumes
+
+A backup hook is usually written by somebody thinking about the database. They
+do not think about the uploads volume, the generated thumbnails, the certificate
+store, or the queue's spool directory — and nobody notices until a restore
+produces a working database and an application with no files.
+
+So the manager reads the project's named volumes itself. Each becomes one
+component.
+
+Every example below is the same deployment: four named volumes — `uploads`,
+`caddy_data`, `spool` and `pgdata` — and one bind mount at `/srv/legacy`. The
+release excludes `pgdata`, which is why three volumes end up in the backup and
+the bind mount is not one of them:
+
+```
+20260805T174743Z/
+  backup.json
+  database.sql.age            from the hook
+  volumes/caddy_data.tar.age  read by the manager
+  volumes/spool.tar.age
+  volumes/uploads.tar.age
+```
+
+This also means a release that ships **no backup hook at all** can still produce
+a restorable backup, which it previously could not — as long as there is
+something for the manager to capture. A release with no hook *and* no named
+volume produces no backup: `morzer backup` refuses rather than writing a
+directory holding your configuration and none of your product's data. Bind
+mounts and excluded volumes do not count towards it.
+
+!!! warning "This does not replace your database backup"
+
+    Copying a volume while something is writing to it gives you a
+    **crash-consistent** copy — byte-for-byte what a power cut would have left,
+    not what a clean shutdown would have. Postgres will usually replay its WAL
+    and come up, because that is what it is built to do. *Usually* is not a
+    property a restore should have, and other engines vary.
+
+    Anything with a transaction log stays the backup hook's job. Volumes cover
+    what the hook does not.
+
+### Cold by default, hot only when the release says so
+
+A volume the release has **not** classified is captured **cold**: the services
+that mount it are stopped for the duration of the copy, and started again
+afterwards. Nothing is writing, so the copy is exactly what a clean shutdown
+would have left.
+
+A release can declare that a volume is safe to read live:
+
+```yaml
+backup:
+  volumes:
+    uploads:    { consistency: hot }     # write-once files
+    caddy_data: { consistency: hot }
+    pgdata:     { consistency: exclude } # the backup hook owns this
+```
+
+Nothing is said about `spool`, so `spool` is the one this deployment stops for.
+
+`hot` is a claim the **vendor** makes about their own product, not a guess the
+manager makes on their behalf — which is why the default is the slow one. The
+backup manifest records which claim applied to each volume, so a post-incident
+review can see what was promised.
+
+Only the services that mount a cold volume are stopped, and they are all stopped
+once rather than once per volume — so capturing a certificate store stops the
+web server, not the database. Services that are already stopped are left alone:
+a backup never starts something you had deliberately taken down.
+
+A **paused** service is not stopped, but it is not ignored either. It still
+holds the volume open, frozen mid-write, so it is stopped for the copy like a
+running one — and comes back running rather than paused.
+
+!!! tip "If the pause is longer than you expect"
+
+    A container is stopped with `SIGTERM` and then killed after two minutes. A
+    process that does not handle `SIGTERM` — a shell loop, or anything running
+    as PID 1 without a signal handler — never sees it, so the stop waits out the
+    whole two minutes before killing it.
+
+    That cost is per backup, not per volume. If a cold capture takes minutes
+    where it should take seconds, the service is ignoring `SIGTERM`, and
+    `init: true` or a `stop_signal` in the release's Compose file is the fix.
+
+### When you cannot afford the downtime
+
+```sh
+morzer backup --no-downtime
+```
+
+`--no-downtime` skips volumes that would need their services stopped, and
+**names them in the backup manifest** rather than capturing them live. They are
+never silently downgraded to a hot copy: that would be the manager making the
+vendor's claim for them, which is the one thing this design refuses to do.
+
+`morzer backup` tells you either way. The ordinary run, which stops whatever
+mounts `spool` for as long as the copy takes:
+
+```
+backup 20260805T174743Z created (1.4GiB), 3 volume(s): 1 cold, 2 hot,
+  not captured: pgdata, /srv/legacy
+```
+
+and the same deployment with the flag, which stops nothing and says what that
+cost:
+
+```
+backup 20260805T181102Z created (1.2GiB), 2 volume(s) captured hot,
+  not captured: pgdata, spool, /srv/legacy
+```
+
+### What is never captured
+
+- **Bind mounts.** A bind mount points at an arbitrary host path — it can be
+  `/`, it can be a network mount, it can be shared with something the manager
+  knows nothing about. They are reported in the backup manifest and in
+  `morzer doctor`, never copied. Copying one is yours to arrange.
+- **Volumes the release excludes.** `consistency: exclude` is the vendor saying
+  their backup hook owns that data.
+- **`tmpfs` mounts**, which hold nothing that outlives the container.
+- **Anonymous volumes** — a mount written `- /data` rather than `- data:/data`.
+  These *do* persist, which is what makes them worth reporting: the runtime
+  invents a name that changes when the container is recreated, so there is no
+  stable target a restore could write back into. `morzer doctor` names them, and
+  the remedy belongs to the vendor — give the volume a name.
+
+`morzer doctor` reports all of this, so you find out while you can do something
+about it:
+
+```text
+[warn] every named volume is covered by a backup
+       3 of 4 named volume(s) captured -- pgdata excluded by the release;
+       /srv/legacy are bind mounts and are never captured
+       → an excluded volume is the vendor saying its backup hook owns that
+         data; a bind mount is yours to copy. Make sure something does.
+```
+
+Three of four, not two: `doctor` counts what a backup is configured to capture,
+and `--no-downtime` is a decision made per run rather than something the
+deployment records. A volume that the flag skips still counts as covered here.
+
+### Restoring a volume
+
+A volume is **replaced**, not merged: after a restore it holds exactly what the
+backup held. A volume left holding files the backup does not contain, beside a
+database restored to an exact moment, is how a record without its file is made.
+
+The volume is emptied *before* the backup is extracted into it, so a failure
+partway through leaves neither the old contents nor all of the new ones, and
+there is nothing to roll back to. The backup is verified and decrypted before
+anything is emptied, so the usual answer to a failure here is to run the same
+restore again.
+
+Restoring into a volume is **refused while any service that mounts it still
+holds it open**, named by service and by the state it is in — untarring into a
+volume a container has open is how a restore corrupts the thing it was
+restoring. Paused counts as holding it open. `morzer restore` stops the services
+for you, so seeing this message means something was still up.
+
+### The helper image
+
+Volumes are read and written through a small container (`busybox`, pinned by
+digest) rather than through the host's storage directory, which is an
+implementation detail and is unreadable under a rootless or remote daemon.
+
+That is one more image to have locally. `morzer doctor` reports it when it is
+absent, with the command to pull it — ask **before** you disconnect the machine,
+not during a backup:
+
+```sh
+docker pull busybox@sha256:...   # doctor prints the exact reference
+```
+
+If your registry does not carry busybox, name a different image. Any image with
+a POSIX `tar`, `du`, `find`, `wc` and `sh` will do — `find` and `wc` are for the
+size check, which counts a volume's entries to bound what `tar` adds on top of
+them. An image missing them measures nothing, and a backup that cannot be
+measured is refused rather than started:
+
+```sh
+MORZER_VOLUME_HELPER_IMAGE=registry.internal/toolbox@sha256:... morzer backup
+```
+
+An environment variable rather than a setting, because the backup that needs it
+is usually the scheduled one — add it to the timer's unit with a drop-in:
+
+```ini
+# /etc/systemd/system/demo-backup.service.d/helper-image.conf
+[Service]
+Environment=MORZER_VOLUME_HELPER_IMAGE=registry.internal/toolbox@sha256:...
+```
+
+Pin it by digest. It runs with your data mounted.
+
+See [installing offline](installing-offline.md).
+
+### Size
+
+Volume backups are much larger than database dumps, and retention counts
+backups rather than bytes. Two things follow:
+
+- A backup that would not fit is **refused before anything is written or
+  stopped**, naming both figures — `needs about 140GiB and 60GiB is free` is a
+  better message than `no space left on device` halfway through.
+- A volume the manager cannot **measure** is refused the same way and for the
+  same reason — starting the copy anyway means finding out it does not fit once
+  the services are already stopped. The message names the volume and the remedy,
+  which is nearly always the helper image. A measurement that simply did not run
+  is not this case: that volume goes unbudgeted and the backup is still taken.
+- `morzer doctor` warns when keeping `retention.backups` of them will not fit.
+
+If a volume is large enough for this to bite, the answers are lower retention,
+pushing to a target and pruning locally, or a vendor `exclude`.
 
 ## Everything in a backup is encrypted except its manifest
 

@@ -158,3 +158,59 @@ func TestHookEnvVarsOmitsWhatIsNotSet(t *testing.T) {
 		t.Errorf("the product is not exported: %v", vars["DEMO_PRODUCT"])
 	}
 }
+
+// The two service-state predicates are conservative in opposite directions, and
+// that is the point rather than an inconsistency.
+//
+// OccupiesVolume decides whether writing is safe, so an unrecognised state must
+// count as occupied and refuse. Quiescible decides whether a service can be
+// stopped *and put back*, so an unrecognised state must not be touched.
+// Collapsing them into one predicate is how `removing` -- which occupies a
+// volume but cannot be started again -- turned a transient state into a failed
+// backup claiming the deployment was down.
+func TestTheTwoServiceStatePredicatesAreConservativeInOppositeDirections(t *testing.T) {
+	cases := []struct {
+		state      string
+		occupies   bool
+		quiescible bool
+	}{
+		{ports.StateRunning, true, true},
+		{ports.StatePaused, true, true},
+		{ports.StateRestarting, true, true},
+		{ports.StateRemoving, true, false},
+		{ports.StateExited, false, false},
+		{ports.StateCreated, false, false},
+		{ports.StateDead, false, false},
+		{"", false, false},
+		{"  RUNNING  ", true, true},
+		// A state no version of this manager has seen.
+		{"hibernating", true, false},
+	}
+
+	for _, c := range cases {
+		s := ports.ServiceState{Name: "app", State: c.state}
+		if got := s.OccupiesVolume(); got != c.occupies {
+			t.Errorf("OccupiesVolume(%q) = %v, want %v -- an unrecognised state "+
+				"must refuse a restore", c.state, got, c.occupies)
+		}
+		if got := s.Quiescible(); got != c.quiescible {
+			t.Errorf("Quiescible(%q) = %v, want %v -- an unrecognised state "+
+				"must not be stopped", c.state, got, c.quiescible)
+		}
+	}
+}
+
+// An unhealthy container still holds its files open. Running() is about whether
+// the product is serving; OccupiesVolume is about whether its data can be
+// written underneath it, and they are not the same question.
+func TestAnUnhealthyServiceStillOccupiesItsVolume(t *testing.T) {
+	s := ports.ServiceState{Name: "app", State: ports.StateRunning, Health: ports.HealthUnhealthy}
+
+	if s.Running() {
+		t.Fatal("the fixture is not the state under test")
+	}
+	if !s.OccupiesVolume() {
+		t.Error("an unhealthy container was treated as having released its volume, " +
+			"so a restore would untar over files it still holds open")
+	}
+}

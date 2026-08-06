@@ -41,7 +41,14 @@ const ManifestFileName = ports.BackupManifestFileName
 // and the restore uses the file as it finds it. That is the compatibility rule
 // this project applies everywhere -- a new manager reads an old backup, an old
 // manager refuses a new one clearly.
-const BackupManifestSchemaVersion = 2
+//
+// 3 adds volume components, and the bump is what makes an older manager refuse
+// rather than half-restore one. An older manager reads a schema-3 backup, does
+// not know what ComponentVolumes means, decrypts the tarballs into the staging
+// directory and hands them to a restore hook that was never told about them --
+// so the database comes back, the uploads do not, and nothing says so. A
+// refusal naming the manager version is the only honest answer.
+const BackupManifestSchemaVersion = 3
 
 // Engine is the hook-coordinating backup engine.
 type Engine struct {
@@ -57,11 +64,37 @@ type Engine struct {
 	newID          func() string
 	now            func() time.Time
 
+	// freeSpace reports the bytes available where backups are written.
+	// Injectable for the same reason as the clock: a space check whose
+	// verdict depends on the host's real disk is a check whose test passes
+	// or fails on which machine happened to run it.
+	freeSpace func(string) (int64, error)
+
 	// recipients answers who may read a backup. It is a function rather
 	// than a list because the answer changes: `secret recipients add` is a
 	// command, and a backup taken after it must be readable by the key it
 	// added.
 	recipients func(context.Context) ([]string, error)
+
+	// runtime reads the project's volumes. Nil in a build or a test that
+	// wires none, in which case a backup covers what the hook produces and
+	// nothing else -- exactly as it did before volumes existed.
+	runtime ports.Runtime
+
+	// runtimeConfig identifies the project whose volumes are read.
+	runtimeConfig ports.RuntimeConfig
+
+	// allowDowntime permits stopping services to read a volume that the
+	// release has not declared safe to read live.
+	//
+	// On by default. An undeclared volume captured hot is a claim the
+	// manager would be making on the vendor's behalf, so the choice is
+	// between stopping and skipping -- and a backup that quietly skipped
+	// the uploads is the failure this whole component exists to prevent.
+	allowDowntime bool
+
+	// stopTimeoutOverride replaces DefaultStopTimeout when non-zero.
+	stopTimeoutOverride time.Duration
 }
 
 // Config wires the engine. Every field is required except the clock and ID
@@ -80,8 +113,39 @@ type Config struct {
 	// rather than writing a plaintext one -- see Create.
 	Recipients func(context.Context) ([]string, error)
 
+	// Runtime reads and writes the project's volumes, and stops the
+	// services that mount them.
+	//
+	// Optional: without it a backup covers what the hook produces and the
+	// files the manager owns, which is what it covered before volumes were
+	// a component. Volume capture additionally needs the runtime to
+	// implement ports.VolumeInspector and ports.VolumeCapturer.
+	Runtime ports.Runtime
+
+	// RuntimeConfig identifies the Compose project. Required alongside
+	// Runtime.
+	RuntimeConfig ports.RuntimeConfig
+
+	// AllowDowntime permits stopping services to read an undeclared
+	// volume. See Engine.allowDowntime.
+	AllowDowntime bool
+
+	// StopTimeout is how long a service gets to shut down cleanly before it
+	// is killed, when one is stopped to read a volume. Zero uses
+	// DefaultStopTimeout.
+	//
+	// Injectable for the same reason as the clock: it is the dominant cost
+	// of a container test, because a fixture whose PID 1 ignores SIGTERM
+	// waits the whole period out every time.
+	StopTimeout time.Duration
+
 	NewID func() string
 	Now   func() time.Time
+
+	// FreeSpace reports the bytes available on the filesystem holding a
+	// path. Injectable for the same reason as the clock; see
+	// Engine.freeSpace. Zero uses the real filesystem.
+	FreeSpace func(string) (int64, error)
 }
 
 func New(cfg Config) *Engine {
@@ -94,9 +158,18 @@ func New(cfg Config) *Engine {
 		newID:          cfg.NewID,
 		now:            cfg.Now,
 		recipients:     cfg.Recipients,
+		freeSpace:      cfg.FreeSpace,
+		runtime:        cfg.Runtime,
+		runtimeConfig:  cfg.RuntimeConfig,
+		allowDowntime:  cfg.AllowDowntime,
+
+		stopTimeoutOverride: cfg.StopTimeout,
 	}
 	if e.now == nil {
 		e.now = time.Now
+	}
+	if e.freeSpace == nil {
+		e.freeSpace = atomicfs.FreeSpace
 	}
 	if e.newID == nil {
 		e.newID = func() string { return e.now().UTC().Format("20060102T150405Z") }
@@ -112,15 +185,34 @@ var _ ports.BackupEngine = (*Engine)(nil)
 // hook choose the location would put retention and disk accounting outside the
 // manager's reach, which is most of what it is here to provide.
 func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[string]string) (ports.BackupRef, error) {
-	spec, ok := e.release.Manifest.Operation(domain.OpBackup)
-	if !ok {
-		return ports.BackupRef{}, domain.BackupError(domain.ErrUnsupported,
-			"this release declares no backup operation").
-			WithHint("add a `backup` entry under `operations` in the release manifest")
+	components := scope.Components
+	if len(components) == 0 {
+		components = ports.AllComponents
 	}
-	if spec.Kind != domain.OperationKindHook {
+
+	spec, hasHook := e.release.Manifest.Operation(domain.OpBackup)
+	if hasHook && spec.Kind != domain.OperationKindHook {
 		return ports.BackupRef{}, domain.BackupError(domain.ErrUnsupported,
 			"the backup operation must be a hook, not %q", spec.Kind)
+	}
+
+	// A release with no backup hook can still produce a restorable backup,
+	// as long as there is something to put in it. That is the whole point
+	// of volumes being a component the manager can read for itself: an
+	// operator running a vendor who never wrote the hook used to have
+	// `morzer backup` and nothing behind it.
+	//
+	// Nothing to capture at all is still a refusal, because a directory
+	// containing only a manifest is not a backup and somebody would
+	// eventually try to restore it.
+	_, canCapture := e.volumeSupport()
+	wantVolumes := canCapture && componentSelected(components, ports.ComponentVolumes)
+	if !hasHook && !wantVolumes {
+		return ports.BackupRef{}, domain.BackupError(domain.ErrUnsupported,
+			"this release declares no backup operation and no volumes are in scope").
+			WithHint("add a `backup` entry under `operations` in the release manifest, " +
+				"or include the `volumes` component so the manager captures the " +
+				"project's named volumes itself")
 	}
 
 	id := e.newID()
@@ -132,42 +224,106 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		return ports.BackupRef{}, err
 	}
 
-	components := scope.Components
-	if len(components) == 0 {
-		components = ports.AllComponents
+	// A failed backup leaves nothing useful behind, and a partial backup
+	// directory that looks like a backup is worse than no backup at all --
+	// someone will eventually try to restore it.
+	//
+	// Overwriting, not just unlinking. What is in the directory at this
+	// point is plaintext: the hook's database dump and the volume tarballs,
+	// before encryption. The success path already overwrites exactly these
+	// bytes as it encrypts each one, so unlinking them here would leave a
+	// failed backup's product data more recoverable from free blocks than a
+	// successful one's.
+	fail := func(err error) (ports.BackupRef, error) {
+		_ = atomicfs.RemoveWithOverwrite(dir)
+		return ports.BackupRef{}, err
 	}
 
-	env := e.hookEnv(ports.PhaseBackup, dir)
-	env.Extra = map[string]string{
-		prefixed(e.installation.Product, "BACKUP_ID"):         id,
-		prefixed(e.installation.Product, "BACKUP_COMPONENTS"): joinComponents(components),
-		prefixed(e.installation.Product, "BACKUP_REASON"):     scope.Reason,
+	var records []ports.ComponentRecord
+	var schemaAtBackup int
+
+	// Decided before the hook runs, not after. Decision 8 promises that a
+	// backup which will not fit is refused "before anything is written", and
+	// the hook's database dump lands on the very disk the space check is
+	// about: measuring afterwards meant an operator whose disk was too small
+	// paid for a full pg_dump before being told so, and got the refusal with
+	// the dump still occupying the space it was refused for.
+	//
+	// Only the decision moves. The copy itself stays after the hook, because
+	// a cold capture stops services and the hook has to run against a stack
+	// that is up.
+	var capture volumeCapture
+	if wantVolumes {
+		planned, planErr := e.planVolumeCapture(ctx)
+		if planErr != nil {
+			return fail(planErr)
+		}
+		capture = planned
 	}
 
-	outcome, err := e.hooks.Run(ctx, e.release, spec.Command, env, spec.Timeout.Or(60*time.Minute))
-	if err != nil {
-		// A failed backup leaves nothing useful behind, and a partial
-		// backup directory that looks like a backup is worse than no
-		// backup at all -- someone will eventually try to restore it.
-		_ = atomicfs.RemoveAll(dir)
-		return ports.BackupRef{}, domain.BackupError(err, "the backup hook failed").
-			WithHint("the product's backup hook reported a failure; its output is in the log")
+	if hasHook {
+		env := e.hookEnv(ports.PhaseBackup, dir)
+		env.Extra = map[string]string{
+			prefixed(e.installation.Product, "BACKUP_ID"):         id,
+			prefixed(e.installation.Product, "BACKUP_COMPONENTS"): joinComponents(components),
+			prefixed(e.installation.Product, "BACKUP_REASON"):     scope.Reason,
+		}
+
+		outcome, err := e.hooks.Run(ctx, e.release, spec.Command, env, spec.Timeout.Or(60*time.Minute))
+		if err != nil {
+			return fail(domain.BackupError(err, "the backup hook failed").
+				WithHint("the product's backup hook reported a failure; " +
+					"its output is in the log"))
+		}
+		schemaAtBackup = outcome.Result.SchemaVersion
+
+		hookRecords, err := recordArtifacts(dir, outcome.Result.Artifacts)
+		if err != nil {
+			return fail(err)
+		}
+		records = append(records, hookRecords...)
+	}
+
+	// The copy, after the hook: a cold capture stops services and the hook
+	// has to run against a stack that is up. The hook is authoritative for
+	// anything with a transaction log; volumes cover what it does not.
+	var uncaptured []ports.UncapturedVolume
+	var capturedVolumes int
+	if wantVolumes {
+		// What the hook wrote goes into the space check the copy makes
+		// for itself: it is on the disk now, it is sizeable now, and
+		// encryption will duplicate it.
+		volumeRecords, skipped, err := e.captureVolumes(ctx, dir, capture, largestComponent(records))
+		if err != nil {
+			return fail(err)
+		}
+		records = append(records, volumeRecords...)
+		uncaptured = skipped
+		capturedVolumes = len(volumeRecords)
+	}
+
+	// The refusal is about what was captured, not about what was intended.
+	//
+	// The gate above passes when volumes are merely *in scope*, which they
+	// always are -- so a release with no hook whose project keeps its data
+	// on bind mounts got as far as here and produced a backup holding the
+	// configuration and nothing of the product. `backup list` offers that,
+	// and somebody eventually restores it.
+	if !hasHook && capturedVolumes == 0 {
+		return fail(domain.BackupError(domain.ErrUnsupported,
+			"this release declares no backup operation and the backup captured nothing").
+			WithHint("add a `backup` entry under `operations` in the release " +
+				"manifest, or move the product's data onto a named volume -- " +
+				"bind mounts are never captured"))
 	}
 
 	// The manager copies the parts it owns; the hook is responsible only
 	// for the product's own data.
-	records, err := e.captureManagedComponents(dir, components)
+	managed, err := e.captureManagedComponents(dir, components)
 	if err != nil {
-		_ = atomicfs.RemoveAll(dir)
-		return ports.BackupRef{}, err
+		return fail(err)
 	}
-
-	hookRecords, err := recordArtifacts(dir, outcome.Result.Artifacts)
-	if err != nil {
-		_ = atomicfs.RemoveAll(dir)
-		return ports.BackupRef{}, err
-	}
-	records = append(records, hookRecords...)
+	records = append(records, managed...)
 
 	// Encrypted last, so the hook and the copy above stay unchanged: they
 	// write plaintext into a 0700 directory, and it is protected before the
@@ -192,12 +348,13 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		InstallationID: e.installation.ID,
 		Product:        e.installation.Product,
 		ReleaseVersion: e.release.Version(),
-		SchemaAtBackup: outcome.Result.SchemaVersion,
+		SchemaAtBackup: schemaAtBackup,
 		CreatedAt:      domain.NewTime(e.now()),
 		Components:     records,
 		Labels:         labels,
 		ManagerVersion: e.managerVersion,
 		Reason:         scope.Reason,
+		Uncaptured:     uncaptured,
 	}
 
 	if err := writeManifest(dir, manifest); err != nil {
@@ -317,6 +474,26 @@ func recordArtifacts(dir string, artifacts []ports.HookArtifact) ([]ports.Compon
 		})
 	}
 	return out, nil
+}
+
+// largestComponent is the biggest single recorded file.
+//
+// The biggest, not the sum, and that is the whole point of it: encryptComponents
+// works through the components one at a time, writing a ciphertext beside a
+// plaintext and removing the plaintext before starting the next, so what a space
+// check has to reserve on top of the bytes already there is one more copy of the
+// largest -- never one more copy of all of them. Reserving the sum would refuse
+// backups that fit.
+//
+// Only recorded components count. A file a hook wrote and did not report is
+// never encrypted, so it never gets a second copy: it is already subtracted from
+// the free space and adds nothing to the peak.
+func largestComponent(records []ports.ComponentRecord) int64 {
+	var largest int64
+	for _, rec := range records {
+		largest = max(largest, rec.Size)
+	}
+	return largest
 }
 
 // backupRecipients answers who may read this backup, and refuses to proceed
@@ -527,8 +704,29 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 				"to restore another deployment's data on purpose.")
 	}
 
-	spec, ok := e.release.Manifest.Operation(domain.OpRestore)
-	if !ok {
+	// Before the gate below and before anything is staged, because that gate
+	// counts volumes and the count is exactly what a damaged record makes a
+	// lie: a manifest whose volume component names no volume would otherwise
+	// read as a backup that simply has none, and the restore would run the
+	// hook, return zero, and leave the volume as it found it.
+	//
+	// Only when volumes are in scope. Restoring the database alone out of a
+	// backup whose volume metadata is damaged is a documented recovery path
+	// -- and the one an operator reaches for *because* something is wrong
+	// with the backup. Refusing it would take away the remedy on the
+	// strength of a component they deliberately excluded.
+	if componentSelected(opts.Components, ports.ComponentVolumes) {
+		if err := manifest.CheckVolumeRecords(); err != nil {
+			return err
+		}
+	}
+
+	spec, hasHook := e.release.Manifest.Operation(domain.OpRestore)
+	volumes := manifest.VolumeRecords()
+
+	// A backup of nothing but volumes needs no restore hook, which is the
+	// other half of letting a release without one still have backups.
+	if !hasHook && len(volumes) == 0 {
 		return domain.BackupError(domain.ErrUnsupported,
 			"this release declares no restore operation")
 	}
@@ -544,6 +742,17 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 	// Unconditional, and overwriting: a failed restore must not leave a
 	// decrypted database dump beside the encrypted one.
 	defer cleanup()
+
+	// Volumes before the hook. A volume that will not go back stops the
+	// operation while the database is still the one that was there; once
+	// the hook has begun overwriting a database, nothing can put it back.
+	if err := e.restoreVolumes(ctx, staged, manifest, opts); err != nil {
+		return err
+	}
+
+	if !hasHook {
+		return nil
+	}
 
 	env := e.hookEnv(ports.PhaseRestore, staged)
 	env.Extra = map[string]string{
@@ -568,9 +777,19 @@ func (e *Engine) stage(
 ) (staged string, cleanup func(), err error) {
 	var encrypted []ports.ComponentRecord
 	for _, c := range manifest.Components {
-		if c.Encryption == ports.EncryptionAge {
-			encrypted = append(encrypted, c)
+		if c.Encryption != ports.EncryptionAge {
+			continue
 		}
+		// Everything else is staged whatever the scope says, because the
+		// hook ABI predates scoping and a hook that reads more than it
+		// was told to would break. Volumes are new and no hook can be
+		// reading them -- so a restore of the database alone does not
+		// decrypt a hundred gigabytes of uploads it will not use.
+		if c.Component == ports.ComponentVolumes &&
+			!componentSelected(opts.Components, ports.ComponentVolumes) {
+			continue
+		}
+		encrypted = append(encrypted, c)
 	}
 	if len(encrypted) == 0 {
 		return dir, func() {}, nil
@@ -730,6 +949,40 @@ func readManifest(dir string) (ports.BackupManifest, error) {
 			WithHint("upgrade the manager before restoring this backup")
 	}
 	return m, nil
+}
+
+// Timeouts for the quiesce pair.
+//
+// Stopping is bounded because a container that ignores SIGTERM should not hold
+// a nightly backup open indefinitely -- but generously, because a database
+// being quiesced for a volume copy is exactly the process that should be given
+// time to flush. Resuming is bounded separately and more generously still,
+// because it runs on a detached context after something has already gone wrong.
+const (
+	DefaultStopTimeout = 2 * time.Minute
+	resumeTimeout      = 10 * time.Minute
+)
+
+func (e *Engine) stopTimeout() time.Duration {
+	if e.stopTimeoutOverride > 0 {
+		return e.stopTimeoutOverride
+	}
+	return DefaultStopTimeout
+}
+
+// detach returns a bounded context that survives the cancellation of its
+// parent, for the cleanup that has to happen precisely when the operation was
+// interrupted.
+func detach(ctx context.Context, limit time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), limit)
+}
+
+func fileSize(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, domain.BackupError(err, "cannot stat %s", path)
+	}
+	return info.Size(), nil
 }
 
 func joinComponents(cs []ports.Component) string {

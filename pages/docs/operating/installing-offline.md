@@ -23,7 +23,7 @@ the **release bundle** and the **container images**.
 morzer doctor
 ```
 
-Two checks answer the question:
+Three checks answer the question:
 
 ```text
 [ok]   container registry is reachable
@@ -32,12 +32,26 @@ Two checks answer the question:
        → run `morzer apply` while online, or preload with
          `docker load < images.tar`, if this machine has to come up without
          network access
+[warn] the volume helper image is available offline
+       busybox is not on this machine, so a backup cannot capture volumes
+       → run `docker pull busybox@sha256:…` — do it now rather than during a
+         backup on a machine that has lost its network
 ```
 
-The second is the one that matters here. It is a warning rather than a failure
-because needing the network is the normal case — but on a machine that is about
-to lose it, a warning is the difference between a planned preload and a failed
-boot at 3am.
+The last two are the ones that matter here. Both are warnings rather than
+failures because needing the network is the normal case — but on a machine that
+is about to lose it, a warning is the difference between a planned preload and a
+failed boot at 3am.
+
+The helper image is the manager's own, not the release's: volumes are read
+through a container, so a backup on a disconnected machine that never pulled it
+captures nothing. It is the one image that is not in the release manifest, which
+is exactly why it is easy to miss.
+
+**Preload the reference `doctor` prints, not `busybox`.** If this deployment sets
+`MORZER_VOLUME_HELPER_IMAGE`, that is the image volume capture will run, and the
+default busybox is not pulled at all. `doctor` reports whichever one is
+configured, so its output is the reference to copy — checking it beats assuming.
 
 ## Prepare the artifacts
 
@@ -52,9 +66,20 @@ morzer release fetch https://releases.example/demo-1.3.0.tar.zst
 morzer release show 1.3.0 | grep -A20 images
 docker pull registry.example/demo/app@sha256:…
 docker pull registry.example/demo/db@sha256:…
+# 3. The manager's volume helper image, which is not in the manifest.
+#    Take the exact reference from `morzer doctor` -- it is busybox unless
+#    MORZER_VOLUME_HELPER_IMAGE names another, and then it is that one.
+HELPER=$(morzer doctor --json |
+    jq -r '.data.results[] | select(.id == "backup.volume-helper")
+           | .message, .remedy' |
+    grep -o '[^ ]*@sha256:[a-f0-9]\{64\}' | head -1)
+test -n "$HELPER" || { echo "doctor did not report a helper image" >&2; exit 1; }
+docker pull "$HELPER"
+
 docker save -o images.tar \
     registry.example/demo/app@sha256:… \
-    registry.example/demo/db@sha256:…
+    registry.example/demo/db@sha256:… \
+    "$HELPER"
 ```
 
 Copy `demo-1.3.0.tar.zst` and `images.tar` to the target machine, along with
@@ -111,6 +136,16 @@ not a recovery.
 - **Pulling an image the manifest pins that you did not preload.** The manifest
   pins by digest, so `docker save`/`load` carries exactly the right bytes —
   there is no tag to resolve and nothing to get wrong.
+- **Capturing volumes without the helper image.** The backup **fails**, with the
+  `docker pull` command rather than a registry error. It does not quietly
+  produce a backup missing the volumes, because a backup that silently covers
+  less than it claims is the failure the whole component exists to prevent. If
+  you deliberately want one anyway, scope the volumes out:
+  `morzer backup --component database --component config --component secrets`.
+  That only helps a release **with** a backup hook. One without a hook has
+  nothing left to put in a backup once volumes are excluded, so it is refused
+  rather than given an empty one — for such a release the helper image is not
+  optional.
 
 ## Verifying without the network either
 

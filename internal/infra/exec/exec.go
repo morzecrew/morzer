@@ -56,6 +56,20 @@ type Command struct {
 
 	Stdin io.Reader
 
+	// Stdout receives the child's standard output verbatim when set,
+	// instead of it being scanned into lines.
+	//
+	// It exists for the output that is not text: a volume's contents arrive
+	// as a tar stream on stdout, and the line scanner would both corrupt it
+	// (splitting on 0x0a bytes that are data) and hold a hundred gigabytes
+	// in memory to do it. Redaction is deliberately not applied -- a binary
+	// stream cannot be searched for secrets line by line, and the callers
+	// that use this pipe bytes to a file rather than to a log.
+	//
+	// Stderr is unaffected and is still scanned, so a failing command still
+	// reports why.
+	Stdout io.Writer
+
 	// Timeout bounds the run independently of the context. Zero means only
 	// the context governs.
 	Timeout time.Duration
@@ -205,19 +219,21 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 	// PID, so the whole tree can be signalled at once.
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Cancel signals the group rather than the process. The negative PID
-	// is the kernel's convention for "this process group".
-	c.Cancel = func() error {
+	// signalGroup signals the group rather than the process. The negative
+	// PID is the kernel's convention for "this process group".
+	signalGroup := func(sig syscall.Signal) error {
 		if c.Process == nil {
 			return nil
 		}
-		if err := syscall.Kill(-c.Process.Pid, syscall.SIGTERM); err != nil {
+		if err := syscall.Kill(-c.Process.Pid, sig); err != nil {
 			// The group may already be gone; fall back to the
-			// process so cancellation is not silently a no-op.
-			return c.Process.Signal(syscall.SIGTERM)
+			// process so the signal is not silently a no-op.
+			return c.Process.Signal(sig)
 		}
 		return nil
 	}
+
+	c.Cancel = func() error { return signalGroup(syscall.SIGTERM) }
 
 	// WaitDelay escalates to SIGKILL when the grace period expires. Go
 	// kills only the direct child, so the group is killed here too.
@@ -247,6 +263,36 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 		pgid = c.Process.Pid
 	}
 
+	// waited is closed once Wait has returned, so the escalation below does
+	// not outlive the process it was watching.
+	waited := make(chan struct{})
+
+	// terminate stops the group once a write failure has already decided the
+	// outcome of the run.
+	//
+	// Closing the pipe is not enough on its own: it only makes the child's
+	// next write fail, and a child that ignores SIGPIPE -- a shell pipeline
+	// with a trap, anything that installs its own handler -- keeps running,
+	// so Wait blocks until it finishes on its own. A volume capture that
+	// filled the disk would hang there instead of returning the storage
+	// error, which is the failure this exists to avoid.
+	//
+	// SIGTERM first, because the child is usually `docker run` and killing
+	// it outright leaves the container behind; SIGKILL once the grace period
+	// is up, for the child that ignores that too.
+	terminate := func() {
+		_ = signalGroup(syscall.SIGTERM)
+		go func() {
+			timer := time.NewTimer(grace)
+			defer timer.Stop()
+			select {
+			case <-waited:
+			case <-timer.C:
+				_ = signalGroup(syscall.SIGKILL)
+			}
+		}()
+	}
+
 	var (
 		wg        sync.WaitGroup
 		stdoutBuf = newBoundedBuffer(maxCapture)
@@ -256,9 +302,35 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 		stderrBuf = newBoundedBuffer(maxCapture)
 	)
 
+	var streamErr error
+
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
+		if cmd.Stdout != nil {
+			// Raw, because the caller asked for bytes rather than
+			// lines.
+			_, streamErr = io.Copy(cmd.Stdout, stdoutPipe)
+			if streamErr != nil {
+				// Closed rather than drained. Something must
+				// happen to the pipe -- an unread one blocks the
+				// child forever and Wait with it -- and the
+				// reason this write failed is usually a full
+				// disk, at which point reading the remaining
+				// hundred gigabytes into io.Discard is a long
+				// wait for an outcome already decided. Closing
+				// makes the child's next write fail instead.
+				//
+				// Wait closes it again and ignores the error, so
+				// the double close is safe.
+				_ = stdoutPipe.Close()
+
+				// And the child is stopped, because a closed
+				// pipe alone only asks.
+				terminate()
+			}
+			return
+		}
 		scanLines(stdoutPipe, func(text string) {
 			text = redactor.string(text)
 			if cmd.CaptureOutput {
@@ -284,6 +356,7 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 
 	wg.Wait()
 	waitErr := c.Wait()
+	close(waited)
 	duration := time.Since(started)
 
 	// Whatever happened, make sure nothing from this group survives. A
@@ -313,6 +386,19 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 		default:
 			return result, domain.Interrupted("%s was cancelled", strings.Join(safeArgv, " "))
 		}
+	}
+
+	// Before the exit status, because when both are set the write failure
+	// caused the exit: closing the pipe is what kills the child, so a full
+	// disk during a volume capture surfaces as "exited with code 141"
+	// unless this is checked first. That sends an operator looking for a
+	// bug in tar instead of at their disk.
+	//
+	// Reporting success here at all is how a full disk produces a truncated
+	// tarball that verifies against a checksum taken of the truncation.
+	if streamErr != nil {
+		return result, domain.RuntimeError(streamErr,
+			"cannot store the output of %s", strings.Join(safeArgv, " "))
 	}
 
 	if waitErr != nil {

@@ -452,6 +452,12 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	runtime := compose.New(runner,
 		compose.WithOutputSink(outputSink),
 		compose.WithRedaction(redactor.Values()),
+		// The escape hatch RFC 0010 §5.4 asks for, for the operator whose
+		// registry does not carry busybox. An environment variable rather
+		// than a flag or a state field: the backup that needs it is the
+		// scheduled one, and a systemd `Environment=` override reaches
+		// that without regenerating a unit or migrating any state.
+		compose.WithHelperImage(os.Getenv(VolumeHelperImageEnv)),
 	)
 	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile())
 	hookRunner := hooks.NewRunner(runner,
@@ -511,8 +517,66 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	return nil
 }
 
+// VolumeHelperImageEnv names an image to read and write volumes through,
+// instead of the digest-pinned busybox the manager defaults to.
+//
+// For the operator whose registry does not carry busybox, or whose air-gapped
+// mirror carries something else. Any image with a POSIX `tar`, `du` and `sh`
+// will do. Empty or unset means the default.
+const VolumeHelperImageEnv = "MORZER_VOLUME_HELPER_IMAGE"
+
+// backupEngineOption adjusts how the backup adapter is wired.
+//
+// Variadic rather than a parameter, because a dozen commands attach the engine
+// and exactly one of them -- `morzer backup` -- has anything to say about it.
+type backupEngineOption func(*hookbackup.Config)
+
+// withDowntime decides whether the backup may stop services to read a volume
+// the release has not declared safe to read live.
+func withDowntime(allowed bool) backupEngineOption {
+	return func(cfg *hookbackup.Config) { cfg.AllowDowntime = allowed }
+}
+
+// movesVolumeData reports whether the invoked command writes a backup or reads
+// one back, and so must not run against an engine that has silently lost the
+// ability to do either.
+//
+// Keyed on the invoked command path rather than on an option the caller passes.
+// A dozen commands attach the engine and every one of them that must stay
+// tolerant already discards the error with `_ =`, so a new parameter would mean
+// editing all of them to say "no change" -- and the two that must not proceed
+// would be the two easiest to forget the day a thirteenth caller is added.
+// Naming them in one place is the smaller change and the one that stays true.
+func movesVolumeData(commandPath string) bool {
+	// The path is "<root> <command> [subcommand...]". `backup` on its own
+	// is the command that takes a backup; `backup list`, `backup verify`,
+	// `backup fetch` and the rest only read, and are meant to work on an
+	// installation too broken to resolve.
+	parts := strings.Fields(commandPath)
+	if len(parts) != 2 {
+		return false
+	}
+	switch parts[1] {
+	case "backup", "restore":
+		return true
+	case "update":
+		// `update` takes the pre-update backup, and that one matters
+		// most of all: it is what a rollback restores from when the new
+		// release turns out to be wrong. A silently volume-less copy
+		// there is a rollback that returns the database and none of the
+		// files, discovered at the worst moment.
+		//
+		// `rollback` is deliberately absent -- it only lists backups to
+		// name one in a refusal, and must keep working on exactly the
+		// broken installation this guards against.
+		return true
+	default:
+		return false
+	}
+}
+
 // attachBackupEngine wires the backup adapter once a release is known.
-func (a *App) attachBackupEngine(ctx context.Context) error {
+func (a *App) attachBackupEngine(ctx context.Context, opts ...backupEngineOption) error {
 	d := a.Deps
 
 	inst, err := d.State.LoadInstallation(ctx)
@@ -533,12 +597,46 @@ func (a *App) attachBackupEngine(ctx context.Context) error {
 		return err
 	}
 
-	d.Backup = hookbackup.New(hookbackup.Config{
+	// The runtime, so a backup can read the project's named volumes and a
+	// restore can write them back.
+	//
+	// A project configuration that will not assemble -- a parameter the
+	// release no longer declares, a profile with no Compose file -- leaves
+	// two choices, and which is right depends on what is about to happen.
+	// Handing the engine no runtime disables volume capture entirely and
+	// says nothing: a release with a backup hook would then produce a backup
+	// holding that hook's database dump, none of the project's named
+	// volumes, and a success message. The operator finds out during a
+	// restore, which is the one moment nothing can be done about it.
+	//
+	// So the two commands that move volume data refuse, carrying the
+	// configuration error that caused it. Everything else stays tolerant,
+	// because a configuration that will not resolve is exactly when `backup
+	// list`, `doctor` and `status` have to keep answering -- doctor reports
+	// this same failure by name in backup.volume-coverage.
+	runtimeConfig, cfgErr := d.RuntimeConfigFor(rel, inst)
+	runtime := d.Runtime
+	if cfgErr != nil {
+		if movesVolumeData(a.command) {
+			return cfgErr
+		}
+		runtime = nil
+	}
+
+	cfg := hookbackup.Config{
 		Hooks:          d.Hooks,
 		Release:        rel,
 		Installation:   inst,
 		Paths:          d.Paths,
 		ManagerVersion: a.Build.Version,
+
+		Runtime:       runtime,
+		RuntimeConfig: runtimeConfig,
+
+		// The default, and the safe one: an undeclared volume is
+		// captured with its services stopped rather than skipped. See
+		// `morzer backup --no-downtime` for the other choice.
+		AllowDowntime: true,
 
 		// A backup is encrypted to whoever can already read this
 		// deployment's secrets -- this machine's key plus whatever
@@ -556,7 +654,13 @@ func (a *App) attachBackupEngine(ctx context.Context) error {
 			}
 			return keys, nil
 		},
-	})
+	}
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	d.Backup = hookbackup.New(cfg)
 	return nil
 }
 
