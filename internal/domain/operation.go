@@ -134,6 +134,12 @@ func (r OperationRecord) FirstIncompleteStep() (idx int, resumable bool) {
 			// Compensation already undid the work; resuming from a
 			// compensated step would race its own cleanup.
 			return i, false
+		default:
+			// A status this build does not recognise: a journal
+			// written by a newer manager, or a record that only
+			// partially unmarshalled. Refusing is the safe reading --
+			// skipping it would treat unknown work as complete.
+			return i, false
 		}
 	}
 	return len(r.Steps), false

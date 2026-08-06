@@ -30,6 +30,18 @@ var SupportedAPIVersions = []APIVersion{APIVersionV1Alpha1}
 // promise is kept.
 var DeprecatedAPIVersions = map[APIVersion]string{}
 
+// DeprecationWarning reports whether this manifest's api_version is
+// deprecated, and the message to show the operator when it is.
+//
+// Computed on demand rather than at parse time so every consumer that meets a
+// manifest -- update resolving a bundle, `release verify` in a vendor's CI --
+// asks the same question of the same map, and none of them can forget to look
+// at a field the loader forgot to fill.
+func (m Manifest) DeprecationWarning() (string, bool) {
+	warning, deprecated := DeprecatedAPIVersions[m.APIVersion]
+	return warning, deprecated
+}
+
 const KindApplicationRelease = "application-release"
 
 // Manifest is the typed release contract. Field order follows the spec's

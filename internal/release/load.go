@@ -118,12 +118,11 @@ func ParseManifest(data []byte, source string) (domain.Manifest, error) {
 		return domain.Manifest{}, domain.ValidationError(err, "%s: %s", source, e.Message)
 	}
 
-	if warning, deprecated := domain.DeprecatedAPIVersions[m.APIVersion]; deprecated {
-		// Deprecation is a warning, not a rejection: the contract
-		// promises to read every published version until it is
-		// explicitly withdrawn.
-		_ = warning
-	}
+	// Deprecation is deliberately not checked here: it is a warning, not a
+	// rejection -- the contract promises to read every published version
+	// until it is explicitly withdrawn. The consumers that face an operator
+	// surface it via Manifest.DeprecationWarning: update when it resolves a
+	// bundle, and `release verify` for the vendor's own CI.
 
 	return m, nil
 }

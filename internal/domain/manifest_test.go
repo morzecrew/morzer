@@ -426,3 +426,21 @@ func TestByteSizeIsReadable(t *testing.T) {
 		require.NoError(t, round.UnmarshalText([]byte(n.String())), "cannot re-parse %q", n)
 	}
 }
+
+// The deprecation map is consulted through this method by every consumer that
+// faces an operator; the day an entry lands in DeprecatedAPIVersions, this is
+// the contract that carries it.
+func TestDeprecationWarningReadsTheMap(t *testing.T) {
+	const stale = APIVersion("morze.dev/v0alpha0")
+	DeprecatedAPIVersions[stale] = "upgrade the bundle to v1alpha1"
+	defer delete(DeprecatedAPIVersions, stale)
+
+	warning, deprecated := Manifest{APIVersion: stale}.DeprecationWarning()
+	if !deprecated || warning == "" {
+		t.Fatalf("a deprecated api_version reported (%q, %v)", warning, deprecated)
+	}
+
+	if _, deprecated := (Manifest{APIVersion: APIVersionV1Alpha1}).DeprecationWarning(); deprecated {
+		t.Error("the supported api_version reported itself deprecated")
+	}
+}

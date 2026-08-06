@@ -98,6 +98,15 @@ func ParseRef(s string) (Ref, error) {
 
 	switch u.Scheme {
 	case "file":
+		// file://relative/path parses with its first segment as a URL
+		// host. Dropping it silently -- resolving to a different path
+		// than the operator wrote -- is worse than refusing, so this
+		// mirrors the backup-target parser's rule.
+		if u.Host != "" && u.Host != "localhost" {
+			return Ref{}, domain.Usage(
+				"file references are local paths, but %q names the host %q", s, u.Host).
+				WithHint("write file:///absolute/path -- three slashes")
+		}
 		return Ref{Scheme: "file", Location: u.Path}, nil
 	case "https", "oci":
 		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil

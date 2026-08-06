@@ -16,6 +16,7 @@ func TestParseRefAcceptsEverySupportedForm(t *testing.T) {
 		"/opt/demo/1.2.0":                   {"file", "/opt/demo/1.2.0"},
 		"bundle-1.2.0.tar.zst":              {"file", "bundle-1.2.0.tar.zst"},
 		"file:///opt/demo":                  {"file", "/opt/demo"},
+		"file://localhost/opt/demo":         {"file", "/opt/demo"},
 		"https://example.com/b.tar.zst":     {"https", "example.com/b.tar.zst"},
 		"oci://registry.example/demo:1.2.0": {"oci", "registry.example/demo:1.2.0"},
 	}
@@ -56,6 +57,9 @@ func TestParseRefRefusesWhatItCannotUse(t *testing.T) {
 		"   ",
 		"ftp://example.com/bundle",
 		"s3://bucket/bundle",
+		// Two slashes, so "home" parses as a URL host. Dropping it would
+		// resolve to /user/bundle -- a different path than was written.
+		"file://home/user/bundle",
 	} {
 		if _, err := ports.ParseRef(input); err == nil {
 			t.Errorf("ParseRef(%q) was accepted", input)

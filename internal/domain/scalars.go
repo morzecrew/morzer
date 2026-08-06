@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -160,6 +161,13 @@ func (b *ByteSize) UnmarshalText(raw []byte) error {
 		}
 		if n < 0 {
 			return ValidationError(nil, "size %q must not be negative", s)
+		}
+		// Bounded before the int64 conversion, which would otherwise wrap
+		// an absurd size into a huge negative -- and a negative requirement
+		// is one every "is there enough?" check trivially satisfies.
+		// ParseFloat also accepts "NaN" and "Inf", which no size is.
+		if math.IsNaN(n) || n > float64(math.MaxInt64)/float64(u.mult) {
+			return ValidationError(nil, "size %q is out of range", s)
 		}
 		*b = ByteSize(n * float64(u.mult))
 		return nil

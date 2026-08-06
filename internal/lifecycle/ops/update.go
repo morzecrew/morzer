@@ -218,6 +218,11 @@ func (d *Deps) resolveUpdateTarget(
 	if err != nil {
 		return domain.Release{}, domain.Release{}, cleanup, err
 	}
+	if warning, deprecated := source.Manifest.DeprecationWarning(); deprecated {
+		d.Bus.Publish(events.Message(events.LevelWarn,
+			"this bundle's api_version %s is deprecated: %s",
+			source.Manifest.APIVersion, warning))
+	}
 	if resolved.Version.IsZero() || !resolved.Version.Equal(source.Version()) {
 		return domain.Release{}, domain.Release{}, cleanup,
 			domain.Internal(nil, "source resolved %s but the bundle declares %s",
