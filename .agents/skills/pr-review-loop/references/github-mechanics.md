@@ -15,7 +15,7 @@ gh pr view $PR --json reviews,comments,statusCheckRollup,reviewDecision
 gh api "repos/{owner}/{repo}/issues/$PR/comments" --jq '.[].user.login' | sort -u
 ```
 
-Bot identification: `user.type == "Bot"` or login ending in `[bot]` (`coderabbitai[bot]`, `greptile-apps[bot]`, …). Bounded wait pattern: poll every 60–90 s, give up after ~10 min per reviewer; a completed check with zero comments = clean verdict, stop waiting for prose.
+Bot identification: `user.type == "Bot"` or login ending in `[bot]` (`coderabbitai[bot]`, `greptile-apps[bot]`, …). Bounded wait pattern: poll every 60–90 s, give up after ~10 min per reviewer. A check concluding success/neutral with zero comments = clean verdict, stop waiting for prose; any other conclusion (failure, action_required, timed_out, cancelled, skipped, stale) = report the check's state, not clean.
 
 ## Collect every thread (step 2)
 
@@ -36,19 +36,25 @@ Thread structure and resolution state live only in GraphQL:
 
 ```bash
 gh api graphql -f query='
-  query($owner:String!, $repo:String!, $pr:Int!) {
+  query($owner:String!, $repo:String!, $pr:Int!, $threads:String) {
     repository(owner:$owner, name:$repo) {
       pullRequest(number:$pr) {
-        reviewThreads(first:100) {
+        reviewThreads(first:100, after:$threads) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             id isResolved isOutdated
-            comments(first:50) { nodes { databaseId author { login } body } }
+            comments(first:100) {
+              pageInfo { hasNextPage endCursor }
+              nodes { databaseId author { login } body }
+            }
           }
         }
       }
     }
   }' -f owner={owner} -f repo={repo} -F pr=$PR
 ```
+
+Paginate **both** connections to exhaustion — the fixed `first:` limits silently truncate large PRs, and a completion check that missed a thread is wrong: while the outer `pageInfo.hasNextPage` is true, rerun with `-f threads=<endCursor>`; for any thread whose `comments.pageInfo.hasNextPage` is true, fetch its remaining comments through a `node(id: $threadId)` query with a comments cursor.
 
 `isOutdated` threads (the code under them changed) still deserve a reaction/reply if their finding was real.
 
@@ -92,6 +98,8 @@ gh pr checks $PR | grep -i codecov
 # The floor comes from the repo's own config — read it, never invent it
 cat codecov.yml .codecov.yml 2>/dev/null   # coverage.status.project/patch targets
 ```
+
+If the repository enforces coverage through its own recipe (a justfile target, a CI gate script), that gate is authoritative — run it locally and satisfy it; a coverage service's status is then just its reflection.
 
 ## PR description (step 7)
 

@@ -37,7 +37,7 @@ Apply it even when the user mentions neither gitmoji nor Conventional Commits.
 2. Pick the gitmoji for it from [references/gitmoji-mapping.md](references/gitmoji-mapping.md) — load it when choosing.
 3. Use the type mapped to that gitmoji. Never invent gitmoji or types.
 
-Common pairs: ✨ feat, 🐛 fix, ♻️ refactor, ⚡️ perf, 📝 docs, ✅ test, 👷 ci, 📦️ build, 🔧 chore, ⏪️ revert, 💥 breaking.
+Common pairs: ✨ feat, 🐛 fix, ♻️ refactor, ⚡️ perf, 📝 docs, ✅ test, 👷 ci, 📦️ build, 🔧 chore, ⏪️ revert. Breaking is not a type: 💥 rides the underlying type with `!` — `💥 feat!:`, `💥 fix!:` (see Breaking changes below) — so release grouping still reads the `feat`/`fix` underneath.
 
 ### Mixed changes: pick the dominant type
 
