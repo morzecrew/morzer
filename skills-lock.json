@@ -295,6 +295,12 @@
       "skillPath": "skills/keep-a-changelog/SKILL.md",
       "computedHash": "ab914eaf08316316fbdd4ff1078e0f323b7c0e24254f2ece140c4c5157af6380"
     },
+    "reading-isnt-proof": {
+      "source": "morzecrew/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/reading-isnt-proof/SKILL.md",
+      "computedHash": "046af837d8731667c8446db882ba77299da4855687264c86c68c4c6d8d0244b9"
+    },
     "rfc-writer": {
       "source": "morzecrew/agent-skills",
       "sourceType": "github",
@@ -305,7 +311,7 @@
       "source": "morzecrew/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/self-audit/SKILL.md",
-      "computedHash": "078f782d0fc1323e383ea7be3431a8b5e4bfd8abe801c587891ae65a22ec9cbe"
+      "computedHash": "0926f2eb9e102438b87bf1833df9ccacc059a80b86a075591d3dd91eba1017c1"
     }
   }
 }
