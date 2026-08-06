@@ -292,7 +292,7 @@ func newRootCommand(app *App) *cobra.Command {
 	// was, while every real invocation has a version ("dev" at minimum).
 	if app.Build.Version != "" {
 		root.Version = app.Build.Version
-		root.SetVersionTemplate("morzer {{.Version}}\n")
+		root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 	}
 
 	f := &app.Flags
@@ -358,7 +358,7 @@ func (a *App) setup(ctx context.Context) error {
 	// The logger writes to stderr always. stdout is the result.
 	var logFormat logging.Format
 	switch f.logFormat {
-	case "", "text":
+	case "text":
 		logFormat = logging.FormatText
 	case "json":
 		logFormat = logging.FormatJSON

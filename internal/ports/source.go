@@ -101,8 +101,10 @@ func ParseRef(s string) (Ref, error) {
 		// file://relative/path parses with its first segment as a URL
 		// host. Dropping it silently -- resolving to a different path
 		// than the operator wrote -- is worse than refusing, so this
-		// mirrors the backup-target parser's rule.
-		if u.Host != "" && u.Host != "localhost" {
+		// mirrors the backup-target parser's rule. URL hosts are
+		// case-insensitive, so LOCALHOST is localhost; localhost:8080
+		// carries a port and is not.
+		if host := strings.ToLower(u.Host); host != "" && host != "localhost" {
 			return Ref{}, domain.Usage(
 				"file references are local paths, but %q names the host %q", s, u.Host).
 				WithHint("write file:///absolute/path -- three slashes")
