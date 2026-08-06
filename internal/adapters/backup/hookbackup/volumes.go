@@ -227,6 +227,11 @@ func (e *Engine) volumeSupport() (volumeCapabilities, bool) {
 type volumeCapture struct {
 	caps volumeCapabilities
 	plan volumePlan
+
+	// required is the peak the planned copies need, measured before the
+	// hook ran. Kept so it can be checked again afterwards against the
+	// space the hook left behind.
+	required int64
 }
 
 // planVolumeCapture reads the project's storage, decides what to capture, and
@@ -250,10 +255,11 @@ func (e *Engine) planVolumeCapture(ctx context.Context) (volumeCapture, error) {
 		return volumeCapture{caps: caps, plan: plan}, nil
 	}
 
-	if err := e.checkVolumeSpace(ctx, caps.capturer, plan); err != nil {
+	required, err := e.checkVolumeSpace(ctx, caps.capturer, plan)
+	if err != nil {
 		return volumeCapture{}, err
 	}
-	return volumeCapture{caps: caps, plan: plan}, nil
+	return volumeCapture{caps: caps, plan: plan, required: required}, nil
 }
 
 // captureVolumes copies the planned volumes into the backup directory.
@@ -268,6 +274,18 @@ func (e *Engine) captureVolumes(
 	caps, plan := capture.caps, capture.plan
 	if len(plan.capture) == 0 {
 		return nil, plan.uncaptured, nil
+	}
+
+	// Measured before the hook ran, checked again now that it has.
+	//
+	// The pre-hook gate can only reserve what it can measure, and the size
+	// of a database dump is not knowable until the hook has written it --
+	// so a backup can pass a gate that said "the volumes fit" and then meet
+	// a disk the hook has since filled. Re-reading free space costs one
+	// statfs and no re-measuring, and it is the last moment before the part
+	// that stops services and writes gigabytes.
+	if err := e.recheckVolumeSpace(capture.required); err != nil {
+		return nil, nil, err
 	}
 
 	if err := atomicfs.MkdirAll(filepath.Join(dir, VolumeDir), 0o700); err != nil {
@@ -412,7 +430,7 @@ func (e *Engine) captureOne(
 // has already been stopped.
 func (e *Engine) checkVolumeSpace(
 	ctx context.Context, capturer ports.VolumeCapturer, plan volumePlan,
-) error {
+) (int64, error) {
 	var total, largest int64
 	var overflowed bool
 	for _, planned := range plan.capture {
@@ -422,7 +440,7 @@ func (e *Engine) checkVolumeSpace(
 			// not measure a volume would be a backup refused for a
 			// reason that has nothing to do with whether it fits,
 			// and the copy itself will fail honestly if it does not.
-			return nil
+			return 0, nil
 		}
 		if size < 0 || total > math.MaxInt64-size {
 			// A total that wrapped would come out negative and
@@ -438,12 +456,12 @@ func (e *Engine) checkVolumeSpace(
 		}
 	}
 	if total == 0 && !overflowed {
-		return nil
+		return 0, nil
 	}
 
 	free, err := atomicfs.FreeSpace(e.paths.BackupsDir())
 	if err != nil {
-		return nil
+		return 0, nil
 	}
 
 	// The largest volume counted twice: encryption writes the ciphertext
@@ -457,16 +475,41 @@ func (e *Engine) checkVolumeSpace(
 		required = total + largest
 	}
 	if free >= required {
-		return nil
+		return required, nil
 	}
 
-	return domain.BackupError(nil,
+	return required, domain.BackupError(nil,
 		"this backup needs about %s for the project's volumes and %s is free on %s",
 		domain.ByteSize(required), domain.ByteSize(free), e.paths.BackupsDir()).
 		WithHint("prune old backups (`morzer backup list`), give %s more room, or "+
 			"exclude a volume in the release manifest -- nothing has been "+
 			"written and nothing has been stopped",
 			e.paths.BackupsDir())
+}
+
+// recheckVolumeSpace re-verifies the planned requirement against the space
+// that is actually left.
+//
+// Unmeasurable free space is not fatal here for the same reason it is not in
+// checkVolumeSpace: a backup refused because the manager could not read `df` is
+// refused for a reason that has nothing to do with whether it fits.
+func (e *Engine) recheckVolumeSpace(required int64) error {
+	if required <= 0 {
+		return nil
+	}
+	free, err := atomicfs.FreeSpace(e.paths.BackupsDir())
+	if err != nil || free >= required {
+		return nil
+	}
+
+	return domain.BackupError(nil,
+		"the volumes need about %s and only %s is free on %s now that the "+
+			"backup hook has written its own output",
+		domain.ByteSize(required), domain.ByteSize(free), e.paths.BackupsDir()).
+		WithHint("the volumes fit when this backup started; the hook's dump used " +
+			"the room they needed. Prune old backups, give the directory more " +
+			"space, or exclude a volume in the release manifest -- nothing has " +
+			"been stopped and no volume has been copied.")
 }
 
 // restoreVolumes writes the backup's volume tarballs back.

@@ -225,6 +225,10 @@ func TestDoctorDoesNotReportARetentionPolicyThatCannotFitAsSatisfied(t *testing.
 	const huge = int64(1) << 62 // four of these is 2^64
 	seedBackups(t, h, 4, huge)
 
+	// Driven, so the verdict is about the arithmetic rather than about how
+	// much room the machine running the suite happens to have.
+	h.Deps.FreeSpace = func(string) (int64, error) { return 64 << 30, nil }
+
 	report, err := ops.Doctor(context.Background(), h.Deps)
 	require.NoError(t, err)
 
@@ -248,6 +252,14 @@ func TestDoctorWarnsWhenTheNextBackupWillNotFitEvenThoughRetentionIsFull(t *test
 
 	const petabyte = int64(1) << 50
 	seedBackups(t, h, 2, petabyte, petabyte)
+
+	// Driven rather than measured. This check compares against the real
+	// filesystem, so without a seam the verdict depends on how much room
+	// the machine running the suite happens to have -- and a host with more
+	// free space than the seeded backup silently flips the branch under
+	// test. Half a backup: retention is already full, and the next one
+	// still does not fit.
+	h.Deps.FreeSpace = func(string) (int64, error) { return petabyte / 2, nil }
 
 	report, err := ops.Doctor(context.Background(), h.Deps)
 	require.NoError(t, err)

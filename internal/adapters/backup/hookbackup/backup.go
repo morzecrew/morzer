@@ -671,8 +671,16 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 	// lie: a manifest whose volume component names no volume would otherwise
 	// read as a backup that simply has none, and the restore would run the
 	// hook, return zero, and leave the volume as it found it.
-	if err := manifest.CheckVolumeRecords(); err != nil {
-		return err
+	//
+	// Only when volumes are in scope. Restoring the database alone out of a
+	// backup whose volume metadata is damaged is a documented recovery path
+	// -- and the one an operator reaches for *because* something is wrong
+	// with the backup. Refusing it would take away the remedy on the
+	// strength of a component they deliberately excluded.
+	if componentSelected(opts.Components, ports.ComponentVolumes) {
+		if err := manifest.CheckVolumeRecords(); err != nil {
+			return err
+		}
 	}
 
 	spec, hasHook := e.release.Manifest.Operation(domain.OpRestore)

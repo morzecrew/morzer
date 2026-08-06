@@ -173,7 +173,7 @@ about it:
 
 Three of four, not two: `doctor` counts what a backup is configured to capture,
 and `--no-downtime` is a decision made per run rather than something the
-deployment records. A volume that flag skips still counts as covered here.
+deployment records. A volume that the flag skips still counts as covered here.
 
 ### Restoring a volume
 

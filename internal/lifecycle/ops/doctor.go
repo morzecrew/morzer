@@ -13,7 +13,6 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
-	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -1116,6 +1115,15 @@ func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
 //
 // A warning rather than a failure, matching runtime.images-local: needing a
 // pull is the normal state of a machine that has just been installed.
+// volumeHelperImageEnv is the variable an operator sets to override the image
+// volumes are read through.
+//
+// Spelled here rather than imported: the CLI owns the name and imports this
+// package, and the adapter that reads it is below this layer. Named in the
+// remedy regardless -- a diagnostic that says an image is wrong without saying
+// which knob set it leaves the operator hunting.
+const volumeHelperImageEnv = "MORZER_VOLUME_HELPER_IMAGE"
+
 func (d *Deps) checkVolumeHelperImage(inst domain.Installation, rel domain.Release) preflight.Check {
 	return preflight.Check{
 		ID:          "backup.volume-helper",
@@ -1133,6 +1141,20 @@ func (d *Deps) checkVolumeHelperImage(inst domain.Installation, rel domain.Relea
 			}
 
 			ref := capturer.HelperImage()
+
+			// The same rule the capture enforces, applied here so it
+			// is found now rather than during a backup. A runtime that
+			// cannot answer is not interrogated -- the pinning rule is
+			// this adapter's, not the port's.
+			if pinner, ok := d.Runtime.(interface{ HelperImagePinned() bool }); ok && !pinner.HelperImagePinned() {
+				return preflight.Fail(
+					fmt.Sprintf("unset %s to use the image this manager ships, or "+
+						"pin the one you want: `docker image inspect --format "+
+						"'{{index .RepoDigests 0}}' %s`", volumeHelperImageEnv, ref),
+					"the volume helper image %s is not pinned by digest, so every "+
+						"backup will refuse to capture volumes", ref)
+			}
+
 			present, err := inspector.HasImage(ctx, ref)
 			if err != nil {
 				return preflight.Warn("check that the Docker daemon is running: `docker info`",
@@ -1326,7 +1348,7 @@ func (d *Deps) checkBackupGrowth(inst domain.Installation, rel domain.Release) p
 				}
 				held += b.Size
 			}
-			free, err := atomicfs.FreeSpace(d.Paths.BackupsDir())
+			free, err := d.freeSpace(d.Paths.BackupsDir())
 			if err != nil {
 				// Not OK: nothing was measured, so nothing was
 				// checked, and a green line here reads as "retention

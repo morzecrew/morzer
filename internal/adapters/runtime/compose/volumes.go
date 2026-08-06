@@ -70,6 +70,17 @@ var digestPinned = regexp.MustCompile(`^[^\s@]+@sha256:[a-f0-9]{64}$`)
 // it, and they are reading the message at 3am because a backup stopped.
 const helperImageEnv = "MORZER_VOLUME_HELPER_IMAGE"
 
+// HelperImagePinned reports whether the configured helper image is pinned by
+// digest, which every volume operation requires.
+//
+// Exported so `doctor` can apply the same rule the capture enforces. Without
+// it, an unpinned MORZER_VOLUME_HELPER_IMAGE reads as "available" right up
+// until backup night, when every volume operation refuses it -- and the check
+// whose whole job is to find that out beforehand said it was fine.
+func (r *Runtime) HelperImagePinned() bool {
+	return digestPinned.MatchString(r.HelperImage())
+}
+
 // HelperImage reports the image this runtime reads volumes through.
 func (r *Runtime) HelperImage() string {
 	if r.helperImage == "" {

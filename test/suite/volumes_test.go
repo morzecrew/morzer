@@ -392,6 +392,34 @@ func TestRestoringAVolumeConsidersServicesAddedSinceTheBackup(t *testing.T) {
 		"the refusal named only the services the backup remembered")
 }
 
+// The refusal above must not take away the remedy it points at.
+//
+// A backup whose volume metadata is damaged is exactly the backup an operator
+// scopes their way around -- "give me the database, I will deal with the files
+// by hand". Refusing that too would mean the corruption costs them the one
+// recovery path still open.
+func TestADamagedVolumeRecordStillAllowsARestoreThatExcludesVolumes(t *testing.T) {
+	f := newVolumeFixture(t, domain.BackupSpec{}, true)
+	ctx := context.Background()
+
+	ref, err := f.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+	stripVolumeMetadata(t, ref.Path, "uploads")
+
+	require.NoError(t, f.runtime.Stop(ctx, ports.RuntimeConfig{}, nil, 0))
+
+	// Config only: the damaged component is not in scope, so nothing about
+	// it is being relied on.
+	err = f.engine.Restore(ctx, ref, ports.RestoreOptions{
+		Components:           []ports.Component{ports.ComponentConfig},
+		IdentityFile:         f.identity,
+		TargetInstallationID: "inst-volumes",
+	})
+	require.NoError(t, err,
+		"a restore that excludes volumes was refused because of a volume it "+
+			"was never going to touch")
+}
+
 // A paused container is frozen mid-write with its handles open. It is neither
 // running nor stopped, and a check for `running` alone let a restore untar
 // straight over a volume two paused containers were holding -- silently,

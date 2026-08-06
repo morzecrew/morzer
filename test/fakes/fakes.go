@@ -220,8 +220,9 @@ func (r *Runtime) Volumes(ctx context.Context, cfg ports.RuntimeConfig) (ports.P
 	}
 
 	out := ports.ProjectStorage{
-		Volumes: append([]ports.NamedVolume(nil), r.Storage.Volumes...),
-		Binds:   append([]ports.BindMount(nil), r.Storage.Binds...),
+		Volumes:   append([]ports.NamedVolume(nil), r.Storage.Volumes...),
+		Binds:     append([]ports.BindMount(nil), r.Storage.Binds...),
+		Anonymous: append([]ports.AnonymousVolume(nil), r.Storage.Anonymous...),
 	}
 	sort.Slice(out.Volumes, func(i, j int) bool { return out.Volumes[i].Name < out.Volumes[j].Name })
 	sort.Slice(out.Binds, func(i, j int) bool { return out.Binds[i].Source < out.Binds[j].Source })
@@ -233,6 +234,12 @@ func (r *Runtime) Volumes(ctx context.Context, cfg ports.RuntimeConfig) (ports.P
 		out.Binds[i].Services = append([]string(nil), out.Binds[i].Services...)
 		sort.Strings(out.Binds[i].Services)
 	}
+	sort.Slice(out.Anonymous, func(i, j int) bool {
+		if out.Anonymous[i].Service != out.Anonymous[j].Service {
+			return out.Anonymous[i].Service < out.Anonymous[j].Service
+		}
+		return out.Anonymous[i].Target < out.Anonymous[j].Target
+	})
 	return out, nil
 }
 
