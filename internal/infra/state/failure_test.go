@@ -275,6 +275,51 @@ func TestACorruptFinalJournalLineIsDiscardedNotFatal(t *testing.T) {
 	}
 }
 
+// One overlong line -- external corruption, or a record from a future manager
+// -- must not hide every record after it. The crashed operation --resume needs
+// to find is often exactly the one recorded last.
+func TestAnOverlongJournalLineHidesOnlyItself(t *testing.T) {
+	s, paths := store(t)
+	ctx := context.Background()
+
+	before := domain.OperationRecord{
+		ID: "01JAAA0000000000000000000A", Type: domain.OpTypeUpdate,
+		Status: domain.StatusSucceeded, StartedAt: domain.NewTime(time.Now()),
+	}
+	if err := s.AppendOperation(ctx, before); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := os.OpenFile(paths.JournalFile(), os.O_WRONLY|os.O_APPEND, 0o640)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(strings.Repeat("x", 2<<20) + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	after := domain.OperationRecord{
+		ID: "01JCCC0000000000000000000C", Type: domain.OpTypeUpdate,
+		Status: domain.StatusInterrupted, StartedAt: domain.NewTime(time.Now()),
+	}
+	if err := s.AppendOperation(ctx, after); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := s.Operations(ctx, ports.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, r := range recs {
+		ids[r.ID] = true
+	}
+	if !ids[before.ID] || !ids[after.ID] {
+		t.Errorf("records on either side of an overlong line were lost: %v", ids)
+	}
+}
+
 func TestReadingAJournalThatDoesNotExistYet(t *testing.T) {
 	s, _ := store(t)
 

@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -179,6 +180,32 @@ func New(cfg Config) *Engine {
 
 var _ ports.BackupEngine = (*Engine)(nil)
 
+// createDir allocates the backup's identity on disk.
+//
+// The ID has second granularity, so two backups started within one second
+// share it -- and tolerating the existing directory would overwrite the first
+// backup's manifest and components in place. A collision picks a suffixed name
+// instead; the bound exists only so a filesystem that reports EEXIST for some
+// other reason cannot loop this forever.
+//
+// 0700: a backup contains the database and the encrypted secret file. It is
+// the single most sensitive directory the manager creates.
+func (e *Engine) createDir() (id, dir string, err error) {
+	id = e.newID()
+	dir = filepath.Join(e.paths.BackupsDir(), id)
+	for n := 2; ; n++ {
+		err := atomicfs.MkdirFresh(dir, 0o700)
+		if err == nil {
+			return id, dir, nil
+		}
+		if !errors.Is(err, fs.ErrExist) || n > 10 {
+			return "", "", err
+		}
+		id = e.newID() + "-" + strconv.Itoa(n)
+		dir = filepath.Join(e.paths.BackupsDir(), id)
+	}
+}
+
 // Create runs the release's backup hook and wraps its output in a manifest.
 //
 // The hook writes into a directory the manager creates and owns. Letting the
@@ -215,12 +242,8 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 				"project's named volumes itself")
 	}
 
-	id := e.newID()
-	dir := filepath.Join(e.paths.BackupsDir(), id)
-
-	// 0700: a backup contains the database and the encrypted secret file.
-	// It is the single most sensitive directory the manager creates.
-	if err := atomicfs.MkdirExact(dir, 0o700); err != nil {
+	id, dir, err := e.createDir()
+	if err != nil {
 		return ports.BackupRef{}, err
 	}
 

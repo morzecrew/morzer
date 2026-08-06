@@ -30,7 +30,7 @@ import (
 // because rename is only atomic within a filesystem, and /tmp is frequently a
 // different one.
 func WriteFile(path string, data []byte, mode fs.FileMode) error {
-	if err := MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := MkdirAll(filepath.Dir(path), parentDirMode(mode)); err != nil {
 		return err
 	}
 
@@ -106,12 +106,53 @@ func WriteFileIn(root *os.Root, rel string, data []byte, mode fs.FileMode) error
 	return syncDirIn(root, filepath.Dir(rel))
 }
 
+// parentDirMode derives the mode for directories WriteFile has to create from
+// the file's own mode: the owner always gets rwx, group and other get rx only
+// where the file grants them read. A 0640 state file lands in a 0750
+// directory -- the ManagedDirs contract for the manager's own tree -- and a
+// 0600 backup manifest in a 0700 one, instead of the flat 0755 that used to
+// widen whatever the file's mode was trying to say.
+func parentDirMode(mode fs.FileMode) fs.FileMode {
+	dir := fs.FileMode(0o700)
+	if mode&0o040 != 0 {
+		dir |= 0o050
+	}
+	if mode&0o004 != 0 {
+		dir |= 0o005
+	}
+	return dir
+}
+
 // MkdirAll creates a directory tree, applying mode to the directories it
 // creates. Existing directories keep their permissions: `init` sets them, and
 // a later `apply` has no business widening what an operator narrowed.
 func MkdirAll(path string, mode fs.FileMode) error {
 	if err := os.MkdirAll(path, mode); err != nil {
 		return domain.Internal(err, "cannot create directory %s", path)
+	}
+	return nil
+}
+
+// MkdirFresh creates path with exactly mode, refusing a path that already
+// exists. Parents are created as needed with the same mode.
+//
+// For directories whose name is an identity -- a backup ID -- where tolerating
+// an existing directory would silently merge two artifacts into one. The
+// caller detects the collision with errors.Is(err, fs.ErrExist) and picks a
+// different name.
+func MkdirFresh(path string, mode fs.FileMode) error {
+	if err := MkdirAll(filepath.Dir(path), mode); err != nil {
+		return err
+	}
+	if err := os.Mkdir(path, mode); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return domain.Internal(err, "directory %s already exists", path)
+		}
+		return domain.Internal(err, "cannot create directory %s", path)
+	}
+	// Mkdir honours mode only modulo umask.
+	if err := os.Chmod(path, mode); err != nil {
+		return domain.Internal(err, "cannot set mode %04o on %s", mode.Perm(), path)
 	}
 	return nil
 }

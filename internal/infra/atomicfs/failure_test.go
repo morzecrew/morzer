@@ -2,6 +2,7 @@ package atomicfs_test
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -312,5 +313,35 @@ func TestRemoveWithOverwriteClearsEveryFile(t *testing.T) {
 	// whether the session directory was ever created.
 	if err := atomicfs.RemoveWithOverwrite(dir); err != nil {
 		t.Errorf("removing something already gone: %v", err)
+	}
+}
+
+// A parent directory WriteFile has to create takes its mode from the file:
+// a 0640 state file lands in a 0750 directory, a 0600 backup manifest in a
+// 0700 one. The flat 0755 this replaces widened the manager's own tree.
+func TestWriteFileDerivesParentDirModeFromTheFile(t *testing.T) {
+	root := t.TempDir()
+
+	cases := map[fs.FileMode]fs.FileMode{
+		0o640: 0o750,
+		0o600: 0o700,
+		0o644: 0o755,
+	}
+	for fileMode, wantDir := range cases {
+		dir := filepath.Join(root, fmt.Sprintf("m%04o", fileMode))
+		path := filepath.Join(dir, "nested", "file.yaml")
+		if err := atomicfs.WriteFile(path, []byte("x\n"), fileMode); err != nil {
+			t.Fatal(err)
+		}
+		for _, created := range []string{dir, filepath.Join(dir, "nested")} {
+			info, err := os.Stat(created)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if perm := info.Mode().Perm(); perm != wantDir {
+				t.Errorf("a %04o file's parent %s has mode %04o, want %04o",
+					fileMode, created, perm, wantDir)
+			}
+		}
 	}
 }
