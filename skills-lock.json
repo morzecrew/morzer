@@ -300,6 +300,12 @@
       "sourceType": "github",
       "skillPath": "skills/rfc-writer/SKILL.md",
       "computedHash": "53ecaf352a8d4255b9904bb67022405afe252c7cf32dbe743d31bfe540cdfb81"
+    },
+    "self-audit": {
+      "source": "morzecrew/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/self-audit/SKILL.md",
+      "computedHash": "078f782d0fc1323e383ea7be3431a8b5e4bfd8abe801c587891ae65a22ec9cbe"
     }
   }
 }
