@@ -1,6 +1,6 @@
 ---
 name: rfc-writer
-description: Author and maintain numbered RFC design documents in a project's rfcs/ directory, tracked by an INDEX.md. Use whenever the user asks to write an RFC, design proposal, design doc, or architecture proposal; wants to record a design decision before building; asks to update an RFC's status after shipping; or asks to set up / clean up an rfcs/ directory or its index.
+description: Author and maintain numbered RFC design documents in a project's rfcs/ directory, tracked by an INDEX.md. Use whenever the user asks to write an RFC, design proposal, design doc, technical spec, or architecture proposal; wants to record a design decision, its alternatives, or why an approach was rejected before building; asks to update an RFC's status after shipping; or asks to set up / clean up an rfcs/ directory or its index.
 ---
 
 # RFC Authoring and Maintenance
@@ -11,8 +11,8 @@ RFCs here are working documents, not bureaucracy: they exist so that decisions s
 
 ## Use this skill when
 
-- The user asks to write an RFC, design doc, design proposal, or architecture proposal
-- The user wants to record or lock a design decision before implementing it
+- The user asks to write an RFC, design doc, design proposal, technical spec, or architecture proposal
+- The user wants to record or lock a design decision — with the alternatives it beat, or why an approach was rejected — before implementing it
 - The user asks to update an RFC (status change, execution notes, marking it shipped or rejected)
 - The user asks to create, index, or reorganize an `rfcs/` (or `rfc/`) directory
 - A large feature discussion should be captured as a durable document
@@ -62,6 +62,7 @@ Read `references/rfc-template.md` before writing a new RFC and start from it. Th
 - `**Status:**` — emoji + word, optionally annotated ("execution-ready — one PR", "design locked, not scheduled")
 - `**Scope:**` — a dense paragraph: what this RFC covers *and what it deliberately does not*. This is the paragraph someone reads to decide whether to read the rest.
 - `**Related:**` — links to the code being touched (relative links into the repo), other RFCs, prior art, external references
+- `**Discussion:**` (optional) — link to where the design was or is being debated (PR, issue, thread); a reader who disagrees goes there instead of forking the document
 - `**Origin:**` (optional) — where the design was ported or generalized from, if anywhere
 
 **Numbered sections.** The full set, for a substantial RFC:
@@ -70,20 +71,22 @@ Read `references/rfc-template.md` before writing a new RFC and start from it. Th
 2. **Motivation** — the problem, with evidence from the actual codebase
 3. **Current state** — what exists today, verified against the code, not from memory
 4. **Goals / Non-goals** — explicit both ways
-5. **Design** — the core; subsections per workstream or component, with real signatures/schemas/code blocks where they pin the design
+5. **Design** — the core; subsections per workstream or component, with real signatures/schemas/code blocks where they pin the design. Where a choice was contested, keep the rejected alternative and why it lost — one sentence for minor calls, an `### Alternatives considered` subsection when the choice shaped the design
 6. **Tests** — how the design is verified
 7. **Docs** — what documentation ships with it
 8. **Out of scope** — named and *reasoned*: each item says why it's excluded and what would change that
 9. **Risks** — honest failure modes, including risks of the document being misread
-10. **Decisions** — a numbered table of locked decisions; this is what makes pickup cheap and re-litigation unnecessary
-11. **Phasing** — what lands first, what's gated on what
+10. **Unresolved questions** — what must be settled before the design counts as locked, vs. what implementation is free to settle; naming an unknown beats resolving it silently mid-build
+11. **Decisions** — a numbered table of locked decisions; this is what makes pickup cheap and re-litigation unnecessary. Where a decision constrains the future non-obviously, the row says so — the consequences of one decision are the context of the next
+12. **Phasing** — what lands first, what's gated on what
 
-**Scale to the RFC's weight.** A small design-lock RFC needs only the header block, Design, Non-goals, and the Decision table. Don't pad a two-page RFC to eleven sections; don't collapse a system-wide proposal into three. Keep section numbering contiguous for whatever subset is used.
+**Scale to the RFC's weight.** A small design-lock RFC needs only the header block, Design, Non-goals, and the Decision table. Don't pad a two-page RFC to twelve sections; don't collapse a system-wide proposal into three. Keep section numbering contiguous for whatever subset is used.
 
 ## Writing style
 
 - **Ground every claim in the code.** "Current state" and "Motivation" cite files, line-level facts, and measured numbers — link them with relative paths. An RFC that argues from memory is a fiction with headings.
-- **Record decisions with their why.** The decision table is the contract; the body carries the reasoning. Rejected alternatives get a sentence saying why, so they stay rejected.
+- **Record decisions with their why — and their cost.** The decision table is the contract; the body carries the reasoning. Rejected alternatives get a sentence saying why they lost (an alternative recorded with its trade-off stays rejected; one recorded as merely "rejected" gets re-proposed). A decision that closes a door later says so in its row.
+- **Timely beats polished.** A rough RFC that exists beats a perfect one that doesn't (Oxide's RFD rule: "timely rather than polished"). Draft prose may be rough; the Scope paragraph and the decision table may not.
 - **Be honest about limits.** If a mechanism is deferred, gated, or known-incomplete, say so in the RFC rather than letting the reader discover it. Fail-closed wording ("refused", "raises", "deliberately unscheduled") beats optimistic vagueness.
 - **Dense beats long.** Prefer one load-bearing paragraph over three thin ones. The index one-liner especially: it must be self-contained enough that a reader can skip the RFC.
 
@@ -117,3 +120,9 @@ When asked to sync or clean up: verify every file in the directory has an index 
 
 - `references/rfc-template.md` — RFC skeleton with per-section guidance; read before writing any new RFC
 - `references/index-template.md` — INDEX.md skeleton; use when initializing a directory
+
+## Related skills
+
+- `altitude-docs` — the user-facing documentation that ships after the design; the RFC's Docs section points at it
+- `self-audit` — adversarial review of the branch that executed an RFC, before merge
+- `keep-a-changelog` — records what shipped; the RFC records why it was built that way
