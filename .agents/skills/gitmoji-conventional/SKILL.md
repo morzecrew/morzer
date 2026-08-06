@@ -68,13 +68,13 @@ A breaking change carries three coordinated signals, so no consumer of the log m
 
 1. **Gitmoji `💥`** — the type stays whatever the change is (`feat`, `fix`, `refactor`…); `💥` replaces that type's usual emoji.
 2. **`!` immediately before the colon** — `feat(api)!:`. Per the spec this alone marks the commit breaking; the description then carries the what.
-3. **`BREAKING CHANGE:` footer** — add it whenever the break needs more detail than the subject holds (what broke, what to do instead). MUST be uppercase; `BREAKING-CHANGE:` is an accepted synonym.
+3. **`BREAKING CHANGE:` footer** — add it whenever the break needs more detail than the subject holds (what broke, what to do instead). MUST be uppercase; `BREAKING-CHANGE:` is an accepted synonym. A multi-line footer value indents its continuation lines with a leading space (git trailer folding) — an unindented continuation detaches from the token and the parseability is lost.
 
 ```text
 💥 feat(api)!: redesign authentication API
 
 BREAKING CHANGE: authentication endpoints now require OAuth2;
-API-key access is removed.
+ API-key access is removed.
 ```
 
 A breaking commit means MAJOR in the next release and must produce a changelog entry that names the break (`keep-a-changelog`).

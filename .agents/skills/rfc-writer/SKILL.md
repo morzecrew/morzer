@@ -11,8 +11,8 @@ RFCs here are working documents, not bureaucracy: they exist so that decisions s
 
 ## Use this skill when
 
-- The user asks to write an RFC, design doc, design proposal, or architecture proposal
-- The user wants to record or lock a design decision before implementing it
+- The user asks to write an RFC, design doc, design proposal, technical spec, or architecture proposal
+- The user wants to record or lock a design decision — with the alternatives it beat, or why an approach was rejected — before implementing it
 - The user asks to update an RFC (status change, execution notes, marking it shipped or rejected)
 - The user asks to create, index, or reorganize an `rfcs/` (or `rfc/`) directory
 - A large feature discussion should be captured as a durable document

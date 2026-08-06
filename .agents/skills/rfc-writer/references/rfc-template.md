@@ -108,6 +108,10 @@ style is fine if the workstreams are named in §5.>
 
 ## Notes on filling it in
 
+- **An existing corpus outranks this template.** If the project's RFCs already
+  use a different section set or numbering (say, Decisions at §10), match the
+  corpus — `§NN` cross-references must stay unambiguous across the directory.
+  This skeleton is for directories without an established shape.
 - **Header ↔ filename sync:** the `NNNN` in the H1 must match the filename.
 - **Status annotations:** the status line is allowed to carry nuance —
   "📝 Draft (execution-ready — one PR)", "📝 Draft — design locked, **not

@@ -1,6 +1,13 @@
 # GitHub mechanics for the PR review loop
 
-Concrete `gh` CLI and API incantations per loop step. All commands assume the PR's repo is the cwd; `$PR` is the PR number.
+Concrete `gh` CLI and API incantations per loop step. All commands assume the PR's repo is the cwd; `$PR` is the PR number, and where GraphQL needs the repo identity:
+
+```bash
+OWNER=$(gh repo view --json owner -q .owner.login)
+REPO=$(gh repo view --json name -q .name)
+```
+
+`gh api` substitutes `{owner}`/`{repo}` **only in REST URL paths** — never inside `-f` values — so GraphQL variables must use the shell variables above.
 
 ## Discover and wait (step 1)
 
@@ -51,7 +58,7 @@ gh api graphql -f query='
         }
       }
     }
-  }' -f owner={owner} -f repo={repo} -F pr=$PR
+  }' -f owner=$OWNER -f repo=$REPO -F pr=$PR
 ```
 
 Paginate **both** connections to exhaustion — the fixed `first:` limits silently truncate large PRs, and a completion check that missed a thread is wrong: while the outer `pageInfo.hasNextPage` is true, rerun with `-f threads=<endCursor>`; for any thread whose `comments.pageInfo.hasNextPage` is true, fetch its remaining comments through a `node(id: $threadId)` query with a comments cursor.
