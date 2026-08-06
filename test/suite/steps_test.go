@@ -217,6 +217,9 @@ func TestResumeStartsFromTheStepThatDidNotFinish(t *testing.T) {
 	crashed.ID = "op-killed-mid-apply"
 	crashed.Status = domain.StatusRunning
 	crashed.FinishedAt = domain.Time{}
+	// The crashed run started after the clean one; --resume acts on the
+	// newest record of the type.
+	crashed.StartedAt = domain.NewTime(time.Now().Add(time.Second))
 	crashed.Steps = append([]domain.StepRecord(nil), clean.Record.Steps...)
 	resumeFrom := -1
 	for i := range crashed.Steps {
@@ -256,41 +259,79 @@ func TestResumeStartsFromTheStepThatDidNotFinish(t *testing.T) {
 	}
 }
 
-// TestAnUnfinishedOperationDoesNotBlockANewOne records a gap, not a design.
-//
-// `preflight.NoUnfinishedOperation` exists, is documented as "refuses to start
-// while a previous operation is still flagged", and explains why -- "proceeding
-// over an unfinished operation would layer new changes on a state nobody has
-// confirmed, which is exactly how a recoverable failure becomes an
-// unrecoverable one". **Nothing calls it.** No operation's preflight includes
-// it, so an `apply` runs straight over an operation that asked for a human.
-//
-// Not fixed here: wiring a new refusal into every mutating operation is a
-// behaviour change and belongs in its own pull request. This test fails the
-// day it is wired, which is the point.
-func TestAnUnfinishedOperationDoesNotBlockANewOne(t *testing.T) {
+// TestResumeFindsAnInterruptedOperation: an operator's Ctrl-C journals the
+// operation as interrupted -- which is terminal and needs no attention, so it
+// never appears in UnfinishedOperations. `--resume` has to find it anyway;
+// "resume it with `morzer apply --resume`" is what the operator was told.
+func TestResumeFindsAnInterruptedOperation(t *testing.T) {
 	h := newHarness(t)
 	h.install()
 	h.setHookEnv()
+	ctx := context.Background()
 
-	require.NoError(t, h.Deps.State.AppendOperation(context.Background(),
+	clean, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	interrupted := clean.Record
+	interrupted.ID = "op-ctrl-c"
+	interrupted.Status = domain.StatusInterrupted
+	interrupted.StartedAt = domain.NewTime(time.Now().Add(time.Second))
+	interrupted.Steps = append([]domain.StepRecord(nil), clean.Record.Steps...)
+	seen := false
+	for i := range interrupted.Steps {
+		switch {
+		case interrupted.Steps[i].ID == "health-checks":
+			seen = true
+			interrupted.Steps[i].Status = domain.StepInterrupted
+		case !seen:
+			interrupted.Steps[i].Status = domain.StepSucceeded
+		default:
+			interrupted.Steps[i].Status = domain.StepPending
+		}
+	}
+	require.True(t, seen, "the apply pipeline no longer has a health-checks step; update this fixture")
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, interrupted))
+
+	resumed, err := ops.Apply(ctx, h.Deps, ops.Options{Resume: true})
+	require.NoError(t, err, "an interrupted operation was not found or not resumed")
+	assert.Equal(t, interrupted.ID, resumed.Record.ID)
+	assert.Equal(t, domain.StatusSucceeded, resumed.Record.Status)
+}
+
+// TestAnUnfinishedOperationBlocksANewOne: the requires-manual-intervention
+// flag exists to stop automation proceeding over a state a human has not
+// looked at, and the preflight gate is where that stops -- a reboot's `apply
+// --startup` above all. Clearing the flag is what re-opens the road.
+func TestAnUnfinishedOperationBlocksANewOne(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
 		domain.OperationRecord{
 			ID: "op-stuck", Type: domain.OpTypeUpdate,
 			Status: domain.StatusManualIntervention, StartedAt: domain.NewTime(time.Now()),
 		}))
 
 	// It is genuinely recorded as needing attention...
-	unfinished, err := h.Deps.State.UnfinishedOperations(context.Background())
+	unfinished, err := h.Deps.State.UnfinishedOperations(ctx)
 	require.NoError(t, err)
 	require.Len(t, unfinished, 1)
 	require.True(t, unfinished[0].Status.NeedsAttention())
 
-	// ...and `apply` proceeds anyway.
-	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
-	if err != nil {
-		t.Fatalf("the check is now wired in, which is an improvement: delete this "+
-			"test and assert the refusal instead. Got: %v", err)
-	}
+	// ...so `apply` refuses, naming the operation and the way forward.
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err, "apply proceeded over an operation flagged for manual intervention")
+	assert.Contains(t, domain.AsError(err).Error(), "op-stuck",
+		"the refusal must name the operation that blocks it")
+
+	// A human acknowledging the state is exactly what clears the road.
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-stuck")
+	require.NoError(t, err)
+
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "clearing the flag must let the next operation run")
 }
 
 // TestClearingTheInterventionFlagMarksItResolved. The flag is what `doctor` and

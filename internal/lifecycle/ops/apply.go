@@ -130,10 +130,33 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 		OnFailure:   engine.Abort,
 		Timeout:     3 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			checks := []preflight.Check{
+			var checks []preflight.Check
+
+			// The one gate that guards intent rather than capacity: an
+			// operation still flagged as needing a human, or one a dead
+			// process left journaled as running, must stop automation
+			// here -- a reboot's `apply --startup` above all. Resume is
+			// exempt because it *is* the human continuing exactly that
+			// operation; the record this run journaled for itself
+			// before its first step is excluded for the same reason.
+			if !opts.Resume {
+				unfinished, err := d.State.UnfinishedOperations(ctx)
+				if err != nil {
+					return err
+				}
+				others := make([]domain.OperationRecord, 0, len(unfinished))
+				for _, rec := range unfinished {
+					if rec.ID != st.OpID {
+						others = append(others, rec)
+					}
+				}
+				checks = append(checks, preflight.NoUnfinishedOperation(others))
+			}
+
+			checks = append(checks,
 				preflight.Architecture(rel.Manifest.Requirements),
 				preflight.OperatingSystem(rel.Manifest.Requirements),
-			}
+			)
 			checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
 			checks = append(checks,
 				preflight.Disk(d.Paths.VarDir, rel.Manifest.Requirements.Disk),
@@ -749,15 +772,29 @@ func (d *Deps) resolveCurrentRelease(ctx context.Context, record domain.ReleaseR
 }
 
 // findResumable locates the operation --resume should continue.
+//
+// The newest record of the type decides. A crashed process leaves `running`,
+// an operator's Ctrl-C leaves `interrupted`, an aborting step leaves `failed`
+// -- each of those is the engine's definition of resumable. Anything that
+// finished otherwise supersedes older wreckage: resuming an operation from
+// before the last success would re-apply history. UnfinishedOperations is
+// deliberately not the source here -- it carries only what needs *attention*
+// (running, manual-intervention), and an interrupted operation is exactly the
+// one the operator was told `--resume` would continue.
 func (d *Deps) findResumable(ctx context.Context, opType domain.OperationType) (*domain.OperationRecord, error) {
-	unfinished, err := d.State.UnfinishedOperations(ctx)
+	all, err := d.State.Operations(ctx, ports.Filter{})
 	if err != nil {
 		return nil, err
 	}
-	for _, rec := range unfinished {
-		if rec.Type == opType {
+	for _, rec := range all {
+		if rec.Type != opType {
+			continue
+		}
+		switch rec.Status {
+		case domain.StatusRunning, domain.StatusInterrupted, domain.StatusFailed:
 			return &rec, nil
 		}
+		break
 	}
 	return nil, domain.Usage("no interrupted %s operation to resume", opType).
 		WithHint("run the command without --resume")
