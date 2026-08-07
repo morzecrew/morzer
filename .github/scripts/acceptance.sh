@@ -101,6 +101,57 @@ info "$(docker --version)"
 info "$(sops --version 2>&1 | head -1)"
 info "work directory ${WORK}"
 
+# The volume helper image, fetched here rather than left to the backup.
+#
+# A named volume is read through a container, so `backup` refuses outright when
+# the pinned helper is not on the machine -- and a CI runner is precisely that
+# machine: it starts with no local images at all. A developer's laptop has
+# usually pulled busybox for something else, which is why this scenario passed
+# by hand and failed on every push to main.
+#
+# Which image that is has to be decided the way the manager decides it, or this
+# fetches one thing and `backup` waits for another.
+#
+# MORZER_VOLUME_HELPER_IMAGE wins when set, because it is the escape hatch for
+# an operator whose registry does not carry busybox -- an air-gapped mirror that
+# sets it would otherwise be failed here for not having a default it does not
+# want.
+#
+# Trimmed first, because WithHelperImage trims it and stores it trimmed: it
+# arrives from an environment variable, and a systemd `Environment=` line with a
+# trailing space is the ordinary way one picks up whitespace. Untrimmed, this
+# would inspect and pull one reference while the manager ran another, and a
+# value that is nothing but spaces would count as an override here and as unset
+# there -- both of them the same class of bug this block exists to close.
+#
+# Trimmed in the shell rather than through sed, which is line-oriented: it
+# strips per line, so a value led by a newline comes back still carrying it
+# while Go's TrimSpace takes it off. The two expansions below cut the leading
+# and trailing whitespace runs from the value as a whole, newlines included.
+#
+# Empty after trimming counts as unset, which is what HelperImage does with an
+# empty override. Then the digest comes out of the manager's own source, because
+# the manager accepts no other; hardcoding it would drift the day it is bumped.
+HELPER_IMAGE="${MORZER_VOLUME_HELPER_IMAGE:-}"
+HELPER_IMAGE="${HELPER_IMAGE#"${HELPER_IMAGE%%[![:space:]]*}"}"
+HELPER_IMAGE="${HELPER_IMAGE%"${HELPER_IMAGE##*[![:space:]]}"}"
+if [ -n "${HELPER_IMAGE}" ]; then
+	info "volume helper overridden by MORZER_VOLUME_HELPER_IMAGE"
+else
+	HELPER_IMAGE_SRC="${ROOT_DIR}/internal/adapters/runtime/compose/volumes.go"
+	HELPER_IMAGE="$(sed -n 's/^const DefaultHelperImage = "\(.*\)"$/\1/p' "${HELPER_IMAGE_SRC}")"
+	[ -n "${HELPER_IMAGE}" ] ||
+		fail "cannot read DefaultHelperImage from ${HELPER_IMAGE_SRC}"
+fi
+
+if docker image inspect "${HELPER_IMAGE}" >/dev/null 2>&1; then
+	info "volume helper ${HELPER_IMAGE} (already local)"
+else
+	info "pulling volume helper ${HELPER_IMAGE}"
+	docker pull "${HELPER_IMAGE}" >/dev/null ||
+		fail "cannot pull the volume helper ${HELPER_IMAGE}; volumes are read through it, so backup cannot run without it"
+fi
+
 # ----------------------------------------------------------------------------
 # A registry, so images can be pinned by digest
 #

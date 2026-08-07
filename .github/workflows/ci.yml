@@ -69,6 +69,11 @@ jobs:
               - 'justfile'
               - '.golangci.yml'
               - 'testdata/**'
+              # The scripts the gates below execute. `acceptance.sh` *is* the
+              # acceptance scenario, and a change to it used to match no
+              # filter that runs it -- so the one edit guaranteed to affect
+              # that job was the one edit that could not trigger it.
+              - '.github/scripts/**'
             docs:
               - 'pages/**'
               - 'README.md'
@@ -213,16 +218,53 @@ jobs:
   acceptance:
     name: Acceptance (real Docker)
     needs: [changes, test]
-    # Not on every pull-request commit: it builds images, runs a registry and
-    # exercises the whole lifecycle. It runs on what merges and on what ships,
-    # which is where "does this actually work on a machine" has to be answered.
+    # On a pull request that touches code, as well as on what merges and what
+    # ships. It was previously the latter only -- `run_full` is set for a push
+    # and never for a pull request -- and "does this actually work on a
+    # machine" answered after the merge is answered too late: this job stayed
+    # red across three consecutive merges to main before anyone had a signal
+    # that could have blocked one.
     if: >-
-      needs.changes.outputs.run_full == 'true' &&
-      (needs.changes.outputs.code == 'true' || github.event_name != 'pull_request')
+      needs.changes.outputs.run_full == 'true' ||
+      needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Optional, and deliberately so. Anonymous pulls from Docker Hub are
+    # limited per IP and Actions runners share theirs, so this job's pinned
+    # images compete with every other project on the same runner -- and it now
+    # runs per pull request rather than per merge, which multiplies the rate.
+    # A token moves the pulls onto a per-account budget.
+    #
+    # Absent, they stay anonymous and everything still runs. That is not a
+    # tidiness fallback: secrets are not available to a pull request from a
+    # fork, so anonymous is the contributor path, and a login that was required
+    # would lock out exactly the people this is meant to serve.
+    env:
+      # Whether a token exists, never the token. A step's `if` cannot read the
+      # secrets context, so the *answer* has to be a job-level value -- but the
+      # credentials themselves stay bound to the one step that needs them,
+      # rather than sitting in the environment of every step after it. `just
+      # acceptance-cover` runs this repository's own scripts and tests, and a
+      # same-repository pull request can change those.
+      DOCKERHUB_CONFIGURED: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Before anything pulls. The guard is the token's presence rather than
+      # the event, so a fork's run skips it and says nothing; --password-stdin
+      # keeps the token out of the process table.
+      #
+      # `docker login` still leaves the credential in the runner's Docker
+      # config for the rest of the job, which is unavoidable while later steps
+      # have to pull with it. What bounds that is the token's scope: it needs
+      # `Public Repo Read-only` and nothing more, so the worst a leaked one
+      # buys is the right to pull public images against this account's limit.
+      - name: Log in to Docker Hub when a token is configured
+        if: ${{ env.DOCKERHUB_CONFIGURED == 'true' }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -251,8 +293,14 @@ jobs:
       # for local runs, so the shape that ships is still exercised by hand.
       - run: just acceptance-cover
 
+      # Only when the scenario passed, because the profile is written after it
+      # and cannot exist otherwise. With `always()` a failed scenario reported
+      # twice -- once for the real failure, then again for the missing file --
+      # and the second error is the one that showed up first in the summary.
+      # The coverage job already treats an absent profile as a reason to fall
+      # back to the unit floor, so nothing downstream needs the empty upload.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
+        if: success()
         with:
           name: acceptance-profile
           path: acceptance.profile
@@ -266,14 +314,28 @@ jobs:
     # Redis, Postgres and a registry. They answer what a fake cannot -- whether
     # what comes back is what the adapter thinks it is -- so they run wherever
     # the acceptance scenario does, on the same "does this work on a machine"
-    # grounds.
+    # grounds -- including, now, on a pull request that touches code.
     if: >-
-      needs.changes.outputs.run_full == 'true' &&
-      (needs.changes.outputs.code == 'true' || github.event_name != 'pull_request')
+      needs.changes.outputs.run_full == 'true' ||
+      needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Seven pinned images, which is the heaviest pull load in this workflow.
+    # Optional for the same reason as the acceptance job above: a fork's pull
+    # request has no secrets, and must still be able to run this. Scoped to the
+    # step for the same reason too -- `just test-docker-cover` runs this
+    # repository's own tests.
+    env:
+      DOCKERHUB_CONFIGURED: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Log in to Docker Hub when a token is configured
+        if: ${{ env.DOCKERHUB_CONFIGURED == 'true' }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -289,8 +351,18 @@ jobs:
 
       - run: just test-docker-cover
 
+      # Only when the suites passed, for the same reason as the acceptance
+      # profile -- though this one fails differently, and worse. `go test`
+      # writes its -coverprofile whatever the outcome: a failed run still
+      # leaves a partial docker.out, and a run that did not compile leaves a
+      # 10-byte "mode: set". Uploading either does not produce a missing-file
+      # error, it produces a *present* profile that understates coverage --
+      # and the job below decides which floor applies by whether the file
+      # arrived. A failed container run would therefore be held to the union
+      # floor on a union that is missing most of its statements, and the
+      # second red job would say "coverage" while the real failure was here.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
+        if: success()
         with:
           name: container-profile
           path: docker.out
@@ -314,8 +386,11 @@ jobs:
     env:
       # Two floors, because two things can arrive.
       #
-      # UNIT_FLOOR measures `go test` alone, which is all a change-gated pull
-      # request that skipped the container and acceptance jobs can produce.
+      # UNIT_FLOOR measures `go test` alone. A pull request touching code now
+      # runs the container and acceptance jobs too, so it is normally held to
+      # the union floor -- the same one main is held to, which is the point.
+      # This is what remains for the runs that produce nothing else: a job
+      # that failed, or was skipped because the change touched no code.
       # UNION_FLOOR adds their profiles: the container suites drive the
       # adapters against real services, and the acceptance run drives the
       # built binary, which is where the CLI wiring and systemd get exercised.
