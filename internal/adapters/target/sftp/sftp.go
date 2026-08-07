@@ -604,13 +604,31 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	// does: the entry check above only covers work that has not started,
 	// and a cancelled push otherwise keeps streaming a multi-gigabyte
 	// component long after the operation was reported interrupted.
-	if _, err := io.Copy(f, ctxReader{ctx: ctx, r: r}); err != nil {
+	//
+	// A write already *blocked* on a stalled server never reaches that
+	// check, so cancellation also tears the transport down -- dropDead
+	// closes and evicts the cached connection, the same lever the
+	// corpse-detection path pulls, and the error it forces is what
+	// unblocks the copy. The next operation redials.
+	watchDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			if s.dropDead != nil {
+				s.dropDead()
+			}
+		case <-watchDone:
+		}
+	}()
+	_, copyErr := io.Copy(f, ctxReader{ctx: ctx, r: r})
+	close(watchDone)
+	if copyErr != nil {
 		_ = f.Close()
 		_ = s.client.Remove(tmp)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		return s.unreachable(err, "cannot write %s to the target", key)
+		return s.unreachable(copyErr, "cannot write %s to the target", key)
 	}
 	if err := f.Close(); err != nil {
 		_ = s.client.Remove(tmp)
