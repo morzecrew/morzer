@@ -15,6 +15,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -219,11 +220,11 @@ func (s *Store) AppendOperation(ctx context.Context, rec domain.OperationRecord)
 		}
 	}
 
+	_, statErr := os.Stat(s.paths.ManagerDir())
+	dirCreated := errors.Is(statErr, fs.ErrNotExist)
 	if err := atomicfs.MkdirAll(s.paths.ManagerDir(), 0o750); err != nil {
 		return err
 	}
-	_, statErr := os.Stat(s.paths.JournalFile())
-	created := errors.Is(statErr, fs.ErrNotExist)
 
 	f, err := os.OpenFile(s.paths.JournalFile(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
@@ -235,14 +236,19 @@ func (s *Store) AppendOperation(ctx context.Context, rec domain.OperationRecord)
 		return domain.Internal(err, "cannot append to the operation journal")
 	}
 	// The journal is the source of truth for --resume after a crash, so it
-	// is worth an fsync on every record -- and, the first time, an fsync of
-	// the directory holding it: a fsynced file whose directory entry was
-	// lost to the same power cut is a journal that never existed.
+	// is worth an fsync on every record -- and of the directory holding it:
+	// a fsynced file whose entry was lost to the same power cut is a
+	// journal that never existed. Unconditionally, not only on creation --
+	// a first append interrupted between the file fsync and the directory
+	// one would otherwise leave every later append believing the entry is
+	// already durable. When the manager directory itself was just created,
+	// its own entry in the parent gets the same treatment.
 	if err := f.Sync(); err != nil {
 		return domain.Internal(err, "cannot flush the operation journal")
 	}
-	if created {
-		atomicfs.SyncDir(s.paths.ManagerDir())
+	atomicfs.SyncDir(s.paths.ManagerDir())
+	if dirCreated {
+		atomicfs.SyncDir(filepath.Dir(s.paths.ManagerDir()))
 	}
 	return nil
 }

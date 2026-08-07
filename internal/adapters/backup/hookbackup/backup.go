@@ -384,8 +384,10 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 
 	// The components' directory entries become durable before the manifest
 	// that names them does: a manifest that survives a crash must never
-	// describe files that did not.
-	atomicfs.SyncDir(dir)
+	// describe files that did not. The whole tree, because components nest
+	// -- volumes/*.tar.age lives a level down, and a hook may have written
+	// artifacts in subdirectories of its own.
+	atomicfs.SyncTree(dir)
 
 	if err := writeManifest(dir, manifest); err != nil {
 		_ = atomicfs.RemoveAll(dir)

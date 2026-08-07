@@ -522,6 +522,12 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 			if err := os.Chmod(tmp, 0o755); err != nil {
 				return domain.Internal(err, "cannot set mode on the staged release")
 			}
+			// Every directory entry inside the tree, then the tree's
+			// own entry. File contents were fsynced as they were
+			// written; without the directory half a power cut can
+			// keep the promoted root while losing entries inside it
+			// -- a tree the digest blessed, minus files.
+			atomicfs.SyncTree(tmp)
 			if err := os.Rename(tmp, staged.Root); err != nil {
 				return domain.Internal(err, "cannot move the staged release into place")
 			}
