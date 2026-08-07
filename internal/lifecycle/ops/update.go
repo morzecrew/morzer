@@ -493,18 +493,31 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 				return err
 			}
 
-			// Leftovers: a partial tree at the final path (it did not
-			// load, or Check would have decided) and staging dirs from
-			// earlier crashes. Both are this operation's own debris,
-			// removed under the same deployment lock that wrote them.
-			if _, statErr := os.Stat(staged.Root); statErr == nil {
-				if err := atomicfs.RemoveAll(staged.Root); err != nil {
-					return err
-				}
-			}
+			// Staging dirs from earlier crashes are this operation's
+			// own debris, removed under the same deployment lock that
+			// wrote them.
 			stale, _ := filepath.Glob(filepath.Join(parent, ".staging-*"))
 			for _, dir := range stale {
 				_ = atomicfs.RemoveAll(dir)
+			}
+
+			// A tree at the final path reached Execute only because
+			// Check's release.Load failed -- usually a partial
+			// extraction, but a transient I/O or permission failure
+			// reads the same way, and deleting an operator's release
+			// on that evidence would be irreversible. Moved aside
+			// into the staging namespace instead: this run proceeds,
+			// the tree survives for inspection, and the *next* run's
+			// sweep above reclaims it.
+			if _, statErr := os.Stat(staged.Root); statErr == nil {
+				aside := filepath.Join(parent,
+					fmt.Sprintf(".staging-debris-%d", time.Now().UnixNano()))
+				if err := os.Rename(staged.Root, aside); err != nil {
+					return domain.Internal(err,
+						"cannot move the unreadable tree at %s aside", staged.Root)
+				}
+				st.Warn("moved an unreadable tree at %s aside as %s; the next update reclaims it",
+					staged.Root, filepath.Base(aside))
 			}
 
 			tmp, err := os.MkdirTemp(parent, ".staging-")

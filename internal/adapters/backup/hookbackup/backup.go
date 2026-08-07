@@ -212,6 +212,12 @@ func (e *Engine) createDir() (id, dir string, err error) {
 // hook choose the location would put retention and disk accounting outside the
 // manager's reach, which is most of what it is here to provide.
 func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[string]string) (ports.BackupRef, error) {
+	// First, before any refusal below: a machine whose release lost its
+	// backup hook can still be carrying another release's restore debris.
+	if err := e.sweepStagedPlaintext(); err != nil {
+		return ports.BackupRef{}, err
+	}
+
 	components := scope.Components
 	if len(components) == 0 {
 		components = ports.AllComponents
@@ -241,8 +247,6 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 				"or include the `volumes` component so the manager captures the " +
 				"project's named volumes itself")
 	}
-
-	e.sweepStagedPlaintext()
 
 	id, dir, err := e.createDir()
 	if err != nil {
@@ -719,7 +723,9 @@ func (e *Engine) Verify(ctx context.Context, ref ports.BackupRef) error {
 
 // Restore runs the release's restore hook against a verified backup.
 func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.RestoreOptions) error {
-	e.sweepStagedPlaintext()
+	if err := e.sweepStagedPlaintext(); err != nil {
+		return err
+	}
 
 	dir, err := e.resolve(ref)
 	if err != nil {
@@ -975,11 +981,23 @@ func (e *Engine) hookEnv(phase ports.HookPhase, backupDir string) ports.HookEnv 
 // of the operations that run under the deployment lock, with overwrite for
 // the same reason a failed backup scrubs rather than unlinks: this is
 // product data on free blocks otherwise.
-func (e *Engine) sweepStagedPlaintext() {
+//
+// A removal failure fails the operation: proceeding would report success over
+// decrypted product data the sweep just proved it cannot clean up. The parent
+// directory is synced after each removal so the deletion itself survives a
+// power cut rather than resurrecting the plaintext.
+func (e *Engine) sweepStagedPlaintext() error {
 	stale, _ := filepath.Glob(filepath.Join(e.paths.BackupsDir(), "*", ".restore-*"))
 	for _, dir := range stale {
-		_ = atomicfs.RemoveWithOverwrite(dir)
+		if err := atomicfs.RemoveWithOverwrite(dir); err != nil {
+			return domain.BackupError(err,
+				"cannot remove the stale restore staging at %s", dir).
+				WithHint("it holds decrypted product data from an interrupted restore; " +
+					"remove it manually before continuing")
+		}
+		atomicfs.SyncDir(filepath.Dir(dir))
 	}
+	return nil
 }
 
 func writeManifest(dir string, m ports.BackupManifest) error {

@@ -72,7 +72,9 @@ func TestOrphanedRestoreStagingIsSwept(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e.sweepStagedPlaintext()
+	if err := e.sweepStagedPlaintext(); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
 		t.Fatal("the orphaned plaintext staging directory survived the sweep")
