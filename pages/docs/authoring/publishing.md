@@ -47,6 +47,13 @@ my-product/
 Inside rather than beside, so the signature survives being packed into an
 archive and unpacked again on the other machine.
 
+The list has to be complete. A bundle that ships a `SHA256SUMS` naming only some
+of its files is refused, naming the ones it left out — an unlisted file is a
+file the signature does not cover, and the file an attacker adds is a file
+nobody listed. The `find` above produces a complete list; if your pipeline
+writes one by hand, verify it with `sha256sum -c SHA256SUMS` *and* by comparing
+its line count against `find . -type f | wc -l`.
+
 ### The key
 
 ```sh

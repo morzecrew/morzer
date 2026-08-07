@@ -8,6 +8,7 @@ package checksum
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,6 +92,10 @@ func digestOf(path string) (string, error) {
 // This complements the tree digest: the sums file lets a vendor publish
 // per-file checksums that a third party can verify with `sha256sum -c`,
 // without needing the manager at all.
+//
+// The list must also be complete -- see unlisted. A sums file that names only
+// some of the bundle proves only that those files are unmodified, which is not
+// the claim the signature chain is documented to make.
 func VerifySumsFile(dir string) error {
 	sumsPath := filepath.Join(dir, SumsFileName)
 	data, err := os.ReadFile(sumsPath)
@@ -99,6 +104,7 @@ func VerifySumsFile(dir string) error {
 		return nil
 	}
 
+	listed := make(map[string]bool)
 	var problems []string
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -124,6 +130,8 @@ func VerifySumsFile(dir string) error {
 			continue
 		}
 
+		listed[clean] = true
+
 		got, err := atomicfs.DigestFile(filepath.Join(dir, clean))
 		if err != nil {
 			problems = append(problems, name+": missing or unreadable")
@@ -134,13 +142,67 @@ func VerifySumsFile(dir string) error {
 		}
 	}
 
+	problems = append(problems, unlisted(dir, listed)...)
+
 	if len(problems) > 0 {
 		return domain.ValidationError(domain.ErrDigestMismatch,
 			"%s does not match the bundle contents:\n  - %s",
 			SumsFileName, strings.Join(problems, "\n  - ")).
-			WithHint("the bundle has been modified since it was published")
+			WithHint("every file in the bundle must be listed in %s and match it; "+
+				"a file the list does not cover is a file the signature does not cover",
+				SumsFileName)
 	}
 	return nil
+}
+
+// unlisted reports bundle files that SHA256SUMS does not mention.
+//
+// Checking only the listed files makes the sums file prove something much
+// weaker than the documented chain -- signature → SHA256SUMS → every file. A
+// mirror that *adds* a file rather than editing one passes every other check:
+// the signature covers the sums file and still verifies, the listed files all
+// match, and in the default posture the digest "expectation" is the bundle's
+// own self-computed digest. The added file can be the manifest naming a
+// root-run hook.
+//
+// So completeness is enforced, and enforced fail-closed. It only binds bundles
+// that ship a sums file at all -- publishing one is the vendor's claim that it
+// covers the bundle, and the publishing documentation has always described
+// producing it over everything.
+//
+// Directories carry no content of their own and are not listed by `sha256sum`;
+// everything else in the tree must appear, symlinks included, because a symlink
+// is read through by whatever opens it.
+func unlisted(dir string, listed map[string]bool) []string {
+	var problems []string
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		// The list cannot list itself, and the signature over it is
+		// what makes the list trustworthy in the first place.
+		if rel == SumsFileName || rel == ports.SignatureFileName {
+			return nil
+		}
+		if !listed[filepath.Clean(rel)] {
+			problems = append(problems, filepath.ToSlash(rel)+
+				": present in the bundle but not listed")
+		}
+		return nil
+	})
+	if err != nil {
+		// An unreadable tree cannot be shown to be covered, which is the
+		// same answer as not being covered.
+		problems = append(problems, "the bundle cannot be read in full: "+err.Error())
+	}
+	return problems
 }
 
 func shortDigest(d string) string {

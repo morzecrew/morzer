@@ -172,7 +172,7 @@ Two independent checks, and a bundle failing either is refused.
 
 | Check | Question it answers |
 | --- | --- |
-| **Checksum** | Is this the artifact that was pinned, and does every file match the `SHA256SUMS` the bundle ships? |
+| **Checksum** | Is this the artifact that was pinned, and does every file match — and appear in — the `SHA256SUMS` the bundle ships? |
 | **Signature** | Did a key this installation trusts sign that `SHA256SUMS`? |
 
 They compose rather than replace one another, and neither is sufficient alone: a
