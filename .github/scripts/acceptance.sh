@@ -109,14 +109,26 @@ info "work directory ${WORK}"
 # usually pulled busybox for something else, which is why this scenario passed
 # by hand and failed on every push to main.
 #
-# The digest comes out of the manager's own source because the manager accepts
-# no other. Hardcoding it here would drift the day it is bumped, and the
-# failure would be this script pulling one image while `backup` waits for a
-# different one.
-HELPER_IMAGE_SRC="${ROOT_DIR}/internal/adapters/runtime/compose/volumes.go"
-HELPER_IMAGE="$(sed -n 's/^const DefaultHelperImage = "\(.*\)"$/\1/p' "${HELPER_IMAGE_SRC}")"
-[ -n "${HELPER_IMAGE}" ] ||
-	fail "cannot read DefaultHelperImage from ${HELPER_IMAGE_SRC}"
+# Which image that is has to be decided the way the manager decides it, or this
+# fetches one thing and `backup` waits for another.
+#
+# MORZER_VOLUME_HELPER_IMAGE wins when set, because it is the escape hatch for
+# an operator whose registry does not carry busybox -- an air-gapped mirror that
+# sets it would otherwise be failed here for not having a default it does not
+# want. Empty counts as unset, which is the rule the manager applies too
+# (HelperImage returns the default for an empty override).
+#
+# Otherwise the digest comes out of the manager's own source, because the
+# manager accepts no other. Hardcoding it here would drift the day it is bumped.
+if [ -n "${MORZER_VOLUME_HELPER_IMAGE:-}" ]; then
+	HELPER_IMAGE="${MORZER_VOLUME_HELPER_IMAGE}"
+	info "volume helper overridden by MORZER_VOLUME_HELPER_IMAGE"
+else
+	HELPER_IMAGE_SRC="${ROOT_DIR}/internal/adapters/runtime/compose/volumes.go"
+	HELPER_IMAGE="$(sed -n 's/^const DefaultHelperImage = "\(.*\)"$/\1/p' "${HELPER_IMAGE_SRC}")"
+	[ -n "${HELPER_IMAGE}" ] ||
+		fail "cannot read DefaultHelperImage from ${HELPER_IMAGE_SRC}"
+fi
 
 if docker image inspect "${HELPER_IMAGE}" >/dev/null 2>&1; then
 	info "volume helper ${HELPER_IMAGE} (already local)"
