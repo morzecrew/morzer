@@ -246,10 +246,14 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 
 	// A running record whose process is genuinely alive holds the
 	// deployment lock; acknowledging it out from under a live operation
-	// would open the gate mid-mutation. The probe is best-effort -- when it
-	// cannot answer, the flock still serialises any actual mutation.
+	// would open the gate mid-mutation. The holder's operation ID is what
+	// decides -- an unrelated operation holding the lock says nothing about
+	// whether *this* record's process is dead, and appending the
+	// acknowledgement is safe alongside it. The probe is best-effort: when
+	// it cannot answer, the flock still serialises any actual mutation.
 	if target.Status == domain.StatusRunning {
-		if owner, held, err := d.Locker.Owner(ctx, "deployment"); err == nil && held {
+		owner, held, err := d.Locker.Owner(ctx, "deployment")
+		if err == nil && held && owner.OperationID == target.ID {
 			return Result{}, domain.Locked(
 				"operation %s appears to be live: the deployment lock is held by PID %d",
 				target.ID, owner.PID).

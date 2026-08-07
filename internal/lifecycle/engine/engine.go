@@ -512,10 +512,10 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 	}
 
 	// The step list being resumed must be the list that was interrupted --
-	// checked in full, before the resume index is even ranged over, so a
-	// journal with *more* steps than this manager plans reports the real
-	// problem rather than "no incomplete steps left". Credit for completed
-	// steps is carried by position: after a manager upgrade that inserted,
+	// checked in full, before the resume index is used, so a journal with
+	// *more* steps than this manager plans reports list drift rather than a
+	// misleading completion. Credit for completed steps is carried by
+	// position: after a manager upgrade that inserted,
 	// removed or reordered steps, that credit would land on the wrong steps
 	// and silently skip or re-run a mutating one.
 	if len(prior.Steps) != len(op.Steps) {
@@ -534,9 +534,9 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 					"run `morzer doctor` and start a fresh operation")
 		}
 	}
-	if idx >= len(op.Steps) {
-		return 0, domain.Usage("operation %s has no incomplete steps left", prior.ID)
-	}
+	// No idx bounds check: resumable implies idx < len(prior.Steps), and
+	// the length equality above makes that idx < len(op.Steps); a record
+	// with nothing incomplete was already refused as not resumable.
 
 	// The step being re-run is the safety question: journaled Pending it
 	// never started, but Running, Interrupted or Failed may have applied

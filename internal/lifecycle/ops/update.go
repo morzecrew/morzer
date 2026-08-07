@@ -87,11 +87,16 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeUpdate, opts.Options, func(ctx context.Context) error {
-		// Re-checked under the lock; see the same recheck in Apply.
+		// Re-checked under the lock; see the same rechecks in Apply.
+		var err error
+		if opts.Resume {
+			if prior, err = d.refreshResumable(ctx, domain.OpTypeUpdate, prior); err != nil {
+				return err
+			}
+		}
 		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
 			return err
 		}
-		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
 		return err
 	})

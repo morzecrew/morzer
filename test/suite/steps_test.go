@@ -367,6 +367,27 @@ func TestAnAbandonedRunningOperationCanBeCleared(t *testing.T) {
 	require.NoError(t, err, "clearing the abandoned record must let the next operation run")
 }
 
+// TestACorruptRecordWithoutAnIDStillBlocks: a journal line that unmarshals
+// with no operation ID must not slip through the resume-exclusion filter --
+// an empty ID matching the "nothing to exclude" sentinel would let ordinary
+// operations mutate over an unfinished state.
+func TestACorruptRecordWithoutAnIDStillBlocks(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			Type: domain.OpTypeUpdate,
+			// No ID: the shape a hand-edited or corrupt line takes.
+			Status: domain.StatusRunning, StartedAt: domain.NewTime(time.Now()),
+		}))
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err, "apply proceeded over an unfinished record that has no ID")
+}
+
 // TestResumeIsExemptFromOnlyItsOwnWreck: `apply --resume` continues one
 // specific operation; a crashed *update* still needing attention must block it
 // like any other mutation, or resume becomes a gate bypass.

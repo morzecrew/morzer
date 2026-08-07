@@ -64,11 +64,17 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		// Re-checked under the lock: with --wait, another process can
 		// journal a wreck between the early check and this acquisition,
 		// then die -- and the whole point of the gate is not driving
-		// over exactly that.
+		// over exactly that. A resume additionally re-reads its record:
+		// the lock holder we waited behind may have been resuming the
+		// same operation, and finishing it.
+		if opts.Resume {
+			if prior, err = d.refreshResumable(ctx, domain.OpTypeApply, prior); err != nil {
+				return err
+			}
+		}
 		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
 			return err
 		}
-		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts, inst.ID, prior))
 		return err
 	})
@@ -776,9 +782,13 @@ func (d *Deps) gateUnfinished(ctx context.Context, exclude string) error {
 	}
 	others := make([]domain.OperationRecord, 0, len(unfinished))
 	for _, rec := range unfinished {
-		if rec.ID != exclude {
-			others = append(others, rec)
+		// Only a non-empty ID excludes: a corrupt record that
+		// unmarshalled without one must still block, not silently match
+		// the "nothing to exclude" sentinel.
+		if exclude != "" && rec.ID == exclude {
+			continue
 		}
+		others = append(others, rec)
 	}
 	if len(others) == 0 {
 		return nil
@@ -796,6 +806,31 @@ func excludeID(prior *domain.OperationRecord) string {
 		return ""
 	}
 	return prior.ID
+}
+
+// refreshResumable re-reads the record a resume is about to continue, under
+// the deployment lock.
+//
+// The record was found before the lock was taken; with --wait, the holder we
+// queued behind may have been resuming the same operation -- and finishing
+// it. Resuming from the stale snapshot would re-run an operation that already
+// completed. The refusal when the record changed identity is deliberate: the
+// operator asked to continue a specific wreck, and whatever is unfinished now
+// is a different decision.
+func (d *Deps) refreshResumable(ctx context.Context, opType domain.OperationType, prior *domain.OperationRecord) (*domain.OperationRecord, error) {
+	fresh, err := d.findResumable(ctx, opType)
+	if err != nil {
+		return nil, domain.AsError(err).
+			WithHint("the operation may have finished while waiting for the deployment lock; " +
+				"run `morzer status` to see where things stand")
+	}
+	if prior != nil && fresh.ID != prior.ID {
+		return nil, domain.Usage(
+			"the resumable %s operation changed while waiting for the deployment lock: "+
+				"found %s, was resuming %s", opType, fresh.ID, prior.ID).
+			WithHint("re-run `morzer %s --resume` to continue the current one", opType)
+	}
+	return fresh, nil
 }
 
 // findResumable locates the operation --resume should continue.
