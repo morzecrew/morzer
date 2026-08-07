@@ -390,8 +390,11 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 	// that names them does: a manifest that survives a crash must never
 	// describe files that did not. The whole tree, because components nest
 	// -- volumes/*.tar.age lives a level down, and a hook may have written
-	// artifacts in subdirectories of its own.
+	// artifacts in subdirectories of its own -- and then the backup
+	// directory's own entry in the store, without which the durable backup
+	// is one `backup list` cannot see.
 	atomicfs.SyncTree(dir)
+	atomicfs.SyncDir(e.paths.BackupsDir())
 
 	if err := writeManifest(dir, manifest); err != nil {
 		_ = atomicfs.RemoveAll(dir)
@@ -988,14 +991,21 @@ func (e *Engine) hookEnv(phase ports.HookPhase, backupDir string) ports.HookEnv 
 // power cut rather than resurrecting the plaintext.
 func (e *Engine) sweepStagedPlaintext() error {
 	stale, _ := filepath.Glob(filepath.Join(e.paths.BackupsDir(), "*", ".restore-*"))
+	var errs []error
 	for _, dir := range stale {
+		// Every directory is attempted: one stuck removal must not
+		// leave its siblings unswept on top of failing the operation.
 		if err := atomicfs.RemoveWithOverwrite(dir); err != nil {
-			return domain.BackupError(err,
-				"cannot remove the stale restore staging at %s", dir).
-				WithHint("it holds decrypted product data from an interrupted restore; " +
-					"remove it manually before continuing")
+			errs = append(errs, err)
+			continue
 		}
 		atomicfs.SyncDir(filepath.Dir(dir))
+	}
+	if len(errs) > 0 {
+		return domain.BackupError(errors.Join(errs...),
+			"cannot remove stale restore staging under %s", e.paths.BackupsDir()).
+			WithHint("it holds decrypted product data from an interrupted restore; " +
+				"remove the .restore-* directories manually before continuing")
 	}
 	return nil
 }
