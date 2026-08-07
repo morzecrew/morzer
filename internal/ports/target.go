@@ -208,20 +208,24 @@ func (c TargetCredentials) GoString() string { return c.String() }
 // "user" with an opaque tail, so the password never reaches parsed.User and this
 // used to hand the whole string back. Anything with no host is therefore re-read
 // behind an explicit "//", which is the authority it was meant to be.
+//
+// The retry covers a parse failure as well as a successful parse that found no
+// host, because a bare endpoint reaches this both ways: "192.168.1.10:9000" and
+// "[::1]:9000" fail outright ("first path segment in URL cannot contain colon"),
+// while "user:password@host" parses as a scheme with an opaque tail. Only an
+// endpoint that will not resolve either way is reduced to "<set>".
 func withoutUserinfo(endpoint string) string {
 	parsed, err := url.Parse(endpoint)
-	if err != nil {
-		// Unparseable: say it is set and nothing else, because whatever
-		// is in there cannot be reasoned about.
-		return "<set>"
-	}
 
 	prefix := ""
-	if parsed.Host == "" && !strings.HasPrefix(endpoint, "//") {
+	if (err != nil || parsed.Host == "") && !strings.HasPrefix(endpoint, "//") {
 		prefix = "//"
-		if parsed, err = url.Parse(prefix + endpoint); err != nil {
-			return "<set>"
-		}
+		parsed, err = url.Parse(prefix + endpoint)
+	}
+	if err != nil {
+		// Unparseable either way: say it is set and nothing else,
+		// because whatever is in there cannot be reasoned about.
+		return "<set>"
 	}
 
 	if parsed.User == nil {

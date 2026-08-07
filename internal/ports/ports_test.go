@@ -182,9 +182,27 @@ func TestCredentialsPrintWhatIsSetAndNeverWhatItIs(t *testing.T) {
 
 	// A plain endpoint keeps every character: this redacts userinfo, it does
 	// not blanket-hide the one field a misrouted backup is diagnosed from.
-	plain := ports.TargetCredentials{Endpoint: "minio.example:9000"}
-	if got := plain.String(); !strings.Contains(got, "minio.example:9000") {
-		t.Errorf("a bare endpoint with no userinfo was mangled: %s", got)
+	// The addresses are here because url.Parse rejects a bare one outright
+	// -- "first path segment in URL cannot contain colon" -- and answering
+	// that with "<set>" costs the operator the host and port while hiding
+	// nothing.
+	for _, endpoint := range []string{
+		"minio.example:9000", "192.168.1.10:9000", "[::1]:9000", "[fe80::1]:9000",
+	} {
+		got := ports.TargetCredentials{Endpoint: endpoint}.String()
+		if !strings.Contains(got, endpoint) {
+			t.Errorf("a bare endpoint with no userinfo was mangled: %q printed as %s",
+				endpoint, got)
+		}
+	}
+
+	// And an address that does carry userinfo is still redacted, host kept.
+	addressed := ports.TargetCredentials{Endpoint: "key:s3cr3t@[::1]:9000"}.String()
+	if strings.Contains(addressed, "s3cr3t") {
+		t.Errorf("the password in an address endpoint was printed: %s", addressed)
+	}
+	if !strings.Contains(addressed, "[::1]:9000") {
+		t.Errorf("the address an operator needs for a diagnosis was dropped: %s", addressed)
 	}
 
 	// The shape survives: which credentials are configured is what a
