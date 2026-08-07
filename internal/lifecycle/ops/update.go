@@ -480,9 +480,52 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 			if err != nil {
 				return err
 			}
-			if _, err := d.Source.Fetch(ctx, ref, staged.Root); err != nil {
+
+			// Staged into a hidden sibling and renamed into place. A
+			// crash mid-extraction otherwise leaves a partial tree at
+			// the digest-addressed path -- and if that partial tree
+			// happens to load, the retry refuses it as "installed with
+			// a different digest", an error whose only remedy is
+			// hand-deleting a directory everything else treats as
+			// immutable.
+			parent := filepath.Dir(staged.Root)
+			if err := atomicfs.MkdirAll(parent, 0o755); err != nil {
 				return err
 			}
+
+			// Leftovers: a partial tree at the final path (it did not
+			// load, or Check would have decided) and staging dirs from
+			// earlier crashes. Both are this operation's own debris,
+			// removed under the same deployment lock that wrote them.
+			if _, statErr := os.Stat(staged.Root); statErr == nil {
+				if err := atomicfs.RemoveAll(staged.Root); err != nil {
+					return err
+				}
+			}
+			stale, _ := filepath.Glob(filepath.Join(parent, ".staging-*"))
+			for _, dir := range stale {
+				_ = atomicfs.RemoveAll(dir)
+			}
+
+			tmp, err := os.MkdirTemp(parent, ".staging-")
+			if err != nil {
+				return domain.Internal(err, "cannot create a staging directory in %s", parent)
+			}
+			defer func() { _ = atomicfs.RemoveAll(tmp) }()
+
+			if _, err := d.Source.Fetch(ctx, ref, tmp); err != nil {
+				return err
+			}
+			// MkdirTemp creates 0700; the release store is 0755, as
+			// CopyTree and ExtractTarZst would have made the final
+			// path themselves.
+			if err := os.Chmod(tmp, 0o755); err != nil {
+				return domain.Internal(err, "cannot set mode on the staged release")
+			}
+			if err := os.Rename(tmp, staged.Root); err != nil {
+				return domain.Internal(err, "cannot move the staged release into place")
+			}
+			atomicfs.SyncDir(parent)
 			return nil
 		},
 		Verify: func(ctx context.Context, st *engine.State) error {

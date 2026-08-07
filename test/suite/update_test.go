@@ -448,3 +448,35 @@ func TestUpdateFromAnArchivePinsTheSameDigest(t *testing.T) {
 	require.NoError(t, err,
 		"a digest recorded from the unpacked bundle must verify against its archive")
 }
+
+// TestUpdateRecoversFromAPartiallyStagedRelease: a crash mid-extraction used
+// to leave a partial tree at the digest-addressed path, and the retry then
+// failed on it -- worst case as "installed with a different digest", an error
+// whose only remedy was hand-deleting a directory everything else treats as
+// immutable. Staging into a hidden sibling and renaming into place makes the
+// retry self-healing.
+func TestUpdateRecoversFromAPartiallyStagedRelease(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// The debris a killed extraction leaves: a directory at the final path
+	// holding half a bundle, and an abandoned staging dir beside it.
+	partial := filepath.Join(h.Paths.ReleasesDir(), "1.3.0")
+	require.NoError(t, os.MkdirAll(partial, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(partial, "manifest.yaml"),
+		[]byte("api_version: morze.dev/v1alpha1\n"), 0o644))
+	stale := filepath.Join(h.Paths.ReleasesDir(), ".staging-12345")
+	require.NoError(t, os.MkdirAll(stale, 0o700))
+
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.NoError(t, err, "an update could not recover from its own crash debris")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
+	assert.NoDirExists(t, stale, "the abandoned staging directory must be swept")
+}
