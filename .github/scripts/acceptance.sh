@@ -124,11 +124,17 @@ info "work directory ${WORK}"
 # value that is nothing but spaces would count as an override here and as unset
 # there -- both of them the same class of bug this block exists to close.
 #
+# Trimmed in the shell rather than through sed, which is line-oriented: it
+# strips per line, so a value led by a newline comes back still carrying it
+# while Go's TrimSpace takes it off. The two expansions below cut the leading
+# and trailing whitespace runs from the value as a whole, newlines included.
+#
 # Empty after trimming counts as unset, which is what HelperImage does with an
 # empty override. Then the digest comes out of the manager's own source, because
 # the manager accepts no other; hardcoding it would drift the day it is bumped.
-HELPER_IMAGE="$(printf '%s' "${MORZER_VOLUME_HELPER_IMAGE:-}" |
-	sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+HELPER_IMAGE="${MORZER_VOLUME_HELPER_IMAGE:-}"
+HELPER_IMAGE="${HELPER_IMAGE#"${HELPER_IMAGE%%[![:space:]]*}"}"
+HELPER_IMAGE="${HELPER_IMAGE%"${HELPER_IMAGE##*[![:space:]]}"}"
 if [ -n "${HELPER_IMAGE}" ]; then
 	info "volume helper overridden by MORZER_VOLUME_HELPER_IMAGE"
 else
