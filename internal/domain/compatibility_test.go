@@ -233,6 +233,16 @@ func TestAPreReleaseIsComparedByOrdering(t *testing.T) {
 		// not apply and the library's own answer stands -- refusing,
 		// which is the safe direction for a gate.
 		{">=1.x", "1.5.0-rc.1", false, "a wildcard constraint keeps the library's answer"},
+
+		// Build metadata is free-form, so it can contain the two
+		// characters the rewrite reads as meaning: a hyphen, which says
+		// "already a pre-release", and an x, which says "wildcard".
+		// Neither is true of metadata, and reading it that way turned a
+		// valid constraint into one that refused every pre-release
+		// inside its own range.
+		{">=1.0.0+build-foo", "1.5.0-rc.1", true, "a hyphen in metadata is not a pre-release"},
+		{">=1.0.0+fix", "1.5.0-rc.1", true, "an x in metadata is not a wildcard"},
+		{">=1.0.0+build-foo", "0.9.0-rc.1", false, "and the bound still holds"},
 	}
 
 	for _, tc := range cases {

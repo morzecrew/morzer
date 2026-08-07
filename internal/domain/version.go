@@ -150,20 +150,32 @@ func (c Constraint) Allows(v Version) bool {
 // would produce something that does not parse. Anything that fails to parse
 // after rewriting returns nil, and Allows keeps the library's own answer --
 // refusing, which is the safe direction for a compatibility gate.
+//
+// Both questions -- does this token already carry a pre-release, does it carry a
+// wildcard -- are asked of the token's *core*, the part before any "+". Build
+// metadata is free-form: ">=1.0.0+build-foo" has a hyphen in it and no
+// pre-release, and ">=1.0.0+fix" has an "x" in it and no wildcard. Reading
+// either as the thing it resembles left a valid constraint refusing every
+// pre-release inside its own range.
 func prereleaseInclusive(raw string) *semver.Constraints {
-	if strings.ContainsAny(raw, "xX*") {
-		return nil
-	}
-
 	rewritten := versionToken.ReplaceAllStringFunc(raw, func(token string) string {
-		if strings.Contains(token, "-") {
+		core := token
+		metadata := ""
+		if plus := strings.IndexByte(token, '+'); plus >= 0 {
+			core, metadata = token[:plus], token[plus:]
+		}
+		if strings.Contains(core, "-") {
 			// Already carries a pre-release, and it means it.
 			return token
 		}
-		if metadata := strings.IndexByte(token, '+'); metadata >= 0 {
-			return token[:metadata] + "-0" + token[metadata:]
+		if strings.ContainsAny(core, "xX*") {
+			// A wildcard element cannot carry a pre-release. Left as
+			// it stands, it keeps the library's own exclusion for
+			// that element -- the refusing direction -- while the
+			// elements beside it are still rewritten.
+			return token
 		}
-		return token + "-0"
+		return core + "-0" + metadata
 	})
 	if rewritten == raw {
 		return nil
