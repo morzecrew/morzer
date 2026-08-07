@@ -21,6 +21,19 @@ func (a *App) rich() bool {
 	return a.Mode == ui.ModeRich && !a.Flags.quiet && a.plain != nil
 }
 
+// terminalInput is the file the live views read keys from.
+//
+// The injected stream when it is one -- an embedder that supplied its own pty
+// must have its keys read from there, not from a stdin nobody is typing at --
+// and the process's own otherwise, which is what Bubble Tea needs to open a
+// terminal at all.
+func (a *App) terminalInput() *os.File {
+	if f, ok := a.Stream.In.(*os.File); ok {
+		return f
+	}
+	return os.Stdin
+}
+
 // theme resolves the styling for this run.
 func (a *App) theme() *theme.Theme {
 	return theme.New(
@@ -69,7 +82,7 @@ func (a *App) runLive(work func()) {
 
 	tty.Run(tty.Options{
 		Output: a.Stream.Err,
-		Input:  os.Stdin,
+		Input:  a.terminalInput(),
 		Theme:  a.theme(),
 		// The view's ^C arrives as a keystroke -- raw mode suppressed
 		// the signal main listens for -- so cancelling the operation's
@@ -139,7 +152,7 @@ func (a *App) watchStatus(ctx context.Context, interval time.Duration) error {
 
 	return tty.Watch(ctx, tty.WatchOptions{
 		Output:   a.Stream.Err,
-		Input:    os.Stdin,
+		Input:    a.terminalInput(),
 		Theme:    a.theme(),
 		Interval: interval,
 		Refresh: func(ctx context.Context) (ops.Status, error) {

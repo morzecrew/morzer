@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -384,13 +385,25 @@ func runEditor(ctx context.Context, editor []string, path string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
-		// An editor exiting non-zero is how an operator says "forget
-		// it" -- `:cq` in vim exists for exactly this. Treating it as a
-		// failure to report rather than an edit to apply is the whole
-		// point of checking.
+	err := cmd.Run()
+	if err == nil {
+		return nil
+	}
+
+	// An editor exiting non-zero is how an operator says "forget it" --
+	// `:cq` in vim exists for exactly this. An editor that never started is
+	// a different sentence with the same ending, and reporting the two
+	// identically leaves someone whose $EDITOR is misspelled staring at a
+	// message about an abort they did not perform.
+	var exitErr *osexec.ExitError
+	if errors.As(err, &exitErr) {
 		return domain.Usage("the editor exited with an error; no secrets were changed").
 			WithHint("nothing was written. The temporary file has been removed.")
 	}
-	return nil
+	if ctx.Err() != nil {
+		return domain.Interrupted("the edit was cancelled; no secrets were changed")
+	}
+	return domain.Usage("cannot run the editor %q", argv[0]).
+		WithHint("set $EDITOR or $VISUAL to something on PATH; " +
+			"nothing was written and the temporary file has been removed")
 }

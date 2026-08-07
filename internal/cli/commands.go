@@ -68,7 +68,7 @@ func newInitCommand(app *App) *cobra.Command {
 			// A missing product name is not fatal at a terminal: the
 			// wizard below asks for it. It is fatal everywhere else,
 			// and the check moved after the wizard for that reason.
-			if product == "" && !isInteractive() {
+			if product == "" && !app.interactive() {
 				return domain.Usage("a product name is required").
 					WithHint("pass --product <name>, or --release <bundle> to take it from the manifest")
 			}

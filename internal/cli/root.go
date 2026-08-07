@@ -363,7 +363,7 @@ func newRootCommand(app *App) *cobra.Command {
 	// The help text names the automatic cases because otherwise this flag
 	// ends up in every systemd unit and CI job by superstition.
 	pf.BoolVar(&f.plainOut, "plain", false,
-		"line-oriented output; already automatic under CI, systemd, NO_COLOR and without a terminal")
+		"line-oriented output; already automatic under CI, systemd, TERM=dumb and without a terminal")
 	pf.BoolVar(&f.resume, "resume", false, "continue an interrupted operation")
 	pf.BoolVar(&f.wait, "wait", false, "wait for the deployment lock instead of failing")
 	pf.StringVar(&f.configDir, "config", "", "path to installation.yaml")
@@ -401,12 +401,15 @@ func newRootCommand(app *App) *cobra.Command {
 func (a *App) setup(ctx context.Context) error {
 	f := a.Flags
 
+	// The injected streams, not the process's own descriptors: an embedder
+	// running against buffers must not get the live renderer because the
+	// terminal *this process* was started from happens to be one.
 	a.Mode = ui.ResolveMode(ui.ModeOptions{
 		JSON:   f.json,
 		Plain:  f.plainOut,
 		Quiet:  f.quiet,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
+		Stdout: a.Stream.Out,
+		Stderr: a.Stream.Err,
 	})
 
 	// The logger writes to stderr always. stdout is the result.

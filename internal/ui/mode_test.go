@@ -1,6 +1,7 @@
 package ui_test
 
 import (
+	"bytes"
 	"os"
 	"testing"
 
@@ -72,16 +73,22 @@ func TestResolveModeFollowsItsDocumentedTable(t *testing.T) {
 			ui.ModePlain,
 		},
 		{
+			// A colour signal, and only colour. It used to force
+			// plain, which made `status --watch` refuse with "needs
+			// a terminal" at a terminal, and disagreed with
+			// --no-color -- the flag that means the same thing and
+			// has always left the renderer alone. What the view
+			// loses is styling; every state carries a symbol too.
 			"NO_COLOR set to anything, including empty",
 			ui.ModeOptions{Stdout: tty(t), Stderr: tty(t),
 				LookupEnv: env(map[string]string{"TERM": "xterm", "NO_COLOR": ""})},
-			ui.ModePlain,
+			ui.ModeRich,
 		},
 		{
 			"CLICOLOR=0",
 			ui.ModeOptions{Stdout: tty(t), Stderr: tty(t),
 				LookupEnv: env(map[string]string{"TERM": "xterm", "CLICOLOR": "0"})},
-			ui.ModePlain,
+			ui.ModeRich,
 		},
 		{
 			"TERM=dumb",
@@ -120,6 +127,17 @@ func TestResolveModeFollowsItsDocumentedTable(t *testing.T) {
 		{
 			"stderr redirected, which is where the live view draws",
 			ui.ModeOptions{Stdout: tty(t), Stderr: notATTY(t), LookupEnv: env(interactive)},
+			ui.ModePlain,
+		},
+		{
+			// The mode is resolved from the streams the command was
+			// given, not from the descriptors this process happens
+			// to own: an embedder handed buffers would otherwise get
+			// the live renderer drawing into a buffer while the real
+			// terminal was put in raw mode.
+			"an embedder's buffers, at a terminal",
+			ui.ModeOptions{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+				LookupEnv: env(interactive)},
 			ui.ModePlain,
 		},
 	}
