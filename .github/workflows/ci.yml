@@ -511,10 +511,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # `needs` above is a hand-written list, and toJSON serialises exactly
+      # that list -- so a gate added to this workflow and forgotten here would
+      # be invisible to the verdict below, and this check would stay green
+      # while that gate failed. A required check with a silent hole in it is
+      # worse than no required check, because it is believed.
+      #
+      # So the list is compared against the workflow rather than trusted: every
+      # job defined here, except this one, has to be wired in.
+      - name: Every gate in this workflow is wired into this check
+        env:
+          WIRED: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+
+          defined=$(awk '/^jobs:/{f=1;next} f && /^  [a-z][a-z0-9_-]*:$/{gsub(/[ :]/,"");print}' \
+            .github/workflows/ci.yml | grep -vx required | sort)
+          wired=$(echo "$WIRED" | jq -r 'keys[]' | sort)
+
+          missing=$(comm -23 <(echo "$defined") <(echo "$wired"))
+          if [ -n "$missing" ]; then
+            echo "::error::gates missing from the required check's needs: $(echo "$missing" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "every gate in this workflow is wired in"
+
       - name: Every gate passed or was legitimately skipped
         env:
-          # The whole needs context, so the check below reads results rather
-          # than a list of job names somebody has to remember to update.
+          # Exactly the jobs named in `needs` above -- which the step before
+          # this one has just proved is all of them.
           RESULTS: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
