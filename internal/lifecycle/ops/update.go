@@ -83,7 +83,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		From:        from.Version,
 		To:          staged.Version(),
 		Steps:       updateSteps(d, inst, from, source, staged, opts),
-		Flags:       updateFlags(opts),
+		Flags:       updateFlags(inst, opts),
 	}
 
 	var result engine.Result
@@ -263,8 +263,14 @@ func (d *Deps) resolveUpdateTarget(
 	return source, staged, cleanup, nil
 }
 
-func updateFlags(opts UpdateOptions) map[string]string {
+func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string {
 	flags := map[string]string{"ref": opts.Ref}
+	if inst.Policy.SkipBackupBeforeUpdate {
+		// A durable choice rather than a per-run one, and just as
+		// consequential: the journal is where an incident review looks
+		// for why there is no backup from just before this update.
+		flags["skip_backup_policy"] = "true"
+	}
 	if opts.SkipBackup {
 		// Recorded because it is the choice an incident review will want
 		// to see was made deliberately.
@@ -506,6 +512,13 @@ func stepPreUpdateBackup(
 				return true, nil
 			case opts.SkipBackup:
 				st.Warn("skipping the pre-update backup at the operator's request")
+				return true, nil
+			case inst.Policy.SkipBackupBeforeUpdate:
+				// The installation's own policy, which until now
+				// was recorded, compared by doctor, and read by
+				// nothing that decides anything.
+				st.Warn("skipping the pre-update backup: " +
+					"skip_backup_before_update is set for this installation")
 				return true, nil
 			case d.Backup == nil:
 				return false, domain.BackupError(domain.ErrUnsupported,

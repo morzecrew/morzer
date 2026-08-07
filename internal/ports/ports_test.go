@@ -1,6 +1,7 @@
 package ports_test
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -92,6 +93,52 @@ func TestRefRoundTripsThroughItsString(t *testing.T) {
 		if again.Scheme != ref.Scheme || again.Location != ref.Location {
 			t.Errorf("%q round-tripped to {%s, %s}", input, again.Scheme, again.Location)
 		}
+	}
+}
+
+// TestCredentialsPrintWhatIsSetAndNeverWhatItIs.
+//
+// These are live credentials in ordinary string fields, so a %+v while
+// diagnosing a failed push -- the moment somebody is most likely to reach for
+// one -- printed the private key into the log.
+func TestCredentialsPrintWhatIsSetAndNeverWhatItIs(t *testing.T) {
+	ref := ports.TargetRef{
+		Scheme: "ssh", Host: "backups.example", Path: "/srv/backups",
+		Credentials: ports.TargetCredentials{
+			PrivateKey:      "-----BEGIN OPENSSH PRIVATE KEY-----\nMIIEpAIBAAK\n",
+			Passphrase:      "correct horse battery staple",
+			SecretAccessKey: "wJalrXUtnFEMI",
+			Region:          "eu-central-1",
+		},
+	}
+
+	// Every verb somebody reaches for, including the ones fmt applies to
+	// nested fields.
+	for _, printed := range []string{
+		fmt.Sprintf("%v", ref),
+		fmt.Sprintf("%+v", ref),
+		fmt.Sprintf("%#v", ref),
+		ref.Credentials.String(),
+	} {
+		for _, secret := range []string{
+			"MIIEpAIBAAK", "correct horse battery staple", "wJalrXUtnFEMI",
+		} {
+			if strings.Contains(printed, secret) {
+				t.Errorf("a credential was printed:\n%s", printed)
+			}
+		}
+	}
+
+	// What it does say is which credentials are configured, which is the
+	// part a diagnosis actually needs.
+	summary := ref.Credentials.String()
+	for _, want := range []string{"private_key=<set>", "passphrase=<set>", "region=eu-central-1"} {
+		if !strings.Contains(summary, want) {
+			t.Errorf("the summary does not say %q: %s", want, summary)
+		}
+	}
+	if got := (ports.TargetCredentials{}).String(); got != "TargetCredentials{}" {
+		t.Errorf("empty credentials print as %q", got)
 	}
 }
 

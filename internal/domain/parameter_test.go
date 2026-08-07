@@ -83,6 +83,41 @@ func TestResolveParametersFillsDefaults(t *testing.T) {
 	assert.Equal(t, domain.Parameters{"http_port": "18080", "log_level": "debug"}, params)
 }
 
+// TestADeclarationWithNoDefaultNeedsAValue.
+//
+// "Every declared parameter is present" is the type's own contract and the
+// documented promise, and a declaration without a default broke it: the name
+// was skipped, so `Require` reported "the release declares no parameter %q"
+// about a parameter the release declares -- and downstream the value was simply
+// absent, an empty interpolation in a Compose file and an empty field in a
+// rendered config. A declaration with no default is the only way a manifest can
+// say "the operator must choose", so it is now treated as one.
+func TestADeclarationWithNoDefaultNeedsAValue(t *testing.T) {
+	declared := map[string]domain.ParameterSpec{
+		"admin_email": {Type: domain.ParamString},
+		"http_port":   {Type: domain.ParamPort, Default: "18080"},
+	}
+
+	_, err := domain.ResolveParameters(declared, nil)
+	require.Error(t, err, "a parameter nobody gave a value resolved to nothing at all")
+
+	e := domain.AsError(err)
+	assert.Equal(t, domain.CodeUsage, e.Code)
+	assert.Contains(t, e.Message, "admin_email")
+	assert.Contains(t, e.Hint, "--set admin_email=")
+
+	// Supplied, and the contract holds again.
+	params, err := domain.ResolveParameters(declared, map[string]string{"admin_email": "ops@example"})
+	require.NoError(t, err)
+	assert.Equal(t, domain.Parameters{
+		"admin_email": "ops@example", "http_port": "18080",
+	}, params)
+
+	got, err := params.Require("admin_email")
+	require.NoError(t, err, "a declared parameter with a value must be present")
+	assert.Equal(t, "ops@example", got)
+}
+
 func TestAnUndeclaredParameterIsRefusedByName(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
 		"http_port": {Type: domain.ParamPort, Default: "18080"},

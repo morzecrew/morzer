@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/release"
 )
 
@@ -211,6 +212,55 @@ func TestParseManifestNamesWhereTheProblemIs(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "manifest.yaml") {
 		t.Errorf("the error does not name the source: %v", err)
+	}
+}
+
+// TestRetentionDistinguishesAbsentFromZero.
+//
+// ApplyDefaults runs before Validate, and it filled any zero -- so an explicit
+// `releases: 0`, which Validate exists to refuse, was quietly rewritten to 3.
+// The vendor meant something by the zero, and keeping three releases is not it.
+func TestRetentionDistinguishesAbsentFromZero(t *testing.T) {
+	t.Run("absent takes the default", func(t *testing.T) {
+		dir := bundle(t, func(d string) {
+			edit(t, filepath.Join(d, "manifest.yaml"), func(s string) string {
+				return strings.Replace(s, "retention:\n  releases: 3\n  backups: 7\n", "", 1)
+			})
+		})
+
+		rel, err := release.Load(dir)
+		if err != nil {
+			t.Fatalf("a manifest with no retention block was refused: %v", err)
+		}
+		if rel.Manifest.Retention.Releases != domain.DefaultRetentionReleases {
+			t.Errorf("releases = %d, want the default %d",
+				rel.Manifest.Retention.Releases, domain.DefaultRetentionReleases)
+		}
+		if rel.Manifest.Retention.Backups != domain.DefaultRetentionBackups {
+			t.Errorf("backups = %d, want the default %d",
+				rel.Manifest.Retention.Backups, domain.DefaultRetentionBackups)
+		}
+	})
+
+	for field, want := range map[string]string{
+		"releases": "retention.releases",
+		"backups":  "retention.backups",
+	} {
+		t.Run("an explicit zero for "+field+" is refused", func(t *testing.T) {
+			dir := bundle(t, func(d string) {
+				edit(t, filepath.Join(d, "manifest.yaml"), func(s string) string {
+					return strings.Replace(s, "  "+field+": ", "  "+field+": 0 #", 1)
+				})
+			})
+
+			_, err := release.Load(dir)
+			if err == nil {
+				t.Fatal("a manifest keeping zero of something was accepted")
+			}
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal does not name the field: %v", err)
+			}
+		})
 	}
 }
 

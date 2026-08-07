@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -96,6 +97,15 @@ func (c Constraint) String() string { return c.raw }
 
 // Allows reports whether v satisfies the constraint. An empty constraint
 // allows everything -- absence of a bound is not a bound of zero.
+//
+// Pre-releases are compared by ordering, which is not what the constraint
+// library does on its own: it excludes *every* pre-release from a constraint
+// that carries none, so `upgrade_from: ">=2.30"` refused a customer running
+// 2.31.0-rc.1 with the message "accepts upgrades from >=2.30, installed version
+// is 2.31.0-rc.1" -- a sentence that reads as satisfied. That rule is right for
+// resolving a dependency, where an rc must not be picked up by accident, and
+// wrong here, where the version is a fact about a machine somebody is already
+// running rather than a candidate to select.
 func (c Constraint) Allows(v Version) bool {
 	if c.c == nil {
 		return true
@@ -103,8 +113,25 @@ func (c Constraint) Allows(v Version) bool {
 	if v.sv == nil {
 		return false
 	}
-	return c.c.Check(v.sv)
+	if c.c.Check(v.sv) {
+		return true
+	}
+
+	// A constraint that names a pre-release of its own is doing so on
+	// purpose, and its ordering against another pre-release is exactly what
+	// was just checked.
+	if v.sv.Prerelease() == "" || constraintNamesPrerelease.MatchString(c.raw) {
+		return false
+	}
+
+	core := semver.New(v.sv.Major(), v.sv.Minor(), v.sv.Patch(), "", "")
+	return c.c.Check(core)
 }
+
+// constraintNamesPrerelease matches a hyphen directly after a version number,
+// which is how a pre-release is spelled inside a constraint (">=2.0.0-rc.1").
+// The spaced hyphen of a range ("1.0.0 - 2.0.0") deliberately does not match.
+var constraintNamesPrerelease = regexp.MustCompile(`\d-[0-9A-Za-z]`)
 
 func (c Constraint) MarshalText() ([]byte, error) { return []byte(c.raw), nil }
 

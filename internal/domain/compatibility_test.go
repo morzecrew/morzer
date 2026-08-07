@@ -172,6 +172,40 @@ func TestCheckUpgrade(t *testing.T) {
 	}
 }
 
+// TestAPreReleaseIsComparedByOrdering.
+//
+// The constraint library excludes every pre-release from a constraint that
+// carries none, so a customer running an rc was refused with "accepts upgrades
+// from >=1.0.0 <2.0.0, installed version is 1.5.0-rc.1" -- a sentence that
+// reads as satisfied. The rule is right for picking a dependency and wrong for
+// describing the machine somebody is already running.
+func TestAPreReleaseIsComparedByOrdering(t *testing.T) {
+	inRange := constraint(t, ">=1.0.0 <2.0.0")
+
+	assert.True(t, inRange.Allows(MustParseVersion("1.5.0-rc.1")),
+		"an rc inside the range was refused")
+	assert.True(t, inRange.Allows(MustParseVersion("1.5.0-beta.2+build.7")),
+		"build metadata is not a reason to refuse either")
+
+	// Ordering still decides: outside is outside.
+	assert.False(t, inRange.Allows(MustParseVersion("2.1.0-rc.1")))
+	assert.False(t, inRange.Allows(MustParseVersion("0.9.0-rc.1")))
+
+	// A constraint that names a pre-release means it, and its ordering
+	// against another pre-release is the ordinary comparison.
+	explicit := constraint(t, ">=2.0.0-rc.2")
+	assert.False(t, explicit.Allows(MustParseVersion("2.0.0-rc.1")),
+		"rc.1 satisfied a constraint that asks for rc.2 or later")
+	assert.True(t, explicit.Allows(MustParseVersion("2.0.0-rc.3")))
+
+	// And the refusal an operator meets is still reachable.
+	report := CheckUpgrade(
+		MustParseVersion("0.9.0-rc.1"), MustParseVersion("2.0.0"),
+		Compatibility{UpgradeFrom: inRange},
+		MustParseVersion("1.0.0"), 0)
+	assert.False(t, report.OK)
+}
+
 // TestCheckUpgradeReportsEveryProblemAtOnce is the property the doc comment
 // promises: an operator fixing one blocker must not discover the next on the
 // retry.

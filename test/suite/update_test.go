@@ -177,6 +177,48 @@ func TestUpdateRefusesADigestMismatch(t *testing.T) {
 		"a bundle that is not what was published must be refused before it is staged")
 }
 
+// TestTheInstallationCanTurnOffThePreUpdateBackup.
+//
+// The policy field existed, was written by init, was compared by doctor, and
+// was read by nothing that decides anything -- an unhooked intent-guard. It was
+// also spelled in the unsafe direction: BackupBeforeUpdate, whose zero value
+// meant "do not back up", so a record written before the field existed or a
+// hand-edited file turned the backup off by omission.
+func TestTheInstallationCanTurnOffThePreUpdateBackup(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// The default is the safe direction: a backup is taken.
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.NoError(t, err)
+
+	backups, err := h.Deps.Backup.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, backups, 1, "the pre-update backup was not taken by default")
+
+	// Set, and it applies without --skip-backup --force on every run.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Policy.SkipBackupBeforeUpdate = true
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	back := stageUpgradeSource(t, h)
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: back, To: ""})
+	require.NoError(t, err)
+
+	after, err := h.Deps.Backup.List(ctx)
+	require.NoError(t, err)
+	assert.Len(t, after, 1, "the policy was set and a backup was taken anyway")
+
+	// Recorded, because the journal is where an incident review looks for
+	// why there is no backup from just before this update.
+	assert.Equal(t, "true", result.Record.Flags["skip_backup_policy"],
+		"the journal does not record that the policy skipped the backup")
+}
+
 // TestUpdateRetiresAParameterTheNewReleaseDropped.
 //
 // A vendor may stop declaring a parameter, and the operator should be told

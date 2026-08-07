@@ -66,7 +66,13 @@ type SecretStore interface {
 	ReencryptFor(ctx context.Context, recipients []Recipient) error
 
 	// Rotate replaces a secret with a freshly generated value of the same
-	// shape, returning the previous value's fingerprint for the journal.
+	// shape.
+	//
+	// It returns only an error; the doc here used to promise the previous
+	// value's fingerprint, which no implementation has ever returned. A
+	// caller that wants one reads it with Metadata before rotating, so an
+	// implementation does not compute a fingerprint for every caller that
+	// does not want it.
 	Rotate(ctx context.Context, name string, spec GenSpec) error
 
 	// Initialized reports whether encrypted state exists yet.

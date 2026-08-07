@@ -117,9 +117,18 @@ type Policy struct {
 	RetainReleases int `yaml:"retain_releases" json:"retain_releases,omitempty"`
 	RetainBackups  int `yaml:"retain_backups" json:"retain_backups,omitempty"`
 
-	// BackupBeforeUpdate is on by default; disabling it is recorded in the
-	// journal so an incident review can see the choice was made.
-	BackupBeforeUpdate bool `yaml:"backup_before_update" json:"backup_before_update"`
+	// SkipBackupBeforeUpdate turns off the pre-update backup for every
+	// update on this installation.
+	//
+	// Named for the unsafe direction on purpose. It was BackupBeforeUpdate,
+	// where the zero value -- a field absent from a hand-edited file, a
+	// record written before the field existed -- meant "do not back up",
+	// and the one place a missing bool decides something is the one place
+	// it must not decide that. Now absence means the backup is taken.
+	//
+	// Recorded in the journal when it applies, so an incident review can
+	// see the choice was made rather than defaulted into.
+	SkipBackupBeforeUpdate bool `yaml:"skip_backup_before_update" json:"skip_backup_before_update,omitempty"`
 
 	// StaleBackupAfter is when `doctor` starts warning that the last
 	// backup is too old.
@@ -130,9 +139,8 @@ type Policy struct {
 // rather than silently absent.
 func DefaultPolicy() Policy {
 	return Policy{
-		RequireSignature:   false,
-		BackupBeforeUpdate: true,
-		StaleBackupAfter:   Duration(48 * time.Hour),
+		RequireSignature: false,
+		StaleBackupAfter: Duration(48 * time.Hour),
 	}
 }
 

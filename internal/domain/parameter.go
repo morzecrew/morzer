@@ -177,8 +177,20 @@ type Parameters map[string]string
 func ResolveParameters(declared map[string]ParameterSpec, set map[string]string) (Parameters, error) {
 	out := make(Parameters, len(declared))
 
+	// A declaration with no default is how a manifest says "the operator
+	// must choose": there is no other spelling for it. Skipping it left the
+	// name out of the result, which broke the type's own contract -- every
+	// declared parameter is present -- and produced a refusal that read
+	// "the release declares no parameter %q" about a parameter the release
+	// declares. Downstream, the value simply was not there: an empty
+	// interpolation in a Compose file, an empty field in a rendered config.
+	var unset []string
+
 	for name, spec := range declared {
 		if spec.Default == "" {
+			if _, ok := set[name]; !ok {
+				unset = append(unset, name)
+			}
 			continue
 		}
 		value, err := spec.Parse(spec.Default)
@@ -186,6 +198,14 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 			return nil, ValidationError(err, "release parameter %q has an invalid default", name)
 		}
 		out[name] = value
+	}
+
+	if len(unset) > 0 {
+		sort.Strings(unset)
+		return nil, Usage("the release declares no default for %s, and no value was set",
+			strings.Join(unset, ", ")).
+			WithHint("pass --set %s=<value> (repeat for several), or ask the vendor "+
+				"to declare a default", unset[0])
 	}
 
 	for _, name := range sortedStringKeys(set) {

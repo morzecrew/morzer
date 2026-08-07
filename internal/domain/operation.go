@@ -102,13 +102,23 @@ type OperationRecord struct {
 
 // Duration is the wall-clock time the operation took, or time so far when it
 // is still running.
+//
+// The clock read is the only one in this package, and it is confined to this
+// wrapper so the arithmetic stays pure and testable: DurationAt is what a test
+// -- or anything holding its own clock -- calls.
 func (r OperationRecord) Duration() time.Duration {
+	return r.DurationAt(time.Now().UTC())
+}
+
+// DurationAt is Duration as of a given instant. A record that has finished
+// ignores it: the answer is a property of the record, not of when it is asked.
+func (r OperationRecord) DurationAt(now time.Time) time.Duration {
 	if r.StartedAt.IsZero() {
 		return 0
 	}
 	end := r.FinishedAt.Time
 	if end.IsZero() {
-		end = time.Now().UTC()
+		end = now
 	}
 	return end.Sub(r.StartedAt.Time)
 }

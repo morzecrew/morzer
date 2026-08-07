@@ -153,6 +153,49 @@ type TargetCredentials struct {
 // IsZero reports whether nothing was supplied.
 func (c TargetCredentials) IsZero() bool { return c == TargetCredentials{} }
 
+// String names what is present and prints none of it.
+//
+// These are live credentials in ordinary string fields, so anything that
+// formats a ref -- a %+v in a log line while diagnosing a failed push, a debug
+// dump of step state -- printed the private key along with it. fmt calls this
+// for nested fields too, so redacting here covers the containing TargetRef
+// without every call site having to remember.
+//
+// GoString covers %#v for the same reason: it is the other verb a developer
+// reaches for when something is not working.
+func (c TargetCredentials) String() string {
+	parts := make([]string, 0, 6)
+	if c.Region != "" {
+		parts = append(parts, "region="+c.Region)
+	}
+	if c.Endpoint != "" {
+		parts = append(parts, "endpoint="+c.Endpoint)
+	}
+	// Names only. Which credentials are configured is exactly what a
+	// diagnosis needs; their values never are.
+	for _, named := range []struct {
+		name  string
+		value string
+	}{
+		{"access_key_id", c.AccessKeyID},
+		{"secret_access_key", c.SecretAccessKey},
+		{"session_token", c.SessionToken},
+		{"private_key", c.PrivateKey},
+		{"passphrase", c.Passphrase},
+		{"known_hosts", c.KnownHosts},
+	} {
+		if strings.TrimSpace(named.value) != "" {
+			parts = append(parts, named.name+"=<set>")
+		}
+	}
+	if len(parts) == 0 {
+		return "TargetCredentials{}"
+	}
+	return "TargetCredentials{" + strings.Join(parts, " ") + "}"
+}
+
+func (c TargetCredentials) GoString() string { return c.String() }
+
 // Redactions lists the values a log must never print.
 func (c TargetCredentials) Redactions() []string {
 	var out []string
