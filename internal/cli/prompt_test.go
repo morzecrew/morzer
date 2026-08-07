@@ -196,6 +196,21 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	return m, s
 }
 
+// waitForEchoOff polls until the prompt's mode flip has landed on the pty --
+// the state is observable, so tests synchronise on it rather than on a sleep
+// that a loaded CI box can outrun.
+func waitForEchoOff(t *testing.T, f *os.File) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if terminalMode(t, f).Lflag&unix.ECHO == 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("the prompt never disabled echo")
+}
+
 func terminalMode(t *testing.T, f *os.File) unix.Termios {
 	t.Helper()
 	tio, err := unix.IoctlGetTermios(int(f.Fd()), unix.TCGETS)
@@ -220,9 +235,9 @@ func TestReadPasswordReadsWithoutEchoAndRestoresTheTerminal(t *testing.T) {
 		done <- result{v, err}
 	}()
 
-	// The mode flip happens before the reader starts; a short pause lets
-	// the goroutine get there so the typed bytes meet echo-off for sure.
-	time.Sleep(100 * time.Millisecond)
+	// The typed bytes must meet echo-off for sure, and the flip is
+	// observable state, not a timing bet.
+	waitForEchoOff(t, slave)
 	if _, err := master.WriteString("hunter2\n"); err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +275,7 @@ func TestReadPasswordCancelRestoresTheTerminal(t *testing.T) {
 		done <- err
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForEchoOff(t, slave)
 	cancel()
 
 	err := <-done
@@ -285,7 +300,7 @@ func TestReadPasswordAcceptsCtrlDAfterText(t *testing.T) {
 		done <- result{v, err}
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForEchoOff(t, slave)
 	// Ctrl-D flushes the typed text; the second one delivers the EOF that
 	// completes a value typed without a final newline.
 	if _, err := master.WriteString("abc\x04\x04"); err != nil {
