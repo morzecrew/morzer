@@ -258,6 +258,11 @@ func wantsJSON(parsed bool, lookup func(string) *pflag.Flag, args []string) bool
 		// read it as the duration, and failing on that is what brought
 		// the run here. Counting it would answer a malformed command
 		// line with an envelope nobody requested.
+		//
+		// Long spellings only: every shorthand this CLI defines is a
+		// boolean, and a boolean eats nothing. A value-taking shorthand
+		// would need the same treatment, which is what the test below
+		// pinning `--dry-run` is there to make visible.
 		if name, ok := strings.CutPrefix(arg, "--"); ok && !strings.Contains(name, "=") {
 			if f := lookup(name); f != nil && f.Value.Type() != "bool" {
 				i++
