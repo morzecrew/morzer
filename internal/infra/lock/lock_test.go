@@ -315,6 +315,40 @@ func TestAnUnreadableRecordIsNotAFailure(t *testing.T) {
 	}
 }
 
+// TestAskingWhoHoldsTheLockDoesNotTakeIt.
+//
+// Owner used to answer by taking the real lock and releasing it again, which
+// makes a reader an acquirer: `status --watch` probes every two seconds, and a
+// mutating command whose non-waiting acquisition landed inside that window was
+// refused by the thing that was only looking.
+func TestAskingWhoHoldsTheLockDoesNotTakeIt(t *testing.T) {
+	t.Parallel()
+
+	l := locker(t)
+	ctx := context.Background()
+
+	// A thousand probes, and an acquisition that must not lose to any of
+	// them. The probe is fast, so the odds of overlap are high.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 1000; i++ {
+			_, _, _ = l.Owner(ctx, "deployment")
+		}
+	}()
+
+	for i := 0; i < 200; i++ {
+		release, err := l.Acquire(ctx, "deployment", ports.LockOptions{Owner: owner("op-1")})
+		if err != nil {
+			t.Fatalf("acquisition %d lost to a reader: %v", i, err)
+		}
+		if err := release(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	<-done
+}
+
 // TestWaitingForALockSucceedsWhenItIsReleased is the --wait path.
 func TestWaitingForALockSucceedsWhenItIsReleased(t *testing.T) {
 	t.Parallel()

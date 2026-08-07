@@ -7,6 +7,35 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestAStatusThisBuildDoesNotKnowIsNotSilentlyFinished.
+//
+// Terminal was "not running" and NeedsAttention was "is manual-intervention",
+// so a status written by a newer manager -- or a damaged journal line -- was
+// finished, needed nobody's attention, and disappeared from `status` and
+// `doctor` entirely. Both predicates now enumerate the states they know, and an
+// unrecognised one lands on the side a human looks at.
+func TestAStatusThisBuildDoesNotKnowIsNotSilentlyFinished(t *testing.T) {
+	unknown := OperationStatus("quiesced-pending-review")
+
+	assert.False(t, unknown.Terminal(),
+		"a status this build cannot interpret was treated as a finished operation")
+	assert.True(t, unknown.NeedsAttention(),
+		"...and as one nobody needs to look at")
+
+	// The known ones keep their meanings.
+	for _, s := range []OperationStatus{
+		StatusSucceeded, StatusFailed, StatusCompensated, StatusInterrupted,
+	} {
+		assert.True(t, s.Terminal(), "%s is a finished operation", s)
+		assert.False(t, s.NeedsAttention(), "%s does not need a human", s)
+	}
+	assert.False(t, StatusRunning.Terminal())
+	assert.False(t, StatusRunning.NeedsAttention(),
+		"a running operation is not an intervention; the gate handles it separately")
+	assert.True(t, StatusManualIntervention.Terminal())
+	assert.True(t, StatusManualIntervention.NeedsAttention())
+}
+
 // TestDurationIsArithmeticRatherThanAClockRead.
 //
 // The domain package is otherwise pure -- no clocks, no filesystem -- and this

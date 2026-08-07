@@ -38,6 +38,10 @@ type Runtime struct {
 	// fault-injection switch.
 	Fail map[string]error
 
+	// OnCall runs as each method is entered, before it does anything. It
+	// is how a test acts at an exact moment in an operation.
+	OnCall func(method string)
+
 	// PulledImages records what Pull was asked for.
 	PulledImages []string
 
@@ -104,9 +108,18 @@ var (
 
 func (r *Runtime) record(method string) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.Calls = append(r.Calls, method)
-	return r.Fail[method]
+	err, hook := r.Fail[method], r.OnCall
+	r.mu.Unlock()
+
+	// Called outside the lock, and before the method does its work: a test
+	// that has to act at a precise point in an operation -- cancel while
+	// the services are down, say -- would otherwise have to poll Calls from
+	// another goroutine and race on it.
+	if hook != nil {
+		hook(method)
+	}
+	return err
 }
 
 func (r *Runtime) Validate(ctx context.Context, cfg ports.RuntimeConfig) (ports.Rendered, error) {

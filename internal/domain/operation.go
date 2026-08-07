@@ -43,14 +43,36 @@ const (
 
 // Terminal reports whether the status is final. A non-terminal record in the
 // journal is what `--resume` looks for and what `doctor` flags.
+//
+// The finished states are enumerated rather than derived from "not running",
+// so a status this build does not recognise -- a record written by a newer
+// manager, a damaged line -- is not finished. Deriving it the other way made
+// every unknown status silently complete and invisible.
 func (s OperationStatus) Terminal() bool {
-	return s != StatusRunning
+	switch s {
+	case StatusSucceeded, StatusFailed, StatusCompensated,
+		StatusInterrupted, StatusManualIntervention:
+		return true
+	default:
+		return false
+	}
 }
 
 // NeedsAttention reports whether the status should keep surfacing in `status`
 // and `doctor` until an operator clears it explicitly.
+//
+// Fail-safe in the same direction, and by enumerating the negative: the states
+// that do *not* need a human are listed, so an unrecognised one gets looked at.
+// A record this manager cannot interpret is exactly the case a human should
+// see, and `--clear-intervention` can acknowledge it.
 func (s OperationStatus) NeedsAttention() bool {
-	return s == StatusManualIntervention
+	switch s {
+	case StatusSucceeded, StatusFailed, StatusCompensated,
+		StatusInterrupted, StatusRunning:
+		return false
+	default:
+		return true
+	}
 }
 
 // StepStatus is the per-step outcome.

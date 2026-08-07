@@ -359,10 +359,18 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 	close(waited)
 	duration := time.Since(started)
 
-	// Whatever happened, make sure nothing from this group survives. A
-	// process that ignored SIGTERM and outlived WaitDelay would otherwise
-	// keep holding the deployment's ports or its database connection.
-	if pgid > 0 {
+	// A process that ignored SIGTERM and outlived WaitDelay would keep
+	// holding the deployment's ports or its database connection, so the
+	// group is swept -- but only on a run that was cancelled or timed out.
+	//
+	// The restriction is the PID-reuse hazard. Wait has just reaped the
+	// leader, so its pid is free for the kernel to hand to something else;
+	// a group whose members are all gone can therefore have its id reused
+	// by an unrelated process, and this signal would land on that. On a run
+	// that ended by itself the sweep buys nothing anyway: nothing was
+	// signalled, the leader exited on its own terms. On a cancelled one it
+	// is the whole point, and the group was signalled before the reap.
+	if pgid > 0 && ctx.Err() != nil {
 		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 	}
 

@@ -485,6 +485,47 @@ func TestBackupCreatesVerifiesAndPrunes(t *testing.T) {
 		"a backup that has never been read back is a hope, not a backup")
 }
 
+// TestAnInterruptedRestoreSaysWhatItLeftBehind.
+//
+// A restore stops the product before it writes anything, and an interruption
+// deliberately skips compensation: the operator pressed ctrl-C, and a long
+// automatic bring-up is not what "stop" means. What that leaves is a deployment
+// that is down -- a fine outcome to have chosen and a terrible one to have to
+// infer from silence, especially since restore is not resumable.
+func TestAnInterruptedRestoreSaysWhatItLeftBehind(t *testing.T) {
+	h := newHarness(t)
+	inst := h.install()
+	h.setHookEnv()
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	_, err = ops.Backup(context.Background(), h.Deps, ops.BackupOptions{Reason: "manual"})
+	require.NoError(t, err)
+
+	// Ctrl-C exactly when the services have been taken down, which is the
+	// window this is about.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.Runtime.OnCall = func(method string) {
+		if method == "Down" {
+			cancel()
+		}
+	}
+
+	result, err := ops.Restore(ctx, h.Deps, ops.RestoreOptions{
+		Options:                 ops.Options{Force: true},
+		ConfirmedInstallationID: inst.ID,
+	})
+	require.Error(t, err, "a cancelled restore reported success")
+	require.Equal(t, domain.StatusInterrupted, result.Record.Status)
+
+	hint := domain.AsError(err).Hint
+	assert.Contains(t, hint, "stopped",
+		"the refusal does not say the product is down, which is the state it left")
+	assert.Contains(t, hint, "morzer apply",
+		"...nor how to bring it back")
+}
+
 func TestRestoreRequiresForceAndTypedConfirmation(t *testing.T) {
 	h := newHarness(t)
 	inst := h.install()
