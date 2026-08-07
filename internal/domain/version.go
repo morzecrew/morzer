@@ -206,8 +206,20 @@ func hasWildcard(group string) bool {
 		return true
 	}
 	for _, token := range versionToken.FindAllString(group, -1) {
+		// The numbers only. A wildcard can only stand where a number
+		// would, and everything after the "-" is a pre-release
+		// identifier, which is free-form the same way build metadata is:
+		// ">=1.0.0-rcx.1" names a release candidate, not a wildcard.
+		//
+		// Nothing observable rides on this today -- a group with a
+		// pre-release element anywhere in it is already compared by
+		// ordering, so Allows answers from the library before the
+		// rewrite is consulted. It is here so the predicate means what
+		// its name says, and does not become a bug the day that
+		// short-circuit changes.
 		core, _ := splitMetadata(token)
-		if strings.ContainsAny(core, "xX*") {
+		numbers, _, _ := strings.Cut(core, "-")
+		if strings.ContainsAny(numbers, "xX*") {
 			return true
 		}
 	}

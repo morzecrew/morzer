@@ -245,6 +245,14 @@ func TestAPreReleaseIsComparedByOrdering(t *testing.T) {
 		{"1.x || >=2.0.0", "2.5.0-rc.1", true, "the branch without a wildcard admits it"},
 		{"1.x || >=2.0.0", "1.5.0-rc.1", false, "and the wildcard branch still refuses"},
 
+		// A pre-release identifier is free-form, so it can carry an x
+		// without naming a wildcard. These pass through the library
+		// rather than the rewrite -- a group with a pre-release element
+		// anywhere in it is already compared by ordering -- so they pin
+		// the contract, not the mechanism that happens to deliver it.
+		{">=1.0.0-rcx.1 <2.0.0", "1.5.0-rc.1", true, "an x in a pre-release is not a wildcard"},
+		{">=1.0.0-rcx.1 <2.0.0", "2.5.0-rc.1", false, "and the upper bound still holds"},
+
 		// Build metadata is free-form, so it can contain the two
 		// characters the rewrite reads as meaning: a hyphen, which says
 		// "already a pre-release", and an x, which says "wildcard".
