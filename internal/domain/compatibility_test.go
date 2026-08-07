@@ -172,6 +172,112 @@ func TestCheckUpgrade(t *testing.T) {
 	}
 }
 
+// TestAPreReleaseIsComparedByOrdering.
+//
+// The constraint library excludes every pre-release from a constraint that
+// carries none, so a customer running an rc was refused with "accepts upgrades
+// from >=1.0.0 <2.0.0, installed version is 1.5.0-rc.1" -- a sentence that
+// reads as satisfied. The rule is right for picking a dependency and wrong for
+// describing the machine somebody is already running.
+//
+// The retry is against the same version through a constraint rewritten to admit
+// pre-releases, not against the version's release core: the core comparison was
+// wrong at both boundaries, accepting a version below a floor and refusing one
+// inside a range. The table below is the whole contract, boundaries included.
+func TestAPreReleaseIsComparedByOrdering(t *testing.T) {
+	cases := []struct {
+		constraint string
+		version    string
+		want       bool
+		why        string
+	}{
+		{">=2.30", "2.31.0-rc.1", true, "an rc past the floor is past the floor"},
+		{">=1.0.0 <2.0.0", "1.5.0-rc.1", true, "and one inside the range is inside it"},
+		{">=1.0.0 <2.0.0", "1.5.0-beta.2+build.7", true, "build metadata decides nothing"},
+		{">=1.0.0 <2.0.0", "0.9.0-rc.1", false, "below the floor is still below it"},
+
+		// The boundaries, which are the point of the rewrite. A lower
+		// bound admits its own pre-releases -- ">=2.0.0" is "2.0 or
+		// later", and an rc of 2.0.0 carries 2.0's migrations -- while
+		// an upper bound does not: ">=1.0.0 <2.0.0" means "any 1.x",
+		// and 2.0.0-rc.1 is not a 1.x.
+		{">=2.0.0", "2.0.0-rc.1", true, "an rc of the floor itself"},
+		{">=1.0.0 <2.0.0", "2.0.0-rc.1", false, "an rc of the ceiling is not below it"},
+
+		// A constraint that names a pre-release means it, and is
+		// compared as written.
+		{">=2.0.0-rc.2", "2.0.0-rc.1", false, "rc.1 is before rc.2"},
+		{">=2.0.0-rc.2", "2.0.0-rc.3", true, "rc.3 is after it"},
+
+		// Per alternative: the first branch names a pre-release and
+		// does not admit this version, the second names none and does.
+		{">=1.0.0-rc.1 <1.1.0 || >=2.0.0", "2.1.0-rc.1", true, "the second branch admits it"},
+		{">=1.0.0-rc.1 <1.1.0 || >=2.0.0", "1.5.0-rc.1", false, "neither branch does"},
+
+		// Sugar keeps working.
+		{"^1.2.0", "1.5.0-rc.1", true, "a caret range admits an rc inside it"},
+		{"^1.2.0", "2.0.0-rc.1", false, "and refuses one past it"},
+
+		// An operator-less constraint is equality, and the rewrite must
+		// not widen it into something that matches a version it never
+		// named. A complete one stays exact; a partial one is the range
+		// it has always been, whose lower bound admits its own
+		// pre-releases like any other.
+		{"1.2.3", "1.2.3", true, "equality still matches its own version"},
+		{"1.2.3", "1.2.3-rc.1", false, "and an rc is not equal to it"},
+		{"1.2.3", "1.2.4-rc.1", false, "nor is anything else"},
+		{"1.3", "1.3.0-rc.1", true, "a partial version is a range, and this is its floor"},
+		{"1.3", "1.4.0-rc.1", false, "and an rc past the range is past it"},
+
+		// A wildcard cannot carry a pre-release, so the rewrite does
+		// not apply and the library's own answer stands -- refusing,
+		// which is the safe direction for a gate.
+		{">=1.x", "1.5.0-rc.1", false, "a wildcard constraint keeps the library's answer"},
+
+		// And the exclusion belongs to the whole alternative, not to the
+		// element spelling the wildcard: rewriting a sibling would lift
+		// it, so a group with a wildcard anywhere in it is left whole.
+		{">=1.0.0 <2.x", "1.5.0-rc.1", false, "a wildcard anywhere in the group keeps its answer"},
+		{">=1.0.0 <2.x", "1.5.0", true, "while a release inside it is admitted as it always was"},
+
+		// An alternative beside one is still rewritten, which is the
+		// same reading every other "||" gets.
+		{"1.x || >=2.0.0", "2.5.0-rc.1", true, "the branch without a wildcard admits it"},
+		{"1.x || >=2.0.0", "1.5.0-rc.1", false, "and the wildcard branch still refuses"},
+
+		// A pre-release identifier is free-form, so it can carry an x
+		// without naming a wildcard. These pass through the library
+		// rather than the rewrite -- a group with a pre-release element
+		// anywhere in it is already compared by ordering -- so they pin
+		// the contract, not the mechanism that happens to deliver it.
+		{">=1.0.0-rcx.1 <2.0.0", "1.5.0-rc.1", true, "an x in a pre-release is not a wildcard"},
+		{">=1.0.0-rcx.1 <2.0.0", "2.5.0-rc.1", false, "and the upper bound still holds"},
+
+		// Build metadata is free-form, so it can contain the two
+		// characters the rewrite reads as meaning: a hyphen, which says
+		// "already a pre-release", and an x, which says "wildcard".
+		// Neither is true of metadata, and reading it that way turned a
+		// valid constraint into one that refused every pre-release
+		// inside its own range.
+		{">=1.0.0+build-foo", "1.5.0-rc.1", true, "a hyphen in metadata is not a pre-release"},
+		{">=1.0.0+fix", "1.5.0-rc.1", true, "an x in metadata is not a wildcard"},
+		{">=1.0.0+build-foo", "0.9.0-rc.1", false, "and the bound still holds"},
+	}
+
+	for _, tc := range cases {
+		c := constraint(t, tc.constraint)
+		assert.Equal(t, tc.want, c.Allows(MustParseVersion(tc.version)),
+			"%q allows %q: %s", tc.constraint, tc.version, tc.why)
+	}
+
+	// And the refusal an operator meets is still reachable.
+	report := CheckUpgrade(
+		MustParseVersion("0.9.0-rc.1"), MustParseVersion("2.0.0"),
+		Compatibility{UpgradeFrom: constraint(t, ">=1.0.0 <2.0.0")},
+		MustParseVersion("1.0.0"), 0)
+	assert.False(t, report.OK)
+}
+
 // TestCheckUpgradeReportsEveryProblemAtOnce is the property the doc comment
 // promises: an operator fixing one blocker must not discover the next on the
 // retry.

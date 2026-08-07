@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -75,6 +77,40 @@ func TestTheEditorIsChosenTheWayEveryOtherToolChoosesIt(t *testing.T) {
 			return
 		}
 		assert.Equal(t, []string{"vi"}, got)
+	})
+}
+
+// TestAnEditorThatCannotStartSaysSo.
+//
+// An editor exiting non-zero is a deliberate abort -- vim's `:cq`. An editor
+// that never ran is a misspelled $EDITOR, and reporting the two identically
+// leaves the operator reading about an abort they did not perform, with the
+// cause discarded.
+func TestAnEditorThatCannotStartSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secrets.yaml")
+	require.NoError(t, os.WriteFile(file, []byte("a: b\n"), 0o600))
+
+	t.Run("a command that is not on PATH", func(t *testing.T) {
+		err := runEditor(context.Background(),
+			[]string{"morzer-no-such-editor-here"}, file)
+		require.Error(t, err)
+
+		de := domain.AsError(err)
+		assert.Contains(t, de.Message, "cannot run the editor",
+			"a launch failure reads as a deliberate abort")
+		assert.Contains(t, de.Message, "morzer-no-such-editor-here",
+			"the failure does not name what it tried to run")
+		assert.Contains(t, de.Hint, "PATH")
+	})
+
+	t.Run("an editor the operator quit with an error", func(t *testing.T) {
+		script := filepath.Join(dir, "quit-with-error")
+		require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nexit 1\n"), 0o700))
+
+		err := runEditor(context.Background(), []string{script}, file)
+		require.Error(t, err)
+		assert.Contains(t, domain.AsError(err).Message, "exited with an error")
 	})
 }
 

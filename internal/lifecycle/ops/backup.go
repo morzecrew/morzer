@@ -632,10 +632,65 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 
 	out := Result{Record: result.Record}
 	if runErr != nil {
-		return out, runErr
+		return out, restoreLeftBehind(result.Record, runErr)
 	}
 	out.Summary = fmt.Sprintf("restored %s from backup %s", inst.Product, ref.ID)
 	return out, nil
+}
+
+// restoreLeftBehind says what state an interrupted restore leaves.
+//
+// A restore stops the product before it writes anything, and an interruption
+// deliberately skips compensation: the operator pressed ctrl-C, and a long
+// automatic bring-up is not what "stop" means. What that leaves is a deployment
+// that is down -- which is a fine outcome to have chosen and a terrible one to
+// have to infer from silence.
+//
+// It is a hint rather than an automatic recovery on purpose. Restore is not
+// resumable: its middle step overwrites a database, no automatic action can
+// tell how far a hook got, and guessing a repair is the failure mode the design
+// forbids. The two roads forward are the operator's to choose.
+func restoreLeftBehind(rec domain.OperationRecord, err error) error {
+	if rec.Status != domain.StatusInterrupted || !servicesLeftStopped(rec) {
+		return err
+	}
+	recovery := "the services were stopped before the restore began, and an interrupted " +
+		"operation is not brought back up automatically. Run `morzer apply` to " +
+		"start the current release again, or re-run the restore to try once more. " +
+		"`morzer status` shows which."
+
+	// Appended rather than assigned: WithHint replaces, and whatever the
+	// interrupted step said about itself is the other half of what the
+	// operator needs.
+	if existing := domain.AsError(err).Hint; existing != "" {
+		return domain.AsError(err).WithHint("%s %s", existing, recovery)
+	}
+	return domain.AsError(err).WithHint("%s", recovery)
+}
+
+// servicesLeftStopped reports whether the stop succeeded and nothing has since
+// tried to bring the product back.
+//
+// "Has tried", not "has succeeded": an interruption during the re-apply may
+// have started some or all of the services already, and claiming they are
+// stopped would send the operator to run `apply` against a deployment that is
+// half up -- which is fine, apply is idempotent, but the sentence would be
+// false and the next one they read might not be. The hint is offered only when
+// the re-apply was never entered, which is the case it was written for:
+// ctrl-C in the window between the stop and the restore hook.
+func servicesLeftStopped(rec domain.OperationRecord) bool {
+	stopped := false
+	for _, step := range rec.Steps {
+		switch step.ID {
+		case "stop-services":
+			stopped = step.Status == domain.StepSucceeded
+		case "reapply-release":
+			if step.Status != domain.StepPending {
+				return false
+			}
+		}
+	}
+	return stopped
 }
 
 func restoreSteps(d *Deps, inst domain.Installation, rel domain.Release, ref ports.BackupRef, opts RestoreOptions) []engine.Step {

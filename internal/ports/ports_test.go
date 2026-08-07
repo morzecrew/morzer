@@ -1,6 +1,9 @@
 package ports_test
 
 import (
+	"encoding/json"
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -94,6 +97,149 @@ func TestRefRoundTripsThroughItsString(t *testing.T) {
 	}
 }
 
+// TestCredentialsPrintWhatIsSetAndNeverWhatItIs.
+//
+// These are live credentials in ordinary string fields, so a %+v while
+// diagnosing a failed push -- the moment somebody is most likely to reach for
+// one -- printed the private key into the log.
+func TestCredentialsPrintWhatIsSetAndNeverWhatItIs(t *testing.T) {
+	ref := ports.TargetRef{
+		Scheme: "ssh", Host: "backups.example", Path: "/srv/backups",
+		Credentials: ports.TargetCredentials{
+			PrivateKey:      "-----BEGIN OPENSSH PRIVATE KEY-----\nMIIEpAIBAAK\n",
+			Passphrase:      "correct horse battery staple",
+			SecretAccessKey: "wJalrXUtnFEMI",
+			Region:          "eu-central-1",
+		},
+	}
+
+	// Every verb somebody reaches for, including the ones fmt applies to
+	// nested fields.
+	for _, printed := range []string{
+		fmt.Sprintf("%v", ref),
+		fmt.Sprintf("%+v", ref),
+		fmt.Sprintf("%#v", ref),
+		ref.Credentials.String(),
+	} {
+		for _, secret := range []string{
+			"MIIEpAIBAAK", "correct horse battery staple", "wJalrXUtnFEMI",
+		} {
+			if strings.Contains(printed, secret) {
+				t.Errorf("a credential was printed:\n%s", printed)
+			}
+		}
+	}
+
+	// What it does say is which credentials are configured, which is the
+	// part a diagnosis actually needs.
+	summary := ref.Credentials.String()
+	for _, want := range []string{"private_key=<set>", "passphrase=<set>", "region=eu-central-1"} {
+		if !strings.Contains(summary, want) {
+			t.Errorf("the summary does not say %q: %s", want, summary)
+		}
+	}
+	if got := (ports.TargetCredentials{}).String(); got != "TargetCredentials{}" {
+		t.Errorf("empty credentials print as %q", got)
+	}
+
+	// And through encoding/json, which String does not reach. The fields
+	// carry json tags because they are read from a secret document, so any
+	// marshal of a ref -- a --json envelope, a captured event -- would
+	// otherwise carry the private key with it.
+	encoded, err := json.Marshal(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{
+		"MIIEpAIBAAK", "correct horse battery staple", "wJalrXUtnFEMI",
+	} {
+		if strings.Contains(string(encoded), secret) {
+			t.Errorf("a credential was serialised:\n%s", encoded)
+		}
+	}
+	// An endpoint is a URL, and a URL can carry userinfo -- a credential
+	// wearing a hostname, which the summary printed verbatim.
+	//
+	// Including in the bare "host:port" form the S3 adapter also accepts:
+	// url.Parse finds no authority there and reads "key:s3cr3t@host" as the
+	// scheme "key" with an opaque tail, so the password never lands in
+	// parsed.User and the redaction used to return the string untouched.
+	for _, endpoint := range []string{
+		"https://key:s3cr3t@minio.example:9000",
+		"key:s3cr3t@minio.example:9000",
+		"//key:s3cr3t@minio.example:9000",
+	} {
+		withUser := ports.TargetCredentials{Endpoint: endpoint}
+		for _, printed := range []string{withUser.String(), string(mustJSON(t, withUser))} {
+			if strings.Contains(printed, "s3cr3t") {
+				t.Errorf("the password in %q was printed: %s", endpoint, printed)
+			}
+			if !strings.Contains(printed, "minio.example") {
+				t.Errorf("the host an operator needs for a diagnosis was dropped: %s", printed)
+			}
+		}
+	}
+
+	// A plain endpoint keeps every character: this redacts userinfo, it does
+	// not blanket-hide the one field a misrouted backup is diagnosed from.
+	// The addresses are here because url.Parse rejects a bare one outright
+	// -- "first path segment in URL cannot contain colon" -- and answering
+	// that with "<set>" costs the operator the host and port while hiding
+	// nothing.
+	for _, endpoint := range []string{
+		"minio.example:9000", "192.168.1.10:9000", "[::1]:9000", "[fe80::1]:9000",
+	} {
+		got := ports.TargetCredentials{Endpoint: endpoint}.String()
+		if !strings.Contains(got, endpoint) {
+			t.Errorf("a bare endpoint with no userinfo was mangled: %q printed as %s",
+				endpoint, got)
+		}
+	}
+
+	// And an address that does carry userinfo is still redacted, host kept.
+	addressed := ports.TargetCredentials{Endpoint: "key:s3cr3t@[::1]:9000"}.String()
+	if strings.Contains(addressed, "s3cr3t") {
+		t.Errorf("the password in an address endpoint was printed: %s", addressed)
+	}
+	if !strings.Contains(addressed, "[::1]:9000") {
+		t.Errorf("the address an operator needs for a diagnosis was dropped: %s", addressed)
+	}
+
+	// A full URL that url.Parse rejects must not be re-read as a bare
+	// endpoint: behind "//" it becomes the host "https:" with the credential
+	// in the path, so the userinfo is invisible and the string would be
+	// printed whole. Nothing here is diagnosable anyway -- an endpoint this
+	// malformed will not connect -- so the safe answer is the only answer.
+	for _, endpoint := range []string{
+		"https://key:s3cr3t@minio.example:notaport", // invalid port
+		"http://key:s3cr3t@minio example",           // space in the host
+		"https:/key:s3cr3t@minio.example",           // one slash, an opaque parse
+	} {
+		got := ports.TargetCredentials{Endpoint: endpoint}.String()
+		if strings.Contains(got, "s3cr3t") {
+			t.Errorf("a malformed URL leaked its password: %q printed as %s",
+				endpoint, got)
+		}
+	}
+
+	// The shape survives: which credentials are configured is what a
+	// consumer legitimately reports.
+	for _, want := range []string{`"private_key":"[redacted]"`, `"region":"eu-central-1"`} {
+		if !strings.Contains(string(encoded), want) {
+			t.Errorf("the envelope does not carry %s:\n%s", want, encoded)
+		}
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	out, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func TestUnitStateFailedIsTheOneStateThatMatters(t *testing.T) {
 	if !(ports.UnitState{Active: "failed"}).Failed() {
 		t.Error("a failed unit does not report itself failed")
@@ -149,6 +295,39 @@ func TestHookEnvPrefixSurvivesAnAwkwardProductName(t *testing.T) {
 	for product, want := range cases {
 		if got := (ports.HookEnv{Product: product}).Prefix(); got != want {
 			t.Errorf("Prefix(%q) = %q, want %q", product, got, want)
+		}
+	}
+}
+
+// TestEveryValidProductNameIsAUsableVariablePrefix is the other half of that
+// rule, and the reason domain.ValidateProductName refuses a leading digit.
+//
+// The product name is not only a path component: uppercased, it is the
+// namespace of every variable a hook reads and every ${...} a Compose file
+// interpolates. A name like "3cx" yields ${3CX_PARAM_...}, which no POSIX shell
+// and no Compose file can reference -- so each parameter falls back to its `:-`
+// default and the deployment comes up configured with none of the operator's
+// values, silently.
+func TestEveryValidProductNameIsAUsableVariablePrefix(t *testing.T) {
+	// POSIX: a name is a letter or underscore, then letters, digits and
+	// underscores.
+	usable := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+	for _, name := range []string{"demo", "my-product", "product2", "a", "x-9-y"} {
+		if err := domain.ValidateProductName(name); err != nil {
+			t.Fatalf("%q is meant to be a valid product name: %v", name, err)
+		}
+		prefix := (ports.HookEnv{Product: name}).Prefix()
+		if !usable.MatchString(prefix) {
+			t.Errorf("%q is accepted but yields ${%s_...}, which nothing can interpolate",
+				name, prefix)
+		}
+	}
+
+	for _, name := range []string{"3cx", "2fa-portal", "9"} {
+		if err := domain.ValidateProductName(name); err == nil {
+			t.Errorf("%q is accepted, and its prefix %q cannot name a variable",
+				name, (ports.HookEnv{Product: name}).Prefix())
 		}
 	}
 }

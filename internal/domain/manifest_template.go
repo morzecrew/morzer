@@ -41,7 +41,10 @@ func (p Parameters) Resolve(field, text string) (string, error) {
 	// serves, discovered two minutes later as a health-check timeout.
 	tmpl, err := template.New(field).Option("missingkey=error").Parse(text)
 	if err != nil {
-		return "", ValidationError(err, "%s is not a valid template", field).
+		// Double-wrapped: the sentinel is what a caller matches on, the
+		// cause is what an author reads.
+		return "", ValidationError(fmt.Errorf("%w: %w", ErrTemplateSyntax, err),
+			"%s is not a valid template", field).
 			WithHint("only {{ .Parameters.<name> }} is available here")
 	}
 

@@ -301,6 +301,9 @@ func TestProductNameIsValidatedAsAPathComponent(t *testing.T) {
 	invalid := []string{
 		"", "../escape", "with/slash", "Upper", "with space",
 		".hidden", "-leading-dash", strings.Repeat("x", 64),
+		// A digit-leading name is a valid path component and an invalid
+		// environment-variable prefix, and the name is used as both.
+		"3cx", "2fa-portal", "9",
 	}
 	for _, name := range invalid {
 		assert.Error(t, ValidateProductName(name), "%q must be rejected", name)

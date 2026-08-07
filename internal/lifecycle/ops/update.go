@@ -83,7 +83,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		From:        from.Version,
 		To:          staged.Version(),
 		Steps:       updateSteps(d, inst, from, source, staged, opts),
-		Flags:       updateFlags(opts),
+		Flags:       updateFlags(inst, opts),
 	}
 
 	var result engine.Result
@@ -263,8 +263,14 @@ func (d *Deps) resolveUpdateTarget(
 	return source, staged, cleanup, nil
 }
 
-func updateFlags(opts UpdateOptions) map[string]string {
+func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string {
 	flags := map[string]string{"ref": opts.Ref}
+	if inst.Policy.SkipBackupBeforeUpdate {
+		// A durable choice rather than a per-run one, and just as
+		// consequential: the journal is where an incident review looks
+		// for why there is no backup from just before this update.
+		flags["skip_backup_policy"] = "true"
+	}
 	if opts.SkipBackup {
 		// Recorded because it is the choice an incident review will want
 		// to see was made deliberately.
@@ -294,6 +300,24 @@ func updateSteps(
 	source, staged domain.Release,
 	opts UpdateOptions,
 ) []engine.Step {
+	// The parameters the new release stopped declaring are dropped from the
+	// installation before anything downstream resolves them, and the step
+	// makes that durable. Both halves are needed: without the step the
+	// value comes back on the next command, and without the drop here the
+	// converge steps below still resolve against it and refuse the update.
+	// A parameter the new release stopped declaring has to leave the
+	// resolution before anything downstream resolves against it -- every
+	// consumer validates the whole recorded map, so one retired name would
+	// refuse the converge. That part is in memory and costs nothing to
+	// redo.
+	//
+	// Making it durable is a separate step, and it runs *last*: see
+	// stepRetireParameters.
+	retired := domain.Parameters(inst.Parameters).ValidateAgainst(staged.Manifest.Parameters)
+	if len(retired) > 0 {
+		inst = withoutParameters(inst, retired)
+	}
+
 	steps := []engine.Step{
 		stepVerifyBundle(d, inst, source, opts),
 		stepCheckCompatibility(d, from, staged),
@@ -313,7 +337,84 @@ func updateSteps(
 	if opts.DryRun {
 		converge = source
 	}
-	return append(steps, applySteps(d, inst, converge, opts.Options)...)
+	steps = append(steps, applySteps(d, inst, converge, opts.Options)...)
+	return append(steps, stepRetireParameters(d, staged, retired))
+}
+
+// withoutParameters copies an installation with the named parameters removed.
+func withoutParameters(inst domain.Installation, names []string) domain.Installation {
+	next := make(map[string]string, len(inst.Parameters))
+	for k, v := range inst.Parameters {
+		next[k] = v
+	}
+	for _, name := range names {
+		delete(next, name)
+	}
+	inst.Parameters = next
+	return inst
+}
+
+// stepRetireParameters drops recorded values the new release no longer
+// declares, and is the last step of the update on purpose.
+//
+// A vendor may stop declaring a parameter; that is their decision and not a
+// failure, which is why the operator is told rather than refused. But the
+// recorded value cannot simply stay: every later resolve validates the whole
+// map against the release's declarations, so one retired name would refuse
+// `apply`, `config` and `status` from the first command after the update
+// onwards -- with a message about a parameter the operator never typed.
+//
+// Last, because that is what makes it safe to interrupt. Nothing runs after it,
+// so no failure can require it to be undone -- and a compensation could not
+// undo it reliably anyway: a resumed run reloads an installation the values are
+// already gone from, and would have nothing to put back. Everything before it
+// unwinds with the values still recorded, which is correct, because what
+// unwinds to is the release that declares them.
+//
+// Aborting rather than compensating for the same reason: by the time this runs
+// the deployment is converged and healthy, and rolling that back over a failed
+// bookkeeping write would be the tail wagging the dog. The operator is left
+// with a working deployment and a state file one parameter stale, which the
+// next command reports.
+func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engine.Step {
+	description := "retire parameters the new release no longer declares"
+	if len(retired) > 0 {
+		// Named in the description, because a dry run is where an
+		// operator gets to see a state change before it happens, and
+		// "some parameters" is not something anybody can review.
+		description = "retire parameters: " + strings.Join(retired, ", ")
+	}
+
+	return engine.Step{
+		ID:          "retire-parameters",
+		Description: description,
+		Idempotent:  true,
+		OnFailure:   engine.Abort,
+		Timeout:     time.Minute,
+		Check: func(ctx context.Context, st *engine.State) (bool, error) {
+			return len(retired) == 0, nil
+		},
+		Execute: func(ctx context.Context, st *engine.State) error {
+			current, err := d.State.LoadInstallation(ctx)
+			if err != nil {
+				return err
+			}
+
+			if err := d.saveInstallation(ctx, withoutParameters(current, retired)); err != nil {
+				return err
+			}
+
+			// After the write, not before it: an operator told their
+			// values were retired by an operation that then failed to
+			// record it would have been told something untrue about
+			// their own configuration.
+			d.Bus.Publish(events.Message(events.LevelWarn,
+				"release %s no longer declares %s; the recorded value(s) are retired",
+				staged.Version(), strings.Join(retired, ", ")))
+			st.Detail("retired %s", strings.Join(retired, ", "))
+			return nil
+		},
+	}
 }
 
 // stepVerifyBundle checks the bundle against what the operator expected before
@@ -418,6 +519,13 @@ func stepPreUpdateBackup(
 				return true, nil
 			case opts.SkipBackup:
 				st.Warn("skipping the pre-update backup at the operator's request")
+				return true, nil
+			case inst.Policy.SkipBackupBeforeUpdate:
+				// The installation's own policy, which until now
+				// was recorded, compared by doctor, and read by
+				// nothing that decides anything.
+				st.Warn("skipping the pre-update backup: " +
+					"skip_backup_before_update is set for this installation")
 				return true, nil
 			case d.Backup == nil:
 				return false, domain.BackupError(domain.ErrUnsupported,

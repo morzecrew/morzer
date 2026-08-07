@@ -12,10 +12,13 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/morzecrew/morzer/internal/adapters/backup/hookbackup"
 	"github.com/morzecrew/morzer/internal/adapters/health"
@@ -157,9 +160,15 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	// stderr explicitly -- cobra's Usage() writes to the out-writer, and
 	// stdout belongs to results: a piped consumer (`--json | jq`) must
 	// never receive help text in its data stream because of a typo.
+	//
+	// It is also where a flag error is *typed*. Deciding that from the
+	// message text afterwards means matching substrings against every error
+	// the program can produce, and "invalid argument" is what a kernel says
+	// about EINVAL as readily as what cobra says about --timeout=soon.
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, ferr error) error {
 		fmt.Fprint(cmd.ErrOrStderr(), cmd.UsageString())
-		return ferr
+		return domain.Usage("%s", ferr.Error()).
+			WithHint("run `morzer --help`, or `morzer <command> --help`")
 	})
 
 	root.SetArgs(args)
@@ -178,6 +187,20 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	// because that is the last thing this process does.
 	app.closeSources()
 
+	// A failure before the presenter existed still owes the caller an
+	// envelope. The presenter is built in PersistentPreRunE, which never
+	// runs for an unknown flag, an unknown command, or an invalid
+	// --log-format -- so exactly the mistakes a script makes were the ones
+	// that produced no `ok:false` at all, and a consumer parsing stdout got
+	// empty input rather than an error it could read.
+	if err != nil && app.json == nil && wantsJSON(app.Flags.json, flagLookup(root, args), args) {
+		app.json = jsonout.New(jsonout.Options{
+			Out:            app.Stream.Out,
+			ManagerVersion: app.Build.Version,
+			APIVersions:    apiVersionStrings(),
+		})
+	}
+
 	if app.json != nil {
 		// In JSON mode the envelope is the whole output, including for
 		// errors, so it is written here rather than per-command.
@@ -192,6 +215,81 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 		app.printError(err)
 	}
 	return domain.ExitCode(err)
+}
+
+// wantsJSON reports whether the caller asked for machine-readable output.
+//
+// The parsed flag is the answer whenever parsing got that far. It does not,
+// when the failure *is* the parse: cobra stops at the first unknown flag, so
+// `morzer --wat --json` never records it. The raw arguments are the only
+// remaining evidence, and the cost of reading them wrong is an error envelope
+// where a plain error would have gone -- on a run that has already failed.
+func wantsJSON(parsed bool, lookup func(string) *pflag.Flag, args []string) bool {
+	if parsed {
+		return true
+	}
+	// The last assignment wins, because that is what cobra would have done
+	// with them: `--json=true --json=false` asked for plain output, and
+	// returning on the first truthy one would have overruled the operator's
+	// own correction.
+	wants := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		// Everything after the terminator is an operand, not a flag:
+		// `morzer --wat -- --json` asked for plain output and a literal
+		// argument that happens to look like a flag.
+		if arg == "--" {
+			break
+		}
+		if arg == "--json" {
+			wants = true
+			continue
+		}
+		// The same spellings cobra's own boolean parser takes:
+		// --json=1, --json=TRUE, --json=t.
+		if value, ok := strings.CutPrefix(arg, "--json="); ok {
+			if parsed, err := strconv.ParseBool(value); err == nil {
+				wants = parsed
+			}
+			continue
+		}
+		// A flag that takes a value eats the token after it, so in
+		// `--timeout --json` the operator never asked for JSON -- cobra
+		// read it as the duration, and failing on that is what brought
+		// the run here. Counting it would answer a malformed command
+		// line with an envelope nobody requested.
+		//
+		// Long spellings only: every shorthand this CLI defines is a
+		// boolean, and a boolean eats nothing. A value-taking shorthand
+		// would need the same treatment, which is what the test below
+		// pinning `--dry-run` is there to make visible.
+		if name, ok := strings.CutPrefix(arg, "--"); ok && !strings.Contains(name, "=") {
+			if f := lookup(name); f != nil && f.Value.Type() != "bool" {
+				i++
+			}
+		}
+	}
+	return wants
+}
+
+// flagLookup resolves a long flag name the way cobra would for these arguments:
+// against the command they select, falling back to the root's persistent set.
+//
+// It has to work when parsing has already failed, which is the only time
+// wantsJSON runs -- so it goes through Find, which resolves the command from the
+// positional arguments alone and does not care that a flag further along is
+// unknown.
+func flagLookup(root *cobra.Command, args []string) func(string) *pflag.Flag {
+	target := root
+	if found, _, err := root.Find(args); err == nil && found != nil {
+		target = found
+	}
+	return func(name string) *pflag.Flag {
+		if f := target.Flags().Lookup(name); f != nil {
+			return f
+		}
+		return root.PersistentFlags().Lookup(name)
+	}
 }
 
 // closeSources releases anything a release source or a backup target is
@@ -235,23 +333,27 @@ func classifyCLIError(err error) error {
 		return err
 	}
 
-	// Cobra's parse-failure vocabulary. Matching on message text is
-	// unpleasant, but cobra exposes no other signal, and the alternative --
-	// reporting every typo as an internal error -- is worse.
+	// What is left after the FlagErrorFunc has typed the flag failures:
+	// command resolution and argument-count validation, which cobra
+	// returns directly with no sentinel to match on.
+	//
+	// Prefix, never substring. Cobra composes these messages itself, so
+	// they begin with the phrase; an operational error that merely
+	// *contains* one -- "open /etc/demo: invalid argument", which is how
+	// EINVAL reads -- is not a typo, and reporting it as exit 2 would send
+	// an operator looking for a flag they spelled correctly.
 	msg := err.Error()
 	for _, prefix := range []string{
 		"unknown command",
+		"unknown subcommand",
 		"unknown flag",
 		"unknown shorthand flag",
-		"invalid argument",
-		"flag needs an argument",
 		"accepts ",
 		"requires at least",
-		"unknown subcommand",
 		// MarkFlagsMutuallyExclusive violations, e.g. -v with -q.
 		"if any flags in the group",
 	} {
-		if strings.Contains(msg, prefix) {
+		if strings.HasPrefix(msg, prefix) {
 			return domain.Usage("%s", msg).
 				WithHint("run `morzer --help`, or `morzer <command> --help`")
 		}
@@ -319,7 +421,7 @@ func newRootCommand(app *App) *cobra.Command {
 	// The help text names the automatic cases because otherwise this flag
 	// ends up in every systemd unit and CI job by superstition.
 	pf.BoolVar(&f.plainOut, "plain", false,
-		"line-oriented output; already automatic under CI, systemd, NO_COLOR and without a terminal")
+		"line-oriented output; already automatic under CI, systemd, TERM=dumb and without a terminal")
 	pf.BoolVar(&f.resume, "resume", false, "continue an interrupted operation")
 	pf.BoolVar(&f.wait, "wait", false, "wait for the deployment lock instead of failing")
 	pf.StringVar(&f.configDir, "config", "", "path to installation.yaml")
@@ -357,12 +459,15 @@ func newRootCommand(app *App) *cobra.Command {
 func (a *App) setup(ctx context.Context) error {
 	f := a.Flags
 
+	// The injected streams, not the process's own descriptors: an embedder
+	// running against buffers must not get the live renderer because the
+	// terminal *this process* was started from happens to be one.
 	a.Mode = ui.ResolveMode(ui.ModeOptions{
 		JSON:   f.json,
 		Plain:  f.plainOut,
 		Quiet:  f.quiet,
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
+		Stdout: a.Stream.Out,
+		Stderr: a.Stream.Err,
 	})
 
 	// The logger writes to stderr always. stdout is the result.
@@ -706,6 +811,10 @@ func (a *App) attachBackupEngine(ctx context.Context, opts ...backupEngineOption
 // otherwise. That ordering matters: a machine with an installation must not
 // have its paths changed by a mistyped flag.
 func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
+	if a.Flags.configDir != "" {
+		return a.pathsFromConfig()
+	}
+
 	product := a.Flags.product
 
 	if product == "" {
@@ -728,6 +837,100 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 		return domain.PathsUnder(a.Flags.root, product), nil
 	}
 	return domain.DefaultPaths(product), nil
+}
+
+// pathsFromConfig derives the layout from an explicit installation.yaml.
+//
+// The file itself is a report rather than a control -- nothing reads it back --
+// so what --config selects is the *layout it sits in*: /etc/<product> names the
+// product, and whatever precedes it is the root. That is exactly what the
+// generated systemd units pass, and until now the flag was parsed and
+// discarded: a unit naming one installation ran against whichever one discovery
+// happened to find, and exited 0 having managed the wrong deployment.
+//
+// A path that does not fit the layout is refused rather than guessed at. The
+// manager owns four directories derived from one name; a lone file somewhere
+// else does not tell it where the other three are.
+func (a *App) pathsFromConfig() (domain.Paths, error) {
+	path, err := filepath.Abs(a.Flags.configDir)
+	if err != nil {
+		return domain.Paths{}, domain.Usage("cannot resolve --config %q", a.Flags.configDir)
+	}
+
+	const wrongShape = "--config names the installation file inside the layout, " +
+		"e.g. /etc/demo/installation.yaml. Use --root to relocate the layout itself."
+
+	if filepath.Base(path) != domain.InstallationFileName {
+		return domain.Paths{}, domain.Usage("--config must name a %s file", domain.InstallationFileName).
+			WithHint("%s", wrongShape)
+	}
+
+	etcProduct := filepath.Dir(path)
+	product := filepath.Base(etcProduct)
+	etc := filepath.Dir(etcProduct)
+	if filepath.Base(etc) != "etc" {
+		return domain.Paths{}, domain.Usage("--config %q is not inside an etc/<product> directory", path).
+			WithHint("%s", wrongShape)
+	}
+	if err := domain.ValidateProductName(product); err != nil {
+		return domain.Paths{}, err
+	}
+
+	root := filepath.Dir(etc)
+	if root == string(filepath.Separator) {
+		root = ""
+	}
+
+	// Two flags naming different deployments is a question, not something
+	// to resolve by precedence: whichever one lost would be acted on
+	// silently.
+	if a.Flags.product != "" && a.Flags.product != product {
+		return domain.Paths{}, domain.Usage(
+			"--product %s and --config %s name different installations",
+			a.Flags.product, path).
+			WithHint("pass one or the other")
+	}
+	if a.Flags.root != "" {
+		// Normalised on both sides: --root / and a config under /etc are
+		// the same layout, and the empty root above is how that layout
+		// is spelled here.
+		given, err := filepath.Abs(a.Flags.root)
+		if err != nil || filepath.Clean("/"+given) != filepath.Clean("/"+root) {
+			return domain.Paths{}, domain.Usage(
+				"--root %s and --config %s name different installations",
+				a.Flags.root, path).
+				WithHint("pass one or the other")
+		}
+	}
+
+	if root == "" {
+		return domain.DefaultPaths(product), nil
+	}
+	return domain.PathsUnder(root, product), nil
+}
+
+// confirmProductMatchesConfig refuses a command whose --config and whose
+// command-local --product name different installations.
+//
+// The root's own --product is compared inside pathsFromConfig, during the
+// persistent pre-run. A command with a --product of its own -- `init` has one,
+// because it may learn the name from a bundle -- is parsed into a different
+// variable and is not visible there, so `morzer --config /etc/demo/... init
+// --product other` selected demo and then rewired to other.
+func (a *App) confirmProductMatchesConfig(product string) error {
+	if a.Flags.configDir == "" || product == "" {
+		return nil
+	}
+	path, err := filepath.Abs(a.Flags.configDir)
+	if err != nil {
+		return domain.Usage("cannot resolve --config %q", a.Flags.configDir)
+	}
+	if named := filepath.Base(filepath.Dir(path)); named != product {
+		return domain.Usage("--product %s and --config %s name different installations",
+			product, path).
+			WithHint("pass one or the other")
+	}
+	return nil
 }
 
 // discoverProduct finds an installed product by looking for its state file.

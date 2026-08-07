@@ -111,8 +111,12 @@ func TestHTTPProbeOnNothingListening(t *testing.T) {
 }
 
 func TestHTTPProbeTimesOutRatherThanHanging(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		time.Sleep(2 * time.Second)
+	// The handler waits for the client to give up rather than sleeping a
+	// fixed two seconds: httptest.Server.Close blocks on outstanding
+	// requests, so a sleep is paid in full on every run even though the
+	// probe times out in a tenth of it.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
 	}))
 	defer srv.Close()
 

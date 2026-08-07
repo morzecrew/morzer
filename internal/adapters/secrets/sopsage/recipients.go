@@ -358,7 +358,10 @@ func PublicKeyFromIdentityFile(path string) (string, error) {
 
 	identities, err := age.ParseIdentities(strings.NewReader(string(data)))
 	if err != nil {
-		return "", domain.SecretsError(err,
+		// Unwrapped deliberately -- age's message quotes the line it
+		// could not parse, and that line is the private key. See the
+		// same rule in agecrypt.Decrypt and sftp.clientConfig.
+		return "", domain.SecretsError(nil,
 			"the age identity at %s is not valid", path).
 			WithHint("the file should contain a line starting with AGE-SECRET-KEY-")
 	}

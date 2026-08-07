@@ -46,6 +46,14 @@ func newInitCommand(app *App) *cobra.Command {
 			"product: run `morzer apply` afterwards.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The root's --product is persistent, so `morzer
+			// --product demo init` is a spelling operators use and
+			// documentation shows. This local flag shadowed it: the
+			// name was silently ignored, and init went on to take
+			// the name from the manifest or ask for it again.
+			if product == "" {
+				product = app.Flags.product
+			}
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
 			if product == "" && releasePath != "" {
@@ -59,9 +67,19 @@ func newInitCommand(app *App) *cobra.Command {
 			// A missing product name is not fatal at a terminal: the
 			// wizard below asks for it. It is fatal everywhere else,
 			// and the check moved after the wizard for that reason.
-			if product == "" && !isInteractive() {
+			if product == "" && !app.interactive() {
 				return domain.Usage("a product name is required").
 					WithHint("pass --product <name>, or --release <bundle> to take it from the manifest")
+			}
+
+			// --config selected a layout during the pre-run, before
+			// any of this ran. Checked *here*, after the name has
+			// been resolved from wherever it came -- the flag, the
+			// bundle's manifest -- because the rewiring below would
+			// otherwise answer a disagreement silently. The wizard's
+			// answer is checked separately, where it lands.
+			if err := app.confirmProductMatchesConfig(product); err != nil {
+				return err
 			}
 
 			// Rebuild the layout now that the name is known. Every
@@ -118,7 +136,9 @@ func newInitCommand(app *App) *cobra.Command {
 					EquivalentCommand(opts))
 
 				// The product may have been chosen just now, and
-				// every managed path derives from it.
+				// every managed path derives from it. The
+				// disagreement with --config is caught inside the
+				// wizard, before it can write a recovery key.
 				if opts.Product != product {
 					app.Flags.product = opts.Product
 					if err := app.rewireForProduct(cmd.Context(), opts.Product); err != nil {

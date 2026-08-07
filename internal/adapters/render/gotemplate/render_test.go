@@ -19,12 +19,12 @@ import (
 
 func render(t *testing.T, body string, data ports.TemplateData) ([]byte, error) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "tmpl")
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "application.yaml"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return gotemplate.New().Render(context.Background(),
-		ports.TemplateRef{Name: "application.yaml", Path: path}, data)
+		ports.TemplateRef{Root: root, Name: "application.yaml"}, data)
 }
 
 func testData() ports.TemplateData {
@@ -111,10 +111,60 @@ func TestATemplateThatDoesNotParseIsRefused(t *testing.T) {
 
 func TestRenderReportsAMissingTemplateFile(t *testing.T) {
 	_, err := gotemplate.New().Render(context.Background(),
-		ports.TemplateRef{Name: "gone.yaml", Path: filepath.Join(t.TempDir(), "gone")},
+		ports.TemplateRef{Root: t.TempDir(), Name: "gone.yaml"},
 		testData())
 	if err == nil {
 		t.Fatal("rendering a template that does not exist succeeded")
+	}
+}
+
+// TestATemplateSymlinkOutOfTheBundleIsRefused is why the read goes through
+// os.Root and not os.ReadFile.
+//
+// A directory-sourced bundle -- `morzer update ./bundle` -- is never extracted,
+// so the extractor's symlink refusal never sees it, and the manifest's path
+// check sees only the string "config/app.yaml", which escapes nothing. The
+// escape is the file itself. Rendering it would copy a host file the manager can
+// read into a configuration file the product then serves.
+func TestATemplateSymlinkOutOfTheBundleIsRefused(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "shadow")
+	if err := os.WriteFile(outside, []byte("root:$6$secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "application.yaml")); err != nil {
+		t.Skipf("no symlink support here: %v", err)
+	}
+
+	out, err := gotemplate.New().Render(context.Background(),
+		ports.TemplateRef{Root: root, Name: "application.yaml"}, testData())
+	if err == nil {
+		t.Fatalf("a template symlinked outside the release rendered:\n%s", out)
+	}
+	if strings.Contains(string(out), "secret") {
+		t.Error("the host file's contents were rendered")
+	}
+}
+
+// A symlink that stays inside the bundle is a legitimate authoring choice --
+// two profiles sharing one template -- and os.Root allows it.
+func TestATemplateSymlinkInsideTheBundleStillRenders(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "shared.yaml"), []byte("id: {{ .Installation.ID }}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("shared.yaml", filepath.Join(root, "application.yaml")); err != nil {
+		t.Skipf("no symlink support here: %v", err)
+	}
+
+	out, err := gotemplate.New().Render(context.Background(),
+		ports.TemplateRef{Root: root, Name: "application.yaml"}, testData())
+	if err != nil {
+		t.Fatalf("a symlink inside the bundle was refused: %v", err)
+	}
+	if !strings.Contains(string(out), "inst_01") {
+		t.Errorf("the shared template did not render: %s", out)
 	}
 }
 

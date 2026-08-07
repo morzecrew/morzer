@@ -64,7 +64,12 @@ Structured results are written as a single JSON object to file descriptor
 forced to keep its human output free of JSON would be one whose logging is
 constrained by the manager's parsing.
 
-Every field is optional. A hook that writes nothing is not in error.
+Every field is optional. A hook that writes nothing is not in error — but bytes
+that are not a JSON object are: the hook tried to report something the manager
+cannot hear, and the field that matters most is `schema_version`. Writing
+`{"schema_version": "42"}` — a string where the ABI says number — would
+otherwise record no schema at all, and a later `rollback` would run without the
+check that stops it crossing a migration.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -86,7 +91,9 @@ tooling.
     answered.
 
 The manager reads at most 1 MiB from the descriptor. A hook that streams
-gigabytes into fd 3 is broken, and must not take the manager's memory with it.
+gigabytes into fd 3 is broken, and must not take the manager's memory with it —
+the read stops at the bound, which leaves a truncated object, which fails the
+hook like any other unreadable result.
 
 ## Exit codes
 

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -76,6 +77,11 @@ func (v *Version) UnmarshalText(b []byte) error {
 type Constraint struct {
 	raw string
 	c   *semver.Constraints
+
+	// inclusive is the same constraint rewritten to compare pre-releases by
+	// ordering. Nil when the rewrite does not apply or does not parse; see
+	// prereleaseInclusive.
+	inclusive *semver.Constraints
 }
 
 func ParseConstraint(s string) (Constraint, error) {
@@ -88,7 +94,7 @@ func ParseConstraint(s string) (Constraint, error) {
 		return Constraint{}, ValidationError(err, "invalid version constraint %q", s).
 			WithHint(`constraints look like ">=2.30" or ">=1.0.0 <2.0.0"`)
 	}
-	return Constraint{raw: s, c: c}, nil
+	return Constraint{raw: s, c: c, inclusive: prereleaseInclusive(s)}, nil
 }
 
 func (c Constraint) IsZero() bool   { return c.c == nil }
@@ -96,6 +102,21 @@ func (c Constraint) String() string { return c.raw }
 
 // Allows reports whether v satisfies the constraint. An empty constraint
 // allows everything -- absence of a bound is not a bound of zero.
+//
+// Pre-releases are compared by ordering, which is not what the constraint
+// library does on its own: it excludes *every* pre-release from a constraint
+// that carries none, so `upgrade_from: ">=2.30"` refused a customer running
+// 2.31.0-rc.1 with the message "accepts upgrades from >=2.30, installed version
+// is 2.31.0-rc.1" -- a sentence that reads as satisfied. That rule is right for
+// resolving a dependency, where an rc must not be picked up by accident, and
+// wrong here, where the version is a fact about a machine somebody is already
+// running rather than a candidate to select.
+//
+// The retry is against the *same* version, through a constraint rewritten to
+// admit pre-releases -- not against the version's release core, which was wrong
+// at both boundaries: it made ">=2.0.0" accept 2.0.0-rc.1, which is below the
+// floor by ordering, while still refusing an rc that genuinely sits inside the
+// range.
 func (c Constraint) Allows(v Version) bool {
 	if c.c == nil {
 		return true
@@ -103,8 +124,125 @@ func (c Constraint) Allows(v Version) bool {
 	if v.sv == nil {
 		return false
 	}
-	return c.c.Check(v.sv)
+	if c.c.Check(v.sv) {
+		return true
+	}
+	if v.sv.Prerelease() == "" || c.inclusive == nil {
+		return false
+	}
+	return c.inclusive.Check(v.sv)
 }
+
+// prereleaseInclusive rewrites a constraint so the library compares
+// pre-releases by ordering instead of excluding them.
+//
+// The library's rule is per element: an element with no pre-release of its own
+// refuses every pre-release candidate. Its documented answer is to spell the
+// element with one, and "-0" is the lowest there is -- so ">=2.30" becomes
+// ">=2.30.0-0", which admits 2.31.0-rc.1 exactly as ordering says it should.
+//
+// The boundary reading that falls out is the conventional one, and the one this
+// field wants: a lower bound admits its own pre-releases ("2.0 or later"
+// includes 2.0.0-rc.1), and an upper bound does not (">=1.0.0 <2.0.0" is "any
+// 1.x", and 2.0.0-rc.1 is not a 1.x).
+//
+// Wildcards are left alone: "1.x" cannot carry a pre-release, and a rewrite
+// would produce something that does not parse. Anything that fails to parse
+// after rewriting returns nil, and Allows keeps the library's own answer --
+// refusing, which is the safe direction for a compatibility gate.
+//
+// The unit that is left alone is the whole alternative, not the wildcard
+// element inside it, because the exclusion belongs to the group rather than to
+// the element that carries it: ">=1.0.0 <2.x" refuses 1.5.0-rc.1 today, and
+// rewriting only the lower bound to ">=1.0.0-0" would have admitted it. An
+// alternative *beside* one is still rewritten -- "1.x || >=2.0.0" keeps its
+// wildcard branch refusing and lets the second branch admit 2.5.0-rc.1, which
+// is the same reading every other "||" gets.
+//
+// Both questions -- does this token already carry a pre-release, does it carry a
+// wildcard -- are asked of the token's *core*, the part before any "+". Build
+// metadata is free-form: ">=1.0.0+build-foo" has a hyphen in it and no
+// pre-release, and ">=1.0.0+fix" has an "x" in it and no wildcard. Reading
+// either as the thing it resembles left a valid constraint refusing every
+// pre-release inside its own range.
+func prereleaseInclusive(raw string) *semver.Constraints {
+	groups := strings.Split(raw, "||")
+	changed := false
+
+	for i, group := range groups {
+		if hasWildcard(group) {
+			continue
+		}
+		rewritten := versionToken.ReplaceAllStringFunc(group, func(token string) string {
+			core, metadata := splitMetadata(token)
+			if strings.Contains(core, "-") {
+				// Already carries a pre-release, and it means it.
+				return token
+			}
+			return core + "-0" + metadata
+		})
+		if rewritten != group {
+			groups[i], changed = rewritten, true
+		}
+	}
+	if !changed {
+		return nil
+	}
+
+	parsed, err := semver.NewConstraint(strings.Join(groups, "||"))
+	if err != nil {
+		return nil
+	}
+	return parsed
+}
+
+// hasWildcard reports whether an alternative contains a wildcard element.
+func hasWildcard(group string) bool {
+	// A wildcard spelled on its own -- "*", "x" -- is not a version token at
+	// all, because a token starts at a digit. Whatever is left after the
+	// tokens are removed is operators and separators, which carry no
+	// letters, so an x or a star in there is that spelling.
+	if strings.ContainsAny(versionToken.ReplaceAllString(group, ""), "xX*") {
+		return true
+	}
+	for _, token := range versionToken.FindAllString(group, -1) {
+		// The numbers only. A wildcard can only stand where a number
+		// would, and everything after the "-" is a pre-release
+		// identifier, which is free-form the same way build metadata is:
+		// ">=1.0.0-rcx.1" names a release candidate, not a wildcard.
+		//
+		// Nothing observable rides on this today -- a group with a
+		// pre-release element anywhere in it is already compared by
+		// ordering, so Allows answers from the library before the
+		// rewrite is consulted. It is here so the predicate means what
+		// its name says, and does not become a bug the day that
+		// short-circuit changes.
+		core, _ := splitMetadata(token)
+		numbers, _, _ := strings.Cut(core, "-")
+		if strings.ContainsAny(numbers, "xX*") {
+			return true
+		}
+	}
+	return false
+}
+
+// splitMetadata cuts a version token into the part that carries meaning and the
+// build metadata, which is free-form and must not be read as either.
+func splitMetadata(token string) (core, metadata string) {
+	if plus := strings.IndexByte(token, '+'); plus >= 0 {
+		return token[:plus], token[plus:]
+	}
+	return token, ""
+}
+
+// versionToken matches a whole version inside a constraint -- the numbers and
+// whatever pre-release or build metadata follows them -- so the rewrite above
+// can look at the token as a unit rather than at a digit run.
+//
+// It starts at a digit, which is what keeps it off the operators (>=, ^, ~) and
+// off the spaced hyphen of a range: "1.0.0 - 2.0.0" is two tokens with the
+// separator between them, not one token containing a pre-release.
+var versionToken = regexp.MustCompile(`\d[0-9A-Za-z.+-]*`)
 
 func (c Constraint) MarshalText() ([]byte, error) { return []byte(c.raw), nil }
 

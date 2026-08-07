@@ -52,6 +52,17 @@ const DefaultPort = "22"
 // behind an internal package.
 const posixRenameExtension = "posix-rename@openssh.com"
 
+// fsyncExtension is the OpenSSH extension that flushes a written file to the
+// target's disk before it is renamed into place.
+//
+// Without it the rename is atomic with respect to *this* transfer and says
+// nothing about the target's own power supply: the entry can be durable while
+// the bytes it names are still in the server's page cache. A backup that
+// survives the push and not the night is the failure this exists to prevent, so
+// it is used wherever it is advertised and its absence is a property of the
+// server rather than something to fail over.
+const fsyncExtension = "fsync@openssh.com"
+
 // errClosedTarget refuses work on a target that has been shut down. Internal
 // rather than a backup error: nothing about the target is wrong, and no
 // operator action can help -- something asked this adapter for a connection
@@ -657,6 +668,20 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	if err != nil {
 		return fail(err, "cannot create %s on the target", tmp)
 	}
+	// On the handle, not the path. Create returned an open file, and a
+	// name-based chmod would follow whatever that name refers to *now* --
+	// which after a replacement is a different inode, left at the server's
+	// umask while this call narrows something else.
+	//
+	// Before a single byte is written, too, rather than after the rename: a
+	// component is the ciphertext of the deployment's database, and one
+	// created at the umask and narrowed afterwards is readable to everyone
+	// on the target for the length of the whole transfer.
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		_ = s.client.Remove(tmp)
+		return fail(err, "cannot set the mode of %s on the target", key)
+	}
 	// The reader checks the context between chunks, as localdir's push
 	// does; a write already *blocked* past that check is what the watcher
 	// above unblocks.
@@ -664,6 +689,13 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 		_ = f.Close()
 		_ = s.client.Remove(tmp)
 		return fail(copyErr, "cannot write %s to the target", key)
+	}
+	if _, ok := s.client.HasExtension(fsyncExtension); ok {
+		if err := f.Sync(); err != nil {
+			_ = f.Close()
+			_ = s.client.Remove(tmp)
+			return fail(err, "cannot flush %s to the target's disk", key)
+		}
 	}
 	if err := f.Close(); err != nil {
 		_ = s.client.Remove(tmp)
@@ -701,10 +733,40 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 			return fail(err, "cannot place %s on the target", key)
 		}
 	}
-	if err := s.client.Chmod(target, 0o600); err != nil {
-		return fail(err, "cannot set the mode of %s on the target", key)
+
+	syncRemoteDir(s.client, path.Dir(target))
+
+	// Rechecked, so every exit from this function agrees about what a
+	// cancelled push is. The component itself is on the target by now --
+	// this is the difference between reporting a push that raced a ctrl-C
+	// as complete and reporting it as interrupted, and the caller is about
+	// to fail the operation either way.
+	if ctx.Err() != nil {
+		return domain.Interrupted("the push to the backup target was cancelled")
 	}
 	return nil
+}
+
+// syncRemoteDir asks the server to flush a directory entry, and shrugs when it
+// cannot.
+//
+// The local writer fsyncs the directory after a rename, because the rename is
+// only as durable as the entry recording it. Over SFTP there is no equivalent
+// operation: fsync@openssh.com takes a file handle, and whether a directory can
+// be opened as one at all is the server's business -- OpenSSH's own sftp-server
+// refuses. So this is best effort, and its failure is not the push's: what it
+// buys on a server that allows it is the same guarantee localdir gives, and
+// what it costs on one that does not is a round trip and an ignored error.
+func syncRemoteDir(client *sftp.Client, dir string) {
+	if _, ok := client.HasExtension(fsyncExtension); !ok {
+		return
+	}
+	handle, err := client.Open(dir)
+	if err != nil {
+		return
+	}
+	defer func() { _ = handle.Close() }()
+	_ = handle.Sync()
 }
 
 func (s *sftpStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {

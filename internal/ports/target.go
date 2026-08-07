@@ -2,6 +2,8 @@ package ports
 
 import (
 	"context"
+	"encoding/json"
+	"net/url"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -152,6 +154,143 @@ type TargetCredentials struct {
 
 // IsZero reports whether nothing was supplied.
 func (c TargetCredentials) IsZero() bool { return c == TargetCredentials{} }
+
+// String names what is present and prints none of it.
+//
+// These are live credentials in ordinary string fields, so anything that
+// formats a ref -- a %+v in a log line while diagnosing a failed push, a debug
+// dump of step state -- printed the private key along with it. fmt calls this
+// for nested fields too, so redacting here covers the containing TargetRef
+// without every call site having to remember.
+//
+// GoString covers %#v for the same reason: it is the other verb a developer
+// reaches for when something is not working.
+func (c TargetCredentials) String() string {
+	parts := make([]string, 0, 6)
+	if c.Region != "" {
+		parts = append(parts, "region="+c.Region)
+	}
+	if c.Endpoint != "" {
+		// Sanitised, not printed: an endpoint is a URL, and a URL can
+		// carry userinfo -- https://key:secret@minio.example is a
+		// credential wearing a hostname.
+		parts = append(parts, "endpoint="+withoutUserinfo(c.Endpoint))
+	}
+	// Names only. Which credentials are configured is exactly what a
+	// diagnosis needs; their values never are.
+	for _, named := range []struct {
+		name  string
+		value string
+	}{
+		{"access_key_id", c.AccessKeyID},
+		{"secret_access_key", c.SecretAccessKey},
+		{"session_token", c.SessionToken},
+		{"private_key", c.PrivateKey},
+		{"passphrase", c.Passphrase},
+		{"known_hosts", c.KnownHosts},
+	} {
+		if strings.TrimSpace(named.value) != "" {
+			parts = append(parts, named.name+"=<set>")
+		}
+	}
+	if len(parts) == 0 {
+		return "TargetCredentials{}"
+	}
+	return "TargetCredentials{" + strings.Join(parts, " ") + "}"
+}
+
+func (c TargetCredentials) GoString() string { return c.String() }
+
+// withoutUserinfo keeps the part of an endpoint that helps a diagnosis and
+// drops the part that authenticates.
+//
+// When url.Parse finds an authority, its verdict is the whole answer: it read
+// the userinfo if there was any, and a nil User means there was none.
+//
+// The rest is the bare form the S3 adapter also accepts, which has no authority
+// for url.Parse to find and reaches here two ways. "192.168.1.10:9000" and
+// "[::1]:9000" fail outright ("first path segment in URL cannot contain
+// colon"); "user:password@host" parses as the scheme "user" with an opaque
+// tail. Both are re-read behind an explicit "//", which is the authority they
+// were meant to be.
+//
+// What that retry must never do is hand back a string it did not understand. A
+// full URL that failed to parse -- an invalid port, a space in the host -- reads
+// behind "//" as the host "https:" with the credential sitting in the path, so
+// User comes back nil and the endpoint would be printed whole. Any "@" left
+// unaccounted for after the retry is therefore reduced to "<set>": userinfo is
+// the only thing that puts one in an endpoint, and one this function cannot
+// place is one it cannot promise to have redacted.
+func withoutUserinfo(endpoint string) string {
+	if parsed, err := url.Parse(endpoint); err == nil && parsed.Host != "" {
+		if parsed.User == nil {
+			return endpoint
+		}
+		parsed.User = nil
+		return parsed.String()
+	}
+
+	prefix := ""
+	if !strings.HasPrefix(endpoint, "//") {
+		prefix = "//"
+	}
+	retried, err := url.Parse(prefix + endpoint)
+	if err != nil {
+		// Unparseable either way: say it is set and nothing else,
+		// because whatever is in there cannot be reasoned about.
+		return "<set>"
+	}
+	if retried.User != nil {
+		retried.User = nil
+		return strings.TrimPrefix(retried.String(), prefix)
+	}
+	if strings.Contains(endpoint, "@") {
+		return "<set>"
+	}
+	return endpoint
+}
+
+// MarshalJSON redacts, because String does not reach encoding/json.
+//
+// The fields carry json tags -- they are read from a secret document -- so any
+// marshal of a ref carries the private key with it. The shape is preserved:
+// which credentials are configured stays visible, because that is what a
+// `--json` consumer or a captured envelope legitimately reports, and every
+// value that could authenticate is replaced.
+func (c TargetCredentials) MarshalJSON() ([]byte, error) {
+	type redacted struct {
+		AccessKeyID     string `json:"access_key_id,omitempty"`
+		SecretAccessKey string `json:"secret_access_key,omitempty"`
+		SessionToken    string `json:"session_token,omitempty"`
+		Region          string `json:"region,omitempty"`
+		Endpoint        string `json:"endpoint,omitempty"`
+		PrivateKey      string `json:"private_key,omitempty"`
+		Passphrase      string `json:"passphrase,omitempty"`
+		KnownHosts      string `json:"known_hosts,omitempty"`
+	}
+	const hidden = "[redacted]"
+	set := func(v string) string {
+		if strings.TrimSpace(v) == "" {
+			return ""
+		}
+		return hidden
+	}
+	return json.Marshal(redacted{
+		AccessKeyID:     set(c.AccessKeyID),
+		SecretAccessKey: set(c.SecretAccessKey),
+		SessionToken:    set(c.SessionToken),
+		// Not secrets, and useful: they say which endpoint a failed push
+		// was talking to -- once the userinfo a URL can carry is gone.
+		Region:     c.Region,
+		Endpoint:   withoutUserinfo(c.Endpoint),
+		PrivateKey: set(c.PrivateKey),
+		Passphrase: set(c.Passphrase),
+		// A known_hosts line is a public key and a hostname, and neither
+		// authenticates anybody to anything -- but it is credential
+		// material an operator configured, and its shape is enough.
+		KnownHosts: set(c.KnownHosts),
+	})
+}
 
 // Redactions lists the values a log must never print.
 func (c TargetCredentials) Redactions() []string {

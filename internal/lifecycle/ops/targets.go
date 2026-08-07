@@ -626,7 +626,7 @@ func FetchRemote(ctx context.Context, d *Deps, opts FetchOptions) (Result, error
 
 	// Into a neighbour and renamed: a fetch interrupted halfway must not
 	// leave something in the backup store that `backup list` offers.
-	staging := dest + ".fetching"
+	staging := dest + ports.FetchStagingSuffix
 	if err := atomicfs.RemoveAll(staging); err != nil {
 		return Result{}, err
 	}

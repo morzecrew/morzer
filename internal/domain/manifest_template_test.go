@@ -98,6 +98,29 @@ func TestATypoInAManifestTemplateIsRefused(t *testing.T) {
 		"the hint must name what is available")
 }
 
+// TestAnUnparseableTemplateIsMatchedByItsSentinel.
+//
+// Manifest validation has to tell "this template does not parse" from "this
+// template refers to something that has no value yet" -- it runs without an
+// installation, so nothing has a value. It told them apart by searching the
+// error's message for "not a valid template", which made rewording the message
+// silently disable the check.
+func TestAnUnparseableTemplateIsMatchedByItsSentinel(t *testing.T) {
+	_, err := domain.Parameters{}.Resolve("requirements.ports[0]", "{{ .Parameters.http_port ")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrTemplateSyntax)
+	// The cause survives the sentinel: an author needs to see what the
+	// parser objected to.
+	assert.Contains(t, err.Error(), "unclosed action")
+
+	// A template that parses and cannot resolve is the other case, and
+	// carries no syntax sentinel -- validation must not refuse a manifest
+	// over a parameter it cannot know the value of yet.
+	_, err = domain.Parameters{}.Resolve("requirements.ports[0]", "{{ .Parameters.http_port }}")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, domain.ErrTemplateSyntax)
+}
+
 func TestAPortThatResolvesToNonsenseIsRefused(t *testing.T) {
 	m := validManifestWithParameters(map[string]domain.ParameterSpec{
 		"listen": {Type: domain.ParamString, Default: "http"},

@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -23,19 +24,31 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
-// pollInterval is how often a blocking acquisition retries. Operations run for
-// minutes, so a half-second poll costs nothing and keeps cancellation
+// defaultPollInterval is how often a blocking acquisition retries. Operations
+// run for minutes, so a half-second poll costs nothing and keeps cancellation
 // responsive.
-const pollInterval = 500 * time.Millisecond
+const defaultPollInterval = 500 * time.Millisecond
 
 // Locker is the flock-backed implementation of ports.Locker.
 type Locker struct {
 	dir string
+
+	// pollInterval is the gap between attempts while waiting. A test that
+	// has to observe a waiter actually waiting would otherwise pay the
+	// production interval in real seconds on every run.
+	pollInterval time.Duration
 }
 
 // New returns a Locker storing lock files in dir.
 func New(dir string) *Locker {
-	return &Locker{dir: dir}
+	return &Locker{dir: dir, pollInterval: defaultPollInterval}
+}
+
+// WithPollInterval overrides the wait poll interval. Tests use it to avoid
+// real waits, as health.Waiter.WithInterval does.
+func (l *Locker) WithPollInterval(d time.Duration) *Locker {
+	l.pollInterval = d
+	return l
 }
 
 var _ ports.Locker = (*Locker)(nil)
@@ -101,7 +114,11 @@ func (l *Locker) tryAcquire(ctx context.Context, fl *flock.Flock, opts ports.Loc
 
 	// TryLockContext polls rather than blocking in the kernel, which is
 	// what makes ctrl-c work while waiting for a lock.
-	locked, err := fl.TryLockContext(ctx, pollInterval)
+	interval := l.pollInterval
+	if interval <= 0 {
+		interval = defaultPollInterval
+	}
+	locked, err := fl.TryLockContext(ctx, interval)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return false, domain.Interrupted("gave up waiting for the deployment lock")
@@ -147,19 +164,19 @@ func (l *Locker) writeOwner(name string, owner ports.LockOwner) {
 
 // Owner reports who holds the lock without attempting to take it.
 //
-// The owner record is only meaningful while the lock is actually held: a
-// process killed with SIGKILL releases its flock but leaves the sidecar
-// behind. So the flock is probed first, and a stale record is reported as "not
-// held" rather than sending an operator after a PID that no longer exists.
+// Without attempting is load-bearing. This used to answer by taking the real
+// lock and releasing it again, which makes a *reader* an acquirer: `status
+// --watch` refreshes every two seconds, and a mutating command whose
+// non-waiting acquisition landed in that window was told the deployment was
+// busy by the thing that was only looking at it.
+//
+// So the answer comes from the sidecar plus the liveness of the process it
+// names. That is a report rather than a decision -- exclusion is still the
+// flock's job, and Acquire is the only thing that takes one -- which is what
+// makes a heuristic acceptable here: a stale record whose PID has been reused
+// shows the wrong operation in a status table, where taking the lock to find
+// out shows a spurious failure on a command that should have run.
 func (l *Locker) Owner(ctx context.Context, name string) (ports.LockOwner, bool, error) {
-	fl := flock.New(l.path(name))
-	free, err := fl.TryLock()
-	if err == nil && free {
-		// We just took it, so nobody else holds it. Release immediately.
-		_ = fl.Unlock()
-		return ports.LockOwner{}, false, nil
-	}
-
 	data, err := os.ReadFile(l.ownerPath(name))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -173,5 +190,31 @@ func (l *Locker) Owner(ctx context.Context, name string) (ports.LockOwner, bool,
 	if err := json.Unmarshal(data, &owner); err != nil {
 		return ports.LockOwner{}, false, nil
 	}
+	if !ownerAlive(owner) {
+		// A process killed with SIGKILL releases its flock and leaves
+		// the sidecar behind. Reporting that as held would send an
+		// operator after a PID that no longer exists.
+		return ports.LockOwner{}, false, nil
+	}
 	return owner, true, nil
+}
+
+// ownerAlive reports whether the recorded holder could still be running.
+//
+// EPERM counts as alive: the process exists and belongs to another user, which
+// is what a root-run operation looks like to an unprivileged `status`.
+//
+// A record naming another host is reported as held, because nothing here can
+// check it. The layout is machine-local by design, so this only arises when
+// /var/lib is on shared storage -- where a lock file is not doing what its
+// owner thinks anyway, and the honest answer is the record itself.
+func ownerAlive(o ports.LockOwner) bool {
+	if o.PID <= 0 {
+		return false
+	}
+	if host, err := os.Hostname(); err == nil && o.Host != "" && o.Host != host {
+		return true
+	}
+	err := syscall.Kill(o.PID, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }

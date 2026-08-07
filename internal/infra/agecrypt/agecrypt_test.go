@@ -191,6 +191,59 @@ func TestDecryptingWithAnIdentityThatIsNotThere(t *testing.T) {
 	}
 }
 
+// TestAnUnusableIdentityIsNamedWithoutBeingQuoted.
+//
+// age reports what it could not parse -- "unknown identity type: %q" quotes the
+// whole line -- and in an identity file that line is a private key. One stray
+// character is enough to take that path: a leading space from an editor, a
+// mangled copy-paste. The message therefore names the file and nothing from
+// inside it, because the operator's next step is the same either way and the
+// error text ends up in logs.
+func TestAnUnusableIdentityIsNamedWithoutBeingQuoted(t *testing.T) {
+	key, public := identity(t)
+
+	raw, err := os.ReadFile(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var secret string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "AGE-SECRET-KEY-") {
+			secret = line
+		}
+	}
+	if secret == "" {
+		t.Fatal("the generated identity holds no secret key line")
+	}
+
+	broken := filepath.Join(t.TempDir(), "identity")
+	if err := os.WriteFile(broken, []byte(" "+secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var sealed bytes.Buffer
+	if err := agecrypt.Encrypt(&sealed, strings.NewReader("data"), []string{public}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	err = agecrypt.Decrypt(&out, bytes.NewReader(sealed.Bytes()), broken)
+	if err == nil {
+		t.Fatal("a malformed identity file decrypted a backup")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Error("the failure printed the private key it could not parse")
+	}
+	// The tail alone is enough to matter, and a partial quote would slip
+	// past a whole-line check.
+	if tail := secret[len(secret)-20:]; strings.Contains(err.Error(), tail) {
+		t.Errorf("the failure printed part of the private key: %v", err)
+	}
+	if !strings.Contains(err.Error(), broken) {
+		t.Errorf("the failure does not say which file is unusable: %v", err)
+	}
+}
+
 // TestALargeStreamIsNotHeldInMemory is a shape check rather than a memory
 // measurement: the API takes readers and writers, so a caller cannot
 // accidentally buffer a database dump by using it the obvious way.
