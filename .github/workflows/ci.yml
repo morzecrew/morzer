@@ -240,16 +240,30 @@ jobs:
     # fork, so anonymous is the contributor path, and a login that was required
     # would lock out exactly the people this is meant to serve.
     env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Whether a token exists, never the token. A step's `if` cannot read the
+      # secrets context, so the *answer* has to be a job-level value -- but the
+      # credentials themselves stay bound to the one step that needs them,
+      # rather than sitting in the environment of every step after it. `just
+      # acceptance-cover` runs this repository's own scripts and tests, and a
+      # same-repository pull request can change those.
+      DOCKERHUB_CONFIGURED: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Before anything pulls. The guard is the token's presence rather than
       # the event, so a fork's run skips it and says nothing; --password-stdin
       # keeps the token out of the process table.
+      #
+      # `docker login` still leaves the credential in the runner's Docker
+      # config for the rest of the job, which is unavoidable while later steps
+      # have to pull with it. What bounds that is the token's scope: it needs
+      # `Public Repo Read-only` and nothing more, so the worst a leaked one
+      # buys is the right to pull public images against this account's limit.
       - name: Log in to Docker Hub when a token is configured
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+        if: ${{ env.DOCKERHUB_CONFIGURED == 'true' }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -308,15 +322,19 @@ jobs:
     timeout-minutes: 30
     # Seven pinned images, which is the heaviest pull load in this workflow.
     # Optional for the same reason as the acceptance job above: a fork's pull
-    # request has no secrets, and must still be able to run this.
+    # request has no secrets, and must still be able to run this. Scoped to the
+    # step for the same reason too -- `just test-docker-cover` runs this
+    # repository's own tests.
     env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_CONFIGURED: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Log in to Docker Hub when a token is configured
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
+        if: ${{ env.DOCKERHUB_CONFIGURED == 'true' }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -333,8 +351,18 @@ jobs:
 
       - run: just test-docker-cover
 
+      # Only when the suites passed, for the same reason as the acceptance
+      # profile -- though this one fails differently, and worse. `go test`
+      # writes its -coverprofile whatever the outcome: a failed run still
+      # leaves a partial docker.out, and a run that did not compile leaves a
+      # 10-byte "mode: set". Uploading either does not produce a missing-file
+      # error, it produces a *present* profile that understates coverage --
+      # and the job below decides which floor applies by whether the file
+      # arrived. A failed container run would therefore be held to the union
+      # floor on a union that is missing most of its statements, and the
+      # second red job would say "coverage" while the real failure was here.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
+        if: success()
         with:
           name: container-profile
           path: docker.out
