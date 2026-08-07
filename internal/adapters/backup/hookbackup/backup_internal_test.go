@@ -83,3 +83,38 @@ func TestOrphanedRestoreStagingIsSwept(t *testing.T) {
 		t.Error("the sweep must remove only the staging debris, not the backup itself")
 	}
 }
+
+// One stuck removal must fail the operation -- proceeding would report success
+// over decrypted product data -- but it must not stop the sweep: every sibling
+// is still attempted, and the error names what remains.
+func TestSweepAttemptsEveryDirectoryAndNamesTheStuck(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	e := New(Config{Paths: domain.PathsUnder(t.TempDir(), "demo")})
+
+	stuck := filepath.Join(e.paths.BackupsDir(), "20260807T000001Z", ".restore-stuck")
+	swept := filepath.Join(e.paths.BackupsDir(), "20260807T000002Z", ".restore-ok")
+	for _, dir := range []string{stuck, swept} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The parent loses the write bit, so the staging dir cannot be unlinked.
+	parent := filepath.Dir(stuck)
+	if err := os.Chmod(parent, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+
+	err := e.sweepStagedPlaintext()
+	if err == nil {
+		t.Fatal("a sweep that left plaintext behind reported success")
+	}
+	if _, statErr := os.Stat(swept); !os.IsNotExist(statErr) {
+		t.Error("the removable sibling was not swept")
+	}
+	if _, statErr := os.Stat(stuck); statErr != nil {
+		t.Error("the stuck directory should still exist, that is the point of the error")
+	}
+}

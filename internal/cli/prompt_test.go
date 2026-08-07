@@ -2,13 +2,17 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ui"
@@ -163,4 +167,132 @@ func TestParseComponents(t *testing.T) {
 		"the refusal does not list what is valid")
 	// Sorted, so two runs of the same mistake read the same.
 	assert.Less(t, strings.Index(de.Hint, "config"), strings.Index(de.Hint, "secrets"))
+}
+
+// openPTY returns the two ends of a fresh pseudo-terminal, which is what lets
+// the no-echo prompt be tested against the promises it actually makes: the
+// value arrives, nothing echoes, and the terminal mode survives every exit
+// path. Skipped where the environment provides no pty.
+func openPTY(t *testing.T) (master, slave *os.File) {
+	t.Helper()
+	m, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
+	if err != nil {
+		t.Skipf("no pty available: %v", err)
+	}
+	t.Cleanup(func() { _ = m.Close() })
+
+	n, err := unix.IoctlGetInt(int(m.Fd()), unix.TIOCGPTN)
+	if err != nil {
+		t.Fatalf("cannot number the pty: %v", err)
+	}
+	if err := unix.IoctlSetPointerInt(int(m.Fd()), unix.TIOCSPTLCK, 0); err != nil {
+		t.Fatalf("cannot unlock the pty: %v", err)
+	}
+	s, err := os.OpenFile(fmt.Sprintf("/dev/pts/%d", n), os.O_RDWR|unix.O_NOCTTY, 0)
+	if err != nil {
+		t.Fatalf("cannot open the pty slave: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return m, s
+}
+
+func terminalMode(t *testing.T, f *os.File) unix.Termios {
+	t.Helper()
+	tio, err := unix.IoctlGetTermios(int(f.Fd()), unix.TCGETS)
+	if err != nil {
+		t.Fatalf("cannot read the terminal mode: %v", err)
+	}
+	return *tio
+}
+
+func TestReadPasswordReadsWithoutEchoAndRestoresTheTerminal(t *testing.T) {
+	master, slave := openPTY(t)
+	before := terminalMode(t, slave)
+
+	var out strings.Builder
+	type result struct {
+		value string
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		v, err := readPassword(context.Background(), slave, &out, "value: ")
+		done <- result{v, err}
+	}()
+
+	// The mode flip happens before the reader starts; a short pause lets
+	// the goroutine get there so the typed bytes meet echo-off for sure.
+	time.Sleep(100 * time.Millisecond)
+	if _, err := master.WriteString("hunter2\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	r := <-done
+	require.NoError(t, r.err)
+	assert.Equal(t, "hunter2", r.value)
+	assert.Equal(t, before, terminalMode(t, slave),
+		"the terminal mode must be restored exactly")
+
+	// Nothing may have echoed back to the terminal. The prompt goes to the
+	// injected writer, so the master side must stay silent -- probed with
+	// poll rather than a read, because on a silent master a read is this
+	// test hanging on its own success.
+	pfds := []unix.PollFd{{Fd: int32(master.Fd()), Events: unix.POLLIN}}
+	ready, perr := unix.Poll(pfds, 200)
+	require.NoError(t, perr)
+	if ready > 0 {
+		buf := make([]byte, 256)
+		n, _ := unix.Read(int(master.Fd()), buf)
+		assert.NotContains(t, string(buf[:n]), "hunter2",
+			"the secret echoed on the terminal")
+	}
+}
+
+func TestReadPasswordCancelRestoresTheTerminal(t *testing.T) {
+	_, slave := openPTY(t)
+	before := terminalMode(t, slave)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var out strings.Builder
+	done := make(chan error, 1)
+	go func() {
+		_, err := readPassword(ctx, slave, &out, "value: ")
+		done <- err
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	err := <-done
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrInterrupted),
+		"a cancelled prompt must classify as interrupted, got %v", err)
+	assert.Equal(t, before, terminalMode(t, slave),
+		"the cancelled path must restore the terminal mode")
+}
+
+func TestReadPasswordAcceptsCtrlDAfterText(t *testing.T) {
+	master, slave := openPTY(t)
+
+	var out strings.Builder
+	type result struct {
+		value string
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		v, err := readPassword(context.Background(), slave, &out, "value: ")
+		done <- result{v, err}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	// Ctrl-D flushes the typed text; the second one delivers the EOF that
+	// completes a value typed without a final newline.
+	if _, err := master.WriteString("abc\x04\x04"); err != nil {
+		t.Fatal(err)
+	}
+
+	r := <-done
+	require.NoError(t, r.err)
+	assert.Equal(t, "abc", r.value)
 }
