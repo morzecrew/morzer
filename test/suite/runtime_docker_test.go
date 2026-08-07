@@ -41,6 +41,7 @@ func project(t *testing.T) ports.RuntimeConfig {
 services:
   web:
     image: %s
+    init: true
     command: ["sh", "-c", "echo web is up; while true; do sleep 1; done"]
     volumes:
       - data:/data
@@ -123,6 +124,7 @@ func TestComposeStatusReportsRealHealth(t *testing.T) {
 services:
   probed:
     image: %s
+    init: true
     command: ["sh", "-c", "while true; do sleep 1; done"]
     healthcheck:
       test: ["CMD", "true"]
@@ -132,6 +134,7 @@ services:
       start_period: 0s
   unprobed:
     image: %s
+    init: true
     command: ["sh", "-c", "while true; do sleep 1; done"]
 `, dockerlab.ImageBusybox, dockerlab.ImageBusybox))
 

@@ -37,21 +37,24 @@ import (
 // read-only, encrypted what came out, refused to write it back while a
 // container held it, and put the same bytes back afterwards.
 
-// The shell loop is PID 1 in its container, and the kernel does not deliver a
-// signal with a default action to PID 1 -- so it never sees SIGTERM and every
-// stop waits out its whole timeout before killing. That is why the engine below
-// is wired with a short StopTimeout: `compose stop --timeout` overrides a
-// service's own `stop_grace_period`, so the fixture cannot fix this for itself.
+// `init: true` on every service that outlives its start, because the shell loop
+// would otherwise be PID 1 -- and the kernel does not deliver a signal with a
+// default action to PID 1, so it never saw SIGTERM and every stop waited out its
+// whole timeout before killing. With an init process forwarding the signal a
+// stop takes about 300ms instead of the full grace, measured; this file used to
+// spend most of its runtime waiting to be allowed to kill something.
 const volumeComposeYAML = `
 services:
   app:
     image: ` + dockerlab.ImageBusybox + `
+    init: true
     command: ["sh", "-c", "while true; do sleep 3600; done"]
     volumes:
       - uploads:/data
       - /etc/hostname:/etc/hostname-from-host:ro
   sidecar:
     image: ` + dockerlab.ImageBusybox + `
+    init: true
     command: ["sh", "-c", "while true; do sleep 3600; done"]
     volumes:
       - uploads:/shared
@@ -116,10 +119,11 @@ func startVolumeProject(t *testing.T, spec domain.BackupSpec) *volumeLab {
 			Runtime:        runtime,
 			RuntimeConfig:  cfg,
 			AllowDowntime:  true,
-			// Seconds rather than the production two minutes: this
-			// fixture never handles SIGTERM, so the full period is
-			// waited out on every quiesce and it is the whole cost
-			// of this file.
+			// Seconds rather than the production two minutes. The
+			// fixtures answer SIGTERM now, so this is never
+			// reached -- it is a bound on a fixture that hangs,
+			// which would otherwise cost two minutes per quiesce
+			// to discover.
 			StopTimeout: 3 * time.Second,
 			Now:         func() time.Time { return time.Now().UTC() },
 			Recipients: func(context.Context) ([]string, error) {
