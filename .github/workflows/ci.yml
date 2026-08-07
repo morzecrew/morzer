@@ -69,11 +69,15 @@ jobs:
               - 'justfile'
               - '.golangci.yml'
               - 'testdata/**'
-              # The scripts the gates below execute. `acceptance.sh` *is* the
-              # acceptance scenario, and a change to it used to match no
-              # filter that runs it -- so the one edit guaranteed to affect
-              # that job was the one edit that could not trigger it.
+              # The scripts the gates below execute, and the workflow that
+              # defines them. `acceptance.sh` *is* the acceptance scenario and
+              # this file decides when it runs, yet neither matched a filter
+              # that runs it -- so the two edits guaranteed to affect that job
+              # were the two edits that could not trigger it. `workflows/**`
+              # rather than the whole of `.github`, so a dependabot config or
+              # an issue template does not drag the container suites in.
               - '.github/scripts/**'
+              - '.github/workflows/**'
             docs:
               - 'pages/**'
               - 'README.md'
@@ -479,3 +483,55 @@ jobs:
             coverage.out
             union.out
           retention-days: 7
+
+  # The one check a branch ruleset should require.
+  #
+  # Requiring the individual jobs does not work here: they are change-gated, and
+  # a required check that never reports blocks a pull request forever rather
+  # than failing it. A docs-only change legitimately skips `test`, `acceptance`
+  # and the rest, and GitHub cannot tell "skipped because the filter said so"
+  # from "never going to report".
+  #
+  # So this job always runs, and reduces every gate to one verdict.
+  required:
+    name: Required Continuous Integration
+    # always(), so it reports even when something upstream failed -- without
+    # it this job would itself be skipped, which is the failure mode it exists
+    # to prevent.
+    if: always()
+    needs:
+      - changes
+      - workflows
+      - quality
+      - test
+      - docs
+      - acceptance
+      - containers
+      - coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every gate passed or was legitimately skipped
+        env:
+          # The whole needs context, so the check below reads results rather
+          # than a list of job names somebody has to remember to update.
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' | sort
+
+          # A failed job is a failure. A *skipped* one is not: it is either
+          # change-gated away, or downstream of something that already failed
+          # -- and that something reports its own failure here, so nothing is
+          # lost by letting the skip pass.
+          bad=$(echo "$RESULTS" | jq -r '
+            [to_entries[]
+             | select(.value.result == "failure" or .value.result == "cancelled")
+             | .key] | join(", ")')
+
+          if [ -n "$bad" ]; then
+            echo "::error::continuous integration did not pass: ${bad}"
+            exit 1
+          fi
+          echo "every gate passed or was legitimately skipped"
