@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -216,6 +217,29 @@ func (d *Deps) fillBackupStatus(ctx context.Context, out *Status, inst domain.In
 // rather than by editing the old one -- the journal is append-only, and
 // rewriting history would lose the fact that intervention was ever needed.
 func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error) {
+	// The whole acknowledgement runs under the deployment lock. Anything
+	// weaker is a snapshot: a probe can say the target's process is dead,
+	// a queued `--resume` can then take the lock, finish the operation,
+	// and the acknowledgement lands as a stale terminal record over a
+	// success. Holding the lock is the only thing that stops a resume,
+	// because a resume needs it too. A refused acquisition names whatever
+	// actually holds it -- the target if it is genuinely live, an
+	// unrelated operation if one is in flight (re-run after it finishes).
+	release, err := d.Locker.Acquire(ctx, "deployment", ports.LockOptions{
+		Owner: ports.LockOwner{
+			PID:       os.Getpid(),
+			Type:      "clear-intervention",
+			StartedAt: domain.NewTime(d.now()),
+		},
+	})
+	if err != nil {
+		return Result{}, domain.AsError(err).
+			WithHint("an operation is in flight; let it finish (or stop its process), then re-run")
+	}
+	defer func() { _ = release() }()
+
+	// Selected under the lock, so the record acknowledged is the record
+	// that exists now -- not one that finished while this command started.
 	unfinished, err := d.State.UnfinishedOperations(ctx)
 	if err != nil {
 		return Result{}, err
@@ -224,7 +248,9 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 	// Two kinds of record can be acknowledged: one flagged for manual
 	// intervention, and one a dead process left journaled as running --
 	// which, when its in-flight step is not safe to repeat, `--resume`
-	// rightly refuses, leaving this as the only road back.
+	// rightly refuses, leaving this as the only road back. A *live*
+	// running operation cannot appear here: it holds the lock this command
+	// just acquired.
 	var target *domain.OperationRecord
 	for i := range unfinished {
 		st := unfinished[i].Status
@@ -242,23 +268,6 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 				"operation %s is not flagged for manual intervention, nor abandoned mid-run", opID)
 		}
 		return Result{Summary: "no operations require attention"}, nil
-	}
-
-	// A running record whose process is genuinely alive holds the
-	// deployment lock; acknowledging it out from under a live operation
-	// would open the gate mid-mutation. The holder's operation ID is what
-	// decides -- an unrelated operation holding the lock says nothing about
-	// whether *this* record's process is dead, and appending the
-	// acknowledgement is safe alongside it. The probe is best-effort: when
-	// it cannot answer, the flock still serialises any actual mutation.
-	if target.Status == domain.StatusRunning {
-		owner, held, err := d.Locker.Owner(ctx, "deployment")
-		if err == nil && held && owner.OperationID == target.ID {
-			return Result{}, domain.Locked(
-				"operation %s appears to be live: the deployment lock is held by PID %d",
-				target.ID, owner.PID).
-				WithHint("wait for it to finish, or stop that process first")
-		}
 	}
 
 	resolved := *target

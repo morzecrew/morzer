@@ -15,6 +15,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The step bodies each operation only reaches when something specific has gone
@@ -365,6 +366,34 @@ func TestAnAbandonedRunningOperationCanBeCleared(t *testing.T) {
 
 	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err, "clearing the abandoned record must let the next operation run")
+}
+
+// TestClearInterventionIsSerialisedByTheDeploymentLock: acknowledgement runs
+// under the same lock every mutation takes, because holding it is the only
+// thing that stops a queued `--resume` from finishing the target between a
+// liveness check and the acknowledgement's append -- which would journal a
+// stale failed record over a success.
+func TestClearInterventionIsSerialisedByTheDeploymentLock(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-wreck", Type: domain.OpTypeUpdate,
+			Status: domain.StatusRunning, StartedAt: domain.NewTime(time.Now()),
+		}))
+
+	release, err := h.Deps.Locker.Acquire(ctx, "deployment", ports.LockOptions{})
+	require.NoError(t, err)
+
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-wreck")
+	require.Error(t, err, "an acknowledgement was written while the deployment lock was held")
+
+	require.NoError(t, release())
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-wreck")
+	require.NoError(t, err, "the acknowledgement must succeed once the lock is free")
 }
 
 // TestACorruptRecordWithoutAnIDStillBlocks: a journal line that unmarshals
