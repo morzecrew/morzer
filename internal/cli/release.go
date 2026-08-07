@@ -218,6 +218,14 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 				return err
 			}
 
+			// The vendor's CI is the one place a deprecation warning
+			// can still change the bundle before anyone installs it.
+			if warning, deprecated := rel.Manifest.DeprecationWarning(); deprecated {
+				fmt.Fprintf(app.Stream.Err,
+					"warning: api_version %s is deprecated: %s\n",
+					rel.Manifest.APIVersion, warning)
+			}
+
 			// A per-file sums list is what a third party can check
 			// with sha256sum, independently of this tool.
 			if err := checksum.VerifySumsFile(rel.Root); err != nil {

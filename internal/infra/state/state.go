@@ -328,27 +328,53 @@ func (s *Store) readJournal() ([]domain.OperationRecord, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	var records []domain.OperationRecord
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), maxJournalLine)
+	// Read line by line rather than through a bufio.Scanner: a Scanner
+	// stops at the first line longer than its buffer, which would silently
+	// hide every record after one overlong or corrupt line -- including the
+	// crashed operation --resume exists to find. An oversized line is
+	// skipped like any other unreadable record, and reading continues.
+	var (
+		records []domain.OperationRecord
+		r       = bufio.NewReaderSize(f, 64*1024)
+		buf     []byte
+		tooLong bool
+	)
+	for {
+		chunk, isPrefix, err := r.ReadLine()
+		if len(chunk) > 0 && !tooLong {
+			if len(buf)+len(chunk) > maxJournalLine {
+				// Discard the line but keep its memory bounded and
+				// keep scanning to the next newline.
+				tooLong = true
+				buf = buf[:0]
+			} else {
+				buf = append(buf, chunk...)
+			}
+		}
+		if err == nil && isPrefix {
+			continue
+		}
 
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
+		if !tooLong {
+			line := strings.TrimSpace(string(buf))
+			if line != "" {
+				var rec domain.OperationRecord
+				if jsonErr := json.Unmarshal([]byte(line), &rec); jsonErr == nil {
+					records = append(records, rec)
+				}
+				// Skip rather than fail: one unreadable record
+				// must not make `status` and `doctor` unusable,
+				// and those are exactly the commands an operator
+				// reaches for when the journal got corrupted.
+			}
 		}
-		var rec domain.OperationRecord
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			// Skip rather than fail: one unreadable record must not
-			// make `status` and `doctor` unusable, and those are
-			// exactly the commands an operator reaches for when the
-			// journal got corrupted.
-			continue
+		buf, tooLong = buf[:0], false
+
+		if err != nil {
+			// io.EOF, or a read failure -- either way the records so
+			// far are what there is, same tolerance as unreadable
+			// lines.
+			return records, nil
 		}
-		records = append(records, rec)
 	}
-	if err := sc.Err(); err != nil {
-		return records, nil
-	}
-	return records, nil
 }

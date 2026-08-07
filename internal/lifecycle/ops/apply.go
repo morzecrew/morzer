@@ -46,6 +46,9 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 			return Result{}, err
 		}
 	}
+	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
+		return Result{}, err
+	}
 
 	op := engine.Operation{
 		ID:          opID,
@@ -58,7 +61,20 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeApply, opts, func(ctx context.Context) error {
-		var err error
+		// Re-checked under the lock: with --wait, another process can
+		// journal a wreck between the early check and this acquisition,
+		// then die -- and the whole point of the gate is not driving
+		// over exactly that. A resume additionally re-reads its record:
+		// the lock holder we waited behind may have been resuming the
+		// same operation, and finishing it.
+		if opts.Resume {
+			if prior, err = d.refreshResumable(ctx, domain.OpTypeApply, prior); err != nil {
+				return err
+			}
+		}
+		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
+			return err
+		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts, inst.ID, prior))
 		return err
 	})
@@ -748,16 +764,99 @@ func (d *Deps) resolveCurrentRelease(ctx context.Context, record domain.ReleaseR
 	return rel, nil
 }
 
-// findResumable locates the operation --resume should continue.
-func (d *Deps) findResumable(ctx context.Context, opType domain.OperationType) (*domain.OperationRecord, error) {
+// gateUnfinished refuses to start a new operation while a previous one still
+// needs a human, or was left journaled as running by a process that died.
+//
+// It is the one gate that guards intent rather than capacity -- a reboot's
+// `apply --startup` proceeding over a state flagged for manual intervention is
+// exactly how a recoverable failure becomes an unrecoverable one. It runs
+// before the engine journals anything: a refusal that recorded an operation of
+// its own would become the newest record of its type and shadow the very wreck
+// `--resume` needs to find. A resume is exempt from exactly one record -- the
+// one it is continuing -- and no other: a crashed update must still block an
+// `apply --resume` that would mutate over it.
+func (d *Deps) gateUnfinished(ctx context.Context, exclude string) error {
 	unfinished, err := d.State.UnfinishedOperations(ctx)
+	if err != nil {
+		return err
+	}
+	others := make([]domain.OperationRecord, 0, len(unfinished))
+	for _, rec := range unfinished {
+		// Only a non-empty ID excludes: a corrupt record that
+		// unmarshalled without one must still block, not silently match
+		// the "nothing to exclude" sentinel.
+		if exclude != "" && rec.ID == exclude {
+			continue
+		}
+		others = append(others, rec)
+	}
+	if len(others) == 0 {
+		return nil
+	}
+	res := preflight.NoUnfinishedOperation(others).Run(ctx)
+	if res.Status != events.CheckFail {
+		return nil
+	}
+	return domain.Preflight(nil, "%s", res.Message).WithHint("%s", res.Remedy)
+}
+
+// excludeID names the record a resume is continuing, or nothing.
+func excludeID(prior *domain.OperationRecord) string {
+	if prior == nil {
+		return ""
+	}
+	return prior.ID
+}
+
+// refreshResumable re-reads the record a resume is about to continue, under
+// the deployment lock.
+//
+// The record was found before the lock was taken; with --wait, the holder we
+// queued behind may have been resuming the same operation -- and finishing
+// it. Resuming from the stale snapshot would re-run an operation that already
+// completed. The refusal when the record changed identity is deliberate: the
+// operator asked to continue a specific wreck, and whatever is unfinished now
+// is a different decision.
+func (d *Deps) refreshResumable(ctx context.Context, opType domain.OperationType, prior *domain.OperationRecord) (*domain.OperationRecord, error) {
+	fresh, err := d.findResumable(ctx, opType)
+	if err != nil {
+		return nil, domain.AsError(err).
+			WithHint("the operation may have finished while waiting for the deployment lock; " +
+				"run `morzer status` to see where things stand")
+	}
+	if prior != nil && fresh.ID != prior.ID {
+		return nil, domain.Usage(
+			"the resumable %s operation changed while waiting for the deployment lock: "+
+				"found %s, was resuming %s", opType, fresh.ID, prior.ID).
+			WithHint("re-run `morzer %s --resume` to continue the current one", opType)
+	}
+	return fresh, nil
+}
+
+// findResumable locates the operation --resume should continue.
+//
+// The newest record of the type decides. A crashed process leaves `running`,
+// an operator's Ctrl-C leaves `interrupted`, an aborting step leaves `failed`
+// -- each of those is the engine's definition of resumable. Anything that
+// finished otherwise supersedes older wreckage: resuming an operation from
+// before the last success would re-apply history. UnfinishedOperations is
+// deliberately not the source here -- it carries only what needs *attention*
+// (running, manual-intervention), and an interrupted operation is exactly the
+// one the operator was told `--resume` would continue.
+func (d *Deps) findResumable(ctx context.Context, opType domain.OperationType) (*domain.OperationRecord, error) {
+	all, err := d.State.Operations(ctx, ports.Filter{})
 	if err != nil {
 		return nil, err
 	}
-	for _, rec := range unfinished {
-		if rec.Type == opType {
+	for _, rec := range all {
+		if rec.Type != opType {
+			continue
+		}
+		switch rec.Status {
+		case domain.StatusRunning, domain.StatusInterrupted, domain.StatusFailed:
 			return &rec, nil
 		}
+		break
 	}
 	return nil, domain.Usage("no interrupted %s operation to resume", opType).
 		WithHint("run the command without --resume")

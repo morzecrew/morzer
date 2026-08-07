@@ -101,6 +101,14 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		return Result{Data: report}, err
 	}
 
+	// Rollback does not resume, so the gate is unconditional: a rollback
+	// over a state a human has not acknowledged is still driving over it.
+	// The assessment stays in the result either way -- `rollback --json`
+	// promises the report on every refusal path.
+	if err := d.gateUnfinished(ctx, ""); err != nil {
+		return Result{Data: report}, err
+	}
+
 	opID := d.newOpID()
 	op := engine.Operation{
 		ID:          opID,
@@ -114,6 +122,10 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeRollback, opts.Options, func(ctx context.Context) error {
+		// Re-checked under the lock; see the same recheck in Apply.
+		if err := d.gateUnfinished(ctx, ""); err != nil {
+			return err
+		}
 		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
 		return err

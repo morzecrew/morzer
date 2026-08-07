@@ -19,19 +19,19 @@ import (
 type Code string
 
 const (
-	CodeInternal          Code = "internal"
-	CodeUsage             Code = "usage"
-	CodePreflight         Code = "preflight"
-	CodeLocked            Code = "locked"
-	CodeInstallation      Code = "installation"
-	CodeSecrets           Code = "secrets"
-	CodeRuntime           Code = "runtime"
-	CodeHealth            Code = "health"
-	CodeIncompatible      Code = "incompatible"
-	CodeBackup            Code = "backup"
-	CodeCompensated       Code = "compensated"
-	CodeManualIntervetion Code = "manual-intervention"
-	CodeInterrupted       Code = "interrupted"
+	CodeInternal           Code = "internal"
+	CodeUsage              Code = "usage"
+	CodePreflight          Code = "preflight"
+	CodeLocked             Code = "locked"
+	CodeInstallation       Code = "installation"
+	CodeSecrets            Code = "secrets"
+	CodeRuntime            Code = "runtime"
+	CodeHealth             Code = "health"
+	CodeIncompatible       Code = "incompatible"
+	CodeBackup             Code = "backup"
+	CodeCompensated        Code = "compensated"
+	CodeManualIntervention Code = "manual-intervention"
+	CodeInterrupted        Code = "interrupted"
 )
 
 // Category groups codes for reporting. It carries no control-flow meaning.
@@ -251,7 +251,7 @@ func Compensated(cause error, format string, args ...any) *Error {
 }
 
 func ManualIntervention(cause error, format string, args ...any) *Error {
-	return newf(CodeManualIntervetion, CategorySystem, ErrManualIntervention, cause, format, args...)
+	return newf(CodeManualIntervention, CategorySystem, ErrManualIntervention, cause, format, args...)
 }
 
 func Interrupted(format string, args ...any) *Error {

@@ -204,7 +204,13 @@ func TestADecimalSizeDoesNotSurviveBeingReSerialised(t *testing.T) {
 }
 
 func TestByteSizeRefusesWhatIsNotOne(t *testing.T) {
-	for _, bad := range []string{"lots", "2 gigabytes", "GiB", "-5GiB", "2XiB"} {
+	// The last three would previously wrap through float-to-int64
+	// conversion into a huge negative -- a requirement every "is there
+	// enough?" check trivially satisfies.
+	// "9007199254740992KiB" is 2^53 KiB -- exactly float64(MaxInt64)/1024,
+	// the boundary a > comparison lets through to wrap negative.
+	for _, bad := range []string{"lots", "2 gigabytes", "GiB", "-5GiB", "2XiB",
+		"99999999999TiB", "NaNGiB", "InfMiB", "9007199254740992KiB"} {
 		var b ByteSize
 		if err := b.UnmarshalText([]byte(bad)); err == nil {
 			t.Errorf("%q was accepted as a size (%d bytes)", bad, b.Bytes())
@@ -393,6 +399,46 @@ func TestFirstIncompleteStepIsWhatResumeStartsFrom(t *testing.T) {
 
 	if _, ok := (OperationRecord{}).FirstIncompleteStep(); ok {
 		t.Error("an operation with no steps offered one to resume from")
+	}
+}
+
+// A step status this build does not recognise -- a journal written by a newer
+// manager, or a record that only partially unmarshalled -- must refuse resume
+// rather than be skipped as if the unknown work completed.
+func TestFirstIncompleteStepRefusesAnUnknownStatus(t *testing.T) {
+	rec := OperationRecord{Steps: []StepRecord{
+		{ID: "a", Status: StepSucceeded},
+		{ID: "b", Status: StepStatus("paused-for-review")},
+		{ID: "c", Status: StepPending},
+	}}
+
+	if _, ok := rec.FirstIncompleteStep(); ok {
+		t.Error("a record with an unrecognised step status offered a resume point")
+	}
+
+	empty := OperationRecord{Steps: []StepRecord{{ID: "a"}}}
+	if _, ok := empty.FirstIncompleteStep(); ok {
+		t.Error("a record with an empty step status offered a resume point")
+	}
+
+	// The poison may sit *after* the first incomplete step: the record as a
+	// whole was written by a run this manager cannot interpret, so its
+	// position must not matter.
+	later := OperationRecord{Steps: []StepRecord{
+		{ID: "a", Status: StepSucceeded},
+		{ID: "b", Status: StepInterrupted},
+		{ID: "c", Status: StepStatus("from-the-future")},
+	}}
+	if _, ok := later.FirstIncompleteStep(); ok {
+		t.Error("an unrecognised status after the resume point offered a resume point")
+	}
+
+	compensatedLater := OperationRecord{Steps: []StepRecord{
+		{ID: "a", Status: StepFailed},
+		{ID: "b", Status: StepCompensated},
+	}}
+	if _, ok := compensatedLater.FirstIncompleteStep(); ok {
+		t.Error("a record holding compensated work offered a resume point")
 	}
 }
 

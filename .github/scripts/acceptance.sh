@@ -11,7 +11,8 @@
 # the sequence an operator would:
 #
 #   init → apply → (services stopped, as after a reboot) → apply --startup
-#        → status → doctor → backup → restore → update → rollback → doctor
+#        → status → doctor → backup → restore
+#        → (update killed mid-flight, refused, then --resume) → rollback → doctor
 #
 # Everything the manager touches is real: real Compose, real containers, a real
 # health check over a real port, real sops-encrypted secrets. Only the product
@@ -410,11 +411,46 @@ info "data restored"
 step "restore refuses without the typed confirmation"
 expect_exit 2 "${MORZER}" --root "${ROOT}" restore --force --confirm wrong-id
 
-step "update to 1.3.0"
-"${MORZER}" --root "${ROOT}" update "${WORK}/bundle-1.3.0"
+# ----------------------------------------------------------------------------
+# A crash mid-update: SIGKILL, the artifact every other test tier only
+# simulates. The kill waits for the journal to show the pre-update backup
+# completed -- the one step that is not safe to repeat -- and lands in the
+# staging/convergence phase behind it, where every step is idempotent and the
+# process has seconds of real Docker work ahead. What is asserted afterwards
+# is the whole crash-recovery contract: the wreck is visible in the journal, a
+# plain update refuses to drive over it, and --resume carries the completed
+# backup's credit forward and rescues the machine to the version the operator
+# asked for.
+step "an update is killed mid-flight, after its pre-update backup"
+journal="${ROOT}/var/lib/demo/manager/operations.jsonl"
+"${MORZER}" --root "${ROOT}" update "${WORK}/bundle-1.3.0" >/dev/null 2>&1 &
+update_pid=$!
+for _ in $(seq 1 400); do
+	grep -q '"id":"pre-update-backup","status":"succeeded"' "${journal}" 2>/dev/null && break
+	sleep 0.05
+done
+grep -q '"id":"pre-update-backup","status":"succeeded"' "${journal}" ||
+	fail "the update never got past its pre-update backup, so the kill had nowhere safe to land"
+kill -9 "${update_pid}" 2>/dev/null || true
+wait "${update_pid}" 2>/dev/null || true
+tail -1 "${journal}" | jq -e '.type == "update" and .status == "running"' >/dev/null ||
+	fail "the killed update did not leave a running record in the journal"
+info "killed mid-update; the journal holds the wreck"
+
+step "a plain update refuses to drive over the wreck"
+if "${MORZER}" --root "${ROOT}" update "${WORK}/bundle-1.3.0" >/dev/null 2>&1; then
+	fail "an update ran straight over an operation the crash left unfinished"
+fi
+refused=$("${MORZER}" --root "${ROOT}" --json update "${WORK}/bundle-1.3.0" 2>/dev/null || true)
+echo "${refused}" | jq -e '((.error.message // "") + " " + (.error.hint // "")) | test("did not finish|resume")' >/dev/null ||
+	fail "the refusal must name the unfinished operation and the way forward"
+info "refused, naming the way forward"
+
+step "update --resume rescues the machine to 1.3.0"
+"${MORZER}" --root "${ROOT}" update --resume "${WORK}/bundle-1.3.0"
 assert_running 2
 version=$(status_field '.data.current_release.version')
-[ "${version}" = "1.3.0" ] || fail "expected 1.3.0 after the update, got ${version}"
+[ "${version}" = "1.3.0" ] || fail "expected 1.3.0 after the resumed update, got ${version}"
 info "running ${version}"
 
 # The most valuable assertion in the scenario, and the one it took a real

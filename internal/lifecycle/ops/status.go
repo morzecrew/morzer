@@ -2,9 +2,11 @@ package ops
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -206,7 +208,9 @@ func (d *Deps) fillBackupStatus(ctx context.Context, out *Status, inst domain.In
 	}
 }
 
-// ClearIntervention marks a requires-manual-intervention operation as resolved.
+// ClearIntervention marks a requires-manual-intervention operation as
+// resolved, or writes off a record a stopped process left journaled as
+// running.
 //
 // It is deliberately explicit and deliberately manual: the flag exists to stop
 // automation proceeding over a state a human has not looked at, so nothing but
@@ -214,14 +218,50 @@ func (d *Deps) fillBackupStatus(ctx context.Context, out *Status, inst domain.In
 // rather than by editing the old one -- the journal is append-only, and
 // rewriting history would lose the fact that intervention was ever needed.
 func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error) {
+	// The whole acknowledgement runs under the deployment lock. Anything
+	// weaker is a snapshot: a probe can say the target's process is dead,
+	// a queued `--resume` can then take the lock, finish the operation,
+	// and the acknowledgement lands as a stale terminal record over a
+	// success. Holding the lock is the only thing that stops a resume,
+	// because a resume needs it too. A refused acquisition names whatever
+	// actually holds it -- the target if it is genuinely live, an
+	// unrelated operation if one is in flight (re-run after it finishes).
+	release, err := d.Locker.Acquire(ctx, "deployment", ports.LockOptions{
+		Owner: ports.LockOwner{
+			PID:       os.Getpid(),
+			Type:      "clear-intervention",
+			StartedAt: domain.NewTime(d.now()),
+		},
+	})
+	if err != nil {
+		return Result{}, domain.AsError(err).
+			WithHint("an operation is in flight; let it finish (or stop its process), then re-run")
+	}
+	// Logged like withLock's release: a lock that failed to release blocks
+	// every later operation, and silence would make that undiagnosable.
+	defer func() {
+		if err := release(); err != nil {
+			logging.FromContext(ctx).Error("cannot release the deployment lock", "error", err)
+		}
+	}()
+
+	// Selected under the lock, so the record acknowledged is the record
+	// that exists now -- not one that finished while this command started.
 	unfinished, err := d.State.UnfinishedOperations(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 
+	// Two kinds of record can be acknowledged: one flagged for manual
+	// intervention, and one a dead process left journaled as running --
+	// which, when its in-flight step is not safe to repeat, `--resume`
+	// rightly refuses, leaving this as the only road back. A *live*
+	// running operation cannot appear here: it holds the lock this command
+	// just acquired.
 	var target *domain.OperationRecord
 	for i := range unfinished {
-		if !unfinished[i].Status.NeedsAttention() {
+		st := unfinished[i].Status
+		if !st.NeedsAttention() && st != domain.StatusRunning {
 			continue
 		}
 		if opID == "" || unfinished[i].ID == opID {
@@ -232,9 +272,9 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 	if target == nil {
 		if opID != "" {
 			return Result{}, domain.Usage(
-				"operation %s is not flagged as requiring manual intervention", opID)
+				"operation %s is not flagged for manual intervention, nor abandoned mid-run", opID)
 		}
-		return Result{Summary: "no operations require manual intervention"}, nil
+		return Result{Summary: "no operations require attention"}, nil
 	}
 
 	resolved := *target
@@ -249,8 +289,13 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 		return Result{}, err
 	}
 
-	return Result{
-		Record:  resolved,
-		Summary: "cleared the manual-intervention flag on operation " + resolved.ID,
-	}, nil
+	// The two acknowledgements are different acts and the operator should
+	// be able to tell which one happened: a flag was cleared, or an
+	// abandoned run was written off.
+	summary := "cleared the manual-intervention flag on operation " + resolved.ID
+	if target.Status == domain.StatusRunning {
+		summary = "acknowledged operation " + resolved.ID +
+			", which a stopped process left journaled as still running"
+	}
+	return Result{Record: resolved, Summary: summary}, nil
 }

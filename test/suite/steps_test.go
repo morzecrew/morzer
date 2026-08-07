@@ -15,6 +15,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The step bodies each operation only reaches when something specific has gone
@@ -191,65 +192,255 @@ func TestDoctorReportsUnitsAndBackups(t *testing.T) {
 
 // TestResumeStartsFromTheStepThatDidNotFinish is the whole point of the
 // journal: after a crash, `--resume` picks up rather than starting over.
+//
+// The crash is simulated as the artifact it leaves -- a journal record whose
+// status is still running, with one step journaled as in flight -- because a
+// failed apply compensates cleanly and leaves nothing to resume, which is how
+// an earlier version of this test managed to skip on every run for as long as
+// nobody noticed. The step list comes from a real apply, so a pipeline change
+// breaks this fixture loudly rather than silently diverging from it.
 func TestResumeStartsFromTheStepThatDidNotFinish(t *testing.T) {
 	h := newHarness(t)
 	h.install()
 	h.setHookEnv()
+	ctx := context.Background()
 
-	// A first apply that fails partway, leaving a record.
-	h.Runtime.Fail["Up"] = domain.RuntimeError(errInjected, "the daemon refused")
-	first, _ := ops.Apply(context.Background(), h.Deps, ops.Options{})
-	require.NotEqual(t, domain.StatusSucceeded, first.Record.Status)
-
-	// The journal now holds something an operator could resume.
-	unfinished, err := h.Deps.State.UnfinishedOperations(context.Background())
+	// A clean apply, to learn the step list a real journal record holds.
+	clean, err := ops.Apply(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
-	if len(unfinished) == 0 {
-		t.Skip("the failed apply compensated cleanly, so there is nothing to resume")
-	}
+	require.Equal(t, domain.StatusSucceeded, clean.Record.Status)
 
-	// With the fault cleared, a resume completes rather than refusing.
-	delete(h.Runtime.Fail, "Up")
-	second, err := ops.Apply(context.Background(), h.Deps, ops.Options{Resume: true})
+	// The record a SIGKILL mid-`start-services` leaves behind: the
+	// operation still running, that step in flight, everything after it
+	// pending. AppendOperation is exactly the write the dying process had
+	// already completed.
+	crashed := clean.Record
+	crashed.ID = "op-killed-mid-apply"
+	crashed.Status = domain.StatusRunning
+	crashed.FinishedAt = domain.Time{}
+	// The crashed run started after the clean one; --resume acts on the
+	// newest record of the type.
+	crashed.StartedAt = domain.NewTime(time.Now().Add(time.Second))
+	crashed.Steps = append([]domain.StepRecord(nil), clean.Record.Steps...)
+	resumeFrom := -1
+	for i := range crashed.Steps {
+		switch {
+		case crashed.Steps[i].ID == "start-services":
+			resumeFrom = i
+			crashed.Steps[i].Status = domain.StepRunning
+		case resumeFrom == -1:
+			crashed.Steps[i].Status = domain.StepSucceeded
+		default:
+			crashed.Steps[i].Status = domain.StepPending
+		}
+	}
+	require.NotEqual(t, -1, resumeFrom,
+		"the apply pipeline no longer has a start-services step; update this fixture")
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, crashed))
+
+	unfinished, err := h.Deps.State.UnfinishedOperations(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, unfinished, "a running record must surface as unfinished")
+
+	// The resume continues that operation rather than refusing or starting
+	// a new one.
+	second, err := ops.Apply(ctx, h.Deps, ops.Options{Resume: true})
 	require.NoError(t, err, "an operation that could be resumed was refused")
 	assert.Equal(t, domain.StatusSucceeded, second.Record.Status)
+	assert.Equal(t, crashed.ID, second.Record.ID,
+		"a resumed run continues the same operation rather than starting a new one")
+
+	// Every step before the crash point is either carried as its journaled
+	// credit or re-ran cleanly; none may end the resumed run failed.
+	for i := 0; i < resumeFrom; i++ {
+		s := second.Record.Steps[i]
+		assert.Contains(t,
+			[]domain.StepStatus{domain.StepSucceeded, domain.StepSkipped}, s.Status,
+			"step %q did not come through the resume cleanly", s.ID)
+	}
 }
 
-// TestAnUnfinishedOperationDoesNotBlockANewOne records a gap, not a design.
-//
-// `preflight.NoUnfinishedOperation` exists, is documented as "refuses to start
-// while a previous operation is still flagged", and explains why -- "proceeding
-// over an unfinished operation would layer new changes on a state nobody has
-// confirmed, which is exactly how a recoverable failure becomes an
-// unrecoverable one". **Nothing calls it.** No operation's preflight includes
-// it, so an `apply` runs straight over an operation that asked for a human.
-//
-// Not fixed here: wiring a new refusal into every mutating operation is a
-// behaviour change and belongs in its own pull request. This test fails the
-// day it is wired, which is the point.
-func TestAnUnfinishedOperationDoesNotBlockANewOne(t *testing.T) {
+// TestResumeFindsAnInterruptedOperation: an operator's Ctrl-C journals the
+// operation as interrupted -- which is terminal and needs no attention, so it
+// never appears in UnfinishedOperations. `--resume` has to find it anyway;
+// "resume it with `morzer apply --resume`" is what the operator was told.
+func TestResumeFindsAnInterruptedOperation(t *testing.T) {
 	h := newHarness(t)
 	h.install()
 	h.setHookEnv()
+	ctx := context.Background()
 
-	require.NoError(t, h.Deps.State.AppendOperation(context.Background(),
+	clean, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	interrupted := clean.Record
+	interrupted.ID = "op-ctrl-c"
+	interrupted.Status = domain.StatusInterrupted
+	interrupted.StartedAt = domain.NewTime(time.Now().Add(time.Second))
+	interrupted.Steps = append([]domain.StepRecord(nil), clean.Record.Steps...)
+	seen := false
+	for i := range interrupted.Steps {
+		switch {
+		case interrupted.Steps[i].ID == "health-checks":
+			seen = true
+			interrupted.Steps[i].Status = domain.StepInterrupted
+		case !seen:
+			interrupted.Steps[i].Status = domain.StepSucceeded
+		default:
+			interrupted.Steps[i].Status = domain.StepPending
+		}
+	}
+	require.True(t, seen, "the apply pipeline no longer has a health-checks step; update this fixture")
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, interrupted))
+
+	resumed, err := ops.Apply(ctx, h.Deps, ops.Options{Resume: true})
+	require.NoError(t, err, "an interrupted operation was not found or not resumed")
+	assert.Equal(t, interrupted.ID, resumed.Record.ID)
+	assert.Equal(t, domain.StatusSucceeded, resumed.Record.Status)
+}
+
+// TestAnUnfinishedOperationBlocksANewOne: the requires-manual-intervention
+// flag exists to stop automation proceeding over a state a human has not
+// looked at, and the preflight gate is where that stops -- a reboot's `apply
+// --startup` above all. Clearing the flag is what re-opens the road.
+func TestAnUnfinishedOperationBlocksANewOne(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
 		domain.OperationRecord{
 			ID: "op-stuck", Type: domain.OpTypeUpdate,
 			Status: domain.StatusManualIntervention, StartedAt: domain.NewTime(time.Now()),
 		}))
 
 	// It is genuinely recorded as needing attention...
-	unfinished, err := h.Deps.State.UnfinishedOperations(context.Background())
+	unfinished, err := h.Deps.State.UnfinishedOperations(ctx)
 	require.NoError(t, err)
 	require.Len(t, unfinished, 1)
 	require.True(t, unfinished[0].Status.NeedsAttention())
 
-	// ...and `apply` proceeds anyway.
-	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
-	if err != nil {
-		t.Fatalf("the check is now wired in, which is an improvement: delete this "+
-			"test and assert the refusal instead. Got: %v", err)
-	}
+	// ...so `apply` refuses, naming the operation and the way forward.
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err, "apply proceeded over an operation flagged for manual intervention")
+	assert.Contains(t, domain.AsError(err).Error(), "op-stuck",
+		"the refusal must name the operation that blocks it")
+
+	// A human acknowledging the state is exactly what clears the road.
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-stuck")
+	require.NoError(t, err)
+
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "clearing the flag must let the next operation run")
+}
+
+// TestAnAbandonedRunningOperationCanBeCleared: a SIGKILL leaves a record
+// journaled as running forever. When its in-flight step is not safe to repeat,
+// `--resume` rightly refuses -- so acknowledging the record with
+// `--clear-intervention` must be the road back, or the gate would block every
+// future operation with no exit.
+func TestAnAbandonedRunningOperationCanBeCleared(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-dead-process", Type: domain.OpTypeUpdate,
+			Status: domain.StatusRunning, StartedAt: domain.NewTime(time.Now()),
+		}))
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err, "apply proceeded over a record a dead process left running")
+
+	// Resume genuinely refuses this record -- it journaled no steps this
+	// manager can continue from -- which is why acknowledging it has to be
+	// the road back.
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}})
+	require.Error(t, err, "an empty running record was resumed")
+
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-dead-process")
+	require.NoError(t, err, "the abandoned running record could not be acknowledged")
+
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "clearing the abandoned record must let the next operation run")
+}
+
+// TestClearInterventionIsSerialisedByTheDeploymentLock: acknowledgement runs
+// under the same lock every mutation takes, because holding it is the only
+// thing that stops a queued `--resume` from finishing the target between a
+// liveness check and the acknowledgement's append -- which would journal a
+// stale failed record over a success.
+func TestClearInterventionIsSerialisedByTheDeploymentLock(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-wreck", Type: domain.OpTypeUpdate,
+			Status: domain.StatusRunning, StartedAt: domain.NewTime(time.Now()),
+		}))
+
+	release, err := h.Deps.Locker.Acquire(ctx, "deployment", ports.LockOptions{})
+	require.NoError(t, err)
+
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-wreck")
+	require.Error(t, err, "an acknowledgement was written while the deployment lock was held")
+
+	require.NoError(t, release())
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-wreck")
+	require.NoError(t, err, "the acknowledgement must succeed once the lock is free")
+}
+
+// TestACorruptRecordWithoutAnIDStillBlocks: a journal line that unmarshals
+// with no operation ID must not slip through the resume-exclusion filter --
+// an empty ID matching the "nothing to exclude" sentinel would let ordinary
+// operations mutate over an unfinished state.
+func TestACorruptRecordWithoutAnIDStillBlocks(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			Type: domain.OpTypeUpdate,
+			// No ID: the shape a hand-edited or corrupt line takes.
+			Status: domain.StatusRunning, StartedAt: domain.NewTime(time.Now()),
+		}))
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err, "apply proceeded over an unfinished record that has no ID")
+}
+
+// TestResumeIsExemptFromOnlyItsOwnWreck: `apply --resume` continues one
+// specific operation; a crashed *update* still needing attention must block it
+// like any other mutation, or resume becomes a gate bypass.
+func TestResumeIsExemptFromOnlyItsOwnWreck(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-stuck-update", Type: domain.OpTypeUpdate,
+			Status: domain.StatusManualIntervention, StartedAt: domain.NewTime(time.Now()),
+		}))
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-crashed-apply", Type: domain.OpTypeApply,
+			Status: domain.StatusRunning, StartedAt: domain.NewTime(time.Now().Add(time.Second)),
+		}))
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{Resume: true})
+	require.Error(t, err, "apply --resume drove over another operation's wreck")
+	assert.Contains(t, domain.AsError(err).Error(), "op-stuck-update",
+		"the refusal must name the blocking operation, not the one being resumed")
 }
 
 // TestClearingTheInterventionFlagMarksItResolved. The flag is what `doctor` and

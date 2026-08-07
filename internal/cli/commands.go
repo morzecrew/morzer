@@ -311,7 +311,12 @@ func newStatusCommand(app *App) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("clear-intervention") {
-				result, err := ops.ClearIntervention(cmd.Context(), app.Deps, clearIntervention)
+				// The bare form arrives as NoOptDefVal, a single
+				// space (pflag treats "" as "value required").
+				// Trimming maps it onto the documented "empty
+				// selects the only one" contract.
+				id := strings.TrimSpace(clearIntervention)
+				result, err := ops.ClearIntervention(cmd.Context(), app.Deps, id)
 				app.finish(result)
 				return err
 			}
