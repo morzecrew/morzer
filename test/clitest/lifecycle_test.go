@@ -119,18 +119,7 @@ func TestInitRefusesAParameterWithNoDefaultAndNoValue(t *testing.T) {
 	r := clitest.New(t)
 
 	// The vendor declares a knob and no default for it.
-	manifest := filepath.Join(r.Bundle, "manifest.yaml")
-	data, err := os.ReadFile(manifest)
-	require.NoError(t, err)
-	edited := strings.Replace(string(data),
-		"parameters:\n",
-		"parameters:\n  admin_email:\n    type: string\n    description: Where alerts go\n",
-		1)
-	// Loudly, because a silent no-op here fails the test at the exit-code
-	// assertion below and points nowhere near the manifest that drifted.
-	require.NotEqual(t, string(data), edited,
-		"the fixture no longer contains a `parameters:` block to add to")
-	require.NoError(t, os.WriteFile(manifest, []byte(edited), 0o644))
+	declareParameterWithoutADefault(t, r, "admin_email")
 
 	out := r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
 		"--install-units=false")
@@ -221,16 +210,7 @@ func TestVersionAndHelpNeedNoInstallation(t *testing.T) {
 func TestUnsettingAParameterWithNoDefaultIsRefused(t *testing.T) {
 	r := clitest.New(t)
 
-	manifest := filepath.Join(r.Bundle, "manifest.yaml")
-	data, err := os.ReadFile(manifest)
-	require.NoError(t, err)
-	edited := strings.Replace(string(data),
-		"parameters:\n",
-		"parameters:\n  admin_email:\n    type: string\n    description: Where alerts go\n",
-		1)
-	require.NotEqual(t, string(data), edited,
-		"the fixture no longer contains a `parameters:` block to add to")
-	require.NoError(t, os.WriteFile(manifest, []byte(edited), 0o644))
+	declareParameterWithoutADefault(t, r, "admin_email")
 
 	r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
 		"--install-units=false", "--set", "admin_email=ops@example").ExitCode(0)
@@ -238,4 +218,24 @@ func TestUnsettingAParameterWithNoDefaultIsRefused(t *testing.T) {
 	out := r.Run("config", "unset", "admin_email")
 	out.Failed().OutputContains("admin_email")
 	out.OutputContains("config set")
+}
+
+// declareParameterWithoutADefault adds a parameter with no default to the
+// fixture's manifest, which is the only way a release can say "the operator
+// must choose this". Two tests need one and neither owns it, so the edit lives
+// here rather than in both -- including the guard, which is the part that would
+// otherwise drift: a silent no-op sends the failure to an exit-code assertion
+// that points nowhere near the manifest that changed.
+func declareParameterWithoutADefault(t *testing.T, r *clitest.Runner, name string) {
+	t.Helper()
+
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+
+	edited := strings.Replace(string(data), "parameters:\n",
+		"parameters:\n  "+name+":\n    type: string\n    description: Where alerts go\n", 1)
+	require.NotEqual(t, string(data), edited,
+		"the fixture no longer contains a `parameters:` block to add to")
+	require.NoError(t, os.WriteFile(manifest, []byte(edited), 0o644))
 }
