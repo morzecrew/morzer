@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // The copy's read side refuses a symlink at every component. The published
@@ -118,5 +119,59 @@ func TestOpenDirNoFollowRefusesASymlinkedRoot(t *testing.T) {
 	if fd, err := openDirNoFollow(link); err == nil {
 		_ = syscall.Close(fd)
 		t.Error("a symlinked source directory was opened")
+	}
+}
+
+// TestOpenFileNoFollowDoesNotBlockOnAFIFO.
+//
+// The same race the no-follow descent exists for cuts the other way: the walk
+// decided this entry was a regular file, and by the time the open runs it can be
+// a FIFO. A blocking open of one waits for a writer that is never coming, so a
+// hostile -- or merely unlucky -- bundle would hang the copy forever instead of
+// being refused by the stat that follows.
+//
+// The open runs on its own goroutine so a regression fails this test rather than
+// wedging the whole package.
+func TestOpenFileNoFollowDoesNotBlockOnAFIFO(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("cannot create a FIFO here: %v", err)
+	}
+
+	dirfd, err := openDirNoFollow(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = syscall.Close(dirfd) }()
+
+	type result struct {
+		file *os.File
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		f, err := openFileNoFollow(dirfd, "pipe")
+		done <- result{f, err}
+	}()
+
+	select {
+	case got := <-done:
+		if got.err != nil {
+			// A refusal is fine -- what must not happen is the wait.
+			return
+		}
+		defer func() { _ = got.file.Close() }()
+		// And the descriptor the caller gets is the FIFO, so the
+		// non-regular check downstream has something to refuse.
+		info, err := got.file.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().IsRegular() {
+			t.Error("a FIFO was opened as a regular file")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the open blocked on a FIFO with no writer")
 	}
 }

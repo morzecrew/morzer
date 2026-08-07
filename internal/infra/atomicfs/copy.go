@@ -265,8 +265,14 @@ func openFileNoFollow(dir int, rel string) (*os.File, error) {
 		return nil, domain.ValidationError(nil,
 			"bundle path %q cannot be resolved safely", rel)
 	}
+	// O_NONBLOCK, because this open is the far side of a race and the walk's
+	// verdict is not binding: if a regular file has been replaced by a FIFO
+	// since, a blocking open would wait for a writer that never comes and
+	// hang the copy outright. Non-blocking, the descriptor opens, the caller
+	// stats it, and a non-regular file is refused as it always was. On a
+	// regular file the flag does nothing at all.
 	fd, err := syscall.Openat(current, name,
-		syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+		syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, classifyDescent(current, name, err)
 	}
