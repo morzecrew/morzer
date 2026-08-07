@@ -136,11 +136,9 @@ func newInitCommand(app *App) *cobra.Command {
 					EquivalentCommand(opts))
 
 				// The product may have been chosen just now, and
-				// every managed path derives from it -- including
-				// when --config already named one.
-				if err := app.confirmProductMatchesConfig(opts.Product); err != nil {
-					return err
-				}
+				// every managed path derives from it. The
+				// disagreement with --config is caught inside the
+				// wizard, before it can write a recovery key.
 				if opts.Product != product {
 					app.Flags.product = opts.Product
 					if err := app.rewireForProduct(cmd.Context(), opts.Product); err != nil {

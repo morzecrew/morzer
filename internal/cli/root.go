@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/morzecrew/morzer/internal/adapters/backup/hookbackup"
 	"github.com/morzecrew/morzer/internal/adapters/health"
@@ -192,7 +193,7 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	// --log-format -- so exactly the mistakes a script makes were the ones
 	// that produced no `ok:false` at all, and a consumer parsing stdout got
 	// empty input rather than an error it could read.
-	if err != nil && app.json == nil && wantsJSON(app.Flags.json, args) {
+	if err != nil && app.json == nil && wantsJSON(app.Flags.json, flagLookup(root, args), args) {
 		app.json = jsonout.New(jsonout.Options{
 			Out:            app.Stream.Out,
 			ManagerVersion: app.Build.Version,
@@ -223,7 +224,7 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 // `morzer --wat --json` never records it. The raw arguments are the only
 // remaining evidence, and the cost of reading them wrong is an error envelope
 // where a plain error would have gone -- on a run that has already failed.
-func wantsJSON(parsed bool, args []string) bool {
+func wantsJSON(parsed bool, lookup func(string) *pflag.Flag, args []string) bool {
 	if parsed {
 		return true
 	}
@@ -232,7 +233,8 @@ func wantsJSON(parsed bool, args []string) bool {
 	// returning on the first truthy one would have overruled the operator's
 	// own correction.
 	wants := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		// Everything after the terminator is an operand, not a flag:
 		// `morzer --wat -- --json` asked for plain output and a literal
 		// argument that happens to look like a flag.
@@ -249,9 +251,40 @@ func wantsJSON(parsed bool, args []string) bool {
 			if parsed, err := strconv.ParseBool(value); err == nil {
 				wants = parsed
 			}
+			continue
+		}
+		// A flag that takes a value eats the token after it, so in
+		// `--timeout --json` the operator never asked for JSON -- cobra
+		// read it as the duration, and failing on that is what brought
+		// the run here. Counting it would answer a malformed command
+		// line with an envelope nobody requested.
+		if name, ok := strings.CutPrefix(arg, "--"); ok && !strings.Contains(name, "=") {
+			if f := lookup(name); f != nil && f.Value.Type() != "bool" {
+				i++
+			}
 		}
 	}
 	return wants
+}
+
+// flagLookup resolves a long flag name the way cobra would for these arguments:
+// against the command they select, falling back to the root's persistent set.
+//
+// It has to work when parsing has already failed, which is the only time
+// wantsJSON runs -- so it goes through Find, which resolves the command from the
+// positional arguments alone and does not care that a flag further along is
+// unknown.
+func flagLookup(root *cobra.Command, args []string) func(string) *pflag.Flag {
+	target := root
+	if found, _, err := root.Find(args); err == nil && found != nil {
+		target = found
+	}
+	return func(name string) *pflag.Flag {
+		if f := target.Flags().Lookup(name); f != nil {
+			return f
+		}
+		return root.PersistentFlags().Lookup(name)
+	}
 }
 
 // closeSources releases anything a release source or a backup target is

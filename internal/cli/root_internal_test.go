@@ -53,6 +53,13 @@ func TestAnOperationalErrorIsNotReclassifiedAsATypo(t *testing.T) {
 // flag, so a --json after it is never parsed -- and that run is exactly the one
 // that owes its caller an error envelope.
 func TestWantsJSONSeesTheFlagCobraNeverReached(t *testing.T) {
+	// The real command tree, because the scan has to know which flags take
+	// a value and a hand-written stub would only pin what this test assumed.
+	root := newRootCommand(&App{Stream: ui.DefaultStreams()})
+	wantsJSON := func(parsed bool, args []string) bool {
+		return wantsJSON(parsed, flagLookup(root, args), args)
+	}
+
 	if !wantsJSON(false, []string{"--wat", "--json"}) {
 		t.Error("--json after an unparsed flag was not seen")
 	}
@@ -86,6 +93,24 @@ func TestWantsJSONSeesTheFlagCobraNeverReached(t *testing.T) {
 	}
 	if !wantsJSON(false, []string{"--json=false", "--wat", "--json"}) {
 		t.Error("a later --json was overruled by an earlier false one")
+	}
+
+	// A flag that takes a value eats the token after it. `--timeout --json`
+	// is cobra reading "--json" as a duration and failing on it -- nobody
+	// asked for an envelope, and writing one puts JSON on the stdout of a
+	// caller that was never parsing any.
+	if wantsJSON(false, []string{"--timeout", "--json", "--wat"}) {
+		t.Error("a --json consumed as --timeout's value was read as a request")
+	}
+	// The same for a flag that only exists on the subcommand, which is why
+	// the lookup resolves against the command the arguments select.
+	if wantsJSON(false, []string{"init", "--product", "--json", "--wat"}) {
+		t.Error("a --json consumed as --product's value was read as a request")
+	}
+	// And a boolean does not eat anything, so the token after one still
+	// counts.
+	if !wantsJSON(false, []string{"--dry-run", "--json"}) {
+		t.Error("a boolean flag was treated as taking a value")
 	}
 }
 

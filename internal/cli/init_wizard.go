@@ -190,6 +190,14 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 
 	opts.Domains = splitDomains(domainsInput)
 
+	// Before the recovery choice is acted on, because acting on it can write
+	// a private key to disk. A refusal after that point leaves half of a
+	// recovery identity on a machine with no installation to recover, and
+	// the operator is told to move it somewhere safe on the way out.
+	if err := app.confirmProductMatchesConfig(opts.Product); err != nil {
+		return opts, err
+	}
+
 	filled, err := resolveRecoveryChoice(ctx, app, opts, recovery)
 	if err != nil {
 		return opts, err
