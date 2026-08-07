@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -65,6 +67,8 @@ func run(t *testing.T, rel domain.Release, command []string) (ports.HookOutcome,
 }
 
 func TestAHookRunsFromTheReleaseRootAndSeesItsEnvironment(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 echo "cwd=$(pwd)"
@@ -95,6 +99,8 @@ echo "dry=$DEMO_DRY_RUN fd=$DEMO_RESULT_FD"
 // TestDryRunIsAlwaysPresent. A hook testing for the variable's existence rather
 // than its value would otherwise mutate during a plan.
 func TestDryRunIsAlwaysPresent(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 if [ -z "${DEMO_DRY_RUN+set}" ]; then echo "UNSET"; else echo "VALUE=$DEMO_DRY_RUN"; fi
@@ -116,6 +122,8 @@ if [ -z "${DEMO_DRY_RUN+set}" ]; then echo "UNSET"; else echo "VALUE=$DEMO_DRY_R
 // log and the live view, and a hook whose logging was constrained by the
 // manager's parsing would be one nobody could debug.
 func TestAHookReportsThroughFileDescriptorThree(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 echo "this is human output, and is not JSON"
@@ -144,6 +152,8 @@ printf '{"message":"applied 3 migrations","schema_version":12,"artifacts":[{"nam
 // TestAHookThatSaysNothingIsNotInError is the common case: most hooks just do
 // work and exit.
 func TestAHookThatSaysNothingIsNotInError(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	out, err := run(t, rel, hook(t, rel, "migrate", "#!/bin/sh\nexit 0\n"))
 	if err != nil {
@@ -164,6 +174,8 @@ func TestAHookThatSaysNothingIsNotInError(t *testing.T) {
 // that stops it crossing a migration is not applied. A hook that writes nothing
 // is still fine; a hook that writes something unreadable has broken the ABI.
 func TestGarbageOnFileDescriptorThreeFailsTheHook(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 printf 'this is definitely not json' >&3
@@ -183,6 +195,8 @@ exit 0
 // the same bug: JSON that parses as JSON but not as a result. Silently
 // recording schema 0 here is what disarms the rollback gate.
 func TestAMistypedSchemaVersionIsRefusedRatherThanLost(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 printf '{"schema_version": "42"}' >&3
@@ -203,6 +217,8 @@ exit 0
 // to, so `apply` can report "migrations: nothing to run" rather than implying
 // work happened.
 func TestExitTwoMeansNothingToDo(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 echo "schema is already current"
@@ -224,6 +240,8 @@ exit 2
 // TestAHookCanReportSkippedWhileExitingZero: the other half of the same
 // contract, for a hook that would rather not use an exit code for it.
 func TestAHookCanReportSkippedWhileExitingZero(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 printf '{"skipped":true,"message":"nothing to do"}' >&3
@@ -243,6 +261,8 @@ exit 0
 // almost always the reason it failed, and an operator should not have to open
 // the log for it.
 func TestAFailingHookQuotesWhatItSaid(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 echo "connecting" >&2
@@ -277,6 +297,8 @@ exit 1
 // TestAFailingHookPrefersItsStructuredMessage over scraping stderr, because a
 // hook that took the trouble to say what went wrong should be believed.
 func TestAFailingHookPrefersItsStructuredMessage(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 echo "a wall of noise nobody wants in an error message" >&2
@@ -300,6 +322,8 @@ exit 1
 // TestAFailingSilentHookFallsBackToStdout, because a script that only prints
 // to stdout is common and "failed with exit code 1" alone is useless.
 func TestAFailingSilentHookFallsBackToStdout(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 echo "could not reach the database"
@@ -316,6 +340,8 @@ exit 1
 }
 
 func TestAFailingHookThatSaysNothingAtAllStillReportsTheCode(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	_, err := run(t, rel, hook(t, rel, "migrate", "#!/bin/sh\nexit 9\n"))
 	if err == nil {
@@ -329,6 +355,8 @@ func TestAFailingHookThatSaysNothingAtAllStillReportsTheCode(t *testing.T) {
 // TestOnlyTheLastLinesOfAChattyFailureAreQuoted keeps one verbose migration
 // from filling the terminal with its own log.
 func TestOnlyTheLastLinesOfAChattyFailureAreQuoted(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 i=0
@@ -353,6 +381,8 @@ exit 1
 // The refusals. Each is a broken bundle, and each has to say which kind.
 
 func TestAHookThatDoesNotExistIsABrokenBundle(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 
 	_, err := run(t, rel, []string{"hooks/never-shipped"})
@@ -373,6 +403,8 @@ func TestAHookThatDoesNotExistIsABrokenBundle(t *testing.T) {
 }
 
 func TestAHookWithoutTheExecutableBitIsRefused(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	path := filepath.Join(rel.Root, "hooks", "migrate")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
@@ -399,6 +431,8 @@ func TestAHookWithoutTheExecutableBitIsRefused(t *testing.T) {
 // TestAHookPathCannotEscapeTheRelease. The manifest is release-supplied input;
 // a path escaping the root would let a bundle execute arbitrary host files.
 func TestAHookPathCannotEscapeTheRelease(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 
 	for _, path := range []string{"../../../bin/sh", "/bin/sh", "hooks/../../../../bin/sh"} {
@@ -411,6 +445,8 @@ func TestAHookPathCannotEscapeTheRelease(t *testing.T) {
 }
 
 func TestAHookInvokedWithNoCommandIsAnInternalError(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 
 	_, err := run(t, rel, nil)
@@ -427,6 +463,8 @@ func TestAHookInvokedWithNoCommandIsAnInternalError(t *testing.T) {
 // TestAHookThatHangsIsKilled. Without this an `apply` waits forever on a
 // migration that is never going to finish.
 func TestAHookThatHangsIsKilled(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 sleep 300
@@ -447,10 +485,21 @@ sleep 300
 // TestATimeoutReachesTheWholeProcessGroup: a hook that backgrounds work and
 // exits would otherwise leave the child running past the operation.
 func TestATimeoutReachesTheWholeProcessGroup(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
-	marker := filepath.Join(t.TempDir(), "still-alive")
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "still-alive")
+	pidFile := filepath.Join(dir, "child.pid")
+
+	// The child announces itself, so the test can watch the process rather
+	// than wait out the work it would have done. Waiting three seconds for
+	// a file not to appear proves the same thing and charges every run for
+	// it -- and proves it only for a child that sleeps less than three
+	// seconds.
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
-sh -c 'sleep 2; echo yes > `+marker+`' &
+sh -c 'sleep 30; echo yes > `+marker+`' &
+echo $! > `+pidFile+`
 sleep 300
 `)
 
@@ -460,17 +509,34 @@ sleep 300
 		t.Fatal("a hanging hook was reported successful")
 	}
 
-	// If the group was killed, the backgrounded child never got to write.
-	time.Sleep(3 * time.Second)
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("the hook never recorded its child: %v", err)
+	}
+	child, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatalf("the hook wrote %q, want a pid", raw)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for syscall.Kill(child, 0) != syscall.ESRCH {
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d, backgrounded by the hook, survived the timeout: a "+
+				"killed operation leaves work running behind it", child)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	if _, err := os.Stat(marker); err == nil {
-		t.Error("a process the hook backgrounded survived the timeout, so a " +
-			"killed operation leaves work running behind it")
+		t.Error("the backgrounded child got far enough to write its marker")
 	}
 }
 
 // TestAHookThatFloodsTheResultChannelIsBounded. A broken hook must not take
 // the manager's memory with it.
 func TestAHookThatFloodsTheResultChannelIsBounded(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 head -c 4000000 /dev/zero | tr '\0' 'x' >&3 2>/dev/null || true
@@ -492,6 +558,8 @@ exit 0
 
 // TestCancellingAnOperationStopsItsHook is what ctrl-c has to do.
 func TestCancellingAnOperationStopsItsHook(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", "#!/bin/sh\nsleep 300\n")
 
@@ -515,6 +583,8 @@ func TestCancellingAnOperationStopsItsHook(t *testing.T) {
 // files interpolate, so a hook and a topology file refer to a port the same
 // way.
 func TestParametersReachAHookUnderTheDocumentedNames(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 echo "port=$DEMO_PARAM_HTTP_PORT level=$DEMO_PARAM_LOG_LEVEL"
@@ -536,6 +606,8 @@ echo "port=$DEMO_PARAM_HTTP_PORT level=$DEMO_PARAM_LOG_LEVEL"
 // TestSecretsAreScrubbedFromHookOutput. A hook that echoes a connection string
 // must not put it in the log.
 func TestSecretsAreScrubbedFromHookOutput(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	const secret = "s3cr3t-database-password"
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
@@ -565,6 +637,8 @@ exit 1
 // without one is a data race in whatever subscribes to it. The race detector
 // found this the first time the test was written without it.
 func TestOutputIsForwardedLineByLine(t *testing.T) {
+	t.Parallel()
+
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 echo "first"

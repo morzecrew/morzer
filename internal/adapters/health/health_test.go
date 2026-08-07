@@ -29,6 +29,8 @@ func spec(check domain.HealthCheck) ports.CheckSpec {
 }
 
 func TestHTTPProbeReportsWhatTheServerDid(t *testing.T) {
+	t.Parallel()
+
 	handlers := map[string]struct {
 		handler http.HandlerFunc
 		ok      bool
@@ -84,6 +86,8 @@ func TestHTTPProbeReportsWhatTheServerDid(t *testing.T) {
 // TestHTTPProbeOnNothingListening is the state a deployment is in for the first
 // few seconds of every apply, so its message is one operators read often.
 func TestHTTPProbeOnNothingListening(t *testing.T) {
+	t.Parallel()
+
 	// A port that was listening and is not any more: bound, read, closed.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -111,8 +115,14 @@ func TestHTTPProbeOnNothingListening(t *testing.T) {
 }
 
 func TestHTTPProbeTimesOutRatherThanHanging(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		time.Sleep(2 * time.Second)
+	t.Parallel()
+
+	// The handler waits for the client to give up rather than sleeping a
+	// fixed two seconds: httptest.Server.Close blocks on outstanding
+	// requests, so a sleep is paid in full on every run even though the
+	// probe times out in a tenth of it.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
 	}))
 	defer srv.Close()
 
@@ -134,6 +144,8 @@ func TestHTTPProbeTimesOutRatherThanHanging(t *testing.T) {
 }
 
 func TestHTTPProbeRefusesAURLItCannotUse(t *testing.T) {
+	t.Parallel()
+
 	res, err := health.NewHTTP().Check(context.Background(), spec(domain.HealthCheck{
 		Name: "bad", Type: domain.HealthHTTP, URL: "://not a url",
 	}))
@@ -144,6 +156,8 @@ func TestHTTPProbeRefusesAURLItCannotUse(t *testing.T) {
 
 // TestTCPProbeAgainstARealListener covers the prober that had no test at all.
 func TestTCPProbeAgainstARealListener(t *testing.T) {
+	t.Parallel()
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -176,6 +190,8 @@ func TestTCPProbeAgainstARealListener(t *testing.T) {
 }
 
 func TestTCPProbeOnAClosedPort(t *testing.T) {
+	t.Parallel()
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -195,6 +211,8 @@ func TestTCPProbeOnAClosedPort(t *testing.T) {
 }
 
 func TestCommandProbeReportsTheExitStatus(t *testing.T) {
+	t.Parallel()
+
 	prober := health.NewCommand(exec.New(), nil)
 	dir := t.TempDir()
 
@@ -241,6 +259,8 @@ func TestCommandProbeReportsTheExitStatus(t *testing.T) {
 // TestCommandProbeTruncatesAWallOfOutput keeps one chatty check from filling a
 // status report.
 func TestCommandProbeTruncatesAWallOfOutput(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	script := writeScript(t, dir, "chatty",
 		"#!/bin/sh\nhead -c 5000 /dev/zero | tr '\\0' 'x'\nexit 0\n")
@@ -261,6 +281,8 @@ func TestCommandProbeTruncatesAWallOfOutput(t *testing.T) {
 }
 
 func TestCommandProbeReportsAMissingExecutable(t *testing.T) {
+	t.Parallel()
+
 	res, err := health.NewCommand(exec.New(), nil).Check(context.Background(),
 		ports.CheckSpec{
 			Check: domain.HealthCheck{

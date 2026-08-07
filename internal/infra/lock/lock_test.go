@@ -22,7 +22,11 @@ import (
 
 func locker(t *testing.T) *lock.Locker {
 	t.Helper()
-	return lock.New(filepath.Join(t.TempDir(), "locks"))
+	// A short poll: the waiting tests need a waiter that has certainly
+	// retried, and the production half-second buys that in real seconds
+	// every run without making the assertion any stronger.
+	return lock.New(filepath.Join(t.TempDir(), "locks")).
+		WithPollInterval(10 * time.Millisecond)
 }
 
 func owner(id string) ports.LockOwner {
@@ -30,6 +34,8 @@ func owner(id string) ports.LockOwner {
 }
 
 func TestALockIsExclusiveAndReleasable(t *testing.T) {
+	t.Parallel()
+
 	l := locker(t)
 	ctx := context.Background()
 
@@ -69,6 +75,8 @@ func TestALockIsExclusiveAndReleasable(t *testing.T) {
 // also call it explicitly. A second call must not report an error the caller
 // would then log as a failure.
 func TestReleaseIsIdempotent(t *testing.T) {
+	t.Parallel()
+
 	l := locker(t)
 	release, err := l.Acquire(context.Background(), "deployment", ports.LockOptions{})
 	if err != nil {
@@ -86,6 +94,8 @@ func TestReleaseIsIdempotent(t *testing.T) {
 // TestTheRefusalNamesWhoHoldsItAndForHowLong is the whole reason there is an
 // owner sidecar at all.
 func TestTheRefusalNamesWhoHoldsItAndForHowLong(t *testing.T) {
+	t.Parallel()
+
 	l := locker(t)
 	ctx := context.Background()
 
@@ -134,6 +144,8 @@ func TestTheRefusalNamesWhoHoldsItAndForHowLong(t *testing.T) {
 // wrote a sidecar -- an older manager, or one that crashed between flock and
 // write -- must still produce an actionable message.
 func TestARefusalWithoutARecordStillSaysSomethingUseful(t *testing.T) {
+	t.Parallel()
+
 	dir := filepath.Join(t.TempDir(), "locks")
 	l := lock.New(dir)
 	ctx := context.Background()
@@ -166,6 +178,8 @@ func TestARefusalWithoutARecordStillSaysSomethingUseful(t *testing.T) {
 }
 
 func TestOwnerOnALockNobodyHolds(t *testing.T) {
+	t.Parallel()
+
 	l := locker(t)
 
 	got, found, err := l.Owner(context.Background(), "deployment")
@@ -178,6 +192,8 @@ func TestOwnerOnALockNobodyHolds(t *testing.T) {
 }
 
 func TestOwnerReportsTheHolderWithoutTakingTheLock(t *testing.T) {
+	t.Parallel()
+
 	l := locker(t)
 	ctx := context.Background()
 
@@ -221,6 +237,8 @@ func TestOwnerReportsTheHolderWithoutTakingTheLock(t *testing.T) {
 // the flock is gone with the process, the sidecar is not. Sending an operator
 // after a PID that no longer exists is worse than saying nothing.
 func TestAStaleRecordIsNotReportedAsAHolder(t *testing.T) {
+	t.Parallel()
+
 	dir := filepath.Join(t.TempDir(), "locks")
 	l := lock.New(dir)
 	ctx := context.Background()
@@ -260,6 +278,8 @@ func TestAStaleRecordIsNotReportedAsAHolder(t *testing.T) {
 // TestAnUnreadableRecordIsNotAFailure: diagnostics degrading is acceptable,
 // an operation refusing to start because a sidecar is corrupt is not.
 func TestAnUnreadableRecordIsNotAFailure(t *testing.T) {
+	t.Parallel()
+
 	dir := filepath.Join(t.TempDir(), "locks")
 	l := lock.New(dir)
 	ctx := context.Background()
@@ -291,6 +311,8 @@ func TestAnUnreadableRecordIsNotAFailure(t *testing.T) {
 
 // TestWaitingForALockSucceedsWhenItIsReleased is the --wait path.
 func TestWaitingForALockSucceedsWhenItIsReleased(t *testing.T) {
+	t.Parallel()
+
 	l := locker(t)
 	ctx := context.Background()
 
@@ -312,8 +334,16 @@ func TestWaitingForALockSucceedsWhenItIsReleased(t *testing.T) {
 		done <- err
 	}()
 
-	// Long enough that the waiter has certainly polled at least once.
-	time.Sleep(750 * time.Millisecond)
+	// Long enough that the waiter has certainly polled several times at the
+	// interval the fixture sets, and short enough not to be felt.
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case err := <-done:
+		t.Fatalf("the waiter returned (%v) while the lock was still held, so what "+
+			"follows would prove nothing about waiting", err)
+	default:
+	}
+
 	if err := release(); err != nil {
 		t.Fatal(err)
 	}
@@ -331,6 +361,8 @@ func TestWaitingForALockSucceedsWhenItIsReleased(t *testing.T) {
 // TestWaitingIsInterruptible is what makes ctrl-c work while an operator is
 // waiting behind a long update.
 func TestWaitingIsInterruptible(t *testing.T) {
+	t.Parallel()
+
 	l := locker(t)
 	ctx := context.Background()
 
@@ -363,6 +395,8 @@ func TestWaitingIsInterruptible(t *testing.T) {
 // TestAcquireCreatesTheLockDirectory: the first mutating command on a fresh
 // machine runs before anything has created it.
 func TestAcquireCreatesTheLockDirectory(t *testing.T) {
+	t.Parallel()
+
 	dir := filepath.Join(t.TempDir(), "deep", "not", "created", "locks")
 	l := lock.New(dir)
 
@@ -385,6 +419,8 @@ func TestAcquireCreatesTheLockDirectory(t *testing.T) {
 // read-only parent, which is what a machine with a full or remounted /var
 // looks like.
 func TestAcquireRefusesADirectoryItCannotCreate(t *testing.T) {
+	t.Parallel()
+
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions, so this proves nothing as root")
 	}

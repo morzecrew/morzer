@@ -23,19 +23,31 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
-// pollInterval is how often a blocking acquisition retries. Operations run for
-// minutes, so a half-second poll costs nothing and keeps cancellation
+// defaultPollInterval is how often a blocking acquisition retries. Operations
+// run for minutes, so a half-second poll costs nothing and keeps cancellation
 // responsive.
-const pollInterval = 500 * time.Millisecond
+const defaultPollInterval = 500 * time.Millisecond
 
 // Locker is the flock-backed implementation of ports.Locker.
 type Locker struct {
 	dir string
+
+	// pollInterval is the gap between attempts while waiting. A test that
+	// has to observe a waiter actually waiting would otherwise pay the
+	// production interval in real seconds on every run.
+	pollInterval time.Duration
 }
 
 // New returns a Locker storing lock files in dir.
 func New(dir string) *Locker {
-	return &Locker{dir: dir}
+	return &Locker{dir: dir, pollInterval: defaultPollInterval}
+}
+
+// WithPollInterval overrides the wait poll interval. Tests use it to avoid
+// real waits, as health.Waiter.WithInterval does.
+func (l *Locker) WithPollInterval(d time.Duration) *Locker {
+	l.pollInterval = d
+	return l
 }
 
 var _ ports.Locker = (*Locker)(nil)
@@ -101,7 +113,11 @@ func (l *Locker) tryAcquire(ctx context.Context, fl *flock.Flock, opts ports.Loc
 
 	// TryLockContext polls rather than blocking in the kernel, which is
 	// what makes ctrl-c work while waiting for a lock.
-	locked, err := fl.TryLockContext(ctx, pollInterval)
+	interval := l.pollInterval
+	if interval <= 0 {
+		interval = defaultPollInterval
+	}
+	locked, err := fl.TryLockContext(ctx, interval)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return false, domain.Interrupted("gave up waiting for the deployment lock")
