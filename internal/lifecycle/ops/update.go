@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -495,9 +496,15 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 
 			// Staging dirs from earlier crashes are this operation's
 			// own debris, removed under the same deployment lock that
-			// wrote them.
+			// wrote them. Moved-aside debris trees are exempt: they
+			// are kept for inspection (bounded to one, below), and a
+			// back-to-back scheduled update must not erase the one
+			// thing left to diagnose a corrupted release with.
 			stale, _ := filepath.Glob(filepath.Join(parent, ".staging-*"))
 			for _, dir := range stale {
+				if strings.HasPrefix(filepath.Base(dir), ".staging-debris-") {
+					continue
+				}
 				_ = atomicfs.RemoveAll(dir)
 			}
 
@@ -505,19 +512,35 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 			// Check's release.Load failed -- usually a partial
 			// extraction, but a transient I/O or permission failure
 			// reads the same way, and deleting an operator's release
-			// on that evidence would be irreversible. Moved aside
-			// into the staging namespace instead: this run proceeds,
-			// the tree survives for inspection, and the *next* run's
-			// sweep above reclaims it.
+			// on that evidence would be irreversible.
+			//
+			// When that unreadable tree is the *currently installed*
+			// release, nothing is touched: moving the live root aside
+			// on a transient read failure would leave `current`
+			// dangling, and a failed fetch would then have nothing to
+			// compensate back to. The refusal names the real problem.
+			//
+			// Otherwise it is moved aside for inspection -- replacing
+			// any older debris, so exactly one such tree is kept.
 			if _, statErr := os.Stat(staged.Root); statErr == nil {
+				if from.Root != "" && staged.Root == from.Root {
+					return domain.InstallationError(nil,
+						"the currently installed release at %s cannot be read", staged.Root).
+						WithHint("run `morzer doctor`; if the directory is damaged, " +
+							"restore from a backup rather than updating over it")
+				}
+				older, _ := filepath.Glob(filepath.Join(parent, ".staging-debris-*"))
+				for _, dir := range older {
+					_ = atomicfs.RemoveAll(dir)
+				}
 				aside := filepath.Join(parent,
 					fmt.Sprintf(".staging-debris-%d", time.Now().UnixNano()))
 				if err := os.Rename(staged.Root, aside); err != nil {
 					return domain.Internal(err,
 						"cannot move the unreadable tree at %s aside", staged.Root)
 				}
-				st.Warn("moved an unreadable tree at %s aside as %s; the next update reclaims it",
-					staged.Root, filepath.Base(aside))
+				st.Warn("moved an unreadable tree at %s aside as %s; it is kept until "+
+					"the next tree needs moving aside", staged.Root, filepath.Base(aside))
 			}
 
 			tmp, err := os.MkdirTemp(parent, ".staging-")
