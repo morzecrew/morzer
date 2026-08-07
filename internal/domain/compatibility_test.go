@@ -218,6 +218,17 @@ func TestAPreReleaseIsComparedByOrdering(t *testing.T) {
 		{"^1.2.0", "1.5.0-rc.1", true, "a caret range admits an rc inside it"},
 		{"^1.2.0", "2.0.0-rc.1", false, "and refuses one past it"},
 
+		// An operator-less constraint is equality, and the rewrite must
+		// not widen it into something that matches a version it never
+		// named. A complete one stays exact; a partial one is the range
+		// it has always been, whose lower bound admits its own
+		// pre-releases like any other.
+		{"1.2.3", "1.2.3", true, "equality still matches its own version"},
+		{"1.2.3", "1.2.3-rc.1", false, "and an rc is not equal to it"},
+		{"1.2.3", "1.2.4-rc.1", false, "nor is anything else"},
+		{"1.3", "1.3.0-rc.1", true, "a partial version is a range, and this is its floor"},
+		{"1.3", "1.4.0-rc.1", false, "and an rc past the range is past it"},
+
 		// A wildcard cannot carry a pre-release, so the rewrite does
 		// not apply and the library's own answer stands -- refusing,
 		// which is the safe direction for a gate.
