@@ -65,6 +65,8 @@ operation that could destroy or weaken it is a refusal.
 | A bundle whose contents do not match their digest is refused | `TestOCIRefusesABlobThatDoesNotMatchItsDigest` |
 | `require_signature` with no key is refused, because no bundle could satisfy it | `TestRequireSignatureWithoutKeysIsRefusedAtLoad` |
 | The manifest's pinned images are what actually runs | `TestApplyPullsTheImagesTheManifestPins` |
+| A file *added* to a signed bundle is refused, though the signature still verifies: `SHA256SUMS` must cover the whole tree | `TestSignatureVerification` |
+| A hook result the manager cannot read fails the hook rather than silently losing the schema it reported | `TestAMistypedSchemaVersionIsRefusedRatherThanLost` |
 
 ### Filesystem containment
 
@@ -85,6 +87,8 @@ operation that could destroy or weaken it is a refusal.
 | A hook is resolved inside the release, never from `PATH` | `TestAHookPathCannotEscapeTheRelease` |
 | A hook that arrives without the executable bit is a broken bundle, named as one | `TestAHookWithoutTheExecutableBitIsRefused` |
 | A hook's timeout reaches the whole process group, so nothing survives it | `TestATimeoutReachesTheWholeProcessGroup` |
+| A template is opened through the release root, so a symlink out of a directory-sourced bundle cannot be rendered into a config file | `TestATemplateSymlinkOutOfTheBundleIsRefused` |
+| An identity file the parser refuses is named, never quoted: the line it could not read is a private key | `TestAnUnusableIdentityIsNamedWithoutBeingQuoted` |
 
 ### Refusals
 
@@ -231,6 +235,10 @@ arrive.
 | A journal line half-written by a crash does not make `status` unusable | `TestACorruptFinalJournalLineIsDiscardedNotFatal` |
 | An operation flagged for a human blocks `apply` until it is cleared | `TestAnUnfinishedOperationBlocksANewOne` |
 | A crash mid-operation leaves a journal `--resume` continues from | `TestResumeStartsFromTheStepThatDidNotFinish` |
+| Every waiter behind the port waits until the context expires rather than giving up early — the fake included | `TestHealthWaiterContract_Fake` |
+| The same suite holds the real waiter and the real HTTP prober to it | `TestHealthWaiterContract_HTTP` |
+| The backup fake's on-disk layout, verification and retention are the engine's, checked rather than mirrored by hand | `TestBackupEngineContract_Fake` |
+| A parameter the new release stopped declaring is reported and retired, not left to refuse every later command | `TestUpdateRetiresAParameterTheNewReleaseDropped` |
 
 ## What a test in this table has to do
 
