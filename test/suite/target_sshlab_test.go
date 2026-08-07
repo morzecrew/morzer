@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"net"
@@ -432,4 +433,72 @@ type watchedConn struct {
 func (c *watchedConn) Close() error {
 	c.closed.Store(true)
 	return c.Conn.Close()
+}
+
+// TestSSHPushSweepsAStalePartialFile: a push whose cancellation tore the
+// transport down cannot remove its own staging file -- the connection died
+// first -- so the next push of the same component must, or cancelled pushes
+// accumulate garbage on the target until it fills.
+func TestSSHPushSweepsAStalePartialFile(t *testing.T) {
+	client := newSSHKey(t)
+	host := newSSHKey(t)
+	root := t.TempDir()
+	addr := startInProcessSSH(t, host, client.public, root)
+
+	dir := filepath.Join(root, "offsite")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	ref := ports.TargetRef{
+		Scheme: "ssh", Host: addr, Path: dir, User: "ops",
+		URL: "ssh://ops@" + addr + dir,
+		Credentials: ports.TargetCredentials{
+			PrivateKey: client.private,
+			KnownHosts: sshKnownHostsLine(t, addr, host.public),
+		},
+	}
+	adapter := sftp.New()
+	t.Cleanup(func() { _ = adapter.Close() })
+
+	// A minimal real backup to push.
+	const id = "20260807T120000Z"
+	local := filepath.Join(t.TempDir(), id)
+	require.NoError(t, os.MkdirAll(local, 0o700))
+	content := []byte("ciphertext")
+	require.NoError(t, os.WriteFile(filepath.Join(local, "db.dump.age"), content, 0o600))
+	manifest := ports.BackupManifest{
+		SchemaVersion:  2,
+		ID:             id,
+		InstallationID: "inst_sshlab",
+		Product:        "demo",
+		ReleaseVersion: domain.MustParseVersion("1.0.0"),
+		CreatedAt:      domain.NewTime(time.Now()),
+		ManagerVersion: "0.0.0",
+		Reason:         "sweep-test",
+		Components: []ports.ComponentRecord{{
+			Component:  ports.ComponentDatabase,
+			Path:       "db.dump.age",
+			Size:       int64(len(content)),
+			Encryption: ports.EncryptionAge,
+		}},
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(local, ports.BackupManifestFileName),
+		append(data, '\n'), 0o600))
+
+	// The garbage a torn-down push leaves, planted on the server's own
+	// filesystem beside the component's final name.
+	remote := filepath.Join(dir, id)
+	require.NoError(t, os.MkdirAll(remote, 0o700))
+	stale := filepath.Join(remote, "db.dump.age.partial-999-9")
+	require.NoError(t, os.WriteFile(stale, []byte("half a component"), 0o600))
+
+	_, err = adapter.Push(context.Background(), ref, local, id)
+	require.NoError(t, err)
+
+	if _, statErr := os.Stat(stale); !os.IsNotExist(statErr) {
+		t.Error("the stale partial from a torn-down push was not swept")
+	}
+	require.NoError(t, adapter.Verify(context.Background(),
+		ports.RemoteRef{Target: ref, ID: id}),
+		"the pushed backup must verify end to end")
 }

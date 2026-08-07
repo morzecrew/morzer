@@ -212,6 +212,12 @@ func (e *Engine) createDir() (id, dir string, err error) {
 // hook choose the location would put retention and disk accounting outside the
 // manager's reach, which is most of what it is here to provide.
 func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[string]string) (ports.BackupRef, error) {
+	// First, before any refusal below: a machine whose release lost its
+	// backup hook can still be carrying another release's restore debris.
+	if err := e.sweepStagedPlaintext(); err != nil {
+		return ports.BackupRef{}, err
+	}
+
 	components := scope.Components
 	if len(components) == 0 {
 		components = ports.AllComponents
@@ -379,6 +385,16 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		Reason:         scope.Reason,
 		Uncaptured:     uncaptured,
 	}
+
+	// The components' directory entries become durable before the manifest
+	// that names them does: a manifest that survives a crash must never
+	// describe files that did not. The whole tree, because components nest
+	// -- volumes/*.tar.age lives a level down, and a hook may have written
+	// artifacts in subdirectories of its own -- and then the backup
+	// directory's own entry in the store, without which the durable backup
+	// is one `backup list` cannot see.
+	atomicfs.SyncTree(dir)
+	atomicfs.SyncDir(e.paths.BackupsDir())
 
 	if err := writeManifest(dir, manifest); err != nil {
 		_ = atomicfs.RemoveAll(dir)
@@ -606,6 +622,14 @@ func encryptFile(src, dst string, recipients []string) error {
 		_ = atomicfs.RemoveAll(dst)
 		return err
 	}
+	// The ciphertext is the backup. The manifest naming it is fsynced on
+	// write, so without this a power cut could leave a durable manifest
+	// pointing at truncated components -- a backup that reported success
+	// and fails at restore time, the one moment nothing can be done.
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return domain.BackupError(err, "cannot flush %s to disk", dst)
+	}
 	if err := out.Close(); err != nil {
 		return domain.BackupError(err, "cannot finish writing %s", dst)
 	}
@@ -702,6 +726,10 @@ func (e *Engine) Verify(ctx context.Context, ref ports.BackupRef) error {
 
 // Restore runs the release's restore hook against a verified backup.
 func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.RestoreOptions) error {
+	if err := e.sweepStagedPlaintext(); err != nil {
+		return err
+	}
+
 	dir, err := e.resolve(ref)
 	if err != nil {
 		return err
@@ -943,6 +971,43 @@ func (e *Engine) hookEnv(phase ports.HookPhase, backupDir string) ports.HookEnv 
 		ConfigFile:     e.paths.ApplicationFile(),
 		ComposeProject: e.release.Manifest.Runtime.Project,
 	}
+}
+
+// sweepStagedPlaintext removes restore staging directories a dead process
+// left behind.
+//
+// stage decrypts into <backup>/.restore-* and cleans up only through an
+// in-process defer, so a SIGKILL or power cut mid-restore strands the
+// database dump and volume tarballs as plaintext beside the ciphertext --
+// forever: Prune removes whole backups past retention, and the backup being
+// restored is typically the newest, which is never pruned. Swept at the start
+// of the operations that run under the deployment lock, with overwrite for
+// the same reason a failed backup scrubs rather than unlinks: this is
+// product data on free blocks otherwise.
+//
+// A removal failure fails the operation: proceeding would report success over
+// decrypted product data the sweep just proved it cannot clean up. The parent
+// directory is synced after each removal so the deletion itself survives a
+// power cut rather than resurrecting the plaintext.
+func (e *Engine) sweepStagedPlaintext() error {
+	stale, _ := filepath.Glob(filepath.Join(e.paths.BackupsDir(), "*", ".restore-*"))
+	var errs []error
+	for _, dir := range stale {
+		// Every directory is attempted: one stuck removal must not
+		// leave its siblings unswept on top of failing the operation.
+		if err := atomicfs.RemoveWithOverwrite(dir); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		atomicfs.SyncDir(filepath.Dir(dir))
+	}
+	if len(errs) > 0 {
+		return domain.BackupError(errors.Join(errs...),
+			"cannot remove stale restore staging under %s", e.paths.BackupsDir()).
+			WithHint("it holds decrypted product data from an interrupted restore; " +
+				"remove the .restore-* directories manually before continuing")
+	}
+	return nil
 }
 
 func writeManifest(dir string, m ports.BackupManifest) error {

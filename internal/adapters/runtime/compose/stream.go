@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	osexec "os/exec"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
@@ -30,6 +32,45 @@ type streamCloser struct {
 	io.ReadCloser
 	cmd  *osexec.Cmd
 	pgid int
+
+	mu        sync.Mutex
+	killTimer *time.Timer
+}
+
+// armKill schedules a group-wide SIGKILL one grace period after cancellation.
+//
+// WaitDelay's escalation is os.Process.Kill -- the leader alone -- so a
+// compose child that ignores the group TERM would survive it. The timer is
+// disarmed once the leader is reaped; until then it carries the same bounded
+// PID-reuse tradeoff the shared runner's own post-Wait kill accepts.
+func (s *streamCloser) armKill(pgid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.killTimer != nil || pgid <= 0 {
+		return
+	}
+	s.killTimer = time.AfterFunc(exec.DefaultGrace, func() {
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	})
+}
+
+// disarmKill stops the escalation once the whole group is gone. Stopping it
+// on leader reap alone would spare a child that ignored the group TERM --
+// the exact process the escalation exists for. While any member survives,
+// the bounded timer stays armed, the same tradeoff as arming it.
+func (s *streamCloser) disarmKill() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.killTimer == nil {
+		return
+	}
+	// Only ESRCH proves the group is gone; a nil probe means members
+	// survive, and any other error (EPERM above all) means the group
+	// exists but cannot be probed -- either way the timer stays.
+	if s.pgid > 0 && !errors.Is(syscall.Kill(-s.pgid, 0), syscall.ESRCH) {
+		return
+	}
+	s.killTimer.Stop()
 }
 
 func (s *streamCloser) Close() error {
@@ -40,6 +81,7 @@ func (s *streamCloser) Close() error {
 	if s.cmd != nil {
 		_ = s.cmd.Wait()
 	}
+	s.disarmKill()
 	return closeErr
 }
 
@@ -53,6 +95,25 @@ func startStream(ctx context.Context, argv []string, cfg ports.RuntimeConfig) (i
 	cmd.Env = exec.BaseEnv(cfg.Env)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
+	// Group-wide TERM with a group-wide KILL escalation, mirroring the
+	// shared runner's signalGroup: the TERM falls back to the leader when
+	// the group is already gone (ESRCH), so it is never silently a no-op,
+	// and the KILL is armed on a timer because WaitDelay's own escalation
+	// is os.Process.Kill -- the leader alone -- which a compose child that
+	// ignores TERM would survive. CommandContext's default did neither.
+	sc := &streamCloser{}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		sc.armKill(cmd.Process.Pid)
+		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM); err != nil {
+			return cmd.Process.Signal(syscall.SIGTERM)
+		}
+		return nil
+	}
+	cmd.WaitDelay = exec.DefaultGrace
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, domain.RuntimeError(err, "cannot open a log stream")
@@ -65,9 +126,9 @@ func startStream(ctx context.Context, argv []string, cfg ports.RuntimeConfig) (i
 		return nil, domain.RuntimeError(err, "cannot start the log stream")
 	}
 
-	pgid := 0
+	sc.ReadCloser, sc.cmd = stdout, cmd
 	if cmd.Process != nil {
-		pgid = cmd.Process.Pid
+		sc.pgid = cmd.Process.Pid
 	}
-	return &streamCloser{ReadCloser: stdout, cmd: cmd, pgid: pgid}, nil
+	return sc, nil
 }

@@ -32,6 +32,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Once the first signal has cancelled the context, the default
+	// disposition comes back: a second Ctrl-C then terminates the process
+	// the ordinary way. Without this every further signal is swallowed, and
+	// the operator watching a wedged teardown -- compensation deliberately
+	// keeps running under WithoutCancel -- has no escalation short of
+	// `kill -9`, which skips the final journal write this way still gets a
+	// chance at.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+
 	code := cli.Execute(ctx, cli.BuildInfo{
 		Version: version,
 		Commit:  commit,

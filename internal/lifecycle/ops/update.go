@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -480,9 +481,109 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 			if err != nil {
 				return err
 			}
-			if _, err := d.Source.Fetch(ctx, ref, staged.Root); err != nil {
+
+			// Staged into a hidden sibling and renamed into place. A
+			// crash mid-extraction otherwise leaves a partial tree at
+			// the digest-addressed path -- and if that partial tree
+			// happens to load, the retry refuses it as "installed with
+			// a different digest", an error whose only remedy is
+			// hand-deleting a directory everything else treats as
+			// immutable.
+			parent := filepath.Dir(staged.Root)
+			if err := atomicfs.MkdirAll(parent, 0o755); err != nil {
 				return err
 			}
+
+			// Staging dirs from earlier crashes are this operation's
+			// own debris, removed under the same deployment lock that
+			// wrote them. Moved-aside debris trees are exempt: they
+			// are kept for inspection (bounded to one, below), and a
+			// back-to-back scheduled update must not erase the one
+			// thing left to diagnose a corrupted release with.
+			stale, _ := filepath.Glob(filepath.Join(parent, ".staging-*"))
+			for _, dir := range stale {
+				if strings.HasPrefix(filepath.Base(dir), ".staging-debris-") {
+					continue
+				}
+				_ = atomicfs.RemoveAll(dir)
+			}
+
+			// A tree at the final path reached Execute only because
+			// Check's release.Load failed -- usually a partial
+			// extraction, but a transient I/O or permission failure
+			// reads the same way, and deleting an operator's release
+			// on that evidence would be irreversible.
+			//
+			// When that unreadable tree is the *currently installed*
+			// release, nothing is touched: moving the live root aside
+			// on a transient read failure would leave `current`
+			// dangling, and a failed fetch would then have nothing to
+			// compensate back to. The refusal names the real problem.
+			//
+			// Otherwise it is moved aside for inspection -- replacing
+			// any older debris, so exactly one such tree is kept.
+			if _, statErr := os.Stat(staged.Root); statErr == nil {
+				// The live root can be known by record or only by the
+				// `current` symlink; either way it is never moved.
+				liveRoot := from.Root
+				if liveRoot == "" {
+					if link, lerr := os.Readlink(d.Paths.CurrentLink()); lerr == nil {
+						liveRoot = link
+					}
+				}
+				if liveRoot != "" && staged.Root == liveRoot {
+					return domain.InstallationError(nil,
+						"the currently installed release at %s cannot be read", staged.Root).
+						WithHint("run `morzer doctor`; if the directory is damaged, " +
+							"restore from a backup rather than updating over it")
+				}
+				// Renamed aside first, older debris removed after: the
+				// reverse order would destroy the one kept tree and
+				// then fail the rename on the same transient class
+				// this block exists to survive, retaining nothing. A
+				// failed removal here leaves an extra tree, not a
+				// lost one, so it does not abort.
+				aside := filepath.Join(parent,
+					fmt.Sprintf(".staging-debris-%d", time.Now().UnixNano()))
+				if err := os.Rename(staged.Root, aside); err != nil {
+					return domain.Internal(err,
+						"cannot move the unreadable tree at %s aside", staged.Root)
+				}
+				older, _ := filepath.Glob(filepath.Join(parent, ".staging-debris-*"))
+				for _, dir := range older {
+					if dir != aside {
+						_ = atomicfs.RemoveAll(dir)
+					}
+				}
+				st.Warn("moved an unreadable tree at %s aside as %s; it is kept until "+
+					"the next tree needs moving aside", staged.Root, filepath.Base(aside))
+			}
+
+			tmp, err := os.MkdirTemp(parent, ".staging-")
+			if err != nil {
+				return domain.Internal(err, "cannot create a staging directory in %s", parent)
+			}
+			defer func() { _ = atomicfs.RemoveAll(tmp) }()
+
+			if _, err := d.Source.Fetch(ctx, ref, tmp); err != nil {
+				return err
+			}
+			// MkdirTemp creates 0700; the release store is 0755, as
+			// CopyTree and ExtractTarZst would have made the final
+			// path themselves.
+			if err := os.Chmod(tmp, 0o755); err != nil {
+				return domain.Internal(err, "cannot set mode on the staged release")
+			}
+			// Every directory entry inside the tree, then the tree's
+			// own entry. File contents were fsynced as they were
+			// written; without the directory half a power cut can
+			// keep the promoted root while losing entries inside it
+			// -- a tree the digest blessed, minus files.
+			atomicfs.SyncTree(tmp)
+			if err := os.Rename(tmp, staged.Root); err != nil {
+				return domain.Internal(err, "cannot move the staged release into place")
+			}
+			atomicfs.SyncDir(parent)
 			return nil
 		},
 		Verify: func(ctx context.Context, st *engine.State) error {

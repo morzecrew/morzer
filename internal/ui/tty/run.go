@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/ui/theme"
 )
@@ -19,8 +20,14 @@ type Options struct {
 	Output io.Writer
 
 	// Input is the terminal the program reads keys from. Only Ctrl-C means
-	// anything, and even that is drawn rather than acted on.
+	// anything.
 	Input *os.File
+
+	// OnCancel is invoked on the first Ctrl-C. Raw mode turns ISIG off, so
+	// the keystroke is the only form a ^C takes at a live view -- without
+	// this callback the footer's "ctrl-c to cancel" is a lie and the
+	// operation runs to completion. A second Ctrl-C force-quits.
+	OnCancel func()
 
 	Theme *theme.Theme
 
@@ -49,7 +56,7 @@ type Options struct {
 // event bus and a closure.
 func Run(opts Options, work func()) {
 	program := tea.NewProgram(
-		New(opts.Theme),
+		New(opts.Theme, opts.OnCancel),
 		tea.WithOutput(opts.Output),
 		tea.WithInput(opts.Input),
 	)
@@ -68,8 +75,17 @@ func Run(opts Options, work func()) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if _, err := program.Run(); err != nil {
+		final, err := program.Run()
+		if err != nil {
 			handOver(err)
+			return
+		}
+		// The second Ctrl-C's force quit. Exiting here rather than in
+		// the model means Run has returned -- Bubble Tea has restored
+		// the terminal -- so the operator's shell comes back cooked
+		// instead of raw with no echo.
+		if m, ok := final.(*Model); ok && m.forceQuit {
+			os.Exit(domain.ExitInterrupted)
 		}
 	}()
 

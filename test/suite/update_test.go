@@ -448,3 +448,71 @@ func TestUpdateFromAnArchivePinsTheSameDigest(t *testing.T) {
 	require.NoError(t, err,
 		"a digest recorded from the unpacked bundle must verify against its archive")
 }
+
+// TestUpdateRecoversFromAPartiallyStagedRelease: a crash mid-extraction used
+// to leave a partial tree at the digest-addressed path, and the retry then
+// failed on it -- worst case as "installed with a different digest", an error
+// whose only remedy was hand-deleting a directory everything else treats as
+// immutable. Staging into a hidden sibling and renaming into place makes the
+// retry self-healing.
+func TestUpdateRecoversFromAPartiallyStagedRelease(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// The debris a killed extraction leaves: a directory at the final path
+	// holding half a bundle, and an abandoned staging dir beside it.
+	partial := filepath.Join(h.Paths.ReleasesDir(), "1.3.0")
+	require.NoError(t, os.MkdirAll(partial, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(partial, "manifest.yaml"),
+		[]byte("api_version: morze.dev/v1alpha1\n"), 0o644))
+	stale := filepath.Join(h.Paths.ReleasesDir(), ".staging-12345")
+	require.NoError(t, os.MkdirAll(stale, 0o700))
+	// An older kept-debris tree: creating new debris replaces it, so the
+	// advertised bound of one tree holds.
+	oldDebris := filepath.Join(h.Paths.ReleasesDir(), ".staging-debris-111")
+	require.NoError(t, os.MkdirAll(oldDebris, 0o755))
+
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.NoError(t, err, "an update could not recover from its own crash debris")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
+	assert.NoDirExists(t, stale, "the abandoned staging directory must be swept")
+
+	assert.NoDirExists(t, oldDebris, "creating new debris must replace the old kept tree")
+	debris, err := filepath.Glob(filepath.Join(h.Paths.ReleasesDir(), ".staging-debris-*"))
+	require.NoError(t, err)
+	assert.Len(t, debris, 1, "exactly one debris tree is kept: the partial 1.3.0 moved aside")
+}
+
+// TestUpdateRefusesWhenTheCurrentReleaseTreeIsUnreadable: an unreadable tree
+// at the staged path is normally crash debris and gets moved aside -- but when
+// that path IS the live release, moving it would leave `current` dangling with
+// a failed fetch's compensation pointing at nothing. The refusal is the fix.
+func TestUpdateRefusesWhenTheCurrentReleaseTreeIsUnreadable(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// A same-version bundle, so the staged path is the live release's own.
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+
+	// The live tree stops loading, the way a transient I/O fault looks.
+	live := filepath.Join(h.Paths.ReleasesDir(), "1.2.0")
+	require.NoError(t, os.Remove(filepath.Join(live, "manifest.yaml")))
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err, "the update proceeded over an unreadable live release")
+	assert.Contains(t, domain.AsError(err).Error(), "currently installed release",
+		"the refusal must name the real problem, not generic staging debris")
+	assert.DirExists(t, live, "the live tree must not be moved or deleted")
+}

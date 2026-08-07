@@ -468,6 +468,13 @@ func (e *Engine) captureOne(
 			"cannot capture volume %s", planned.volume.Name).WithHintFrom(err))
 	}
 
+	// The tarball was written by the runtime's helper, whose descriptor is
+	// out of reach; flushed here so the digest below describes bytes that
+	// will still exist after a power cut, not page cache.
+	if err := atomicfs.SyncFile(path); err != nil {
+		return ports.ComponentRecord{}, err
+	}
+
 	size, err := fileSize(path)
 	if err != nil {
 		return ports.ComponentRecord{}, err

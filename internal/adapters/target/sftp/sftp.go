@@ -190,6 +190,20 @@ func (c *connection) close() error {
 	return errors.Join(errs...)
 }
 
+// kill severs the transport out from under in-flight requests.
+//
+// sftp.Client.Close is not safe to call concurrently with requests still in
+// flight; closing the ssh transport instead makes every pending request fail
+// and the client's own goroutines exit on their error path -- which is
+// exactly the teardown both callers of drop want, for a corpse or for a
+// cancellation. close() stays for the orderly end-of-command path, where
+// nothing is in flight by construction.
+func (c *connection) kill() {
+	if c.ssh != nil {
+		_ = c.ssh.Close()
+	}
+}
+
 // store connects, or reuses a connection, and returns the blob.Store over it.
 func (t *Target) store(ctx context.Context, ref ports.TargetRef) (*sftpStore, error) {
 	conn, key, err := t.connect(ctx, ref)
@@ -215,11 +229,12 @@ func (t *Target) drop(key string, conn *connection) {
 	}
 	t.mu.Unlock()
 
-	// Closed outside the lock, and only by whoever removed it, so a
-	// connection is never closed twice and Close is never held up by a
-	// server that has stopped answering.
+	// Severed outside the lock, and only by whoever removed it, so a
+	// connection is never torn down twice and Close is never held up by a
+	// server that has stopped answering. kill rather than close: drop's
+	// callers reach it with requests possibly still in flight.
 	if cached {
-		_ = conn.close()
+		conn.kill()
 	}
 }
 
@@ -563,6 +578,22 @@ type sftpStore struct {
 
 var _ blob.Store = (*sftpStore)(nil)
 
+// ctxReader stops a copy that is already running when the operation is
+// abandoned -- localdir's pattern, repeated here because the two stores share
+// a contract, not code. Between reads, not during one: a read blocked on a
+// dead connection stays blocked, and the connection teardown handles that.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
 func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -571,8 +602,50 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	if err != nil {
 		return err
 	}
+
+	// The watcher covers every remote call in this function, not only the
+	// copy: a stalled server can hang MkdirAll or Create just as well.
+	// Cancellation tears the transport down -- dropDead closes and evicts
+	// the cached connection, the same lever the corpse-detection path
+	// pulls -- and the forced error is what unblocks whichever call was
+	// stuck. The next operation redials.
+	watchDone := make(chan struct{})
+	defer close(watchDone)
+	go func() {
+		select {
+		case <-ctx.Done():
+			if s.dropDead != nil {
+				s.dropDead()
+			}
+		case <-watchDone:
+		}
+	}()
+	// After the teardown, every remote call reports connection errors; the
+	// operator's cancellation is the true cause and the one reported --
+	// classified here, so the direct command paths that never pass through
+	// the engine's classifier still exit as interrupted.
+	fail := func(cause error, format string, args ...any) error {
+		if ctx.Err() != nil {
+			return domain.Interrupted("the push to the backup target was cancelled")
+		}
+		return s.unreachable(cause, format, args...)
+	}
+
 	if err := s.client.MkdirAll(path.Dir(target)); err != nil {
-		return s.unreachable(err, "cannot create %s on the target", path.Dir(target))
+		return fail(err, "cannot create %s on the target", path.Dir(target))
+	}
+
+	// Stale .partial-* files of this component, left by pushes whose
+	// cancellation tore the connection down before their own cleanup could
+	// run, are swept before writing a new one. Only this target's: the
+	// deployment lock serialises pushes, so anything matching is a leftover.
+	if entries, err := s.client.ReadDir(path.Dir(target)); err == nil {
+		stalePrefix := path.Base(target) + ".partial-"
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), stalePrefix) {
+				_ = s.client.Remove(path.Join(path.Dir(target), e.Name()))
+			}
+		}
 	}
 
 	// Written beside and renamed, so an interrupted transfer never leaves a
@@ -582,16 +655,19 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	tmp := fmt.Sprintf("%s.partial-%d-%d", target, os.Getpid(), s.seq.Add(1))
 	f, err := s.client.Create(tmp)
 	if err != nil {
-		return s.unreachable(err, "cannot create %s on the target", tmp)
+		return fail(err, "cannot create %s on the target", tmp)
 	}
-	if _, err := io.Copy(f, r); err != nil {
+	// The reader checks the context between chunks, as localdir's push
+	// does; a write already *blocked* past that check is what the watcher
+	// above unblocks.
+	if _, copyErr := io.Copy(f, ctxReader{ctx: ctx, r: r}); copyErr != nil {
 		_ = f.Close()
 		_ = s.client.Remove(tmp)
-		return s.unreachable(err, "cannot write %s to the target", key)
+		return fail(copyErr, "cannot write %s to the target", key)
 	}
 	if err := f.Close(); err != nil {
 		_ = s.client.Remove(tmp)
-		return s.unreachable(err, "cannot finish writing %s to the target", key)
+		return fail(err, "cannot finish writing %s to the target", key)
 	}
 
 	// Replaced atomically where the server supports it. Removing the old
@@ -612,21 +688,21 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	if _, ok := s.client.HasExtension(posixRenameExtension); ok {
 		if err := s.client.PosixRename(tmp, target); err != nil {
 			_ = s.client.Remove(tmp)
-			return s.unreachable(err, "cannot replace %s on the target", key)
+			return fail(err, "cannot replace %s on the target", key)
 		}
 	} else {
 		if removeErr := s.client.Remove(target); removeErr != nil &&
 			!errors.Is(removeErr, fs.ErrNotExist) {
 			_ = s.client.Remove(tmp)
-			return s.unreachable(removeErr, "cannot replace %s on the target", key)
+			return fail(removeErr, "cannot replace %s on the target", key)
 		}
 		if err := s.client.Rename(tmp, target); err != nil {
 			_ = s.client.Remove(tmp)
-			return s.unreachable(err, "cannot place %s on the target", key)
+			return fail(err, "cannot place %s on the target", key)
 		}
 	}
 	if err := s.client.Chmod(target, 0o600); err != nil {
-		return s.unreachable(err, "cannot set the mode of %s on the target", key)
+		return fail(err, "cannot set the mode of %s on the target", key)
 	}
 	return nil
 }

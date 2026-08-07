@@ -5,8 +5,12 @@
 // "the UI observes, never participates" is enforced by the interface rather
 // than by convention. Everything here follows from that:
 //
-//   - It never cancels. Ctrl-C is observed and drawn as a state; the root
-//     context's signal handler in main owns the actual cancellation.
+//   - It cannot reach the engine. Ctrl-C invokes the caller-supplied OnCancel
+//     -- necessarily so, because Bubble Tea's raw mode turns ISIG off and the
+//     kernel never generates the SIGINT main's handler listens for; a ^C at
+//     a live view arrives as a keystroke and nothing else. The callback
+//     cancels the root context exactly as the signal would have; the view
+//     itself still only draws.
 //   - It can panic. The bus recovers from a sink panic, logs it and drops the
 //     sink, and the operation runs to completion with no display.
 //   - It can fail to start. Then the plain presenter takes the whole run, and
@@ -89,15 +93,27 @@ type Model struct {
 	failure    *domain.Error
 	status     string
 
+	// onCancel is the caller's cancellation request, invoked on the first
+	// Ctrl-C. See New.
+	onCancel func()
+
+	// forceQuit records a second Ctrl-C; Run's caller reads it after the
+	// program has shut down and the terminal is restored.
+	forceQuit bool
+
 	width, height int
 }
 
 // New builds a model. It draws nothing until the first event arrives.
-func New(t *theme.Theme) *Model {
+//
+// onCancel is invoked once, on the first Ctrl-C; nil means the keystroke is
+// only drawn (the tests' stance, and Watch's -- it has its own key handling).
+func New(t *theme.Theme, onCancel func()) *Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Spinner{Frames: t.Spinner, FPS: time.Second / 10}
 
 	return &Model{
+		onCancel: onCancel,
 		theme:    t,
 		active:   -1,
 		output:   newRing(outputTail),
@@ -144,12 +160,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// Ctrl-C is drawn, not acted on. The signal reaches the process
-		// group through the runtime's own handler and cancels the root
-		// context; all this does is stop the view claiming work is
-		// still progressing while children are being torn down.
+		// Raw mode turned ISIG off, so this keystroke is the only form
+		// a ^C takes here -- the kernel never generates the SIGINT the
+		// root context's handler listens for. The first one requests
+		// cancellation through the caller's callback and is drawn; the
+		// second is the escape hatch the default signal disposition
+		// would have been, immediate and skipping cleanup, for the
+		// operator watching a teardown that will not die.
 		if msg.Type == tea.KeyCtrlC {
+			if m.cancelling {
+				// Force quit -- but through tea.Quit, not os.Exit:
+				// the process must die only after Run returns,
+				// which is Bubble Tea having restored the
+				// terminal. Run's caller sees the flag and exits.
+				m.forceQuit = true
+				return m, tea.Quit
+			}
 			m.cancelling = true
+			if m.onCancel != nil {
+				m.onCancel()
+			}
 		}
 		return m, nil
 

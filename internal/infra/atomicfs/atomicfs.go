@@ -30,6 +30,11 @@ import (
 // because rename is only atomic within a filesystem, and /tmp is frequently a
 // different one.
 func WriteFile(path string, data []byte, mode fs.FileMode) error {
+	// Captured before MkdirAll: every directory it is about to create needs
+	// its own entry made durable afterwards, up to and including the first
+	// ancestor that already existed -- whose entry for the new chain is the
+	// one that must land.
+	created := missingAncestors(filepath.Dir(path))
 	if err := MkdirAll(filepath.Dir(path), parentDirMode(mode)); err != nil {
 		return err
 	}
@@ -52,7 +57,89 @@ func WriteFile(path string, data []byte, mode fs.FileMode) error {
 	if err := t.CloseAtomicallyReplace(); err != nil {
 		return domain.Internal(err, "cannot atomically replace %s", path)
 	}
+	// renameio fsyncs the file but not the directory, so without this the
+	// rename's directory entry can be lost to a power cut after this
+	// function reported success -- state and reality then disagree about
+	// which file exists. Deepest first, then each newly created ancestor:
+	// a synced child entry inside an unsynced parent is still lost.
+	SyncDir(filepath.Dir(path))
+	for _, d := range created {
+		SyncDir(d)
+	}
 	return nil
+}
+
+// missingAncestors lists dir and every ancestor that does not exist yet,
+// deepest first, ending with the first one that does -- the set whose entries
+// a following MkdirAll creates and a durability-conscious caller must sync.
+func missingAncestors(dir string) []string {
+	var out []string
+	for d := dir; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(d); err == nil {
+			if len(out) > 0 {
+				// Only interesting when something below it was
+				// created: its entry for the new chain.
+				out = append(out, d)
+			}
+			return out
+		}
+		out = append(out, d)
+		if d == filepath.Dir(d) {
+			return out
+		}
+	}
+}
+
+// SyncDir fsyncs a directory, making a rename or create inside it durable.
+//
+// Failure is deliberately swallowed, matching syncDirIn: the data itself is
+// already written, only the ordering guarantee weakens, and failing an
+// operation because a directory could not be fsynced would be worse.
+func SyncDir(path string) {
+	d, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer func() { _ = d.Close() }()
+	_ = d.Sync()
+}
+
+// SyncFile fsyncs an already-written file by path, and the directory holding
+// it: file bytes without a durable directory entry are still a file that never
+// existed.
+//
+// For artifacts written by something else -- a helper container streaming a
+// volume tarball, a subprocess -- where the writer's descriptor is out of
+// reach. An artifact whose entire purpose is surviving a crash is worth the
+// explicit flush.
+func SyncFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return domain.Internal(err, "cannot open %s to flush it", path)
+	}
+	defer func() { _ = f.Close() }()
+	if err := f.Sync(); err != nil {
+		return domain.Internal(err, "cannot flush %s to disk", path)
+	}
+	SyncDir(filepath.Dir(path))
+	return nil
+}
+
+// SyncTree fsyncs every directory under root, root included, so each file and
+// subdirectory entry created inside the tree is durable. File *contents* are
+// the writers' business (extractFile and copyFileIn fsync their own); this is
+// the directory half they cannot reach. Same swallowed-failure stance as
+// SyncDir.
+func SyncTree(root string) {
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			SyncDir(p)
+		}
+		return nil
+	})
 }
 
 // WriteFileIn writes atomically inside a root, refusing paths that escape it.
