@@ -54,12 +54,20 @@ func (s *streamCloser) armKill(pgid int) {
 	})
 }
 
+// disarmKill stops the escalation once the whole group is gone. Stopping it
+// on leader reap alone would spare a child that ignored the group TERM --
+// the exact process the escalation exists for. While any member survives,
+// the bounded timer stays armed, the same tradeoff as arming it.
 func (s *streamCloser) disarmKill() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.killTimer != nil {
-		s.killTimer.Stop()
+	if s.killTimer == nil {
+		return
 	}
+	if s.pgid > 0 && syscall.Kill(-s.pgid, 0) == nil {
+		return
+	}
+	s.killTimer.Stop()
 }
 
 func (s *streamCloser) Close() error {
