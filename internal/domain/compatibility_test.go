@@ -234,6 +234,17 @@ func TestAPreReleaseIsComparedByOrdering(t *testing.T) {
 		// which is the safe direction for a gate.
 		{">=1.x", "1.5.0-rc.1", false, "a wildcard constraint keeps the library's answer"},
 
+		// And the exclusion belongs to the whole alternative, not to the
+		// element spelling the wildcard: rewriting a sibling would lift
+		// it, so a group with a wildcard anywhere in it is left whole.
+		{">=1.0.0 <2.x", "1.5.0-rc.1", false, "a wildcard anywhere in the group keeps its answer"},
+		{">=1.0.0 <2.x", "1.5.0", true, "while a release inside it is admitted as it always was"},
+
+		// An alternative beside one is still rewritten, which is the
+		// same reading every other "||" gets.
+		{"1.x || >=2.0.0", "2.5.0-rc.1", true, "the branch without a wildcard admits it"},
+		{"1.x || >=2.0.0", "1.5.0-rc.1", false, "and the wildcard branch still refuses"},
+
 		// Build metadata is free-form, so it can contain the two
 		// characters the rewrite reads as meaning: a hyphen, which says
 		// "already a pre-release", and an x, which says "wildcard".

@@ -151,6 +151,14 @@ func (c Constraint) Allows(v Version) bool {
 // after rewriting returns nil, and Allows keeps the library's own answer --
 // refusing, which is the safe direction for a compatibility gate.
 //
+// The unit that is left alone is the whole alternative, not the wildcard
+// element inside it, because the exclusion belongs to the group rather than to
+// the element that carries it: ">=1.0.0 <2.x" refuses 1.5.0-rc.1 today, and
+// rewriting only the lower bound to ">=1.0.0-0" would have admitted it. An
+// alternative *beside* one is still rewritten -- "1.x || >=2.0.0" keeps its
+// wildcard branch refusing and lets the second branch admit 2.5.0-rc.1, which
+// is the same reading every other "||" gets.
+//
 // Both questions -- does this token already carry a pre-release, does it carry a
 // wildcard -- are asked of the token's *core*, the part before any "+". Build
 // metadata is free-form: ">=1.0.0+build-foo" has a hyphen in it and no
@@ -158,34 +166,61 @@ func (c Constraint) Allows(v Version) bool {
 // either as the thing it resembles left a valid constraint refusing every
 // pre-release inside its own range.
 func prereleaseInclusive(raw string) *semver.Constraints {
-	rewritten := versionToken.ReplaceAllStringFunc(raw, func(token string) string {
-		core := token
-		metadata := ""
-		if plus := strings.IndexByte(token, '+'); plus >= 0 {
-			core, metadata = token[:plus], token[plus:]
+	groups := strings.Split(raw, "||")
+	changed := false
+
+	for i, group := range groups {
+		if hasWildcard(group) {
+			continue
 		}
-		if strings.Contains(core, "-") {
-			// Already carries a pre-release, and it means it.
-			return token
+		rewritten := versionToken.ReplaceAllStringFunc(group, func(token string) string {
+			core, metadata := splitMetadata(token)
+			if strings.Contains(core, "-") {
+				// Already carries a pre-release, and it means it.
+				return token
+			}
+			return core + "-0" + metadata
+		})
+		if rewritten != group {
+			groups[i], changed = rewritten, true
 		}
-		if strings.ContainsAny(core, "xX*") {
-			// A wildcard element cannot carry a pre-release. Left as
-			// it stands, it keeps the library's own exclusion for
-			// that element -- the refusing direction -- while the
-			// elements beside it are still rewritten.
-			return token
-		}
-		return core + "-0" + metadata
-	})
-	if rewritten == raw {
+	}
+	if !changed {
 		return nil
 	}
 
-	parsed, err := semver.NewConstraint(rewritten)
+	parsed, err := semver.NewConstraint(strings.Join(groups, "||"))
 	if err != nil {
 		return nil
 	}
 	return parsed
+}
+
+// hasWildcard reports whether an alternative contains a wildcard element.
+func hasWildcard(group string) bool {
+	// A wildcard spelled on its own -- "*", "x" -- is not a version token at
+	// all, because a token starts at a digit. Whatever is left after the
+	// tokens are removed is operators and separators, which carry no
+	// letters, so an x or a star in there is that spelling.
+	if strings.ContainsAny(versionToken.ReplaceAllString(group, ""), "xX*") {
+		return true
+	}
+	for _, token := range versionToken.FindAllString(group, -1) {
+		core, _ := splitMetadata(token)
+		if strings.ContainsAny(core, "xX*") {
+			return true
+		}
+	}
+	return false
+}
+
+// splitMetadata cuts a version token into the part that carries meaning and the
+// build metadata, which is free-form and must not be read as either.
+func splitMetadata(token string) (core, metadata string) {
+	if plus := strings.IndexByte(token, '+'); plus >= 0 {
+		return token[:plus], token[plus:]
+	}
+	return token, ""
 }
 
 // versionToken matches a whole version inside a constraint -- the numbers and
