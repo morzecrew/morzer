@@ -25,6 +25,25 @@ type Health struct {
 	// simulate a product that comes up and then falls over.
 	FailAfter int
 
+	// PassAfter makes checks fail until the Nth probe within a single
+	// WaitReady, then pass -- a product that takes a few rounds to come up,
+	// which is the case "polls until" exists for.
+	PassAfter int
+
+	// Patience bounds how long WaitReady polls before giving up.
+	//
+	// Zero -- the default -- is the port's actual promise: poll until the
+	// context expires. A test that drives a whole operation through a
+	// fifteen-minute step timeout has to shorten it, and has to do so
+	// visibly: "the product never becomes healthy" really is a long wait in
+	// production, and a fake that failed in a microsecond made that wait
+	// disappear from every test that used it.
+	Patience time.Duration
+
+	// Interval is the gap between probes. Small, but not zero: a busy loop
+	// would burn a core for the length of the wait.
+	Interval time.Duration
+
 	calls int
 
 	// Err is returned instead of results when set.
@@ -35,11 +54,17 @@ func NewHealth() *Health { return &Health{Healthy: true} }
 
 var _ ports.HealthWaiter = (*Health)(nil)
 
-func (h *Health) results(specs []ports.CheckSpec) []ports.HealthResult {
+// results renders one probe round. attempt is 1-based and is reported back, so
+// a caller can see a check that passed on the third try -- the real waiter
+// reports the same.
+func (h *Health) results(specs []ports.CheckSpec, attempt int) []ports.HealthResult {
 	out := make([]ports.HealthResult, 0, len(specs))
 	for _, spec := range specs {
 		ok := h.Healthy
 		if h.FailAfter > 0 && h.calls > h.FailAfter {
+			ok = false
+		}
+		if h.PassAfter > 0 && attempt < h.PassAfter {
 			ok = false
 		}
 		msg := "ok"
@@ -47,28 +72,73 @@ func (h *Health) results(specs []ports.CheckSpec) []ports.HealthResult {
 			msg = "simulated failure"
 		}
 		out = append(out, ports.HealthResult{
-			Name: spec.Name(), OK: ok, Message: msg, Attempts: 1,
+			Name: spec.Name(), OK: ok, Message: msg, Attempts: attempt,
 		})
 	}
 	return out
 }
 
+// WaitReady polls until every check passes or the context expires, which is
+// what the port promises and what the real waiter does.
+//
+// It used to probe once and return, which made every test that drove a product
+// to "never healthy" prove something no implementation does. The difference
+// between failing in a microsecond and failing at the deadline is the
+// difference between a test that exercises cancellation during a wait and one
+// that never waits at all.
 func (h *Health) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]ports.HealthResult, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.calls++
-
-	if h.Err != nil {
-		return nil, h.Err
+	if len(specs) == 0 {
+		return nil, nil
 	}
-	results := h.results(specs)
-	for _, r := range results {
-		if !r.OK {
+
+	h.mu.Lock()
+	patience, interval := h.Patience, h.Interval
+	h.mu.Unlock()
+
+	if patience > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, patience)
+		defer cancel()
+	}
+	if interval <= 0 {
+		interval = 5 * time.Millisecond
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for attempt := 1; ; attempt++ {
+		h.mu.Lock()
+		h.calls++
+		err, results := h.Err, h.results(specs, attempt)
+		h.mu.Unlock()
+
+		if err != nil {
+			return nil, err
+		}
+
+		failing := failingChecks(results)
+		if len(failing) == 0 {
+			return results, nil
+		}
+
+		select {
+		case <-ctx.Done():
 			return results, domain.HealthError(nil,
-				"the product did not become healthy: %s (%s)", r.Name, r.Message)
+				"the product did not become healthy: %s", strings.Join(failing, ", "))
+		case <-ticker.C:
 		}
 	}
-	return results, nil
+}
+
+func failingChecks(results []ports.HealthResult) []string {
+	out := make([]string, 0, len(results))
+	for _, r := range results {
+		if !r.OK {
+			out = append(out, r.Name+" ("+r.Message+")")
+		}
+	}
+	return out
 }
 
 func (h *Health) CheckOnce(ctx context.Context, specs []ports.CheckSpec) ([]ports.HealthResult, error) {
@@ -78,7 +148,7 @@ func (h *Health) CheckOnce(ctx context.Context, specs []ports.CheckSpec) ([]port
 	if h.Err != nil {
 		return nil, h.Err
 	}
-	return h.results(specs), nil
+	return h.results(specs, 1), nil
 }
 
 // Backup is an in-memory ports.BackupEngine.
@@ -321,15 +391,30 @@ func (b *Backup) Prune(ctx context.Context, policy ports.RetentionPolicy) ([]por
 		return nil, nil
 	}
 
+	// KeepReasons used to be ignored here, which made every test involving
+	// retention agree that a pre-update backup survives while proving
+	// nothing about the engine that has to keep it -- and that backup is
+	// the one an operator reaches for when the update they just ran went
+	// wrong.
+	exempt := make(map[string]bool, len(policy.KeepReasons))
+	for _, r := range policy.KeepReasons {
+		exempt[r] = true
+	}
+
 	var removed []ports.BackupRef
+	kept := append([]string(nil), b.order[:keep]...)
 	for _, id := range b.order[keep:] {
+		if exempt[b.backups[id].Reason] {
+			kept = append(kept, id)
+			continue
+		}
 		removed = append(removed, ports.BackupRef{ID: id})
 		delete(b.backups, id)
 		if b.Root != "" {
 			_ = os.RemoveAll(filepath.Join(b.Root, id))
 		}
 	}
-	b.order = b.order[:keep]
+	b.order = kept
 	return removed, nil
 }
 

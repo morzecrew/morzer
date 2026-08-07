@@ -98,6 +98,15 @@ func newHarness(t *testing.T) *harness {
 		Release:    rel,
 	}
 
+	// The health fake polls until the context expires, which is what the
+	// port promises and what production does: the health step's own timeout
+	// is fifteen minutes. A test that drives a product to "never healthy"
+	// is asserting what happens *after* that wait, not the wait itself, so
+	// the wait is shortened here -- deliberately, in one visible place,
+	// rather than by a fake that gives up in a microsecond and hides that
+	// operators sit through the full quarter of an hour.
+	h.Health.Patience = 50 * time.Millisecond
+
 	_, redactor := logging.New(logging.Options{Writer: os.Stderr})
 
 	h.Deps = &ops.Deps{
