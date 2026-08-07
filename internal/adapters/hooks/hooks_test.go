@@ -154,22 +154,48 @@ func TestAHookThatSaysNothingIsNotInError(t *testing.T) {
 	}
 }
 
-// TestGarbageOnFileDescriptorThreeIsIgnored. A hook that writes something
-// unparseable has still done its work; refusing the operation over it would
-// make the result channel a liability rather than a convenience.
-func TestGarbageOnFileDescriptorThreeIsIgnored(t *testing.T) {
+// TestGarbageOnFileDescriptorThreeFailsTheHook.
+//
+// This used to be ignored, on the reasoning that the hook had still done its
+// work. The reasoning was wrong in the one case that matters: fd 3 is how a
+// migrate hook reports the schema it left behind, and a result the manager
+// cannot read is indistinguishable from a hook that reported nothing. The
+// operation continues, `rollback` later finds no schema recorded, and the check
+// that stops it crossing a migration is not applied. A hook that writes nothing
+// is still fine; a hook that writes something unreadable has broken the ABI.
+func TestGarbageOnFileDescriptorThreeFailsTheHook(t *testing.T) {
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 printf 'this is definitely not json' >&3
 exit 0
 `)
 
-	out, err := run(t, rel, cmd)
-	if err != nil {
-		t.Fatalf("unparseable result output failed the hook: %v", err)
+	_, err := run(t, rel, cmd)
+	if err == nil {
+		t.Fatal("a hook that wrote an unreadable result was reported successful")
 	}
-	if out.Result.Message != "" {
-		t.Errorf("garbage was decoded into a result: %+v", out.Result)
+	if !strings.Contains(err.Error(), "fd 3") {
+		t.Errorf("the failure does not say where the problem is: %v", err)
+	}
+}
+
+// TestAMistypedSchemaVersionIsRefusedRatherThanLost is the concrete shape of
+// the same bug: JSON that parses as JSON but not as a result. Silently
+// recording schema 0 here is what disarms the rollback gate.
+func TestAMistypedSchemaVersionIsRefusedRatherThanLost(t *testing.T) {
+	rel := release(t)
+	cmd := hook(t, rel, "migrate", `#!/bin/sh
+printf '{"schema_version": "42"}' >&3
+exit 0
+`)
+
+	out, err := run(t, rel, cmd)
+	if err == nil {
+		t.Fatalf("a hook that reported its schema as a string passed with schema %d",
+			out.Result.SchemaVersion)
+	}
+	if hint := domain.AsError(err).Hint; !strings.Contains(hint, "schema_version") {
+		t.Errorf("the hint does not name the field the author got wrong: %q", hint)
 	}
 }
 
@@ -451,15 +477,16 @@ head -c 4000000 /dev/zero | tr '\0' 'x' >&3 2>/dev/null || true
 exit 0
 `)
 
-	out, err := hooks.NewRunner(exec.New()).
+	_, err := hooks.NewRunner(exec.New()).
 		Run(context.Background(), rel, cmd, env(), 60*time.Second)
-	if err != nil {
-		t.Fatalf("a hook that wrote too much to fd 3 failed the operation: %v", err)
+	if err == nil {
+		t.Fatal("four megabytes on fd 3 was accepted as a result")
 	}
-	// Unparseable, so no result -- the point is that it returned at all
-	// rather than reading four megabytes into an error message.
-	if out.Result.Message != "" {
-		t.Errorf("four megabytes of x was decoded into a result: %+v", out.Result)
+	// The point is what did *not* happen: the read stopped at the bound and
+	// the refusal is a sentence, not four megabytes of x quoted back.
+	if len(err.Error()) > 500 {
+		t.Errorf("the failure carries the hook's flood into the error text (%d bytes)",
+			len(err.Error()))
 	}
 }
 
