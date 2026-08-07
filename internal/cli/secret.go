@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -500,10 +501,27 @@ func readPassword(ctx context.Context, in io.Reader, out io.Writer, prompt strin
 
 	select {
 	case <-ctx.Done():
-		_ = term.Restore(int(f.Fd()), state)
+		// The reader goroutine flips echo off inside ReadPassword; a
+		// cancellation racing that flip could restore first and have
+		// the flip land after, leaving the terminal raw. The mode is
+		// observable, so the restore waits until the flip has happened
+		// (or a bound expires -- a scheduling stall longer than this
+		// leaves the `reset` remedy below). The goroutine itself stays
+		// blocked on the fd; the process exit that follows is what
+		// releases it.
+		for deadline := time.Now().Add(200 * time.Millisecond); time.Now().Before(deadline); {
+			cur, gerr := term.GetState(int(f.Fd()))
+			if gerr != nil || *cur != *state {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
 		fmt.Fprintln(out)
-		// The reader goroutine stays blocked on the fd; the process is
-		// about to exit 130, which is what releases it.
+		if rerr := term.Restore(int(f.Fd()), state); rerr != nil {
+			return "", domain.Internal(rerr,
+				"cancelled, but the terminal could not be restored").
+				WithHint("run `reset` to repair the terminal")
+		}
 		return "", domain.Interrupted("cancelled at the prompt")
 	case r := <-read:
 		fmt.Fprintln(out)

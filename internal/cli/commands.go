@@ -787,7 +787,7 @@ func (a *App) readSecretValue(ctx context.Context, prompt string) (domain.Secret
 	// gives the piped path -- the one every script takes -- something that
 	// can drive it.
 	if !ui.IsTerminal(a.Stream.In) {
-		data, err := readAll(a.Stream.In)
+		data, err := readAllCtx(ctx, a.Stream.In)
 		if err != nil {
 			return domain.Secret{}, err
 		}
@@ -806,6 +806,28 @@ func (a *App) readSecretValue(ctx context.Context, prompt string) (domain.Secret
 // The bound is not politeness: without it, `morzer secret set x < /dev/zero`
 // is the manager filling its own memory. A secret larger than a megabyte is
 // not a secret.
+// readAllCtx is readAll racing the context: a pipe that never delivers EOF
+// would otherwise hold the first Ctrl-C's cancellation hostage until the
+// second one force-kills. The abandoned goroutine stays blocked on the fd;
+// the process exit that follows cancellation is what releases it.
+func readAllCtx(ctx context.Context, r io.Reader) ([]byte, error) {
+	type outcome struct {
+		data []byte
+		err  error
+	}
+	read := make(chan outcome, 1)
+	go func() {
+		d, err := readAll(r)
+		read <- outcome{d, err}
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, domain.Interrupted("cancelled while reading the value from stdin")
+	case res := <-read:
+		return res.data, res.err
+	}
+}
+
 func readAll(r io.Reader) ([]byte, error) {
 	const max = 1 << 20
 

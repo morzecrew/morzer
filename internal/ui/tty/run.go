@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/ui/theme"
 )
@@ -74,8 +75,17 @@ func Run(opts Options, work func()) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if _, err := program.Run(); err != nil {
+		final, err := program.Run()
+		if err != nil {
 			handOver(err)
+			return
+		}
+		// The second Ctrl-C's force quit. Exiting here rather than in
+		// the model means Run has returned -- Bubble Tea has restored
+		// the terminal -- so the operator's shell comes back cooked
+		// instead of raw with no echo.
+		if m, ok := final.(*Model); ok && m.forceQuit {
+			os.Exit(domain.ExitInterrupted)
 		}
 	}()
 

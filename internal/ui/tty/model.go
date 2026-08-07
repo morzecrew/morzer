@@ -21,7 +21,6 @@
 package tty
 
 import (
-	"os"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -98,6 +97,10 @@ type Model struct {
 	// Ctrl-C. See New.
 	onCancel func()
 
+	// forceQuit records a second Ctrl-C; Run's caller reads it after the
+	// program has shut down and the terminal is restored.
+	forceQuit bool
+
 	width, height int
 }
 
@@ -166,7 +169,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// operator watching a teardown that will not die.
 		if msg.Type == tea.KeyCtrlC {
 			if m.cancelling {
-				os.Exit(domain.ExitInterrupted)
+				// Force quit -- but through tea.Quit, not os.Exit:
+				// the process must die only after Run returns,
+				// which is Bubble Tea having restored the
+				// terminal. Run's caller sees the flag and exits.
+				m.forceQuit = true
+				return m, tea.Quit
 			}
 			m.cancelling = true
 			if m.onCancel != nil {
