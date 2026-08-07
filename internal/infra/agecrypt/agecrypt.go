@@ -94,7 +94,12 @@ func Decrypt(dst io.Writer, src io.Reader, identityPath string) error {
 
 	identities, err := age.ParseIdentities(f)
 	if err != nil {
-		return domain.SecretsError(err, "the age identity at %s is not valid", identityPath)
+		// Never wrap the parse error: age quotes the offending line back
+		// ("unknown identity type: %q"), and the offending line of an
+		// identity file is a private key. The path is what the operator
+		// needs; the bytes are what a log must never hold.
+		return domain.SecretsError(nil, "the age identity at %s is not valid", identityPath).
+			WithHint("the file should contain a line starting with AGE-SECRET-KEY-")
 	}
 
 	r, err := age.Decrypt(src, identities...)
