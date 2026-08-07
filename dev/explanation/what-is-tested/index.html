@@ -2171,6 +2171,14 @@ operation that could destroy or weaken it is a refusal.</p>
 <td>The manifest's pinned images are what actually runs</td>
 <td><code>TestApplyPullsTheImagesTheManifestPins</code></td>
 </tr>
+<tr>
+<td>A file <em>added</em> to a signed bundle is refused, though the signature still verifies: <code>SHA256SUMS</code> must cover the whole tree</td>
+<td><code>TestSignatureVerification</code></td>
+</tr>
+<tr>
+<td>A hook result the manager cannot read fails the hook rather than silently losing the schema it reported</td>
+<td><code>TestAMistypedSchemaVersionIsRefusedRatherThanLost</code></td>
+</tr>
 </tbody>
 </table>
 <h3 id="filesystem-containment">Filesystem containment<a class="headerlink" href="#filesystem-containment" title="Permanent link">&para;</a></h3>
@@ -2241,6 +2249,14 @@ operation that could destroy or weaken it is a refusal.</p>
 <tr>
 <td>A hook's timeout reaches the whole process group, so nothing survives it</td>
 <td><code>TestATimeoutReachesTheWholeProcessGroup</code></td>
+</tr>
+<tr>
+<td>A template is opened through the release root, so a symlink out of a directory-sourced bundle cannot be rendered into a config file</td>
+<td><code>TestATemplateSymlinkOutOfTheBundleIsRefused</code></td>
+</tr>
+<tr>
+<td>An identity file the parser refuses is named, never quoted: the line it could not read is a private key</td>
+<td><code>TestAnUnusableIdentityIsNamedWithoutBeingQuoted</code></td>
 </tr>
 </tbody>
 </table>
@@ -2726,6 +2742,22 @@ arrive.</p>
 <td>A crash mid-operation leaves a journal <code>--resume</code> continues from</td>
 <td><code>TestResumeStartsFromTheStepThatDidNotFinish</code></td>
 </tr>
+<tr>
+<td>Every waiter behind the port waits until the context expires rather than giving up early — the fake included</td>
+<td><code>TestHealthWaiterContract_Fake</code></td>
+</tr>
+<tr>
+<td>The same suite holds the real waiter and the real HTTP prober to it</td>
+<td><code>TestHealthWaiterContract_HTTP</code></td>
+</tr>
+<tr>
+<td>The backup fake's on-disk layout, verification and retention are the engine's, checked rather than mirrored by hand</td>
+<td><code>TestBackupEngineContract_Fake</code></td>
+</tr>
+<tr>
+<td>A parameter the new release stopped declaring is reported and retired, not left to refuse every later command</td>
+<td><code>TestUpdateRetiresAParameterTheNewReleaseDropped</code></td>
+</tr>
 </tbody>
 </table>
 <h2 id="what-a-test-in-this-table-has-to-do">What a test in this table has to do<a class="headerlink" href="#what-a-test-in-this-table-has-to-do" title="Permanent link">&para;</a></h2>
@@ -2757,6 +2789,15 @@ and pins nothing.</p>
   defaults are the safe ones.</li>
 <li><strong><code>ByteSize</code> does not round-trip decimal units.</strong> <code>5GB</code> marshals as <code>4.7GiB</code>.
   Harmless because sizes are read from a manifest and never written back.</li>
+<li><strong><code>CopyTree</code>'s read-side containment is asserted by construction, not by a
+  test.</strong> A bundle file swapped for a symlink between the walk's <code>lstat</code> and the
+  copy's <code>open</code> used to be followed out of the tree; the copy now opens through
+  an <code>os.Root</code> on the source and checks the descriptor rather than the path, so
+  the swap cannot be followed. Reproducing the window needs a seam inside
+  <code>CopyTree</code> that exists only for the test, and a racing test that never loses
+  is a test that proves nothing — so the property is stated here and carried by
+  the code, and every <em>visible</em> form (a symlink or a device node the walk can
+  see) is refused by the tests above.</li>
 <li><strong>The registry probe's success path is not covered.</strong> <code>docker manifest
   inspect</code> speaks HTTPS unless given <code>--insecure</code>, which the adapter never
   passes — a reachability probe that accepted plaintext could be answered by

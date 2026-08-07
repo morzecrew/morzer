@@ -1916,6 +1916,15 @@ minisign<span class="w"> </span>-Sm<span class="w"> </span>SHA256SUMS
 </code></pre></div>
 <p>Inside rather than beside, so the signature survives being packed into an
 archive and unpacked again on the other machine.</p>
+<p>The list has to be complete. A bundle that ships a <code>SHA256SUMS</code> naming only some
+of its files is refused, naming the ones it left out — an unlisted file is a
+file the signature does not cover, and the file an attacker adds is a file
+nobody listed. The <code>find</code> above produces a complete list; if your pipeline
+writes one by hand, verify it with <code>sha256sum -c SHA256SUMS</code> <em>and</em> by comparing
+its line count against the same file set the list covers:</p>
+<div class="highlight"><pre><span></span><code>find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS.minisig<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+wc<span class="w"> </span>-l<span class="w"> </span>&lt;<span class="w"> </span>SHA256SUMS
+</code></pre></div>
 <h3 id="the-key">The key<a class="headerlink" href="#the-key" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>minisign<span class="w"> </span>-G<span class="w"> </span>-p<span class="w"> </span>morzer-bundles.pub<span class="w"> </span>-s<span class="w"> </span>morzer-bundles.key
 </code></pre></div>

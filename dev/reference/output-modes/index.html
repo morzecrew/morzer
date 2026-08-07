@@ -1903,14 +1903,6 @@ run is rendered.</p>
 <td>Plain</td>
 </tr>
 <tr>
-<td><code>NO_COLOR</code> set to anything, including empty</td>
-<td>Plain</td>
-</tr>
-<tr>
-<td><code>CLICOLOR=0</code></td>
-<td>Plain</td>
-</tr>
-<tr>
 <td><code>TERM</code> is <code>dumb</code> or unset</td>
 <td>Plain</td>
 </tr>
@@ -1932,6 +1924,12 @@ run is rendered.</p>
 </tr>
 </tbody>
 </table>
+<p><code>NO_COLOR</code>, <code>CLICOLOR=0</code> and <code>--no-color</code> are not in that table on purpose.
+They turn colour off; they do not turn the renderer off. That is what the
+convention asks for — "prevent the addition of ANSI colour" — it is what
+<code>--no-color</code> has always done, and it keeps <code>status --watch</code> usable for anyone
+who exports <code>NO_COLOR</code> in their shell profile. Nothing is lost by it: every
+state in the live view carries a symbol as well as a colour.</p>
 <p><code>--json</code> wins outright. It is a machine contract, and a contract that changed
 shape depending on whether a terminal was attached would not be one.</p>
 <p>Everything else is a signal an environment already uses to say <em>do not draw</em>.

@@ -2431,6 +2431,22 @@ failure exits <a href="../../reference/exit-codes/">12</a> rather than pretendin
 compensation succeeded — and keeps surfacing in <code>status</code> and <code>doctor</code> until
 you clear it with <code>morzer status --clear-intervention</code>.</p>
 </div>
+<div class="admonition note">
+<p class="admonition-title">Ctrl-C during a restore leaves the product stopped</p>
+<p>An interruption is taken literally: the operation stops where it is and
+nothing is brought back up, because a long automatic recovery is not what
+"stop" means. Since the services are stopped before anything is written,
+ctrl-C in the first moments leaves a deployment that is down and a database
+that is untouched.</p>
+<p>The refusal says so, and there are two roads forward:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>apply<span class="w">     </span><span class="c1"># start the current release again, restore abandoned</span>
+morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;<span class="w">   </span><span class="c1"># try again</span>
+</code></pre></div>
+<p>Restore is deliberately not resumable. Its middle step overwrites a database
+through the release's own hook, no automatic check can tell how far that got,
+and guessing is the one thing this tool will not do. <code>morzer status</code> shows
+where the interrupted operation stopped.</p>
+</div>
 <h3 id="restoring-another-machines-backup">Restoring another machine's backup<a class="headerlink" href="#restoring-another-machines-backup" title="Permanent link">&para;</a></h3>
 <p>Refused by default. Backups are stamped with the installation they came from,
 and restoring one deployment's data over another is almost always a mistake.</p>

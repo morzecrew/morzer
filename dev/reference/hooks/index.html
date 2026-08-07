@@ -1971,7 +1971,12 @@ is how one hook serves several.</p>
 <strong>3</strong>, not to stdout. stdout goes to the log and the live view, and a hook
 forced to keep its human output free of <abbr title="JavaScript Object Notation">JSON</abbr> would be one whose logging is
 constrained by the manager's parsing.</p>
-<p>Every field is optional. A hook that writes nothing is not in error.</p>
+<p>Every field is optional. A hook that writes nothing is not in error — but bytes
+that are not a <abbr title="JavaScript Object Notation">JSON</abbr> object are: the hook tried to report something the manager
+cannot hear, and the field that matters most is <code>schema_version</code>. Writing
+<code>{"schema_version": "42"}</code> — a string where the <abbr title="Application Binary Interface">ABI</abbr> says number — would
+otherwise record no schema at all, and a later <code>rollback</code> would run without the
+check that stops it crossing a migration.</p>
 <table>
 <thead>
 <tr>
@@ -2019,7 +2024,9 @@ afterwards would mean running its tooling to pose a question it already
 answered.</p>
 </div>
 <p>The manager reads at most 1 MiB from the descriptor. A hook that streams
-gigabytes into fd 3 is broken, and must not take the manager's memory with it.</p>
+gigabytes into fd 3 is broken, and must not take the manager's memory with it —
+the read stops at the bound, which leaves a truncated object, which fails the
+hook like any other unreadable result.</p>
 <h2 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
