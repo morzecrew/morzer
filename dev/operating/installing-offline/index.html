@@ -1070,6 +1070,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -1839,18 +1868,30 @@ look up from that machine. It is also in the repository, in
 <h2 id="check-first-while-there-is-still-a-network">Check first, while there is still a network<a class="headerlink" href="#check-first-while-there-is-still-a-network" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>doctor
 </code></pre></div>
-<p>Two checks answer the question:</p>
+<p>Three checks answer the question:</p>
 <div class="highlight"><pre><span></span><code>[ok]   container registry is reachable
 [warn] release images are available offline
        2 of 2 image(s) are not local: registry.example/demo/app, registry.example/demo/db
        → run `morzer apply` while online, or preload with
          `docker load &lt; images.tar`, if this machine has to come up without
          network access
+[warn] the volume helper image is available offline
+       busybox is not on this machine, so a backup cannot capture volumes
+       → run `docker pull busybox@sha256:…` — do it now rather than during a
+         backup on a machine that has lost its network
 </code></pre></div>
-<p>The second is the one that matters here. It is a warning rather than a failure
-because needing the network is the normal case — but on a machine that is about
-to lose it, a warning is the difference between a planned preload and a failed
-boot at 3am.</p>
+<p>The last two are the ones that matter here. Both are warnings rather than
+failures because needing the network is the normal case — but on a machine that
+is about to lose it, a warning is the difference between a planned preload and a
+failed boot at 3am.</p>
+<p>The helper image is the manager's own, not the release's: volumes are read
+through a container, so a backup on a disconnected machine that never pulled it
+captures nothing. It is the one image that is not in the release manifest, which
+is exactly why it is easy to miss.</p>
+<p><strong>Preload the reference <code>doctor</code> prints, not <code>busybox</code>.</strong> If this deployment sets
+<code>MORZER_VOLUME_HELPER_IMAGE</code>, that is the image volume capture will run, and the
+default busybox is not pulled at all. <code>doctor</code> reports whichever one is
+configured, so its output is the reference to copy — checking it beats assuming.</p>
 <h2 id="prepare-the-artifacts">Prepare the artifacts<a class="headerlink" href="#prepare-the-artifacts" title="Permanent link">&para;</a></h2>
 <p>On a machine that <em>does</em> have a network:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># 1. The bundle, as a single file.</span>
@@ -1861,9 +1902,20 @@ morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w
 morzer<span class="w"> </span>release<span class="w"> </span>show<span class="w"> </span><span class="m">1</span>.3.0<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-A20<span class="w"> </span>images
 docker<span class="w"> </span>pull<span class="w"> </span>registry.example/demo/app@sha256:…
 docker<span class="w"> </span>pull<span class="w"> </span>registry.example/demo/db@sha256:…
+<span class="c1"># 3. The manager&#39;s volume helper image, which is not in the manifest.</span>
+<span class="c1">#    Take the exact reference from `morzer doctor` -- it is busybox unless</span>
+<span class="c1">#    MORZER_VOLUME_HELPER_IMAGE names another, and then it is that one.</span>
+<span class="nv">HELPER</span><span class="o">=</span><span class="k">$(</span>morzer<span class="w"> </span>doctor<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.data.results[] | select(.id == &quot;backup.volume-helper&quot;)</span>
+<span class="s1">           | .message, .remedy&#39;</span><span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>grep<span class="w"> </span>-o<span class="w"> </span><span class="s1">&#39;[^ ]*@sha256:[a-f0-9]\{64\}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
+<span class="nb">test</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HELPER</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;doctor did not report a helper image&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+docker<span class="w"> </span>pull<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HELPER</span><span class="s2">&quot;</span>
+
 docker<span class="w"> </span>save<span class="w"> </span>-o<span class="w"> </span>images.tar<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>registry.example/demo/app@sha256:…<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>registry.example/demo/db@sha256:…
+<span class="w">    </span>registry.example/demo/db@sha256:…<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="s2">&quot;</span><span class="nv">$HELPER</span><span class="s2">&quot;</span>
 </code></pre></div>
 <p>Copy <code>demo-1.3.0.tar.zst</code> and <code>images.tar</code> to the target machine, along with
 the vendor's signing key if the installation requires signatures.</p>
@@ -1908,6 +1960,16 @@ not a recovery.</p>
 <li><strong>Pulling an image the manifest pins that you did not preload.</strong> The manifest
   pins by digest, so <code>docker save</code>/<code>load</code> carries exactly the right bytes —
   there is no tag to resolve and nothing to get wrong.</li>
+<li><strong>Capturing volumes without the helper image.</strong> The backup <strong>fails</strong>, with the
+  <code>docker pull</code> command rather than a registry error. It does not quietly
+  produce a backup missing the volumes, because a backup that silently covers
+  less than it claims is the failure the whole component exists to prevent. If
+  you deliberately want one anyway, scope the volumes out:
+  <code>morzer backup --component database --component config --component secrets</code>.
+  That only helps a release <strong>with</strong> a backup hook. One without a hook has
+  nothing left to put in a backup once volumes are excluded, so it is refused
+  rather than given an empty one — for such a release the helper image is not
+  optional.</li>
 </ul>
 <h2 id="verifying-without-the-network-either">Verifying without the network either<a class="headerlink" href="#verifying-without-the-network-either" title="Permanent link">&para;</a></h2>
 <p>Nothing in verification needs one. The bundle's <code>SHA256SUMS</code> and its

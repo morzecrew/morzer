@@ -1098,6 +1098,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../publishing/" class="md-nav__link">
         
   
@@ -2106,6 +2135,21 @@ machine.</p>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
 <span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/restore&quot;</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">120m</span>
+
+<span class="c1"># What the manager may do about this project&#39;s named volumes, which it captures</span>
+<span class="c1"># itself rather than through the backup hook above.</span>
+<span class="c1">#</span>
+<span class="c1"># A volume left out of this map is captured *cold*: the services that mount it</span>
+<span class="c1"># are stopped for the copy. That is correct for every volume and slow for some,</span>
+<span class="c1"># so a vendor declares only where they want something else.</span>
+<span class="c1">#</span>
+<span class="c1"># `consistency: hot` is a claim that a copy taken while the product is running</span>
+<span class="c1"># is a usable one -- true for files written once and never modified, false for</span>
+<span class="c1"># anything with a write-ahead log. It is the vendor&#39;s claim, not the manager&#39;s</span>
+<span class="c1"># guess, and every backup manifest records which one applied.</span>
+<span class="nt">backup</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">uploads</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="p p-Indicator">}</span>
 
 <span class="nt">health</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">checks</span><span class="p">:</span>

@@ -950,6 +950,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -1446,6 +1475,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1920,6 +1960,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2162,6 +2213,12 @@ later. Vendor-specific keys go under <code>extensions.&lt;namespace&gt;</code>.<
 <td>map</td>
 <td style="text-align: center;"></td>
 <td>Named lifecycle operations: migrate, smoke test, backup, restore.</td>
+</tr>
+<tr>
+<td><code>backup</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>What the manager may do about the project's volumes.</td>
 </tr>
 <tr>
 <td><code>health</code></td>
@@ -2534,6 +2591,82 @@ system on a different day.</p>
 <p>The two kinds are not collapsed into one field because their failure semantics
 differ: a hook runs on the host and sees the host's filesystem, a runtime
 service runs on the application network and sees the container's.</p>
+<h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
+<p>What the manager may do about the project's named volumes, which it captures
+itself rather than through the backup hook.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>volumes</code></td>
+<td>map</td>
+<td>Keyed by the volume's name in the Compose <code>volumes:</code> block.</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry takes one field, and it is <strong>required</strong> — an entry that names a
+volume without saying anything about it is refused at load. Leaving the volume
+out of the map entirely is how you ask for the default:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>consistency</code></td>
+<td>enum</td>
+<td style="text-align: center;">✅</td>
+<td><code>cold</code>, <code>hot</code> or <code>exclude</code>.</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cold</code></td>
+<td>The services mounting the volume are stopped for the copy. The default, and correct for every volume.</td>
+</tr>
+<tr>
+<td><code>hot</code></td>
+<td>The vendor claims a copy taken while the product runs is usable. True for write-once files, false for anything with a write-ahead log.</td>
+</tr>
+<tr>
+<td><code>exclude</code></td>
+<td>The manager never reads or writes this volume. Expected for a database's storage, which the backup hook owns.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><span class="nt">backup</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">uploads</span><span class="p">:</span><span class="w">    </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">caddy_data</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">pgdata</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">exclude</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p>The map is partial: declare only the volumes that need something other than the
+default of <code>cold</code>. A volume named here that the project does not declare is
+ignored by the backup, and reported by <code>morzer doctor</code> — a typo in this map
+otherwise does nothing at all, which for an intended <code>exclude</code> means the
+manager captures a database volume the hook already owns.</p>
+<p><code>hot</code> is a claim about the product, not a performance hint — see
+<a href="../../authoring/backing-up-volumes/">declaring volume consistency</a> for what it
+commits a vendor to. Bind mounts are never captured and have no declaration.</p>
 <h2 id="health">health<a class="headerlink" href="#health" title="Permanent link">&para;</a></h2>
 <p><code>checks</code> is a list; each entry has a unique <code>name</code>, a <code>type</code>, and a <code>timeout</code>
 (default <code>120s</code>).</p>
@@ -2827,6 +2960,21 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
 <span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/restore&quot;</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">120m</span>
+
+<span class="c1"># What the manager may do about this project&#39;s named volumes, which it captures</span>
+<span class="c1"># itself rather than through the backup hook above.</span>
+<span class="c1">#</span>
+<span class="c1"># A volume left out of this map is captured *cold*: the services that mount it</span>
+<span class="c1"># are stopped for the copy. That is correct for every volume and slow for some,</span>
+<span class="c1"># so a vendor declares only where they want something else.</span>
+<span class="c1">#</span>
+<span class="c1"># `consistency: hot` is a claim that a copy taken while the product is running</span>
+<span class="c1"># is a usable one -- true for files written once and never modified, false for</span>
+<span class="c1"># anything with a write-ahead log. It is the vendor&#39;s claim, not the manager&#39;s</span>
+<span class="c1"># guess, and every backup manifest records which one applied.</span>
+<span class="nt">backup</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">uploads</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="p p-Indicator">}</span>
 
 <span class="nt">health</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">checks</span><span class="p">:</span>

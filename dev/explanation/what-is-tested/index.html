@@ -948,6 +948,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -1643,6 +1672,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#volumes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Volumes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#backups-that-leave-the-machine" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1830,6 +1870,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Backups, against a real database
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volumes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Volumes
       </span>
     </span>
   </a>
@@ -2335,6 +2386,148 @@ asserted by <em>which</em> refusal fires — not merely that something failed.</
 </tr>
 </tbody>
 </table>
+<h3 id="volumes">Volumes<a class="headerlink" href="#volumes" title="Permanent link">&para;</a></h3>
+<p>The manager reads the project's named volumes itself, which is the part a backup
+hook usually forgets. These claims are about what that copy is worth and what it
+is allowed to cost.</p>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A volume destroyed entirely comes back from a backup, against real Docker</strong></td>
+<td><code>TestAVolumeSurvivesBeingDestroyedAndRestored</code></td>
+</tr>
+<tr>
+<td>A restored volume matches the backup exactly, rather than merging with what was there</td>
+<td><code>TestARestoredVolumeMatchesTheBackupExactly</code></td>
+</tr>
+<tr>
+<td>A volume tarball is encrypted, and the files in it do not appear in the backup</td>
+<td><code>TestARealVolumeTarballIsEncrypted</code></td>
+</tr>
+<tr>
+<td><strong>A volume the release has not declared safe is read with its services stopped</strong></td>
+<td><code>TestAColdVolumeIsReadWithItsServicesStopped</code></td>
+</tr>
+<tr>
+<td>A volume is only ever read live because the release declared <code>consistency: hot</code></td>
+<td><code>TestHotIsOnlyEverWhatTheManifestDeclared</code></td>
+</tr>
+<tr>
+<td><strong>Restoring into a volume is refused while a service that mounts it runs, named by service</strong></td>
+<td><code>TestRestoringIntoARunningVolumeIsRefusedByName</code></td>
+</tr>
+<tr>
+<td><strong>A paused container counts as holding the volume open, for the restore refusal and for the capture</strong></td>
+<td><code>TestRestoringIntoAPausedVolumeIsRefused</code></td>
+</tr>
+<tr>
+<td>A paused service is stopped before its volume is read, so <code>cold</code> means cold</td>
+<td><code>TestAPausedServiceIsStoppedBeforeItsVolumeIsRead</code></td>
+</tr>
+<tr>
+<td>A backup that captured nothing is refused, even when volumes were in scope</td>
+<td><code>TestABackupWithNothingCapturedIsRefusedEvenWhenVolumesWereInScope</code></td>
+</tr>
+<tr>
+<td>The two service-state predicates are conservative in opposite directions, so an unknown state refuses a restore and is never stopped</td>
+<td><code>TestTheTwoServiceStatePredicatesAreConservativeInOppositeDirections</code></td>
+</tr>
+<tr>
+<td>An unhealthy container still counts as holding its volume open</td>
+<td><code>TestAnUnhealthyServiceStillOccupiesItsVolume</code></td>
+</tr>
+<tr>
+<td><strong>After <code>Stop</code>, every runtime reports a state the manager reads as having released its volumes</strong> — asserted against the fake and real Docker from one suite</td>
+<td><code>TestRuntimeContract_Compose/stop_releases_the_volumes_without_removing_the_services</code></td>
+</tr>
+<tr>
+<td><code>Stop</code> halts without removing, so <code>Start</code> has something to put back</td>
+<td><code>TestRuntimeContract_Compose/start_puts_back_what_stop_halted</code></td>
+</tr>
+<tr>
+<td>Every runtime reports its volumes sorted, so two backups of an unchanged project record the same order</td>
+<td><code>TestRuntimeContract_Compose/the_project's_volumes_are_reported_sorted</code></td>
+</tr>
+<tr>
+<td>A tarball a runtime produced is accepted by the same runtime, and is not empty</td>
+<td><code>TestRuntimeContract_Compose/a_captured_volume_restores_byte_for_byte</code></td>
+</tr>
+<tr>
+<td>The helper container cannot write into the volume it is reading</td>
+<td><code>TestTheHelperCannotWriteIntoTheVolumeItIsReading</code></td>
+</tr>
+<tr>
+<td>A bind mount is reported and never captured, so nobody is silently short a mount</td>
+<td><code>TestABindMountIsReportedAndNeverCaptured</code></td>
+</tr>
+<tr>
+<td>A release cannot name a volume whose name would write outside the backup directory</td>
+<td><code>TestAVolumeNameThatWouldEscapeTheBackupIsRefused</code></td>
+</tr>
+<tr>
+<td>The helper is read-only on the source and has no network, asserted on the argv that enforces it</td>
+<td><code>TestAVolumeIsReadThroughAReadOnlyMount</code></td>
+</tr>
+<tr>
+<td>Resuming a stack after a backup uses <code>stop</code>/<code>start</code>, so a backup never recreates a container</td>
+<td><code>TestQuiescingUsesStopAndStartRatherThanDownAndUp</code></td>
+</tr>
+<tr>
+<td>A restore scoped away from volumes does not decrypt them</td>
+<td><code>TestARestoreScopedAwayFromVolumesDoesNotTouchThem</code></td>
+</tr>
+<tr>
+<td>A tar stream survives the pipe intact, rather than being re-terminated by a line scanner</td>
+<td><code>TestStdoutReceivesBytesTheLineScannerWouldHaveMangled</code></td>
+</tr>
+<tr>
+<td><strong>A disk that fills mid-capture fails the command rather than storing a truncated tarball</strong></td>
+<td><code>TestAWriteFailureFailsTheCommandThatSucceeded</code></td>
+</tr>
+<tr>
+<td><code>--no-downtime</code> skips a volume and records it, rather than quietly taking a hot copy</td>
+<td><code>TestNoDowntimeSkipsRatherThanCapturingHot</code></td>
+</tr>
+<tr>
+<td>A backup that would not fit is refused before anything is written or stopped, naming both figures</td>
+<td><code>TestABackupThatWillNotFitIsRefusedBeforeAnythingIsWritten</code></td>
+</tr>
+<tr>
+<td>A failed capture starts the services back up, so a backup never becomes an outage</td>
+<td><code>TestAFailedCaptureStillStartsTheServicesBackUp</code></td>
+</tr>
+<tr>
+<td>A backup of an already-stopped deployment succeeds, and does not start what nobody had running</td>
+<td><code>TestABackupOfAStoppedDeploymentSucceeds</code></td>
+</tr>
+<tr>
+<td>An absent helper image fails with the command to pull it, not a Docker error</td>
+<td><code>TestAMissingHelperImageFailsWithThePullCommand</code></td>
+</tr>
+<tr>
+<td>A release with no backup hook still produces a restorable backup</td>
+<td><code>TestAReleaseWithNoBackupHookStillProducesABackup</code></td>
+</tr>
+<tr>
+<td>A backup with nothing in it is still a refusal</td>
+<td><code>TestABackupWithNoHookAndNoVolumesIsRefused</code></td>
+</tr>
+<tr>
+<td>The manifest records what was captured, how, and what was not</td>
+<td><code>TestARealProjectsStorageIsRecordedAccurately</code></td>
+</tr>
+<tr>
+<td>A backup holding volumes declares a schema an older manager refuses rather than half-restores</td>
+<td><code>TestAVolumeBackupDeclaresASchemaAnOlderManagerRefuses</code></td>
+</tr>
+</tbody>
+</table>
 <h3 id="backups-that-leave-the-machine">Backups that leave the machine<a class="headerlink" href="#backups-that-leave-the-machine" title="Permanent link">&para;</a></h3>
 <p>A backup on the disk it protects is not a backup. These claims are about the
 copy that survives the machine — and about what happens when it does not
@@ -2525,6 +2718,14 @@ arrive.</p>
 <td>A journal line half-written by a crash does not make <code>status</code> unusable</td>
 <td><code>TestACorruptFinalJournalLineIsDiscardedNotFatal</code></td>
 </tr>
+<tr>
+<td>An operation flagged for a human blocks <code>apply</code> until it is cleared</td>
+<td><code>TestAnUnfinishedOperationBlocksANewOne</code></td>
+</tr>
+<tr>
+<td>A crash mid-operation leaves a journal <code>--resume</code> continues from</td>
+<td><code>TestResumeStartsFromTheStepThatDidNotFinish</code></td>
+</tr>
 </tbody>
 </table>
 <h2 id="what-a-test-in-this-table-has-to-do">What a test in this table has to do<a class="headerlink" href="#what-a-test-in-this-table-has-to-do" title="Permanent link">&para;</a></h2>
@@ -2550,11 +2751,6 @@ and pins nothing.</p>
   is told it worked. Recorded as
   <code>TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp</code>, which fails if that
   ever becomes a refusal.</li>
-<li><strong><code>preflight.NoUnfinishedOperation</code> is written but never wired in.</strong> It is
-  documented as refusing to start while a previous operation is flagged, and
-  nothing calls it — so <code>apply</code> runs straight over an operation that asked for
-  a human. Pinned by <code>TestAnUnfinishedOperationDoesNotBlockANewOne</code>, which
-  fails the day it is wired.</li>
 <li><strong>Cancelling the <code>init</code> wizard is not honoured in accessible mode.</strong> huh's
   accessible renderer ignores the context and discards each field's error, so
   ctrl-D completes the form with defaults. What is asserted instead is that the
