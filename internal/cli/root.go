@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -233,8 +234,17 @@ func wantsJSON(parsed bool, args []string) bool {
 		if arg == "--" {
 			return false
 		}
-		if arg == "--json" || arg == "--json=true" {
+		if arg == "--json" {
 			return true
+		}
+		// The same spellings cobra's own boolean parser takes:
+		// --json=1, --json=TRUE, --json=t. A caller who wrote one of
+		// those asked for an envelope as plainly as one who wrote the
+		// bare flag.
+		if value, ok := strings.CutPrefix(arg, "--json="); ok {
+			if parsed, err := strconv.ParseBool(value); err == nil {
+				return parsed
+			}
 		}
 	}
 	return false
@@ -839,7 +849,11 @@ func (a *App) pathsFromConfig() (domain.Paths, error) {
 			WithHint("pass one or the other")
 	}
 	if a.Flags.root != "" {
-		if given, err := filepath.Abs(a.Flags.root); err != nil || given != root {
+		// Normalised on both sides: --root / and a config under /etc are
+		// the same layout, and the empty root above is how that layout
+		// is spelled here.
+		given, err := filepath.Abs(a.Flags.root)
+		if err != nil || filepath.Clean("/"+given) != filepath.Clean("/"+root) {
 			return domain.Paths{}, domain.Usage(
 				"--root %s and --config %s name different installations",
 				a.Flags.root, path).

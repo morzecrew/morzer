@@ -434,3 +434,37 @@ func TestDirSizeIgnoresWhatItCannotRead(t *testing.T) {
 			"for a diagnostic")
 	}
 }
+
+// TestAnInTreeSymlinkIsRefusedAtOpen.
+//
+// os.Root stops a path escaping the tree; it does not stop a symlink *inside*
+// it from being followed. A walked file swapped for an in-tree symlink would
+// have been opened as its target -- copying the target's bytes under the walked
+// name, with a stat that validates the target rather than the entry. O_NOFOLLOW
+// on the final component is what makes the open either get the file the walk
+// saw or fail.
+//
+// The swap itself is racy and not reproducible in a test; what is checkable is
+// that the open refuses a symlink even when it resolves inside the root, which
+// is the property the race would otherwise exploit.
+func TestAnInTreeSymlinkIsRefusedAtOpen(t *testing.T) {
+	src := tree(t, map[string]string{
+		"manifest.yaml": "x",
+		"real.txt":      "the file the walk would have seen",
+	})
+	if err := os.Symlink("real.txt", filepath.Join(src, "alias.txt")); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	dst := filepath.Join(t.TempDir(), "out")
+	err := atomicfs.CopyTree(src, dst, atomicfs.DefaultExtractLimits())
+	if err == nil {
+		t.Fatal("a bundle containing an in-tree symlink was copied")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("the refusal does not say what it found: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dst, "alias.txt")); statErr == nil {
+		t.Error("the symlink's target was copied under the link's name")
+	}
+}

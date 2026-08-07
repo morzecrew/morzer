@@ -144,7 +144,7 @@ func RunHealthWaiterSuite(t *testing.T, newWaiter HealthWaiterFactory) {
 		started := time.Now()
 		_, err := w.WaitReady(ctx, specs)
 		require.Error(t, err, "a cancelled wait must not report ready")
-		assert.Less(t, time.Since(started), 5*time.Second,
+		assert.Less(t, time.Since(started), time.Second,
 			"ctrl-c during a health wait has to be felt within the second, not the minute")
 	})
 

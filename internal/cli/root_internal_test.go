@@ -68,6 +68,17 @@ func TestWantsJSONSeesTheFlagCobraNeverReached(t *testing.T) {
 	if wantsJSON(false, []string{"--wat", "--", "--json"}) {
 		t.Error("an operand after -- was read as a flag")
 	}
+	// Every boolean spelling cobra itself accepts.
+	for _, spelling := range []string{"--json=true", "--json=1", "--json=TRUE", "--json=t"} {
+		if !wantsJSON(false, []string{"--wat", spelling}) {
+			t.Errorf("%s asked for an envelope and would not have got one", spelling)
+		}
+	}
+	for _, spelling := range []string{"--json=false", "--json=0", "--json=nonsense"} {
+		if wantsJSON(false, []string{"--wat", spelling}) {
+			t.Errorf("%s was read as a request for an envelope", spelling)
+		}
+	}
 }
 
 // TestConfigDerivesTheLayoutItSitsIn. The flag was parsed and discarded, so a
@@ -163,5 +174,22 @@ func TestTheLiveViewReadsOnlyFromATerminal(t *testing.T) {
 	app := &App{Stream: ui.Streams{In: slave}}
 	if got := app.terminalInput(); got != slave {
 		t.Errorf("terminalInput = %v, want the injected terminal", got)
+	}
+}
+
+// TestConfigAcceptsTheRootThatMeansTheSameLayout. `--root /` and a config under
+// /etc name the same place, and the empty root is how that layout is spelled
+// internally -- comparing the two spellings verbatim refused a pair that agrees.
+func TestConfigAcceptsTheRootThatMeansTheSameLayout(t *testing.T) {
+	app := &App{}
+	app.Flags.configDir = "/etc/demo/installation.yaml"
+	app.Flags.root = "/"
+
+	paths, err := app.resolvePaths(t.Context())
+	if err != nil {
+		t.Fatalf("--root / and a config under /etc were called different installations: %v", err)
+	}
+	if paths.EtcDir != "/etc/demo" {
+		t.Errorf("EtcDir = %q", paths.EtcDir)
 	}
 }

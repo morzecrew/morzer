@@ -4,12 +4,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -142,8 +144,20 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 }
 
 func copyFileIn(srcRoot, root *os.Root, rel string, mode fs.FileMode) error {
-	in, err := srcRoot.Open(rel)
+	// O_NOFOLLOW on top of the root. The root stops a path escaping the
+	// tree; it does not stop a symlink *inside* it from being followed, and
+	// a walked file swapped for an in-tree symlink would otherwise be
+	// opened as its target -- copying the target's bytes under the walked
+	// name, with a Stat that validates the target rather than the entry.
+	// Together they mean the open either gets the file the walk saw or
+	// fails.
+	in, err := srcRoot.OpenFile(rel, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
+		if errors.Is(err, syscall.ELOOP) {
+			return domain.ValidationError(nil,
+				"bundle contains a symlink at %q, which is not allowed", rel).
+				WithHint("release bundles must contain only regular files and directories")
+		}
 		return domain.Internal(err, "cannot open %s", rel)
 	}
 	defer func() { _ = in.Close() }()

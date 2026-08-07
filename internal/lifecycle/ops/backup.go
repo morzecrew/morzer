@@ -668,8 +668,16 @@ func restoreLeftBehind(rec domain.OperationRecord, err error) error {
 	return domain.AsError(err).WithHint("%s", recovery)
 }
 
-// servicesLeftStopped reports whether the stop succeeded and nothing brought
-// the product back.
+// servicesLeftStopped reports whether the stop succeeded and nothing has since
+// tried to bring the product back.
+//
+// "Has tried", not "has succeeded": an interruption during the re-apply may
+// have started some or all of the services already, and claiming they are
+// stopped would send the operator to run `apply` against a deployment that is
+// half up -- which is fine, apply is idempotent, but the sentence would be
+// false and the next one they read might not be. The hint is offered only when
+// the re-apply was never entered, which is the case it was written for:
+// ctrl-C in the window between the stop and the restore hook.
 func servicesLeftStopped(rec domain.OperationRecord) bool {
 	stopped := false
 	for _, step := range rec.Steps {
@@ -677,7 +685,7 @@ func servicesLeftStopped(rec domain.OperationRecord) bool {
 		case "stop-services":
 			stopped = step.Status == domain.StepSucceeded
 		case "reapply-release":
-			if step.Status == domain.StepSucceeded {
+			if step.Status != domain.StepPending {
 				return false
 			}
 		}

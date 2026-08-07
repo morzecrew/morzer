@@ -32,6 +32,11 @@ type BackupEngineHarness struct {
 
 	// Encrypts declares that component bytes are unreadable without a key.
 	// Declaring it falsely is what this suite catches.
+	//
+	// What it checks is the port's own vocabulary: a component record says
+	// how it is stored, and a record claiming ports.EncryptionAge has to be
+	// age. It deliberately says nothing about file naming, which is one
+	// engine's layout rather than anything the port promises.
 	Encrypts bool
 }
 
@@ -258,14 +263,18 @@ func RunBackupEngineSuite(t *testing.T, newEngine BackupEngineFactory) {
 			assert.Equal(t, c.Size, stat.Size(),
 				"%s is %d bytes and the manifest says %d", c.Path, stat.Size(), c.Size)
 
-			if h.Encrypts {
-				assert.True(t, strings.HasSuffix(c.Path, ".age"),
-					"%s is stored under a name that does not say it is encrypted", c.Path)
+			if !h.Encrypts {
+				continue
+			}
+			assert.NotEmpty(t, c.Encryption,
+				"%s records no encryption, so a restore cannot tell whether to "+
+					"decrypt it", c.Path)
+			if c.Encryption == ports.EncryptionAge {
 				head, err := os.ReadFile(path)
 				require.NoError(t, err)
 				assert.True(t, strings.HasPrefix(string(head), "age-encryption.org/"),
-					"%s does not begin with the age header, so it is not encrypted "+
-						"however it is named", c.Path)
+					"%s claims to be age-encrypted and does not begin with the "+
+						"age header", c.Path)
 			}
 		}
 	})

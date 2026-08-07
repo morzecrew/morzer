@@ -96,7 +96,10 @@ func (s SecretSet) RedactionList() []string {
 	for _, v := range s.values {
 		// Very short values would redact harmlessly-common substrings
 		// out of logs, hiding information without protecting anything.
-		if v.Len() >= 6 {
+		// The same constant the generator is bounded by, so the two
+		// cannot drift: a value the generator would refuse to produce
+		// is exactly the one this would refuse to scrub.
+		if v.Len() >= MinRedactableLength {
 			out = append(out, v.Reveal())
 		}
 	}
