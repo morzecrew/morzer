@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -236,7 +237,13 @@ func ClearIntervention(ctx context.Context, d *Deps, opID string) (Result, error
 		return Result{}, domain.AsError(err).
 			WithHint("an operation is in flight; let it finish (or stop its process), then re-run")
 	}
-	defer func() { _ = release() }()
+	// Logged like withLock's release: a lock that failed to release blocks
+	// every later operation, and silence would make that undiagnosable.
+	defer func() {
+		if err := release(); err != nil {
+			logging.FromContext(ctx).Error("cannot release the deployment lock", "error", err)
+		}
+	}()
 
 	// Selected under the lock, so the record acknowledged is the record
 	// that exists now -- not one that finished while this command started.
