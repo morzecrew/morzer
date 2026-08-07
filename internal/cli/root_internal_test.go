@@ -62,6 +62,12 @@ func TestWantsJSONSeesTheFlagCobraNeverReached(t *testing.T) {
 	if wantsJSON(false, []string{"status", "--plain"}) {
 		t.Error("a run that never asked for json would be given an envelope")
 	}
+	// Everything after the terminator is an operand: `morzer --wat --
+	// --json` asked for plain output and a literal argument that looks
+	// like a flag.
+	if wantsJSON(false, []string{"--wat", "--", "--json"}) {
+		t.Error("an operand after -- was read as a flag")
+	}
 }
 
 // TestConfigDerivesTheLayoutItSitsIn. The flag was parsed and discarded, so a

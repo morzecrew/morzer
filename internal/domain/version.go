@@ -148,7 +148,10 @@ func (c Constraint) Allows(v Version) bool {
 // constraintNamesPrerelease matches a hyphen directly after a version number,
 // which is how a pre-release is spelled inside a constraint (">=2.0.0-rc.1").
 // The spaced hyphen of a range ("1.0.0 - 2.0.0") deliberately does not match.
-var constraintNamesPrerelease = regexp.MustCompile(`\d-[0-9A-Za-z]`)
+//
+// The identifier may itself begin with a hyphen -- ">=2.0.0--rc" is a valid
+// constraint whose pre-release is "-rc" -- so the character class includes one.
+var constraintNamesPrerelease = regexp.MustCompile(`\d-[0-9A-Za-z-]`)
 
 func (c Constraint) MarshalText() ([]byte, error) { return []byte(c.raw), nil }
 

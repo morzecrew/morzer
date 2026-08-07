@@ -654,11 +654,18 @@ func restoreLeftBehind(rec domain.OperationRecord, err error) error {
 	if rec.Status != domain.StatusInterrupted || !servicesLeftStopped(rec) {
 		return err
 	}
-	return domain.AsError(err).WithHint(
-		"the services were stopped before the restore began, and an interrupted " +
-			"operation is not brought back up automatically. Run `morzer apply` to " +
-			"start the current release again, or re-run the restore to try once more. " +
-			"`morzer status` shows which.")
+	recovery := "the services were stopped before the restore began, and an interrupted " +
+		"operation is not brought back up automatically. Run `morzer apply` to " +
+		"start the current release again, or re-run the restore to try once more. " +
+		"`morzer status` shows which."
+
+	// Appended rather than assigned: WithHint replaces, and whatever the
+	// interrupted step said about itself is the other half of what the
+	// operator needs.
+	if existing := domain.AsError(err).Hint; existing != "" {
+		return domain.AsError(err).WithHint("%s %s", existing, recovery)
+	}
+	return domain.AsError(err).WithHint("%s", recovery)
 }
 
 // servicesLeftStopped reports whether the stop succeeded and nothing brought

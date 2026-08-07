@@ -1,6 +1,7 @@
 package ports_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -139,6 +140,29 @@ func TestCredentialsPrintWhatIsSetAndNeverWhatItIs(t *testing.T) {
 	}
 	if got := (ports.TargetCredentials{}).String(); got != "TargetCredentials{}" {
 		t.Errorf("empty credentials print as %q", got)
+	}
+
+	// And through encoding/json, which String does not reach. The fields
+	// carry json tags because they are read from a secret document, so any
+	// marshal of a ref -- a --json envelope, a captured event -- would
+	// otherwise carry the private key with it.
+	encoded, err := json.Marshal(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{
+		"MIIEpAIBAAK", "correct horse battery staple", "wJalrXUtnFEMI",
+	} {
+		if strings.Contains(string(encoded), secret) {
+			t.Errorf("a credential was serialised:\n%s", encoded)
+		}
+	}
+	// The shape survives: which credentials are configured is what a
+	// consumer legitimately reports.
+	for _, want := range []string{`"private_key":"[redacted]"`, `"region":"eu-central-1"`} {
+		if !strings.Contains(string(encoded), want) {
+			t.Errorf("the envelope does not carry %s:\n%s", want, encoded)
+		}
 	}
 }
 

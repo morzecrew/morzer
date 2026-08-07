@@ -23,6 +23,10 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
+// resultLimit bounds what fd 3 may carry. A hook that streams gigabytes into
+// the result channel is broken, and must not take the manager's memory with it.
+const resultLimit = 1 << 20
+
 // ResultFD and the exit-code meanings are defined by the ABI in ports; these
 // keep the names short inside this package.
 const (
@@ -122,7 +126,13 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 	go func() {
 		// Bounded: a hook that streams gigabytes into fd 3 is broken,
 		// and must not take the manager's memory with it.
-		data, _ := io.ReadAll(io.LimitReader(readEnd, 1<<20))
+		//
+		// One byte past the bound, so overflow is *detectable*. Reading
+		// exactly the limit cannot tell a result that fits from one that
+		// was cut off at it -- and a hook padding valid JSON to exactly
+		// a megabyte before writing more would have had its prefix
+		// accepted as the whole of what it said.
+		data, _ := io.ReadAll(io.LimitReader(readEnd, resultLimit+1))
 		_ = readEnd.Close()
 		resultCh <- data
 	}()
@@ -207,6 +217,10 @@ func abiViolation(name string, cause error) error {
 // hook look broken. Bytes that are not the documented object are the opposite:
 // the hook tried to say something and the manager cannot hear it.
 func parseResult(data []byte) (Result, error) {
+	if len(data) > resultLimit {
+		return Result{}, fmt.Errorf(
+			"the result exceeds the %d byte limit the ABI documents", resultLimit)
+	}
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" {
 		return Result{}, nil

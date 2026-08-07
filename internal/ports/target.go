@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -195,6 +196,48 @@ func (c TargetCredentials) String() string {
 }
 
 func (c TargetCredentials) GoString() string { return c.String() }
+
+// MarshalJSON redacts, because String does not reach encoding/json.
+//
+// The fields carry json tags -- they are read from a secret document -- so any
+// marshal of a ref carries the private key with it. The shape is preserved:
+// which credentials are configured stays visible, because that is what a
+// `--json` consumer or a captured envelope legitimately reports, and every
+// value that could authenticate is replaced.
+func (c TargetCredentials) MarshalJSON() ([]byte, error) {
+	type redacted struct {
+		AccessKeyID     string `json:"access_key_id,omitempty"`
+		SecretAccessKey string `json:"secret_access_key,omitempty"`
+		SessionToken    string `json:"session_token,omitempty"`
+		Region          string `json:"region,omitempty"`
+		Endpoint        string `json:"endpoint,omitempty"`
+		PrivateKey      string `json:"private_key,omitempty"`
+		Passphrase      string `json:"passphrase,omitempty"`
+		KnownHosts      string `json:"known_hosts,omitempty"`
+	}
+	const hidden = "[redacted]"
+	set := func(v string) string {
+		if strings.TrimSpace(v) == "" {
+			return ""
+		}
+		return hidden
+	}
+	return json.Marshal(redacted{
+		AccessKeyID:     set(c.AccessKeyID),
+		SecretAccessKey: set(c.SecretAccessKey),
+		SessionToken:    set(c.SessionToken),
+		// Not secrets, and useful: they say which endpoint a failed push
+		// was talking to.
+		Region:     c.Region,
+		Endpoint:   c.Endpoint,
+		PrivateKey: set(c.PrivateKey),
+		Passphrase: set(c.Passphrase),
+		// A known_hosts line is a public key and a hostname, and neither
+		// authenticates anybody to anything -- but it is credential
+		// material an operator configured, and its shape is enough.
+		KnownHosts: set(c.KnownHosts),
+	})
+}
 
 // Redactions lists the values a log must never print.
 func (c TargetCredentials) Redactions() []string {

@@ -54,6 +54,13 @@ func newInitCommand(app *App) *cobra.Command {
 			if product == "" {
 				product = app.Flags.product
 			}
+			// --config selected a layout during the pre-run, before
+			// this local flag existed to be compared against. Two
+			// flags naming different installations is a question,
+			// and the rewiring below would answer it silently.
+			if err := app.confirmProductMatchesConfig(product); err != nil {
+				return err
+			}
 
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.

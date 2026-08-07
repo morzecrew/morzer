@@ -542,6 +542,30 @@ exit 0
 	}
 }
 
+// TestAResultPaddedToTheLimitIsNotAcceptedAsAPrefix.
+//
+// The read was bounded at exactly a megabyte, so it could not tell a result
+// that fits from one that was cut off at the bound -- and a hook padding valid
+// JSON to the limit before writing more would have had its prefix accepted as
+// the whole of what it said. One byte past the bound is what makes overflow
+// visible.
+func TestAResultPaddedToTheLimitIsNotAcceptedAsAPrefix(t *testing.T) {
+	rel := release(t)
+
+	// Valid JSON whose object closes exactly at the limit, followed by more.
+	const limit = 1 << 20
+	padding := strings.Repeat("x", limit-len(`{"message":"","schema_version":42}`))
+	cmd := hook(t, rel, "migrate", `#!/bin/sh
+printf '{"message":"`+padding+`","schema_version":42}' >&3
+printf 'and then some more' >&3
+exit 0
+`)
+
+	if _, err := run(t, rel, cmd); err == nil {
+		t.Fatal("a result truncated at the limit was accepted as the whole of it")
+	}
+}
+
 // TestCancellingAnOperationStopsItsHook is what ctrl-c has to do.
 func TestCancellingAnOperationStopsItsHook(t *testing.T) {
 	rel := release(t)

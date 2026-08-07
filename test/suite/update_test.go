@@ -185,38 +185,52 @@ func TestUpdateRefusesADigestMismatch(t *testing.T) {
 // meant "do not back up", so a record written before the field existed or a
 // hand-edited file turned the backup off by omission.
 func TestTheInstallationCanTurnOffThePreUpdateBackup(t *testing.T) {
-	h := newHarness(t)
-	h.install()
-	h.setHookEnv()
-	applyBaseline(t, h)
+	// Two machines rather than two updates on one: the second update would
+	// have to be 1.3.0 over itself, and a same-version update short-circuits
+	// enough that "no backup was taken" would prove nothing. Each of these
+	// is the same real 1.2.0 → 1.3.0 transition, differing only in the
+	// policy under test.
+	converged := func(t *testing.T) *harness {
+		t.Helper()
+		h := newHarness(t)
+		h.install()
+		h.setHookEnv()
+		applyBaseline(t, h)
+		return h
+	}
 	ctx := context.Background()
 
-	// The default is the safe direction: a backup is taken.
-	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
-	require.NoError(t, err)
+	t.Run("the default is the safe direction", func(t *testing.T) {
+		h := converged(t)
 
-	backups, err := h.Deps.Backup.List(ctx)
-	require.NoError(t, err)
-	require.Len(t, backups, 1, "the pre-update backup was not taken by default")
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+		require.NoError(t, err)
 
-	// Set, and it applies without --skip-backup --force on every run.
-	inst, err := h.Deps.State.LoadInstallation(ctx)
-	require.NoError(t, err)
-	inst.Policy.SkipBackupBeforeUpdate = true
-	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+		backups, err := h.Deps.Backup.List(ctx)
+		require.NoError(t, err)
+		assert.Len(t, backups, 1, "the pre-update backup was not taken by default")
+	})
 
-	back := stageUpgradeSource(t, h)
-	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: back, To: ""})
-	require.NoError(t, err)
+	t.Run("the policy suppresses it, without --skip-backup --force", func(t *testing.T) {
+		h := converged(t)
 
-	after, err := h.Deps.Backup.List(ctx)
-	require.NoError(t, err)
-	assert.Len(t, after, 1, "the policy was set and a backup was taken anyway")
+		inst, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		inst.Policy.SkipBackupBeforeUpdate = true
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 
-	// Recorded, because the journal is where an incident review looks for
-	// why there is no backup from just before this update.
-	assert.Equal(t, "true", result.Record.Flags["skip_backup_policy"],
-		"the journal does not record that the policy skipped the backup")
+		result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+		require.NoError(t, err)
+
+		backups, err := h.Deps.Backup.List(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, backups, "the policy was set and a backup was taken anyway")
+
+		// Recorded, because the journal is where an incident review looks
+		// for why there is no backup from just before this update.
+		assert.Equal(t, "true", result.Record.Flags["skip_backup_policy"],
+			"the journal does not record that the policy skipped the backup")
+	})
 }
 
 // TestUpdateRetiresAParameterTheNewReleaseDropped.

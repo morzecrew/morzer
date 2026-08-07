@@ -111,6 +111,25 @@ func TestConfigSelectsTheInstallationItNames(t *testing.T) {
 	}
 }
 
+// TestConfigAndACommandLocalProductMustAgree.
+//
+// The root's --product is compared against --config during the pre-run. `init`
+// has a --product of its own -- it may learn the name from a bundle -- which is
+// parsed into a different variable and was invisible there: the command
+// selected the layout --config named and then rewired to the other one.
+func TestConfigAndACommandLocalProductMustAgree(t *testing.T) {
+	r := New(t)
+
+	out := r.Run("--config", r.Path("etc", "demo", "installation.yaml"),
+		"init", "--product", "other", "--no-recovery-recipient", "--install-units=false")
+	out.ExitCode(2).OutputContains("different installations")
+
+	// Agreeing is not a conflict.
+	r.Run("--config", r.Path("etc", "demo", "installation.yaml"),
+		"init", "--product", "demo", "--no-recovery-recipient",
+		"--install-units=false").ExitCode(0)
+}
+
 func TestBareClearInterventionSelectsRatherThanFailing(t *testing.T) {
 	r := NewInstalled(t)
 

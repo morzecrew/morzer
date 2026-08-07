@@ -390,6 +390,14 @@ func runEditor(ctx context.Context, editor []string, path string) error {
 		return nil
 	}
 
+	// Cancellation first, and before the exit status: CommandContext kills
+	// the editor when the context ends, and a killed process reports an
+	// ExitError -- so testing that first would classify a ctrl-C as the
+	// operator quitting their editor with an error.
+	if ctx.Err() != nil {
+		return domain.Interrupted("the edit was cancelled; no secrets were changed")
+	}
+
 	// An editor exiting non-zero is how an operator says "forget it" --
 	// `:cq` in vim exists for exactly this. An editor that never started is
 	// a different sentence with the same ending, and reporting the two
@@ -399,9 +407,6 @@ func runEditor(ctx context.Context, editor []string, path string) error {
 	if errors.As(err, &exitErr) {
 		return domain.Usage("the editor exited with an error; no secrets were changed").
 			WithHint("nothing was written. The temporary file has been removed.")
-	}
-	if ctx.Err() != nil {
-		return domain.Interrupted("the edit was cancelled; no secrets were changed")
 	}
 	return domain.Usage("cannot run the editor %q", argv[0]).
 		WithHint("set $EDITOR or $VISUAL to something on PATH; " +

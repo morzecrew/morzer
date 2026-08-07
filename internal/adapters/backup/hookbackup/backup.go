@@ -1047,7 +1047,12 @@ func (e *Engine) sweepManifestlessDirectories() {
 			// debris.
 			continue
 		}
-		if err := atomicfs.RemoveAll(dir); err == nil {
+		// Overwritten before unlinking, exactly as Create's own failure
+		// path does: what is in there is the hook's plaintext dump and
+		// the volume tarballs of an interrupted backup, and unlinking
+		// alone would leave that more recoverable from free blocks than
+		// the path this one stands in for.
+		if err := atomicfs.RemoveWithOverwrite(dir); err == nil {
 			atomicfs.SyncDir(e.paths.BackupsDir())
 		}
 	}

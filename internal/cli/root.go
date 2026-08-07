@@ -227,6 +227,12 @@ func wantsJSON(parsed bool, args []string) bool {
 		return true
 	}
 	for _, arg := range args {
+		// Everything after the terminator is an operand, not a flag:
+		// `morzer --wat -- --json` asked for plain output and a literal
+		// argument that happens to look like a flag.
+		if arg == "--" {
+			return false
+		}
 		if arg == "--json" || arg == "--json=true" {
 			return true
 		}
@@ -845,6 +851,30 @@ func (a *App) pathsFromConfig() (domain.Paths, error) {
 		return domain.DefaultPaths(product), nil
 	}
 	return domain.PathsUnder(root, product), nil
+}
+
+// confirmProductMatchesConfig refuses a command whose --config and whose
+// command-local --product name different installations.
+//
+// The root's own --product is compared inside pathsFromConfig, during the
+// persistent pre-run. A command with a --product of its own -- `init` has one,
+// because it may learn the name from a bundle -- is parsed into a different
+// variable and is not visible there, so `morzer --config /etc/demo/... init
+// --product other` selected demo and then rewired to other.
+func (a *App) confirmProductMatchesConfig(product string) error {
+	if a.Flags.configDir == "" || product == "" {
+		return nil
+	}
+	path, err := filepath.Abs(a.Flags.configDir)
+	if err != nil {
+		return domain.Usage("cannot resolve --config %q", a.Flags.configDir)
+	}
+	if named := filepath.Base(filepath.Dir(path)); named != product {
+		return domain.Usage("--product %s and --config %s name different installations",
+			product, path).
+			WithHint("pass one or the other")
+	}
+	return nil
 }
 
 // discoverProduct finds an installed product by looking for its state file.
