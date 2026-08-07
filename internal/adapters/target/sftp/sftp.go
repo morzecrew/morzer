@@ -190,6 +190,20 @@ func (c *connection) close() error {
 	return errors.Join(errs...)
 }
 
+// kill severs the transport out from under in-flight requests.
+//
+// sftp.Client.Close is not safe to call concurrently with requests still in
+// flight; closing the ssh transport instead makes every pending request fail
+// and the client's own goroutines exit on their error path -- which is
+// exactly the teardown both callers of drop want, for a corpse or for a
+// cancellation. close() stays for the orderly end-of-command path, where
+// nothing is in flight by construction.
+func (c *connection) kill() {
+	if c.ssh != nil {
+		_ = c.ssh.Close()
+	}
+}
+
 // store connects, or reuses a connection, and returns the blob.Store over it.
 func (t *Target) store(ctx context.Context, ref ports.TargetRef) (*sftpStore, error) {
 	conn, key, err := t.connect(ctx, ref)
@@ -215,11 +229,12 @@ func (t *Target) drop(key string, conn *connection) {
 	}
 	t.mu.Unlock()
 
-	// Closed outside the lock, and only by whoever removed it, so a
-	// connection is never closed twice and Close is never held up by a
-	// server that has stopped answering.
+	// Severed outside the lock, and only by whoever removed it, so a
+	// connection is never torn down twice and Close is never held up by a
+	// server that has stopped answering. kill rather than close: drop's
+	// callers reach it with requests possibly still in flight.
 	if cached {
-		_ = conn.close()
+		conn.kill()
 	}
 }
 
@@ -606,10 +621,12 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 		}
 	}()
 	// After the teardown, every remote call reports connection errors; the
-	// operator's cancellation is the true cause and the one reported.
+	// operator's cancellation is the true cause and the one reported --
+	// classified here, so the direct command paths that never pass through
+	// the engine's classifier still exit as interrupted.
 	fail := func(cause error, format string, args ...any) error {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
+		if ctx.Err() != nil {
+			return domain.Interrupted("the push to the backup target was cancelled")
 		}
 		return s.unreachable(cause, format, args...)
 	}
