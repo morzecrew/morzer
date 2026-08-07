@@ -1,8 +1,12 @@
 package clitest_test
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/test/clitest"
@@ -101,6 +105,36 @@ func TestInitRefusesAParameterTheReleaseDoesNotDeclare(t *testing.T) {
 	out := r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
 		"--set", "not_a_parameter=1")
 	out.Failed().OutputContains("not_a_parameter")
+}
+
+// TestInitRefusesAParameterWithNoDefaultAndNoValue.
+//
+// A declaration without a default is the only way a manifest can say "the
+// operator must choose this", and `init` is the one command that can be told --
+// so it is the one command that refuses. Everything later resolves it as
+// present-and-empty, because an `apply` reading months-old state cannot supply
+// a value and taking the deployment down over a knob nobody touched would be
+// worse than an empty string.
+func TestInitRefusesAParameterWithNoDefaultAndNoValue(t *testing.T) {
+	r := clitest.New(t)
+
+	// The vendor declares a knob and no default for it.
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(data),
+		"parameters:\n",
+		"parameters:\n  admin_email:\n    type: string\n    description: Where alerts go\n",
+		1)), 0o644))
+
+	out := r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
+		"--install-units=false")
+	out.Failed().OutputContains("admin_email")
+	out.OutputContains("--set admin_email=")
+
+	// Given a value, the same install proceeds.
+	r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
+		"--install-units=false", "--set", "admin_email=ops@example").ExitCode(0)
 }
 
 func TestInitTakesTheProductNameFromTheBundle(t *testing.T) {

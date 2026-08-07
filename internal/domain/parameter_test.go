@@ -83,39 +83,46 @@ func TestResolveParametersFillsDefaults(t *testing.T) {
 	assert.Equal(t, domain.Parameters{"http_port": "18080", "log_level": "debug"}, params)
 }
 
-// TestADeclarationWithNoDefaultNeedsAValue.
+// TestADeclarationWithNoDefaultIsPresentAndEmpty.
 //
 // "Every declared parameter is present" is the type's own contract and the
 // documented promise, and a declaration without a default broke it: the name
 // was skipped, so `Require` reported "the release declares no parameter %q"
-// about a parameter the release declares -- and downstream the value was simply
-// absent, an empty interpolation in a Compose file and an empty field in a
-// rendered config. A declaration with no default is the only way a manifest can
-// say "the operator must choose", so it is now treated as one.
-func TestADeclarationWithNoDefaultNeedsAValue(t *testing.T) {
+// about a parameter the release declares.
+//
+// Present-and-empty rather than refused. Refusing here would be refusing on
+// every operation, and only one of them can do anything about it: an update
+// meeting a parameter the *new* release added would have no way forward,
+// because the value cannot be set before the release that declares it is
+// installed. MissingValues is what the commands that can act on it ask.
+func TestADeclarationWithNoDefaultIsPresentAndEmpty(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
 		"admin_email": {Type: domain.ParamString},
 		"http_port":   {Type: domain.ParamPort, Default: "18080"},
 	}
 
-	_, err := domain.ResolveParameters(declared, nil)
-	require.Error(t, err, "a parameter nobody gave a value resolved to nothing at all")
-
-	e := domain.AsError(err)
-	assert.Equal(t, domain.CodeUsage, e.Code)
-	assert.Contains(t, e.Message, "admin_email")
-	assert.Contains(t, e.Hint, "--set admin_email=")
-
-	// Supplied, and the contract holds again.
-	params, err := domain.ResolveParameters(declared, map[string]string{"admin_email": "ops@example"})
+	params, err := domain.ResolveParameters(declared, nil)
 	require.NoError(t, err)
-	assert.Equal(t, domain.Parameters{
-		"admin_email": "ops@example", "http_port": "18080",
-	}, params)
+	assert.Equal(t, domain.Parameters{"admin_email": "", "http_port": "18080"}, params)
 
 	got, err := params.Require("admin_email")
-	require.NoError(t, err, "a declared parameter with a value must be present")
-	assert.Equal(t, "ops@example", got)
+	require.NoError(t, err,
+		"a declared parameter reported as undeclared, which is what the contract "+
+			"exists to prevent")
+	assert.Empty(t, got)
+
+	// And the commands that can ask for a value are told which to ask for.
+	assert.Equal(t, []string{"admin_email"}, domain.MissingValues(declared, nil))
+	assert.Empty(t, domain.MissingValues(declared,
+		map[string]string{"admin_email": "ops@example"}))
+	assert.Equal(t, []string{"admin_email"}, domain.MissingValues(declared,
+		map[string]string{"admin_email": "   "}),
+		"whitespace is not a value somebody chose")
+
+	supplied, err := domain.ResolveParameters(declared,
+		map[string]string{"admin_email": "ops@example"})
+	require.NoError(t, err)
+	assert.Equal(t, "ops@example", supplied["admin_email"])
 }
 
 func TestAnUndeclaredParameterIsRefusedByName(t *testing.T) {

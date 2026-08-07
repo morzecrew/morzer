@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -373,6 +374,20 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			// nothing.
 			if _, err := domain.ResolveParameters(rel.Manifest.Parameters, opts.Parameters); err != nil {
 				return err
+			}
+
+			// A declaration with no default is the manifest saying
+			// "you must choose this", and `init` is the one command
+			// that can be told. Refused here rather than inside
+			// ResolveParameters, which every later operation calls:
+			// an apply reading months-old state cannot supply a
+			// value, and taking a deployment down over a knob
+			// nobody touched would be worse than the empty string.
+			if missing := domain.MissingValues(rel.Manifest.Parameters, opts.Parameters); len(missing) > 0 {
+				return domain.Usage(
+					"release %s declares no default for %s",
+					rel.Version(), strings.Join(missing, ", ")).
+					WithHint("pass --set %s=<value> (repeat --set for several)", missing[0])
 			}
 
 			st.Set(engine.KeyRelease, rel)

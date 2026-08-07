@@ -177,20 +177,20 @@ type Parameters map[string]string
 func ResolveParameters(declared map[string]ParameterSpec, set map[string]string) (Parameters, error) {
 	out := make(Parameters, len(declared))
 
-	// A declaration with no default is how a manifest says "the operator
-	// must choose": there is no other spelling for it. Skipping it left the
-	// name out of the result, which broke the type's own contract -- every
-	// declared parameter is present -- and produced a refusal that read
-	// "the release declares no parameter %q" about a parameter the release
-	// declares. Downstream, the value simply was not there: an empty
-	// interpolation in a Compose file, an empty field in a rendered config.
-	var unset []string
-
+	// A declaration with no default is present with an empty value, not
+	// absent. Skipping it broke the type's own contract -- every declared
+	// parameter is present -- and produced a refusal that read "the release
+	// declares no parameter %q" about a parameter the release declares.
+	//
+	// Present-empty rather than refused, because this function runs on
+	// every operation and only one of them can do anything about a missing
+	// value: `init` takes --set, and refuses there (see MissingValues). An
+	// update that meets a parameter the *new* release added would otherwise
+	// have no way forward at all -- the value cannot be set before the
+	// release that declares it is installed.
 	for name, spec := range declared {
 		if spec.Default == "" {
-			if _, ok := set[name]; !ok {
-				unset = append(unset, name)
-			}
+			out[name] = ""
 			continue
 		}
 		value, err := spec.Parse(spec.Default)
@@ -198,14 +198,6 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 			return nil, ValidationError(err, "release parameter %q has an invalid default", name)
 		}
 		out[name] = value
-	}
-
-	if len(unset) > 0 {
-		sort.Strings(unset)
-		return nil, Usage("the release declares no default for %s, and no value was set",
-			strings.Join(unset, ", ")).
-			WithHint("pass --set %s=<value> (repeat for several), or ask the vendor "+
-				"to declare a default", unset[0])
 	}
 
 	for _, name := range sortedStringKeys(set) {
@@ -222,6 +214,28 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 	}
 
 	return out, nil
+}
+
+// MissingValues lists declared parameters that have neither a default nor a
+// value: the ones an operator has to choose, and the only spelling a manifest
+// has for "you must choose this".
+//
+// Separate from ResolveParameters because only the commands that can accept a
+// value should refuse over one. `init` does; an `apply` reading state that was
+// written months ago cannot, and refusing there would take a deployment down
+// over a knob nobody has touched.
+func MissingValues(declared map[string]ParameterSpec, set map[string]string) []string {
+	var missing []string
+	for name, spec := range declared {
+		if spec.Default != "" {
+			continue
+		}
+		if value, ok := set[name]; !ok || strings.TrimSpace(value) == "" {
+			missing = append(missing, name)
+		}
+	}
+	sort.Strings(missing)
+	return missing
 }
 
 // Require returns the value of a declared parameter, or an error naming what is
