@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"os"
 	"strings"
@@ -44,7 +45,7 @@ func TestAPipedSecretIsTakenWhole(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			app, _ := readerApp(strings.NewReader(tc.piped))
 
-			got, err := app.readSecretValue("value for x: ")
+			got, err := app.readSecretValue(context.Background(), "value for x: ")
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got.Reveal())
 		})
@@ -54,7 +55,7 @@ func TestAPipedSecretIsTakenWhole(t *testing.T) {
 func TestAnEmptyPipeIsAnEmptySecret(t *testing.T) {
 	app, _ := readerApp(strings.NewReader(""))
 
-	got, err := app.readSecretValue("value for x: ")
+	got, err := app.readSecretValue(context.Background(), "value for x: ")
 	require.NoError(t, err, "an empty pipe is a value the caller rejects, not a read failure")
 	assert.True(t, got.IsEmpty(),
 		"an empty pipe produced a non-empty secret, so `secret set` would store it")
@@ -68,7 +69,7 @@ func TestNothingIsPromptedWhenThereIsNoTerminal(t *testing.T) {
 	// happens when stdin *is* a terminal and reading the password fails.
 	var out strings.Builder
 
-	_, err := readPassword(strings.NewReader("ignored"), &out, "value for x: ")
+	_, err := readPassword(context.Background(), strings.NewReader("ignored"), &out, "value for x: ")
 	require.Error(t, err, "a value was read from something that is not a terminal")
 
 	de := domain.AsError(err)
@@ -100,7 +101,7 @@ func TestAFileThatIsNotATerminalIsNotOneEither(t *testing.T) {
 func TestAnUnreasonablyLargeValueIsRefused(t *testing.T) {
 	app, _ := readerApp(strings.NewReader(strings.Repeat("x", (1<<20)+1)))
 
-	_, err := app.readSecretValue("value for x: ")
+	_, err := app.readSecretValue(context.Background(), "value for x: ")
 	require.Error(t, err, "a value larger than a megabyte was accepted as a secret")
 	assert.Equal(t, domain.CodeUsage, domain.AsError(err).Code)
 	assert.Contains(t, err.Error(), "unreasonably large")
@@ -111,7 +112,7 @@ func TestAValueExactlyAtTheLimitIsAccepted(t *testing.T) {
 	// not a refusal.
 	app, _ := readerApp(strings.NewReader(strings.Repeat("x", 1<<20)))
 
-	got, err := app.readSecretValue("value for x: ")
+	got, err := app.readSecretValue(context.Background(), "value for x: ")
 	require.NoError(t, err)
 	assert.Len(t, got.Reveal(), 1<<20)
 }
@@ -121,7 +122,7 @@ func TestAValueExactlyAtTheLimitIsAccepted(t *testing.T) {
 func TestAReadThatFailsIsReportedNotSilentlyTruncated(t *testing.T) {
 	app, _ := readerApp(&failingReader{after: []byte("partial-")})
 
-	_, err := app.readSecretValue("value for x: ")
+	_, err := app.readSecretValue(context.Background(), "value for x: ")
 	require.Error(t, err, "a failed read produced a truncated secret, which would be "+
 		"stored and then never work")
 	assert.Equal(t, domain.CodeInternal, domain.AsError(err).Code)

@@ -142,7 +142,7 @@ func (m *Model) footer() string {
 
 	switch {
 	case m.cancelling && !m.finished:
-		parts = append(parts, m.theme.Warn("cancelling — waiting for child processes"))
+		parts = append(parts, m.theme.Warn("cancelling — waiting for child processes (ctrl-c again to force quit)"))
 	case m.finished:
 		parts = append(parts, m.outcome())
 	default:

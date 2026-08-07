@@ -98,6 +98,12 @@ type App struct {
 	// command is the invoked path, recorded in the JSON envelope.
 	command string
 
+	// cancelOperation cancels the context every command runs under. It is
+	// what the live view's Ctrl-C invokes: raw mode suppresses the SIGINT
+	// main's handler listens for, so the keystroke has to reach the same
+	// cancellation by another road.
+	cancelOperation context.CancelFunc
+
 	// jsonData and jsonRecord carry a command's result to the envelope
 	// writer. They are fields rather than return values because cobra's
 	// RunE signature returns only an error.
@@ -139,7 +145,11 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	if streams.In == nil {
 		streams.In = os.Stdin
 	}
-	app := &App{Build: build, Stream: streams}
+	// Derived here so the live view can cancel it; see App.cancelOperation.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	app := &App{Build: build, Stream: streams, cancelOperation: cancel}
 	root := newRootCommand(app)
 
 	// Flag errors are the one case where printing usage helps: the operator

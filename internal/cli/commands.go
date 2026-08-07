@@ -777,7 +777,7 @@ func parseComponents(names []string) ([]ports.Component, error) {
 //
 // stdin is the only supported channel. A --value flag would place the
 // credential in the process table, where any local user can read it.
-func (a *App) readSecretValue(prompt string) (domain.Secret, error) {
+func (a *App) readSecretValue(ctx context.Context, prompt string) (domain.Secret, error) {
 	// Not a terminal means piped: read it whole and strip exactly one
 	// trailing newline, which is what `echo secret | morzer secret set x`
 	// produces.
@@ -794,7 +794,7 @@ func (a *App) readSecretValue(prompt string) (domain.Secret, error) {
 		return domain.NewSecret(strings.TrimSuffix(string(data), "\n")), nil
 	}
 
-	value, err := readPassword(a.Stream.In, a.Stream.Err, prompt)
+	value, err := readPassword(ctx, a.Stream.In, a.Stream.Err, prompt)
 	if err != nil {
 		return domain.Secret{}, err
 	}

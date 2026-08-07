@@ -68,9 +68,14 @@ func (a *App) runLive(work func()) {
 	a.plain.Mute()
 
 	tty.Run(tty.Options{
-		Output:    a.Stream.Err,
-		Input:     os.Stdin,
-		Theme:     a.theme(),
+		Output: a.Stream.Err,
+		Input:  os.Stdin,
+		Theme:  a.theme(),
+		// The view's ^C arrives as a keystroke -- raw mode suppressed
+		// the signal main listens for -- so cancelling the operation's
+		// context is this callback's job, exactly as the signal handler
+		// would have.
+		OnCancel:  a.cancelOperation,
 		Subscribe: func(s events.Sink) func() { return a.bus.Subscribe(s) },
 		OnDisplayFailure: func(err error) {
 			if err != nil {

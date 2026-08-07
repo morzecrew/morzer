@@ -19,8 +19,14 @@ type Options struct {
 	Output io.Writer
 
 	// Input is the terminal the program reads keys from. Only Ctrl-C means
-	// anything, and even that is drawn rather than acted on.
+	// anything.
 	Input *os.File
+
+	// OnCancel is invoked on the first Ctrl-C. Raw mode turns ISIG off, so
+	// the keystroke is the only form a ^C takes at a live view -- without
+	// this callback the footer's "ctrl-c to cancel" is a lie and the
+	// operation runs to completion. A second Ctrl-C force-quits.
+	OnCancel func()
 
 	Theme *theme.Theme
 
@@ -49,7 +55,7 @@ type Options struct {
 // event bus and a closure.
 func Run(opts Options, work func()) {
 	program := tea.NewProgram(
-		New(opts.Theme),
+		New(opts.Theme, opts.OnCancel),
 		tea.WithOutput(opts.Output),
 		tea.WithInput(opts.Input),
 	)

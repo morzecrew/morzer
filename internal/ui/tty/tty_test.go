@@ -112,7 +112,7 @@ func failedUpdate() []events.Event {
 // run drives a model through a stream without a terminal and returns the final
 // frame. Enough for the content assertions; teatest covers the wiring.
 func run(stream []events.Event) (*tty.Model, string) {
-	m := tty.New(theme.New(false, false))
+	m := tty.New(theme.New(false, false), nil)
 	var model tea.Model = m
 	for _, e := range stream {
 		model, _ = model.Update(tty.EventMsg(e))
@@ -237,7 +237,7 @@ func TestLongLinesAreTruncatedNotWrapped(t *testing.T) {
 		}, 2*time.Second),
 	}
 
-	m := tty.New(theme.New(false, false))
+	m := tty.New(theme.New(false, false), nil)
 	var model tea.Model = m
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
 	for _, e := range stream {
@@ -255,7 +255,7 @@ func TestLongLinesAreTruncatedNotWrapped(t *testing.T) {
 // fed through the same Sink the bus uses, drawing to a real (simulated)
 // terminal and quitting on its own when the operation finishes.
 func TestTheProgramDrawsAndExits(t *testing.T) {
-	tm := teatest.NewTestModel(t, tty.New(theme.New(false, false)),
+	tm := teatest.NewTestModel(t, tty.New(theme.New(false, false), nil),
 		teatest.WithInitialTermSize(90, 30))
 
 	for _, e := range successfulUpdate() {
@@ -276,11 +276,16 @@ func TestTheProgramDrawsAndExits(t *testing.T) {
 	}
 }
 
-// TestCtrlCIsDrawnNotActedOn pins decision: the UI observes, never
-// participates. Ctrl-C reaches the process group through the runtime's signal
-// handler; all the view may do is stop claiming work is still progressing.
-func TestCtrlCIsDrawnNotActedOn(t *testing.T) {
-	m := tty.New(theme.New(false, false))
+// TestCtrlCRequestsCancellationThroughTheCallback pins the repaired contract:
+// raw mode turns ISIG off, so a ^C at the live view arrives as a keystroke and
+// the kernel never raises the SIGINT main's handler listens for. The first ^C
+// must therefore invoke the caller's OnCancel -- before this, the footer's
+// "ctrl-c to cancel" was a lie and the update ran to completion -- and be
+// drawn. The view still only observes the engine; the callback is the
+// caller's, not a path into the bus.
+func TestCtrlCRequestsCancellationThroughTheCallback(t *testing.T) {
+	cancelled := 0
+	m := tty.New(theme.New(false, false), func() { cancelled++ })
 	var model tea.Model = m
 	for _, e := range successfulUpdate()[:4] { // mid-operation
 		model, _ = model.Update(tty.EventMsg(e))
@@ -288,8 +293,26 @@ func TestCtrlCIsDrawnNotActedOn(t *testing.T) {
 
 	model, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	if cmd != nil {
-		t.Error("ctrl-c produced a command; the view must not act on it")
+		t.Error("ctrl-c produced a command; cancellation goes through the callback, not the runtime")
 	}
+	if cancelled != 1 {
+		t.Fatalf("the first ctrl-c invoked OnCancel %d times, want exactly once", cancelled)
+	}
+	if !strings.Contains(model.View(), "cancelling") {
+		t.Errorf("ctrl-c is not reflected in the view:\n%s", model.View())
+	}
+	if !strings.Contains(model.View(), "force quit") {
+		t.Errorf("the footer must offer the second-ctrl-c escape hatch:\n%s", model.View())
+	}
+}
+
+// A model wired without a callback -- the tests' own stance -- only draws.
+func TestCtrlCWithoutACallbackOnlyDraws(t *testing.T) {
+	var model tea.Model = tty.New(theme.New(false, false), nil)
+	for _, e := range successfulUpdate()[:4] { // mid-operation
+		model, _ = model.Update(tty.EventMsg(e))
+	}
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	if !strings.Contains(model.View(), "cancelling") {
 		t.Errorf("ctrl-c is not reflected in the view:\n%s", model.View())
 	}
@@ -314,7 +337,7 @@ func TestRichNeverShowsWhatPlainDoesNot(t *testing.T) {
 			// of subprocess output, and plain shows those under -v.
 			p := plain.New(&buf, true)
 
-			var model tea.Model = tty.New(theme.New(false, false))
+			var model tea.Model = tty.New(theme.New(false, false), nil)
 			for _, e := range stream {
 				before, printed := model.View(), buf.Len()
 

@@ -85,7 +85,7 @@ func newSecretSetCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			value, err := app.readSecretValue(fmt.Sprintf("value for %s: ", name))
+			value, err := app.readSecretValue(cmd.Context(), fmt.Sprintf("value for %s: ", name))
 			if err != nil {
 				return err
 			}
@@ -469,18 +469,47 @@ func secretChangeSummary(verb, name string, restarted []string) string {
 // below -- the path every non-interactive caller hits -- is reachable by
 // something other than a person at a keyboard. Suppressing the echo still
 // needs a real file descriptor, which is why the type assertion is the check.
-func readPassword(in io.Reader, out io.Writer, prompt string) (string, error) {
+//
+// The read races the context: signal.NotifyContext consumes the SIGINT a
+// Ctrl-C raises, so the blocking raw read would otherwise sit there
+// unaware, and the prompt could only be left through Enter or an external
+// kill. ReadPassword restores the terminal only when it returns, so the
+// cancelled path restores it here before abandoning the read.
+func readPassword(ctx context.Context, in io.Reader, out io.Writer, prompt string) (string, error) {
 	f, ok := in.(*os.File)
 	if !ok || !term.IsTerminal(int(f.Fd())) {
 		return "", domain.Usage("no terminal available to read the value").
 			WithHint("pipe the value on stdin instead: `printf %%s 'value' | morzer secret set <name>`")
 	}
 
-	fmt.Fprint(out, prompt)
-	value, err := term.ReadPassword(int(f.Fd()))
-	fmt.Fprintln(out)
+	state, err := term.GetState(int(f.Fd()))
 	if err != nil {
-		return "", domain.Internal(err, "cannot read the value")
+		return "", domain.Internal(err, "cannot read the terminal state")
 	}
-	return strings.TrimSpace(string(value)), nil
+
+	fmt.Fprint(out, prompt)
+	type outcome struct {
+		value []byte
+		err   error
+	}
+	read := make(chan outcome, 1)
+	go func() {
+		v, err := term.ReadPassword(int(f.Fd()))
+		read <- outcome{v, err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		_ = term.Restore(int(f.Fd()), state)
+		fmt.Fprintln(out)
+		// The reader goroutine stays blocked on the fd; the process is
+		// about to exit 130, which is what releases it.
+		return "", domain.Interrupted("cancelled at the prompt")
+	case r := <-read:
+		fmt.Fprintln(out)
+		if r.err != nil {
+			return "", domain.Internal(r.err, "cannot read the value")
+		}
+		return strings.TrimSpace(string(r.value)), nil
+	}
 }
