@@ -64,7 +64,10 @@ func (s *streamCloser) disarmKill() {
 	if s.killTimer == nil {
 		return
 	}
-	if s.pgid > 0 && syscall.Kill(-s.pgid, 0) == nil {
+	// Only ESRCH proves the group is gone; a nil probe means members
+	// survive, and any other error (EPERM above all) means the group
+	// exists but cannot be probed -- either way the timer stays.
+	if s.pgid > 0 && !errors.Is(syscall.Kill(-s.pgid, 0), syscall.ESRCH) {
 		return
 	}
 	s.killTimer.Stop()

@@ -523,21 +523,37 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 			// Otherwise it is moved aside for inspection -- replacing
 			// any older debris, so exactly one such tree is kept.
 			if _, statErr := os.Stat(staged.Root); statErr == nil {
-				if from.Root != "" && staged.Root == from.Root {
+				// The live root can be known by record or only by the
+				// `current` symlink; either way it is never moved.
+				liveRoot := from.Root
+				if liveRoot == "" {
+					if link, lerr := os.Readlink(d.Paths.CurrentLink()); lerr == nil {
+						liveRoot = link
+					}
+				}
+				if liveRoot != "" && staged.Root == liveRoot {
 					return domain.InstallationError(nil,
 						"the currently installed release at %s cannot be read", staged.Root).
 						WithHint("run `morzer doctor`; if the directory is damaged, " +
 							"restore from a backup rather than updating over it")
 				}
-				older, _ := filepath.Glob(filepath.Join(parent, ".staging-debris-*"))
-				for _, dir := range older {
-					_ = atomicfs.RemoveAll(dir)
-				}
+				// Renamed aside first, older debris removed after: the
+				// reverse order would destroy the one kept tree and
+				// then fail the rename on the same transient class
+				// this block exists to survive, retaining nothing. A
+				// failed removal here leaves an extra tree, not a
+				// lost one, so it does not abort.
 				aside := filepath.Join(parent,
 					fmt.Sprintf(".staging-debris-%d", time.Now().UnixNano()))
 				if err := os.Rename(staged.Root, aside); err != nil {
 					return domain.Internal(err,
 						"cannot move the unreadable tree at %s aside", staged.Root)
+				}
+				older, _ := filepath.Glob(filepath.Join(parent, ".staging-debris-*"))
+				for _, dir := range older {
+					if dir != aside {
+						_ = atomicfs.RemoveAll(dir)
+					}
 				}
 				st.Warn("moved an unreadable tree at %s aside as %s; it is kept until "+
 					"the next tree needs moving aside", staged.Root, filepath.Base(aside))
