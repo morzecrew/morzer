@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Two backups within the same second share a timestamp ID. The directory is
@@ -81,6 +82,74 @@ func TestOrphanedRestoreStagingIsSwept(t *testing.T) {
 	}
 	if _, err := os.Stat(backup); err != nil {
 		t.Error("the sweep must remove only the staging debris, not the backup itself")
+	}
+}
+
+// TestABackupDirectoryWithNoManifestIsReclaimed.
+//
+// The manifest is written last, so a power cut mid-capture leaves components
+// under a directory nothing will ever restore from. `backup list` skips it --
+// correctly, it is not a backup -- which also means retention never counts it
+// and never prunes it, and a failed dump of a large database sits on the disk
+// it was meant to protect until somebody notices.
+func TestABackupDirectoryWithNoManifestIsReclaimed(t *testing.T) {
+	e := New(Config{Paths: domain.PathsUnder(t.TempDir(), "demo")})
+
+	wreck := filepath.Join(e.paths.BackupsDir(), "20260807T000000Z")
+	if err := os.MkdirAll(wreck, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wreck, "database.sql.age"),
+		[]byte("half a database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A real backup beside it, which must survive untouched.
+	good := filepath.Join(e.paths.BackupsDir(), "20260807T000001Z")
+	if err := os.MkdirAll(good, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeManifest(good, ports.BackupManifest{ID: "20260807T000001Z"}); err != nil {
+		t.Fatal(err)
+	}
+
+	e.sweepManifestlessDirectories()
+
+	if _, err := os.Stat(wreck); !os.IsNotExist(err) {
+		t.Error("a directory no restore can ever use was left occupying the disk")
+	}
+	if _, err := os.Stat(filepath.Join(good, ManifestFileName)); err != nil {
+		t.Errorf("a real backup was swept: %v", err)
+	}
+}
+
+// A manifest that cannot be *read* is evidence, not debris: an unreadable file
+// is a different fault from an absent one, and deleting the components under it
+// would destroy the only copy of whatever it names.
+func TestAnUnreadableManifestIsNotTreatedAsAbsent(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file permissions")
+	}
+	e := New(Config{Paths: domain.PathsUnder(t.TempDir(), "demo")})
+
+	dir := filepath.Join(e.paths.BackupsDir(), "20260807T000002Z")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeManifest(dir, ports.BackupManifest{ID: "20260807T000002Z"}); err != nil {
+		t.Fatal(err)
+	}
+	// Unreadable by way of its parent, which is what a stat cannot see
+	// through either.
+	if err := os.Chmod(dir, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	e.sweepManifestlessDirectories()
+
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("a backup whose manifest could not be read was swept: %v", err)
 	}
 }
 

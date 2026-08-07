@@ -57,6 +57,27 @@ func TestSecretGenerate(t *testing.T) {
 	r.Run("secret", "list").ExitCode(0).StdoutContains("extra_token")
 }
 
+// TestSecretGenerateRefusesAValueTooShortToRedact.
+//
+// The log redactor skips anything under six characters -- scrubbing a
+// four-character string would chop unrelated words out of every line and
+// protect something guessable anyway. Generating one therefore hands over a
+// credential guaranteed to appear in tool output in the clear. The manifest
+// path was bounded; the flags were not.
+func TestSecretGenerateRefusesAValueTooShortToRedact(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	short := r.Run("secret", "generate", "tiny", "--kind", "hex", "--length", "4")
+	short.Failed().OutputContains("redaction")
+
+	// A password has a stricter floor of its own, and keeps it.
+	r.Run("secret", "generate", "tiny", "--kind", "password", "--length", "7").
+		Failed().OutputContains("8 characters")
+
+	// The floor is a floor, not a ban: six characters is generated.
+	r.Run("secret", "generate", "tiny", "--kind", "hex", "--length", "6").ExitCode(0)
+}
+
 func TestSecretGenerateRefusesAKindNobodyDefined(t *testing.T) {
 	r := clitest.NewInstalled(t)
 

@@ -273,6 +273,15 @@ Being explicit about the edges is part of the point.
   defaults are the safe ones.
 - **`ByteSize` does not round-trip decimal units.** `5GB` marshals as `4.7GiB`.
   Harmless because sizes are read from a manifest and never written back.
+- **`CopyTree`'s read-side containment is asserted by construction, not by a
+  test.** A bundle file swapped for a symlink between the walk's `lstat` and the
+  copy's `open` used to be followed out of the tree; the copy now opens through
+  an `os.Root` on the source and checks the descriptor rather than the path, so
+  the swap cannot be followed. Reproducing the window needs a seam inside
+  `CopyTree` that exists only for the test, and a racing test that never loses
+  is a test that proves nothing — so the property is stated here and carried by
+  the code, and every *visible* form (a symlink or a device node the walk can
+  see) is refused by the tests above.
 - **The registry probe's success path is not covered.** `docker manifest
   inspect` speaks HTTPS unless given `--insecure`, which the adapter never
   passes — a reachability probe that accepted plaintext could be answered by

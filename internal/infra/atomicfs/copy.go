@@ -72,6 +72,18 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 	}
 	defer func() { _ = root.Close() }()
 
+	// The read side is contained too. The walk decides "regular file" from
+	// an lstat, and the copy opened the path again by name: a file swapped
+	// for a symlink in between was followed out of the tree, and the digest
+	// computed afterwards blessed whatever came back. Opening through a
+	// root makes every component kernel-checked, so the swap fails to open
+	// instead of succeeding quietly.
+	srcRoot, err := OpenRoot(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = srcRoot.Close() }()
+
 	var entries int
 	var total int64
 
@@ -122,19 +134,32 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 				return domain.ValidationError(nil,
 					"bundle exceeds the total size limit of %d bytes", limits.MaxTotalSize)
 			}
-			return copyFileIn(path, root, rel, info.Mode().Perm())
+			return copyFileIn(srcRoot, root, rel, info.Mode().Perm())
 		}
 	})
 
 	return walkErr
 }
 
-func copyFileIn(srcPath string, root *os.Root, rel string, mode fs.FileMode) error {
-	in, err := os.Open(srcPath)
+func copyFileIn(srcRoot, root *os.Root, rel string, mode fs.FileMode) error {
+	in, err := srcRoot.Open(rel)
 	if err != nil {
-		return domain.Internal(err, "cannot open %s", srcPath)
+		return domain.Internal(err, "cannot open %s", rel)
 	}
 	defer func() { _ = in.Close() }()
+
+	// Checked on the open descriptor rather than on the path, which is the
+	// other half of the same race: what was walked and what was opened are
+	// now provably the same file.
+	info, err := in.Stat()
+	if err != nil {
+		return domain.Internal(err, "cannot stat %s", rel)
+	}
+	if !info.Mode().IsRegular() {
+		return domain.ValidationError(nil,
+			"bundle contains a non-regular file at %q (%s), which is not allowed",
+			rel, info.Mode().Type())
+	}
 
 	if dir := filepath.Dir(rel); dir != "." {
 		if err := mkdirAllIn(root, dir, 0o755); err != nil {

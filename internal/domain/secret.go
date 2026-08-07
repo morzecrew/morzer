@@ -174,6 +174,53 @@ const DefaultAlphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ234567
 
 const DefaultSecretLength = 32
 
+// MinRedactableLength is the shortest value the log redactor will scrub, and
+// therefore the shortest one the manager will generate.
+//
+// Below it, redaction is worse than useless: replacing every occurrence of a
+// four-character string would chop unrelated words out of a tool's output while
+// protecting something an attacker could guess in a moment. So the redactor
+// skips short values -- which means generating one hands the operator a
+// credential that is guaranteed to appear in the logs in the clear.
+//
+// It lives here rather than beside the redactor because both sides have to
+// agree, and infra imports domain rather than the other way round.
+const MinRedactableLength = 6
+
+// Validate refuses a generator the manager should not run.
+//
+// The length rules are two: nothing shorter than the redaction floor, ever, and
+// a password of at least eight characters -- one is about what the manager can
+// keep out of a log, the other about what an attacker has to guess.
+func (g Generator) Validate() error {
+	if !g.Auto() {
+		return nil
+	}
+	if g.Length < 0 {
+		return Usage("a generated secret cannot have a negative length")
+	}
+
+	// The kinds that ignore Length say nothing about it.
+	switch g.Kind {
+	case GeneratorPassword, GeneratorHex, GeneratorBase64:
+	default:
+		return nil
+	}
+
+	length := g.Resolved().Length
+	if g.Kind == GeneratorPassword && length < 8 {
+		return Usage("generated passwords must be at least 8 characters, got %d", length).
+			WithHint("the default is %d", DefaultSecretLength)
+	}
+	if length < MinRedactableLength {
+		return Usage("a generated secret must be at least %d characters, got %d",
+			MinRedactableLength, length).
+			WithHint("anything shorter is below the log redaction floor, so it " +
+				"would appear in tool output in the clear")
+	}
+	return nil
+}
+
 // Resolved returns the generator with defaults applied.
 func (g Generator) Resolved() Generator {
 	if g.Length == 0 {
@@ -277,11 +324,8 @@ func (s SecretSchema) Validate() error {
 		default:
 			v.add(field+".generator.kind", "unknown generator %q", d.Generator.Kind)
 		}
-		if d.Generator.Length < 0 {
-			v.add(field+".generator.length", "must not be negative")
-		}
-		if d.Generator.Kind == GeneratorPassword && d.Generator.Length > 0 && d.Generator.Length < 8 {
-			v.add(field+".generator.length", "generated passwords must be at least 8 characters")
+		if err := d.Generator.Validate(); err != nil {
+			v.add(field+".generator.length", "%s", AsError(err).Message)
 		}
 	}
 

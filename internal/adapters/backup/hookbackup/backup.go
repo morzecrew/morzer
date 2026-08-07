@@ -217,6 +217,7 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 	if err := e.sweepStagedPlaintext(); err != nil {
 		return ports.BackupRef{}, err
 	}
+	e.sweepManifestlessDirectories()
 
 	components := scope.Components
 	if len(components) == 0 {
@@ -1008,6 +1009,48 @@ func (e *Engine) sweepStagedPlaintext() error {
 				"remove the .restore-* directories manually before continuing")
 	}
 	return nil
+}
+
+// sweepManifestlessDirectories reclaims backup directories that never got a
+// manifest.
+//
+// The manifest is written last, on purpose: a directory holding components and
+// no manifest is a backup that was interrupted, and treating it as one would
+// mean restoring from something nobody finished writing. So `backup list` skips
+// it -- which also means retention never counts it, never prunes it, and the
+// components sit on the disk of the machine they were meant to protect until
+// somebody notices. A power cut during a database dump can leave gigabytes.
+//
+// Best effort, and deliberately not an error: this runs at the start of a
+// backup, and failing to tidy up must not stop the operator taking one. What
+// cannot be removed is left for `doctor` to report as space that is not
+// accounted for.
+//
+// The deployment lock serialises operations, so nothing here is racing a backup
+// in flight -- and the directory that Create is *about* to write does not exist
+// yet when this runs.
+func (e *Engine) sweepManifestlessDirectories() {
+	entries, err := os.ReadDir(e.paths.BackupsDir())
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(e.paths.BackupsDir(), entry.Name())
+		if _, err := os.Stat(filepath.Join(dir, ManifestFileName)); err == nil {
+			continue
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			// Unreadable is not the same as absent, and a backup
+			// whose manifest cannot be read is evidence rather than
+			// debris.
+			continue
+		}
+		if err := atomicfs.RemoveAll(dir); err == nil {
+			atomicfs.SyncDir(e.paths.BackupsDir())
+		}
+	}
 }
 
 func writeManifest(dir string, m ports.BackupManifest) error {
