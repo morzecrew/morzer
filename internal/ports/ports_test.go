@@ -1,6 +1,7 @@
 package ports_test
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -149,6 +150,39 @@ func TestHookEnvPrefixSurvivesAnAwkwardProductName(t *testing.T) {
 	for product, want := range cases {
 		if got := (ports.HookEnv{Product: product}).Prefix(); got != want {
 			t.Errorf("Prefix(%q) = %q, want %q", product, got, want)
+		}
+	}
+}
+
+// TestEveryValidProductNameIsAUsableVariablePrefix is the other half of that
+// rule, and the reason domain.ValidateProductName refuses a leading digit.
+//
+// The product name is not only a path component: uppercased, it is the
+// namespace of every variable a hook reads and every ${...} a Compose file
+// interpolates. A name like "3cx" yields ${3CX_PARAM_...}, which no POSIX shell
+// and no Compose file can reference -- so each parameter falls back to its `:-`
+// default and the deployment comes up configured with none of the operator's
+// values, silently.
+func TestEveryValidProductNameIsAUsableVariablePrefix(t *testing.T) {
+	// POSIX: a name is a letter or underscore, then letters, digits and
+	// underscores.
+	usable := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+	for _, name := range []string{"demo", "my-product", "product2", "a", "x-9-y"} {
+		if err := domain.ValidateProductName(name); err != nil {
+			t.Fatalf("%q is meant to be a valid product name: %v", name, err)
+		}
+		prefix := (ports.HookEnv{Product: name}).Prefix()
+		if !usable.MatchString(prefix) {
+			t.Errorf("%q is accepted but yields ${%s_...}, which nothing can interpolate",
+				name, prefix)
+		}
+	}
+
+	for _, name := range []string{"3cx", "2fa-portal", "9"} {
+		if err := domain.ValidateProductName(name); err == nil {
+			t.Errorf("%q is accepted, and its prefix %q cannot name a variable",
+				name, (ports.HookEnv{Product: name}).Prefix())
 		}
 	}
 }

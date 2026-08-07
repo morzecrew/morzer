@@ -9,14 +9,25 @@ import (
 // from a manifest. The manifest is release-supplied input, and its name lands
 // in /etc, /var/lib and /run -- so it is validated as a path component, not
 // merely as a string.
-var productNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+//
+// The name must also start with a letter, because it is not only a path
+// component: uppercased, it is the environment-variable namespace every hook
+// and every Compose interpolation reads (ports.HookEnv.Prefix). A product
+// called "3cx" would produce ${3CX_PARAM_...}, which no POSIX shell and no
+// Compose file can reference -- every parameter would silently resolve to its
+// `:-` fallback, which is a working deployment configured with none of the
+// operator's values.
+var productNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 // ValidateProductName rejects names that would escape or collide with the
-// directories the manager owns.
+// directories the manager owns, or that cannot be an environment-variable
+// prefix.
 func ValidateProductName(name string) error {
 	if !productNamePattern.MatchString(name) {
 		return ValidationError(nil, "invalid product name %q", name).
-			WithHint("names are lowercase alphanumeric with dashes, 1-63 characters, starting with a letter or digit")
+			WithHint("names are lowercase alphanumeric with dashes, 1-63 characters, " +
+				"starting with a letter -- the name is also the environment-variable " +
+				"prefix hooks read, and a variable cannot start with a digit")
 	}
 	return nil
 }
