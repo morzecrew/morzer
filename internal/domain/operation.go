@@ -43,14 +43,36 @@ const (
 
 // Terminal reports whether the status is final. A non-terminal record in the
 // journal is what `--resume` looks for and what `doctor` flags.
+//
+// The finished states are enumerated rather than derived from "not running",
+// so a status this build does not recognise -- a record written by a newer
+// manager, a damaged line -- is not finished. Deriving it the other way made
+// every unknown status silently complete and invisible.
 func (s OperationStatus) Terminal() bool {
-	return s != StatusRunning
+	switch s {
+	case StatusSucceeded, StatusFailed, StatusCompensated,
+		StatusInterrupted, StatusManualIntervention:
+		return true
+	default:
+		return false
+	}
 }
 
 // NeedsAttention reports whether the status should keep surfacing in `status`
 // and `doctor` until an operator clears it explicitly.
+//
+// Fail-safe in the same direction, and by enumerating the negative: the states
+// that do *not* need a human are listed, so an unrecognised one gets looked at.
+// A record this manager cannot interpret is exactly the case a human should
+// see, and `--clear-intervention` can acknowledge it.
 func (s OperationStatus) NeedsAttention() bool {
-	return s == StatusManualIntervention
+	switch s {
+	case StatusSucceeded, StatusFailed, StatusCompensated,
+		StatusInterrupted, StatusRunning:
+		return false
+	default:
+		return true
+	}
 }
 
 // StepStatus is the per-step outcome.
@@ -102,13 +124,23 @@ type OperationRecord struct {
 
 // Duration is the wall-clock time the operation took, or time so far when it
 // is still running.
+//
+// The clock read is the only one in this package, and it is confined to this
+// wrapper so the arithmetic stays pure and testable: DurationAt is what a test
+// -- or anything holding its own clock -- calls.
 func (r OperationRecord) Duration() time.Duration {
+	return r.DurationAt(time.Now().UTC())
+}
+
+// DurationAt is Duration as of a given instant. A record that has finished
+// ignores it: the answer is a property of the record, not of when it is asked.
+func (r OperationRecord) DurationAt(now time.Time) time.Duration {
 	if r.StartedAt.IsZero() {
 		return 0
 	}
 	end := r.FinishedAt.Time
 	if end.IsZero() {
-		end = time.Now().UTC()
+		end = now
 	}
 	return end.Sub(r.StartedAt.Time)
 }

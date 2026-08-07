@@ -11,7 +11,11 @@ import (
 // three-character value would replace common substrings throughout a log,
 // destroying its readability while protecting nothing an attacker could not
 // guess anyway.
-const minRedactLength = 6
+//
+// The same number bounds what the manager will generate -- see
+// domain.MinRedactableLength -- so a generated secret is never below the floor
+// of the thing that keeps it out of the logs.
+const minRedactLength = domain.MinRedactableLength
 
 // redactor replaces known secret values with a placeholder.
 //

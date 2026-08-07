@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"regexp"
@@ -321,6 +322,32 @@ type HealthCheck struct {
 type Retention struct {
 	Releases int `yaml:"releases" json:"releases"`
 	Backups  int `yaml:"backups" json:"backups"`
+
+	// declared records which fields the manifest actually named.
+	//
+	// Without it ApplyDefaults cannot tell "absent" from "written as 0",
+	// and it runs before Validate -- so `retention: {releases: 0}` became 3
+	// and the refusal Validate exists to give was never reached. A vendor
+	// who wrote a zero meant something by it, and 3 is not it.
+	declared struct{ releases, backups bool }
+}
+
+// UnmarshalYAML records presence alongside the values.
+func (r *Retention) UnmarshalYAML(unmarshal func(any) error) error {
+	var raw struct {
+		Releases *int `yaml:"releases"`
+		Backups  *int `yaml:"backups"`
+	}
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+	if raw.Releases != nil {
+		r.Releases, r.declared.releases = *raw.Releases, true
+	}
+	if raw.Backups != nil {
+		r.Backups, r.declared.backups = *raw.Backups, true
+	}
+	return nil
 }
 
 // Defaults for fields the spec gives a safe default. Applied after decoding
@@ -337,10 +364,13 @@ const (
 // ApplyDefaults fills in absent optional fields. Called by the loader before
 // Validate, never by callers directly.
 func (m *Manifest) ApplyDefaults() {
-	if m.Retention.Releases == 0 {
+	// Absent, not merely zero: an explicit `releases: 0` is a value
+	// Validate refuses, and defaulting it here would answer a vendor's
+	// mistake by silently keeping three releases instead.
+	if !m.Retention.declared.releases {
 		m.Retention.Releases = DefaultRetentionReleases
 	}
-	if m.Retention.Backups == 0 {
+	if !m.Retention.declared.backups {
 		m.Retention.Backups = DefaultRetentionBackups
 	}
 	if m.Providers.Runtime.Name == "" {
@@ -448,7 +478,7 @@ func (m *Manifest) Validate() error {
 			// than midway through an apply.
 			empty := Parameters{}
 			_, err := empty.Resolve(field, text)
-			if err != nil && strings.Contains(AsError(err).Message, "not a valid template") {
+			if errors.Is(err, ErrTemplateSyntax) {
 				v.add(field, "%s", AsError(err).Message)
 			}
 		default:

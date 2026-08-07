@@ -1,8 +1,12 @@
 package clitest_test
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/test/clitest"
@@ -103,6 +107,30 @@ func TestInitRefusesAParameterTheReleaseDoesNotDeclare(t *testing.T) {
 	out.Failed().OutputContains("not_a_parameter")
 }
 
+// TestInitRefusesAParameterWithNoDefaultAndNoValue.
+//
+// A declaration without a default is the only way a manifest can say "the
+// operator must choose this", and `init` is the one command that can be told --
+// so it is the one command that refuses. Everything later resolves it as
+// present-and-empty, because an `apply` reading months-old state cannot supply
+// a value and taking the deployment down over a knob nobody touched would be
+// worse than an empty string.
+func TestInitRefusesAParameterWithNoDefaultAndNoValue(t *testing.T) {
+	r := clitest.New(t)
+
+	// The vendor declares a knob and no default for it.
+	declareParameterWithoutADefault(t, r, "admin_email")
+
+	out := r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
+		"--install-units=false")
+	out.Failed().OutputContains("admin_email")
+	out.OutputContains("--set admin_email=")
+
+	// Given a value, the same install proceeds.
+	r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
+		"--install-units=false", "--set", "admin_email=ops@example").ExitCode(0)
+}
+
 func TestInitTakesTheProductNameFromTheBundle(t *testing.T) {
 	r := clitest.New(t)
 
@@ -171,4 +199,43 @@ func TestVersionAndHelpNeedNoInstallation(t *testing.T) {
 	r.Run("version").ExitCode(0).StdoutContains("test")
 	r.Run("version", "--json").ExitCode(0).Field("data")
 	r.Run("--help").ExitCode(0).StdoutContains("morzer")
+}
+
+// TestUnsettingAParameterWithNoDefaultIsRefused.
+//
+// `config unset` is the other command that can be told a value, so it is the
+// other command that refuses to leave a required one without one. Resolution
+// treats an absent value as present-and-empty -- which is what keeps `apply`
+// working on months-old state -- so nothing downstream would have objected.
+func TestUnsettingAParameterWithNoDefaultIsRefused(t *testing.T) {
+	r := clitest.New(t)
+
+	declareParameterWithoutADefault(t, r, "admin_email")
+
+	r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
+		"--install-units=false", "--set", "admin_email=ops@example").ExitCode(0)
+
+	out := r.Run("config", "unset", "admin_email")
+	out.Failed().OutputContains("admin_email")
+	out.OutputContains("config set")
+}
+
+// declareParameterWithoutADefault adds a parameter with no default to the
+// fixture's manifest, which is the only way a release can say "the operator
+// must choose this". Two tests need one and neither owns it, so the edit lives
+// here rather than in both -- including the guard, which is the part that would
+// otherwise drift: a silent no-op sends the failure to an exit-code assertion
+// that points nowhere near the manifest that changed.
+func declareParameterWithoutADefault(t *testing.T, r *clitest.Runner, name string) {
+	t.Helper()
+
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+
+	edited := strings.Replace(string(data), "parameters:\n",
+		"parameters:\n  "+name+":\n    type: string\n    description: Where alerts go\n", 1)
+	require.NotEqual(t, string(data), edited,
+		"the fixture no longer contains a `parameters:` block to add to")
+	require.NoError(t, os.WriteFile(manifest, []byte(edited), 0o644))
 }

@@ -28,12 +28,12 @@ These are accepted by every command.
 | `--verbose`, `-v` | Verbose output, including per-step detail and the subprocess log. |
 | `--quiet`, `-q` | Errors only. |
 | `--log-format` | `text` (default) or `json`. Logs always go to stderr. |
-| `--no-color` | Disable styling. Also honoured through `NO_COLOR` and a non-TTY stdout. |
-| `--plain` | Line-oriented output; no interactive rendering. Already automatic under CI, systemd, `NO_COLOR` and without a terminal — see [Output modes](output-modes.md). |
+| `--no-color` | Disable colour. Equivalent to `NO_COLOR` or `CLICOLOR=0` in the environment; the live renderer still draws, since every state carries a symbol too. |
+| `--plain` | Line-oriented output; no interactive rendering. Already automatic under CI, systemd, `TERM=dumb` and without a terminal — see [Output modes](output-modes.md). |
 | `--resume` | Continue an interrupted operation from where its journal left off. |
 | `--wait` | Wait for the deployment lock instead of failing with exit 4. |
-| `--config` | Path to `installation.yaml`, when it is not in the default location. |
-| `--product` | Product name. Inferred from the installation when omitted. |
+| `--config` | Path to an installation's `installation.yaml`, which selects that installation: `/etc/demo/installation.yaml` means the `demo` layout, and a path with a prefix means that prefix. Equivalent to `--product` (and `--root`); naming both is refused when they disagree. |
+| `--product` | Product name. Inferred from the installation when omitted, and required on a host with more than one. |
 
 ## Index
 

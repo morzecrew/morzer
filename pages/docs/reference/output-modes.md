@@ -24,13 +24,18 @@ In order, first match wins:
 | --- | --- |
 | `--json` | JSON |
 | `--plain` | Plain |
-| `NO_COLOR` set to anything, including empty | Plain |
-| `CLICOLOR=0` | Plain |
 | `TERM` is `dumb` or unset | Plain |
 | `CI` set to anything but `false` or `0` | Plain |
 | `INVOCATION_ID` set — a systemd unit | Plain |
 | stdout or stderr is not a terminal | Plain |
 | otherwise | Rich |
+
+`NO_COLOR`, `CLICOLOR=0` and `--no-color` are not in that table on purpose.
+They turn colour off; they do not turn the renderer off. That is what the
+convention asks for — "prevent the addition of ANSI colour" — it is what
+`--no-color` has always done, and it keeps `status --watch` usable for anyone
+who exports `NO_COLOR` in their shell profile. Nothing is lost by it: every
+state in the live view carries a symbol as well as a colour.
 
 `--json` wins outright. It is a machine contract, and a contract that changed
 shape depending on whether a terminal was attached would not be one.

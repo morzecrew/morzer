@@ -17,6 +17,7 @@ import (
 	osexec "os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -233,7 +234,18 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 		return nil
 	}
 
-	c.Cancel = func() error { return signalGroup(syscall.SIGTERM) }
+	// signalled records that this run's group was signalled -- by the
+	// context ending, or by a write failure below. It is the condition for
+	// the post-Wait sweep, and it has to be recorded *here* rather than
+	// derived from ctx.Err() afterwards: a command can exit normally and its
+	// context end a microsecond later, and by then Wait has reaped the
+	// leader and the kernel may have handed its pid to somebody else.
+	var signalled atomic.Bool
+
+	c.Cancel = func() error {
+		signalled.Store(true)
+		return signalGroup(syscall.SIGTERM)
+	}
 
 	// WaitDelay escalates to SIGKILL when the grace period expires. Go
 	// kills only the direct child, so the group is killed here too.
@@ -281,6 +293,7 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 	// it outright leaves the container behind; SIGKILL once the grace period
 	// is up, for the child that ignores that too.
 	terminate := func() {
+		signalled.Store(true)
 		_ = signalGroup(syscall.SIGTERM)
 		go func() {
 			timer := time.NewTimer(grace)
@@ -359,10 +372,21 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 	close(waited)
 	duration := time.Since(started)
 
-	// Whatever happened, make sure nothing from this group survives. A
-	// process that ignored SIGTERM and outlived WaitDelay would otherwise
-	// keep holding the deployment's ports or its database connection.
-	if pgid > 0 {
+	// A process that ignored SIGTERM and outlived WaitDelay would keep
+	// holding the deployment's ports or its database connection, so the
+	// group is swept -- but only on a run this code already signalled.
+	//
+	// The restriction is the PID-reuse hazard. Wait has just reaped the
+	// leader, so its pid is free for the kernel to hand to something else;
+	// a group whose members are all gone can therefore have its id reused
+	// by an unrelated process, and this signal would land on that. On a run
+	// that ended by itself the sweep buys nothing anyway: nothing was
+	// signalled, the leader exited on its own terms.
+	//
+	// The flag rather than ctx.Err(): a command can exit normally and its
+	// context end immediately afterwards, which would make a check here
+	// sweep a group nobody ever signalled -- exactly the reuse case.
+	if pgid > 0 && signalled.Load() {
 		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 	}
 

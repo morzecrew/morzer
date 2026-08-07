@@ -10,7 +10,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -29,9 +31,9 @@ var _ ports.Renderer = (*Renderer)(nil)
 
 // Render executes a template against the documented context.
 func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports.TemplateData) ([]byte, error) {
-	raw, err := os.ReadFile(ref.Path)
+	raw, err := readTemplate(ref)
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read template %s", ref.Name)
+		return nil, err
 	}
 
 	tmpl, err := template.New(ref.Name).
@@ -54,6 +56,45 @@ func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports
 			WithHint("%s", renderHint(err))
 	}
 	return buf.Bytes(), nil
+}
+
+// readTemplate reads a template through the release root.
+//
+// os.Root is the containment, and it is the kernel's rather than this package's:
+// every path component is resolved inside the root, so a symlink pointing at
+// /etc/shadow fails to open rather than being rendered into a configuration
+// file the product then serves. The manifest's own path check refuses "../"
+// spellings before this, but a symlink is not a spelling -- it is a file, and
+// only an open can see it.
+//
+// This matters for directory-sourced bundles specifically. An archive is
+// extracted, and extraction refuses symlinks outright; a directory handed to
+// `morzer update ./bundle` is read where it lies.
+func readTemplate(ref ports.TemplateRef) ([]byte, error) {
+	if ref.Root == "" {
+		return nil, domain.Internal(nil,
+			"template %s was requested without a release root", ref.Name)
+	}
+
+	root, err := os.OpenRoot(ref.Root)
+	if err != nil {
+		return nil, domain.ValidationError(err, "cannot read the release at %s", ref.Root)
+	}
+	defer func() { _ = root.Close() }()
+
+	f, err := root.Open(filepath.ToSlash(filepath.Clean(ref.Name)))
+	if err != nil {
+		return nil, domain.ValidationError(err, "cannot read template %s", ref.Name).
+			WithHint("the manifest names it relative to the release root, " +
+				"and it must be a real file inside the bundle")
+	}
+	defer func() { _ = f.Close() }()
+
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return nil, domain.ValidationError(err, "cannot read template %s", ref.Name)
+	}
+	return raw, nil
 }
 
 // renderHint turns Go's template errors into something an author can act on.

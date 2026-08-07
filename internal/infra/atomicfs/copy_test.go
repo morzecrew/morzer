@@ -434,3 +434,33 @@ func TestDirSizeIgnoresWhatItCannotRead(t *testing.T) {
 			"for a diagnostic")
 	}
 }
+
+// TestAnInTreeSymlinkIsRefused: a link that resolves *inside* the bundle is
+// refused like any other, and its target is not copied under its name.
+//
+// This is the observable refusal, and it is the walk that produces it here --
+// the entry is a symlink before the walk sees it. The open-time descent that
+// covers the *swapped after the walk* case cannot be reached this way without a
+// race no test can reliably win, so it is exercised directly in
+// copy_internal_test.go instead.
+func TestAnInTreeSymlinkIsRefused(t *testing.T) {
+	src := tree(t, map[string]string{
+		"manifest.yaml": "x",
+		"real.txt":      "the file the walk would have seen",
+	})
+	if err := os.Symlink("real.txt", filepath.Join(src, "alias.txt")); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	dst := filepath.Join(t.TempDir(), "out")
+	err := atomicfs.CopyTree(src, dst, atomicfs.DefaultExtractLimits())
+	if err == nil {
+		t.Fatal("a bundle containing an in-tree symlink was copied")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("the refusal does not say what it found: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dst, "alias.txt")); statErr == nil {
+		t.Error("the symlink's target was copied under the link's name")
+	}
+}

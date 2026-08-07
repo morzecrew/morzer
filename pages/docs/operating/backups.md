@@ -334,6 +334,26 @@ still holding stale state in memory is a combination that corrupts quietly.
     compensation succeeded — and keeps surfacing in `status` and `doctor` until
     you clear it with `morzer status --clear-intervention`.
 
+!!! note "Ctrl-C during a restore leaves the product stopped"
+
+    An interruption is taken literally: the operation stops where it is and
+    nothing is brought back up, because a long automatic recovery is not what
+    "stop" means. Since the services are stopped before anything is written,
+    ctrl-C in the first moments leaves a deployment that is down and a database
+    that is untouched.
+
+    The refusal says so, and there are two roads forward:
+
+    ```sh
+    morzer apply     # start the current release again, restore abandoned
+    morzer restore --force --confirm <installation-id>   # try again
+    ```
+
+    Restore is deliberately not resumable. Its middle step overwrites a database
+    through the release's own hook, no automatic check can tell how far that got,
+    and guessing is the one thing this tool will not do. `morzer status` shows
+    where the interrupted operation stopped.
+
 ### Restoring another machine's backup
 
 Refused by default. Backups are stamped with the installation they came from,

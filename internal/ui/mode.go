@@ -36,13 +36,19 @@ const (
 )
 
 // ModeOptions are the inputs to mode resolution.
+//
+// Stdout and Stderr are `any` because that is what the caller has: a command
+// runs against injected ui.Streams, and an embedder's buffer is not an
+// *os.File. Asking the process's own descriptors instead would resolve rich
+// mode from a terminal nothing is drawing on -- and then draw into the buffer
+// while putting the real terminal in raw mode.
 type ModeOptions struct {
 	JSON      bool
 	Plain     bool
 	NoColor   bool
 	Quiet     bool
-	Stdout    *os.File
-	Stderr    *os.File
+	Stdout    any
+	Stderr    any
 	LookupEnv func(string) (string, bool)
 }
 
@@ -71,14 +77,17 @@ func ResolveMode(opts ModeOptions) Mode {
 		lookup = os.LookupEnv
 	}
 
-	// NO_COLOR's convention is that any value, including empty, disables
-	// colour. It disables styling, so it disables the rich renderer too.
-	if _, set := lookup("NO_COLOR"); set {
-		return ModePlain
-	}
-	if v, set := lookup("CLICOLOR"); set && v == "0" {
-		return ModePlain
-	}
+	// NO_COLOR and CLICOLOR=0 are colour signals, and only colour: the
+	// convention is "prevent the addition of ANSI colour", not "do not
+	// draw". UseColor honours both, every state in the live view carries a
+	// symbol as well as a colour, and --no-color -- the flag that means the
+	// same thing -- has always left the renderer alone. Forcing plain here
+	// made the two disagree, and made `status --watch` refuse with "needs a
+	// terminal" at a terminal, for an operator whose only crime was
+	// exporting NO_COLOR in their shell profile.
+	//
+	// What still forces plain is anything saying there is nothing to draw
+	// on: TERM, CI, systemd, or a stream that is not a terminal.
 	if term, _ := lookup("TERM"); term == "dumb" || term == "" {
 		return ModePlain
 	}
@@ -100,7 +109,7 @@ func ResolveMode(opts ModeOptions) Mode {
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	if !isTTY(stdout) || !isTTY(stderr) {
+	if !IsTerminal(stdout) || !IsTerminal(stderr) {
 		return ModePlain
 	}
 

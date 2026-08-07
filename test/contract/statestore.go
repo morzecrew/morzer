@@ -61,7 +61,7 @@ func RunStateStoreSuite(t *testing.T, newStore StateStoreFactory) {
 		assert.Equal(t, want.Product, got.Product)
 		assert.Equal(t, want.Profile, got.Profile)
 		assert.Equal(t, want.Domains, got.Domains)
-		assert.Equal(t, want.Policy.BackupBeforeUpdate, got.Policy.BackupBeforeUpdate)
+		assert.Equal(t, want.Policy.SkipBackupBeforeUpdate, got.Policy.SkipBackupBeforeUpdate)
 	})
 
 	t.Run("rejects an invalid installation", func(t *testing.T) {

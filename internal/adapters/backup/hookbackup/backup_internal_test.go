@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Two backups within the same second share a timestamp ID. The directory is
@@ -84,6 +85,74 @@ func TestOrphanedRestoreStagingIsSwept(t *testing.T) {
 	}
 }
 
+// TestABackupDirectoryWithNoManifestIsReclaimed.
+//
+// The manifest is written last, so a power cut mid-capture leaves components
+// under a directory nothing will ever restore from. `backup list` skips it --
+// correctly, it is not a backup -- which also means retention never counts it
+// and never prunes it, and a failed dump of a large database sits on the disk
+// it was meant to protect until somebody notices.
+func TestABackupDirectoryWithNoManifestIsReclaimed(t *testing.T) {
+	e := New(Config{Paths: domain.PathsUnder(t.TempDir(), "demo")})
+
+	wreck := filepath.Join(e.paths.BackupsDir(), "20260807T000000Z")
+	if err := os.MkdirAll(wreck, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wreck, "database.sql.age"),
+		[]byte("half a database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A real backup beside it, which must survive untouched.
+	good := filepath.Join(e.paths.BackupsDir(), "20260807T000001Z")
+	if err := os.MkdirAll(good, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeManifest(good, ports.BackupManifest{ID: "20260807T000001Z"}); err != nil {
+		t.Fatal(err)
+	}
+
+	e.sweepManifestlessDirectories()
+
+	if _, err := os.Stat(wreck); !os.IsNotExist(err) {
+		t.Error("a directory no restore can ever use was left occupying the disk")
+	}
+	if _, err := os.Stat(filepath.Join(good, ManifestFileName)); err != nil {
+		t.Errorf("a real backup was swept: %v", err)
+	}
+}
+
+// A manifest that cannot be *read* is evidence, not debris: an unreadable file
+// is a different fault from an absent one, and deleting the components under it
+// would destroy the only copy of whatever it names.
+func TestAnUnreadableManifestIsNotTreatedAsAbsent(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file permissions")
+	}
+	e := New(Config{Paths: domain.PathsUnder(t.TempDir(), "demo")})
+
+	dir := filepath.Join(e.paths.BackupsDir(), "20260807T000002Z")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeManifest(dir, ports.BackupManifest{ID: "20260807T000002Z"}); err != nil {
+		t.Fatal(err)
+	}
+	// Unreadable by way of its parent, which is what a stat cannot see
+	// through either.
+	if err := os.Chmod(dir, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	e.sweepManifestlessDirectories()
+
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("a backup whose manifest could not be read was swept: %v", err)
+	}
+}
+
 // One stuck removal must fail the operation -- proceeding would report success
 // over decrypted product data -- but it must not stop the sweep: every sibling
 // is still attempted, and the error names what remains.
@@ -116,5 +185,40 @@ func TestSweepAttemptsEveryDirectoryAndNamesTheStuck(t *testing.T) {
 	}
 	if _, statErr := os.Stat(stuck); statErr != nil {
 		t.Error("the stuck directory should still exist, that is the point of the error")
+	}
+}
+
+// TestAFetchInProgressIsNotSweptAsDebris.
+//
+// `backup fetch` writes into <id>.fetching and adds the manifest last, and it
+// runs outside the deployment lock -- so to this sweep an active download looks
+// exactly like an interrupted backup. Erasing it would delete the recovery an
+// operator is in the middle of, at the moment they need it most.
+func TestAFetchInProgressIsNotSweptAsDebris(t *testing.T) {
+	e := New(Config{Paths: domain.PathsUnder(t.TempDir(), "demo")})
+
+	fetching := filepath.Join(e.paths.BackupsDir(), "20260807T000000Z"+ports.FetchStagingSuffix)
+	if err := os.MkdirAll(fetching, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fetching, "database.sql.age"),
+		[]byte("half a download"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// And a genuine wreck beside it, so this is about the name rather than
+	// about the sweep having stopped working.
+	wreck := filepath.Join(e.paths.BackupsDir(), "20260807T000001Z")
+	if err := os.MkdirAll(wreck, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	e.sweepManifestlessDirectories()
+
+	if _, err := os.Stat(fetching); err != nil {
+		t.Errorf("a download in progress was erased: %v", err)
+	}
+	if _, err := os.Stat(wreck); !os.IsNotExist(err) {
+		t.Error("the interrupted backup beside it was left behind")
 	}
 }

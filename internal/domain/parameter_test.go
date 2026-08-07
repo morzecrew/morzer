@@ -83,6 +83,48 @@ func TestResolveParametersFillsDefaults(t *testing.T) {
 	assert.Equal(t, domain.Parameters{"http_port": "18080", "log_level": "debug"}, params)
 }
 
+// TestADeclarationWithNoDefaultIsPresentAndEmpty.
+//
+// "Every declared parameter is present" is the type's own contract and the
+// documented promise, and a declaration without a default broke it: the name
+// was skipped, so `Require` reported "the release declares no parameter %q"
+// about a parameter the release declares.
+//
+// Present-and-empty rather than refused. Refusing here would be refusing on
+// every operation, and only one of them can do anything about it: an update
+// meeting a parameter the *new* release added would have no way forward,
+// because the value cannot be set before the release that declares it is
+// installed. MissingValues is what the commands that can act on it ask.
+func TestADeclarationWithNoDefaultIsPresentAndEmpty(t *testing.T) {
+	declared := map[string]domain.ParameterSpec{
+		"admin_email": {Type: domain.ParamString},
+		"http_port":   {Type: domain.ParamPort, Default: "18080"},
+	}
+
+	params, err := domain.ResolveParameters(declared, nil)
+	require.NoError(t, err)
+	assert.Equal(t, domain.Parameters{"admin_email": "", "http_port": "18080"}, params)
+
+	got, err := params.Require("admin_email")
+	require.NoError(t, err,
+		"a declared parameter reported as undeclared, which is what the contract "+
+			"exists to prevent")
+	assert.Empty(t, got)
+
+	// And the commands that can ask for a value are told which to ask for.
+	assert.Equal(t, []string{"admin_email"}, domain.MissingValues(declared, nil))
+	assert.Empty(t, domain.MissingValues(declared,
+		map[string]string{"admin_email": "ops@example"}))
+	assert.Equal(t, []string{"admin_email"}, domain.MissingValues(declared,
+		map[string]string{"admin_email": "   "}),
+		"whitespace is not a value somebody chose")
+
+	supplied, err := domain.ResolveParameters(declared,
+		map[string]string{"admin_email": "ops@example"})
+	require.NoError(t, err)
+	assert.Equal(t, "ops@example", supplied["admin_email"])
+}
+
 func TestAnUndeclaredParameterIsRefusedByName(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
 		"http_port": {Type: domain.ParamPort, Default: "18080"},

@@ -328,12 +328,14 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 
 		out := make(map[string][]byte, len(rel.Manifest.Configuration))
 		for _, cfg := range rel.Manifest.Configuration {
-			tmplPath, err := rel.Path(cfg.Template)
-			if err != nil {
+			// Checked here as well as inside the renderer: this refuses
+			// the "../" spelling with a message about the manifest,
+			// while os.Root refuses what only an open can see.
+			if _, err := rel.Path(cfg.Template); err != nil {
 				return nil, err
 			}
 			rendered, err := d.Renderer.Render(ctx,
-				ports.TemplateRef{Path: tmplPath, Name: cfg.Template}, data)
+				ports.TemplateRef{Root: rel.Root, Name: cfg.Template}, data)
 			if err != nil {
 				return nil, err
 			}

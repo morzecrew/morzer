@@ -115,6 +115,46 @@ func TestEveryWayAnIdentityFileCanBeUnusable(t *testing.T) {
 	}
 }
 
+// TestAnUnparseableIdentityIsNotQuotedBack. Reading the public key out of an
+// identity file goes through age's parser, which quotes the line it rejected --
+// and that line is the machine's private key. The same rule as sftp's private
+// key handling: name the file, never its contents.
+func TestAnUnparseableIdentityIsNotQuotedBack(t *testing.T) {
+	good := filepath.Join(t.TempDir(), "identity")
+	if _, err := sopsage.GenerateIdentity(good); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var secret string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "AGE-SECRET-KEY-") {
+			secret = line
+		}
+	}
+	if secret == "" {
+		t.Fatal("the generated identity holds no secret key line")
+	}
+
+	broken := filepath.Join(t.TempDir(), "identity")
+	if err := os.WriteFile(broken, []byte(" "+secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = sopsage.PublicKeyFromIdentityFile(broken)
+	if err == nil {
+		t.Fatal("a malformed identity file produced a public key")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Error("the failure printed the private key it could not parse")
+	}
+	if tail := secret[len(secret)-20:]; strings.Contains(err.Error(), tail) {
+		t.Errorf("the failure printed part of the private key: %v", err)
+	}
+}
+
 func TestAMissingIdentityFileTellsTheOperatorWhereToLook(t *testing.T) {
 	_, err := sopsage.PublicKeyFromIdentityFile(filepath.Join(t.TempDir(), "identity"))
 	if err == nil {

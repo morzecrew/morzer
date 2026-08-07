@@ -18,12 +18,18 @@ type Renderer interface {
 }
 
 // TemplateRef locates a template inside a release.
+//
+// A root and a relative name rather than a resolved path, because that is what
+// os.Root takes: the renderer opens the template through the root, so a symlink
+// inside a directory-sourced bundle -- which is never extracted, and so never
+// passes the extractor's symlink refusal -- cannot make the manager read a host
+// file and render it into /etc.
 type TemplateRef struct {
-	// Path is the absolute path to the template file.
-	Path string
+	// Root is the release root. Nothing outside it is readable.
+	Root string
 
-	// Name is the bundle-relative name, used in error messages so an
-	// author sees the path they wrote in the manifest.
+	// Name is the bundle-relative name. It is what an author wrote in the
+	// manifest, so it is also what error messages quote.
 	Name string
 }
 

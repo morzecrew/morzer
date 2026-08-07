@@ -4,12 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
@@ -173,6 +175,182 @@ func TestUpdateRefusesADigestMismatch(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err),
 		"a bundle that is not what was published must be refused before it is staged")
+}
+
+// TestTheInstallationCanTurnOffThePreUpdateBackup.
+//
+// The policy field existed, was written by init, was compared by doctor, and
+// was read by nothing that decides anything -- an unhooked intent-guard. It was
+// also spelled in the unsafe direction: BackupBeforeUpdate, whose zero value
+// meant "do not back up", so a record written before the field existed or a
+// hand-edited file turned the backup off by omission.
+func TestTheInstallationCanTurnOffThePreUpdateBackup(t *testing.T) {
+	// Two machines rather than two updates on one: the second update would
+	// have to be 1.3.0 over itself, and a same-version update short-circuits
+	// enough that "no backup was taken" would prove nothing. Each of these
+	// is the same real 1.2.0 → 1.3.0 transition, differing only in the
+	// policy under test.
+	converged := func(t *testing.T) *harness {
+		t.Helper()
+		h := newHarness(t)
+		h.install()
+		h.setHookEnv()
+		applyBaseline(t, h)
+		return h
+	}
+	ctx := context.Background()
+
+	t.Run("the default is the safe direction", func(t *testing.T) {
+		h := converged(t)
+
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+		require.NoError(t, err)
+
+		backups, err := h.Deps.Backup.List(ctx)
+		require.NoError(t, err)
+		assert.Len(t, backups, 1, "the pre-update backup was not taken by default")
+	})
+
+	t.Run("the policy suppresses it, without --skip-backup --force", func(t *testing.T) {
+		h := converged(t)
+
+		inst, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		inst.Policy.SkipBackupBeforeUpdate = true
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+		result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+		require.NoError(t, err)
+
+		backups, err := h.Deps.Backup.List(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, backups, "the policy was set and a backup was taken anyway")
+
+		// Recorded, because the journal is where an incident review looks
+		// for why there is no backup from just before this update.
+		assert.Equal(t, "true", result.Record.Flags["skip_backup_policy"],
+			"the journal does not record that the policy skipped the backup")
+	})
+}
+
+// TestUpdateRetiresAParameterTheNewReleaseDropped.
+//
+// A vendor may stop declaring a parameter, and the operator should be told
+// rather than refused. Nothing enforced that: the recorded value stayed, and
+// every resolve after the update validates the whole map against the new
+// declarations -- so the first `apply`, `config` or `status` afterwards would
+// refuse over a parameter the operator never typed, with the update already
+// applied and no obvious way back.
+func TestUpdateRetiresAParameterTheNewReleaseDropped(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// The operator set a value for a parameter 1.3.0 is about to drop.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{"log_level": "debug"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	src := stageUpgradeSource(t, h)
+	dropParameter(t, src, "log_level")
+
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err, "dropping a parameter is the vendor's decision, not a failure")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+
+	after, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, after.Parameters, "log_level",
+		"the retired value is still recorded, so the next command resolves against "+
+			"a declaration that no longer exists")
+
+	// Told, not silently dropped: the value was the operator's, and the
+	// product's behaviour changes when it stops being applied.
+	var warned bool
+	for _, e := range h.Events.Events() {
+		if e.Level == events.LevelWarn && strings.Contains(e.Message, "log_level") {
+			warned = true
+		}
+	}
+	assert.True(t, warned,
+		"nothing warned that a parameter the operator had set was retired")
+
+	// The whole point of retiring it: the next operation resolves.
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "the update left an installation later commands refuse")
+}
+
+// TestAFailedUpdateKeepsTheParametersItWouldHaveRetired.
+//
+// The retirement is the last step of the update, and that ordering is the whole
+// safety argument. Anything that fails before it unwinds with the values still
+// recorded -- which is correct, because what it unwinds *to* is the release
+// that declares them. Persisting the drop earlier would need a compensation to
+// put them back, and a resumed run could not: it reloads an installation the
+// values are already gone from, and has nothing to restore.
+func TestAFailedUpdateKeepsTheParametersItWouldHaveRetired(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{"log_level": "debug"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	src := stageUpgradeSource(t, h)
+	dropParameter(t, src, "log_level")
+
+	// The product never becomes healthy, so the update compensates.
+	h.Health.Healthy = false
+
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status)
+
+	after, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "debug", after.Parameters["log_level"],
+		"the update unwound and the operator's value went with it, though the "+
+			"release now running is the one that declares it")
+
+	// And the release that declares it still resolves against that value.
+	h.Health.Healthy = true
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "the value the update left recorded no longer resolves")
+}
+
+// dropParameter removes a parameter block from a bundle's manifest, which is
+// what a vendor does when a knob stops existing.
+func dropParameter(t *testing.T, bundle, name string) {
+	t.Helper()
+	path := filepath.Join(bundle, "manifest.yaml")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	lines := strings.Split(string(data), "\n")
+	var out []string
+	dropping := false
+	for _, line := range lines {
+		switch {
+		case line == "  "+name+":":
+			dropping = true
+		case dropping && strings.HasPrefix(line, "    "):
+			// still inside the block
+		case dropping:
+			dropping = false
+			out = append(out, line)
+		default:
+			out = append(out, line)
+		}
+	}
+	require.NotEqual(t, len(lines), len(out), "manifest declares no parameter %q", name)
+	require.NoError(t, os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644))
 }
 
 func TestUpdateRestoresThePointerWhenConvergenceFails(t *testing.T) {

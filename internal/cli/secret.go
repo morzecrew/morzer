@@ -391,6 +391,12 @@ func (a *App) generatorFor(ctx context.Context, name, kind string, length int, a
 	if alphabet != "" {
 		gen.Alphabet = alphabet
 	}
+	// The flags can produce a generator the manifest never could: --length 4
+	// is below the redaction floor, so the value would be handed over and
+	// then printed by the first tool that echoes it.
+	if err := gen.Validate(); err != nil {
+		return domain.Generator{}, err
+	}
 	return gen, nil
 }
 

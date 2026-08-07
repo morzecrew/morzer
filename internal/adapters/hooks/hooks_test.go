@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -154,22 +156,74 @@ func TestAHookThatSaysNothingIsNotInError(t *testing.T) {
 	}
 }
 
-// TestGarbageOnFileDescriptorThreeIsIgnored. A hook that writes something
-// unparseable has still done its work; refusing the operation over it would
-// make the result channel a liability rather than a convenience.
-func TestGarbageOnFileDescriptorThreeIsIgnored(t *testing.T) {
+// TestGarbageOnFileDescriptorThreeFailsTheHook.
+//
+// This used to be ignored, on the reasoning that the hook had still done its
+// work. The reasoning was wrong in the one case that matters: fd 3 is how a
+// migrate hook reports the schema it left behind, and a result the manager
+// cannot read is indistinguishable from a hook that reported nothing. The
+// operation continues, `rollback` later finds no schema recorded, and the check
+// that stops it crossing a migration is not applied. A hook that writes nothing
+// is still fine; a hook that writes something unreadable has broken the ABI.
+func TestGarbageOnFileDescriptorThreeFailsTheHook(t *testing.T) {
 	rel := release(t)
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
 printf 'this is definitely not json' >&3
 exit 0
 `)
 
-	out, err := run(t, rel, cmd)
-	if err != nil {
-		t.Fatalf("unparseable result output failed the hook: %v", err)
+	_, err := run(t, rel, cmd)
+	if err == nil {
+		t.Fatal("a hook that wrote an unreadable result was reported successful")
 	}
-	if out.Result.Message != "" {
-		t.Errorf("garbage was decoded into a result: %+v", out.Result)
+	if !strings.Contains(err.Error(), "fd 3") {
+		t.Errorf("the failure does not say where the problem is: %v", err)
+	}
+}
+
+// TestAMistypedSchemaVersionIsRefusedRatherThanLost is the concrete shape of
+// the same bug: JSON that parses as JSON but not as a result. Silently
+// recording schema 0 here is what disarms the rollback gate.
+func TestAMistypedSchemaVersionIsRefusedRatherThanLost(t *testing.T) {
+	rel := release(t)
+	cmd := hook(t, rel, "migrate", `#!/bin/sh
+printf '{"schema_version": "42"}' >&3
+exit 0
+`)
+
+	out, err := run(t, rel, cmd)
+	if err == nil {
+		t.Fatalf("a hook that reported its schema as a string passed with schema %d",
+			out.Result.SchemaVersion)
+	}
+	if hint := domain.AsError(err).Hint; !strings.Contains(hint, "schema_version") {
+		t.Errorf("the hint does not name the field the author got wrong: %q", hint)
+	}
+}
+
+// TestValidJSONThatIsNotAResultObjectIsRefused.
+//
+// `null` decodes into a Result without complaint and leaves every field zero,
+// so a hook writing it looked exactly like a hook that reported nothing -- the
+// same silent loss of schema_version as garbage, wearing valid JSON.
+func TestValidJSONThatIsNotAResultObjectIsRefused(t *testing.T) {
+	rel := release(t)
+
+	for name, payload := range map[string]string{
+		"null":      "null",
+		"an array":  `[{"schema_version": 42}]`,
+		"a string":  `"schema_version=42"`,
+		"a number":  "42",
+		"a boolean": "true",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd := hook(t, rel, "migrate-"+strings.ReplaceAll(name, " ", "-"),
+				"#!/bin/sh\nprintf '"+payload+"' >&3\nexit 0\n")
+
+			if _, err := run(t, rel, cmd); err == nil {
+				t.Fatalf("%s was accepted as a result object", name)
+			}
+		})
 	}
 }
 
@@ -422,9 +476,18 @@ sleep 300
 // exits would otherwise leave the child running past the operation.
 func TestATimeoutReachesTheWholeProcessGroup(t *testing.T) {
 	rel := release(t)
-	marker := filepath.Join(t.TempDir(), "still-alive")
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "still-alive")
+	pidFile := filepath.Join(dir, "child.pid")
+
+	// The child announces itself, so the test can watch the process rather
+	// than wait out the work it would have done. Waiting three seconds for
+	// a file not to appear proves the same thing and charges every run for
+	// it -- and proves it only for a child that sleeps less than three
+	// seconds.
 	cmd := hook(t, rel, "migrate", `#!/bin/sh
-sh -c 'sleep 2; echo yes > `+marker+`' &
+sh -c 'sleep 30; echo yes > `+marker+`' &
+echo $! > `+pidFile+`
 sleep 300
 `)
 
@@ -434,11 +497,26 @@ sleep 300
 		t.Fatal("a hanging hook was reported successful")
 	}
 
-	// If the group was killed, the backgrounded child never got to write.
-	time.Sleep(3 * time.Second)
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("the hook never recorded its child: %v", err)
+	}
+	child, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatalf("the hook wrote %q, want a pid", raw)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for syscall.Kill(child, 0) != syscall.ESRCH {
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d, backgrounded by the hook, survived the timeout: a "+
+				"killed operation leaves work running behind it", child)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	if _, err := os.Stat(marker); err == nil {
-		t.Error("a process the hook backgrounded survived the timeout, so a " +
-			"killed operation leaves work running behind it")
+		t.Error("the backgrounded child got far enough to write its marker")
 	}
 }
 
@@ -451,15 +529,40 @@ head -c 4000000 /dev/zero | tr '\0' 'x' >&3 2>/dev/null || true
 exit 0
 `)
 
-	out, err := hooks.NewRunner(exec.New()).
+	_, err := hooks.NewRunner(exec.New()).
 		Run(context.Background(), rel, cmd, env(), 60*time.Second)
-	if err != nil {
-		t.Fatalf("a hook that wrote too much to fd 3 failed the operation: %v", err)
+	if err == nil {
+		t.Fatal("four megabytes on fd 3 was accepted as a result")
 	}
-	// Unparseable, so no result -- the point is that it returned at all
-	// rather than reading four megabytes into an error message.
-	if out.Result.Message != "" {
-		t.Errorf("four megabytes of x was decoded into a result: %+v", out.Result)
+	// The point is what did *not* happen: the read stopped at the bound and
+	// the refusal is a sentence, not four megabytes of x quoted back.
+	if len(err.Error()) > 500 {
+		t.Errorf("the failure carries the hook's flood into the error text (%d bytes)",
+			len(err.Error()))
+	}
+}
+
+// TestAResultPaddedToTheLimitIsNotAcceptedAsAPrefix.
+//
+// The read was bounded at exactly a megabyte, so it could not tell a result
+// that fits from one that was cut off at the bound -- and a hook padding valid
+// JSON to the limit before writing more would have had its prefix accepted as
+// the whole of what it said. One byte past the bound is what makes overflow
+// visible.
+func TestAResultPaddedToTheLimitIsNotAcceptedAsAPrefix(t *testing.T) {
+	rel := release(t)
+
+	// Valid JSON whose object closes exactly at the limit, followed by more.
+	const limit = 1 << 20
+	padding := strings.Repeat("x", limit-len(`{"message":"","schema_version":42}`))
+	cmd := hook(t, rel, "migrate", `#!/bin/sh
+printf '{"message":"`+padding+`","schema_version":42}' >&3
+printf 'and then some more' >&3
+exit 0
+`)
+
+	if _, err := run(t, rel, cmd); err == nil {
+		t.Fatal("a result truncated at the limit was accepted as the whole of it")
 	}
 }
 

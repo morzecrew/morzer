@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"io"
 	"os"
 	"time"
 
@@ -19,6 +20,24 @@ import (
 // required because it is what the styled path falls back to.
 func (a *App) rich() bool {
 	return a.Mode == ui.ModeRich && !a.Flags.quiet && a.plain != nil
+}
+
+// terminalInput is what the live views read keys from, and nil when there is
+// nothing to read keys from.
+//
+// The injected stream when it is a terminal -- an embedder that supplied its
+// own pty must have its keys read from there, not from a stdin nobody is
+// typing at. Nil otherwise, and that is the important half: the output mode is
+// decided by stdout and stderr, so `morzer apply < /dev/null` at a terminal
+// legitimately draws the live view, and handing its reader a pipe would mean
+// raw-mode setup on something that cannot be put in raw mode. With no input
+// Bubble Tea subscribes to none, nothing is put in raw mode, and ctrl-C stays
+// the signal main already handles.
+func (a *App) terminalInput() io.Reader {
+	if ui.IsTerminal(a.Stream.In) {
+		return a.Stream.In
+	}
+	return nil
 }
 
 // theme resolves the styling for this run.
@@ -69,7 +88,7 @@ func (a *App) runLive(work func()) {
 
 	tty.Run(tty.Options{
 		Output: a.Stream.Err,
-		Input:  os.Stdin,
+		Input:  a.terminalInput(),
 		Theme:  a.theme(),
 		// The view's ^C arrives as a keystroke -- raw mode suppressed
 		// the signal main listens for -- so cancelling the operation's
@@ -139,7 +158,7 @@ func (a *App) watchStatus(ctx context.Context, interval time.Duration) error {
 
 	return tty.Watch(ctx, tty.WatchOptions{
 		Output:   a.Stream.Err,
-		Input:    os.Stdin,
+		Input:    a.terminalInput(),
 		Theme:    a.theme(),
 		Interval: interval,
 		Refresh: func(ctx context.Context) (ops.Status, error) {

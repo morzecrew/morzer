@@ -16,6 +16,7 @@ import (
 	"time"
 
 	pkgsftp "github.com/pkg/sftp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 
@@ -501,4 +502,14 @@ func TestSSHPushSweepsAStalePartialFile(t *testing.T) {
 	require.NoError(t, adapter.Verify(context.Background(),
 		ports.RemoteRef{Target: ref, ID: id}),
 		"the pushed backup must verify end to end")
+
+	// The mode is set on the staging file before a byte is written, not on
+	// the final name afterwards -- a component created at the server's
+	// umask and narrowed later is world-readable for the length of the
+	// whole transfer, and it is the ciphertext of a database. What is
+	// checkable here is that moving the chmod did not lose it.
+	pushed, err := os.Stat(filepath.Join(remote, "db.dump.age"))
+	require.NoError(t, err)
+	assert.Zero(t, pushed.Mode().Perm()&0o077,
+		"the pushed component is mode %04o on the target", pushed.Mode().Perm())
 }

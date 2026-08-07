@@ -74,6 +74,15 @@ var (
 	ErrToolIncompatible    = errors.New("required tool version incompatible")
 	ErrOperationIncomplete = errors.New("a previous operation did not finish")
 
+	// ErrTemplateSyntax marks a manifest template that does not parse, as
+	// opposed to one that parses and refers to something absent.
+	//
+	// Manifest validation checks only the first: it runs without an
+	// installation, so no parameter has a value yet and "unresolvable" says
+	// nothing. Telling the two apart used to be a substring match on the
+	// message, which made rewording the message silently disable the check.
+	ErrTemplateSyntax = errors.New("template does not parse")
+
 	// ErrMeasureIncomplete marks a measurement that did not run, as opposed
 	// to one that ran and could not produce an answer.
 	//

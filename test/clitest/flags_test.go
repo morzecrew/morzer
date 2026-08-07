@@ -1,6 +1,7 @@
 package clitest
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -44,6 +45,89 @@ func TestVerboseAndQuietRefuseToCombine(t *testing.T) {
 
 	// Before this was stated, `-v -q` silently meant quiet.
 	r.Run("-v", "-q", "version").ExitCode(2)
+}
+
+// TestAJSONRunAlwaysProducesAnEnvelope.
+//
+// The presenter is built in the persistent pre-run, which never runs when the
+// failure is the parse itself. So exactly the mistakes a script makes -- a
+// mistyped flag, a mistyped command, an invalid --log-format -- produced no
+// output on stdout at all, and a consumer reading `morzer --json ... | jq`
+// received empty input rather than an error it could act on.
+func TestAJSONRunAlwaysProducesAnEnvelope(t *testing.T) {
+	r := New(t)
+
+	for _, args := range [][]string{
+		{"--json", "--definitely-not-a-flag"},
+		{"--json", "definitely-not-a-command"},
+		{"--json", "--log-format", "banana", "version"},
+	} {
+		res := r.Run(args...).ExitCode(2)
+		res.FieldEquals("ok", false)
+		res.FieldEquals("exit_code", float64(2))
+		if msg, _ := res.Field("error.message").(string); msg == "" {
+			t.Errorf("%v: the envelope carries no error message:\n%s", args, res.Stdout)
+		}
+	}
+}
+
+// TestTheRootProductFlagReachesInit. `morzer --product demo init` is a
+// spelling the flag's own placement invites, and init's local --product
+// shadowed it with an empty string: the name was dropped, and a non-interactive
+// run failed asking for the flag that had just been given.
+func TestTheRootProductFlagReachesInit(t *testing.T) {
+	r := New(t)
+
+	r.Run("--product", "custom", "init",
+		"--no-recovery-recipient", "--install-units=false").ExitCode(0)
+
+	if _, err := os.Stat(r.Path("etc", "custom", "installation.yaml")); err != nil {
+		t.Errorf("no installation was created under the name that was given: %v", err)
+	}
+}
+
+// TestConfigSelectsTheInstallationItNames is the case the flag exists for: a
+// host with more than one installation, where discovery refuses to guess.
+func TestConfigSelectsTheInstallationItNames(t *testing.T) {
+	r := NewInstalled(t)
+
+	r.Run("--product", "second", "init",
+		"--no-recovery-recipient", "--install-units=false").ExitCode(0)
+
+	byProduct := r.Run("--product", "demo", "status", "--json").ExitCode(0).
+		Field("data.installation_id")
+	byConfig := r.Run("--config", r.Path("etc", "demo", "installation.yaml"), "status", "--json").
+		ExitCode(0).Field("data.installation_id")
+
+	if byConfig != byProduct {
+		t.Errorf("--config reported installation %v, want %v -- it named one "+
+			"deployment and the command acted on another", byConfig, byProduct)
+	}
+
+	second := r.Run("--product", "second", "status", "--json").ExitCode(0).
+		Field("data.installation_id")
+	if second == byProduct {
+		t.Fatal("the fixture built one installation, so this proves nothing")
+	}
+}
+
+// TestConfigAndACommandLocalProductMustAgree.
+//
+// The root's --product is compared against --config during the pre-run. `init`
+// has a --product of its own -- it may learn the name from a bundle -- which is
+// parsed into a different variable and was invisible there: the command
+// selected the layout --config named and then rewired to the other one.
+func TestConfigAndACommandLocalProductMustAgree(t *testing.T) {
+	r := New(t)
+
+	out := r.Run("--config", r.Path("etc", "demo", "installation.yaml"),
+		"init", "--product", "other", "--no-recovery-recipient", "--install-units=false")
+	out.ExitCode(2).OutputContains("different installations")
+
+	// Agreeing is not a conflict.
+	r.Run("--config", r.Path("etc", "demo", "installation.yaml"),
+		"init", "--product", "demo", "--no-recovery-recipient",
+		"--install-units=false").ExitCode(0)
 }
 
 func TestBareClearInterventionSelectsRatherThanFailing(t *testing.T) {

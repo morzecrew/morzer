@@ -335,6 +335,43 @@ func TestAnUnfinishedOperationBlocksANewOne(t *testing.T) {
 	require.NoError(t, err, "clearing the flag must let the next operation run")
 }
 
+// TestAJournalRecordThisBuildCannotInterpretBlocksAndClears.
+//
+// A downgrade after an upgrade, or a damaged line: the journal holds a status
+// this manager has no meaning for. It used to be treated as a finished
+// operation needing nobody's attention -- invisible in `status`, invisible in
+// `doctor`, and no obstacle to an `apply --startup` at the next reboot. Failing
+// closed is only safe if there is a way out, so the escape hatch is the same
+// one every other blocked state uses.
+func TestAJournalRecordThisBuildCannotInterpretBlocksAndClears(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx,
+		domain.OperationRecord{
+			ID: "op-from-the-future", Type: domain.OpTypeUpdate,
+			Status:    domain.OperationStatus("quiesced-pending-review"),
+			StartedAt: domain.NewTime(time.Now()),
+		}))
+
+	unfinished, err := h.Deps.State.UnfinishedOperations(ctx)
+	require.NoError(t, err)
+	require.Len(t, unfinished, 1,
+		"a record this build cannot interpret vanished from the unfinished list")
+
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err, "apply proceeded over a record it cannot interpret")
+	assert.Contains(t, domain.AsError(err).Error(), "op-from-the-future")
+
+	_, err = ops.ClearIntervention(ctx, h.Deps, "op-from-the-future")
+	require.NoError(t, err, "the fail-closed state has no way out")
+
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+}
+
 // TestAnAbandonedRunningOperationCanBeCleared: a SIGKILL leaves a record
 // journaled as running forever. When its in-flight step is not safe to repeat,
 // `--resume` rightly refuses -- so acknowledging the record with

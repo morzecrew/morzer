@@ -76,13 +76,18 @@ func newMachine(t *testing.T, root string) *machine {
 	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile())
 	runtime := fakes.NewRuntime()
 
+	// See newHarness: the fake waits like the real one, so a test that
+	// wants a failing wait has to say how long it is prepared to wait.
+	health := fakes.NewHealth()
+	health.Patience = 50 * time.Millisecond
+
 	deps := &ops.Deps{
 		Paths:          paths,
 		State:          stateStore,
 		Locker:         fakes.NewLocker(),
 		Runtime:        runtime,
 		Secrets:        secrets,
-		Health:         fakes.NewHealth(),
+		Health:         health,
 		Renderer:       gotemplate.New(),
 		Source:         local.New(),
 		Targets:        mustTargetRegistry(t),

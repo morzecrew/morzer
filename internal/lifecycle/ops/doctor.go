@@ -253,7 +253,7 @@ func policyEqual(a, b domain.Policy) bool {
 	return a.RequireSignature == b.RequireSignature &&
 		a.RetainReleases == b.RetainReleases &&
 		a.RetainBackups == b.RetainBackups &&
-		a.BackupBeforeUpdate == b.BackupBeforeUpdate &&
+		a.SkipBackupBeforeUpdate == b.SkipBackupBeforeUpdate &&
 		a.StaleBackupAfter == b.StaleBackupAfter &&
 		strings.Join(a.SigningKeys, ",") == strings.Join(b.SigningKeys, ",")
 }

@@ -4,12 +4,17 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -72,6 +77,21 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 	}
 	defer func() { _ = root.Close() }()
 
+	// The read side is contained too. The walk decides "regular file" from
+	// an lstat, and the copy opened the path again by name: a file swapped
+	// for a symlink in between was followed, and the digest computed
+	// afterwards blessed whatever came back.
+	//
+	// os.Root is not enough here. It refuses an *escape* and follows a
+	// symlink that stays inside the tree, so a swapped entry pointing at
+	// another file in the same bundle would still be opened as its target.
+	// The descent below refuses a symlink at every component instead.
+	srcDir, err := openDirNoFollow(src)
+	if err != nil {
+		return domain.ValidationError(err, "cannot read source directory %s", src)
+	}
+	defer func() { _ = syscall.Close(srcDir) }()
+
 	var entries int
 	var total int64
 
@@ -122,19 +142,37 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 				return domain.ValidationError(nil,
 					"bundle exceeds the total size limit of %d bytes", limits.MaxTotalSize)
 			}
-			return copyFileIn(path, root, rel, info.Mode().Perm())
+			return copyFileIn(srcDir, root, rel, info.Mode().Perm())
 		}
 	})
 
 	return walkErr
 }
 
-func copyFileIn(srcPath string, root *os.Root, rel string, mode fs.FileMode) error {
-	in, err := os.Open(srcPath)
+func copyFileIn(srcDir int, root *os.Root, rel string, mode fs.FileMode) error {
+	in, err := openFileNoFollow(srcDir, rel)
 	if err != nil {
-		return domain.Internal(err, "cannot open %s", srcPath)
+		if errors.Is(err, errSymlinkComponent) {
+			return domain.ValidationError(nil,
+				"bundle contains a symlink at %q, which is not allowed", rel).
+				WithHint("release bundles must contain only regular files and directories")
+		}
+		return domain.Internal(err, "cannot open %s", rel)
 	}
 	defer func() { _ = in.Close() }()
+
+	// Checked on the open descriptor rather than on the path, which is the
+	// other half of the same race: what was walked and what was opened are
+	// now provably the same file.
+	info, err := in.Stat()
+	if err != nil {
+		return domain.Internal(err, "cannot stat %s", rel)
+	}
+	if !info.Mode().IsRegular() {
+		return domain.ValidationError(nil,
+			"bundle contains a non-regular file at %q (%s), which is not allowed",
+			rel, info.Mode().Type())
+	}
 
 	if dir := filepath.Dir(rel); dir != "." {
 		if err := mkdirAllIn(root, dir, 0o755); err != nil {
@@ -164,6 +202,93 @@ func copyFileIn(srcPath string, root *os.Root, rel string, mode fs.FileMode) err
 		return domain.Internal(err, "cannot close %s", rel)
 	}
 	return nil
+}
+
+// errSymlinkComponent marks a path whose descent stopped at a symlink.
+//
+// The errno alone cannot say so: O_NOFOLLOW on the last component reports
+// ELOOP, while O_NOFOLLOW|O_DIRECTORY on an intermediate one reports ENOTDIR --
+// which is also what a regular file in the middle of a path reports. The
+// descent asks, with a no-follow stat, and says which it was.
+var errSymlinkComponent = errors.New("a path component is a symlink")
+
+// openDirNoFollow opens a directory, refusing it if it is a symlink.
+func openDirNoFollow(dir string) (int, error) {
+	return syscall.Open(dir,
+		syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+}
+
+// openFileNoFollow opens rel beneath an already-open directory, refusing a
+// symlink at *every* component rather than only at the last one.
+//
+// This is the read side of the copy's containment, and it is a descent rather
+// than one open because that is what closes the window: the walk decided this
+// entry was a regular file, and between that decision and this open anything
+// could have replaced any part of the path. Following even one link would mean
+// copying bytes the walk never saw -- under the name it did see, and into a
+// tree whose digest is then computed and trusted.
+//
+// It needs no separate containment check. A path that follows no symlink and
+// contains no "..", starting from a descriptor for the source directory, cannot
+// name anything outside it.
+func openFileNoFollow(dir int, rel string) (*os.File, error) {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+
+	current := dir
+	// Closed only if this function opened it: the caller owns the one it
+	// passed in.
+	opened := false
+	defer func() {
+		if opened {
+			_ = syscall.Close(current)
+		}
+	}()
+
+	for _, part := range parts[:len(parts)-1] {
+		if part == "" || part == "." || part == ".." {
+			return nil, domain.ValidationError(nil,
+				"bundle path %q cannot be resolved safely", rel)
+		}
+		next, err := syscall.Openat(current, part,
+			syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+		if err != nil {
+			return nil, classifyDescent(current, part, err)
+		}
+		if opened {
+			_ = syscall.Close(current)
+		}
+		current, opened = next, true
+	}
+
+	name := parts[len(parts)-1]
+	if name == "" || name == "." || name == ".." {
+		return nil, domain.ValidationError(nil,
+			"bundle path %q cannot be resolved safely", rel)
+	}
+	// O_NONBLOCK, because this open is the far side of a race and the walk's
+	// verdict is not binding: if a regular file has been replaced by a FIFO
+	// since, a blocking open would wait for a writer that never comes and
+	// hang the copy outright. Non-blocking, the descriptor opens, the caller
+	// stats it, and a non-regular file is refused as it always was. On a
+	// regular file the flag does nothing at all.
+	fd, err := syscall.Openat(current, name,
+		syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, classifyDescent(current, name, err)
+	}
+	return os.NewFile(uintptr(fd), rel), nil
+}
+
+// classifyDescent says whether a failed open was a symlink refusal.
+func classifyDescent(dir int, name string, cause error) error {
+	var st unix.Stat_t
+	if statErr := unix.Fstatat(dir, name, &st, unix.AT_SYMLINK_NOFOLLOW); statErr != nil {
+		return cause
+	}
+	if st.Mode&unix.S_IFMT == unix.S_IFLNK {
+		return fmt.Errorf("%w: %w", errSymlinkComponent, cause)
+	}
+	return cause
 }
 
 // DigestTree computes a content digest over a directory tree.

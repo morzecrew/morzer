@@ -2,13 +2,13 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"golang.org/x/term"
 
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/domain"
@@ -38,7 +38,7 @@ func wizardApplies(app *App, opts ops.InitOptions) bool {
 		return false
 	case app.Flags.json, app.Flags.quiet:
 		return false
-	case !isInteractive():
+	case !app.interactive():
 		return false
 	default:
 		return missingRequired(opts)
@@ -59,8 +59,16 @@ func missingRequired(opts ops.InitOptions) bool {
 	return opts.RecoveryRecipient == "" && !opts.NoRecoveryKey
 }
 
-func isInteractive() bool {
-	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+// interactive reports whether there is somebody at the other end of *these*
+// streams.
+//
+// The form reads a.Stream.In and draws on a.Stream.Err, so those are the two
+// that decide. It used to ask the process's own stdin and stdout: an embedder
+// driving the CLI through buffers would have been handed a form nobody could
+// answer, and the check consulted stdout while the form drew on stderr, so a
+// `morzer init > log` at a terminal was still considered interactive.
+func (a *App) interactive() bool {
+	return ui.IsTerminal(a.Stream.In) && ui.IsTerminal(a.Stream.Err)
 }
 
 // form builds a huh form bound to this run's own streams.
@@ -80,6 +88,28 @@ func (a *App) form(fields ...huh.Field) *huh.Form {
 		WithInput(a.Stream.In).
 		WithOutput(a.Stream.Err).
 		WithAccessible(a.accessibleForms())
+}
+
+// formError says what actually went wrong with a form.
+//
+// Every failure used to become "setup was cancelled" and exit 130. That is the
+// right answer for exactly two of them -- the operator pressed ctrl-C, or the
+// context was cancelled -- and a lie for the rest: a terminal huh cannot drive,
+// a closed input, a renderer failure. Reporting those as a deliberate abort
+// tells an operator their own keystroke broke a setup they never touched, and
+// hides the cause that would have told them what to fix.
+func formError(err error) error {
+	switch {
+	case errors.Is(err, huh.ErrUserAborted):
+		return domain.Interrupted("setup was cancelled")
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return domain.Interrupted("setup was cancelled")
+	default:
+		return domain.Internal(err, "the setup form could not run").
+			WithHint("run `morzer init` with the flags instead -- " +
+				"`morzer init --help` lists them -- or set ACCESSIBLE=1 " +
+				"for line-by-line prompts")
+	}
 }
 
 // accessibleForms reports whether forms should render line by line.
@@ -155,10 +185,18 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 	}
 
 	if err := app.form(fields...).RunWithContext(ctx); err != nil {
-		return opts, domain.Interrupted("setup was cancelled")
+		return opts, formError(err)
 	}
 
 	opts.Domains = splitDomains(domainsInput)
+
+	// Before the recovery choice is acted on, because acting on it can write
+	// a private key to disk. A refusal after that point leaves half of a
+	// recovery identity on a machine with no installation to recover, and
+	// the operator is told to move it somewhere safe on the way out.
+	if err := app.confirmProductMatchesConfig(opts.Product); err != nil {
+		return opts, err
+	}
 
 	filled, err := resolveRecoveryChoice(ctx, app, opts, recovery)
 	if err != nil {
@@ -194,7 +232,7 @@ func resolveRecoveryChoice(
 			Validate(app.Deps.Secrets.ValidateRecipient)
 
 		if err := app.form(field).RunWithContext(ctx); err != nil {
-			return opts, domain.Interrupted("setup was cancelled")
+			return opts, formError(err)
 		}
 		opts.RecoveryRecipient = strings.TrimSpace(key)
 		return opts, nil
@@ -215,7 +253,7 @@ func generateRecoveryKey(ctx context.Context, app *App, opts ops.InitOptions) (o
 		Value(&path)
 
 	if err := app.form(field).RunWithContext(ctx); err != nil {
-		return opts, domain.Interrupted("setup was cancelled")
+		return opts, formError(err)
 	}
 
 	public, err := sopsage.GenerateIdentity(path)
@@ -288,6 +326,12 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	for _, d := range opts.Domains {
 		add("domain", d)
 	}
+	// Sorted, so the printed line is the same twice for the same options:
+	// this goes into a provisioning script, where a command that reorders
+	// itself between runs is a diff nobody can read.
+	for _, name := range sortedKeys(opts.Parameters) {
+		add("set", name+"="+opts.Parameters[name])
+	}
 	add("recovery-recipient", opts.RecoveryRecipient)
 	if opts.NoRecoveryKey {
 		args = append(args, "--no-recovery-recipient")
@@ -305,8 +349,20 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	if !opts.GenerateSecrets {
 		args = append(args, "--generate-secrets=false")
 	}
+	if opts.Repair {
+		args = append(args, "--repair")
+	}
 
 	return strings.Join(args, " \\\n    ")
+}
+
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // shellQuote quotes a value only when it needs it, so the common case stays

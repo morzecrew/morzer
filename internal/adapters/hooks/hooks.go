@@ -23,6 +23,10 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
+// resultLimit bounds what fd 3 may carry. A hook that streams gigabytes into
+// the result channel is broken, and must not take the manager's memory with it.
+const resultLimit = 1 << 20
+
 // ResultFD and the exit-code meanings are defined by the ABI in ports; these
 // keep the names short inside this package.
 const (
@@ -122,7 +126,13 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 	go func() {
 		// Bounded: a hook that streams gigabytes into fd 3 is broken,
 		// and must not take the manager's memory with it.
-		data, _ := io.ReadAll(io.LimitReader(readEnd, 1<<20))
+		//
+		// One byte past the bound, so overflow is *detectable*. Reading
+		// exactly the limit cannot tell a result that fits from one that
+		// was cut off at it -- and a hook padding valid JSON to exactly
+		// a megabyte before writing more would have had its prefix
+		// accepted as the whole of what it said.
+		data, _ := io.ReadAll(io.LimitReader(readEnd, resultLimit+1))
 		_ = readEnd.Close()
 		resultCh <- data
 	}()
@@ -151,17 +161,22 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 		Duration: res.Duration,
 	}
 
-	if parsed, ok := parseResult(resultData); ok {
-		outcome.Result = parsed
-		outcome.Skipped = parsed.Skipped
-	}
+	parsed, parseErr := parseResult(resultData)
+	outcome.Result = parsed
+	outcome.Skipped = parsed.Skipped
 
 	if runErr != nil {
 		var exitErr *exec.ExitError
 		if errors.As(runErr, &exitErr) {
 			outcome.ExitCode = exitErr.ExitCode
 			if exitErr.ExitCode == ExitSkipped {
-				// Exit 2 is "nothing to do", not a failure.
+				// Exit 2 is "nothing to do", not a failure -- but a
+				// hook that also wrote something unreadable to fd 3
+				// still broke the ABI, and the reader has no way to
+				// know what it meant to say.
+				if parseErr != nil {
+					return outcome, abiViolation(command[0], parseErr)
+				}
 				outcome.Skipped = true
 				return outcome, nil
 			}
@@ -170,24 +185,77 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 		return outcome, runErr
 	}
 
+	// Last, so a hook that failed outright is reported by how it failed
+	// rather than by what it managed to write on the way down.
+	if parseErr != nil {
+		return outcome, abiViolation(command[0], parseErr)
+	}
+
 	return outcome, nil
+}
+
+// abiViolation is the refusal for a hook whose result channel cannot be read.
+//
+// Silence on fd 3 is the common case and stays fine; bytes that are not the
+// documented JSON are a broken hook. Swallowing them loses whatever the hook
+// meant to report -- and the field that matters most is schema_version, whose
+// absence disarms the check that blocks a rollback across a migration. A
+// migrate hook writing {"schema_version": "42"} would record no schema at all,
+// and the gate would let the rollback through.
+func abiViolation(name string, cause error) error {
+	return domain.ValidationError(cause,
+		"hook %q wrote something on fd 3 that is not a result object", name).
+		WithHint("the result channel takes one JSON object, e.g. " +
+			`{"schema_version": 42}` + " -- note that schema_version is a " +
+			"number, not a string. A hook with nothing to report writes nothing.")
 }
 
 // parseResult decodes the hook's structured output, tolerating silence.
 //
 // A hook that writes nothing to fd 3 is the common case -- most hooks just do
 // work and exit -- so failing to parse an empty buffer would make every simple
-// hook look broken.
-func parseResult(data []byte) (Result, bool) {
+// hook look broken. Bytes that are not the documented object are the opposite:
+// the hook tried to say something and the manager cannot hear it.
+func parseResult(data []byte) (Result, error) {
+	if len(data) > resultLimit {
+		return Result{}, fmt.Errorf(
+			"the result exceeds the %d byte limit the ABI documents", resultLimit)
+	}
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" {
-		return Result{}, false
+		return Result{}, nil
+	}
+	// An object, specifically. `null` unmarshals into a Result without
+	// complaint and leaves every field zero, so a hook writing it would be
+	// accepted as one that reported nothing -- which is the same silent
+	// loss of schema_version as garbage, wearing valid JSON.
+	if trimmed[0] != '{' {
+		return Result{}, fmt.Errorf("the result channel takes a JSON object, got %s",
+			jsonShape(trimmed))
 	}
 	var out Result
 	if err := json.Unmarshal([]byte(trimmed), &out); err != nil {
-		return Result{}, false
+		return Result{}, err
 	}
-	return out, true
+	return out, nil
+}
+
+// jsonShape names what arrived instead of an object, without quoting it: a
+// hook's fd 3 can carry whatever it likes, including a value it should not
+// have put there.
+func jsonShape(text string) string {
+	switch text[0] {
+	case '[':
+		return "an array"
+	case '"':
+		return "a string"
+	case 'n':
+		return "null"
+	case 't', 'f':
+		return "a boolean"
+	default:
+		return "something that is not an object"
+	}
 }
 
 // hookFailure builds an error that quotes what the hook actually said.
