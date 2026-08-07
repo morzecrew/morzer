@@ -115,13 +115,21 @@ info "work directory ${WORK}"
 # MORZER_VOLUME_HELPER_IMAGE wins when set, because it is the escape hatch for
 # an operator whose registry does not carry busybox -- an air-gapped mirror that
 # sets it would otherwise be failed here for not having a default it does not
-# want. Empty counts as unset, which is the rule the manager applies too
-# (HelperImage returns the default for an empty override).
+# want.
 #
-# Otherwise the digest comes out of the manager's own source, because the
-# manager accepts no other. Hardcoding it here would drift the day it is bumped.
-if [ -n "${MORZER_VOLUME_HELPER_IMAGE:-}" ]; then
-	HELPER_IMAGE="${MORZER_VOLUME_HELPER_IMAGE}"
+# Trimmed first, because WithHelperImage trims it and stores it trimmed: it
+# arrives from an environment variable, and a systemd `Environment=` line with a
+# trailing space is the ordinary way one picks up whitespace. Untrimmed, this
+# would inspect and pull one reference while the manager ran another, and a
+# value that is nothing but spaces would count as an override here and as unset
+# there -- both of them the same class of bug this block exists to close.
+#
+# Empty after trimming counts as unset, which is what HelperImage does with an
+# empty override. Then the digest comes out of the manager's own source, because
+# the manager accepts no other; hardcoding it would drift the day it is bumped.
+HELPER_IMAGE="$(printf '%s' "${MORZER_VOLUME_HELPER_IMAGE:-}" |
+	sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+if [ -n "${HELPER_IMAGE}" ]; then
 	info "volume helper overridden by MORZER_VOLUME_HELPER_IMAGE"
 else
 	HELPER_IMAGE_SRC="${ROOT_DIR}/internal/adapters/runtime/compose/volumes.go"
