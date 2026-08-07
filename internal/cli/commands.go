@@ -46,6 +46,15 @@ func newInitCommand(app *App) *cobra.Command {
 			"product: run `morzer apply` afterwards.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The root's --product is persistent, so `morzer
+			// --product demo init` is a spelling operators use and
+			// documentation shows. This local flag shadowed it: the
+			// name was silently ignored, and init went on to take
+			// the name from the manifest or ask for it again.
+			if product == "" {
+				product = app.Flags.product
+			}
+
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
 			if product == "" && releasePath != "" {

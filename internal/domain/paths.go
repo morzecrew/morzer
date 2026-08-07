@@ -79,7 +79,12 @@ func PathsUnder(root, product string) Paths {
 
 // Configuration and secret state.
 
-func (p Paths) InstallationFile() string { return filepath.Join(p.EtcDir, "installation.yaml") }
+// InstallationFileName is the operator-facing state file inside EtcDir. Named
+// rather than repeated: --config identifies an installation by this path, and
+// the CLI has to recognise the same name the layout produces.
+const InstallationFileName = "installation.yaml"
+
+func (p Paths) InstallationFile() string { return filepath.Join(p.EtcDir, InstallationFileName) }
 func (p Paths) ApplicationFile() string  { return filepath.Join(p.EtcDir, "application.yaml") }
 func (p Paths) SecretsFile() string      { return filepath.Join(p.EtcDir, "secrets.sops.yaml") }
 func (p Paths) AgeDir() string           { return filepath.Join(p.EtcDir, "age") }

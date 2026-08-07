@@ -32,8 +32,8 @@ These are accepted by every command.
 | `--plain` | Line-oriented output; no interactive rendering. Already automatic under CI, systemd, `NO_COLOR` and without a terminal — see [Output modes](output-modes.md). |
 | `--resume` | Continue an interrupted operation from where its journal left off. |
 | `--wait` | Wait for the deployment lock instead of failing with exit 4. |
-| `--config` | Path to `installation.yaml`, when it is not in the default location. |
-| `--product` | Product name. Inferred from the installation when omitted. |
+| `--config` | Path to an installation's `installation.yaml`, which selects that installation: `/etc/demo/installation.yaml` means the `demo` layout, and a path with a prefix means that prefix. Equivalent to `--product` (and `--root`); naming both is refused when they disagree. |
+| `--product` | Product name. Inferred from the installation when omitted, and required on a host with more than one. |
 
 ## Index
 
