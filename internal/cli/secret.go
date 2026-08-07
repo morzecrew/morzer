@@ -2,13 +2,14 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
@@ -472,52 +473,74 @@ func secretChangeSummary(verb, name string, restarted []string) string {
 // needs a real file descriptor, which is why the type assertion is the check.
 //
 // The read races the context: signal.NotifyContext consumes the SIGINT a
-// Ctrl-C raises, so the blocking raw read would otherwise sit there
-// unaware, and the prompt could only be left through Enter or an external
-// kill. ReadPassword restores the terminal only when it returns, so the
-// cancelled path restores it here before abandoning the read.
+// Ctrl-C raises, so a blocking read would otherwise sit there unaware and the
+// prompt could only be left through Enter or an external kill. The echo flip
+// is performed *here*, not in the reader goroutine: the one ioctl that
+// changes the terminal mode happens before the reader starts, and the restore
+// happens where the reader can no longer contradict it -- x/term.ReadPassword
+// does its flip inside the reading goroutine, which is exactly the ordering
+// race this replaces. The goroutine itself only reads; canonical mode makes
+// the kernel assemble the line. An abandoned reader stays blocked on the fd
+// until the process exit that follows cancellation releases it.
 func readPassword(ctx context.Context, in io.Reader, out io.Writer, prompt string) (string, error) {
 	f, ok := in.(*os.File)
 	if !ok || !term.IsTerminal(int(f.Fd())) {
 		return "", domain.Usage("no terminal available to read the value").
 			WithHint("pipe the value on stdin instead: `printf %%s 'value' | morzer secret set <name>`")
 	}
+	fd := int(f.Fd())
 
-	state, err := term.GetState(int(f.Fd()))
+	saved, err := unix.IoctlGetTermios(fd, unix.TCGETS)
 	if err != nil {
 		return "", domain.Internal(err, "cannot read the terminal state")
 	}
+	// The same mode x/term.ReadPassword sets: no echo, canonical line
+	// assembly in the kernel, signals still delivered -- a Ctrl-C at the
+	// prompt raises the SIGINT that cancels the context handed in.
+	noEcho := *saved
+	noEcho.Lflag &^= unix.ECHO
+	noEcho.Lflag |= unix.ICANON | unix.ISIG
+	noEcho.Iflag |= unix.ICRNL
+	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &noEcho); err != nil {
+		return "", domain.Internal(err, "cannot prepare the terminal")
+	}
+	restore := func() error { return unix.IoctlSetTermios(fd, unix.TCSETS, saved) }
 
 	fmt.Fprint(out, prompt)
 	type outcome struct {
-		value []byte
-		err   error
+		line []byte
+		err  error
 	}
 	read := make(chan outcome, 1)
 	go func() {
-		v, err := term.ReadPassword(int(f.Fd()))
-		read <- outcome{v, err}
+		var line []byte
+		buf := make([]byte, 256)
+		for {
+			n, err := f.Read(buf)
+			if n > 0 {
+				line = append(line, buf[:n]...)
+				if line[len(line)-1] == '\n' {
+					read <- outcome{line, nil}
+					return
+				}
+			}
+			if err != nil {
+				// EOF with content is a completed value typed
+				// without a final newline (Ctrl-D); with none it
+				// is the error it looks like.
+				if errors.Is(err, io.EOF) && len(line) > 0 {
+					err = nil
+				}
+				read <- outcome{line, err}
+				return
+			}
+		}
 	}()
 
 	select {
 	case <-ctx.Done():
-		// The reader goroutine flips echo off inside ReadPassword; a
-		// cancellation racing that flip could restore first and have
-		// the flip land after, leaving the terminal raw. The mode is
-		// observable, so the restore waits until the flip has happened
-		// (or a bound expires -- a scheduling stall longer than this
-		// leaves the `reset` remedy below). The goroutine itself stays
-		// blocked on the fd; the process exit that follows is what
-		// releases it.
-		for deadline := time.Now().Add(200 * time.Millisecond); time.Now().Before(deadline); {
-			cur, gerr := term.GetState(int(f.Fd()))
-			if gerr != nil || *cur != *state {
-				break
-			}
-			time.Sleep(5 * time.Millisecond)
-		}
 		fmt.Fprintln(out)
-		if rerr := term.Restore(int(f.Fd()), state); rerr != nil {
+		if rerr := restore(); rerr != nil {
 			return "", domain.Internal(rerr,
 				"cancelled, but the terminal could not be restored").
 				WithHint("run `reset` to repair the terminal")
@@ -525,9 +548,14 @@ func readPassword(ctx context.Context, in io.Reader, out io.Writer, prompt strin
 		return "", domain.Interrupted("cancelled at the prompt")
 	case r := <-read:
 		fmt.Fprintln(out)
+		rerr := restore()
 		if r.err != nil {
 			return "", domain.Internal(r.err, "cannot read the value")
 		}
-		return strings.TrimSpace(string(r.value)), nil
+		if rerr != nil {
+			return "", domain.Internal(rerr, "the value was read but the terminal could not be restored").
+				WithHint("run `reset` to repair the terminal")
+		}
+		return strings.TrimSpace(string(r.line)), nil
 	}
 }
