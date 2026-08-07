@@ -203,6 +203,11 @@ func (c TargetCredentials) GoString() string { return c.String() }
 
 // withoutUserinfo keeps the part of an endpoint that helps a diagnosis and
 // drops the part that authenticates.
+// The S3 adapter takes a bare "host:port" as well as a full URL, and url.Parse
+// finds no authority in one -- it reads "user:password@host" as the scheme
+// "user" with an opaque tail, so the password never reaches parsed.User and this
+// used to hand the whole string back. Anything with no host is therefore re-read
+// behind an explicit "//", which is the authority it was meant to be.
 func withoutUserinfo(endpoint string) string {
 	parsed, err := url.Parse(endpoint)
 	if err != nil {
@@ -210,11 +215,20 @@ func withoutUserinfo(endpoint string) string {
 		// is in there cannot be reasoned about.
 		return "<set>"
 	}
+
+	prefix := ""
+	if parsed.Host == "" && !strings.HasPrefix(endpoint, "//") {
+		prefix = "//"
+		if parsed, err = url.Parse(prefix + endpoint); err != nil {
+			return "<set>"
+		}
+	}
+
 	if parsed.User == nil {
 		return endpoint
 	}
 	parsed.User = nil
-	return parsed.String()
+	return strings.TrimPrefix(parsed.String(), prefix)
 }
 
 // MarshalJSON redacts, because String does not reach encoding/json.

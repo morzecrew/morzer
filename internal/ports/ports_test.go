@@ -159,14 +159,32 @@ func TestCredentialsPrintWhatIsSetAndNeverWhatItIs(t *testing.T) {
 	}
 	// An endpoint is a URL, and a URL can carry userinfo -- a credential
 	// wearing a hostname, which the summary printed verbatim.
-	withUser := ports.TargetCredentials{Endpoint: "https://key:s3cr3t@minio.example:9000"}
-	for _, printed := range []string{withUser.String(), string(mustJSON(t, withUser))} {
-		if strings.Contains(printed, "s3cr3t") || strings.Contains(printed, "key:") {
-			t.Errorf("an endpoint's userinfo was printed: %s", printed)
+	//
+	// Including in the bare "host:port" form the S3 adapter also accepts:
+	// url.Parse finds no authority there and reads "key:s3cr3t@host" as the
+	// scheme "key" with an opaque tail, so the password never lands in
+	// parsed.User and the redaction used to return the string untouched.
+	for _, endpoint := range []string{
+		"https://key:s3cr3t@minio.example:9000",
+		"key:s3cr3t@minio.example:9000",
+		"//key:s3cr3t@minio.example:9000",
+	} {
+		withUser := ports.TargetCredentials{Endpoint: endpoint}
+		for _, printed := range []string{withUser.String(), string(mustJSON(t, withUser))} {
+			if strings.Contains(printed, "s3cr3t") {
+				t.Errorf("the password in %q was printed: %s", endpoint, printed)
+			}
+			if !strings.Contains(printed, "minio.example") {
+				t.Errorf("the host an operator needs for a diagnosis was dropped: %s", printed)
+			}
 		}
-		if !strings.Contains(printed, "minio.example") {
-			t.Errorf("the host an operator needs for a diagnosis was dropped: %s", printed)
-		}
+	}
+
+	// A plain endpoint keeps every character: this redacts userinfo, it does
+	// not blanket-hide the one field a misrouted backup is diagnosed from.
+	plain := ports.TargetCredentials{Endpoint: "minio.example:9000"}
+	if got := plain.String(); !strings.Contains(got, "minio.example:9000") {
+		t.Errorf("a bare endpoint with no userinfo was mangled: %s", got)
 	}
 
 	// The shape survives: which credentials are configured is what a
