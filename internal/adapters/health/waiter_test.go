@@ -51,8 +51,6 @@ func checkSpec(name string, kind domain.HealthCheckType) ports.CheckSpec {
 }
 
 func TestCheckOnceRunsEveryCheckAndAttributesTheResults(t *testing.T) {
-	t.Parallel()
-
 	up := &scriptedProber{kind: domain.HealthHTTP, replies: []ports.HealthResult{ok("ready")}}
 	down := &scriptedProber{kind: domain.HealthTCP, replies: []ports.HealthResult{bad("refused")}}
 
@@ -86,8 +84,6 @@ func TestCheckOnceRunsEveryCheckAndAttributesTheResults(t *testing.T) {
 // mistake. It has to name the type, because the operator's fix is in the
 // manifest.
 func TestCheckOnceReportsACheckTypeNothingCanProbe(t *testing.T) {
-	t.Parallel()
-
 	waiter := health.NewWaiter(&scriptedProber{
 		kind: domain.HealthHTTP, replies: []ports.HealthResult{ok("")},
 	})
@@ -110,8 +106,6 @@ func TestCheckOnceReportsACheckTypeNothingCanProbe(t *testing.T) {
 // `doctor` useful on a sick machine: one broken probe must not hide the state
 // of the others.
 func TestCheckOnceKeepsGoingWhenOneProberIsBroken(t *testing.T) {
-	t.Parallel()
-
 	broken := &scriptedProber{
 		kind: domain.HealthCommand,
 		err:  domain.HealthError(errors.New("fork/exec: permission denied"), "the probe could not run"),
@@ -139,8 +133,6 @@ func TestCheckOnceKeepsGoingWhenOneProberIsBroken(t *testing.T) {
 }
 
 func TestWaitReadyOnNoChecksReturnsImmediately(t *testing.T) {
-	t.Parallel()
-
 	// A release with no health checks is legitimate. Waiting for nothing
 	// must not be an error and must not be a wait.
 	results, err := health.NewWaiter().WaitReady(context.Background(), nil)
@@ -155,8 +147,6 @@ func TestWaitReadyOnNoChecksReturnsImmediately(t *testing.T) {
 // TestWaitReadyPollsUntilTheServiceComesUp is the ordinary case: a database
 // that is not listening for the first two rounds.
 func TestWaitReadyPollsUntilTheServiceComesUp(t *testing.T) {
-	t.Parallel()
-
 	prober := &scriptedProber{kind: domain.HealthTCP, replies: []ports.HealthResult{
 		bad("connection refused"),
 		bad("connection refused"),
@@ -182,8 +172,6 @@ func TestWaitReadyPollsUntilTheServiceComesUp(t *testing.T) {
 // from being polled every two seconds while the API finishes starting --
 // precisely when the machine is busiest.
 func TestWaitReadyStopsReprobingWhatAlreadyPassed(t *testing.T) {
-	t.Parallel()
-
 	fast := &scriptedProber{kind: domain.HealthTCP, replies: []ports.HealthResult{ok("up")}}
 	slow := &scriptedProber{kind: domain.HealthHTTP, replies: []ports.HealthResult{
 		bad("503"), bad("503"), bad("503"), ok("ready"),
@@ -214,8 +202,6 @@ func TestWaitReadyStopsReprobingWhatAlreadyPassed(t *testing.T) {
 // after a failed update. "Health check failed" without the detail sends them to
 // the logs for something the manager already knew.
 func TestWaitReadyTimesOutNamingWhatNeverCameUp(t *testing.T) {
-	t.Parallel()
-
 	up := &scriptedProber{kind: domain.HealthTCP, replies: []ports.HealthResult{ok("up")}}
 	never := &scriptedProber{kind: domain.HealthHTTP, replies: []ports.HealthResult{bad("503 Service Unavailable")}}
 	silent := &scriptedProber{kind: domain.HealthCommand, replies: []ports.HealthResult{bad("")}}

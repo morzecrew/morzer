@@ -20,6 +20,12 @@ import (
 // but the refusal: "resource busy" is a useless thing to tell an operator, and
 // a stale record pointing at a dead PID is worse than none.
 
+// This package's tests run in parallel; the ones that exec a script they just
+// wrote -- hooks, health's command prober -- deliberately do not. A fork in one
+// goroutine inherits another's still-open write descriptor, and the exec that
+// follows fails with ETXTBSY: a flake introduced by the parallelism rather than
+// found by it.
+
 func locker(t *testing.T) *lock.Locker {
 	t.Helper()
 	// A short poll: the waiting tests need a waiter that has certainly
