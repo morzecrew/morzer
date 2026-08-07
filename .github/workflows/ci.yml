@@ -251,8 +251,14 @@ jobs:
       # for local runs, so the shape that ships is still exercised by hand.
       - run: just acceptance-cover
 
+      # Only when the scenario passed, because the profile is written after it
+      # and cannot exist otherwise. With `always()` a failed scenario reported
+      # twice -- once for the real failure, then again for the missing file --
+      # and the second error is the one that showed up first in the summary.
+      # The coverage job already treats an absent profile as a reason to fall
+      # back to the unit floor, so nothing downstream needs the empty upload.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
+        if: success()
         with:
           name: acceptance-profile
           path: acceptance.profile

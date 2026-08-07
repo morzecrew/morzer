@@ -101,6 +101,31 @@ info "$(docker --version)"
 info "$(sops --version 2>&1 | head -1)"
 info "work directory ${WORK}"
 
+# The volume helper image, fetched here rather than left to the backup.
+#
+# A named volume is read through a container, so `backup` refuses outright when
+# the pinned helper is not on the machine -- and a CI runner is precisely that
+# machine: it starts with no local images at all. A developer's laptop has
+# usually pulled busybox for something else, which is why this scenario passed
+# by hand and failed on every push to main.
+#
+# The digest comes out of the manager's own source because the manager accepts
+# no other. Hardcoding it here would drift the day it is bumped, and the
+# failure would be this script pulling one image while `backup` waits for a
+# different one.
+HELPER_IMAGE_SRC="${ROOT_DIR}/internal/adapters/runtime/compose/volumes.go"
+HELPER_IMAGE="$(sed -n 's/^const DefaultHelperImage = "\(.*\)"$/\1/p' "${HELPER_IMAGE_SRC}")"
+[ -n "${HELPER_IMAGE}" ] ||
+	fail "cannot read DefaultHelperImage from ${HELPER_IMAGE_SRC}"
+
+if docker image inspect "${HELPER_IMAGE}" >/dev/null 2>&1; then
+	info "volume helper ${HELPER_IMAGE} (already local)"
+else
+	info "pulling volume helper ${HELPER_IMAGE}"
+	docker pull "${HELPER_IMAGE}" >/dev/null ||
+		fail "cannot pull the volume helper ${HELPER_IMAGE}; volumes are read through it, so backup cannot run without it"
+fi
+
 # ----------------------------------------------------------------------------
 # A registry, so images can be pinned by digest
 #
