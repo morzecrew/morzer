@@ -213,6 +213,17 @@ func extractFile(
 	if err := out.Chmod(mode); err != nil {
 		return 0, domain.Internal(err, "cannot set mode on %q", rel)
 	}
+	// Fsync before the tree is promoted: the digest is verified against
+	// what the page cache holds, and a power cut after promotion would
+	// otherwise leave `current` durably pointing at truncated files the
+	// verification blessed. Close is checked for the same reason -- it is
+	// the last write error this file can report.
+	if err := out.Sync(); err != nil {
+		return 0, domain.Internal(err, "cannot flush %q to disk", rel)
+	}
+	if err := out.Close(); err != nil {
+		return 0, domain.Internal(err, "cannot finish writing %q", rel)
+	}
 	return written, nil
 }
 

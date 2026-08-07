@@ -52,6 +52,43 @@ func WriteFile(path string, data []byte, mode fs.FileMode) error {
 	if err := t.CloseAtomicallyReplace(); err != nil {
 		return domain.Internal(err, "cannot atomically replace %s", path)
 	}
+	// renameio fsyncs the file but not the directory, so without this the
+	// rename's directory entry can be lost to a power cut after this
+	// function reported success -- state and reality then disagree about
+	// which file exists.
+	SyncDir(filepath.Dir(path))
+	return nil
+}
+
+// SyncDir fsyncs a directory, making a rename or create inside it durable.
+//
+// Failure is deliberately swallowed, matching syncDirIn: the data itself is
+// already written, only the ordering guarantee weakens, and failing an
+// operation because a directory could not be fsynced would be worse.
+func SyncDir(path string) {
+	d, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer func() { _ = d.Close() }()
+	_ = d.Sync()
+}
+
+// SyncFile fsyncs an already-written file by path.
+//
+// For artifacts written by something else -- a helper container streaming a
+// volume tarball, a subprocess -- where the writer's descriptor is out of
+// reach. An artifact whose entire purpose is surviving a crash is worth the
+// explicit flush.
+func SyncFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return domain.Internal(err, "cannot open %s to flush it", path)
+	}
+	defer func() { _ = f.Close() }()
+	if err := f.Sync(); err != nil {
+		return domain.Internal(err, "cannot flush %s to disk", path)
+	}
 	return nil
 }
 

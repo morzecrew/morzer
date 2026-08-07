@@ -380,6 +380,11 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		Uncaptured:     uncaptured,
 	}
 
+	// The components' directory entries become durable before the manifest
+	// that names them does: a manifest that survives a crash must never
+	// describe files that did not.
+	atomicfs.SyncDir(dir)
+
 	if err := writeManifest(dir, manifest); err != nil {
 		_ = atomicfs.RemoveAll(dir)
 		return ports.BackupRef{}, err
@@ -605,6 +610,14 @@ func encryptFile(src, dst string, recipients []string) error {
 		_ = out.Close()
 		_ = atomicfs.RemoveAll(dst)
 		return err
+	}
+	// The ciphertext is the backup. The manifest naming it is fsynced on
+	// write, so without this a power cut could leave a durable manifest
+	// pointing at truncated components -- a backup that reported success
+	// and fails at restore time, the one moment nothing can be done.
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return domain.BackupError(err, "cannot flush %s to disk", dst)
 	}
 	if err := out.Close(); err != nil {
 		return domain.BackupError(err, "cannot finish writing %s", dst)

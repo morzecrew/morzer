@@ -154,6 +154,12 @@ func copyFileIn(srcPath string, root *os.Root, rel string, mode fs.FileMode) err
 		_ = out.Close()
 		return domain.Internal(err, "cannot set mode on %s", rel)
 	}
+	// Same reasoning as extractFile: the digest blesses what the cache
+	// holds, so the bytes are flushed before anything promotes the tree.
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return domain.Internal(err, "cannot flush %s to disk", rel)
+	}
 	if err := out.Close(); err != nil {
 		return domain.Internal(err, "cannot close %s", rel)
 	}

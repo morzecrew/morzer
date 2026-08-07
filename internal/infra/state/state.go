@@ -222,6 +222,9 @@ func (s *Store) AppendOperation(ctx context.Context, rec domain.OperationRecord)
 	if err := atomicfs.MkdirAll(s.paths.ManagerDir(), 0o750); err != nil {
 		return err
 	}
+	_, statErr := os.Stat(s.paths.JournalFile())
+	created := errors.Is(statErr, fs.ErrNotExist)
+
 	f, err := os.OpenFile(s.paths.JournalFile(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
 		return domain.Internal(err, "cannot open the operation journal")
@@ -232,9 +235,14 @@ func (s *Store) AppendOperation(ctx context.Context, rec domain.OperationRecord)
 		return domain.Internal(err, "cannot append to the operation journal")
 	}
 	// The journal is the source of truth for --resume after a crash, so it
-	// is worth an fsync on every record.
+	// is worth an fsync on every record -- and, the first time, an fsync of
+	// the directory holding it: a fsynced file whose directory entry was
+	// lost to the same power cut is a journal that never existed.
 	if err := f.Sync(); err != nil {
 		return domain.Internal(err, "cannot flush the operation journal")
+	}
+	if created {
+		atomicfs.SyncDir(s.paths.ManagerDir())
 	}
 	return nil
 }
