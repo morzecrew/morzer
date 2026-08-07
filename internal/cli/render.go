@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"io"
 	"os"
 	"time"
 
@@ -21,17 +22,22 @@ func (a *App) rich() bool {
 	return a.Mode == ui.ModeRich && !a.Flags.quiet && a.plain != nil
 }
 
-// terminalInput is the file the live views read keys from.
+// terminalInput is what the live views read keys from, and nil when there is
+// nothing to read keys from.
 //
-// The injected stream when it is one -- an embedder that supplied its own pty
-// must have its keys read from there, not from a stdin nobody is typing at --
-// and the process's own otherwise, which is what Bubble Tea needs to open a
-// terminal at all.
-func (a *App) terminalInput() *os.File {
-	if f, ok := a.Stream.In.(*os.File); ok {
-		return f
+// The injected stream when it is a terminal -- an embedder that supplied its
+// own pty must have its keys read from there, not from a stdin nobody is
+// typing at. Nil otherwise, and that is the important half: the output mode is
+// decided by stdout and stderr, so `morzer apply < /dev/null` at a terminal
+// legitimately draws the live view, and handing its reader a pipe would mean
+// raw-mode setup on something that cannot be put in raw mode. With no input
+// Bubble Tea subscribes to none, nothing is put in raw mode, and ctrl-C stays
+// the signal main already handles.
+func (a *App) terminalInput() io.Reader {
+	if ui.IsTerminal(a.Stream.In) {
+		return a.Stream.In
 	}
-	return os.Stdin
+	return nil
 }
 
 // theme resolves the styling for this run.

@@ -100,7 +100,12 @@ func RunHealthWaiterSuite(t *testing.T, newWaiter HealthWaiterFactory) {
 		elapsed := time.Since(started)
 
 		require.Error(t, err, "checks that never pass must not report ready")
-		assert.GreaterOrEqual(t, elapsed, budget/2,
+		// The deadline, not half of it. A waiter that honours the
+		// context cannot return before it expires, so the only slack
+		// needed is timer granularity -- and "half the budget" would
+		// pass a waiter that gives up at 150ms of 300, which is the
+		// defect this suite exists to catch.
+		assert.GreaterOrEqual(t, elapsed, budget-20*time.Millisecond,
 			"gave up after %s of a %s budget: the caller asked to wait and was not waited for",
 			elapsed, budget)
 		assert.Less(t, elapsed, 5*time.Second,

@@ -3,7 +3,6 @@ package tty
 import (
 	"context"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -16,8 +15,11 @@ import (
 // WatchOptions configure the live status view.
 type WatchOptions struct {
 	Output io.Writer
-	Input  *os.File
-	Theme  *theme.Theme
+	// Input is the keyboard, or nil when stdin is not a terminal: see
+	// Options.Input. Without one there is no `q`, and ctrl-C -- which works
+	// precisely because no raw mode was entered -- is how the view ends.
+	Input io.Reader
+	Theme *theme.Theme
 
 	// Interval is how often Refresh is called.
 	Interval time.Duration

@@ -116,16 +116,33 @@ func (c Constraint) Allows(v Version) bool {
 	if c.c.Check(v.sv) {
 		return true
 	}
-
-	// A constraint that names a pre-release of its own is doing so on
-	// purpose, and its ordering against another pre-release is exactly what
-	// was just checked.
-	if v.sv.Prerelease() == "" || constraintNamesPrerelease.MatchString(c.raw) {
+	if v.sv.Prerelease() == "" {
 		return false
 	}
 
+	// Per alternative, not over the whole expression. ">=1.0.0-rc.1 ||
+	// >=2.0.0" names a pre-release in its first branch and not in its
+	// second, and 2.1.0-rc.1 is out of range for the first and in range for
+	// the second -- one regex over the raw string would let the first
+	// branch's spelling refuse a version the second accepts.
 	core := semver.New(v.sv.Major(), v.sv.Minor(), v.sv.Patch(), "", "")
-	return c.c.Check(core)
+	for _, alternative := range strings.Split(c.raw, "||") {
+		alternative = strings.TrimSpace(alternative)
+		// A branch that names a pre-release of its own is doing so on
+		// purpose, and its ordering against another pre-release is
+		// exactly what the check above already did.
+		if alternative == "" || constraintNamesPrerelease.MatchString(alternative) {
+			continue
+		}
+		parsed, err := semver.NewConstraint(alternative)
+		if err != nil {
+			continue
+		}
+		if parsed.Check(core) {
+			return true
+		}
+	}
+	return false
 }
 
 // constraintNamesPrerelease matches a hyphen directly after a version number,

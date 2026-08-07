@@ -201,6 +201,32 @@ exit 0
 	}
 }
 
+// TestValidJSONThatIsNotAResultObjectIsRefused.
+//
+// `null` decodes into a Result without complaint and leaves every field zero,
+// so a hook writing it looked exactly like a hook that reported nothing -- the
+// same silent loss of schema_version as garbage, wearing valid JSON.
+func TestValidJSONThatIsNotAResultObjectIsRefused(t *testing.T) {
+	rel := release(t)
+
+	for name, payload := range map[string]string{
+		"null":      "null",
+		"an array":  `[{"schema_version": 42}]`,
+		"a string":  `"schema_version=42"`,
+		"a number":  "42",
+		"a boolean": "true",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd := hook(t, rel, "migrate-"+strings.ReplaceAll(name, " ", "-"),
+				"#!/bin/sh\nprintf '"+payload+"' >&3\nexit 0\n")
+
+			if _, err := run(t, rel, cmd); err == nil {
+				t.Fatalf("%s was accepted as a result object", name)
+			}
+		})
+	}
+}
+
 // TestExitTwoMeansNothingToDo is the one non-zero exit the ABI gives a meaning
 // to, so `apply` can report "migrations: nothing to run" rather than implying
 // work happened.

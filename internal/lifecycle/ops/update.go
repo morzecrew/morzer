@@ -305,10 +305,15 @@ func updateSteps(
 	// makes that durable. Both halves are needed: without the step the
 	// value comes back on the next command, and without the drop here the
 	// converge steps below still resolve against it and refuse the update.
+	// A parameter the new release stopped declaring has to leave the
+	// resolution before anything downstream resolves against it -- every
+	// consumer validates the whole recorded map, so one retired name would
+	// refuse the converge. That part is in memory and costs nothing to
+	// redo.
+	//
+	// Making it durable is a separate step, and it runs *last*: see
+	// stepRetireParameters.
 	retired := domain.Parameters(inst.Parameters).ValidateAgainst(staged.Manifest.Parameters)
-	// What is recorded today, kept for the compensation: it is what the
-	// release that would be running again declares.
-	recorded := inst
 	if len(retired) > 0 {
 		inst = withoutParameters(inst, retired)
 	}
@@ -316,11 +321,7 @@ func updateSteps(
 	steps := []engine.Step{
 		stepVerifyBundle(d, inst, source, opts),
 		stepCheckCompatibility(d, from, staged),
-		// After the backup, so the backup holds the installation as it
-		// was: a restore from it belongs to the release it was taken
-		// under, and that release does declare these.
 		stepPreUpdateBackup(d, inst, from, staged, opts),
-		stepRetireParameters(d, recorded, staged, retired),
 		stepStageUpdate(d, from, source, staged, opts),
 	}
 
@@ -336,7 +337,8 @@ func updateSteps(
 	if opts.DryRun {
 		converge = source
 	}
-	return append(steps, applySteps(d, inst, converge, opts.Options)...)
+	steps = append(steps, applySteps(d, inst, converge, opts.Options)...)
+	return append(steps, stepRetireParameters(d, staged, retired))
 }
 
 // withoutParameters copies an installation with the named parameters removed.
@@ -353,7 +355,7 @@ func withoutParameters(inst domain.Installation, names []string) domain.Installa
 }
 
 // stepRetireParameters drops recorded values the new release no longer
-// declares.
+// declares, and is the last step of the update on purpose.
 //
 // A vendor may stop declaring a parameter; that is their decision and not a
 // failure, which is why the operator is told rather than refused. But the
@@ -362,14 +364,24 @@ func withoutParameters(inst domain.Installation, names []string) domain.Installa
 // `apply`, `config` and `status` from the first command after the update
 // onwards -- with a message about a parameter the operator never typed.
 //
-// Compensated rather than abandoned: if the update unwinds, the previous
-// release is what runs again, and it does declare them.
-func stepRetireParameters(d *Deps, inst domain.Installation, staged domain.Release, retired []string) engine.Step {
+// Last, because that is what makes it safe to interrupt. Nothing runs after it,
+// so no failure can require it to be undone -- and a compensation could not
+// undo it reliably anyway: a resumed run reloads an installation the values are
+// already gone from, and would have nothing to put back. Everything before it
+// unwinds with the values still recorded, which is correct, because what
+// unwinds to is the release that declares them.
+//
+// Aborting rather than compensating for the same reason: by the time this runs
+// the deployment is converged and healthy, and rolling that back over a failed
+// bookkeeping write would be the tail wagging the dog. The operator is left
+// with a working deployment and a state file one parameter stale, which the
+// next command reports.
+func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engine.Step {
 	return engine.Step{
 		ID:          "retire-parameters",
 		Description: "retire parameters the new release no longer declares",
 		Idempotent:  true,
-		OnFailure:   engine.Compensate,
+		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
 		Check: func(ctx context.Context, st *engine.State) (bool, error) {
 			return len(retired) == 0, nil
@@ -386,26 +398,6 @@ func stepRetireParameters(d *Deps, inst domain.Installation, staged domain.Relea
 			st.Detail("retired %s", strings.Join(retired, ", "))
 
 			return d.saveInstallation(ctx, withoutParameters(current, retired))
-		},
-		Compensate: func(ctx context.Context, st *engine.State) error {
-			// inst still holds what was recorded before the drop:
-			// updateSteps captured it, and the values belong to the
-			// release that is about to be running again.
-			current, err := d.State.LoadInstallation(ctx)
-			if err != nil {
-				return err
-			}
-			restored := current
-			restored.Parameters = map[string]string{}
-			for k, v := range current.Parameters {
-				restored.Parameters[k] = v
-			}
-			for _, name := range retired {
-				if v, ok := inst.Parameters[name]; ok {
-					restored.Parameters[name] = v
-				}
-			}
-			return d.saveInstallation(ctx, restored)
 		},
 	}
 }

@@ -260,7 +260,8 @@ func undeclaredParameter(name string, declared []string) error {
 //
 // Separate from ResolveParameters because an update is allowed to drop a
 // parameter -- that is the vendor's decision -- and the operator should be told
-// rather than blocked.
+// rather than blocked. It is what ResolveRecorded reports and what `update`
+// warns about.
 func (p Parameters) ValidateAgainst(declared map[string]ParameterSpec) []string {
 	var stale []string
 	for _, name := range sortedStringKeys(p) {

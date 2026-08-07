@@ -2,10 +2,14 @@ package cli
 
 import (
 	"errors"
+	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ui"
 )
 
 // TestAnOperationalErrorIsNotReclassifiedAsATypo.
@@ -117,5 +121,41 @@ func TestConfigAndProductMustAgree(t *testing.T) {
 	}
 	if domain.ExitCode(err) != domain.ExitUsage {
 		t.Errorf("exit %d, want %d", domain.ExitCode(err), domain.ExitUsage)
+	}
+}
+
+// TestTheLiveViewReadsOnlyFromATerminal.
+//
+// The output mode is decided by stdout and stderr, so `morzer apply < /dev/null`
+// at a terminal legitimately draws the live view -- and handing its reader a
+// pipe would mean raw-mode setup on something that cannot be put in raw mode.
+// Nil is the right answer there: Bubble Tea subscribes to no input, nothing
+// goes raw, and ctrl-C stays the signal main already handles.
+func TestTheLiveViewReadsOnlyFromATerminal(t *testing.T) {
+	redirected, err := os.CreateTemp(t.TempDir(), "stdin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = redirected.Close() }()
+
+	for name, in := range map[string]io.Reader{
+		"a pipe":            strings.NewReader(""),
+		"a redirected file": redirected,
+		"nothing at all":    nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			app := &App{Stream: ui.Streams{In: in}}
+			if got := app.terminalInput(); got != nil {
+				t.Errorf("%s was handed to the live view as a keyboard", name)
+			}
+		})
+	}
+
+	// A real terminal is read from, because an embedder that supplied its
+	// own pty must have its keys read from there.
+	_, slave := openPTY(t)
+	app := &App{Stream: ui.Streams{In: slave}}
+	if got := app.terminalInput(); got != slave {
+		t.Errorf("terminalInput = %v, want the injected terminal", got)
 	}
 }

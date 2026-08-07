@@ -211,11 +211,37 @@ func parseResult(data []byte) (Result, error) {
 	if trimmed == "" {
 		return Result{}, nil
 	}
+	// An object, specifically. `null` unmarshals into a Result without
+	// complaint and leaves every field zero, so a hook writing it would be
+	// accepted as one that reported nothing -- which is the same silent
+	// loss of schema_version as garbage, wearing valid JSON.
+	if trimmed[0] != '{' {
+		return Result{}, fmt.Errorf("the result channel takes a JSON object, got %s",
+			jsonShape(trimmed))
+	}
 	var out Result
 	if err := json.Unmarshal([]byte(trimmed), &out); err != nil {
 		return Result{}, err
 	}
 	return out, nil
+}
+
+// jsonShape names what arrived instead of an object, without quoting it: a
+// hook's fd 3 can carry whatever it likes, including a value it should not
+// have put there.
+func jsonShape(text string) string {
+	switch text[0] {
+	case '[':
+		return "an array"
+	case '"':
+		return "a string"
+	case 'n':
+		return "null"
+	case 't', 'f':
+		return "a boolean"
+	default:
+		return "something that is not an object"
+	}
 }
 
 // hookFailure builds an error that quotes what the hook actually said.

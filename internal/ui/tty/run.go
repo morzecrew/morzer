@@ -19,9 +19,14 @@ type Options struct {
 	// anyone wrote.
 	Output io.Writer
 
-	// Input is the terminal the program reads keys from. Only Ctrl-C means
+	// Input is the terminal the program reads keys from, or nil when there
+	// is no terminal to read from -- a redirected stdin, an embedder's
+	// buffer. Nil is not a degraded mode by accident: Bubble Tea subscribes
+	// to input only when it has some, so nothing tries to put a pipe into
+	// raw mode, and ctrl-C stays an ordinary signal because nothing
+	// suppressed it. Only Ctrl-C means
 	// anything.
-	Input *os.File
+	Input io.Reader
 
 	// OnCancel is invoked on the first Ctrl-C. Raw mode turns ISIG off, so
 	// the keystroke is the only form a ^C takes at a live view -- without

@@ -198,14 +198,16 @@ func RunBackupEngineSuite(t *testing.T, newEngine BackupEngineFactory) {
 		require.NotEmpty(t, refs, "pruning removed every backup")
 		assert.Equal(t, newest.ID, refs[0].ID)
 
-		if len(ids) > 0 {
-			assert.Contains(t, ids, older.ID)
-			// What was reported removed must actually be gone: a
-			// pruner that reports more than it deleted makes
-			// retention a story rather than a fact.
-			_, err := h.Engine.Inspect(ctx, ports.BackupRef{ID: older.ID})
-			require.Error(t, err, "backup %s was reported pruned and is still there", older.ID)
-		}
+		// Unconditionally, both halves. Asserting these only when
+		// something was reported removed would let a pruner that
+		// removes nothing and reports nothing satisfy the whole case --
+		// which is precisely the regression retention has.
+		assert.Contains(t, ids, older.ID,
+			"the older backup was not pruned under a policy keeping one")
+		_, err = h.Engine.Inspect(ctx, ports.BackupRef{ID: older.ID})
+		require.Error(t, err,
+			"backup %s was reported pruned and is still there", older.ID)
+		assert.Len(t, refs, 1, "the list still holds a backup the policy pruned")
 	})
 
 	t.Run("a reason the policy exempts is not pruned", func(t *testing.T) {

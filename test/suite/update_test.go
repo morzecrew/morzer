@@ -269,6 +269,48 @@ func TestUpdateRetiresAParameterTheNewReleaseDropped(t *testing.T) {
 	require.NoError(t, err, "the update left an installation later commands refuse")
 }
 
+// TestAFailedUpdateKeepsTheParametersItWouldHaveRetired.
+//
+// The retirement is the last step of the update, and that ordering is the whole
+// safety argument. Anything that fails before it unwinds with the values still
+// recorded -- which is correct, because what it unwinds *to* is the release
+// that declares them. Persisting the drop earlier would need a compensation to
+// put them back, and a resumed run could not: it reloads an installation the
+// values are already gone from, and has nothing to restore.
+func TestAFailedUpdateKeepsTheParametersItWouldHaveRetired(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{"log_level": "debug"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	src := stageUpgradeSource(t, h)
+	dropParameter(t, src, "log_level")
+
+	// The product never becomes healthy, so the update compensates.
+	h.Health.Healthy = false
+
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status)
+
+	after, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "debug", after.Parameters["log_level"],
+		"the update unwound and the operator's value went with it, though the "+
+			"release now running is the one that declares it")
+
+	// And the release that declares it still resolves against that value.
+	h.Health.Healthy = true
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "the value the update left recorded no longer resolves")
+}
+
 // dropParameter removes a parameter block from a bundle's manifest, which is
 // what a vendor does when a knob stops existing.
 func dropParameter(t *testing.T, bundle, name string) {

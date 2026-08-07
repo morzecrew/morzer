@@ -198,6 +198,16 @@ func TestAPreReleaseIsComparedByOrdering(t *testing.T) {
 		"rc.1 satisfied a constraint that asks for rc.2 or later")
 	assert.True(t, explicit.Allows(MustParseVersion("2.0.0-rc.3")))
 
+	// Per alternative. The first branch names a pre-release and does not
+	// admit this version; the second names none and does -- so reading the
+	// spelling of the whole expression would let one branch refuse what
+	// another accepts.
+	mixed := constraint(t, ">=1.0.0-rc.1 <1.1.0 || >=2.0.0")
+	assert.True(t, mixed.Allows(MustParseVersion("2.1.0-rc.1")),
+		"a branch with no pre-release of its own must still compare by ordering")
+	assert.False(t, mixed.Allows(MustParseVersion("1.5.0-rc.1")),
+		"and a version outside every branch is still outside")
+
 	// And the refusal an operator meets is still reachable.
 	report := CheckUpgrade(
 		MustParseVersion("0.9.0-rc.1"), MustParseVersion("2.0.0"),
