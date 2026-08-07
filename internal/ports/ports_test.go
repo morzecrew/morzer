@@ -205,6 +205,23 @@ func TestCredentialsPrintWhatIsSetAndNeverWhatItIs(t *testing.T) {
 		t.Errorf("the address an operator needs for a diagnosis was dropped: %s", addressed)
 	}
 
+	// A full URL that url.Parse rejects must not be re-read as a bare
+	// endpoint: behind "//" it becomes the host "https:" with the credential
+	// in the path, so the userinfo is invisible and the string would be
+	// printed whole. Nothing here is diagnosable anyway -- an endpoint this
+	// malformed will not connect -- so the safe answer is the only answer.
+	for _, endpoint := range []string{
+		"https://key:s3cr3t@minio.example:notaport", // invalid port
+		"http://key:s3cr3t@minio example",           // space in the host
+		"https:/key:s3cr3t@minio.example",           // one slash, an opaque parse
+	} {
+		got := ports.TargetCredentials{Endpoint: endpoint}.String()
+		if strings.Contains(got, "s3cr3t") {
+			t.Errorf("a malformed URL leaked its password: %q printed as %s",
+				endpoint, got)
+		}
+	}
+
 	// The shape survives: which credentials are configured is what a
 	// consumer legitimately reports.
 	for _, want := range []string{`"private_key":"[redacted]"`, `"region":"eu-central-1"`} {

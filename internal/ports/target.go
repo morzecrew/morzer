@@ -203,36 +203,51 @@ func (c TargetCredentials) GoString() string { return c.String() }
 
 // withoutUserinfo keeps the part of an endpoint that helps a diagnosis and
 // drops the part that authenticates.
-// The S3 adapter takes a bare "host:port" as well as a full URL, and url.Parse
-// finds no authority in one -- it reads "user:password@host" as the scheme
-// "user" with an opaque tail, so the password never reaches parsed.User and this
-// used to hand the whole string back. Anything with no host is therefore re-read
-// behind an explicit "//", which is the authority it was meant to be.
 //
-// The retry covers a parse failure as well as a successful parse that found no
-// host, because a bare endpoint reaches this both ways: "192.168.1.10:9000" and
-// "[::1]:9000" fail outright ("first path segment in URL cannot contain colon"),
-// while "user:password@host" parses as a scheme with an opaque tail. Only an
-// endpoint that will not resolve either way is reduced to "<set>".
+// When url.Parse finds an authority, its verdict is the whole answer: it read
+// the userinfo if there was any, and a nil User means there was none.
+//
+// The rest is the bare form the S3 adapter also accepts, which has no authority
+// for url.Parse to find and reaches here two ways. "192.168.1.10:9000" and
+// "[::1]:9000" fail outright ("first path segment in URL cannot contain
+// colon"); "user:password@host" parses as the scheme "user" with an opaque
+// tail. Both are re-read behind an explicit "//", which is the authority they
+// were meant to be.
+//
+// What that retry must never do is hand back a string it did not understand. A
+// full URL that failed to parse -- an invalid port, a space in the host -- reads
+// behind "//" as the host "https:" with the credential sitting in the path, so
+// User comes back nil and the endpoint would be printed whole. Any "@" left
+// unaccounted for after the retry is therefore reduced to "<set>": userinfo is
+// the only thing that puts one in an endpoint, and one this function cannot
+// place is one it cannot promise to have redacted.
 func withoutUserinfo(endpoint string) string {
-	parsed, err := url.Parse(endpoint)
+	if parsed, err := url.Parse(endpoint); err == nil && parsed.Host != "" {
+		if parsed.User == nil {
+			return endpoint
+		}
+		parsed.User = nil
+		return parsed.String()
+	}
 
 	prefix := ""
-	if (err != nil || parsed.Host == "") && !strings.HasPrefix(endpoint, "//") {
+	if !strings.HasPrefix(endpoint, "//") {
 		prefix = "//"
-		parsed, err = url.Parse(prefix + endpoint)
 	}
+	retried, err := url.Parse(prefix + endpoint)
 	if err != nil {
 		// Unparseable either way: say it is set and nothing else,
 		// because whatever is in there cannot be reasoned about.
 		return "<set>"
 	}
-
-	if parsed.User == nil {
-		return endpoint
+	if retried.User != nil {
+		retried.User = nil
+		return strings.TrimPrefix(retried.String(), prefix)
 	}
-	parsed.User = nil
-	return strings.TrimPrefix(parsed.String(), prefix)
+	if strings.Contains(endpoint, "@") {
+		return "<set>"
+	}
+	return endpoint
 }
 
 // MarshalJSON redacts, because String does not reach encoding/json.
