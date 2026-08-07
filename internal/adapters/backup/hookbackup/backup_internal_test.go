@@ -187,3 +187,38 @@ func TestSweepAttemptsEveryDirectoryAndNamesTheStuck(t *testing.T) {
 		t.Error("the stuck directory should still exist, that is the point of the error")
 	}
 }
+
+// TestAFetchInProgressIsNotSweptAsDebris.
+//
+// `backup fetch` writes into <id>.fetching and adds the manifest last, and it
+// runs outside the deployment lock -- so to this sweep an active download looks
+// exactly like an interrupted backup. Erasing it would delete the recovery an
+// operator is in the middle of, at the moment they need it most.
+func TestAFetchInProgressIsNotSweptAsDebris(t *testing.T) {
+	e := New(Config{Paths: domain.PathsUnder(t.TempDir(), "demo")})
+
+	fetching := filepath.Join(e.paths.BackupsDir(), "20260807T000000Z"+ports.FetchStagingSuffix)
+	if err := os.MkdirAll(fetching, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fetching, "database.sql.age"),
+		[]byte("half a download"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// And a genuine wreck beside it, so this is about the name rather than
+	// about the sweep having stopped working.
+	wreck := filepath.Join(e.paths.BackupsDir(), "20260807T000001Z")
+	if err := os.MkdirAll(wreck, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	e.sweepManifestlessDirectories()
+
+	if _, err := os.Stat(fetching); err != nil {
+		t.Errorf("a download in progress was erased: %v", err)
+	}
+	if _, err := os.Stat(wreck); !os.IsNotExist(err) {
+		t.Error("the interrupted backup beside it was left behind")
+	}
+}

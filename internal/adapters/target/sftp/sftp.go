@@ -735,6 +735,15 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	}
 
 	syncRemoteDir(s.client, path.Dir(target))
+
+	// Rechecked, so every exit from this function agrees about what a
+	// cancelled push is. The component itself is on the target by now --
+	// this is the difference between reporting a push that raced a ctrl-C
+	// as complete and reporting it as interrupted, and the caller is about
+	// to fail the operation either way.
+	if ctx.Err() != nil {
+		return domain.Interrupted("the push to the backup target was cancelled")
+	}
 	return nil
 }
 

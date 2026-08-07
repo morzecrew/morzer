@@ -179,39 +179,61 @@ func TestCheckUpgrade(t *testing.T) {
 // from >=1.0.0 <2.0.0, installed version is 1.5.0-rc.1" -- a sentence that
 // reads as satisfied. The rule is right for picking a dependency and wrong for
 // describing the machine somebody is already running.
+//
+// The retry is against the same version through a constraint rewritten to admit
+// pre-releases, not against the version's release core: the core comparison was
+// wrong at both boundaries, accepting a version below a floor and refusing one
+// inside a range. The table below is the whole contract, boundaries included.
 func TestAPreReleaseIsComparedByOrdering(t *testing.T) {
-	inRange := constraint(t, ">=1.0.0 <2.0.0")
+	cases := []struct {
+		constraint string
+		version    string
+		want       bool
+		why        string
+	}{
+		{">=2.30", "2.31.0-rc.1", true, "an rc past the floor is past the floor"},
+		{">=1.0.0 <2.0.0", "1.5.0-rc.1", true, "and one inside the range is inside it"},
+		{">=1.0.0 <2.0.0", "1.5.0-beta.2+build.7", true, "build metadata decides nothing"},
+		{">=1.0.0 <2.0.0", "0.9.0-rc.1", false, "below the floor is still below it"},
 
-	assert.True(t, inRange.Allows(MustParseVersion("1.5.0-rc.1")),
-		"an rc inside the range was refused")
-	assert.True(t, inRange.Allows(MustParseVersion("1.5.0-beta.2+build.7")),
-		"build metadata is not a reason to refuse either")
+		// The boundaries, which are the point of the rewrite. A lower
+		// bound admits its own pre-releases -- ">=2.0.0" is "2.0 or
+		// later", and an rc of 2.0.0 carries 2.0's migrations -- while
+		// an upper bound does not: ">=1.0.0 <2.0.0" means "any 1.x",
+		// and 2.0.0-rc.1 is not a 1.x.
+		{">=2.0.0", "2.0.0-rc.1", true, "an rc of the floor itself"},
+		{">=1.0.0 <2.0.0", "2.0.0-rc.1", false, "an rc of the ceiling is not below it"},
 
-	// Ordering still decides: outside is outside.
-	assert.False(t, inRange.Allows(MustParseVersion("2.1.0-rc.1")))
-	assert.False(t, inRange.Allows(MustParseVersion("0.9.0-rc.1")))
+		// A constraint that names a pre-release means it, and is
+		// compared as written.
+		{">=2.0.0-rc.2", "2.0.0-rc.1", false, "rc.1 is before rc.2"},
+		{">=2.0.0-rc.2", "2.0.0-rc.3", true, "rc.3 is after it"},
 
-	// A constraint that names a pre-release means it, and its ordering
-	// against another pre-release is the ordinary comparison.
-	explicit := constraint(t, ">=2.0.0-rc.2")
-	assert.False(t, explicit.Allows(MustParseVersion("2.0.0-rc.1")),
-		"rc.1 satisfied a constraint that asks for rc.2 or later")
-	assert.True(t, explicit.Allows(MustParseVersion("2.0.0-rc.3")))
+		// Per alternative: the first branch names a pre-release and
+		// does not admit this version, the second names none and does.
+		{">=1.0.0-rc.1 <1.1.0 || >=2.0.0", "2.1.0-rc.1", true, "the second branch admits it"},
+		{">=1.0.0-rc.1 <1.1.0 || >=2.0.0", "1.5.0-rc.1", false, "neither branch does"},
 
-	// Per alternative. The first branch names a pre-release and does not
-	// admit this version; the second names none and does -- so reading the
-	// spelling of the whole expression would let one branch refuse what
-	// another accepts.
-	mixed := constraint(t, ">=1.0.0-rc.1 <1.1.0 || >=2.0.0")
-	assert.True(t, mixed.Allows(MustParseVersion("2.1.0-rc.1")),
-		"a branch with no pre-release of its own must still compare by ordering")
-	assert.False(t, mixed.Allows(MustParseVersion("1.5.0-rc.1")),
-		"and a version outside every branch is still outside")
+		// Sugar keeps working.
+		{"^1.2.0", "1.5.0-rc.1", true, "a caret range admits an rc inside it"},
+		{"^1.2.0", "2.0.0-rc.1", false, "and refuses one past it"},
+
+		// A wildcard cannot carry a pre-release, so the rewrite does
+		// not apply and the library's own answer stands -- refusing,
+		// which is the safe direction for a gate.
+		{">=1.x", "1.5.0-rc.1", false, "a wildcard constraint keeps the library's answer"},
+	}
+
+	for _, tc := range cases {
+		c := constraint(t, tc.constraint)
+		assert.Equal(t, tc.want, c.Allows(MustParseVersion(tc.version)),
+			"%q allows %q: %s", tc.constraint, tc.version, tc.why)
+	}
 
 	// And the refusal an operator meets is still reachable.
 	report := CheckUpgrade(
 		MustParseVersion("0.9.0-rc.1"), MustParseVersion("2.0.0"),
-		Compatibility{UpgradeFrom: inRange},
+		Compatibility{UpgradeFrom: constraint(t, ">=1.0.0 <2.0.0")},
 		MustParseVersion("1.0.0"), 0)
 	assert.False(t, report.OK)
 }

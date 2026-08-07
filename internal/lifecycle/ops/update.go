@@ -377,9 +377,17 @@ func withoutParameters(inst domain.Installation, names []string) domain.Installa
 // with a working deployment and a state file one parameter stale, which the
 // next command reports.
 func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engine.Step {
+	description := "retire parameters the new release no longer declares"
+	if len(retired) > 0 {
+		// Named in the description, because a dry run is where an
+		// operator gets to see a state change before it happens, and
+		// "some parameters" is not something anybody can review.
+		description = "retire parameters: " + strings.Join(retired, ", ")
+	}
+
 	return engine.Step{
 		ID:          "retire-parameters",
-		Description: "retire parameters the new release no longer declares",
+		Description: description,
 		Idempotent:  true,
 		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
@@ -392,12 +400,19 @@ func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engi
 				return err
 			}
 
+			if err := d.saveInstallation(ctx, withoutParameters(current, retired)); err != nil {
+				return err
+			}
+
+			// After the write, not before it: an operator told their
+			// values were retired by an operation that then failed to
+			// record it would have been told something untrue about
+			// their own configuration.
 			d.Bus.Publish(events.Message(events.LevelWarn,
 				"release %s no longer declares %s; the recorded value(s) are retired",
 				staged.Version(), strings.Join(retired, ", ")))
 			st.Detail("retired %s", strings.Join(retired, ", "))
-
-			return d.saveInstallation(ctx, withoutParameters(current, retired))
+			return nil
 		},
 	}
 }

@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -170,7 +171,10 @@ func (c TargetCredentials) String() string {
 		parts = append(parts, "region="+c.Region)
 	}
 	if c.Endpoint != "" {
-		parts = append(parts, "endpoint="+c.Endpoint)
+		// Sanitised, not printed: an endpoint is a URL, and a URL can
+		// carry userinfo -- https://key:secret@minio.example is a
+		// credential wearing a hostname.
+		parts = append(parts, "endpoint="+withoutUserinfo(c.Endpoint))
 	}
 	// Names only. Which credentials are configured is exactly what a
 	// diagnosis needs; their values never are.
@@ -196,6 +200,22 @@ func (c TargetCredentials) String() string {
 }
 
 func (c TargetCredentials) GoString() string { return c.String() }
+
+// withoutUserinfo keeps the part of an endpoint that helps a diagnosis and
+// drops the part that authenticates.
+func withoutUserinfo(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		// Unparseable: say it is set and nothing else, because whatever
+		// is in there cannot be reasoned about.
+		return "<set>"
+	}
+	if parsed.User == nil {
+		return endpoint
+	}
+	parsed.User = nil
+	return parsed.String()
+}
 
 // MarshalJSON redacts, because String does not reach encoding/json.
 //
@@ -227,9 +247,9 @@ func (c TargetCredentials) MarshalJSON() ([]byte, error) {
 		SecretAccessKey: set(c.SecretAccessKey),
 		SessionToken:    set(c.SessionToken),
 		// Not secrets, and useful: they say which endpoint a failed push
-		// was talking to.
+		// was talking to -- once the userinfo a URL can carry is gone.
 		Region:     c.Region,
-		Endpoint:   c.Endpoint,
+		Endpoint:   withoutUserinfo(c.Endpoint),
 		PrivateKey: set(c.PrivateKey),
 		Passphrase: set(c.Passphrase),
 		// A known_hosts line is a public key and a hostname, and neither

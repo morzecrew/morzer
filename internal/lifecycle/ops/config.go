@@ -216,6 +216,18 @@ func mergeParameters(
 		return nil, nil, err
 	}
 
+	// A declaration with no default is the manifest saying "you must choose
+	// this", and a `config unset` of one would leave the deployment with no
+	// value for it -- resolvable, because an absent value resolves as empty,
+	// and wrong. This is the other command that can be told a value, so it
+	// is the other command that refuses.
+	if missing := domain.MissingValues(rel.Manifest.Parameters, next); len(missing) > 0 {
+		return nil, nil, domain.Usage(
+			"release %s declares no default for %s, so it cannot be left unset",
+			rel.Version(), strings.Join(missing, ", ")).
+			WithHint("give it a value with `morzer config set %s=<value>`", missing[0])
+	}
+
 	sort.Strings(changed)
 	return next, changed, nil
 }

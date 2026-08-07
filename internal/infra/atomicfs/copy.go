@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -76,15 +79,18 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 
 	// The read side is contained too. The walk decides "regular file" from
 	// an lstat, and the copy opened the path again by name: a file swapped
-	// for a symlink in between was followed out of the tree, and the digest
-	// computed afterwards blessed whatever came back. Opening through a
-	// root makes every component kernel-checked, so the swap fails to open
-	// instead of succeeding quietly.
-	srcRoot, err := OpenRoot(src)
+	// for a symlink in between was followed, and the digest computed
+	// afterwards blessed whatever came back.
+	//
+	// os.Root is not enough here. It refuses an *escape* and follows a
+	// symlink that stays inside the tree, so a swapped entry pointing at
+	// another file in the same bundle would still be opened as its target.
+	// The descent below refuses a symlink at every component instead.
+	srcDir, err := openDirNoFollow(src)
 	if err != nil {
-		return err
+		return domain.ValidationError(err, "cannot read source directory %s", src)
 	}
-	defer func() { _ = srcRoot.Close() }()
+	defer func() { _ = syscall.Close(srcDir) }()
 
 	var entries int
 	var total int64
@@ -136,24 +142,17 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 				return domain.ValidationError(nil,
 					"bundle exceeds the total size limit of %d bytes", limits.MaxTotalSize)
 			}
-			return copyFileIn(srcRoot, root, rel, info.Mode().Perm())
+			return copyFileIn(srcDir, root, rel, info.Mode().Perm())
 		}
 	})
 
 	return walkErr
 }
 
-func copyFileIn(srcRoot, root *os.Root, rel string, mode fs.FileMode) error {
-	// O_NOFOLLOW on top of the root. The root stops a path escaping the
-	// tree; it does not stop a symlink *inside* it from being followed, and
-	// a walked file swapped for an in-tree symlink would otherwise be
-	// opened as its target -- copying the target's bytes under the walked
-	// name, with a Stat that validates the target rather than the entry.
-	// Together they mean the open either gets the file the walk saw or
-	// fails.
-	in, err := srcRoot.OpenFile(rel, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+func copyFileIn(srcDir int, root *os.Root, rel string, mode fs.FileMode) error {
+	in, err := openFileNoFollow(srcDir, rel)
 	if err != nil {
-		if errors.Is(err, syscall.ELOOP) {
+		if errors.Is(err, errSymlinkComponent) {
 			return domain.ValidationError(nil,
 				"bundle contains a symlink at %q, which is not allowed", rel).
 				WithHint("release bundles must contain only regular files and directories")
@@ -203,6 +202,87 @@ func copyFileIn(srcRoot, root *os.Root, rel string, mode fs.FileMode) error {
 		return domain.Internal(err, "cannot close %s", rel)
 	}
 	return nil
+}
+
+// errSymlinkComponent marks a path whose descent stopped at a symlink.
+//
+// The errno alone cannot say so: O_NOFOLLOW on the last component reports
+// ELOOP, while O_NOFOLLOW|O_DIRECTORY on an intermediate one reports ENOTDIR --
+// which is also what a regular file in the middle of a path reports. The
+// descent asks, with a no-follow stat, and says which it was.
+var errSymlinkComponent = errors.New("a path component is a symlink")
+
+// openDirNoFollow opens a directory, refusing it if it is a symlink.
+func openDirNoFollow(dir string) (int, error) {
+	return syscall.Open(dir,
+		syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+}
+
+// openFileNoFollow opens rel beneath an already-open directory, refusing a
+// symlink at *every* component rather than only at the last one.
+//
+// This is the read side of the copy's containment, and it is a descent rather
+// than one open because that is what closes the window: the walk decided this
+// entry was a regular file, and between that decision and this open anything
+// could have replaced any part of the path. Following even one link would mean
+// copying bytes the walk never saw -- under the name it did see, and into a
+// tree whose digest is then computed and trusted.
+//
+// It needs no separate containment check. A path that follows no symlink and
+// contains no "..", starting from a descriptor for the source directory, cannot
+// name anything outside it.
+func openFileNoFollow(dir int, rel string) (*os.File, error) {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+
+	current := dir
+	// Closed only if this function opened it: the caller owns the one it
+	// passed in.
+	opened := false
+	defer func() {
+		if opened {
+			_ = syscall.Close(current)
+		}
+	}()
+
+	for _, part := range parts[:len(parts)-1] {
+		if part == "" || part == "." || part == ".." {
+			return nil, domain.ValidationError(nil,
+				"bundle path %q cannot be resolved safely", rel)
+		}
+		next, err := syscall.Openat(current, part,
+			syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+		if err != nil {
+			return nil, classifyDescent(current, part, err)
+		}
+		if opened {
+			_ = syscall.Close(current)
+		}
+		current, opened = next, true
+	}
+
+	name := parts[len(parts)-1]
+	if name == "" || name == "." || name == ".." {
+		return nil, domain.ValidationError(nil,
+			"bundle path %q cannot be resolved safely", rel)
+	}
+	fd, err := syscall.Openat(current, name,
+		syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, classifyDescent(current, name, err)
+	}
+	return os.NewFile(uintptr(fd), rel), nil
+}
+
+// classifyDescent says whether a failed open was a symlink refusal.
+func classifyDescent(dir int, name string, cause error) error {
+	var st unix.Stat_t
+	if statErr := unix.Fstatat(dir, name, &st, unix.AT_SYMLINK_NOFOLLOW); statErr != nil {
+		return cause
+	}
+	if st.Mode&unix.S_IFMT == unix.S_IFLNK {
+		return fmt.Errorf("%w: %w", errSymlinkComponent, cause)
+	}
+	return cause
 }
 
 // DigestTree computes a content digest over a directory tree.

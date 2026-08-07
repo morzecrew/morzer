@@ -54,14 +54,6 @@ func newInitCommand(app *App) *cobra.Command {
 			if product == "" {
 				product = app.Flags.product
 			}
-			// --config selected a layout during the pre-run, before
-			// this local flag existed to be compared against. Two
-			// flags naming different installations is a question,
-			// and the rewiring below would answer it silently.
-			if err := app.confirmProductMatchesConfig(product); err != nil {
-				return err
-			}
-
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
 			if product == "" && releasePath != "" {
@@ -78,6 +70,16 @@ func newInitCommand(app *App) *cobra.Command {
 			if product == "" && !app.interactive() {
 				return domain.Usage("a product name is required").
 					WithHint("pass --product <name>, or --release <bundle> to take it from the manifest")
+			}
+
+			// --config selected a layout during the pre-run, before
+			// any of this ran. Checked *here*, after the name has
+			// been resolved from wherever it came -- the flag, the
+			// bundle's manifest -- because the rewiring below would
+			// otherwise answer a disagreement silently. The wizard's
+			// answer is checked separately, where it lands.
+			if err := app.confirmProductMatchesConfig(product); err != nil {
+				return err
 			}
 
 			// Rebuild the layout now that the name is known. Every
@@ -134,7 +136,11 @@ func newInitCommand(app *App) *cobra.Command {
 					EquivalentCommand(opts))
 
 				// The product may have been chosen just now, and
-				// every managed path derives from it.
+				// every managed path derives from it -- including
+				// when --config already named one.
+				if err := app.confirmProductMatchesConfig(opts.Product); err != nil {
+					return err
+				}
 				if opts.Product != product {
 					app.Flags.product = opts.Product
 					if err := app.rewireForProduct(cmd.Context(), opts.Product); err != nil {

@@ -227,27 +227,31 @@ func wantsJSON(parsed bool, args []string) bool {
 	if parsed {
 		return true
 	}
+	// The last assignment wins, because that is what cobra would have done
+	// with them: `--json=true --json=false` asked for plain output, and
+	// returning on the first truthy one would have overruled the operator's
+	// own correction.
+	wants := false
 	for _, arg := range args {
 		// Everything after the terminator is an operand, not a flag:
 		// `morzer --wat -- --json` asked for plain output and a literal
 		// argument that happens to look like a flag.
 		if arg == "--" {
-			return false
+			break
 		}
 		if arg == "--json" {
-			return true
+			wants = true
+			continue
 		}
 		// The same spellings cobra's own boolean parser takes:
-		// --json=1, --json=TRUE, --json=t. A caller who wrote one of
-		// those asked for an envelope as plainly as one who wrote the
-		// bare flag.
+		// --json=1, --json=TRUE, --json=t.
 		if value, ok := strings.CutPrefix(arg, "--json="); ok {
 			if parsed, err := strconv.ParseBool(value); err == nil {
-				return parsed
+				wants = parsed
 			}
 		}
 	}
-	return false
+	return wants
 }
 
 // closeSources releases anything a release source or a backup target is

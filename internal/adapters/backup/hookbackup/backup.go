@@ -1038,6 +1038,15 @@ func (e *Engine) sweepManifestlessDirectories() {
 		if !entry.IsDir() {
 			continue
 		}
+		// `backup fetch` writes into <id>.fetching and adds the manifest
+		// last, and it runs outside the deployment lock -- so a
+		// manifest-less directory under that name is not debris, it is a
+		// download in progress, and erasing it would delete the recovery
+		// an operator is in the middle of. A fetch cleans its own
+		// staging before it starts and on the way out.
+		if strings.HasSuffix(entry.Name(), ports.FetchStagingSuffix) {
+			continue
+		}
 		dir := filepath.Join(e.paths.BackupsDir(), entry.Name())
 		if _, err := os.Stat(filepath.Join(dir, ManifestFileName)); err == nil {
 			continue

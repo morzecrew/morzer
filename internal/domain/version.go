@@ -77,6 +77,11 @@ func (v *Version) UnmarshalText(b []byte) error {
 type Constraint struct {
 	raw string
 	c   *semver.Constraints
+
+	// inclusive is the same constraint rewritten to compare pre-releases by
+	// ordering. Nil when the rewrite does not apply or does not parse; see
+	// prereleaseInclusive.
+	inclusive *semver.Constraints
 }
 
 func ParseConstraint(s string) (Constraint, error) {
@@ -89,7 +94,7 @@ func ParseConstraint(s string) (Constraint, error) {
 		return Constraint{}, ValidationError(err, "invalid version constraint %q", s).
 			WithHint(`constraints look like ">=2.30" or ">=1.0.0 <2.0.0"`)
 	}
-	return Constraint{raw: s, c: c}, nil
+	return Constraint{raw: s, c: c, inclusive: prereleaseInclusive(s)}, nil
 }
 
 func (c Constraint) IsZero() bool   { return c.c == nil }
@@ -106,6 +111,12 @@ func (c Constraint) String() string { return c.raw }
 // resolving a dependency, where an rc must not be picked up by accident, and
 // wrong here, where the version is a fact about a machine somebody is already
 // running rather than a candidate to select.
+//
+// The retry is against the *same* version, through a constraint rewritten to
+// admit pre-releases -- not against the version's release core, which was wrong
+// at both boundaries: it made ">=2.0.0" accept 2.0.0-rc.1, which is below the
+// floor by ordering, while still refusing an rc that genuinely sits inside the
+// range.
 func (c Constraint) Allows(v Version) bool {
 	if c.c == nil {
 		return true
@@ -116,42 +127,63 @@ func (c Constraint) Allows(v Version) bool {
 	if c.c.Check(v.sv) {
 		return true
 	}
-	if v.sv.Prerelease() == "" {
+	if v.sv.Prerelease() == "" || c.inclusive == nil {
 		return false
 	}
-
-	// Per alternative, not over the whole expression. ">=1.0.0-rc.1 ||
-	// >=2.0.0" names a pre-release in its first branch and not in its
-	// second, and 2.1.0-rc.1 is out of range for the first and in range for
-	// the second -- one regex over the raw string would let the first
-	// branch's spelling refuse a version the second accepts.
-	core := semver.New(v.sv.Major(), v.sv.Minor(), v.sv.Patch(), "", "")
-	for _, alternative := range strings.Split(c.raw, "||") {
-		alternative = strings.TrimSpace(alternative)
-		// A branch that names a pre-release of its own is doing so on
-		// purpose, and its ordering against another pre-release is
-		// exactly what the check above already did.
-		if alternative == "" || constraintNamesPrerelease.MatchString(alternative) {
-			continue
-		}
-		parsed, err := semver.NewConstraint(alternative)
-		if err != nil {
-			continue
-		}
-		if parsed.Check(core) {
-			return true
-		}
-	}
-	return false
+	return c.inclusive.Check(v.sv)
 }
 
-// constraintNamesPrerelease matches a hyphen directly after a version number,
-// which is how a pre-release is spelled inside a constraint (">=2.0.0-rc.1").
-// The spaced hyphen of a range ("1.0.0 - 2.0.0") deliberately does not match.
+// prereleaseInclusive rewrites a constraint so the library compares
+// pre-releases by ordering instead of excluding them.
 //
-// The identifier may itself begin with a hyphen -- ">=2.0.0--rc" is a valid
-// constraint whose pre-release is "-rc" -- so the character class includes one.
-var constraintNamesPrerelease = regexp.MustCompile(`\d-[0-9A-Za-z-]`)
+// The library's rule is per element: an element with no pre-release of its own
+// refuses every pre-release candidate. Its documented answer is to spell the
+// element with one, and "-0" is the lowest there is -- so ">=2.30" becomes
+// ">=2.30.0-0", which admits 2.31.0-rc.1 exactly as ordering says it should.
+//
+// The boundary reading that falls out is the conventional one, and the one this
+// field wants: a lower bound admits its own pre-releases ("2.0 or later"
+// includes 2.0.0-rc.1), and an upper bound does not (">=1.0.0 <2.0.0" is "any
+// 1.x", and 2.0.0-rc.1 is not a 1.x).
+//
+// Wildcards are left alone: "1.x" cannot carry a pre-release, and a rewrite
+// would produce something that does not parse. Anything that fails to parse
+// after rewriting returns nil, and Allows keeps the library's own answer --
+// refusing, which is the safe direction for a compatibility gate.
+func prereleaseInclusive(raw string) *semver.Constraints {
+	if strings.ContainsAny(raw, "xX*") {
+		return nil
+	}
+
+	rewritten := versionToken.ReplaceAllStringFunc(raw, func(token string) string {
+		if strings.Contains(token, "-") {
+			// Already carries a pre-release, and it means it.
+			return token
+		}
+		if metadata := strings.IndexByte(token, '+'); metadata >= 0 {
+			return token[:metadata] + "-0" + token[metadata:]
+		}
+		return token + "-0"
+	})
+	if rewritten == raw {
+		return nil
+	}
+
+	parsed, err := semver.NewConstraint(rewritten)
+	if err != nil {
+		return nil
+	}
+	return parsed
+}
+
+// versionToken matches a whole version inside a constraint -- the numbers and
+// whatever pre-release or build metadata follows them -- so the rewrite above
+// can look at the token as a unit rather than at a digit run.
+//
+// It starts at a digit, which is what keeps it off the operators (>=, ^, ~) and
+// off the spaced hyphen of a range: "1.0.0 - 2.0.0" is two tokens with the
+// separator between them, not one token containing a pre-release.
+var versionToken = regexp.MustCompile(`\d[0-9A-Za-z.+-]*`)
 
 func (c Constraint) MarshalText() ([]byte, error) { return []byte(c.raw), nil }
 

@@ -157,6 +157,18 @@ func TestCredentialsPrintWhatIsSetAndNeverWhatItIs(t *testing.T) {
 			t.Errorf("a credential was serialised:\n%s", encoded)
 		}
 	}
+	// An endpoint is a URL, and a URL can carry userinfo -- a credential
+	// wearing a hostname, which the summary printed verbatim.
+	withUser := ports.TargetCredentials{Endpoint: "https://key:s3cr3t@minio.example:9000"}
+	for _, printed := range []string{withUser.String(), string(mustJSON(t, withUser))} {
+		if strings.Contains(printed, "s3cr3t") || strings.Contains(printed, "key:") {
+			t.Errorf("an endpoint's userinfo was printed: %s", printed)
+		}
+		if !strings.Contains(printed, "minio.example") {
+			t.Errorf("the host an operator needs for a diagnosis was dropped: %s", printed)
+		}
+	}
+
 	// The shape survives: which credentials are configured is what a
 	// consumer legitimately reports.
 	for _, want := range []string{`"private_key":"[redacted]"`, `"region":"eu-central-1"`} {
@@ -164,6 +176,15 @@ func TestCredentialsPrintWhatIsSetAndNeverWhatItIs(t *testing.T) {
 			t.Errorf("the envelope does not carry %s:\n%s", want, encoded)
 		}
 	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	out, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 func TestUnitStateFailedIsTheOneStateThatMatters(t *testing.T) {

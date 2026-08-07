@@ -35,6 +35,14 @@ type BackupEngine interface {
 	Prune(ctx context.Context, policy RetentionPolicy) ([]BackupRef, error)
 }
 
+// FetchStagingSuffix is what a fetch appends to a backup id while it downloads.
+//
+// It is here because two layers have to agree on it and neither owns the other:
+// the lifecycle layer writes under that name, outside the deployment lock, and
+// an engine's reclamation of manifest-less directories has to leave those
+// alone. A download in progress has no manifest yet and is not debris.
+const FetchStagingSuffix = ".fetching"
+
 // Component names a part of a backup. They are separable because restore
 // sometimes needs only one of them.
 type Component string

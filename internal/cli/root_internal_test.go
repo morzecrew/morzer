@@ -79,6 +79,14 @@ func TestWantsJSONSeesTheFlagCobraNeverReached(t *testing.T) {
 			t.Errorf("%s was read as a request for an envelope", spelling)
 		}
 	}
+	// The last one wins, as cobra would read them: an operator who wrote a
+	// correction meant the correction.
+	if wantsJSON(false, []string{"--json=TRUE", "--wat", "--json=false"}) {
+		t.Error("a later --json=false was overruled by an earlier truthy one")
+	}
+	if !wantsJSON(false, []string{"--json=false", "--wat", "--json"}) {
+		t.Error("a later --json was overruled by an earlier false one")
+	}
 }
 
 // TestConfigDerivesTheLayoutItSitsIn. The flag was parsed and discarded, so a

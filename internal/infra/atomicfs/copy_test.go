@@ -435,19 +435,15 @@ func TestDirSizeIgnoresWhatItCannotRead(t *testing.T) {
 	}
 }
 
-// TestAnInTreeSymlinkIsRefusedAtOpen.
+// TestAnInTreeSymlinkIsRefused: a link that resolves *inside* the bundle is
+// refused like any other, and its target is not copied under its name.
 //
-// os.Root stops a path escaping the tree; it does not stop a symlink *inside*
-// it from being followed. A walked file swapped for an in-tree symlink would
-// have been opened as its target -- copying the target's bytes under the walked
-// name, with a stat that validates the target rather than the entry. O_NOFOLLOW
-// on the final component is what makes the open either get the file the walk
-// saw or fail.
-//
-// The swap itself is racy and not reproducible in a test; what is checkable is
-// that the open refuses a symlink even when it resolves inside the root, which
-// is the property the race would otherwise exploit.
-func TestAnInTreeSymlinkIsRefusedAtOpen(t *testing.T) {
+// This is the observable refusal, and it is the walk that produces it here --
+// the entry is a symlink before the walk sees it. The open-time descent that
+// covers the *swapped after the walk* case cannot be reached this way without a
+// race no test can reliably win, so it is exercised directly in
+// copy_internal_test.go instead.
+func TestAnInTreeSymlinkIsRefused(t *testing.T) {
 	src := tree(t, map[string]string{
 		"manifest.yaml": "x",
 		"real.txt":      "the file the walk would have seen",

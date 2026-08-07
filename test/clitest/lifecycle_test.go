@@ -122,10 +122,15 @@ func TestInitRefusesAParameterWithNoDefaultAndNoValue(t *testing.T) {
 	manifest := filepath.Join(r.Bundle, "manifest.yaml")
 	data, err := os.ReadFile(manifest)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(data),
+	edited := strings.Replace(string(data),
 		"parameters:\n",
 		"parameters:\n  admin_email:\n    type: string\n    description: Where alerts go\n",
-		1)), 0o644))
+		1)
+	// Loudly, because a silent no-op here fails the test at the exit-code
+	// assertion below and points nowhere near the manifest that drifted.
+	require.NotEqual(t, string(data), edited,
+		"the fixture no longer contains a `parameters:` block to add to")
+	require.NoError(t, os.WriteFile(manifest, []byte(edited), 0o644))
 
 	out := r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
 		"--install-units=false")
@@ -205,4 +210,32 @@ func TestVersionAndHelpNeedNoInstallation(t *testing.T) {
 	r.Run("version").ExitCode(0).StdoutContains("test")
 	r.Run("version", "--json").ExitCode(0).Field("data")
 	r.Run("--help").ExitCode(0).StdoutContains("morzer")
+}
+
+// TestUnsettingAParameterWithNoDefaultIsRefused.
+//
+// `config unset` is the other command that can be told a value, so it is the
+// other command that refuses to leave a required one without one. Resolution
+// treats an absent value as present-and-empty -- which is what keeps `apply`
+// working on months-old state -- so nothing downstream would have objected.
+func TestUnsettingAParameterWithNoDefaultIsRefused(t *testing.T) {
+	r := clitest.New(t)
+
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	edited := strings.Replace(string(data),
+		"parameters:\n",
+		"parameters:\n  admin_email:\n    type: string\n    description: Where alerts go\n",
+		1)
+	require.NotEqual(t, string(data), edited,
+		"the fixture no longer contains a `parameters:` block to add to")
+	require.NoError(t, os.WriteFile(manifest, []byte(edited), 0o644))
+
+	r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
+		"--install-units=false", "--set", "admin_email=ops@example").ExitCode(0)
+
+	out := r.Run("config", "unset", "admin_email")
+	out.Failed().OutputContains("admin_email")
+	out.OutputContains("config set")
 }
