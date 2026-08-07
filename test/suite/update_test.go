@@ -4,12 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
@@ -173,6 +175,84 @@ func TestUpdateRefusesADigestMismatch(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err),
 		"a bundle that is not what was published must be refused before it is staged")
+}
+
+// TestUpdateRetiresAParameterTheNewReleaseDropped.
+//
+// A vendor may stop declaring a parameter, and the operator should be told
+// rather than refused. Nothing enforced that: the recorded value stayed, and
+// every resolve after the update validates the whole map against the new
+// declarations -- so the first `apply`, `config` or `status` afterwards would
+// refuse over a parameter the operator never typed, with the update already
+// applied and no obvious way back.
+func TestUpdateRetiresAParameterTheNewReleaseDropped(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// The operator set a value for a parameter 1.3.0 is about to drop.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{"log_level": "debug"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	src := stageUpgradeSource(t, h)
+	dropParameter(t, src, "log_level")
+
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err, "dropping a parameter is the vendor's decision, not a failure")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+
+	after, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, after.Parameters, "log_level",
+		"the retired value is still recorded, so the next command resolves against "+
+			"a declaration that no longer exists")
+
+	// Told, not silently dropped: the value was the operator's, and the
+	// product's behaviour changes when it stops being applied.
+	var warned bool
+	for _, e := range h.Events.Events() {
+		if e.Level == events.LevelWarn && strings.Contains(e.Message, "log_level") {
+			warned = true
+		}
+	}
+	assert.True(t, warned,
+		"nothing warned that a parameter the operator had set was retired")
+
+	// The whole point of retiring it: the next operation resolves.
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "the update left an installation later commands refuse")
+}
+
+// dropParameter removes a parameter block from a bundle's manifest, which is
+// what a vendor does when a knob stops existing.
+func dropParameter(t *testing.T, bundle, name string) {
+	t.Helper()
+	path := filepath.Join(bundle, "manifest.yaml")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	lines := strings.Split(string(data), "\n")
+	var out []string
+	dropping := false
+	for _, line := range lines {
+		switch {
+		case line == "  "+name+":":
+			dropping = true
+		case dropping && strings.HasPrefix(line, "    "):
+			// still inside the block
+		case dropping:
+			dropping = false
+			out = append(out, line)
+		default:
+			out = append(out, line)
+		}
+	}
+	require.NotEqual(t, len(lines), len(out), "manifest declares no parameter %q", name)
+	require.NoError(t, os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644))
 }
 
 func TestUpdateRestoresThePointerWhenConvergenceFails(t *testing.T) {
