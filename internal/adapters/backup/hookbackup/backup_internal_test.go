@@ -2,6 +2,7 @@ package hookbackup
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -51,5 +52,32 @@ func TestABackupIDCollisionAllocatesANewDirectory(t *testing.T) {
 	}
 	if third == first || third == second {
 		t.Errorf("the third backup reused id %q", third)
+	}
+}
+
+// A SIGKILL mid-restore strands decrypted plaintext in a .restore-* staging
+// directory that only an in-process defer used to clean, and Prune never
+// touches: the backup being restored is typically the newest. The sweep at
+// the start of backup and restore operations is what bounds that exposure.
+func TestOrphanedRestoreStagingIsSwept(t *testing.T) {
+	e := New(Config{Paths: domain.PathsUnder(t.TempDir(), "demo")})
+
+	backup := filepath.Join(e.paths.BackupsDir(), "20260807T000000Z")
+	orphan := filepath.Join(backup, ".restore-abc123")
+	if err := os.MkdirAll(orphan, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	plaintext := filepath.Join(orphan, "database.dump")
+	if err := os.WriteFile(plaintext, []byte("the entire database, decrypted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	e.sweepStagedPlaintext()
+
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatal("the orphaned plaintext staging directory survived the sweep")
+	}
+	if _, err := os.Stat(backup); err != nil {
+		t.Error("the sweep must remove only the staging debris, not the backup itself")
 	}
 }

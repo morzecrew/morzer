@@ -242,6 +242,8 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 				"project's named volumes itself")
 	}
 
+	e.sweepStagedPlaintext()
+
 	id, dir, err := e.createDir()
 	if err != nil {
 		return ports.BackupRef{}, err
@@ -715,6 +717,8 @@ func (e *Engine) Verify(ctx context.Context, ref ports.BackupRef) error {
 
 // Restore runs the release's restore hook against a verified backup.
 func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.RestoreOptions) error {
+	e.sweepStagedPlaintext()
+
 	dir, err := e.resolve(ref)
 	if err != nil {
 		return err
@@ -955,6 +959,24 @@ func (e *Engine) hookEnv(phase ports.HookPhase, backupDir string) ports.HookEnv 
 		SecretsDir:     e.paths.SecretsRenderDir(),
 		ConfigFile:     e.paths.ApplicationFile(),
 		ComposeProject: e.release.Manifest.Runtime.Project,
+	}
+}
+
+// sweepStagedPlaintext removes restore staging directories a dead process
+// left behind.
+//
+// stage decrypts into <backup>/.restore-* and cleans up only through an
+// in-process defer, so a SIGKILL or power cut mid-restore strands the
+// database dump and volume tarballs as plaintext beside the ciphertext --
+// forever: Prune removes whole backups past retention, and the backup being
+// restored is typically the newest, which is never pruned. Swept at the start
+// of the operations that run under the deployment lock, with overwrite for
+// the same reason a failed backup scrubs rather than unlinks: this is
+// product data on free blocks otherwise.
+func (e *Engine) sweepStagedPlaintext() {
+	stale, _ := filepath.Glob(filepath.Join(e.paths.BackupsDir(), "*", ".restore-*"))
+	for _, dir := range stale {
+		_ = atomicfs.RemoveWithOverwrite(dir)
 	}
 }
 
