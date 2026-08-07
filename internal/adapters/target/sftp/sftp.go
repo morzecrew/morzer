@@ -563,6 +563,22 @@ type sftpStore struct {
 
 var _ blob.Store = (*sftpStore)(nil)
 
+// ctxReader stops a copy that is already running when the operation is
+// abandoned -- localdir's pattern, repeated here because the two stores share
+// a contract, not code. Between reads, not during one: a read blocked on a
+// dead connection stays blocked, and the connection teardown handles that.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
 func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -584,9 +600,16 @@ func (s *sftpStore) Put(ctx context.Context, key string, r io.Reader, size int64
 	if err != nil {
 		return s.unreachable(err, "cannot create %s on the target", tmp)
 	}
-	if _, err := io.Copy(f, r); err != nil {
+	// The reader checks the context between chunks, as localdir's push
+	// does: the entry check above only covers work that has not started,
+	// and a cancelled push otherwise keeps streaming a multi-gigabyte
+	// component long after the operation was reported interrupted.
+	if _, err := io.Copy(f, ctxReader{ctx: ctx, r: r}); err != nil {
 		_ = f.Close()
 		_ = s.client.Remove(tmp)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return s.unreachable(err, "cannot write %s to the target", key)
 	}
 	if err := f.Close(); err != nil {

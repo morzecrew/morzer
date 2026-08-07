@@ -53,6 +53,18 @@ func startStream(ctx context.Context, argv []string, cfg ports.RuntimeConfig) (i
 	cmd.Env = exec.BaseEnv(cfg.Env)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
+	// Group-wide TERM with a KILL escalation, exactly as the shared runner
+	// does it. CommandContext's default Cancel SIGKILLs only the leader --
+	// despite Setpgid -- so a cancelled `logs --follow` orphaned compose's
+	// own children; WaitDelay bounds a leader that ignores the TERM.
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	}
+	cmd.WaitDelay = exec.DefaultGrace
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, domain.RuntimeError(err, "cannot open a log stream")
