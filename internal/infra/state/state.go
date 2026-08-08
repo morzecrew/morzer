@@ -120,6 +120,20 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			//
 			// TestASchemaTwoInstallationStillLoads pins this half.
 			i.SchemaVersion = 3
+		case 3:
+			// 3 -> 4 added notify.targets. Nothing to convert, for the
+			// same reason as 2 -> 3: an installation written before
+			// notification existed has no targets, and the zero value
+			// reads that correctly. The bump is entirely for the other
+			// direction -- an older manager must refuse a state whose
+			// targets it would ignore while reporting success to an
+			// operator who arranged to be told about failures.
+			//
+			// One line, and the loop's default returns "no migration
+			// path" without it, which would fail every schema-3
+			// installation on disk. TestASchemaThreeInstallationStillLoads
+			// pins it.
+			i.SchemaVersion = 4
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

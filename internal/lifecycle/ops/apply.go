@@ -80,12 +80,11 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 	})
 
 	out := Result{Record: result.Record, Summary: applySummary(result.Record, rel)}
+	d.notifyFinished(ctx, opID, domain.OpTypeApply, result.Record, runErr)
 	if runErr != nil {
 		return out, runErr
 	}
 
-	d.notify(ctx, events.OperationFinished(opID, domain.OpTypeApply,
-		result.Record.Status, result.Record.Duration(), nil))
 	return out, nil
 }
 

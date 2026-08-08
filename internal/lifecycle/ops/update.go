@@ -112,12 +112,11 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 			"root":   staged.Root,
 		},
 	}
+	d.notifyFinished(ctx, opID, domain.OpTypeUpdate, result.Record, runErr)
 	if runErr != nil {
 		return out, runErr
 	}
 
-	d.notify(ctx, events.OperationFinished(opID, domain.OpTypeUpdate,
-		result.Record.Status, result.Record.Duration(), nil))
 	return out, nil
 }
 

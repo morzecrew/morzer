@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
-	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -159,12 +158,11 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 			opts.DryRun, running),
 		Data: next,
 	}
+	d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, runErr)
 	if runErr != nil {
 		return out, runErr
 	}
 
-	d.notify(ctx, events.OperationFinished(opID, domain.OpTypeConfig,
-		result.Record.Status, result.Record.Duration(), nil))
 	return out, nil
 }
 

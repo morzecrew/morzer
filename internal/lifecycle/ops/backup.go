@@ -86,6 +86,13 @@ func Backup(ctx context.Context, d *Deps, opts BackupOptions) (Result, error) {
 	})
 
 	out := Result{Record: result.Record}
+
+	// Backup is the operation that most needs this: it is the only one
+	// with a generated systemd timer, so on any machine that ran `init`
+	// with systemd available it runs nightly with nobody watching. A
+	// failure here has always been a journal entry nobody reads.
+	d.notifyFinished(ctx, opID, domain.OpTypeBackup, result.Record, runErr)
+
 	if runErr != nil {
 		return out, runErr
 	}
@@ -631,6 +638,8 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 	})
 
 	out := Result{Record: result.Record}
+	d.notifyFinished(ctx, opID, domain.OpTypeRestore, result.Record, runErr)
+
 	if runErr != nil {
 		return out, restoreLeftBehind(result.Record, runErr)
 	}

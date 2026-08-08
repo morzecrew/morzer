@@ -57,3 +57,57 @@ func TestASchemaTwoInstallationStillLoads(t *testing.T) {
 		t.Error("an installation written before targets existed acquired one")
 	}
 }
+
+// TestASchemaThreeInstallationStillLoads is the guard for the 3 -> 4 arm.
+//
+// migrateInstallation is a forward-only loop whose default returns "no
+// migration path". Raising InstallationSchemaVersion without adding `case 3:`
+// therefore fails *every* installation on disk -- one missing line, the widest
+// possible blast radius, and nothing else in the suite notices.
+func TestASchemaThreeInstallationStillLoads(t *testing.T) {
+	root := t.TempDir()
+	paths := domain.PathsUnder(root, "demo")
+	store := New(paths)
+
+	if err := os.MkdirAll(filepath.Dir(paths.InstallationState()), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Written by hand at schema 3, the way a manager from before
+	// notification existed left it -- with a backup target, because that is
+	// what schema 3 was bumped for and it must survive.
+	legacy := map[string]any{
+		"schema_version": 3,
+		"installation": map[string]any{
+			"schema_version": 3,
+			"id":             "inst_three",
+			"product":        "demo",
+			"created_at":     "2026-01-01T00:00:00Z",
+			"backup": map[string]any{
+				"targets": []map[string]any{{"url": "file:///media/backup"}},
+			},
+		},
+	}
+	data, err := json.MarshalIndent(legacy, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.InstallationState(), data, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	inst, err := store.LoadInstallation(context.Background())
+	if err != nil {
+		t.Fatalf("a schema-3 installation no longer loads: %v", err)
+	}
+	if inst.SchemaVersion != domain.InstallationSchemaVersion {
+		t.Errorf("schema_version = %d, want %d after migration",
+			inst.SchemaVersion, domain.InstallationSchemaVersion)
+	}
+	if !inst.Backup.HasTargets() {
+		t.Error("the migration lost the backup target schema 3 was bumped for")
+	}
+	if inst.Notify.HasTargets() {
+		t.Error("an installation written before notification existed acquired a target")
+	}
+}

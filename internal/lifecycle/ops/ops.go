@@ -215,15 +215,88 @@ func (d *Deps) withLock(ctx context.Context, opID string, opType domain.Operatio
 	return fn(ctx)
 }
 
-// notify sends an event to the configured notifier.
+// NotifyDeadline bounds the whole fan-out, not one request.
+//
+// Notifiers delivers sequentially, so a per-target timeout alone lets N
+// unreachable targets add N × that timeout to every operation while each
+// individual request looks well behaved. What an operator experiences is the
+// sum, so the sum is what is bounded.
+const NotifyDeadline = 15 * time.Second
+
+// forwardedKinds is the allowlist of events that may leave the machine.
+//
+// An allowlist rather than a denylist, so a Kind added later is not forwarded
+// until somebody decides it should be. The two here are the outcome an operator
+// wants and the diagnostics nobody has looked at.
+//
+// KindStepOutput is the reason this is a list at all. It carries raw
+// subprocess output -- hook stdout, compose stderr, whatever a vendor's
+// migration script prints -- and the engine's claim that events carry no
+// secrets rests on a redaction handler that has been wrong once already. The
+// terminal and the JSONL log get everything; the network gets two kinds.
+// Every kind is classified explicitly, including the ones that stay. A map
+// holding only the true entries cannot tell "decided against" from "never
+// considered", so a Kind added later would default to not-forwarded and look
+// deliberate. TestEveryEventKindIsClassified fails until someone chooses.
+var forwardedKinds = map[events.Kind]bool{
+	events.KindOperationFinished: true,
+	events.KindCheck:             true,
+
+	events.KindOperationStarted: false, // the outcome is the news, not the start
+	events.KindStepStarted:      false, // narration
+	events.KindStepProgress:     false, // narration
+	events.KindStepFinished:     false, // narration
+	events.KindPlan:             false, // a dry run is not an event to wake up for
+	events.KindMessage:          false, // engine narration
+	events.KindStepOutput:       false, // see above: raw vendor-controlled output
+}
+
+// notifyFinished reports an operation's outcome, whatever the outcome was.
+//
+// Every call site used to sit *after* the `if runErr != nil { return }` guard,
+// so the only operations ever reported were the ones that succeeded — which is
+// the half nobody needs to be told about. A channel that goes quiet exactly
+// when something breaks is worse than no channel, because silence reads as
+// "nothing happened".
+//
+// The status comes from the record where the engine set one: a compensated
+// update and an interrupted one are different things to wake up for, and
+// flattening both to "failed" would throw that away.
+func (d *Deps) notifyFinished(
+	ctx context.Context,
+	opID string,
+	opType domain.OperationType,
+	rec domain.OperationRecord,
+	runErr error,
+) {
+	status := rec.Status
+	var failure *domain.Error
+	if runErr != nil {
+		failure = domain.AsError(runErr)
+		if status == "" || status == domain.StatusRunning {
+			status = domain.StatusFailed
+		}
+	}
+	d.notify(ctx, events.OperationFinished(opID, opType, status, rec.Duration(), failure))
+}
+
+// notify sends an event to the configured notifier, if the allowlist admits it.
 //
 // Failures are logged and dropped. A webhook being down must never change the
 // outcome of a deployment, and an operator must not learn about a Slack outage
 // by way of a rolled-back update.
 func (d *Deps) notify(ctx context.Context, ev events.Event) {
-	if d.Notifier == nil {
+	if d.Notifier == nil || !forwardedKinds[ev.Kind] {
 		return
 	}
+
+	// Detached from the operation's context on purpose. An operation that
+	// has just been cancelled or has just failed is exactly when the
+	// notification matters most, and a cancelled parent would silently drop
+	// it -- the failure notification would be the one that never goes out.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), NotifyDeadline)
+	defer cancel()
+
 	if err := d.Notifier.Notify(ctx, ev); err != nil {
 		logging.FromContext(ctx).Warn("notifier failed",
 			"notifier", d.Notifier.Name(), "error", err)
