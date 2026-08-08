@@ -255,6 +255,20 @@ func pidStart(pid int) uint64 {
 	if err != nil {
 		return 0
 	}
+	return parsePIDStart(data)
+}
+
+// parsePIDStart pulls field 22 out of a /proc/<pid>/stat line.
+//
+// Split from the read so the parsing is testable without a process to point
+// at: the shapes that break a naive reader -- a comm with a space in it, a
+// comm with a parenthesis in it, a truncated line -- are the ones no live
+// process on the machine running the tests is likely to have.
+//
+// Zero for anything it cannot read, which callers treat as "unknown".
+func parsePIDStart(data []byte) uint64 {
+	// Last ')' rather than first: comm is the executable name in parentheses
+	// and may itself contain one, so scanning forward finds the wrong end.
 	commEnd := bytes.LastIndexByte(data, ')')
 	if commEnd < 0 || commEnd+2 >= len(data) {
 		return 0
