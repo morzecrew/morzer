@@ -216,3 +216,25 @@ func TestReleaseVerifyRefusesATemplateThatCannotParse(t *testing.T) {
 	r.Run("release", "verify", r.Bundle).ExitCode(0).
 		OutputContains("bundle is valid")
 }
+
+// TestUpdateCheckRefusesRatherThanReportingUpToDate.
+//
+// The command's value is that it never answers a question nobody asked. A
+// freshly installed machine has no recorded release source -- `init` installs
+// from a path -- so the check must say so rather than report that nothing newer
+// exists.
+func TestUpdateCheckRefusesRatherThanReportingUpToDate(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	res := r.Run("update", "--check")
+	res.Failed()
+	out := res.Stdout + res.Stderr
+	if strings.Contains(out, "nothing newer is offered") {
+		t.Error("a check that could not run reported that nothing newer exists")
+	}
+
+	// --to names something already in the store; --check asks the source
+	// what it offers. Silently ignoring one of them is the failure.
+	r.Run("update", "--check", "--to", "1.3.0").Failed().
+		OutputContains("alternatives")
+}

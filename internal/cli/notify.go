@@ -11,6 +11,16 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
+// secretReader is the only thing the notify wiring needs from the secret store.
+//
+// Narrower than ports.SecretStore on purpose: this code reads two values and
+// never writes, generates, removes or renders. Depending on the whole store
+// would let a future change here reach for a mutation, and would make anything
+// standing in for it carry five methods it does not use.
+type secretReader interface {
+	Load(ctx context.Context) (domain.SecretSet, error)
+}
+
 // notifyCredentials is the document a notify target's credential secret holds.
 //
 // One secret holding one document rather than one field, for the reason
@@ -33,7 +43,7 @@ type notifyCredentials struct {
 // operation's outcome, and refusing to run `apply` because a webhook secret was
 // deleted would break that at the least convenient moment -- an operator's
 // deployment must not depend on their alerting being healthy.
-func (a *App) buildNotifiers(ctx context.Context, inst domain.Installation, secrets ports.SecretStore) ports.Notifier {
+func (a *App) buildNotifiers(ctx context.Context, inst domain.Installation, secrets secretReader) ports.Notifier {
 	if !inst.Notify.HasTargets() {
 		return nil
 	}
@@ -60,7 +70,7 @@ func (a *App) buildNotifiers(ctx context.Context, inst domain.Installation, secr
 }
 
 func (a *App) buildNotifier(
-	ctx context.Context, cfg domain.NotifyTargetConfig, secrets ports.SecretStore,
+	ctx context.Context, cfg domain.NotifyTargetConfig, secrets secretReader,
 ) (ports.Notifier, error) {
 	secretName, direct, err := cfg.Endpoint()
 	if err != nil {
@@ -112,7 +122,7 @@ func (a *App) buildNotifier(
 }
 
 // readSecretValue reads one secret's plaintext.
-func readSecretValue(ctx context.Context, secrets ports.SecretStore, name string) (string, error) {
+func readSecretValue(ctx context.Context, secrets secretReader, name string) (string, error) {
 	if secrets == nil {
 		return "", domain.Internal(nil,
 			"a notify target names a secret but no secret store was wired")
