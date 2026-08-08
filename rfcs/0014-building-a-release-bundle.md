@@ -174,10 +174,16 @@ Two more facts, also measured rather than assumed, because §5.2 rests on them:
 
 ### 5.1 Two commands, and why they are two
 
-```
-morzer release build   <bundle-dir> [--version V | --version-from-git] [--allow-dirty]
+```text
+morzer release build   <bundle-dir> [--version V | --version-from-git] [--allow-dirty] [--force]
 morzer release archive <bundle-dir> [-o FILE]
 ```
+
+`--force` overrides the stale-signature refusal (§5.3) and, as in
+[0012 decision 11](0012-packing-images-into-a-bundle.md), **deletes**
+`SHA256SUMS.minisig` rather than building around it. `build` propagates it to
+the pack step, so one flag covers the whole run — there is no state in which
+part of a build is forced and part is not.
 
 `build` resolves the version, stamps it into `manifest.yaml` and `VERSION`,
 invokes [0012](0012-packing-images-into-a-bundle.md)'s pack step for any image
@@ -340,8 +346,20 @@ rather than silently fall back to the default ceiling. Stated here because this
 RFC creates the dependency; recorded against 0011 as a new decision row so the
 consuming side carries it too.
 
-**Determinism.** Tar headers are normalised — uid/gid `0`, owner names empty,
-no atime/ctime — so two archives of the same tree are byte-identical. The mtime
+**Determinism needs an order, not just normalised headers.** An earlier draft
+normalised uid/gid and mtime and stopped there, which is not enough: directory
+traversal order is not specified by any filesystem, so two archives of the same
+tree could differ in entry order and `SHA256SUMS` could differ in line order.
+Both are byte differences, and the determinism claim was false as written.
+
+So the order is **canonical, not incidental**: within the four ranks in the
+table above, entries are emitted in lexicographic order of their normalised
+slash-separated relative path, and `SHA256SUMS` lists files in that same order.
+Ranking first, sorting within — the ranks exist for the budget read, the sort
+exists for reproducibility, and neither substitutes for the other.
+
+Tar headers are normalised alongside — uid/gid `0`, owner names empty, no
+atime/ctime — so two archives of the same tree are byte-identical. The mtime
 resolves in three steps: `SOURCE_DATE_EPOCH` when set; otherwise the commit date
 when `--version-from-git` supplied the version; otherwise `0`. The
 reproducible-builds convention wins where it is expressed, the git path gets a
@@ -388,6 +406,11 @@ again. It gains one paragraph it did not previously need: that a hand-rolled
   changed `SOURCE_DATE_EPOCH` and an unchanged one — and the three-step mtime
   precedence as a table, because the middle step (commit date under
   `--version-from-git`) is the one a simplifying refactor would drop.
+- **Canonical ordering, asserted directly** rather than inferred from
+  determinism: entry order and `SHA256SUMS` line order are both the sorted
+  normalised paths. A determinism test alone passes on a machine whose readdir
+  happens to be stable, which is most of them — which is exactly how this would
+  reach a vendor whose filesystem is not.
 - **The `0.0.0` refusal, as a pair**: `build` with no `--version` refuses a
   manifest at `0.0.0` and accepts one at `0.1.0`. The second half is what stops
   the refusal being widened into §5.2's sums-only path. Driven by the scaffold's
@@ -506,6 +529,8 @@ whether the three version paths share one resolver type.
 | 13 | With no `--version`, `build` refuses **`0.0.0`** and accepts every other version | `0.0.0` is legal today (`IsZero()` tests `sv == nil`) and is what [0013](0013-bundle-authoring-experience.md)'s scaffold writes, so a forgotten flag ships a bundle clean at every gate whose collision is guaranteed rather than possible — and `CheckUpgrade` only *warns* on a lower target, so it installs. Refusing the null version alone keeps §5.2's sums-only path, since a vendor using it carries a deliberate version. |
 | 14 | Archive mtime resolves `SOURCE_DATE_EPOCH` → commit date under `--version-from-git` → `0` | The reproducible-builds convention wins where expressed; the git path gets a meaningful timestamp rather than the epoch; the archive writer stays ignorant of git, receiving a time from whatever resolved the version. |
 | 15 | `archive` derives `<name>-<version>.tar.zst`, overridable with `-o` | Guessable by a human and scriptable without a lookup; the override covers pipelines that name artifacts their own way. |
+| 16 | **Refines decision 4** (2026-08-09): entries are **sorted lexicographically by normalised relative path within each rank**, and `SHA256SUMS` uses the same order | Normalised headers alone do not make an archive reproducible — directory traversal order is unspecified, so entry order and checksum line order could both vary. The ranks serve the budget read; the sort serves reproducibility; neither substitutes for the other. |
+| 17 | `--force` **deletes** `SHA256SUMS.minisig` and propagates to the pack step | Same postcondition as [0012 decision 11](0012-packing-images-into-a-bundle.md), for the same reason: forcing past the refusal while keeping the signature produces the wrongly-signed bundle the refusal exists to stop. Propagating means there is no run where part of a build is forced and part is not. |
 
 ## 12. Phasing
 

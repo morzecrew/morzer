@@ -120,8 +120,8 @@ mismatch a verification failure; this RFC makes it impossible to produce.
 
 ### 5.1 The command
 
-```
-morzer release pack <bundle-dir> [--platform linux/amd64]
+```text
+morzer release pack <bundle-dir> [--platform linux/amd64] [--force]
 ```
 
 Reads `<bundle-dir>/manifest.yaml`, and for every image with `from: bundle`
@@ -138,15 +138,33 @@ blobs.
 
 | Situation | Behaviour |
 | --- | --- |
-| An image marked `from: bundle` cannot be resolved or pulled | Refuse. A partially-packed bundle must not exist. |
+| An image marked `from: bundle` cannot be resolved or pulled | Refuse, and **`SHA256SUMS` is not regenerated**, so the half-populated tree fails `release verify`. |
 | The registry digest does not match what the manifest pins | Refuse, naming both. This is the check that makes the bundle's provenance meaningful. |
-| An existing `SHA256SUMS.minisig` is present | Refuse unless `--force`: the signature covers a `SHA256SUMS` that packing is about to invalidate, and leaving a stale signature beside a changed tree is worse than refusing. |
+| An existing `SHA256SUMS.minisig` is present | Refuse unless `--force`: the signature covers a `SHA256SUMS` that packing is about to invalidate, and leaving a stale signature beside a changed tree is worse than refusing. **`--force` deletes it** — see below. |
 | `images/` contains entries no manifest names | Refuse. 0011 makes this a verification failure downstream; catching it here names the cause. |
 
 The refusal on a stale signature is the one an implementer is most likely to
 soften. It should not be softened: a bundle whose signature verifies against a
 `SHA256SUMS` that no longer matches the tree is precisely the failure the chain
 exists to prevent.
+
+**And `--force` must not preserve that failure either.** Overriding the refusal
+and leaving the signature in place produces exactly the artefact the refusal
+existed to stop, so `--force` **deletes `SHA256SUMS.minisig`** and says it did.
+The bundle is then honestly unsigned, and the vendor re-signs — which is the
+step they were skipping. An unsigned bundle is a state the chain already
+handles ([0004](0004-distribution-and-verification.md)'s `require_signature` is
+the operator's control); a wrongly-signed one is not.
+
+**On partial writes.** An earlier draft of the table above promised that "a
+partially-packed bundle must not exist", which `pack` cannot deliver while
+writing in place (decision 7) — a failure on the fourth image leaves the first
+three copied. The reviewable guarantee is different and achievable: blobs are
+content-addressed, so a partial copy leaves *orphans* rather than corruption,
+and because `SHA256SUMS` is regenerated only after every image succeeds, the
+tree fails `release verify` until a later `pack` completes. Staging the whole
+layout to make the stronger promise would double the disk for a multi-gigabyte
+bundle, which decision 7 already rejected for a weaker reason than this one.
 
 ### 5.2 Copying, with `oras-go`
 
@@ -303,6 +321,8 @@ reported, and whether the four refusals in §5.1 share one error type.
 | 8 | `pack` **verifies the whole bundle afterwards**, reusing `release verify`'s code | The cheapest defect prevention in either RFC: a manifest/layout mismatch is caught on the vendor's machine instead of the customer's, for one function call and no second checker. Consequence: `pack` fails on a bundle that was already broken before it ran, which is correct and will surprise someone once. |
 | 9 | One `--platform` flag; per-image selection deferred | True of every release today, and addable later without changing the single-flag spelling. Reopens for a release mixing an app with a sidecar built for another architecture. |
 | 10 | **Amends decision 1** (2026-08-08): archiving is no longer merely excluded, it is **delegated** to [0014](0014-building-a-release-bundle.md) | Decision 1 lumped signing, archiving and publishing together as one boundary. They are not one boundary: signing is a key-custody question the manager must never cross, while archiving is a file-format question with a locked correctness requirement — [0011 decision 11](0011-bundled-container-images.md)'s budget read needs `manifest.yaml` first, which no `tar` invocation guarantees. Consequence: decision 1's *signing* half stands unchanged and is the reason 0014 is two commands rather than one; the archiving half moves rather than disappearing, and `pack` remains an images-and-sums command. |
+| 11 | **Refines decision 4** (2026-08-09): `--force` **deletes** the stale `SHA256SUMS.minisig` rather than packing around it | Overriding the refusal and leaving the signature produces the exact artefact the refusal exists to stop — a signature authenticating a `SHA256SUMS` that no longer matches. Consequence: a forced pack yields an honestly *unsigned* bundle, which `require_signature` already handles, and the vendor must re-sign. |
+| 12 | The partial-write guarantee is "**does not verify**", not "does not exist" | `pack` writes in place (decision 7), so a failure on the fourth image leaves three copied. Content-addressed blobs make those orphans rather than corruption, and `SHA256SUMS` is regenerated only after every image succeeds — so the tree fails `release verify` until a later `pack` completes. Staging to promise more would double disk for a multi-gigabyte bundle. |
 
 ## 12. Phasing
 
