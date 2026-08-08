@@ -42,8 +42,13 @@ func (a *App) buildNotifiers(ctx context.Context, inst domain.Installation, secr
 	for _, cfg := range inst.Notify.Targets {
 		n, err := a.buildNotifier(ctx, cfg, secrets)
 		if err != nil {
-			a.log.Warn("a notify target was dropped",
-				"target", cfg.Label(), "error", domain.AsError(err).Message)
+			// Nil-checked because this runs during wiring, and a
+			// caller that assembles Deps without a logger must not
+			// crash on the path that exists to *tolerate* failure.
+			if a.log != nil {
+				a.log.Warn("a notify target was dropped",
+					"target", cfg.Label(), "error", domain.AsError(err).Message)
+			}
 			continue
 		}
 		out = append(out, n)

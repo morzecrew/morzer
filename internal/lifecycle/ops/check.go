@@ -120,7 +120,7 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 		if !v.GreaterThan(current.Version) {
 			continue
 		}
-		rep := domain.CheckUpgrade(current.Version, v, releaseCompatibility(ctx, d, v),
+		rep := domain.CheckUpgrade(current.Version, v, releaseCompatibility(d, v),
 			d.ManagerVersion, current.SchemaAtInstall)
 		if !rep.OK {
 			continue
@@ -141,11 +141,10 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 // it — which is the right direction for a report: `--check` tells an operator
 // something exists, and `update` is what refuses. Narrowing here on absent
 // information would hide a release rather than describe it.
-func releaseCompatibility(ctx context.Context, d *Deps, v domain.Version) domain.Compatibility {
+func releaseCompatibility(d *Deps, v domain.Version) domain.Compatibility {
 	if rel, err := d.resolveInstalled(v.String()); err == nil {
 		return rel.Manifest.Compatibility
 	}
-	_ = ctx
 	return domain.Compatibility{}
 }
 

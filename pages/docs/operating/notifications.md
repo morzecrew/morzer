@@ -91,6 +91,17 @@ host for one. The consequence is worth stating plainly — **the journal is the
 record, and the notification is how a human learns to go and read it.** Do not
 build a process that assumes every failure produced a message.
 
+**A run the operating system kills does not notify.** Delivery happens inside
+the operation, so an ordinary failure — a hook exiting non-zero, a push that
+could not reach its target, a health check that never passed — is reported
+normally. What is not reported is a run terminated from outside: Ctrl-C, or
+systemd's `TimeoutStartSec` firing on the backup timer.
+
+That is a deliberate trade rather than an oversight. Sending the message anyway
+would mean the manager keeping a connection open after it had been told to
+stop, which leaves an operator's Ctrl-C looking wedged for as long as the
+deadline allows. The journal records the interruption either way.
+
 A notifier failure never changes an operation's outcome. An `update` does not
 fail because a webhook was down, and you should not learn about a chat outage by
 way of a rolled-back deployment.

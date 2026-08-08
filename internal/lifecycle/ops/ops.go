@@ -275,6 +275,14 @@ func (d *Deps) notifyFinished(
 	rec domain.OperationRecord,
 	runErr error,
 ) {
+	// A plan is not an outcome. Every operation reaches here, including
+	// `--dry-run`, which mutates nothing and whose "finished" would be a
+	// webhook announcing that somebody looked. Checked on the record rather
+	// than on Options because this is the value the engine actually wrote.
+	if rec.DryRun {
+		return
+	}
+
 	status := rec.Status
 	var failure *domain.Error
 	if runErr != nil {
@@ -296,11 +304,22 @@ func (d *Deps) notify(ctx context.Context, ev events.Event) {
 		return
 	}
 
-	// Detached from the operation's context on purpose. An operation that
-	// has just been cancelled or has just failed is exactly when the
-	// notification matters most, and a cancelled parent would silently drop
-	// it -- the failure notification would be the one that never goes out.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), NotifyDeadline)
+	// Bounded, and *not* detached from the operation's context.
+	//
+	// Detaching was the first instinct -- a failed operation is exactly when
+	// the notification matters, and a cancelled parent drops it. But the
+	// contexts that are cancelled here are the ones an operator just
+	// cancelled: Ctrl-C would then leave the CLI apparently wedged for the
+	// whole deadline while it posted to an endpoint nobody is waiting for.
+	// Fifteen seconds of unresponsiveness after Ctrl-C is a worse failure
+	// than a missing message about a run the operator watched themselves
+	// interrupt.
+	//
+	// The case that matters is unaffected: an operation that *fails* has a
+	// live context, so its notification goes out. What is lost is the
+	// cancelled and timed-out runs, and the journal is the record for those
+	// -- which is what at-most-once delivery already meant.
+	ctx, cancel := context.WithTimeout(ctx, NotifyDeadline)
 	defer cancel()
 
 	if err := d.Notifier.Notify(ctx, ev); err != nil {
