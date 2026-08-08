@@ -538,15 +538,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          # A parse failure is swallowed here so the check below reports it,
-          # rather than the run ending on a bare jq or traceback that says
-          # nothing about which gate is unwired.
+          # yq on the runner image, PyYAML if a future image drops it. Neither
+          # is installed here on purpose: this is the check a ruleset requires,
+          # and a gate that reaches out to a package index before it can answer
+          # has traded a clear failure for a flaky one.
+          #
+          # So the reader is named and the absence of one is reported as
+          # itself. A parse failure is swallowed for the same reason -- the
+          # check below says which gate is unwired, or why it cannot tell,
+          # rather than the run ending on a bare jq error or a traceback.
+          reader=""
           if command -v yq >/dev/null 2>&1; then
+            reader="yq"
             all=$(yq -r '.jobs | keys[]' .github/workflows/ci.yml 2>/dev/null || true)
-          else
+          elif python3 -c 'import yaml' 2>/dev/null; then
+            reader="python3+PyYAML"
             all=$(python3 -c 'import sys, yaml; print("\n".join(yaml.safe_load(open(sys.argv[1]))["jobs"]))' \
               .github/workflows/ci.yml 2>/dev/null || true)
+          else
+            echo "::error::no YAML reader on this runner (need yq or PyYAML) —" \
+              "this check cannot confirm every gate is wired in, so it refuses"
+            exit 1
           fi
+          echo "job names read with ${reader}"
 
           # The reader has to be able to see *this* job, or it cannot be
           # trusted to see the others: a parse that returned nothing would
