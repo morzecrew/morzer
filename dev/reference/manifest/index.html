@@ -2520,13 +2520,18 @@ system on a different day.</p>
 </tr>
 <tr>
 <td><code>mode</code></td>
-<td>octal</td>
+<td>quoted octal</td>
 <td style="text-align: center;"></td>
-<td>File mode. Default <code>0640</code>.</td>
+<td>File mode. Default <code>"0640"</code>.</td>
 </tr>
 </tbody>
 </table>
 <p>Rendered files contain <em>paths</em> to secrets, never secret values.</p>
+<p>The quotes on <code>mode</code> are load-bearing. <abbr title="YAML Ain't Markup Language">YAML</abbr> reads an unquoted <code>0640</code> as the
+decimal number 416, which is the permission <code>0416</code> — owner read-only, group
+execute-only, other read/write. Unquoted modes are refused rather than applied,
+so a manifest that gets this wrong fails to load instead of installing a file
+with permissions nobody chose.</p>
 <h2 id="secrets">secrets<a class="headerlink" href="#secrets" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
