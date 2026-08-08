@@ -183,14 +183,48 @@ morzer restore --force --confirm <the NEW id> --allow-cross-installation
 is already required for every restore. Restoring another deployment's data is a
 distinct decision and needs its own answer.
 
-What you do not get back: the old installation id, and the secrets. **The
-secrets are gone.** Every credential the product used has to be set again, and
-anything derived from them — session keys, encrypted columns the product manages
-itself — may be unreadable.
+What you do not get back automatically: the old installation id, and the
+secrets. `restore` brings back the database and the volumes; it does not
+reinstate the secret state.
+
+**The secrets are not necessarily lost, though — that depends on the recovery
+key, not on the export.** A backup carries `secrets.sops.yaml` and
+`secrets.recipients.yaml`, encrypted to the same recipients as everything else
+in it. If the recovery key was one of them, you can get the values back by hand
+and set them again with `morzer secret set`.
+
+There are two layers, because the SOPS document is itself stored as an
+encrypted backup component:
+
+```sh
+cd /var/lib/demo/backups/<id>
+
+# 1. the backup component
+age --decrypt -i ~/recovery.key secrets.sops.yaml.age > secrets.sops.yaml
+
+# 2. the SOPS document inside it
+SOPS_AGE_KEY_FILE=~/recovery.key sops --decrypt secrets.sops.yaml
+```
+
+The same key opens both, because it was a recipient of both. Tedious, and much
+worse than having an export, but not the same as gone — and delete the
+intermediate file when you are done with it.
+
+### Without a recovery key, nothing is recoverable
+
+This is the case worth understanding before it happens. Backups are encrypted to
+the secret store's recipient list. With no recovery recipient, that list is the
+machine's own age key and nothing else — and that key was on the machine you no
+longer have.
+
+So it is not merely the secrets that are unreadable. **The database dump and the
+volumes are too.** Every backup you took is ciphertext nobody holds a key for.
 
 That is the outcome the recovery key exists to prevent, and the reason `init`
 refuses to proceed without one unless you say `--no-recovery-recipient` out
-loud.
+loud. `morzer doctor` reports it as `secrets.recovery-recipient`; if that check
+is not passing on a machine you care about, it is the most urgent thing on this
+page.
 
 ## What is not covered
 
