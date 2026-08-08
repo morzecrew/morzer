@@ -724,7 +724,7 @@ func (d *Deps) checkUpdateAvailable(inst domain.Installation) preflight.Check {
 				return preflight.OK("%s is available (installed %s)",
 					res.Latest, res.Installed)
 			}
-			return preflight.OK("%s is the newest available", res.Installed)
+			return preflight.OK("%s is installed; nothing newer is offered", res.Installed)
 		},
 	}
 }

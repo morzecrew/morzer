@@ -149,9 +149,13 @@ func releaseCompatibility(d *Deps, v domain.Version) domain.Compatibility {
 }
 
 // Summary renders the result for a human.
+//
+// The two outcomes are worded so they cannot be confused by a reader skimming,
+// or by a script grepping. "X is available" and "X is the newest available"
+// differ by three words and mean opposite things, which was the first draft.
 func (r UpdateCheckResult) Summary() string {
 	if r.Available {
 		return fmt.Sprintf("%s is available (installed %s)", r.Latest, r.Installed)
 	}
-	return fmt.Sprintf("%s is the newest available", r.Installed)
+	return fmt.Sprintf("%s is installed; nothing newer is offered", r.Installed)
 }
