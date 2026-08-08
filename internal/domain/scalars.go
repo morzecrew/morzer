@@ -110,6 +110,15 @@ func (m *FileMode) UnmarshalText(b []byte) error {
 
 // ByteSize accepts the IEC and SI spellings operators actually type: 4GiB,
 // 512MB, 40G, or a bare byte count.
+//
+// A bare count is a YAML integer, so YAML's own base rules apply to it before
+// this type sees anything: `010` is octal and arrives as 8, `0x10` is hex and
+// arrives as 16. That is inherited, not chosen -- unlike FileMode, where the
+// spelling in question is the one every manifest uses and refusing it was
+// worth the guard. A zero-padded byte count is not a form anyone writes, and
+// refusing integers here would break the bare count this type documents. It is
+// pinned by test rather than fixed, so it is a known property instead of a
+// surprise; the test is where the decision gets revisited if that changes.
 type ByteSize int64
 
 const (

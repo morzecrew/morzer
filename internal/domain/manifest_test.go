@@ -437,6 +437,34 @@ func TestScalarRoundTrips(t *testing.T) {
 			var d Duration
 			require.Error(t, d.UnmarshalText([]byte("30")), "30 what?")
 		})
+
+		// The two types that accept a bare integer on purpose inherit YAML's
+		// bases along with it. Pinned rather than fixed: refusing integers
+		// would undo the documented reason both types exist, and a zero-padded
+		// size or port is not a spelling anyone writes. Recorded here so it is
+		// a known property, and so the decision has somewhere to be revisited.
+		t.Run("bare integers carry YAML's bases, by inheritance", func(t *testing.T) {
+			var size struct {
+				V ByteSize `yaml:"v"`
+			}
+			require.NoError(t, decode(t, "v: 1024", &size))
+			assert.Equal(t, int64(1024), size.V.Bytes(), "a plain count is itself")
+
+			require.NoError(t, decode(t, "v: 010", &size))
+			assert.Equal(t, int64(8), size.V.Bytes(), "YAML read 010 as octal before we saw it")
+
+			require.NoError(t, decode(t, `v: "4GiB"`, &size))
+			assert.Equal(t, int64(4*GiB), size.V.Bytes(), "the quoted form is unaffected")
+
+			var port struct {
+				V PortSpec `yaml:"v"`
+			}
+			require.NoError(t, decode(t, "v: 18080", &port))
+			assert.Equal(t, PortSpec("18080"), port.V, "the unquoted port this type exists for")
+
+			require.NoError(t, decode(t, "v: 010", &port))
+			assert.Equal(t, PortSpec("8"), port.V, "same inheritance, same reason")
+		})
 	})
 
 	t.Run("byte size accepts what operators type", func(t *testing.T) {
