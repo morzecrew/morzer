@@ -93,13 +93,39 @@ func LoadManifest(path string) (domain.Manifest, error) {
 	return ParseManifest(data, path)
 }
 
+// managerVersion is the running manager's own version, recorded once at
+// startup so ParseManifest can answer the question in checkManagerVersion.
+//
+// Package state rather than a parameter because Load and ParseManifest have
+// dozens of call sites, almost none of which care -- and because this is a
+// build-time constant of the process, not something that varies per call. Zero
+// means unknown, which skips the check: the strict decode still runs, so an
+// unset version costs the better error message and nothing else.
+var managerVersion domain.Version
+
+// SetManagerVersion records the running manager's version. Called once from
+// the CLI at startup; tests set it directly.
+func SetManagerVersion(v domain.Version) { managerVersion = v }
+
 // ParseManifest decodes manifest bytes.
 //
 // Decoding is strict: an unknown field is an error, not a silently ignored
 // key. A typo in a manifest field would otherwise mean the manager quietly
 // uses a default while the author believes they configured something.
+//
+// That strictness has a cost the manifest's own compatibility block was meant
+// to cover and cannot: `min_manager_version` is read by CheckUpgrade, which
+// runs on an *already decoded* manifest, so a release using a field this
+// manager predates fails here first and reports a typo. checkManagerVersion is
+// the lenient pass that lets the release say what it actually needs.
 func ParseManifest(data []byte, source string) (domain.Manifest, error) {
 	var m domain.Manifest
+
+	// Before the strict decode, or the unknown field wins the race and the
+	// operator is told about a typo in a file they did not write.
+	if err := checkManagerVersion(data, source); err != nil {
+		return domain.Manifest{}, err
+	}
 
 	if err := yaml.UnmarshalWithOptions(data, &m,
 		yaml.Strict(),
@@ -167,6 +193,56 @@ func LoadSecretSchema(rel domain.Release) (domain.SecretSchema, error) {
 		return domain.SecretSchema{}, domain.ValidationError(err, "%s: %s", path, e.Message)
 	}
 	return schema, nil
+}
+
+// manifestPreamble is the little of a manifest that must be readable before
+// the rest is judged.
+//
+// Every field is a string, deliberately: this decode has to succeed against a
+// manifest written for a *newer* manager, so it must not depend on any
+// UnmarshalYAML the current build happens to have. Parsing is done afterwards,
+// by hand, on values this build understands.
+type manifestPreamble struct {
+	APIVersion    string `yaml:"api_version"`
+	Compatibility struct {
+		MinManagerVersion string `yaml:"min_manager_version"`
+	} `yaml:"compatibility"`
+}
+
+// checkManagerVersion refuses a manifest that declares it needs a newer
+// manager than this one, before strict decoding gets a chance to blame a typo.
+//
+// Everything it cannot answer, it declines to answer: unparseable YAML, an
+// absent or malformed min_manager_version, an unknown manager version. In each
+// case it returns nil and the strict decode reports whatever is really wrong,
+// with the position information it is good at. The check only ever *replaces*
+// a confusing error with a clear one -- it never rejects a manifest the strict
+// pass would have accepted, which is what makes running it first safe.
+func checkManagerVersion(data []byte, source string) error {
+	if managerVersion.IsZero() {
+		return nil
+	}
+
+	var p manifestPreamble
+	if err := yaml.Unmarshal(data, &p); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(p.Compatibility.MinManagerVersion) == "" {
+		return nil
+	}
+	required, err := domain.ParseVersion(p.Compatibility.MinManagerVersion)
+	if err != nil {
+		return nil
+	}
+	if !managerVersion.LessThan(required) {
+		return nil
+	}
+
+	return domain.IncompatibleError(nil,
+		"%s requires morzer %s or newer, and this is %s",
+		source, required, managerVersion).
+		WithHint("upgrade the manager, or install a release built for this version. " +
+			"A newer release may use manifest fields this build does not know")
 }
 
 // decodeError turns a YAML decoder error into a domain error carrying line,
