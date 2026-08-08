@@ -748,6 +748,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/notifications/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Notifications
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -1993,8 +2022,19 @@ has somewhere to go. How many is the manifest's <code>retention.releases</code>.
 <h2 id="release-verify">release verify<a class="headerlink" href="#release-verify" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>&lt;path&gt;
 </code></pre></div>
-<p>Validates a bundle's manifest and checks its integrity, without installing
-anything. This is the command a bundle vendor runs in their own CI.</p>
+<p>Validates a bundle's manifest, <strong>parses every template it declares</strong>, and
+checks its integrity, without installing anything. This is the command a bundle
+vendor runs in their own CI.</p>
+<p>The template pass is parsing, not rendering. A template that parses can still
+fail against a real context — the render context has values only an
+installation can supply — so a clean <code>verify</code> means the templates are
+syntactically sound, not that they will produce what you expect. Parsing needs
+no installation, no parameters and no network, which is what makes it safe to
+run on every commit.</p>
+<p>It matters because the alternative is worse: without it, a template with an
+unterminated action passes <code>verify</code> and fails during an operator's <code>apply</code>,
+part-way through a journaled operation, on a machine belonging to someone who
+did not write it.</p>
 <table>
 <thead>
 <tr>

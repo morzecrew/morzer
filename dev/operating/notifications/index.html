@@ -12,13 +12,13 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/authoring/backing-up-volumes/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/operating/notifications/">
       
       
-        <link rel="prev" href="../hooks/">
+        <link rel="prev" href="../installing-offline/">
       
       
-        <link rel="next" href="../publishing/">
+        <link rel="next" href="../recovering-a-lost-machine/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Declaring volume consistency - morzer</title>
+        <title>Notifications - morzer</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#declaring-volume-consistency" class="md-skip">
+        <a href="#notifications" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Declaring volume consistency
+              Notifications
             
           </span>
         </div>
@@ -243,14 +243,16 @@
   
   
   
+    
+  
   
     
       
     
     
     
-      <li class="md-tabs__item">
-        <a href="../../operating/updating/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../updating/" class="md-tabs__link">
           
   
   Operating
@@ -265,16 +267,14 @@
   
   
   
-    
-  
   
     
       
     
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../authoring/" class="md-tabs__link">
           
   
   Authoring
@@ -521,26 +521,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -557,7 +562,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -574,7 +579,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/updating/" class="md-nav__link">
+      <a href="../updating/" class="md-nav__link">
         
   
   
@@ -603,7 +608,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/rolling-back/" class="md-nav__link">
+      <a href="../rolling-back/" class="md-nav__link">
         
   
   
@@ -632,7 +637,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/secrets/" class="md-nav__link">
+      <a href="../secrets/" class="md-nav__link">
         
   
   
@@ -661,7 +666,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/backups/" class="md-nav__link">
+      <a href="../backups/" class="md-nav__link">
         
   
   
@@ -690,7 +695,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/changing-configuration/" class="md-nav__link">
+      <a href="../changing-configuration/" class="md-nav__link">
         
   
   
@@ -719,7 +724,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/installing-offline/" class="md-nav__link">
+      <a href="../installing-offline/" class="md-nav__link">
         
   
   
@@ -729,242 +734,6 @@
     
   
   Installing without a network
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../operating/notifications/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Notifications
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Recovering a lost machine
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-    
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Authoring
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-  Authoring
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  What a bundle is
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../your-first-bundle/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Your first bundle
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../a-three-tier-bundle/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  A three-tier bundle
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../hooks/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Writing hooks
 
     
   </span>
@@ -997,12 +766,12 @@
           
   
   
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
   
   <span class="md-ellipsis">
     
   
-  Declaring volume consistency
+  Notifications
 
     
   </span>
@@ -1016,12 +785,12 @@
         
   
   
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
   
   <span class="md-ellipsis">
     
   
-  Declaring volume consistency
+  Notifications
 
     
   </span>
@@ -1047,65 +816,66 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#the-default-needs-no-declaration" class="md-nav__link">
+  <a href="#configuring-a-target" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        The default needs no declaration
+        Configuring a target
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuring a target">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-the-url-is-the-credential" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        When the URL is the credential
       </span>
     </span>
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#what-hot-means" class="md-nav__link">
+  <a href="#what-is-sent" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What <code>hot</code> means
+        What is sent
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is sent">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-sent-and-why" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What is not sent, and why
       </span>
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#what-exclude-means" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What <code>exclude</code> means
-      </span>
-    </span>
-  </a>
+        
+      </ul>
+    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-it-costs-the-operator" class="md-nav__link">
+  <a href="#what-you-should-not-build-on-it" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What it costs the operator
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#bind-mounts" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Bind mounts
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#checking-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Checking it
+        What you should not build on it
       </span>
     </span>
   </a>
@@ -1128,7 +898,238 @@
   
   
     <li class="md-nav__item">
-      <a href="../publishing/" class="md-nav__link">
+      <a href="../recovering-a-lost-machine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Recovering a lost machine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Authoring
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Authoring
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a bundle is
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/your-first-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/a-three-tier-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  A three-tier bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Writing hooks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/publishing/" class="md-nav__link">
         
   
   
@@ -1747,65 +1748,66 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#the-default-needs-no-declaration" class="md-nav__link">
+  <a href="#configuring-a-target" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        The default needs no declaration
+        Configuring a target
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuring a target">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-the-url-is-the-credential" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        When the URL is the credential
       </span>
     </span>
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#what-hot-means" class="md-nav__link">
+  <a href="#what-is-sent" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What <code>hot</code> means
+        What is sent
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is sent">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-sent-and-why" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What is not sent, and why
       </span>
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#what-exclude-means" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What <code>exclude</code> means
-      </span>
-    </span>
-  </a>
+        
+      </ul>
+    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-it-costs-the-operator" class="md-nav__link">
+  <a href="#what-you-should-not-build-on-it" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What it costs the operator
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#bind-mounts" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Bind mounts
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#checking-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Checking it
+        What you should not build on it
       </span>
     </span>
   </a>
@@ -1859,11 +1861,11 @@
     
     
       <li class="md-path__item">
-        <a href="../" class="md-path__link">
+        <a href="../updating/" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    Authoring
+    Operating
   </span>
 
         </a>
@@ -1883,115 +1885,105 @@
   
 
 
-<h1 id="declaring-volume-consistency">Declaring volume consistency<a class="headerlink" href="#declaring-volume-consistency" title="Permanent link">&para;</a></h1>
-<p>Your backup hook dumps your database. The manager reads your project's named
-volumes. Between them they cover the deployment — but only one of you knows
-whether a volume can be read while your product is writing to it, and it is not
-the manager.</p>
-<p>That is what <code>backup.volumes</code> is for. It is a small declaration with a
-disproportionate consequence, so this page is mostly about what you are
-claiming.</p>
-<h2 id="the-default-needs-no-declaration">The default needs no declaration<a class="headerlink" href="#the-default-needs-no-declaration" title="Permanent link">&para;</a></h2>
-<p>Every named volume in your Compose project is captured. A volume you say nothing
-about is captured <strong>cold</strong>: the manager stops the services that mount it, copies
-it, and starts them again.</p>
-<p>That is correct for every volume, and slow for some. If your product's
-deployment is fine with a short stop during a nightly backup, you can ship
-nothing at all and it will work.</p>
-<h2 id="what-hot-means">What <code>hot</code> means<a class="headerlink" href="#what-hot-means" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="nt">backup</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">uploads</span><span class="p">:</span><span class="w">    </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="nt">caddy_data</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="nt">pgdata</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">exclude</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<h1 id="notifications">Notifications<a class="headerlink" href="#notifications" title="Permanent link">&para;</a></h1>
+<p>The manager can post the outcome of an operation to an HTTPS endpoint. It is
+off until you configure a target.</p>
+<p>The case it exists for is the nightly backup. On any machine where <code>init</code> found
+systemd, a backup runs on a timer with nobody watching — and
+<a href="../backups/">a failed push fails the whole backup</a>, deliberately, so that
+"success" cannot mean "still only on the doomed machine". Without a
+notification, that correct and loud failure is a journal entry nobody reads.</p>
+<h2 id="configuring-a-target">Configuring a target<a class="headerlink" href="#configuring-a-target" title="Permanent link">&para;</a></h2>
+<div class="highlight"><span class="filename">installation.yaml</span><pre><span></span><code><span class="nt">notify</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">targets</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://hooks.example/morzer</span>
+<span class="w">      </span><span class="nt">credentials</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">notify-webhook</span>
+<span class="w">      </span><span class="nt">min_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">error</span>
 </code></pre></div>
-<p><code>consistency: hot</code> says: <strong>a copy of this volume taken while my product is
-running is a usable copy.</strong></p>
-<p>Copying a live volume gives a <em>crash-consistent</em> copy — byte-for-byte what a
-power cut would have left. So the question you are answering is: would my
-product come up correctly from this volume if the machine had lost power at an
-arbitrary instant?</p>
 <table>
 <thead>
 <tr>
-<th>Usually <code>hot</code></th>
-<th>Never <code>hot</code></th>
+<th>Field</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Uploaded files written once and never modified</td>
-<td>Anything with a write-ahead log — Postgres, MySQL, MongoDB, etcd</td>
+<td><code>url</code></td>
+<td>The endpoint. Must be <code>https</code>.</td>
 </tr>
 <tr>
-<td>Generated thumbnails and other derived artifacts</td>
-<td>A search index that is written incrementally</td>
+<td><code>url_secret</code></td>
+<td>Names a secret holding the whole URL, for services where the URL <em>is</em> the credential. Exclusive with <code>url</code>.</td>
 </tr>
 <tr>
-<td>A certificate store written by an ACME client</td>
-<td>A queue whose spool assumes ordered writes</td>
+<td><code>credentials</code></td>
+<td>Names a secret holding a small <abbr title="YAML Ain't Markup Language">YAML</abbr> document with <code>header</code> and <code>value</code>, sent with each request.</td>
 </tr>
 <tr>
-<td>Static assets extracted at build time</td>
-<td>Anything you would not <code>kill -9</code> and restart</td>
+<td><code>min_level</code></td>
+<td>Lowest <code>doctor</code> severity this target receives: <code>warn</code> or <code>error</code>. Default <code>error</code>.</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>Label used in diagnostics. Required with <code>url_secret</code>, since nothing else is safe to print.</td>
 </tr>
 </tbody>
 </table>
-<p>The test that catches most of it: <em>if this volume is half-written, does my
-product notice and repair it, or does it silently serve corrupt data?</em> The first
-is <code>hot</code>. The second is not, however convenient it would be.</p>
-<div class="admonition warning">
-<p class="admonition-title"><code>hot</code> is a claim you make about your own product</p>
-<p>It is recorded in every backup manifest taken under it. If an operator ever
-has to explain why a restore did not work, the manifest says which volumes
-were copied live and on whose word.</p>
-<p>When you are not sure, say nothing. The default is correct; it is only slow.</p>
-</div>
-<h2 id="what-exclude-means">What <code>exclude</code> means<a class="headerlink" href="#what-exclude-means" title="Permanent link">&para;</a></h2>
-<p><code>consistency: exclude</code> keeps the manager out of a volume entirely — nothing is
-copied and nothing is restored.</p>
-<p>This is the expected declaration for your database's storage. Your backup hook
-already dumps it properly, and a second copy taken by other means is a copy
-somebody could restore instead of the good one.</p>
-<div class="highlight"><pre><span></span><code><span class="nt">backup</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">pgdata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">exclude</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<p>Several targets each receive every event. One failing does not stop the others.</p>
+<h3 id="when-the-url-is-the-credential">When the URL is the credential<a class="headerlink" href="#when-the-url-is-the-credential" title="Permanent link">&para;</a></h3>
+<p>A Slack or Teams incoming-webhook URL is a bearer token spelled as a path.
+Putting one in <code>url</code> writes it into a file you will paste into support tickets,
+into <code>doctor</code> output, and into an <code>installation export</code> that travels beside a
+recovery key.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">notify</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">targets</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">chat</span>
+<span class="w">      </span><span class="nt">url_secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">notify-chat-url</span>
 </code></pre></div>
-<p>Excluded volumes are reported to the operator — in the backup manifest and in
-<code>morzer doctor</code> — so nobody is left believing a volume is covered when it is
-not.</p>
-<h2 id="what-it-costs-the-operator">What it costs the operator<a class="headerlink" href="#what-it-costs-the-operator" title="Permanent link">&para;</a></h2>
-<p>Before you leave a volume undeclared, know what the default does on their
-machine:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>notify-chat-url
+</code></pre></div>
+<p>Diagnostics then name the target <code>chat</code> and never say where it points, which is
+the trade: you lose "unreachable host x" and keep the token out of your logs.</p>
+<h2 id="what-is-sent">What is sent<a class="headerlink" href="#what-is-sent" title="Permanent link">&para;</a></h2>
+<p>Two kinds of event, and no others:</p>
 <ul>
-<li>Only the services that mount that volume are stopped, not the whole project.</li>
-<li>Every cold volume in one backup shares a single stop-and-start, so a project
-  with four undeclared volumes has one downtime window, not four.</li>
-<li>The services come back up even if the copy fails.</li>
-<li>An operator can run <code>morzer backup --no-downtime</code>, which <strong>skips</strong> undeclared
-  volumes rather than copying them live. Their nightly backup then quietly
-  covers less than it looks like it does — which is the outcome your
-  declarations exist to prevent.</li>
+<li><code>operation.finished</code> — the outcome of an <code>apply</code>, <code>update</code>, <code>rollback</code>,
+  <code>config</code>, <code>backup</code> or <code>restore</code>, including <strong>failures</strong>.</li>
+<li><code>check</code> — a <code>doctor</code> result at or above the target's <code>min_level</code>.</li>
 </ul>
-<p>That last point is the argument for declaring. A vendor who classifies their
-volumes gives operators a fast backup that covers everything; a vendor who
-declares nothing forces them to choose between downtime and coverage.</p>
-<h2 id="bind-mounts">Bind mounts<a class="headerlink" href="#bind-mounts" title="Permanent link">&para;</a></h2>
-<p>The manager never captures a bind mount, and there is no declaration that
-changes it. A bind mount points at an arbitrary host path — it can be enormous,
-it can be shared, it can be outside anything the manager manages.</p>
-<p>If your product's data lives on a bind mount, it is not in any backup. Use a
-named volume.</p>
-<h2 id="checking-it">Checking it<a class="headerlink" href="#checking-it" title="Permanent link">&para;</a></h2>
-<p><code>morzer release verify</code> rejects a <code>consistency</code> that is not one of the three
-values, so a typo fails at your terminal rather than turning into a volume
-captured differently than you meant.</p>
-<p><code>morzer doctor</code> on a deployment running your release reports what is and is not
-covered:</p>
-<div class="highlight"><pre><span></span><code>backup   ! 2 of 3 named volume(s) captured — pgdata excluded by the release
-</code></pre></div>
-<p>See also <a href="../../operating/backups/">backups</a> for the operator's side of this, and
-<a href="../hooks/">hooks</a> for the half of the backup that stays yours.</p>
+<p>The payload is the manager's own event <abbr title="JavaScript Object Notation">JSON</abbr>, the same shape <code>--log-format json</code>
+emits. A service wanting a different body gets a two-line receiver.</p>
+<h3 id="what-is-not-sent-and-why">What is not sent, and why<a class="headerlink" href="#what-is-not-sent-and-why" title="Permanent link">&para;</a></h3>
+<p>Step output is never forwarded. It carries raw hook stdout, <code>docker compose</code>
+stderr, and whatever a vendor's migration script prints — the highest-volume,
+least structured, least predictable thing the manager handles. The engine
+redacts secrets before publishing any event, and that guarantee is worth more
+when the blast radius of it being wrong is a local log rather than a third
+party's servers.</p>
+<p>Progress, plans and step narration are not forwarded either. They are what a
+terminal is for.</p>
+<h2 id="what-you-should-not-build-on-it">What you should not build on it<a class="headerlink" href="#what-you-should-not-build-on-it" title="Permanent link">&para;</a></h2>
+<p><strong>Delivery is at-most-once.</strong> One attempt per target, five seconds each, fifteen
+seconds for the whole fan-out, no retries and no queue. A target that was down
+means you were not told.</p>
+<p>This is a deliberate choice rather than a gap: a queue that survives reboots is
+a different component with different failure modes, and a one-shot <abbr title="Command-Line Interface">CLI</abbr> is a poor
+host for one. The consequence is worth stating plainly — <strong>the journal is the
+record, and the notification is how a human learns to go and read it.</strong> Do not
+build a process that assumes every failure produced a message.</p>
+<p><strong>A run the operating system kills does not notify.</strong> Delivery happens inside
+the operation, so an ordinary failure — a hook exiting non-zero, a push that
+could not reach its target, a health check that never passed — is reported
+normally. What is not reported is a run terminated from outside: Ctrl-C, or
+systemd's <code>TimeoutStartSec</code> firing on the backup timer.</p>
+<p>That is a deliberate trade rather than an oversight. Sending the message anyway
+would mean the manager keeping a connection open after it had been told to
+stop, which leaves an operator's Ctrl-C looking wedged for as long as the
+deadline allows. The journal records the interruption either way.</p>
+<p>A notifier failure never changes an operation's outcome. An <code>update</code> does not
+fail because a webhook was down, and you should not learn about a chat outage by
+way of a rolled-back deployment.</p>
 
 
 
@@ -2032,7 +2024,7 @@ covered:</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../hooks/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Writing hooks">
+          <a href="../installing-offline/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Installing without a network">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2042,20 +2034,20 @@ covered:</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Writing hooks
+                Installing without a network
               </div>
             </div>
           </a>
         
         
           
-          <a href="../publishing/" class="md-footer__link md-footer__link--next" aria-label="Next: Signing and publishing">
+          <a href="../recovering-a-lost-machine/" class="md-footer__link md-footer__link--next" aria-label="Next: Recovering a lost machine">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Signing and publishing
+                Recovering a lost machine
               </div>
             </div>
             <div class="md-footer__button md-icon">

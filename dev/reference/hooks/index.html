@@ -748,6 +748,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/notifications/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Notifications
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -1451,6 +1480,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-is-in-backup_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What is in <code>BACKUP_DIR</code>
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is in BACKUP_DIR">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-a-hook-may-rely-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What a hook may rely on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-a-hook-may-not-rely-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What a hook may not rely on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restore-is-staged" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restore is staged
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-result-descriptor" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1752,6 +1831,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-is-in-backup_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What is in <code>BACKUP_DIR</code>
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is in BACKUP_DIR">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-a-hook-may-rely-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What a hook may rely on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-a-hook-may-not-rely-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What a hook may not rely on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restore-is-staged" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restore is staged
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-result-descriptor" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1931,7 +2060,7 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_BACKUP_DIR</code></td>
-<td>Where a backup hook writes, and a restore hook reads.</td>
+<td>Where a backup hook writes, and a restore hook reads. Its contents are an <abbr title="Application Binary Interface">ABI</abbr> — see <a href="#what-is-in-backup_dir">below</a>.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_SECRETS_DIR</code></td>
@@ -1966,6 +2095,64 @@ variable's existence rather than its value would otherwise mutate during a plan.
 <code>smoke-test</code>, <code>backup</code>, <code>restore</code>, <code>health-check</code>.</p>
 <p>The same executable may be invoked in more than one phase; branching on <code>PHASE</code>
 is how one hook serves several.</p>
+<h2 id="what-is-in-backup_dir">What is in <code>BACKUP_DIR</code><a class="headerlink" href="#what-is-in-backup_dir" title="Permanent link">&para;</a></h2>
+<p><code>&lt;PRODUCT&gt;_BACKUP_DIR</code> names a directory, and until now this page said nothing
+about what is in it. That gap is worth closing before the first release rather
+than after: once bundles exist in the wild, whatever their hooks happen to read
+becomes a contract regardless of what any page says.</p>
+<p>So this is the contract. It is deliberately narrow.</p>
+<h3 id="what-a-hook-may-rely-on">What a hook may rely on<a class="headerlink" href="#what-a-hook-may-rely-on" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Phase</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Whatever the backup hook writes</td>
+<td><code>backup</code></td>
+<td>The directory is empty when the hook starts, and yours to fill. Nothing else writes into it during the hook.</td>
+</tr>
+<tr>
+<td>The same files, by the same names</td>
+<td><code>restore</code></td>
+<td>Exactly what your backup hook wrote, decrypted if it was encrypted at rest.</td>
+</tr>
+</tbody>
+</table>
+<p>That is the whole of it. <strong>A restore hook may rely on reading back precisely
+what the matching backup hook wrote, and on nothing else.</strong></p>
+<p>By convention a database dump is called <code>database.sql</code>, and the example bundle
+uses that name — but the manager never reads it, so the name is an agreement
+between your two hooks rather than something this tool enforces.</p>
+<h3 id="what-a-hook-may-not-rely-on">What a hook may not rely on<a class="headerlink" href="#what-a-hook-may-not-rely-on" title="Permanent link">&para;</a></h3>
+<p>The manager also places its own files in the backup directory, alongside the
+hook's. <strong>They are not part of this <abbr title="Application Binary Interface">ABI</abbr></strong>, they are not guaranteed to be
+present, and their names and contents may change:</p>
+<ul>
+<li><code>backup.json</code> — the backup's manifest, which the manager reads. Never
+  encrypted, so <code>backup list</code> needs no key.</li>
+<li><code>installation.yaml</code>, <code>application.yaml</code> — a copy of the operator-facing
+  configuration, for an incident review.</li>
+<li><code>secrets.sops.yaml</code>, <code>secrets.recipients.yaml</code> — the encrypted secret state
+  and the recipient list, so a rebuilt machine can recover its secrets.</li>
+<li><code>manifest.yaml</code> — the release manifest as it was at the time.</li>
+<li><code>volumes/&lt;name&gt;.tar</code> — captured named volumes.</li>
+<li><code>.age</code> suffixes on any of the above, since components are encrypted at rest.</li>
+</ul>
+<p>A hook that reads one of these is reading the manager's private bookkeeping.
+The reason to say so explicitly is that the alternative is to say nothing and
+discover later, from a support ticket, that a vendor built something on a file
+that moved.</p>
+<h3 id="restore-is-staged">Restore is staged<a class="headerlink" href="#restore-is-staged" title="Permanent link">&para;</a></h3>
+<p>During <code>restore</code> the directory a hook is pointed at is <strong>not</strong> the stored
+backup — it is a temporary directory holding the decrypted components, created
+beside the backup and overwritten however the hook exits. A hook must not write
+anything there expecting it to persist, and must not assume the path is stable
+between runs.</p>
 <h2 id="the-result-descriptor">The result descriptor<a class="headerlink" href="#the-result-descriptor" title="Permanent link">&para;</a></h2>
 <p>Structured results are written as a single <abbr title="JavaScript Object Notation">JSON</abbr> object to file descriptor
 <strong>3</strong>, not to stdout. stdout goes to the log and the live view, and a hook
