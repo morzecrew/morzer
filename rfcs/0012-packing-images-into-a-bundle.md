@@ -2,7 +2,10 @@
 
 - **Status:** 📝 Draft — **design locked** 2026-08-08, gated on
   [0011](0011-bundled-container-images.md) P1. Every question in §10 is resolved
-  into §11; the copy mechanism (§5.2) is verified by spike.
+  into §11; the copy mechanism (§5.2) is verified by spike. **Amended
+  2026-08-08** (decision 10): archiving moves from "excluded" to "delegated to
+  [0014](0014-building-a-release-bundle.md)", which also takes the
+  reproducibility requirement §8 deferred to whoever owned that step.
 - **Scope:** Gives a vendor a supported way to produce the bundles
   [0011](0011-bundled-container-images.md) defines: a `morzer release pack`
   that copies the images a manifest marks `from: bundle` out of the vendor's
@@ -14,7 +17,9 @@
   the manager *produce* an artefact for the first time, which is a direction
   change worth deciding explicitly.
 - **Related:** [0011](0011-bundled-container-images.md) (the format this
-  targets) · [`internal/cli/release.go`](../internal/cli/release.go) (the
+  targets) · [0014](0014-building-a-release-bundle.md) (which took archiving,
+  reproducibility, and the sums routine this describes) ·
+  [`internal/cli/release.go`](../internal/cli/release.go) (the
   command group) ·
   [`internal/adapters/source/oci/oci.go`](../internal/adapters/source/oci/oci.go)
   (`oras-go` usage and ambient credentials) ·
@@ -102,8 +107,10 @@ mismatch a verification failure; this RFC makes it impossible to produce.
 - **Signing.** `minisign -Sm SHA256SUMS` stays a separate step with the vendor's
   key. A manager that signs is a manager that handles signing keys, which is a
   different threat model and a different RFC.
-- **Archiving and publishing.** `tar --zstd` and whatever the vendor uploads to
-  stay as they are. Packing writes a directory.
+- **Archiving and publishing.** Packing writes a directory. Publishing stays the
+  vendor's pipeline; archiving was left as `tar --zstd` here and is now
+  [0014](0014-building-a-release-bundle.md)'s — see decision 10 for why the two
+  stopped being one exclusion.
 - **Building images.** The vendor's CI builds and pushes; this copies what is
   already published.
 - **Editing the manifest.** `pack` reads it. A manifest that declares an image
@@ -225,9 +232,16 @@ answer until someone needs otherwise.
 
 ## 8. Out of scope
 
-- **Signing, publishing, archiving.** Named in Non-goals; repeated here because
-  a `pack` that did all four would be the obvious next request. What would
-  change it: nothing in this design — signing keys are the boundary.
+- **Signing and publishing.** Named in Non-goals; repeated here because a `pack`
+  that did all four would be the obvious next request. What would change it:
+  nothing in this design — signing keys are the boundary.
+- **Archiving.** ~~Also excluded with no successor.~~ **Amended 2026-08-08:**
+  [0014](0014-building-a-release-bundle.md) now owns it, because the exclusion
+  turned out to have a cost this RFC did not see.
+  [0011 decision 11](0011-bundled-container-images.md) reads the extraction
+  budget from the tar stream and therefore requires `manifest.yaml` to be the
+  archive's first entry — a guarantee that was asserted by 0011, disclaimed
+  here, and enforced nowhere. See decision 10 below.
 - **Multi-platform bundles.** Follows [0011 §8](0011-bundled-container-images.md).
 - **Pruning a layout when an image is removed from the manifest.** `pack` adds
   and refuses; it does not garbage-collect. Repacking into a clean directory is
@@ -236,7 +250,10 @@ answer until someone needs otherwise.
 - **Reproducible layouts across machines.** The blobs are content-addressed and
   therefore identical, but file ordering and timestamps inside the eventual
   `tar` are not this command's concern. If bit-identical bundles become a
-  requirement it belongs with the archiving step, which this RFC does not own.
+  requirement it belongs with the archiving step, which this RFC does not own —
+  and **as of 2026-08-08 that step has an owner**, which took the requirement:
+  [0014 decision 4](0014-building-a-release-bundle.md) makes archives
+  deterministic.
 
 ## 9. Risks
 
@@ -285,6 +302,7 @@ reported, and whether the four refusals in §5.1 share one error type.
 | 7 | `pack` writes **in place**, not into a copy | Matches how vendors already work, and §5.1's refusals are designed to make a half-written layout unreachable. A copy would double disk for a multi-gigabyte bundle to guard a case already covered. |
 | 8 | `pack` **verifies the whole bundle afterwards**, reusing `release verify`'s code | The cheapest defect prevention in either RFC: a manifest/layout mismatch is caught on the vendor's machine instead of the customer's, for one function call and no second checker. Consequence: `pack` fails on a bundle that was already broken before it ran, which is correct and will surprise someone once. |
 | 9 | One `--platform` flag; per-image selection deferred | True of every release today, and addable later without changing the single-flag spelling. Reopens for a release mixing an app with a sidecar built for another architecture. |
+| 10 | **Amends decision 1** (2026-08-08): archiving is no longer merely excluded, it is **delegated** to [0014](0014-building-a-release-bundle.md) | Decision 1 lumped signing, archiving and publishing together as one boundary. They are not one boundary: signing is a key-custody question the manager must never cross, while archiving is a file-format question with a locked correctness requirement — [0011 decision 11](0011-bundled-container-images.md)'s budget read needs `manifest.yaml` first, which no `tar` invocation guarantees. Consequence: decision 1's *signing* half stands unchanged and is the reason 0014 is two commands rather than one; the archiving half moves rather than disappearing, and `pack` remains an images-and-sums command. |
 
 ## 12. Phasing
 

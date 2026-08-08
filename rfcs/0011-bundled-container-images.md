@@ -2,7 +2,12 @@
 
 - **Status:** 📝 Draft — **design locked** 2026-08-08, not yet scheduled. Every
   question in §10 is resolved into §11; the ingest mechanism (§5.3) is verified
-  by spike. Ready to execute from P1.
+  by spike. Ready to execute from P1. **Amended 2026-08-08** (decision 15):
+  decision 11's archive-ordering requirement is owned by
+  [0014](0014-building-a-release-bundle.md) rather than
+  [0012](0012-packing-images-into-a-bundle.md), and the budget read now fails
+  closed when the ordering is not honoured — so P1 gains a dependency on
+  0014 P1.
 - **Scope:** Lets a release bundle carry its own container images, so installing
   it needs no credentials for the vendor's registry. Per-image: the manifest
   says which images travel in the bundle and which are still pulled, so a
@@ -26,7 +31,9 @@
   [`internal/adapters/verify/checksum/checksum.go`](../internal/adapters/verify/checksum/checksum.go) ·
   [0004](0004-distribution-and-verification.md) (transports, verification, the
   non-goal this reverses) · [0010](0010-compose-volume-capture.md) (the manager's
-  first image of its own) · [0012](0012-packing-images-into-a-bundle.md)
+  first image of its own) · [0012](0012-packing-images-into-a-bundle.md) ·
+  [0014](0014-building-a-release-bundle.md) (which owns the archive ordering
+  decision 11 depends on)
 
 ---
 
@@ -393,6 +400,14 @@ Three ways to raise the ceiling without simply removing the guard. **Decision
    what the release says it carries. An archive that then exceeds its own
    declaration is refused. Keeps a bound proportional to a claim, at the cost
    of ordering constraints on the archive.
+
+   **Amended 2026-08-08 (decision 15):** those ordering constraints now have an
+   owner — [0014 decision 2](0014-building-a-release-bundle.md) makes
+   `manifest.yaml` the archive's first entry as a property of the format — and
+   this read **fails closed** when it is not. An archive whose first entry is
+   something else is refused rather than falling back to the default ceiling,
+   because a fallback would make the whole mechanism opt-out for anyone rolling
+   their own `tar`, which is alternative 3 arriving by the back door.
 2. **A free-space preflight before extraction.** Refuse when the ceiling
    exceeds what the disk has, so the failure is a clean refusal rather than a
    full filesystem. [0010](0010-compose-volume-capture.md) already shipped "a
@@ -540,6 +555,7 @@ recomputation, and the wording of every refusal.
 | 12 | Ingest is an **explicit command** that `init` and `update` call | It has to exist regardless — it is the manual path before 0012 — and an inspectable, re-runnable step costs nothing to also call from the lifecycle. |
 | 13 | A bundled image is **preferred** over a registry copy, never compared against one | The digest is the identity: agreeing copies are the same bytes, and differing ones make the bundle authoritative because the vendor's signature covers it. Comparing would add a network round-trip to the path whose purpose is not needing one. |
 | 14 | The reference → image ID mapping is **recomputed from the bundle**, never persisted | State that can go stale will. Only the fallback path needs it at all; where the ephemeral registry runs, the daemon holds the truth. |
+| 15 | **Refines decision 11** (2026-08-08): the manifest-first ordering it requires is owned by [0014](0014-building-a-release-bundle.md), and the budget read **fails closed** when the first tar entry is not `manifest.yaml` | Decision 11 named [0012](0012-packing-images-into-a-bundle.md) as controlling the ordering; 0012 §8 excluded archiving, so the guarantee was asserted here and enforced nowhere. 0014 decision 2 locks the order as a property of the archive format, and this row adds the consuming half: an archive that does not honour it is **refused**, not silently given the default ceiling. Consequence: a hand-rolled `tar` over a bundle carrying images is refused unless the vendor orders it, which `publishing.md` must show — a real cost, accepted because a guarantee nothing checks decays into a comment. |
 
 ## 12. Phasing
 
@@ -558,3 +574,10 @@ recomputation, and the wording of every refusal.
 P1 is useful alone: it makes bundles inspectable and gives
 [0012](0012-packing-images-into-a-bundle.md) something to target. P2 is the
 risk, and nothing after it is worth scheduling until it lands.
+
+**Amended 2026-08-08:** P1 now carries a dependency it did not when it was
+written. The budget read in decision 11 needs an archive it can trust to put
+`manifest.yaml` first, and decision 15 makes the absence of that a refusal — so
+[0014](0014-building-a-release-bundle.md) P1 (`release archive`, with its
+ordering lock) has to land with or before this P1. It is a small phase and
+independent of everything else here, but it is no longer optional.
