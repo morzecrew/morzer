@@ -39,9 +39,11 @@ So the artifact carrying identity is the one most likely to be missing or stale,
 and the artifact everybody has is the one that cannot rebuild identity — even
 though it already contains almost everything needed to.
 
-This RFC has the backup carry a real export. Recovery becomes **recovery key +
-any backup** for every installation that takes backups, and `installation
-export` remains for the ones that cannot.
+This RFC has the backup carry a real export. For an installation with a recovery
+recipient, recovery becomes **recovery key + any backup taken after this ships**
+— and `installation export` remains for the installations that cannot back up at
+all, and as the answer for backups that predate this or that were taken with no
+recovery recipient to encrypt the component to (§5.4).
 
 ## 2. Motivation
 
@@ -108,7 +110,8 @@ existing mechanism with a different filename.
 
 **Goals**
 
-- A backup is sufficient to rebuild identity and secrets, without an export.
+- A backup taken by an installation with a recovery recipient is sufficient to
+  rebuild identity and secrets, without an export.
 - One producer of the recovery payload, not two.
 - Importing from a remote backup does not require downloading the data.
 - The roles of every artifact in a backup are stated, so nothing looks
@@ -210,10 +213,11 @@ be removing something from a contract that had never stated its own contents.
 
 ### 5.3 `import --from-backup`
 
-```
+```text
 morzer installation import --from-backup --identity ~/recovery.key
 morzer installation import --from-backup <id> --identity ~/recovery.key
-morzer installation import --from-backup --target s3://… --credentials-file ./creds.yaml
+morzer installation import --from-backup --target s3://… --credentials-file ./creds.yaml \
+    --identity ~/recovery.key
 ```
 
 `Import` already takes a `domain.InstallationExport` **value** and the CLI
@@ -236,6 +240,17 @@ wants for its data. An explicit id is honoured — point-in-time identity recove
 is a real need — and **warns when it is not the newest**, naming the newer
 backup and the gap between them.
 
+**And it warns when identity and data are far apart.** Decoupling the two
+choices creates a pairing the first draft did not guard: a *newer* export with an
+*older* data backup. `Import` installs the export's secret state unchanged, while
+`update` only compares the installed release against the incoming bundle — so a
+secret rotated after the chosen backup was taken comes back in its new form
+beside a database that still expects the old one, and every compatibility check
+passes. So `import --from-backup` names both timestamps and warns when the
+export it used is newer than the backup the operator intends to restore from.
+It does not refuse: point-in-time recovery is legitimate, and the operator is the
+only one who knows which secrets the restored data depends on.
+
 `import` already "prints what it assumed and what to do next"
 ([`recovering-a-lost-machine.md`](../pages/docs/operating/recovering-a-lost-machine.md)),
 so the chosen backup and its timestamp appear without a new mechanism.
@@ -257,6 +272,19 @@ This is a small addition precisely because `List` proves the capability:
 reads only the one named `backup.json` per backup. `file://`, `ssh://` and
 `s3://` all route through the same helper.
 
+**A named file is not a bound file.** `FetchFile` returns whatever object sits
+at that key, and nothing in "fetch `export.yaml.age` from backup X" establishes
+that the bytes belong to backup X — an attacker with write access to the target,
+or a botched sync, can put another installation's export there. So the fetch is
+checked against the backup's own manifest before it is used: `backup.json` names
+every component with its `SHA256`, `List` already reads that manifest without
+transferring anything else, and the digest is of the *stored* bytes, so the check
+needs no key ([`backup.go`](../internal/ports/backup.go), `ComponentRecord`).
+A component whose digest does not match the manifest of the backup it was
+requested from is refused. The test swaps two individually valid exports between
+two valid backups and expects both to be rejected — a test that fetches and
+decrypts successfully would pass without the binding.
+
 `backup list --remote` already needs no key, so an operator can see what exists,
 pick one, and pull a few kilobytes out of it before deciding whether to spend the
 bandwidth on the data.
@@ -265,9 +293,16 @@ bandwidth on the data.
 
 Refused by `--from-backup`, naming the alternative:
 
-> backup 01J8Z… carries no installation export. Recover identity from
-> `installation import <export>`, or take a new backup on a machine that still
-> runs.
+> backup 01J8Z… carries no installation export, because the installation that
+> took it has no recovery recipient. Configure one with
+> `morzer secret recipients add`, then take a new backup — or recover identity
+> from `installation import <export>`.
+
+and, for a backup that merely predates this change:
+
+> backup 01J8Z… predates installation exports in backups. Take a new backup on a
+> machine that still runs, or recover identity from
+> `installation import <export>`.
 
 The failure mode this exists to prevent is a partial import that looks like it
 worked. A machine with an id and no secrets is worse than a refusal, because it
@@ -276,9 +311,12 @@ credentials are all missing.
 
 Two cases reach it, and neither is a compatibility burden: a backup taken by a
 pre-0017 build, and one from an installation with no recovery recipient (§5.1),
-where the component was skipped rather than written unreadably. The second is
-the one that will actually be met, and its message should name
-`secrets.recovery-recipient` rather than the backup's age.
+where the component was skipped rather than written unreadably. The two need
+different messages, and the first draft had only one. Telling an operator whose
+installation has no recovery recipient to "take a new backup" prescribes the
+action that reproduces the failure exactly — the next backup omits the component
+for the same reason. That message names the missing recipient instead, which is
+also what `doctor` reports as `secrets.recovery-recipient`.
 
 ### 5.5 Why `installation export` survives
 
@@ -330,9 +368,17 @@ into the last step would reverse the order it depends on.
   one: create, back up, destroy the root, `import --from-backup`, assert the
   installation id and every secret come back. This is the claim of the RFC, so
   it is the test that must exist before anything else.
-- **Byte-for-byte equivalence**: the export inside a backup and the export
-  written by `installation export` on the same machine at the same moment are
-  identical. Without this the "one producer" claim decays quietly into two.
+- **Equivalence, compared after decryption.** The export inside a backup and the
+  one `installation export` writes on the same machine at the same moment must
+  be the same document. It cannot be asserted on the stored bytes: §5.1 encrypts
+  the component to a *different recipient set*, and age is non-deterministic
+  anyway, so two identical documents have different ciphertexts. Decrypt both,
+  compare the `InstallationExport`. Without this the "one producer" claim decays
+  quietly into two — and with the wrong version of it, the test fails for a
+  reason that has nothing to do with the claim.
+- **Recipient access, asserted separately** from equivalence, because they are
+  different properties and one test cannot carry both: the component decrypts
+  with the recovery identity and not with the machine identity (§5.1).
 - **The machine cannot read its own export component.** Decrypt it with the
   machine identity and assert failure; decrypt with the recovery identity and
   assert success. The first half is the whole point of §5.1 and the half a
@@ -374,8 +420,15 @@ into the last step would reverse the order it depends on.
   that is available today and documented nowhere — give the manager put+get on
   the bucket, withhold `DeleteObject`, run with `--no-prune-remote`
   ([`commands.go`](../internal/cli/commands.go)), and let bucket lifecycle rules
-  apply retention. An attacker holding the credentials out of a backup then
-  cannot delete the backup history with them.
+  apply retention.
+
+    **Withholding `DeleteObject` is necessary and not sufficient**, and the page
+    must say so rather than implying a guarantee it does not give. On S3 a
+    `PutObject` to an existing key *replaces* it, so credentials that can write
+    can still destroy history without ever calling delete. The property an
+    operator actually wants is immutability — Object Lock, or versioning with a
+    lifecycle policy the backup credentials cannot alter. Without one of those,
+    put+get bounds the damage rather than preventing it.
 - `reference/hooks.md`: the contents of `<PRODUCT>_BACKUP_DIR`, enumerated as an
   ABI for the first time (§5.2), naming what a hook may rely on and what it may
   not. This ships **with or before** the retirement of `secrets`, not after.
@@ -388,9 +441,15 @@ into the last step would reverse the order it depends on.
 - **Scheduling exports.** Made unnecessary for machines that back up, and §5.5
   explains why a second timer is the wrong shape. Reopens only for the
   cannot-back-up case, together with unresolved question 3.
-- **Encrypting the export to a different recipient set than the backup.** They
-  share the secret store's recipients today and there is no case for divergence;
-  a separate set would mean a backup whose components need two keys.
+- ~~**Encrypting the export to a different recipient set than the backup.**~~
+  **Reversed 2026-08-09.** This item said there was "no case for divergence" —
+  and then §5.1 and decision 11 made exactly that divergence the RFC's central
+  security property. The export component is encrypted to the **recovery
+  recipients only**; every other component keeps the full set. The consequence
+  this item worried about is real and accepted: a backup's components need two
+  keys, and that is the point — the machine holds one of them and cannot read
+  its own identity bundle. Left visible rather than deleted, because an
+  implementer reading the original wording would remove the isolation.
 - **Restoring across products or renaming one.** Unchanged from
   [0003](0003-secrets-recovery-and-onboarding.md).
 - **Pruning old exports from a target.** There are none — the export lives inside
@@ -470,6 +529,9 @@ into the last step would reverse the order it depends on.
 | 11 | The **export component is encrypted to the recovery recipients only**, and skipped entirely when there are none | A running machine never reads the export out of its own backup, so giving it the ability buys nothing and costs blast radius. The property: the export component is unreadable by the machine that wrote it, so compromising the live host yields the data and not the identity. Skipping rather than falling back to the machine key, because an identity bundle readable only by the key that dies with the machine is the appearance of recovery with none of the substance. Consequence: `encryptComponents` takes per-record recipients rather than one list. |
 | 12 | `--from-backup` with **no id uses the newest** backup's export; an explicit id is honoured and **warns when it is not the newest** | Identity and data are separate choices and fusing them is what creates silent staleness — an operator restoring to a point in time would otherwise get that moment's secrets too. Staleness in identity only loses information, so newest is strictly the safest default. |
 | 13 | `<PRODUCT>_BACKUP_DIR`'s contents are **enumerated as an ABI in the same change** that retires `secrets` | After the first tag, whatever vendors read becomes a contract whatever the docs say; today the enumeration is simply true and anything outside it is legitimately removable. Removing first and documenting later would be removing from a contract that never stated its contents. |
+| 14 | The export component is validated against the backup's own `backup.json` before use, and `FetchFile` is not trusted to bind them | A named remote key returns whatever sits there; nothing in "fetch `export.yaml.age` from backup X" says the bytes are backup X's. `backup.json` already records each component's `SHA256` over the *stored* bytes, so the check needs no key. Consequence: the swap test must swap two individually valid exports between two valid backups. |
+| 15 | Equivalence between the two export producers is asserted **after decryption**; recipient access is a separate assertion | Decision 11 encrypts the component to a different recipient set, and age is non-deterministic regardless — so a byte-for-byte comparison of stored bytes fails for reasons unrelated to the claim it exists to defend. |
+| 16 | `import --from-backup` **warns** when the export it used is newer than the backup being restored from; it does not refuse | Decoupling identity from data (decision 12) admits a pairing where a rotated secret returns beside a database that predates it, and every compatibility check passes. Point-in-time recovery is legitimate, so the operator decides — but not silently. |
 
 ## 12. Phasing
 
