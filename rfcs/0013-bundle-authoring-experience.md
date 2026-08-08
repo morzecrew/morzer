@@ -263,10 +263,22 @@ naming and §5.4's schema location:
 my-product/
   manifest.yaml          # modeline on line 1, version 0.0.0
   VERSION                # 0.0.0, agreeing with the manifest
+  RELEASE.md             # release-notes stub
   compose/compose.yaml
   templates/app.yaml.tmpl
   secrets.schema.yaml
 ```
+
+`RELEASE.md` earns its place for a reason outside this RFC.
+[0002](0002-rich-terminal-renderer.md) built `glamour` rendering of release
+notes and left P5 unshipped, "gated on a bundle actually shipping a
+`RELEASE.md`" — a gate nothing was ever going to open, because no bundle ships
+a file no tooling creates and no page mentions.
+[`release.ReleaseNotesFileName`](../internal/release/load.go) has been a
+constant the whole time. A stub in the scaffold opens it by default, and
+[0016 P2](0016-update-checking-and-unattended-updates.md) is where it acquires
+a job: the moment an operator decides whether to apply a staged update is the
+moment they want to read what changes.
 
 **The version is a placeholder, deliberately.** `0.0.0` in both files, which
 [0014 §5.2](0014-building-a-release-bundle.md) overwrites at build time. A
@@ -418,6 +430,7 @@ and how the walk over `TemplateData`'s fields (§9) is spelled.
 | 11 | The scaffold's output must pass `verify --render-check` unedited, asserted by a test | Couples §5.5 to §5.1 in both directions: neither the scaffold nor the verifier can move without the other. |
 | 12 | `--render-check` is **permanently** opt-in — not deferred, decided | A synthetic context invents its values, so it can never promise what a real install delivers; that is structural, not a maturity gap time closes. Making it default would turn "verify passed" into a guarantee it cannot keep, which is the exact failure this RFC exists to fix. Consequence: there will never be a `--no-render-check`, and anyone proposing the flip is re-opening decision 2. |
 | 13 | The synthetic context lives in the **render adapter**, beside the real one | They imitate each other, so they should drift together; a context that lives away from the renderer it mimics goes stale silently. Consequence: the adapter carries code only `verify` calls, which is the cost accepted for adjacency. |
+| 14 | The scaffold writes a `RELEASE.md` stub | [0002](0002-rich-terminal-renderer.md) P5 is gated on "a bundle actually shipping a `RELEASE.md`", which no bundle does because nothing creates one — a gate that could not open by itself. Consequence: 0002 P5 becomes schedulable, and [0016 P2](0016-update-checking-and-unattended-updates.md) is where it pays off. |
 
 ## 12. Phasing
 

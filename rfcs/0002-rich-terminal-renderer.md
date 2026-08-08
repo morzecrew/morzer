@@ -1,8 +1,10 @@
 # RFC 0002 — Rich terminal renderer
 
-- **Status:** ✅ Complete — shipped 2026-08-03. P1–P4 built; P5 (`glamour`
-  release notes) remains deliberately unbuilt, still gated on a bundle shipping
-  a `RELEASE.md`. Divergences from this document are recorded in §12.
+- **Status:** ✅ Complete — shipped 2026-08-03. P1–P4 built. **P5 (`glamour`
+  release notes) is reassigned, 2026-08-08**: its gate could not open by itself,
+  so it ships as part of
+  [0016 P2](0016-update-checking-and-unattended-updates.md) — see §13.
+  Divergences from this document are recorded in §12.
 - **Scope:** Implements the live step-list renderer behind the `ModeRich`
   output mode, which is currently resolved correctly and then silently falls
   back to plain. Adds `internal/ui/tty` (a Bubble Tea program), `internal/ui/theme`
@@ -257,7 +259,9 @@ run.
 - **P3** — doctor table and plan diff colouring.
 - **P4** — `status --watch`.
 - **P5** — `glamour` release notes, gated on a bundle actually shipping a
-  `RELEASE.md`.
+  `RELEASE.md`. **Reassigned 2026-08-08** to
+  [0016](0016-update-checking-and-unattended-updates.md) P2; the gate was one
+  nothing here could open. See §13.
 
 Scheduled after RFC 0001: that RFC changes what the tool can do, this one
 changes how it looks doing it, and the live view is more useful once there is a
@@ -334,3 +338,30 @@ wrapped twice. It now falls back to `term.GetSize` on stderr, then stdout.
 Found by running the binary in a real terminal, which is also where the elapsed
 clock was found reporting `0ms` for any operation that finished between two
 half-second ticks.
+
+## 13. P5 reassigned to RFC 0016 (2026-08-08)
+
+P5 sat unbuilt for five days and would have sat indefinitely, because §11 gated
+it on "a bundle actually shipping a `RELEASE.md`" — a condition nothing in the
+project could bring about. No scaffold wrote such a file, no page mentioned it,
+and `testdata/bundle` does not contain one.
+[`release.ReleaseNotesFileName`](../internal/release/load.go) has been a
+declared constant the whole time, read by `release show` and by nothing else.
+
+That is a phase gated on demand it had no way to create. Two changes elsewhere
+fix both halves:
+
+- [0013 decision 14](0013-bundle-authoring-experience.md) has `release new`
+  write a `RELEASE.md` stub, so new bundles carry one by default.
+- [0016 §5.7](0016-update-checking-and-unattended-updates.md) gives the rendering
+  a moment worth existing for: a release staged but not yet applied, where the
+  operator is deciding whether to accept downtime and "what changes" is the
+  question they are actually asking.
+
+So P5 ships in [0016](0016-update-checking-and-unattended-updates.md) P2. This
+RFC stays ✅ Complete rather than being reopened — the renderer it specified is
+built, and what was missing was never renderer work.
+
+**The general lesson, which is why this is written down rather than quietly
+retargeted:** a phase gated on a condition the project cannot itself produce is
+not deferred, it is abandoned with a comment. The gate should name who opens it.

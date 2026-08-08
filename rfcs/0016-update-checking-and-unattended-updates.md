@@ -12,10 +12,13 @@
   iterating against a sandbox actually needs and what `List` structurally cannot
   provide. And unattended apply, opt-in, refused unless the release **declares**
   it cannot require a human, with a relaxed variant confined to a declared
-  **dev mode** that an installation can leave and can never enter. Covers the
-  gate, the mode, the systemd timer, lock contention and the phone-home
-  question. Does **not** add fleet rollout, canaries, auto-rollback on a later
-  health regression, or a notification channel — that is
+  **dev mode** that is fixed when the installation is created and never
+  transitions in either direction. Covers the gate, the mode, the systemd timer,
+  lock contention and the phone-home question — and carries
+  [0002](0002-rich-terminal-renderer.md) P5, whose "gated on a bundle shipping a
+  `RELEASE.md`" could not open by itself and whose payoff is precisely a staged
+  update awaiting a decision (§5.7). Does **not** add fleet rollout, canaries,
+  auto-rollback on a later health regression, or a notification channel — that is
   [0015](0015-notifications.md), and P3 is gated on it.
 - **Related:** [`internal/ports/source.go`](../internal/ports/source.go) (`List`,
   `Resolve`) ·
@@ -422,6 +425,33 @@ whose customers chose self-hosting, turning that on by default would be a
 phone-home nobody agreed to. It is opt-in, and the documentation says what it
 discloses.
 
+### 5.7 Release notes, and where [0002](0002-rich-terminal-renderer.md) P5 finally lands
+
+[0002](0002-rich-terminal-renderer.md) built `glamour` rendering for release
+notes and shipped P1–P4, leaving P5 "gated on a bundle actually shipping a
+`RELEASE.md`". That gate has never opened, and could not: no bundle ships a file
+that no tooling creates, no scaffold writes and no page mentions.
+[`release.ReleaseNotesFileName`](../internal/release/load.go) has been a
+constant since, read by `release show` and by nothing else.
+
+Two changes open it, and neither is in 0002:
+
+- [0013 decision 14](0013-bundle-authoring-experience.md) has `release new`
+  write a `RELEASE.md` stub, so bundles start carrying one by default.
+- **This phase gives it a job.** A staged-but-unapplied release (§5.3) is
+  exactly the moment an operator is deciding whether to accept downtime, and
+  "what changes" is the question they are actually asking. `update --check` and
+  the staged-release line in `status` render the incoming release's notes; the
+  notification carries their first line.
+
+So P5 ships here rather than in 0002. It is a renderer that already exists,
+pointed at a file that will now exist, at the moment it is worth reading —
+which is three things 0002 could not arrange on its own, and the reason a phase
+sat unscheduled for months rather than being cheap and forgotten.
+
+Nothing about a release *requires* notes: a bundle without `RELEASE.md` renders
+nothing, exactly as `release show` behaves today.
+
 ## 6. Tests
 
 - **`--check` against a registry with several tags** — highest admissible
@@ -573,15 +603,16 @@ disk, and whether `--check`'s "cannot enumerate" is a distinct exit code.
 | 7 | Enabling auto-apply **refuses** without `require_signature` and a pinned key | Unattended apply hands the vendor unattended root. Refused at configuration time, not at update time — matching how `--skip-backup` requires `--force`. |
 | 8 | Anything failing the gate is **fetched, staged and notified**, never silently skipped | Moves the network, the credentials and the verification off the human's critical path while leaving the downtime decision with them. This is where most of the value is. |
 | 9 | Dev mode is on `Installation`, not `Policy`, and **absence means production** | `Policy` is what `config` may change; this may not be. Absence-means-safe is the rule [`installation.go:120-131`](../internal/domain/installation.go) already learned the hard way for `SkipBackupBeforeUpdate`. |
-| 10 | Dev mode is **one-way**: leavable, never enterable | Its relaxations make the machine's history untrusted, and sandbox→production drift only goes one direction. Consequence: retiring a production machine into a test fixture requires a fresh `init`. |
+| 10 | ~~Dev mode is **one-way**: leavable, never enterable~~ — **superseded by decision 17** (2026-08-08) | Kept because the reasoning it got wrong is instructive: it saw only the production → dev danger and licensed the dev → production one, which is the transition whose cost lands during an incident. Original rationale: its relaxations make the machine's history untrusted, and sandbox→production drift only goes one direction. Consequence: retiring a production machine into a test fixture requires a fresh `init`. |
 | 11 | Dev mode relaxes scheduling, downtime, backups and retention; it **never** relaxes verification | The sandbox's value is fidelity — a relaxed verification chain means the rehearsal is not of the thing being shipped. Consequence: dev builds must be signed, with a dev key. |
 | 12 | `OnCalendar` **is** the maintenance window | systemd already expresses it better than a config field would, and the timer is a sibling of the backup timer that already ships. |
 | 13 | A tick that cannot take the lock **exits 0** | The next tick is soon; queueing makes the start time unpredictable, and a non-zero exit would fight `Restart=on-failure`. |
 | 14 | Update checking is **off by default** | It contacts the vendor's registry, which for a self-hosted product is a phone-home nobody agreed to. |
 | 15 | The installation **records the ref its current release came from** | Without it `--check` has nothing to query and the `doctor` check cannot run unattended, which is the context that makes it useful. Rides [0015](0015-notifications.md)'s bump to schema 4; carries its own if this ships first. |
 | 16 | The manifest gains **`database_schema_produces`**; **absent means not auto-applicable** | Replaces the `database_schema_min` stand-in, which a release migrating past its own declared minimum would slip through — and a gate arguing "declaration, not proxy" cannot use a proxy for half of itself. Fails closed with no burden on existing vendors. Consequence: strict decoding means an older manager **rejects the manifest outright** with `unknown field`, and `min_manager_version` cannot soften it because `CheckUpgrade` runs after the decode. |
-| 17 | `mode` is **immutable** — fixed at creation, no transition in either direction | Both directions are dangerous, differently: production → dev puts real data under relaxed rules immediately, dev → production presents untrusted history as trustworthy and surfaces during an incident. An immutable field is also the simplest invariant to test. Consequence: promotion is backup → fresh `init` → restore, and there is no shortcut. |
+| 17 | `mode` is **immutable** — fixed at creation, no transition in either direction. **Supersedes decision 10** | Both directions are dangerous, differently: production → dev puts real data under relaxed rules immediately, dev → production presents untrusted history as trustworthy and surfaces during an incident. An immutable field is also the simplest invariant to test. Consequence: promotion is backup → fresh `init` → restore, and there is no shortcut. |
 | 18 | Creation means `init` **or `import`**; `import --mode dev` is allowed and **drops the backup targets**, `import --mode production` from a dev export is refused. Staged-but-unapplied releases are exempt from retention | Import reproduces the export wholesale, which would otherwise block [0003](0003-secrets-recovery-and-onboarding.md)'s `import → update → restore` — the way a vendor tests a customer's backup. But an import keeps the original installation id and [0009](0009-backup-targets.md) puts targets *and credentials* in the export, so a sandbox would push throwaway backups into the customer's bucket under a matching id. Dropping them is not optional, and the drop is reported. Demote at creation, never promote. |
+| 19 | [0002](0002-rich-terminal-renderer.md) **P5 ships in P2 of this RFC**, not in 0002 | Its gate — "a bundle actually shipping a `RELEASE.md`" — could not open by itself, since nothing created such a file. [0013 decision 14](0013-bundle-authoring-experience.md) makes bundles carry one and a staged update is where reading the notes matters. Consequence: 0002 stays ✅ Complete with P5 recorded as delivered elsewhere, rather than being reopened. |
 
 ## 12. Phasing
 
@@ -591,7 +622,8 @@ disk, and whether `--check`'s "cannot enumerate" is a distinct exit code.
 - **P2 — channel following and staging.** `Resolve` on a fixed ref, fetch and
   stage, notify. Gated on [0015](0015-notifications.md) for the notify half; the
   staging half is independently useful and can land first. Also the phase a
-  vendor's sandbox actually needs.
+  vendor's sandbox actually needs. **Carries [0002](0002-rich-terminal-renderer.md)
+  P5** — see §5.7.
 - **P3 — unattended apply and dev mode.** Gated on
   [0015](0015-notifications.md) shipping, because an update that can end in
   requires-manual-intervention needs a way to ask for one.
