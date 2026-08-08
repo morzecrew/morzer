@@ -234,6 +234,37 @@ func newUpdateCommand(app *App) *cobra.Command {
 			opts.Profile = profile
 			opts.SkipBackup = skipBackup
 
+			// Before everything else an update needs and a check does
+			// not: the --skip-backup/--force rule below, the backup
+			// engine, the lock and every confirmation. Asking what
+			// exists installs nothing, so `update --check
+			// --skip-backup` must not fail for a backup option the
+			// check never uses.
+			if check {
+				if to != "" {
+					return domain.Usage("--check and --to are alternatives").
+						WithHint("--to names a release already in the store; " +
+							"--check asks the source what it offers")
+				}
+				checkRef := ""
+				if len(args) == 1 {
+					checkRef = args[0]
+				}
+				res, err := ops.CheckForUpdate(cmd.Context(), app.Deps,
+					ops.UpdateCheckOptions{
+						Options: opts, Ref: checkRef, Explicit: true,
+					})
+				if err != nil {
+					return err
+				}
+				if app.json != nil {
+					app.jsonData = res
+					return nil
+				}
+				app.finish(ops.Result{Summary: res.Summary()})
+				return nil
+			}
+
 			// Skipping the backup is the one choice here that removes
 			// a safety net rather than adding a risk, so it needs the
 			// same explicit authorisation a destructive action does.
@@ -251,25 +282,6 @@ func newUpdateCommand(app *App) *cobra.Command {
 			ref := ""
 			if len(args) == 1 {
 				ref = args[0]
-			}
-
-			// Asking what exists is not installing anything, so it
-			// short-circuits before the lock, the backup engine and
-			// every confirmation.
-			if check {
-				res, err := ops.CheckForUpdate(cmd.Context(), app.Deps,
-					ops.UpdateCheckOptions{
-						Options: opts, Ref: ref, Explicit: true,
-					})
-				if err != nil {
-					return err
-				}
-				if app.json != nil {
-					app.jsonData = res
-					return nil
-				}
-				app.finish(ops.Result{Summary: res.Summary()})
-				return nil
 			}
 
 			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {

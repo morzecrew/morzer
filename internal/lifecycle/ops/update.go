@@ -340,7 +340,7 @@ func updateSteps(
 	// becomes current, which is what gives `update --check` something to
 	// query later without asking them to remember.
 	convergeOpts := opts.Options
-	convergeOpts.SourceRef = opts.Ref
+	convergeOpts.SourceRef = ports.RedactRefCredentials(opts.Ref)
 	steps = append(steps, applySteps(d, inst, converge, convergeOpts)...)
 	return append(steps, stepRetireParameters(d, staged, retired))
 }

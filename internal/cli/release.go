@@ -300,19 +300,14 @@ func checkTemplatesParse(rel domain.Release) error {
 	for i, c := range rel.Manifest.Configuration {
 		field := fmt.Sprintf("configuration[%d].template", i)
 
-		path, err := rel.Path(c.Template)
+		// Read exactly as the renderer will, through the release root.
+		// os.ReadFile would follow a symlink out of the bundle, so a
+		// template pointing at a host file would parse here and be
+		// refused at apply -- verifying something other than what
+		// installs is the failure this check exists to remove.
+		raw, err := gotemplate.ReadTemplate(rel.Root, c.Template)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
-			continue
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			// Load already refused a declared-but-missing file, so
-			// this is a permission or I/O fault rather than a typo,
-			// and it is reported rather than skipped: a template the
-			// verifier could not read is not a template it checked.
-			problems = append(problems,
-				fmt.Sprintf("%s: cannot read %s: %v", field, c.Template, err))
 			continue
 		}
 		if err := gotemplate.CheckSyntax(c.Template, raw); err != nil {

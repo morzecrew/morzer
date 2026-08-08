@@ -182,3 +182,29 @@ type Expectation struct {
 func DigestString(algo string, sum []byte) string {
 	return fmt.Sprintf("%s:%x", algo, sum)
 }
+
+// RedactRefCredentials strips anything secret from a reference before it is
+// written to state or shown to anyone.
+//
+// A reference is operator input and may carry a credential in two shapes:
+// userinfo, as in https://user:token@host/bundle.tar.zst, and a registry
+// reference whose path segment is effectively a secret. Only the first is
+// mechanically recognisable, so only the first is removed -- the second is a
+// judgement no parser can make.
+//
+// This runs before ReleaseRecord.SourceRef is persisted. That field exists so
+// `update --check` has somewhere to look, and it is read back into `status`
+// output, `doctor` output and the JSON envelope; a password stored there would
+// surface in all three.
+func RedactRefCredentials(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || !strings.Contains(trimmed, "://") {
+		return trimmed
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil || u.User == nil {
+		return trimmed
+	}
+	u.User = url.User(u.User.Username())
+	return u.String()
+}

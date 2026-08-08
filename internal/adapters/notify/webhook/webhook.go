@@ -90,6 +90,14 @@ func New(opts Options) (*Notifier, error) {
 	if client == nil {
 		client = &http.Client{Timeout: DefaultTimeout}
 	}
+	// Applied whoever built the client, not only the default one. The
+	// guarantee is about where the payload and the auth header may travel,
+	// so it must not depend on how the client arrived -- a caller-supplied
+	// client with no policy of its own would otherwise follow a 302 to
+	// plaintext.
+	if client.CheckRedirect == nil {
+		client.CheckRedirect = refuseRedirect
+	}
 
 	name := opts.Name
 	if name == "" {
@@ -163,6 +171,18 @@ func (n *Notifier) accepts(ev events.Event) bool {
 	return levelRank(ev.Level) >= levelRank(n.minLevel)
 }
 
+// refuseRedirect stops a 3xx from moving the request somewhere else.
+//
+// New requires https, and a redirect would undo that: an endpoint answering 302
+// to an http:// location would receive the payload *and* the configured
+// authentication header in the clear. Following redirects is a convenience the
+// caller here does not need -- a webhook receiver that moves has been
+// reconfigured, which is the operator's business rather than something to
+// follow silently.
+func refuseRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
 func parseLevel(s string) (events.Level, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "error":
@@ -198,12 +218,19 @@ func levelRank(l events.Level) int {
 // still capable of being a credential-in-a-path. Scheme and host are enough to
 // act on.
 func redactURL(raw string) string {
-	if i := strings.Index(raw, "://"); i >= 0 {
-		rest := raw[i+3:]
-		if j := strings.IndexAny(rest, "/?#"); j >= 0 {
-			return fmt.Sprintf("%s://%s/…", raw[:i], rest[:j])
-		}
-		return raw
+	i := strings.Index(raw, "://")
+	if i < 0 {
+		// No scheme at all, so nothing here is structure -- and the
+		// value may have come from url_secret, where a malformed
+		// "URL" is a bare token. Returning it whole would put a
+		// credential into the refusal and from there into the log that
+		// reports a dropped target.
+		return "(malformed URL)"
 	}
+	rest := raw[i+3:]
+	if j := strings.IndexAny(rest, "/?#"); j >= 0 {
+		return fmt.Sprintf("%s://%s/…", raw[:i], rest[:j])
+	}
+	// Scheme and host only, with no path to hide.
 	return raw
 }

@@ -192,3 +192,63 @@ func TestUpdateCheckSummaryNamesTheRightVersions(t *testing.T) {
 		t.Error("an up-to-date summary must not read as an offer")
 	}
 }
+
+// TestRecordedSourceRefPreservesWhatUpdateWrote.
+//
+// `update --to <version>` installs from the store and introduces no new ref, so
+// the record must inherit whatever was already known for that release rather
+// than being blanked. This is the half of the `--to` path that *can* be
+// answered; a release only ever fetched and never installed has no ref anywhere
+// on the machine, and CheckForUpdate says so rather than guessing (see the
+// "nothing records where the release came from" row above).
+func TestRecordedSourceRefPreservesWhatUpdateWrote(t *testing.T) {
+	paths := domain.PathsUnder(t.TempDir(), "demo")
+	store := state.New(paths)
+	ctx := context.Background()
+
+	previous := rec("1.4.0", "oci://registry.example/demo/bundle")
+	current := rec("1.5.0", "oci://registry.example/demo/bundle")
+	if err := store.SetCurrentRelease(ctx, previous); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetCurrentRelease(ctx, current); err != nil {
+		t.Fatal(err)
+	}
+
+	d := &Deps{Paths: paths, State: store}
+
+	if got := d.recordedSourceRef(ctx, current.Root); got != current.SourceRef {
+		t.Errorf("current release ref = %q, want %q", got, current.SourceRef)
+	}
+	if got := d.recordedSourceRef(ctx, previous.Root); got != previous.SourceRef {
+		t.Errorf("previous release ref = %q, want %q -- rolling back or "+
+			"--to'ing back must not lose it", got, previous.SourceRef)
+	}
+	if got := d.recordedSourceRef(ctx, "/opt/demo/releases/9.9.9"); got != "" {
+		t.Errorf("a release nothing has installed reported %q; it must not guess", got)
+	}
+}
+
+// TestSourceRefIsStoredWithoutCredentials.
+//
+// SourceRef is read back into `status`, `doctor` and the JSON envelope, so a
+// password in the ref an operator typed would surface in all three.
+func TestSourceRefIsStoredWithoutCredentials(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://user:hunter2@releases.example/demo.tar.zst",
+			"https://user@releases.example/demo.tar.zst"},
+		{"https://releases.example/demo.tar.zst",
+			"https://releases.example/demo.tar.zst"},
+		{"oci://registry.example/demo/bundle", "oci://registry.example/demo/bundle"},
+		{"./local/bundle", "./local/bundle"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := ports.RedactRefCredentials(tc.in); got != tc.want {
+			t.Errorf("RedactRefCredentials(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+		if strings.Contains(ports.RedactRefCredentials(tc.in), "hunter2") {
+			t.Errorf("a credential survived redaction of %q", tc.in)
+		}
+	}
+}

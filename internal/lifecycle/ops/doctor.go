@@ -116,7 +116,6 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			d.checkRequiredSecrets(rel),
 			d.checkSecretRotation(rel),
 			d.checkRegistryReachable(rel),
-			d.checkUpdateAvailable(inst),
 			d.checkImagesLocal(rel),
 			d.checkServices(inst, rel),
 			d.checkHealth(inst, rel),
@@ -131,6 +130,13 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			}
 		}
 	}
+
+	// Registered outside the release-loaded branch on purpose. CheckForUpdate
+	// needs the persisted release record and its source ref, not a bundle
+	// that parses -- so an installation whose release root is broken or
+	// temporarily unreachable should still be told a fixed version exists.
+	// Inside that branch, a broken release silently removed the check.
+	checks = append(checks, d.checkUpdateAvailable(inst))
 
 	if d.Supervisor != nil {
 		checks = append(checks, d.checkUnits(inst))

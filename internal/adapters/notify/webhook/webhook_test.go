@@ -169,3 +169,60 @@ func TestTheNameNeverLeaksTheURL(t *testing.T) {
 func finished() events.Event {
 	return events.Event{Kind: events.KindOperationFinished, Status: "succeeded"}
 }
+
+// TestARedirectDoesNotCarryTheHeaderToPlaintext.
+//
+// New requires https, and a redirect would undo that: an endpoint answering 302
+// with an http:// location would receive the payload *and* the configured
+// authentication header in the clear.
+//
+// The client here is the httptest server's own, which has no redirect policy of
+// its own -- so this fails unless New installs one regardless of who built the
+// client.
+func TestARedirectDoesNotCarryTheHeaderToPlaintext(t *testing.T) {
+	var leaked atomic.Int32
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			leaked.Add(1)
+		}
+	}))
+	defer plain.Close()
+
+	redirector := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plain.URL, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	client := redirector.Client()
+	if client.CheckRedirect != nil {
+		t.Fatal("the fixture must start with no redirect policy, or this proves nothing")
+	}
+
+	n, err := webhook.New(webhook.Options{
+		URL: redirector.URL, Client: client,
+		Header: "Authorization", Value: "Bearer hunter2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = n.Notify(context.Background(), finished())
+
+	if leaked.Load() != 0 {
+		t.Error("the authentication header reached a plaintext endpoint through a redirect")
+	}
+}
+
+// TestAMalformedSecretURLIsNotEchoed.
+//
+// When the URL came from url_secret, a malformed value is a bare credential.
+// The refusal is logged by the caller, so echoing the value would put the
+// secret in the log line that reports the dropped target.
+func TestAMalformedSecretURLIsNotEchoed(t *testing.T) {
+	_, err := webhook.New(webhook.Options{URL: "xoxb-9999-super-secret-token"})
+	if err == nil {
+		t.Fatal("a value that is not a URL must be refused")
+	}
+	if strings.Contains(err.Error(), "xoxb") || strings.Contains(err.Error(), "secret-token") {
+		t.Errorf("the refusal echoed the credential: %v", err)
+	}
+}

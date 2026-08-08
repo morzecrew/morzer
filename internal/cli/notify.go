@@ -94,6 +94,17 @@ func (a *App) buildNotifier(
 				"the secret %q is not a notify credential document", cfg.Credentials).
 				WithHint("it is a small YAML document with `header` and `value`")
 		}
+		// Both, or neither is any use. A document with an empty header
+		// or an empty value builds a notifier that sends no
+		// authentication at all, so the endpoint rejects every delivery
+		// while the installation looks correctly configured -- a
+		// notification channel that is silently off.
+		if strings.TrimSpace(creds.Header) == "" || strings.TrimSpace(creds.Value) == "" {
+			return nil, domain.ValidationError(nil,
+				"the secret %q sets no header and value", cfg.Credentials).
+				WithHint("it is a small YAML document with both, e.g. " +
+					"`header: Authorization` and `value: Bearer …`")
+		}
 		opts.Header, opts.Value = creds.Header, creds.Value
 	}
 

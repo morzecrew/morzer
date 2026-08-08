@@ -103,16 +103,27 @@ func readTemplate(ref ports.TemplateRef) ([]byte, error) {
 		return nil, domain.Internal(nil,
 			"template %s was requested without a release root", ref.Name)
 	}
+	return ReadTemplate(ref.Root, ref.Name)
+}
 
-	root, err := os.OpenRoot(ref.Root)
+// ReadTemplate reads one template from inside a release root.
+//
+// Exported so `release verify` reads templates exactly as rendering does.
+// os.Root refuses a symlink that leaves the bundle, and a verifier using
+// os.ReadFile instead would follow one -- passing a bundle whose template is a
+// symlink to a host file, which then fails at apply. Two readers with different
+// containment is the same class of drift as two parsers with different function
+// sets.
+func ReadTemplate(rootDir, name string) ([]byte, error) {
+	root, err := os.OpenRoot(rootDir)
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read the release at %s", ref.Root)
+		return nil, domain.ValidationError(err, "cannot read the release at %s", rootDir)
 	}
 	defer func() { _ = root.Close() }()
 
-	f, err := root.Open(filepath.ToSlash(filepath.Clean(ref.Name)))
+	f, err := root.Open(filepath.ToSlash(filepath.Clean(name)))
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read template %s", ref.Name).
+		return nil, domain.ValidationError(err, "cannot read template %s", name).
 			WithHint("the manifest names it relative to the release root, " +
 				"and it must be a real file inside the bundle")
 	}
@@ -120,7 +131,7 @@ func readTemplate(ref ports.TemplateRef) ([]byte, error) {
 
 	raw, err := io.ReadAll(f)
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read template %s", ref.Name)
+		return nil, domain.ValidationError(err, "cannot read template %s", name)
 	}
 	return raw, nil
 }

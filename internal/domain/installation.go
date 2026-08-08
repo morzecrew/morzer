@@ -164,13 +164,43 @@ func (t NotifyTargetConfig) Endpoint() (secretName string, direct string, err er
 			"a notify target sets both url and url_secret").
 			WithHint("use url_secret when the URL itself is a credential, url otherwise")
 	case hasSecret:
-		return t.URLSecret, "", nil
+		// Trimmed, not raw. The presence check above trims, so
+		// `url_secret: " chat "` passed validation and was then looked
+		// up under a name with spaces in it -- a target silently
+		// dropped for a secret that exists.
+		return strings.TrimSpace(t.URLSecret), "", nil
 	case hasURL:
-		return "", t.URL, nil
+		return "", strings.TrimSpace(t.URL), nil
 	default:
 		return "", "", ValidationError(nil,
 			"a notify target sets neither url nor url_secret")
 	}
+}
+
+// Validate reports what is wrong with this target, if anything.
+//
+// Checked when the installation is loaded or saved rather than only at wiring
+// time. A target that fails to build is *dropped* with a log line, so an
+// installation carrying a contradictory one would keep reporting itself
+// healthy while the notifications an operator arranged silently never arrive.
+func (t NotifyTargetConfig) Validate() error {
+	if _, _, err := t.Endpoint(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(t.URLSecret) != "" && strings.TrimSpace(t.Name) == "" {
+		return ValidationError(nil,
+			"a notify target using url_secret must set a name").
+			WithHint("diagnostics cannot print the URL in that case, so the " +
+				"name is the only thing left to identify it by")
+	}
+	switch strings.ToLower(strings.TrimSpace(t.MinLevel)) {
+	case "", "warn", "warning", "error":
+	default:
+		return ValidationError(nil,
+			"notify target %q has min_level %q", t.Label(), t.MinLevel).
+			WithHint("use warn or error; empty means error")
+	}
+	return nil
 }
 
 // Label is what diagnostics may print about this target.
@@ -323,6 +353,11 @@ func (i Installation) Validate() error {
 		v.add("product", "is required")
 	} else if err := ValidateProductName(i.Product); err != nil {
 		v.add("product", "%s", AsError(err).Message)
+	}
+	for idx, target := range i.Notify.Targets {
+		if err := target.Validate(); err != nil {
+			v.add(fmt.Sprintf("notify.targets[%d]", idx), "%s", AsError(err).Message)
+		}
 	}
 	if i.Policy.RetainReleases < 0 {
 		v.add("policy.retain_releases", "must not be negative")

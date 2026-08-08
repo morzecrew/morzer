@@ -60,9 +60,21 @@ func TestNotifyFinishedCoversEveryOutcome(t *testing.T) {
 			wantFailure: true,
 		},
 		{
-			name:        "a record with no status still reports failed",
+			name:        "a still-running record reports failed",
 			rec:         domain.OperationRecord{Status: domain.StatusRunning},
-			runErr:      errors.New("interrupted before the engine wrote one"),
+			runErr:      errors.New("interrupted before the engine finished"),
+			wantSent:    true,
+			wantStatus:  domain.StatusFailed,
+			wantFailure: true,
+		},
+		{
+			// The other half of the same condition. Named for
+			// StatusRunning alone, this branch was never run --
+			// which is how a status of "" would have reached a
+			// webhook as an empty string.
+			name:        "a record with no status at all reports failed",
+			rec:         domain.OperationRecord{},
+			runErr:      errors.New("failed before the engine wrote a status"),
 			wantSent:    true,
 			wantStatus:  domain.StatusFailed,
 			wantFailure: true,
