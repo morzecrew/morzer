@@ -15,6 +15,49 @@ morzer update https://releases.example/demo-1.3.0.tar.zst
 An update is not a deployment script. It is a sequence with a gate at the front,
 a backup in the middle, and a defined answer for every way it can fail.
 
+## Finding out a release exists
+
+```sh
+morzer update --check
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--check` | Report whether a newer release exists, without installing anything. |
+
+Asks the release source what versions it offers, and reports the newest one
+this installation could move to. Nothing is downloaded and nothing is
+installed.
+
+It needs to know where to look. `update` records the ref it installed from, so
+after one update from a registry the check has a source; before that, or after
+installing from a local path, pass one:
+
+```sh
+morzer update --check oci://registry.example/demo/bundle
+```
+
+Only an OCI registry keeps a tag list, so that is the only transport that can
+answer. A source that cannot enumerate **says so** rather than reporting "up to
+date" — the second would be an answer nobody gave, and it is the one you would
+act on.
+
+### Checking without being asked
+
+`doctor` and `status` can report the same thing, and they are off by default:
+
+```yaml title="installation.yaml"
+update:
+  check: true
+```
+
+A check contacts the vendor's registry, which reveals an IP, a timestamp and by
+inference the version you are running. For a product you chose to self-host,
+turning that on by default would be a phone-home nobody agreed to — so
+unprompted paths honour this setting, and it is absent-means-off.
+
+`morzer update --check` ignores it. Typing the command is the consent.
+
 ## What happens, in order
 
 ```mermaid

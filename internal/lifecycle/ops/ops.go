@@ -141,6 +141,12 @@ type Options struct {
 
 	// Profile overrides the installation's deployment profile.
 	Profile string
+
+	// SourceRef is where the release being installed came from. Set by
+	// `update`, which is the only operation that introduces one: `apply`
+	// re-converges what is already installed and `rollback` returns to a
+	// release that arrived earlier, so neither changes the answer.
+	SourceRef string
 }
 
 // NewOperationID returns a ULID: lexicographically sortable and
@@ -629,4 +635,20 @@ func (d *Deps) resolveInstalled(version string) (domain.Release, error) {
 
 	return domain.Release{}, domain.ValidationError(domain.ErrReleaseNotFound,
 		"release %s is not in the release store", parsed).WithHint("%s", hint)
+}
+
+// recordedSourceRef returns the source ref already stored for a release root.
+//
+// Checks both pointers because the release being recorded may be either: a
+// re-converge records the current one again, and a rollback records the
+// previous one. Absent is not an error -- a release installed from a path, or
+// before this was recorded, simply has none.
+func (d *Deps) recordedSourceRef(ctx context.Context, root string) string {
+	if rec, err := d.State.CurrentRelease(ctx); err == nil && rec.Root == root {
+		return rec.SourceRef
+	}
+	if rec, err := d.State.PreviousRelease(ctx); err == nil && rec.Root == root {
+		return rec.SourceRef
+	}
+	return ""
 }

@@ -132,7 +132,7 @@ func applySteps(d *Deps, inst domain.Installation, rel domain.Release, opts Opti
 		stepStartServices(d, inst, rel, opts),
 		stepHealthChecks(d, inst, rel),
 		stepSmokeTest(d, inst, rel, opts),
-		stepRecordState(d, inst, rel),
+		stepRecordState(d, inst, rel, opts),
 	}
 }
 
@@ -701,7 +701,7 @@ func stepSmokeTest(d *Deps, inst domain.Installation, rel domain.Release, opts O
 }
 
 // stepRecordState writes the release pointer and the current symlink.
-func stepRecordState(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {
+func stepRecordState(d *Deps, inst domain.Installation, rel domain.Release, opts Options) engine.Step {
 	return engine.Step{
 		ID:          "record-state",
 		Description: "record installed release",
@@ -718,6 +718,14 @@ func stepRecordState(d *Deps, inst domain.Installation, rel domain.Release) engi
 				InstalledAt:     domain.NewTime(d.now()),
 				OperationID:     st.OpID,
 				SchemaAtInstall: engine.MustGet[int](st, engine.KeySchemaVersion),
+				SourceRef:       opts.SourceRef,
+			}
+			// apply and rollback pass none, and must not erase what
+			// update recorded: a re-converge does not change where a
+			// release came from, and rolling back to one that was
+			// fetched from a registry leaves it still from there.
+			if record.SourceRef == "" {
+				record.SourceRef = d.recordedSourceRef(ctx, rel.Root)
 			}
 			if err := d.State.SetCurrentRelease(ctx, record); err != nil {
 				return err

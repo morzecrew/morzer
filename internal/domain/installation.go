@@ -63,6 +63,9 @@ type Installation struct {
 	// no test -- it was never settable, so nothing can depend on it.
 	Parameters map[string]string `yaml:"parameters" json:"parameters,omitempty"`
 
+	// Update is how this deployment learns that a release exists.
+	Update UpdateConfig `yaml:"update" json:"update,omitempty"`
+
 	// Notify is where this deployment reports outcomes.
 	//
 	// In the installation for the same reason Backup is: a vendor cannot
@@ -79,6 +82,30 @@ type Installation struct {
 	// an operator's data is kept.
 	Backup BackupConfig `yaml:"backup" json:"backup,omitempty"`
 }
+
+// UpdateConfig is the operator's arrangement for learning about releases.
+type UpdateConfig struct {
+	// Check enables *unprompted* update checking -- the `doctor` check and
+	// the `status` line. Default false, and absent means false.
+	//
+	// Off by default because a check contacts the vendor's registry, which
+	// reveals an IP, a timestamp and by inference an installed version. For
+	// a product whose customers chose self-hosting, turning that on for
+	// them would be a phone-home nobody agreed to.
+	//
+	// It does *not* gate `morzer update --check`. An operator typing that
+	// command is the consent, and refusing a direct instruction because a
+	// persisted flag is false would be the manager arguing with the person
+	// running it. See CheckAllowed.
+	Check bool `yaml:"check" json:"check,omitempty"`
+}
+
+// CheckAllowed reports whether an update check may contact the registry.
+//
+// explicit is true when an operator asked for one by name. The distinction is
+// the whole of the phone-home policy: unprompted paths honour the setting,
+// and a typed command is its own authorisation.
+func (u UpdateConfig) CheckAllowed(explicit bool) bool { return explicit || u.Check }
 
 // NotifyConfig is where operation outcomes are reported off the machine.
 type NotifyConfig struct {

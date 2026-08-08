@@ -336,7 +336,12 @@ func updateSteps(
 	if opts.DryRun {
 		converge = source
 	}
-	steps = append(steps, applySteps(d, inst, converge, opts.Options)...)
+	// The ref the operator resolved is recorded with the release once it
+	// becomes current, which is what gives `update --check` something to
+	// query later without asking them to remember.
+	convergeOpts := opts.Options
+	convergeOpts.SourceRef = opts.Ref
+	steps = append(steps, applySteps(d, inst, converge, convergeOpts)...)
 	return append(steps, stepRetireParameters(d, staged, retired))
 }
 

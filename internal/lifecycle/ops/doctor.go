@@ -116,6 +116,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			d.checkRequiredSecrets(rel),
 			d.checkSecretRotation(rel),
 			d.checkRegistryReachable(rel),
+			d.checkUpdateAvailable(inst),
 			d.checkImagesLocal(rel),
 			d.checkServices(inst, rel),
 			d.checkHealth(inst, rel),
@@ -682,6 +683,48 @@ func (d *Deps) checkRegistryReachable(rel domain.Release) preflight.Check {
 					shortRef(refs[0]), domain.AsError(err).Message)
 			}
 			return preflight.OK("reachable")
+		},
+	}
+}
+
+// checkUpdateAvailable reports whether a newer release exists.
+//
+// Info rather than warn when one does: being behind is not a fault, and a check
+// that warns forever until an operator updates is how a green report stops
+// being read. The only warning here is about the check itself failing.
+//
+// Gated by `update.check`, because this runs unprompted -- under a timer, in a
+// script, in somebody's dashboard -- and contacting the vendor's registry from
+// those is the phone-home an operator has to opt into. `morzer update --check`
+// is the path that does not need permission.
+func (d *Deps) checkUpdateAvailable(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "release.update-available",
+		Category:    preflight.CategoryNetwork,
+		Description: "a newer release is available",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			if !inst.Update.CheckAllowed(false) {
+				return preflight.OK("update checking is off")
+			}
+
+			probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			res, err := CheckForUpdate(probeCtx, d, UpdateCheckOptions{})
+			if err != nil {
+				// Never "up to date". A check that could not run
+				// says so, because the alternative is an
+				// operator acting on an answer nobody gave.
+				return preflight.Warn(
+					"run `morzer update --check` for the detail",
+					"cannot check for updates: %s", domain.AsError(err).Message)
+			}
+			if res.Available {
+				return preflight.OK("%s is available (installed %s)",
+					res.Latest, res.Installed)
+			}
+			return preflight.OK("%s is the newest available", res.Installed)
 		},
 	}
 }

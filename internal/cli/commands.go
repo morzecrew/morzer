@@ -208,6 +208,8 @@ func newApplyCommand(app *App) *cobra.Command {
 }
 
 func newUpdateCommand(app *App) *cobra.Command {
+	var check bool
+
 	var (
 		skipBackup bool
 		digest     string
@@ -251,6 +253,25 @@ func newUpdateCommand(app *App) *cobra.Command {
 				ref = args[0]
 			}
 
+			// Asking what exists is not installing anything, so it
+			// short-circuits before the lock, the backup engine and
+			// every confirmation.
+			if check {
+				res, err := ops.CheckForUpdate(cmd.Context(), app.Deps,
+					ops.UpdateCheckOptions{
+						Options: opts, Ref: ref, Explicit: true,
+					})
+				if err != nil {
+					return err
+				}
+				if app.json != nil {
+					app.jsonData = res
+					return nil
+				}
+				app.finish(ops.Result{Summary: res.Summary()})
+				return nil
+			}
+
 			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				return ops.Update(ctx, app.Deps, ops.UpdateOptions{
 					Options:      opts,
@@ -269,6 +290,8 @@ func newUpdateCommand(app *App) *cobra.Command {
 		"expected bundle content digest; a mismatch refuses the update")
 	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
+	f.BoolVar(&check, "check", false,
+		"report whether a newer release exists, without installing anything")
 
 	return cmd
 }
