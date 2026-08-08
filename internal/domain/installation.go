@@ -19,7 +19,14 @@ import (
 // backup, reports success, and leaves it on the machine the operator configured
 // a target to survive. A refusal naming the manager version is the only honest
 // answer, because the failure is otherwise invisible until the disaster.
-const InstallationSchemaVersion = 3
+//
+// Bumped to 4 when `notify.targets` arrived, which is the same shape once more:
+// an older manager sees no targets, runs an operation, reports success, and the
+// operator who configured a way to be told is never told. Schema 4 names this
+// shape and no other -- a second field set under one version would let a
+// manager implementing only one of them rewrite the state and silently drop
+// the other's fields.
+const InstallationSchemaVersion = 4
 
 // Installation is the machine-specific state of one deployment. It is the
 // only place operator intent is recorded; everything else is derived from it
@@ -56,6 +63,17 @@ type Installation struct {
 	// no test -- it was never settable, so nothing can depend on it.
 	Parameters map[string]string `yaml:"parameters" json:"parameters,omitempty"`
 
+	// Update is how this deployment learns that a release exists.
+	Update UpdateConfig `yaml:"update" json:"update,omitempty"`
+
+	// Notify is where this deployment reports outcomes.
+	//
+	// In the installation for the same reason Backup is: a vendor cannot
+	// know whether their customer runs Slack, a webhook receiver or
+	// nothing, and a manifest that named one would be a vendor deciding
+	// where an operator's alerts go.
+	Notify NotifyConfig `yaml:"notify" json:"notify,omitempty"`
+
 	// Backup is where this deployment's backups go besides this disk.
 	//
 	// In the installation rather than the release manifest, and deliberately:
@@ -63,6 +81,140 @@ type Installation struct {
 	// bucket, and a manifest that named one would be a vendor deciding where
 	// an operator's data is kept.
 	Backup BackupConfig `yaml:"backup" json:"backup,omitempty"`
+}
+
+// UpdateConfig is the operator's arrangement for learning about releases.
+type UpdateConfig struct {
+	// Check enables *unprompted* update checking -- the `doctor` check and
+	// the `status` line. Default false, and absent means false.
+	//
+	// Off by default because a check contacts the vendor's registry, which
+	// reveals an IP, a timestamp and by inference an installed version. For
+	// a product whose customers chose self-hosting, turning that on for
+	// them would be a phone-home nobody agreed to.
+	//
+	// It does *not* gate `morzer update --check`. An operator typing that
+	// command is the consent, and refusing a direct instruction because a
+	// persisted flag is false would be the manager arguing with the person
+	// running it. See CheckAllowed.
+	Check bool `yaml:"check" json:"check,omitempty"`
+}
+
+// CheckAllowed reports whether an update check may contact the registry.
+//
+// explicit is true when an operator asked for one by name. The distinction is
+// the whole of the phone-home policy: unprompted paths honour the setting,
+// and a typed command is its own authorisation.
+func (u UpdateConfig) CheckAllowed(explicit bool) bool { return explicit || u.Check }
+
+// NotifyConfig is where operation outcomes are reported off the machine.
+type NotifyConfig struct {
+	// Targets each receive every forwarded event. A failure to deliver
+	// never changes an operation's outcome -- see ports.Notifier.
+	Targets []NotifyTargetConfig `yaml:"targets" json:"targets,omitempty"`
+}
+
+// HasTargets reports whether anything is configured to be told.
+func (n NotifyConfig) HasTargets() bool { return len(n.Targets) > 0 }
+
+// NotifyTargetConfig is one endpoint that receives events.
+//
+// The shape mirrors BackupTargetConfig, with one addition it needs and backup
+// targets do not: a target's endpoint may *be* its credential. A Slack or Teams
+// incoming-webhook URL is a bearer token spelled as a path, so putting it in
+// URL would leak it into this file, into `doctor` output, and into an
+// installation export beside a recovery key.
+type NotifyTargetConfig struct {
+	// Name identifies the target in diagnostics. Required when URLSecret is
+	// used, because there is then nothing else safe to print.
+	Name string `yaml:"name,omitempty" json:"name,omitempty"`
+
+	// URL is the endpoint, when the endpoint carries no credential.
+	// Exclusive with URLSecret.
+	URL string `yaml:"url,omitempty" json:"url,omitempty"`
+
+	// URLSecret names a secret holding the whole endpoint URL, for
+	// services that spell the credential as a path. Exclusive with URL.
+	URLSecret string `yaml:"url_secret,omitempty" json:"url_secret,omitempty"`
+
+	// Credentials names a secret holding a credential document, whose
+	// header value is sent with the request. A name rather than the value,
+	// for the reason BackupTargetConfig.Credentials records.
+	Credentials string `yaml:"credentials,omitempty" json:"credentials,omitempty"`
+
+	// MinLevel is the lowest check severity this target receives, one of
+	// "warn" or "error". Empty means "error".
+	//
+	// Per target and defaulting to the quiet end because warnings fire on
+	// every `doctor` run until they are fixed, and deduplication is
+	// deliberately out of scope. An operator who wants rotation reminders
+	// asks for them on the target that should carry them.
+	MinLevel string `yaml:"min_level,omitempty" json:"min_level,omitempty"`
+}
+
+// Endpoint reports how this target's URL is obtained, and validates that
+// exactly one of the two forms is used.
+func (t NotifyTargetConfig) Endpoint() (secretName string, direct string, err error) {
+	hasURL := strings.TrimSpace(t.URL) != ""
+	hasSecret := strings.TrimSpace(t.URLSecret) != ""
+
+	switch {
+	case hasURL && hasSecret:
+		return "", "", ValidationError(nil,
+			"a notify target sets both url and url_secret").
+			WithHint("use url_secret when the URL itself is a credential, url otherwise")
+	case hasSecret:
+		// Trimmed, not raw. The presence check above trims, so
+		// `url_secret: " chat "` passed validation and was then looked
+		// up under a name with spaces in it -- a target silently
+		// dropped for a secret that exists.
+		return strings.TrimSpace(t.URLSecret), "", nil
+	case hasURL:
+		return "", strings.TrimSpace(t.URL), nil
+	default:
+		return "", "", ValidationError(nil,
+			"a notify target sets neither url nor url_secret")
+	}
+}
+
+// Validate reports what is wrong with this target, if anything.
+//
+// Checked when the installation is loaded or saved rather than only at wiring
+// time. A target that fails to build is *dropped* with a log line, so an
+// installation carrying a contradictory one would keep reporting itself
+// healthy while the notifications an operator arranged silently never arrive.
+func (t NotifyTargetConfig) Validate() error {
+	if _, _, err := t.Endpoint(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(t.URLSecret) != "" && strings.TrimSpace(t.Name) == "" {
+		return ValidationError(nil,
+			"a notify target using url_secret must set a name").
+			WithHint("diagnostics cannot print the URL in that case, so the " +
+				"name is the only thing left to identify it by")
+	}
+	switch strings.ToLower(strings.TrimSpace(t.MinLevel)) {
+	case "", "warn", "warning", "error":
+	default:
+		return ValidationError(nil,
+			"notify target %q has min_level %q", t.Label(), t.MinLevel).
+			WithHint("use warn or error; empty means error")
+	}
+	return nil
+}
+
+// Label is what diagnostics may print about this target.
+//
+// Never the URL when it came from a secret: the whole reason that form exists
+// is that the URL is the credential.
+func (t NotifyTargetConfig) Label() string {
+	if t.Name != "" {
+		return t.Name
+	}
+	if strings.TrimSpace(t.URLSecret) != "" {
+		return "(url from secret " + t.URLSecret + ")"
+	}
+	return t.URL
 }
 
 // BackupConfig is the operator's backup arrangement beyond the local disk.
@@ -201,6 +353,11 @@ func (i Installation) Validate() error {
 		v.add("product", "is required")
 	} else if err := ValidateProductName(i.Product); err != nil {
 		v.add("product", "%s", AsError(err).Message)
+	}
+	for idx, target := range i.Notify.Targets {
+		if err := target.Validate(); err != nil {
+			v.add(fmt.Sprintf("notify.targets[%d]", idx), "%s", AsError(err).Message)
+		}
 	}
 	if i.Policy.RetainReleases < 0 {
 		v.add("policy.retain_releases", "must not be negative")

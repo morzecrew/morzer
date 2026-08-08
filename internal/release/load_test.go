@@ -1,6 +1,7 @@
 package release_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -298,5 +299,94 @@ func TestLoadSecretSchemaOnABundleThatDeclaresNone(t *testing.T) {
 	}
 	if len(schema.Secrets) != 0 {
 		t.Errorf("schema = %+v, want empty", schema)
+	}
+}
+
+// TestAManifestForANewerManagerSaysSo.
+//
+// Strict decoding rejects an unknown field before anything reads
+// `min_manager_version`, which is checked by CheckUpgrade on an *already
+// decoded* manifest. So the mechanism built to say "you need a newer manager"
+// could never speak, and a release using a field this build predates reported a
+// typo in a file the operator did not write.
+//
+// The two rows are a pair and neither is sufficient alone. Without the first,
+// the lenient pass is not running. Without the second, it is running and
+// swallowing every genuine typo into a confusing version error.
+func TestAManifestForANewerManagerSaysSo(t *testing.T) {
+	t.Cleanup(func() { release.SetManagerVersion(domain.Version{}) })
+	release.SetManagerVersion(domain.MustParseVersion("1.2.0"))
+
+	cases := []struct {
+		name       string
+		floor      string
+		wantErrIs  error
+		wantPhrase string
+		why        string
+	}{
+		{
+			name:       "a raised floor explains the unknown field",
+			floor:      "2.0.0",
+			wantErrIs:  domain.ErrIncompatible,
+			wantPhrase: "requires morzer 2.0.0 or newer",
+			why:        "the release says what it needs, instead of the decoder blaming a typo",
+		},
+		{
+			name:       "no floor leaves the unknown field as a typo",
+			floor:      "",
+			wantErrIs:  nil,
+			wantPhrase: `unknown field "future_field"`,
+			why:        "a genuine typo must not be reported as a version problem",
+		},
+		{
+			name:       "a floor this build meets decides nothing",
+			floor:      "1.0.0",
+			wantErrIs:  nil,
+			wantPhrase: `unknown field "future_field"`,
+			why:        "the check refuses only what it must, so it cannot mask ordinary faults",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "manifest.yaml"
+			doc := "api_version: selfhost/v1alpha1\nkind: application-release\n"
+			if tc.floor != "" {
+				doc += "compatibility:\n  min_manager_version: " + tc.floor + "\n"
+			}
+			doc += "runtime:\n  future_field: hello\n"
+
+			_, err := release.ParseManifest([]byte(doc), src)
+			if err == nil {
+				t.Fatalf("expected a refusal: %s", tc.why)
+			}
+			if tc.wantErrIs != nil && !errors.Is(err, tc.wantErrIs) {
+				t.Errorf("error is not %v: %v (%s)", tc.wantErrIs, err, tc.why)
+			}
+			if !strings.Contains(err.Error(), tc.wantPhrase) {
+				t.Errorf("want %q in the message, got: %v (%s)", tc.wantPhrase, err, tc.why)
+			}
+		})
+	}
+}
+
+// TestTheManagerVersionCheckIsSkippedWhenUnknown.
+//
+// A build with no stamped version -- `go run`, a test binary -- must behave
+// exactly as before rather than refusing everything or accepting everything.
+func TestTheManagerVersionCheckIsSkippedWhenUnknown(t *testing.T) {
+	t.Cleanup(func() { release.SetManagerVersion(domain.Version{}) })
+	release.SetManagerVersion(domain.Version{})
+
+	doc := "api_version: selfhost/v1alpha1\nkind: application-release\n" +
+		"compatibility:\n  min_manager_version: 99.0.0\n" +
+		"runtime:\n  future_field: hello\n"
+
+	_, err := release.ParseManifest([]byte(doc), "manifest.yaml")
+	if err == nil {
+		t.Fatal("the strict decode must still run")
+	}
+	if !strings.Contains(err.Error(), `unknown field "future_field"`) {
+		t.Errorf("an unknown manager version must not change what is reported: %v", err)
 	}
 }

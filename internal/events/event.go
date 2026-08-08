@@ -41,6 +41,24 @@ const (
 	KindCheck Kind = "check"
 )
 
+// AllKinds is every event kind, so a consumer that must classify all of them
+// can be checked against the list rather than against a copy of it.
+//
+// The notification allowlist is the case this exists for: a Kind added here and
+// not classified there would otherwise be silently not forwarded, which is
+// indistinguishable from a deliberate decision not to forward it.
+var AllKinds = []Kind{
+	KindOperationStarted,
+	KindOperationFinished,
+	KindStepStarted,
+	KindStepProgress,
+	KindStepFinished,
+	KindStepOutput,
+	KindPlan,
+	KindMessage,
+	KindCheck,
+}
+
 // Level classifies a message for presenters that style by severity.
 type Level string
 

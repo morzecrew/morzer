@@ -208,6 +208,8 @@ func newApplyCommand(app *App) *cobra.Command {
 }
 
 func newUpdateCommand(app *App) *cobra.Command {
+	var check bool
+
 	var (
 		skipBackup bool
 		digest     string
@@ -231,6 +233,37 @@ func newUpdateCommand(app *App) *cobra.Command {
 			opts := app.operationOptions()
 			opts.Profile = profile
 			opts.SkipBackup = skipBackup
+
+			// Before everything else an update needs and a check does
+			// not: the --skip-backup/--force rule below, the backup
+			// engine, the lock and every confirmation. Asking what
+			// exists installs nothing, so `update --check
+			// --skip-backup` must not fail for a backup option the
+			// check never uses.
+			if check {
+				if to != "" {
+					return domain.Usage("--check and --to are alternatives").
+						WithHint("--to names a release already in the store; " +
+							"--check asks the source what it offers")
+				}
+				checkRef := ""
+				if len(args) == 1 {
+					checkRef = args[0]
+				}
+				res, err := ops.CheckForUpdate(cmd.Context(), app.Deps,
+					ops.UpdateCheckOptions{
+						Options: opts, Ref: checkRef, Explicit: true,
+					})
+				if err != nil {
+					return err
+				}
+				if app.json != nil {
+					app.jsonData = res
+					return nil
+				}
+				app.finish(ops.Result{Summary: res.Summary()})
+				return nil
+			}
 
 			// Skipping the backup is the one choice here that removes
 			// a safety net rather than adding a risk, so it needs the
@@ -269,6 +302,8 @@ func newUpdateCommand(app *App) *cobra.Command {
 		"expected bundle content digest; a mismatch refuses the update")
 	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
+	f.BoolVar(&check, "check", false,
+		"report whether a newer release exists, without installing anything")
 
 	return cmd
 }

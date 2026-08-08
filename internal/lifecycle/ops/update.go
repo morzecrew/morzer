@@ -112,12 +112,11 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 			"root":   staged.Root,
 		},
 	}
+	d.notifyFinished(ctx, opID, domain.OpTypeUpdate, result.Record, runErr)
 	if runErr != nil {
 		return out, runErr
 	}
 
-	d.notify(ctx, events.OperationFinished(opID, domain.OpTypeUpdate,
-		result.Record.Status, result.Record.Duration(), nil))
 	return out, nil
 }
 
@@ -337,7 +336,12 @@ func updateSteps(
 	if opts.DryRun {
 		converge = source
 	}
-	steps = append(steps, applySteps(d, inst, converge, opts.Options)...)
+	// The ref the operator resolved is recorded with the release once it
+	// becomes current, which is what gives `update --check` something to
+	// query later without asking them to remember.
+	convergeOpts := opts.Options
+	convergeOpts.SourceRef = ports.RedactRefCredentials(opts.Ref)
+	steps = append(steps, applySteps(d, inst, converge, convergeOpts)...)
 	return append(steps, stepRetireParameters(d, staged, retired))
 }
 

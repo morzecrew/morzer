@@ -241,3 +241,44 @@ func TestAnAbsentDomainDoesNotRenderAsNothing(t *testing.T) {
 		t.Errorf("rendered %q, want the fallback", out)
 	}
 }
+
+// TestReadTemplateRefusesASymlinkOutOfTheRelease.
+//
+// This is the containment `release verify` now shares with rendering. Before,
+// verify used os.ReadFile, which follows a symlink out of the bundle, while
+// Render used os.Root, which does not -- so the two could disagree about the
+// same bundle.
+//
+// Worth being precise about what that was: not an exploitable hole, because
+// release.Load digests the tree first and DigestTree refuses a non-regular
+// file, so such a bundle never reached the template pass. The divergence was
+// real, the exposure was not, and the fix is that there is now one reader
+// rather than two with different rules.
+func TestReadTemplateRefusesASymlinkOutOfTheRelease(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "host.txt")
+	if err := os.WriteFile(outside, []byte("secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "templates"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "templates", "app.yaml.tmpl")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+
+	if _, err := gotemplate.ReadTemplate(root, "templates/app.yaml.tmpl"); err == nil {
+		t.Error("a template symlinked out of the release was read")
+	}
+
+	// And the ordinary case still works, or the check above proves only
+	// that the function refuses everything.
+	real := filepath.Join(root, "templates", "ok.yaml.tmpl")
+	if err := os.WriteFile(real, []byte("a: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gotemplate.ReadTemplate(root, "templates/ok.yaml.tmpl"); err != nil {
+		t.Errorf("a real file inside the release was refused: %v", err)
+	}
+}

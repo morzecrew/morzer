@@ -153,6 +153,15 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	defer cancel()
 
 	app := &App{Build: build, Stream: streams, cancelOperation: cancel}
+
+	// Recorded before any manifest is read, so a release built for a newer
+	// manager reports that rather than an unknown field. A build with no
+	// stamped version -- `go run`, a test binary -- parses to zero, and the
+	// check is skipped rather than guessed at.
+	if v, err := domain.ParseVersion(build.Version); err == nil {
+		release.SetManagerVersion(v)
+	}
+
 	root := newRootCommand(app)
 
 	// Flag errors are the one case where printing usage helps: the operator
@@ -642,6 +651,15 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		ManagerVersion: parseBuildVersion(a.Build.Version),
 		Redactor:       redactor,
 		TargetPrefix:   a.Flags.root,
+	}
+
+	// Notification targets live in the installation, which does not exist
+	// during `init`, so this is best-effort and lazy in the same sense the
+	// backup engine is. No installation, no targets, or a target that will
+	// not resolve all leave Notifier nil -- and ops.notify's nil check is
+	// then the path every installation that asked for nothing exercises.
+	if inst, err := stateStore.LoadInstallation(ctx); err == nil {
+		deps.Notifier = a.buildNotifiers(ctx, inst, secrets)
 	}
 
 	deps.Health = health.NewWaiter(

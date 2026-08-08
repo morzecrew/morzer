@@ -141,6 +141,12 @@ type Options struct {
 
 	// Profile overrides the installation's deployment profile.
 	Profile string
+
+	// SourceRef is where the release being installed came from. Set by
+	// `update`, which is the only operation that introduces one: `apply`
+	// re-converges what is already installed and `rollback` returns to a
+	// release that arrived earlier, so neither changes the answer.
+	SourceRef string
 }
 
 // NewOperationID returns a ULID: lexicographically sortable and
@@ -215,15 +221,107 @@ func (d *Deps) withLock(ctx context.Context, opID string, opType domain.Operatio
 	return fn(ctx)
 }
 
-// notify sends an event to the configured notifier.
+// NotifyDeadline bounds the whole fan-out, not one request.
+//
+// Notifiers delivers sequentially, so a per-target timeout alone lets N
+// unreachable targets add N × that timeout to every operation while each
+// individual request looks well behaved. What an operator experiences is the
+// sum, so the sum is what is bounded.
+const NotifyDeadline = 15 * time.Second
+
+// forwardedKinds is the allowlist of events that may leave the machine.
+//
+// An allowlist rather than a denylist, so a Kind added later is not forwarded
+// until somebody decides it should be. The two here are the outcome an operator
+// wants and the diagnostics nobody has looked at.
+//
+// KindStepOutput is the reason this is a list at all. It carries raw
+// subprocess output -- hook stdout, compose stderr, whatever a vendor's
+// migration script prints -- and the engine's claim that events carry no
+// secrets rests on a redaction handler that has been wrong once already. The
+// terminal and the JSONL log get everything; the network gets two kinds.
+// Every kind is classified explicitly, including the ones that stay. A map
+// holding only the true entries cannot tell "decided against" from "never
+// considered", so a Kind added later would default to not-forwarded and look
+// deliberate. TestEveryEventKindIsClassified fails until someone chooses.
+var forwardedKinds = map[events.Kind]bool{
+	events.KindOperationFinished: true,
+	events.KindCheck:             true,
+
+	events.KindOperationStarted: false, // the outcome is the news, not the start
+	events.KindStepStarted:      false, // narration
+	events.KindStepProgress:     false, // narration
+	events.KindStepFinished:     false, // narration
+	events.KindPlan:             false, // a dry run is not an event to wake up for
+	events.KindMessage:          false, // engine narration
+	events.KindStepOutput:       false, // see above: raw vendor-controlled output
+}
+
+// notifyFinished reports an operation's outcome, whatever the outcome was.
+//
+// Every call site used to sit *after* the `if runErr != nil { return }` guard,
+// so the only operations ever reported were the ones that succeeded — which is
+// the half nobody needs to be told about. A channel that goes quiet exactly
+// when something breaks is worse than no channel, because silence reads as
+// "nothing happened".
+//
+// The status comes from the record where the engine set one: a compensated
+// update and an interrupted one are different things to wake up for, and
+// flattening both to "failed" would throw that away.
+func (d *Deps) notifyFinished(
+	ctx context.Context,
+	opID string,
+	opType domain.OperationType,
+	rec domain.OperationRecord,
+	runErr error,
+) {
+	// A plan is not an outcome. Every operation reaches here, including
+	// `--dry-run`, which mutates nothing and whose "finished" would be a
+	// webhook announcing that somebody looked. Checked on the record rather
+	// than on Options because this is the value the engine actually wrote.
+	if rec.DryRun {
+		return
+	}
+
+	status := rec.Status
+	var failure *domain.Error
+	if runErr != nil {
+		failure = domain.AsError(runErr)
+		if status == "" || status == domain.StatusRunning {
+			status = domain.StatusFailed
+		}
+	}
+	d.notify(ctx, events.OperationFinished(opID, opType, status, rec.Duration(), failure))
+}
+
+// notify sends an event to the configured notifier, if the allowlist admits it.
 //
 // Failures are logged and dropped. A webhook being down must never change the
 // outcome of a deployment, and an operator must not learn about a Slack outage
 // by way of a rolled-back update.
 func (d *Deps) notify(ctx context.Context, ev events.Event) {
-	if d.Notifier == nil {
+	if d.Notifier == nil || !forwardedKinds[ev.Kind] {
 		return
 	}
+
+	// Bounded, and *not* detached from the operation's context.
+	//
+	// Detaching was the first instinct -- a failed operation is exactly when
+	// the notification matters, and a cancelled parent drops it. But the
+	// contexts that are cancelled here are the ones an operator just
+	// cancelled: Ctrl-C would then leave the CLI apparently wedged for the
+	// whole deadline while it posted to an endpoint nobody is waiting for.
+	// Fifteen seconds of unresponsiveness after Ctrl-C is a worse failure
+	// than a missing message about a run the operator watched themselves
+	// interrupt.
+	//
+	// The case that matters is unaffected: an operation that *fails* has a
+	// live context, so its notification goes out. What is lost is the
+	// cancelled and timed-out runs, and the journal is the record for those
+	// -- which is what at-most-once delivery already meant.
+	ctx, cancel := context.WithTimeout(ctx, NotifyDeadline)
+	defer cancel()
+
 	if err := d.Notifier.Notify(ctx, ev); err != nil {
 		logging.FromContext(ctx).Warn("notifier failed",
 			"notifier", d.Notifier.Name(), "error", err)
@@ -556,4 +654,20 @@ func (d *Deps) resolveInstalled(version string) (domain.Release, error) {
 
 	return domain.Release{}, domain.ValidationError(domain.ErrReleaseNotFound,
 		"release %s is not in the release store", parsed).WithHint("%s", hint)
+}
+
+// recordedSourceRef returns the source ref already stored for a release root.
+//
+// Checks both pointers because the release being recorded may be either: a
+// re-converge records the current one again, and a rollback records the
+// previous one. Absent is not an error -- a release installed from a path, or
+// before this was recorded, simply has none.
+func (d *Deps) recordedSourceRef(ctx context.Context, root string) string {
+	if rec, err := d.State.CurrentRelease(ctx); err == nil && rec.Root == root {
+		return rec.SourceRef
+	}
+	if rec, err := d.State.PreviousRelease(ctx); err == nil && rec.Root == root {
+		return rec.SourceRef
+	}
+	return ""
 }

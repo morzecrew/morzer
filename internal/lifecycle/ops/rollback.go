@@ -136,12 +136,11 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		out.Summary = fmt.Sprintf("rolled %s back from %s to %s",
 			previousRel.Name(), current.Version, previous.Version)
 	}
+	d.notifyFinished(ctx, opID, domain.OpTypeRollback, result.Record, runErr)
 	if runErr != nil {
 		return out, runErr
 	}
 
-	d.notify(ctx, events.OperationFinished(opID, domain.OpTypeRollback,
-		result.Record.Status, result.Record.Duration(), nil))
 	return out, nil
 }
 

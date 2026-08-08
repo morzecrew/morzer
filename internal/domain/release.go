@@ -80,6 +80,16 @@ type ReleaseRecord struct {
 	// to. Rollback needs it, and re-deriving it later would mean running
 	// the product's migration tooling just to ask a question.
 	SchemaAtInstall int `json:"schema_at_install,omitempty"`
+
+	// SourceRef is where this release came from, so `update --check` has
+	// something to query and the doctor check can run unattended.
+	//
+	// Recorded when a release becomes *current*, never when a candidate is
+	// staged: a staged release is not the installed one, and checking the
+	// candidate's source while the old release is still running would
+	// report on a release nobody is using. Empty for anything installed
+	// before this was recorded, and for a source that cannot enumerate.
+	SourceRef string `json:"source_ref,omitempty"`
 }
 
 func (r ReleaseRecord) IsZero() bool { return r.Name == "" && r.Version.IsZero() }

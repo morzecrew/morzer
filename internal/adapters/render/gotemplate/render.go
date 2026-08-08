@@ -29,14 +29,14 @@ func New() *Renderer { return &Renderer{} }
 
 var _ ports.Renderer = (*Renderer)(nil)
 
-// Render executes a template against the documented context.
-func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports.TemplateData) ([]byte, error) {
-	raw, err := readTemplate(ref)
-	if err != nil {
-		return nil, err
-	}
-
-	tmpl, err := template.New(ref.Name).
+// parse builds the template exactly as rendering will.
+//
+// Extracted so CheckSyntax and Render cannot construct it differently. A
+// syntax check that parsed with a different function set or a different
+// missingkey option would pass templates that then fail at install, which is
+// the failure `release verify` exists to move earlier.
+func parse(name string, raw []byte) (*template.Template, error) {
+	tmpl, err := template.New(name).
 		Funcs(funcs()).
 		// missingkey=error is the whole point: without it, a reference
 		// to a field that does not exist renders as "<no value>" and
@@ -44,8 +44,36 @@ func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports
 		Option("missingkey=error").
 		Parse(string(raw))
 	if err != nil {
-		return nil, domain.ValidationError(err, "template %s does not parse", ref.Name).
+		return nil, domain.ValidationError(
+			fmt.Errorf("%w: %w", domain.ErrTemplateSyntax, err),
+			"template %s does not parse", name).
 			WithHint("check the delimiters and function names in the template")
+	}
+	return tmpl, nil
+}
+
+// CheckSyntax reports whether a template parses, without rendering it.
+//
+// Parsing needs no installation, no parameters and no network, which is what
+// makes it safe in the path a vendor runs on every commit. It is deliberately
+// *only* parsing: a template that parses can still fail to render against a
+// real context, and saying otherwise is the over-claim RFC 0013 exists to
+// avoid.
+func CheckSyntax(name string, raw []byte) error {
+	_, err := parse(name, raw)
+	return err
+}
+
+// Render executes a template against the documented context.
+func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports.TemplateData) ([]byte, error) {
+	raw, err := readTemplate(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	tmpl, err := parse(ref.Name, raw)
+	if err != nil {
+		return nil, err
 	}
 
 	view := newView(data)
@@ -75,16 +103,27 @@ func readTemplate(ref ports.TemplateRef) ([]byte, error) {
 		return nil, domain.Internal(nil,
 			"template %s was requested without a release root", ref.Name)
 	}
+	return ReadTemplate(ref.Root, ref.Name)
+}
 
-	root, err := os.OpenRoot(ref.Root)
+// ReadTemplate reads one template from inside a release root.
+//
+// Exported so `release verify` reads templates exactly as rendering does.
+// os.Root refuses a symlink that leaves the bundle, and a verifier using
+// os.ReadFile instead would follow one -- passing a bundle whose template is a
+// symlink to a host file, which then fails at apply. Two readers with different
+// containment is the same class of drift as two parsers with different function
+// sets.
+func ReadTemplate(rootDir, name string) ([]byte, error) {
+	root, err := os.OpenRoot(rootDir)
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read the release at %s", ref.Root)
+		return nil, domain.ValidationError(err, "cannot read the release at %s", rootDir)
 	}
 	defer func() { _ = root.Close() }()
 
-	f, err := root.Open(filepath.ToSlash(filepath.Clean(ref.Name)))
+	f, err := root.Open(filepath.ToSlash(filepath.Clean(name)))
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read template %s", ref.Name).
+		return nil, domain.ValidationError(err, "cannot read template %s", name).
 			WithHint("the manifest names it relative to the release root, " +
 				"and it must be a real file inside the bundle")
 	}
@@ -92,7 +131,7 @@ func readTemplate(ref ports.TemplateRef) ([]byte, error) {
 
 	raw, err := io.ReadAll(f)
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read template %s", ref.Name)
+		return nil, domain.ValidationError(err, "cannot read template %s", name)
 	}
 	return raw, nil
 }
