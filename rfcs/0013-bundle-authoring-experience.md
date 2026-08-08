@@ -3,15 +3,17 @@
 - **Status:** 📝 Draft — design proposed
 - **Scope:** Makes a vendor's own CI able to catch the bundle errors that
   currently reach the customer, and stops the authoring surface fighting the
-  editor. Four changes: `release verify` parses every template it currently
+  editor. Five changes: `release verify` parses every template it currently
   only checks the existence of; the manifest examples carry a
   `yaml-language-server` modeline pointing at the JSON Schema this repository
   already generates and publishes; templates get a `.tmpl` suffix so an editor
-  stops linting Go template syntax as YAML; and the secret schema stops living
-  in `templates/`, where it is not a template. No format change and no manifest
-  field change — every path involved is one the vendor already names. Does
-  **not** add a render-preview command (§8), and does not touch how templates
-  render at install time.
+  stops linting Go template syntax as YAML; the secret schema stops living
+  in `templates/`, where it is not a template; and `release new` scaffolds a
+  bundle that already carries all four, because otherwise every bundle written
+  after this RFC needs the same retrofit it performs. No format change and no
+  manifest field change — every path involved is one the vendor already names.
+  Does **not** add a render-preview command (§8), and does not touch how
+  templates render at install time.
 - **Related:** [`internal/cli/release.go`](../internal/cli/release.go) (`verify`) ·
   [`internal/release/load.go`](../internal/release/load.go) (`Load`,
   `LoadSecretSchema`) ·
@@ -22,7 +24,11 @@
   [`testdata/bundle/`](../testdata/bundle) ·
   [`pages/docs/authoring/`](../pages/docs/authoring) ·
   [0004](0004-distribution-and-verification.md) (which shipped the schemas) ·
-  [0007](0007-operator-parameters.md) (the three bundle-facing ABIs)
+  [0007](0007-operator-parameters.md) (the three bundle-facing ABIs) ·
+  [0014](0014-building-a-release-bundle.md) (which stamps the version the
+  scaffold leaves as a placeholder) ·
+  [`internal/cli/init_wizard.go`](../internal/cli/init_wizard.go) (the
+  *operator's* wizard, which is what exists instead of a vendor scaffold)
 
 ---
 
@@ -37,6 +43,11 @@ vendor's machine rather than during an operator's `apply`.
 Alongside it, three cheap changes to the authoring surface: point vendors at
 the JSON Schema already published for their manifest, name templates so editors
 treat them as templates, and stop keeping a non-template in `templates/`.
+
+And `morzer release new`, which writes a skeleton carrying all three. Without
+it those three are conventions taught by documentation, which every bundle
+written from now on will need retrofitted; with it they are what a bundle
+starts as.
 
 ## 2. Motivation
 
@@ -78,6 +89,17 @@ their tooling insists is broken and the manager insists is fine.
 manifest as `secrets.schema`, consumed by `LoadSecretSchema`. One directory,
 one extension, two unrelated kinds of file, and only one of them is a template.
 
+**A vendor's first bundle starts as a copy-paste from a documentation page.**
+There is no scaffold. `morzer init` is the *operator's* installation wizard
+([`init_wizard.go`](../internal/cli/init_wizard.go)); nothing addresses the
+vendor. `authoring/your-first-bundle.md` is the starting point, and it is
+assembled from `testdata/bundle/` through `--8<--` snippet includes — so the
+supported way to begin is to read a page built out of the test fixture and
+retype it. That is a reasonable state for a project with no conventions to
+teach. This RFC introduces three, which changes the arithmetic: every bundle
+written after it will need the same retrofit §5.2–§5.4 perform, unless
+something writes them in from the start.
+
 **A schema is generated, published, and pointed at by nothing.**
 [0004](0004-distribution-and-verification.md) shipped generated JSON Schemas
 with `$id: https://morzecrew.github.io/morzer/schemas/…`
@@ -104,6 +126,8 @@ Verified against `d81d1c1`.
 | Docs name the schema files but never show a modeline; no example carries one | [`manifest.md:330-331`](../pages/docs/reference/manifest.md) |
 | Docs embed `testdata/bundle/templates/secrets.yaml` and `manifest.yaml` via `--8<--` snippet includes, in four places | [`your-first-bundle.md:135,159`](../pages/docs/authoring/your-first-bundle.md), [`manifest.md:356,362`](../pages/docs/reference/manifest.md) |
 | Every Go mention of `templates/secrets.yaml` is prose in a comment, plus one test fixture string — nothing functional | [`schema.go:41,76`](../internal/schema/schema.go), [`secret.go:109`](../internal/domain/secret.go), [`load.go:130`](../internal/release/load.go) |
+| There is no vendor-side scaffold. `init` is the operator's wizard; `release` has `list`, `show`, `verify`, `fetch`, `prune` | [`init_wizard.go`](../internal/cli/init_wizard.go), [`release.go`](../internal/cli/release.go) |
+| `Load` requires only `manifest.yaml` and validates declared paths — a bundle may carry any other file, so a skeleton is unconstrained by the format | [`load.go`](../internal/release/load.go) (`Load`, `checkReferencedFiles`) |
 
 The last two rows are what make §5.3 and §5.4 cheap: the paths are vendor-named
 and the only couplings are documentation snippets, which `docs-check` already
@@ -118,6 +142,8 @@ gates.
   this repository already publishes.
 - An editor treats a Go template as a Go template.
 - `templates/` contains templates.
+- A new bundle starts with all of the above already true, rather than acquiring
+  them by reading a page.
 
 **Non-goals**
 
@@ -216,6 +242,60 @@ includes beside them), and four Go comments describe the schema as
 `templates/secrets.yaml`. Both sets move with it; `docs-check` fails on a
 snippet path that no longer resolves, which is the gate that keeps this honest.
 
+### 5.5 `release new` — where the conventions take hold
+
+```
+morzer release new ./my-product --name demo --vendor example
+```
+
+Writes a skeleton that already carries §5.2's modeline, §5.3's `.yaml.tmpl`
+naming and §5.4's schema location:
+
+```
+my-product/
+  manifest.yaml          # modeline on line 1, version 0.0.0
+  VERSION                # 0.0.0, agreeing with the manifest
+  compose/compose.yaml
+  templates/app.yaml.tmpl
+  secrets.schema.yaml
+```
+
+**The version is a placeholder, deliberately.** `0.0.0` in both files, which
+[0014 §5.2](0014-building-a-release-bundle.md) overwrites at build time. A
+scaffold that wrote `1.0.0` would be inviting the vendor to hand-maintain the
+one field the tooling should own.
+
+**It scaffolds a skeleton, not a product.** No image guessing, no Compose
+service inference, no hook stubs beyond what the manifest declares. A skeleton
+that verifies clean and deploys nothing useful is honest; one that pretends to
+know the vendor's architecture produces a bundle they have to un-write. The
+generated Compose file is one service with a commented `image:` line pointing at
+the `<PRODUCT>_IMAGE_*` variable it should use.
+
+**The gate that keeps it correct is `release verify`.** The scaffold's output
+must pass `verify --render-check` — §5.1's new gate — immediately and with no
+edits. That is one assertion, and it couples the two halves of this RFC: a
+scaffold that drifts from what the verifier accepts fails, and a verifier that
+becomes stricter than the scaffold fails too. Neither can move alone.
+
+#### Alternatives considered
+
+**Copy `testdata/bundle` and substitute the name.** Tempting, because that
+fixture is installed, updated, backed up and rolled back against real Docker on
+every CI run, so it is the most-tested bundle in existence. Rejected as the
+*default*: it carries five hooks, three Compose files and two profiles, and a
+vendor's first act would be deleting most of it. It stays available as
+`--from-example`, where the argument for it is strongest — a vendor who wants a
+working reference rather than a starting point — and where it costs nothing,
+since the fixture is already maintained.
+
+**Put scaffolding in its own RFC.** Rejected, and this is the reason it is here:
+§5.2–§5.4 are retrofits for bundles that exist and *defaults* for bundles that
+do not. Landing them without a scaffold means the conventions are documentation
+until someone writes one, and every bundle authored in between needs the same
+retrofit performed by hand. The scaffold is not adjacent to this RFC; it is
+where its conventions stop being advice.
+
 ## 6. Tests
 
 - **The motivating case, as a test**: the bundle from §2 — unterminated action,
@@ -231,6 +311,16 @@ snippet path that no longer resolves, which is the gate that keeps this honest.
   does as a side effect of using them.
 - **`docs-check`** is the test for the snippet moves; it fails on an
   unresolvable `--8<--` path already.
+- **The scaffold verifies clean**: `release new` into a temp directory, then
+  `release verify --render-check` on the result, asserting success with no
+  edits. This is the assertion that couples §5.5 to §5.1 — either half moving
+  without the other fails it.
+- **The scaffold carries the conventions**: its manifest's first line is the
+  modeline, its template ends in `.yaml.tmpl`, and its secret schema is not
+  under `templates/`. Asserted against the file tree rather than by reading the
+  generator, so a generator rewritten without them fails.
+- **`--from-example` produces a bundle the suite already installs**, which is
+  its whole justification.
 
 Not tested: that a modeline produces completion in any particular editor. That
 is a claim about editors, and asserting it here would be theatre.
@@ -238,7 +328,11 @@ is a claim about editors, and asserting it here would be theatre.
 ## 7. Docs
 
 - `authoring/your-first-bundle.md`: the modeline, the `.tmpl` convention and
-  its editor association, the moved schema path.
+  its editor association, the moved schema path — and it now **opens** with
+  `release new` rather than with a manifest to retype. The page keeps its
+  fragment-by-fragment walkthrough, because explaining what the scaffold wrote
+  is still the thing a first-time vendor needs; what changes is that they read
+  it beside a working tree rather than in place of one.
 - `reference/release-commands.md`: `verify`'s template pass and
   `--render-check`, with the honesty that the latter is a smoke test rather
   than a guarantee — the docs-drift gate requires the flag to be documented
@@ -304,6 +398,10 @@ is a claim about editors, and asserting it here would be theatre.
 | 5 | `.yaml.tmpl` for templates, as a **convention** | The manifest names the path, so no existing bundle changes. Double extension keeps the output language inferable and matches what Helm/Hugo users expect. |
 | 6 | The secret schema moves out of `templates/` | It is not a template; it is read, not rendered. Same convention-not-format reasoning as decision 5. |
 | 7 | Rendered output is not validated as YAML | The manifest does not declare a target's format, and a template may legitimately produce something else. |
+| 8 | `release new` ships **in this RFC**, not a later one | Decisions 4–6 are retrofits for existing bundles and defaults for new ones; without a scaffold they stay documentation, and every bundle authored in the meantime needs the retrofit by hand. |
+| 9 | The scaffold writes version `0.0.0` in both `manifest.yaml` and `VERSION` | A placeholder [0014 §5.2](0014-building-a-release-bundle.md) stamps at build time. Writing a real-looking version would invite hand-maintaining the one field the tooling should own. |
+| 10 | The scaffold is a **skeleton**, not a working product; `--from-example` copies `testdata/bundle` for those who want one | A generated bundle that guesses an architecture produces work to undo. The example path costs nothing because that fixture is already exercised on every CI run. |
+| 11 | The scaffold's output must pass `verify --render-check` unedited, asserted by a test | Couples §5.5 to §5.1 in both directions: neither the scaffold nor the verifier can move without the other. |
 
 ## 12. Phasing
 
@@ -315,6 +413,11 @@ is a claim about editors, and asserting it here would be theatre.
 - **P4 — `--render-check`** and the synthetic context, last because it carries
   the over-trust risk and the maintenance surface, and because P1 already stops
   the failure that motivated the RFC.
+- **P5 — `release new`**, after P2 and P3, because it emits what those two
+  decide and would otherwise have to be rewritten when they land. Its
+  verify-clean test needs P1; its `--render-check` assertion needs P4, and
+  degrades to plain `verify` if P4 is dropped.
 
 P1 alone is worth shipping. P4 is the only phase that could be dropped without
-losing the point.
+losing the point — and if it is, P5 keeps its weaker gate rather than losing
+one.
