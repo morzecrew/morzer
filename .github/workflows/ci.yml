@@ -512,6 +512,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # This job reads the workflow file and runs no git operation, so the
+          # token the default checkout leaves in .git/config would sit there
+          # for the rest of the job serving nothing.
+          persist-credentials: false
 
       # `needs` above is a hand-written list, and toJSON serialises exactly
       # that list -- so a gate added to this workflow and forgotten here would
@@ -521,19 +526,46 @@ jobs:
       #
       # So the list is compared against the workflow rather than trusted: every
       # job defined here, except this one, has to be wired in.
+      #
+      # Parsed rather than pattern-matched. A line pattern is blind to a name
+      # with a capital in it, a trailing comment after the colon, or a quoted
+      # key -- and every one of those *removes* a job from the comparison
+      # rather than adding one, which is this check's own failure mode turned
+      # on itself.
       - name: Every gate in this workflow is wired into this check
         env:
           WIRED: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
 
-          defined=$(awk '/^jobs:/{f=1;next} f && /^  [a-z][a-z0-9_-]*:$/{gsub(/[ :]/,"");print}' \
-            .github/workflows/ci.yml | grep -vx required | sort)
-          wired=$(echo "$WIRED" | jq -r 'keys[]' | sort)
+          # A parse failure is swallowed here so the check below reports it,
+          # rather than the run ending on a bare jq or traceback that says
+          # nothing about which gate is unwired.
+          if command -v yq >/dev/null 2>&1; then
+            all=$(yq -r '.jobs | keys[]' .github/workflows/ci.yml 2>/dev/null || true)
+          else
+            all=$(python3 -c 'import sys, yaml; print("\n".join(yaml.safe_load(open(sys.argv[1]))["jobs"]))' \
+              .github/workflows/ci.yml 2>/dev/null || true)
+          fi
 
-          missing=$(comm -23 <(echo "$defined") <(echo "$wired"))
+          # The reader has to be able to see *this* job, or it cannot be
+          # trusted to see the others: a parse that returned nothing would
+          # otherwise read as "nothing missing", which is the exact verdict
+          # this step exists to make impossible.
+          if ! printf '%s\n' "$all" | grep -qx required; then
+            echo "::error::cannot read job names from .github/workflows/ci.yml"
+            exit 1
+          fi
+
+          # LC_ALL=C on both, because comm compares bytes: a sort in the
+          # runner's locale can order "-" and "_" differently and make comm
+          # report a difference that is not there.
+          defined=$(printf '%s\n' "$all" | grep -vx required | LC_ALL=C sort)
+          wired=$(printf '%s' "$WIRED" | jq -r 'keys[]' | LC_ALL=C sort)
+
+          missing=$(LC_ALL=C comm -23 <(printf '%s\n' "$defined") <(printf '%s\n' "$wired"))
           if [ -n "$missing" ]; then
-            echo "::error::gates missing from the required check's needs: $(echo "$missing" | tr '\n' ' ')"
+            echo "::error::gates missing from the required check's needs: $(printf '%s' "$missing" | tr '\n' ' ')"
             exit 1
           fi
           echo "every gate in this workflow is wired in"
