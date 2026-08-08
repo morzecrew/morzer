@@ -12,8 +12,12 @@
   stops linting Go template syntax as YAML; the secret schema stops living
   in `templates/`, where it is not a template; and `release new` scaffolds a
   bundle that already carries all four, because otherwise every bundle written
-  after this RFC needs the same retrofit it performs. No format change and no
-  manifest field change — every path involved is one the vendor already names.
+  after this RFC needs the same retrofit it performs. No format change, and no
+  manifest field change **of its own** — every path this RFC touches is one the
+  vendor already names. The scaffold does emit one field it does not define:
+  `metadata.release_notes`, added by
+  [0018 decision 4](0018-the-pre-1-0-manifest-surface.md), which P5 is therefore
+  gated on.
   Does **not** add a render-preview command (§8), and does not touch how
   templates render at install time.
 - **Related:** [`internal/cli/release.go`](../internal/cli/release.go) (`verify`) ·
@@ -262,15 +266,23 @@ morzer release new ./my-product --name demo --vendor example
 Writes a skeleton that already carries §5.2's modeline, §5.3's `.yaml.tmpl`
 naming and §5.4's schema location:
 
-```
+```text
 my-product/
-  manifest.yaml          # modeline on line 1, version 0.0.0
+  manifest.yaml          # modeline on line 1, version 0.0.0,
+                         #   metadata.release_notes: RELEASE.md
   VERSION                # 0.0.0, agreeing with the manifest
   RELEASE.md             # release-notes stub
   compose/compose.yaml
   templates/app.yaml.tmpl
   secrets.schema.yaml
 ```
+
+The manifest **declares** the release-notes file rather than the scaffold
+merely dropping one beside it. That field is
+[0018 decision 4](0018-the-pre-1-0-manifest-surface.md)'s, not this RFC's, and
+it is why P5 is gated on 0018: writing `RELEASE.md` without the declaration
+would leave the one file in the tree that nothing points at, which is the
+condition [0002](0002-rich-terminal-renderer.md) P5 was already stuck behind.
 
 `RELEASE.md` earns its place for a reason outside this RFC.
 [0002](0002-rich-terminal-renderer.md) built `glamour` rendering of release
@@ -436,7 +448,7 @@ and how the walk over `TemplateData`'s fields (§9) is spelled.
 | 11 | The scaffold's output must pass `verify --render-check` unedited, asserted by a test | Couples §5.5 to §5.1 in both directions: neither the scaffold nor the verifier can move without the other. |
 | 12 | `--render-check` is **permanently** opt-in — not deferred, decided | A synthetic context invents its values, so it can never promise what a real install delivers; that is structural, not a maturity gap time closes. Making it default would turn "verify passed" into a guarantee it cannot keep, which is the exact failure this RFC exists to fix. Consequence: there will never be a `--no-render-check`, and anyone proposing the flip is re-opening decision 2. |
 | 13 | The synthetic context lives in the **render adapter**, beside the real one | They imitate each other, so they should drift together; a context that lives away from the renderer it mimics goes stale silently. Consequence: the adapter carries code only `verify` calls, which is the cost accepted for adjacency. |
-| 14 | The scaffold writes a `RELEASE.md` stub | [0002](0002-rich-terminal-renderer.md) P5 is gated on "a bundle actually shipping a `RELEASE.md`", which no bundle does because nothing creates one — a gate that could not open by itself. Consequence: 0002 P5 becomes schedulable, and [0016 P2](0016-update-checking-and-unattended-updates.md) is where it pays off. |
+| 14 | The scaffold writes a `RELEASE.md` stub **and declares it** as `metadata.release_notes` | [0002](0002-rich-terminal-renderer.md) P5 is gated on "a bundle actually shipping a `RELEASE.md`", which no bundle does because nothing creates one — a gate that could not open by itself. The field is [0018 decision 4](0018-the-pre-1-0-manifest-surface.md)'s, so P5 is gated on 0018: a stub with nothing pointing at it recreates the condition P5 was already stuck behind. Consequence: 0002 P5 becomes schedulable, and [0016 P2](0016-update-checking-and-unattended-updates.md) is where it pays off. |
 
 ## 12. Phasing
 
@@ -451,7 +463,10 @@ and how the walk over `TemplateData`'s fields (§9) is spelled.
 - **P5 — `release new`**, after P2 and P3, because it emits what those two
   decide and would otherwise have to be rewritten when they land. Its
   verify-clean test needs P1; its `--render-check` assertion needs P4, and
-  degrades to plain `verify` if P4 is dropped.
+  degrades to plain `verify` if P4 is dropped. **Also gated on
+  [0018](0018-the-pre-1-0-manifest-surface.md) P2**, which defines the
+  `metadata.release_notes` field the skeleton declares — scaffolding the stub
+  without it would ship a file nothing points at.
 
 P1 alone is worth shipping. P4 is the only phase that could be dropped without
 losing the point — and if it is, P5 keeps its weaker gate rather than losing

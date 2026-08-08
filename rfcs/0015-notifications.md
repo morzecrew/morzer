@@ -237,9 +237,13 @@ The port already fixes the important half — a notifier failure never changes t
 operation outcome, and is logged and dropped
 ([`notify.go:12-14`](../internal/ports/notify.go)). This RFC fixes the rest:
 
-- **Synchronous, with a short timeout** (5s, per target). The allowlist means
-  roughly one event per operation, so the latency is bounded and the code has no
-  queue, no goroutine lifetime and no shutdown ordering.
+- **Synchronous, with a short timeout** (5s, per target) **under a 15s
+  aggregate deadline** covering the fan-out. Per-target alone is not a bound:
+  `Notifiers` sends sequentially, so five unreachable targets would add 25
+  seconds to every operation while each individual request looked well-behaved.
+  The deadline is what an operator actually experiences. The allowlist means
+  roughly one event per operation, so the code still has no queue, no goroutine
+  lifetime and no shutdown ordering.
 - **No retries.** A webhook that was down means the operator was not told.
 - **No persistence.** A notification not delivered is not delivered.
 
@@ -283,6 +287,14 @@ the payload — [0009](0009-backup-targets.md) makes the second fail the whole
 operation, and "the backup itself was fine but it is still only on this machine"
 is a different message to a human than "no backup exists". The existing
 `Status` and `Message` fields carry it; the test asserts they differ.
+
+**The call site goes on every outcome path, not the success path.** `Backup`
+returns early on the engine's error, so a `d.notify(...)` added where the
+existing four sit — after a successful run — would fire for exactly the case
+nobody needs to be told about and stay silent for the two this RFC exists to
+report. Every operation emits `operation.finished` with its real status,
+including the failure return, and the notifier's own error stays separate from
+the operation's result as the port already requires.
 
 ### 5.5 Redaction, and not double-checking it
 
@@ -401,14 +413,14 @@ name, and whether the two URL forms share one accessor.
 | # | Decision | Rationale and consequence |
 | --- | --- | --- |
 | 1 | One **webhook** adapter, no service-specific ones | Every chat service accepts an incoming webhook; the differences are payload shape, which is a receiver's problem. |
-| 2 | Configuration mirrors [0009](0009-backup-targets.md)'s backup targets exactly — a list of `{url, credentials}`, credential by **name** | A second shape for the same idea is how a codebase grows two of everything. Keeps tokens out of the operator-facing file and out of `doctor` output. |
+| 2 | Configuration mirrors [0009](0009-backup-targets.md)'s backup targets — a list of targets whose credential is named rather than embedded | A second shape for the same idea is how a codebase grows two of everything. Keeps tokens out of the operator-facing file and out of `doctor` output. The endpoint is `url` **or** `url_secret`, exclusively, per decision 10 — an earlier wording of this row said the shape was exactly `{url, credentials}`, which would have licensed an implementation that rejects the secure form. |
 | 3 | Only `https` targets | Matches `ParseRef`'s refusal of plaintext release sources; the payload describes a deployment. |
 | 4 | An **allowlist** of forwarded kinds: `operation.finished`, and `check` at warn/error | Fail-closed against kinds added later. Consequence: a new `Kind` is silently not forwarded until classified, and the test in §6 is what makes that visible rather than silent. |
 | 5 | `step.output` is **never** forwarded | It is raw vendor-controlled subprocess output, and the "events carry no secrets" claim rests on a handler [0008](0008-test-coverage-program.md) already found defective once. Consequence: a webhook alone will not tell an operator *why* something failed, and that is the trade. |
-| 6 | Delivery is **at-most-once**: synchronous, 5s timeout, no retry, no persistence | Keeps the adapter free of queue lifetime and shutdown ordering in a one-shot CLI. Consequence, and it binds another RFC: [0016](0016-update-checking-and-unattended-updates.md) may not treat "notified" as a precondition — the journal is the record. |
+| 6 | Delivery is **at-most-once**: synchronous, 5s per target under a **15s aggregate deadline**, no retry, no persistence | Keeps the adapter free of queue lifetime and shutdown ordering in a one-shot CLI. The aggregate deadline is the bound that matters: `Notifiers` fans out sequentially, so a per-target timeout alone lets N unreachable targets add N×5s to every operation. Consequence, and it binds another RFC: [0016](0016-update-checking-and-unattended-updates.md) may not treat "notified" as a precondition — the journal is the record. |
 | 7 | `backup` and `restore` gain notify call sites | `backup` is the only operation with a generated timer, so it is the only one that already runs unattended — and it is the one with no call site today. |
 | 8 | The adapter does **not** re-redact | A second scrubber hides defects in the first. The guard is a test asserting no secret appears in a delivered payload, at the boundary where a leak costs most. |
-| 9 | `InstallationSchemaVersion` bumps to **4** | Identical in shape to the bump to 3: an older manager reads a newer state file, sees no `notify` targets, reports success, and the operator who configured a way to be told is never told. Nothing is released, so the bump protects nobody *today* — it is the mechanism working ahead of the first tag, which is the only time it can be established for free. Consequence: an older binary refuses the state file naming its own version, rather than silently running without notifications — and that refusal is what protects every *other* field added at schema 4, including [0016](0016-update-checking-and-unattended-updates.md)'s `mode`. |
+| 9 | `InstallationSchemaVersion` bumps to **4** | Identical in shape to the bump to 3: an older manager reads a newer state file, sees no `notify` targets, reports success, and the operator who configured a way to be told is never told. Nothing is released, so the bump protects nobody *today* — it is the mechanism working ahead of the first tag, which is the only time it can be established for free. Consequence: an older binary refuses the state file naming its own version, rather than silently running without notifications. Schema 4 names **this** shape and no other — [0016](0016-update-checking-and-unattended-updates.md)'s `mode` takes 5 rather than sharing it, because two field sets under one version let a manager implementing only one of them rewrite the state and drop the other's fields. |
 | 10 | A target names its endpoint as either `url` or **`url_secret`** | Some services spell the credential as a path, so a plain `url` field would leak it into the operator-facing file, `doctor` output, and `installation export`. Both forms rather than only the secret one: an endpoint carrying no credential should not be forced into the secret store. Consequence: a `url_secret` target is identifiable only by `name`, so `doctor` cannot say where it points. |
 | 11 | `min_level` is per target, defaulting to **`error`**; `warn` is opt-in | Warnings are both the thing a forgotten machine needs (overdue rotation) and the thing that fires on every `doctor` run until fixed. Since deduplication is out of scope, a `warn` default would ship a known-noisy channel with no way to quiet it; one field gives the operator the choice instead. |
 | 12 | `Deps.Notifier` stays **nil** when no targets are configured | Keeps the existing no-op path exercised on every installation rather than replacing it with an empty fan-out that is never covered. |

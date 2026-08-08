@@ -354,15 +354,29 @@ through, and a dev sandbox touched once by an older binary silently loses its
 mode and thereafter presents as production — the deferred-risk row of the table
 above, arrived at by accident.
 
-What prevents that is not a bump dedicated to `mode`: it is that a manager
-refuses a state file from the future — `migrateInstallation` is forward-only and
-`Installation.Validate` "rejects a schema version from the future"
-([`state.go:103-107`](../internal/infra/state/state.go)). So `mode` needs to
-land at or after *a* bump, not to cause one — and [0015](0015-notifications.md)
-is already taking `InstallationSchemaVersion` to 4 for `notify`, whose omission
-fails in the direction that forces it. If both ship at schema 4, `mode` and the
-recorded source ref are protected by that same refusal. If this RFC ships first,
-it carries the bump itself.
+What prevents that is that a manager refuses a state file from the future —
+`migrateInstallation` is forward-only and `Installation.Validate` "rejects a
+schema version from the future"
+([`state.go:103-107`](../internal/infra/state/state.go)).
+
+**So `mode` takes schema 5, and shares its version with nothing.** An earlier
+draft had it ride [0015](0015-notifications.md)'s bump to 4 — "or carry the bump
+itself if this RFC ships first" — which is worse than it looks. Two field sets
+both called schema 4 means a manager implementing only one of them accepts a
+state file written by the other, sees the version it knows, and rewrites it
+dropping fields it has never heard of. That is the exact write-back hazard this
+section is about, reintroduced by the fix for it. A schema version has to name
+one shape.
+
+`mode` arrives in P3, which is already gated on 0015 shipping, so 4-then-5 is
+the order regardless.
+
+**The recorded source ref (§5.1) needs no bump and takes none.** Losing it to an
+older binary's write-back means `--check` stops answering until it is
+reconfigured — a degradation an operator sees immediately, not a silent loss of
+a protection they believed they had. That is the distinction the bump exists to
+draw, and applying it reflexively to every new field is how schema versions stop
+meaning anything.
 
 The contrast with [0015 decision 9](0015-notifications.md) is worth keeping in
 view: a bump is a judgement about which direction an omission fails in, not a
