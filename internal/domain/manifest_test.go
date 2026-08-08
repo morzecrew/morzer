@@ -433,9 +433,19 @@ func TestScalarRoundTrips(t *testing.T) {
 
 		// A control: the type that already refuses a bare integer, and the
 		// reason the class is avoidable rather than inherent to YAML.
+		//
+		// Driven through the decode rather than through UnmarshalText, which
+		// is the whole point of this block -- a control that tested the layer
+		// below the defect would have been the same mistake in miniature, and
+		// would stay green if a future Duration.UnmarshalYAML started taking
+		// bare integers.
 		t.Run("a duration still refuses a bare number", func(t *testing.T) {
-			var d Duration
-			require.Error(t, d.UnmarshalText([]byte("30")), "30 what?")
+			var d struct {
+				V Duration `yaml:"v"`
+			}
+			require.Error(t, decode(t, "v: 30", &d), "30 what?")
+			require.NoError(t, decode(t, `v: "30s"`, &d))
+			assert.Equal(t, 30*time.Second, d.V.Duration())
 		})
 
 		// The two types that accept a bare integer on purpose inherit YAML's
@@ -464,6 +474,14 @@ func TestScalarRoundTrips(t *testing.T) {
 
 			require.NoError(t, decode(t, "v: 010", &port))
 			assert.Equal(t, PortSpec("8"), port.V, "same inheritance, same reason")
+
+			// The comment on both types names hex alongside octal. A claim
+			// with no test under it is what this whole block exists to stop.
+			require.NoError(t, decode(t, "v: 0x10", &size))
+			assert.Equal(t, int64(16), size.V.Bytes(), "0x10 is YAML hex")
+
+			require.NoError(t, decode(t, "v: 0x10", &port))
+			assert.Equal(t, PortSpec("16"), port.V, "0x10 is YAML hex here too")
 		})
 	})
 
