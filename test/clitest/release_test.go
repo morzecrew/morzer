@@ -178,3 +178,41 @@ func storeEntries(t *testing.T, r *clitest.Runner) int {
 	}
 	return len(entries)
 }
+
+// TestReleaseVerifyRefusesATemplateThatCannotParse.
+//
+// The command's own help calls it "the command a bundle vendor runs in their
+// own CI", and before RFC 0013 P1 it printed `bundle is valid` for a bundle
+// whose template could not render: it validated the manifest, checked that
+// every referenced file *existed*, computed the digest, and never parsed one.
+// The failure then arrived during an operator's `apply`, part-way through a
+// journaled operation, on a machine belonging to someone who did not write it.
+//
+// Both halves are asserted. Without the second, the gate could refuse every
+// bundle and still look correct here.
+func TestReleaseVerifyRefusesATemplateThatCannotParse(t *testing.T) {
+	r := clitest.New(t)
+
+	tmpl := filepath.Join(r.Bundle, "templates", "application.yaml")
+	original, err := os.ReadFile(tmpl)
+	if err != nil {
+		t.Fatalf("cannot read the example template: %v", err)
+	}
+
+	// An unterminated action. A parse failure needs no installation, no
+	// parameters and no network, which is what makes checking it safe in
+	// the path a vendor runs on every commit.
+	broken := "server:\n  url: {{ .Installation.URL\n"
+	if err := os.WriteFile(tmpl, []byte(broken), 0o600); err != nil {
+		t.Fatalf("cannot write the broken template: %v", err)
+	}
+
+	r.Run("release", "verify", r.Bundle).Failed().
+		OutputContains("does not parse")
+
+	if err := os.WriteFile(tmpl, original, 0o600); err != nil {
+		t.Fatalf("cannot restore the template: %v", err)
+	}
+	r.Run("release", "verify", r.Bundle).ExitCode(0).
+		OutputContains("bundle is valid")
+}

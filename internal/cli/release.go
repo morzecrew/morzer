@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -226,6 +228,15 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 					rel.Manifest.APIVersion, warning)
 			}
 
+			// Every declared template must at least parse. Checking
+			// it here rather than in Load is deliberate: Load also
+			// runs during an operator's `apply`, and a parse failure
+			// there is the failure this moves earlier, not a place
+			// to add work.
+			if err := checkTemplatesParse(rel); err != nil {
+				return err
+			}
+
 			// A per-file sums list is what a third party can check
 			// with sha256sum, independently of this tool.
 			if err := checksum.VerifySumsFile(rel.Root); err != nil {
@@ -270,6 +281,53 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 	cmd.Flags().StringArrayVar(&signingKeys, "signing-key", nil,
 		"minisign public key the bundle's signature must verify against; repeat for several")
 	return cmd
+}
+
+// checkTemplatesParse parses every template the manifest declares.
+//
+// Reports all of them rather than the first: a vendor fixing one broken
+// template should not have to run the command again to discover the next, which
+// is the same reasoning CompatibilityReport already applies to compatibility
+// problems.
+//
+// Parsing only. A template that parses can still fail to render against a real
+// context -- the manifest names no target format and the render context has
+// values only an installation can supply -- and reporting "valid" for more than
+// was checked is the over-claim this whole check exists to remove.
+func checkTemplatesParse(rel domain.Release) error {
+	var problems []string
+
+	for i, c := range rel.Manifest.Configuration {
+		field := fmt.Sprintf("configuration[%d].template", i)
+
+		path, err := rel.Path(c.Template)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			// Load already refused a declared-but-missing file, so
+			// this is a permission or I/O fault rather than a typo,
+			// and it is reported rather than skipped: a template the
+			// verifier could not read is not a template it checked.
+			problems = append(problems,
+				fmt.Sprintf("%s: cannot read %s: %v", field, c.Template, err))
+			continue
+		}
+		if err := gotemplate.CheckSyntax(c.Template, raw); err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
+		}
+	}
+
+	if len(problems) > 0 {
+		return domain.ValidationError(domain.ErrTemplateSyntax,
+			"the bundle declares templates that do not parse:\n  - %s",
+			strings.Join(problems, "\n  - ")).
+			WithHint("a template that cannot parse cannot render, so this bundle " +
+				"would fail during an operator's `apply`")
+	}
+	return nil
 }
 
 func newReleaseFetchCommand(app *App) *cobra.Command {

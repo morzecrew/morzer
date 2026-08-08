@@ -34,8 +34,21 @@ Shows a release manifest — the installed one when no version is given.
 morzer release verify <path>
 ```
 
-Validates a bundle's manifest and checks its integrity, without installing
-anything. This is the command a bundle vendor runs in their own CI.
+Validates a bundle's manifest, **parses every template it declares**, and
+checks its integrity, without installing anything. This is the command a bundle
+vendor runs in their own CI.
+
+The template pass is parsing, not rendering. A template that parses can still
+fail against a real context — the render context has values only an
+installation can supply — so a clean `verify` means the templates are
+syntactically sound, not that they will produce what you expect. Parsing needs
+no installation, no parameters and no network, which is what makes it safe to
+run on every commit.
+
+It matters because the alternative is worse: without it, a template with an
+unterminated action passes `verify` and fails during an operator's `apply`,
+part-way through a journaled operation, on a machine belonging to someone who
+did not write it.
 
 | Flag | Meaning |
 | --- | --- |

@@ -29,14 +29,14 @@ func New() *Renderer { return &Renderer{} }
 
 var _ ports.Renderer = (*Renderer)(nil)
 
-// Render executes a template against the documented context.
-func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports.TemplateData) ([]byte, error) {
-	raw, err := readTemplate(ref)
-	if err != nil {
-		return nil, err
-	}
-
-	tmpl, err := template.New(ref.Name).
+// parse builds the template exactly as rendering will.
+//
+// Extracted so CheckSyntax and Render cannot construct it differently. A
+// syntax check that parsed with a different function set or a different
+// missingkey option would pass templates that then fail at install, which is
+// the failure `release verify` exists to move earlier.
+func parse(name string, raw []byte) (*template.Template, error) {
+	tmpl, err := template.New(name).
 		Funcs(funcs()).
 		// missingkey=error is the whole point: without it, a reference
 		// to a field that does not exist renders as "<no value>" and
@@ -44,8 +44,36 @@ func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports
 		Option("missingkey=error").
 		Parse(string(raw))
 	if err != nil {
-		return nil, domain.ValidationError(err, "template %s does not parse", ref.Name).
+		return nil, domain.ValidationError(
+			fmt.Errorf("%w: %w", domain.ErrTemplateSyntax, err),
+			"template %s does not parse", name).
 			WithHint("check the delimiters and function names in the template")
+	}
+	return tmpl, nil
+}
+
+// CheckSyntax reports whether a template parses, without rendering it.
+//
+// Parsing needs no installation, no parameters and no network, which is what
+// makes it safe in the path a vendor runs on every commit. It is deliberately
+// *only* parsing: a template that parses can still fail to render against a
+// real context, and saying otherwise is the over-claim RFC 0013 exists to
+// avoid.
+func CheckSyntax(name string, raw []byte) error {
+	_, err := parse(name, raw)
+	return err
+}
+
+// Render executes a template against the documented context.
+func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports.TemplateData) ([]byte, error) {
+	raw, err := readTemplate(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	tmpl, err := parse(ref.Name, raw)
+	if err != nil {
+		return nil, err
 	}
 
 	view := newView(data)
