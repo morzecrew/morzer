@@ -150,10 +150,34 @@ That distinction is the point. Today `installation.yaml` sits in a backup
 looking like it is enough to rebuild a machine, and is not. Naming both roles
 turns a trap into two labelled artifacts.
 
-`BackupManifest.SchemaVersion` bumps. Schema 1 (plaintext components) is still
-read today, so the precedent for handling an older backup is established and
-this follows it: an older backup simply has no `export` component, and §5.4 says
-what happens when one is used.
+`BackupManifest.SchemaVersion` bumps, following the schema-1 precedent already
+in `stage()`. Nothing has been released, so there are no backups in the wild to
+stay compatible with — the versioning is here because it will matter after the
+first tag, not because it is protecting anyone today.
+
+**The export component is encrypted to the recovery recipients only**, not to
+the full recipient list every other component gets. A running machine never
+reads the export out of its own backup: it has its own state. Only a *rebuilt*
+machine does, and it is holding the offline key.
+
+The property that buys is worth stating in one line: **the export component is
+unreadable by the machine that wrote it.** Compromising the live host — the one
+that is online and attackable — yields the data but not the identity bundle.
+Only the offline key opens that, and by construction the offline key is not on
+the machine.
+
+This is why the component's recipients are a per-component decision rather than
+a property of the backup. `encryptComponents` currently takes one list for
+everything ([`backup.go:570`](../internal/adapters/backup/hookbackup/backup.go));
+it gains a per-record answer instead.
+
+An installation created with `--no-recovery-recipient` has no recovery key to
+encrypt to, so the component is **skipped entirely** rather than falling back to
+the machine key. Falling back would produce an identity bundle readable by
+exactly the key that dies with the machine — the appearance of a recovery path
+and none of the substance. Such an installation has no recovery story by the
+operator's own choice, and `doctor` already says so through
+`secrets.recovery-recipient`.
 
 ### 5.2 `secrets` is retired, and `config` is not
 
@@ -167,18 +191,29 @@ Nothing plausibly reads it: `secrets.sops.yaml.age` is an encrypted blob inside
 an encrypted component, useless to a restore hook.
 
 `ComponentConfig` **stays**, and the reasoning is deliberately different.
-`installation.yaml` and `application.yaml` are human-readable, small, and a
-restore hook could be reading them — the published hook ABI names
-`<PRODUCT>_BACKUP_DIR` ([`hooks.md:41`](../pages/docs/reference/hooks.md)) without
-enumerating its contents, so a vendor doing so is undocumented but not
-misbehaving. Removing it would be a silent break for a saving of a few
-kilobytes.
+`installation.yaml` and `application.yaml` are human-readable, small, and useful
+in an incident review. Removing them saves kilobytes and loses the forensic
+record.
+
+**And the directory's contents become an ABI in the same change.** The published
+hook contract names `<PRODUCT>_BACKUP_DIR`
+([`hooks.md:41`](../pages/docs/reference/hooks.md)) and stops there — it never
+says what is *in* it. That is arguably the fourth bundle-facing ABI to
+[0007](0007-operator-parameters.md)'s three, and it is unenumerated.
+
+Which is why retiring `secrets` and documenting the directory belong in one
+change rather than two. After the first tag, whatever vendors happen to read
+becomes a contract regardless of what any page says; today there are no vendors,
+so the enumeration is simply true and anything left out of it is legitimately
+removable. Doing it in the other order — remove first, document later — would
+be removing something from a contract that had never stated its own contents.
 
 ### 5.3 `import --from-backup`
 
 ```
+morzer installation import --from-backup --identity ~/recovery.key
 morzer installation import --from-backup <id> --identity ~/recovery.key
-morzer installation import --from-backup <id> --target s3://… --credentials-file ./creds.yaml
+morzer installation import --from-backup --target s3://… --credentials-file ./creds.yaml
 ```
 
 `Import` already takes a `domain.InstallationExport` **value** and the CLI
@@ -186,6 +221,24 @@ parses the file ([`recovery.go:232`](../internal/lifecycle/ops/recovery.go)), so
 this is a second way to obtain that value and no change to `Import` itself. The
 component is decrypted with the supplied identity — the same key the operator is
 already passing — and parsed exactly as a file-based export is.
+
+**The identity source and the data source are separate choices, and the design
+must not fuse them.** An export is taken deliberately; a backup is picked for
+what its database holds. If `--from-backup` demanded an id, an operator
+restoring to a point in time would silently get that moment's *identity* too —
+a backup from before a secret rotation carries the superseded secrets, and
+nothing about choosing it for its data says so.
+
+So they are decoupled: **no id means the newest backup's export**, which is
+almost always the right identity, because staleness here only ever loses
+information. `restore` then independently takes whatever backup the operator
+wants for its data. An explicit id is honoured — point-in-time identity recovery
+is a real need — and **warns when it is not the newest**, naming the newer
+backup and the gap between them.
+
+`import` already "prints what it assumed and what to do next"
+([`recovering-a-lost-machine.md`](../pages/docs/operating/recovering-a-lost-machine.md)),
+so the chosen backup and its timestamp appear without a new mechanism.
 
 **From a remote target, it must not download the backup.** A 4 KB document
 should not cost 50 GB and an hour, least of all during an incident. So
@@ -208,19 +261,24 @@ reads only the one named `backup.json` per backup. `file://`, `ssh://` and
 pick one, and pull a few kilobytes out of it before deciding whether to spend the
 bandwidth on the data.
 
-### 5.4 What happens with an older backup
+### 5.4 A backup with no export component
 
-A backup with no `export` component is refused by `--from-backup`, naming the
-alternative:
+Refused by `--from-backup`, naming the alternative:
 
-> backup 01J8Z… was taken before backups carried an installation export
-> (backup schema 1). Recover identity from `installation import <export>`, or
-> take a new backup on a machine that still runs.
+> backup 01J8Z… carries no installation export. Recover identity from
+> `installation import <export>`, or take a new backup on a machine that still
+> runs.
 
-Fail-closed and specific. The failure mode to avoid is a partial import that
-looks like it worked — a machine with an id and no secrets is worse than a
-refusal, because it will pass `restore`'s installation-id check and then run a
-product whose credentials are all missing.
+The failure mode this exists to prevent is a partial import that looks like it
+worked. A machine with an id and no secrets is worse than a refusal, because it
+passes `restore`'s installation-id check and then runs a product whose
+credentials are all missing.
+
+Two cases reach it, and neither is a compatibility burden: a backup taken by a
+pre-0017 build, and one from an installation with no recovery recipient (§5.1),
+where the component was skipped rather than written unreadably. The second is
+the one that will actually be met, and its message should name
+`secrets.recovery-recipient` rather than the backup's age.
 
 ### 5.5 Why `installation export` survives
 
@@ -275,21 +333,31 @@ into the last step would reverse the order it depends on.
 - **Byte-for-byte equivalence**: the export inside a backup and the export
   written by `installation export` on the same machine at the same moment are
   identical. Without this the "one producer" claim decays quietly into two.
-- **A schema-1 backup is refused by `--from-backup` and still restores data** —
-  the pair, since the refusal must not become a refusal to read old backups at
-  all.
+- **The machine cannot read its own export component.** Decrypt it with the
+  machine identity and assert failure; decrypt with the recovery identity and
+  assert success. The first half is the whole point of §5.1 and the half a
+  refactor would quietly drop.
+- **An installation with no recovery recipient produces a backup with no export
+  component** — not one encrypted to the machine key. The failure this prevents
+  is an identity bundle that looks recoverable and is readable only by the key
+  that died.
+- **Newest-by-default, and the staleness warning**: `--from-backup` with no id
+  picks the newest; with an older id it still works *and* warns, naming the
+  newer backup. Both halves, or the warning becomes a refusal or a no-op.
+- **A backup without an export component is refused, and still restores data** —
+  the pair, since the refusal must not widen into a refusal to read the backup
+  at all.
 - **`FetchFile` transfers one file**, asserted by byte count against the target
   fake, not by reading the result. A correct file fetched by downloading
   everything passes an equality check and fails the point.
-- **The retired `secrets` component**: a restore of a backup written before this
-  change still works, and a new backup does not contain `secrets.sops.yaml.age`.
-- **A backup still refuses when there is nothing to capture** — the `export`
-  component must not accidentally make an empty backup look non-empty, which
-  would defeat [0010](0010-compose-volume-capture.md)'s refusal.
-
-That last one is the sharpest risk in the RFC and the least obvious: adding a
-component that is always present changes what "the backup captured nothing"
-means.
+- **The retired `secrets` component**: a new backup does not contain
+  `secrets.sops.yaml.age`, and a restore of one that does still works.
+- **The "captured nothing" refusal stays volume-specific.** Not a test that the
+  `export` component fails to satisfy it — it structurally cannot, since the
+  predicate counts `capturedVolumes`. A guard instead: a release with no hook
+  and no volumes must still be refused a backup after this change, so a later
+  refactor that generalises the predicate into a component count fails here
+  rather than in production.
 
 ## 7. Docs
 
@@ -302,7 +370,15 @@ means.
   artifact as well as a data one — which changes where a reader should be willing
   to store one.
 - `reference/backup-targets.md`: `FetchFile` has no operator surface, but
-  `import --from-backup --target` does.
+  `import --from-backup --target` does. The page also gains a hardening note
+  that is available today and documented nowhere — give the manager put+get on
+  the bucket, withhold `DeleteObject`, run with `--no-prune-remote`
+  ([`commands.go`](../internal/cli/commands.go)), and let bucket lifecycle rules
+  apply retention. An attacker holding the credentials out of a backup then
+  cannot delete the backup history with them.
+- `reference/hooks.md`: the contents of `<PRODUCT>_BACKUP_DIR`, enumerated as an
+  ABI for the first time (§5.2), naming what a hook may rely on and what it may
+  not. This ships **with or before** the retirement of `secrets`, not after.
 - The `installation export` documentation reframes it as an optimisation and a
   fallback, without discouraging it: it is still the fastest path and the only
   one for installations that cannot back up.
@@ -327,42 +403,50 @@ means.
 
 - **Every backup becomes a complete identity artifact.** An attacker with backup
   read *and* the recovery key gets the installation, the secrets and the backup
-  target credentials. **The marginal change is smaller than it sounds** — the
-  secret state is already in every backup today, and 0009 already puts target
-  credentials in it — but the authoritative installation is new, and retention
-  means thirty copies of it rather than one. The documentation must say plainly
-  that a backup is now an identity artifact; an operator who was storing backups
-  more casually than exports has a decision to make.
-- **`--from-backup` restores identity from a moment chosen for data reasons.** An
-  export is taken deliberately; a backup is picked because of what its database
-  contains. A backup from before a secret rotation carries the old secrets, and
-  nothing about choosing it flags that. The mitigation is that the newest backup
-  is usually the right one and is what an operator reaches for anyway — but it
-  is a silent staleness where the export's was at least self-inflicted.
-- **Retiring `secrets` could break an undocumented hook.** Judged very unlikely
-  (it is an encrypted blob), and it is a real behaviour change to a file that has
-  been in every backup.
-- **An always-present component changes "captured nothing".** The refusal in
-  [0010](0010-compose-volume-capture.md) counts what was captured. If `export`
-  is counted, a backup with no data at all starts succeeding. §6 tests it; the
-  implementation must exclude managed components from that count, as it already
-  does.
-- **This makes a bucket compromise worse in one specific way.** The target
-  credentials in the export are credentials to *write* to that bucket, not only
-  read it. Already true via the secret state, and worth stating rather than
-  discovering.
+  target credentials. Two things bound this. The marginal *data* exposure is
+  close to zero — the secret state is already in every backup, and so are the
+  target URLs via `installation.yaml`; what genuinely changes is attacker
+  ergonomics, since work that needed manual `sops` fumbling becomes one command.
+  And §5.1's recovery-only encryption removes the more likely half of the threat
+  entirely: compromising the live machine no longer yields the identity bundle,
+  because the machine cannot read it either. What remains is the offline key,
+  which is the thing the whole design already asks operators to protect. The
+  documentation must still say plainly that a backup is an identity artifact.
+- **Retention multiplies the copies.** Thirty nightly backups are thirty copies
+  of the identity bundle where there was one export. Mitigated by the same
+  recovery-only encryption and by nothing else; an operator storing backups more
+  casually than exports has a decision to make.
+- **A bucket compromise yields *write* credentials, not only read.** Already
+  true via the secret state and unchanged by this RFC, but worth stating rather
+  than discovering. The available hardening is operational: give the manager
+  put+get and withhold `DeleteObject`, run with `--no-prune-remote`, and let
+  bucket lifecycle rules do retention — see §7.
+- **~~An always-present component changes "captured nothing".~~ Overstated in
+  the first draft of this RFC, and corrected here.** The refusal is
+  `!hasHook && capturedVolumes == 0`
+  ([`backup.go:342`](../internal/adapters/backup/hookbackup/backup.go)) — it
+  counts *volumes specifically*, not components in general, so an
+  always-present `export` cannot satisfy it. The residual risk is a future
+  refactor generalising that predicate into a component count, which §6 guards
+  against rather than tests for.
+- **Retiring `secrets` is now free, and was never expensive.** Nothing has been
+  released, so no vendor has a restore hook reading it. Recorded because the
+  reasoning would be different after the first tag, and because §5.2 removes it
+  from a directory whose contents §7 is simultaneously making an ABI.
 
 ## 10. Unresolved questions
 
-1. **Should `--from-backup` accept no id and use the newest?** Convenient, and
-   during an incident convenience is worth something. Against: identity is not a
-   thing to guess at, and the newest backup may be the one that failed
-   verification. Leaning toward requiring the id, with `backup list --remote`
-   as the step that finds it.
+1. ~~**Should `--from-backup` accept no id and use the newest?**~~ → decision 11.
+   **Yes, newest by default.** The question was posed as a convenience trade and
+   it is not one: identity and data are separate choices, and fusing them by
+   demanding one id is what creates the silent-staleness risk in the first
+   place. My earlier lean — "identity is not a thing to guess at" — had the
+   emphasis wrong, since staleness in identity only ever *loses* information and
+   the newest export is strictly the most complete.
 2. **Does `export.yaml` need its own schema version inside the backup, separate
    from `BackupManifest.SchemaVersion`?** The export document already carries
    `api_version`; a second version would be belt and braces, and possibly the
-   kind that rots.
+   kind that rots. Nothing is released, so this can be settled late.
 3. **Does the cannot-back-up case need `secrets.export-freshness` after all?**
    It is the one installation shape where an export is still mandatory and
    nothing checks it. The check would be correct and would fire on very few
@@ -382,14 +466,22 @@ means.
 | 7 | A backup without an `export` component is **refused** by `--from-backup`, naming `installation export` | A partial import that looks successful is worse than a refusal: it passes `restore`'s id check and then runs a product with no credentials. |
 | 8 | `installation export` **stays**, reframed as an optimisation and a fallback | A release with no hook and no volumes is refused a backup ([0010](0010-compose-volume-capture.md)), so some installations can never produce one — and an export can be taken before any release is installed. |
 | 9 | No `secrets.export-freshness` diagnostic | `backup.target-freshness` covers every installation that backs up, and a second freshness warning for a no-longer-required artifact is noise. Reopens only for the cannot-back-up case (question 3). |
-| 10 | `BackupManifest.SchemaVersion` bumps; older backups stay readable | Follows the schema-1 precedent already in `stage()`. Consequence: the refusal in decision 7 must not widen into a refusal to *restore* an old backup. |
+| 10 | `BackupManifest.SchemaVersion` bumps; older backups stay readable | Follows the schema-1 precedent already in `stage()`. Nothing is released, so this protects nobody today — it is here because it will matter after the first tag. Consequence: decision 7's refusal must not widen into a refusal to *restore* an older backup. |
+| 11 | The **export component is encrypted to the recovery recipients only**, and skipped entirely when there are none | A running machine never reads the export out of its own backup, so giving it the ability buys nothing and costs blast radius. The property: the export component is unreadable by the machine that wrote it, so compromising the live host yields the data and not the identity. Skipping rather than falling back to the machine key, because an identity bundle readable only by the key that dies with the machine is the appearance of recovery with none of the substance. Consequence: `encryptComponents` takes per-record recipients rather than one list. |
+| 12 | `--from-backup` with **no id uses the newest** backup's export; an explicit id is honoured and **warns when it is not the newest** | Identity and data are separate choices and fusing them is what creates silent staleness — an operator restoring to a point in time would otherwise get that moment's secrets too. Staleness in identity only loses information, so newest is strictly the safest default. |
+| 13 | `<PRODUCT>_BACKUP_DIR`'s contents are **enumerated as an ABI in the same change** that retires `secrets` | After the first tag, whatever vendors read becomes a contract whatever the docs say; today the enumeration is simply true and anything outside it is legitimately removable. Removing first and documenting later would be removing from a contract that never stated its contents. |
 
 ## 12. Phasing
 
-- **P1 — the `export` component, the schema bump, and `--from-backup` from a
-  local backup.** This is the whole claim of the RFC, and the recovery test
-  without an export is what proves it. `secrets` is retired here, since keeping
-  it would ship the duplication this phase exists to remove.
+- **P0 — enumerate `<PRODUCT>_BACKUP_DIR` as an ABI.** Documentation only, no
+  code. It goes first because it is what makes P1's retirement of `secrets`
+  legitimate rather than a removal from an unstated contract — and because it is
+  free now and permanent after the first tag.
+- **P1 — the `export` component, its recovery-only encryption, the schema bump,
+  and `--from-backup` from a local backup.** This is the whole claim of the RFC,
+  and the recovery test without an export is what proves it. `secrets` is
+  retired here, since keeping it would ship the duplication this phase exists to
+  remove.
 - **P2 — `FetchFile` and `--from-backup --target`.** Independently useful and
   independently testable; until it lands, importing from a remote means fetching
   the backup first, which works and is merely expensive.

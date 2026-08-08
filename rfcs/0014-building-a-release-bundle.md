@@ -451,10 +451,12 @@ again. It gains one paragraph it did not previously need: that a hand-rolled
   RFC produces archives that fail 0011's budget read — which is the argument for
   making that read fail closed rather than degrade, and it is why the refusal is
   specified here and not left to the implementer.
-- **Refusing `+metadata` is a validation change.** A bundle that is valid today
-  becomes invalid. Nothing in the corpus uses it and the manifest schema will
-  say so, but it is a behaviour change to a shipped contract and should be
-  called out in the changelog rather than slipped in.
+- **Refusing `+metadata` is a validation change**, and one that is free only in
+  this window. A bundle valid today becomes invalid; nothing has been released,
+  so there is no third-party manifest to invalidate and no changelog entry that
+  has to apologise. After the first tag the same refusal would be a breaking
+  change to a published contract for a hazard nobody had hit yet — which is the
+  argument for landing it now rather than when someone finds the bypass.
 - **`--version-from-git` will produce a wrong version in someone's CI.** Shallow
   checkouts are the default in the most popular CI system in the world. The
   design's answer is to fail loudly; the residual risk is a vendor who adds
@@ -495,7 +497,7 @@ whether the three version paths share one resolver type.
 | 4 | Archives are **deterministic** — normalised uid/gid/mtime, `SOURCE_DATE_EPOCH` honoured | Closes the item [0012 §8](0012-packing-images-into-a-bundle.md) deferred to "the archiving step, which this RFC does not own". Free of consequence for identity: the content digest covers contents, paths and the executable bit, not timestamps. |
 | 5 | The VCS scheme is `<next-patch>-dev.<distance>.g<sha>`, with a bare tag producing the tag verbatim | A prerelease sorts below its own release (verified), so the patch must be bumped for a dev build to sort forward. Same constraint and same answer as `setuptools-scm`'s `guess-next-dev`. |
 | 6 | The sha is a **prerelease identifier**, never build metadata | OCI tag grammar excludes `+`, and metadata is retained by `String()` while ignored by `Compare` — so metadata-differing builds get different release directories that the digest-conflict check never compares. Consequence: version strings are longer and uglier, and they are correct. |
-| 7 | `metadata.version` **refuses build metadata**; constraints keep accepting it | Closes the guard bypass in decision 6's rationale at the source. Consequence: a validation change to a shipped contract; nothing uses it today. |
+| 7 | `metadata.version` **refuses build metadata**; constraints keep accepting it | Closes the guard bypass in decision 6's rationale at the source. Consequence: a validation change, free only because nothing is released — after the first tag the same refusal would break a published contract for a hazard nobody had hit yet. |
 | 8 | `--version` is the interface; `--version-from-git` is sugar that **fails loudly** with no reachable tag | Keeps a VCS out of the manager's core, and refuses the shallow-clone failure that would otherwise produce a plausible wrong version. |
 | 9 | A dirty tree is refused unless `--allow-dirty`, which appends `.dirty` as a prerelease identifier | A build stamping a version that names a commit it is not is a lie the digest cannot catch. |
 | 10 | `build` writes **in place**; there is no `--out` | Matches [0012 decision 7](0012-packing-images-into-a-bundle.md); copying a multi-gigabyte `images/` layout to protect a stamped field is a poor trade. Consequence: `build` leaves the working tree modified, which must be documented. |

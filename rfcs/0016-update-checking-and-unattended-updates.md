@@ -249,12 +249,20 @@ with a hint about typos, not "this release needs manager ≥ X".
 
 That is a pre-existing property of the format rather than something this RFC
 introduces — it is true of *any* new manifest field — but this is the first RFC
-to add one since the constraint was noticed, so it is recorded here. Two ways to
-soften it, neither in this RFC's scope: teach the decoder to check
-`api_version` and `min_manager_version` before rejecting unknown fields, or
-reserve an `extensions.`-style escape that strict decoding already tolerates.
-The practical mitigation is that a vendor adding this field is opting into
-unattended updates, which already implies a recent manager on both sides.
+to add one since the constraint was noticed, so it is recorded here.
+
+**Today it costs nothing, and that is the point.** Nothing has been released:
+there are no older managers and no third-party manifests, so this field is free
+in a way no field will be again. The constraint is an argument for adding it
+**now** rather than a risk to accept — and, more usefully, an argument for
+asking once before the first tag what *other* fields will be wanted, since after
+that every one of them is a hard break with a misleading error. That sweep is
+not this RFC's to run.
+
+Two ways to soften the constraint permanently, neither in scope here: teach the
+decoder to check `api_version` and `min_manager_version` before rejecting
+unknown fields, or reserve an `extensions.`-style escape that strict decoding
+already tolerates. Both are worth more before the first tag than after it.
 
 **Why not a version range.** "Auto-apply patch releases" is a proxy for "this
 release has no migrations", and it is a bad one in both directions: a patch
@@ -532,22 +540,26 @@ nothing, exactly as `release show` behaves today.
   §5.3, which is why they are separately phased.
 - **A vendor who declares `rollback_safe: true` carelessly.** The flag now
   carries more weight than it did when [0001](0001-update-and-rollback.md)
-  introduced it, and its meaning has been widened without the vendors who
-  already set it being asked. The documentation change in §7 is the only
-  mitigation and it is weak; a stronger one would be a manifest `api_version`
-  bump, which is a large hammer for one field's semantics.
+  introduced it: it has always gated `rollback`, and now also decides whether a
+  release may install without a human. Nothing is released, so no vendor is
+  having the meaning changed under them — the widening is free *now* and would
+  not have been later, which is the argument for doing it in this window. What
+  remains is ordinary care: a vendor who sets the flag without reading what it
+  means gets unattended installs they did not think about. §7's documentation
+  change is the mitigation, and it is the most important one in the RFC.
 - **Dev mode escaping to production.** Mitigated by immutability and the
   permanent marker, not eliminated: a machine that was *always* dev mode and
   quietly became load-bearing is the case neither guard catches. Immutability
   makes it *visible* — the machine still says `mode: dev` — which is the most a
   config field can do about an organisational problem.
-- **A new manifest field is a hard break for older managers.** Strict decoding
-  rejects `database_schema_produces` with `unknown field` before
-  `min_manager_version` is ever consulted, so the operator gets a message about
-  typos rather than about versions. Accepted here because a vendor adding the
-  field is opting into unattended updates and therefore into a recent manager on
-  both sides — but the next RFC that wants a manifest field will meet the same
-  wall with a weaker excuse, and §5.3 names the two ways out.
+- **A new manifest field will be a hard break for older managers — after the
+  first release.** Strict decoding rejects an unknown field before
+  `min_manager_version` is consulted, so the operator gets a message about typos
+  rather than about versions. Today that costs nothing, since no released
+  manager and no third-party manifest exist. The risk is therefore not this
+  field but the **next** one: every manifest field added after the first tag
+  pays this price, which is why §5.3 argues for a deliberate sweep before then
+  and names the two ways to remove the wall permanently.
 - **This serves the opposite customer from [0011](0011-bundled-container-images.md).**
   Polling needs registry credentials living permanently on the customer's
   machine — precisely what 0011 exists because vendors often cannot grant. The
@@ -598,7 +610,7 @@ disk, and whether `--check`'s "cannot enumerate" is a distinct exit code.
 | 2 | `--check` uses `List`; channel following uses `Resolve` | They are different operations: `List` skips non-semver tags by design, so it cannot follow a mutable channel. Consequence: a channel is a single ref, not a tag pattern. |
 | 3 | A channel is a **mutable pointer to immutable versions** | Composes with [0014 §5.2](0014-building-a-release-bundle.md), which gives every build a distinct version, so the never-republish refusal keeps working untouched. |
 | 4 | **No hardcoded poll interval floor** | The cost belongs to the vendor's registry, not the manager. Consequence: the documentation must state that rate-limited registries count manifest requests, because nothing enforces it. |
-| 5 | Auto-apply is gated on the release **declaring** it cannot require a human — `rollback_safe: true` plus a schema the previous release can still read — not on a version range | A version range is a proxy for "has no one-way migration"; the manifest states the real property. Consequence: `rollback_safe`'s meaning widens for vendors who already set it, which the docs must carry. |
+| 5 | Auto-apply is gated on the release **declaring** it cannot require a human — `rollback_safe: true` plus a schema the previous release can still read — not on a version range | A version range is a proxy for "has no one-way migration"; the manifest states the real property. Consequence: `rollback_safe`'s meaning widens — it has always gated `rollback` and now also decides whether a release may install unattended. Free to widen only because nothing is released; the docs must carry it regardless. |
 | 6 | The gate is `AssessRollback` run **predictively**, over declared values only | Reuses a written, tested function rather than a second compatibility judgement, and keeps the gate free of estimates — see decision 16 for the value it needs and does not yet have. |
 | 7 | Enabling auto-apply **refuses** without `require_signature` and a pinned key | Unattended apply hands the vendor unattended root. Refused at configuration time, not at update time — matching how `--skip-backup` requires `--force`. |
 | 8 | Anything failing the gate is **fetched, staged and notified**, never silently skipped | Moves the network, the credentials and the verification off the human's critical path while leaving the downtime decision with them. This is where most of the value is. |
@@ -609,7 +621,7 @@ disk, and whether `--check`'s "cannot enumerate" is a distinct exit code.
 | 13 | A tick that cannot take the lock **exits 0** | The next tick is soon; queueing makes the start time unpredictable, and a non-zero exit would fight `Restart=on-failure`. |
 | 14 | Update checking is **off by default** | It contacts the vendor's registry, which for a self-hosted product is a phone-home nobody agreed to. |
 | 15 | The installation **records the ref its current release came from** | Without it `--check` has nothing to query and the `doctor` check cannot run unattended, which is the context that makes it useful. Rides [0015](0015-notifications.md)'s bump to schema 4; carries its own if this ships first. |
-| 16 | The manifest gains **`database_schema_produces`**; **absent means not auto-applicable** | Replaces the `database_schema_min` stand-in, which a release migrating past its own declared minimum would slip through — and a gate arguing "declaration, not proxy" cannot use a proxy for half of itself. Fails closed with no burden on existing vendors. Consequence: strict decoding means an older manager **rejects the manifest outright** with `unknown field`, and `min_manager_version` cannot soften it because `CheckUpgrade` runs after the decode. |
+| 16 | The manifest gains **`database_schema_produces`**; **absent means not auto-applicable** | Replaces the `database_schema_min` stand-in, which a release migrating past its own declared minimum would slip through — and a gate arguing "declaration, not proxy" cannot use a proxy for half of itself. Fails closed, and asks nothing of a vendor who does not want unattended updates. Consequence: strict decoding means an older manager would **reject the manifest outright** with `unknown field`, and `min_manager_version` cannot soften it because `CheckUpgrade` runs after the decode — which costs nothing today (no release, no older managers) and prices every manifest field added after the first tag. §5.3 argues for a deliberate sweep before then. |
 | 17 | `mode` is **immutable** — fixed at creation, no transition in either direction. **Supersedes decision 10** | Both directions are dangerous, differently: production → dev puts real data under relaxed rules immediately, dev → production presents untrusted history as trustworthy and surfaces during an incident. An immutable field is also the simplest invariant to test. Consequence: promotion is backup → fresh `init` → restore, and there is no shortcut. |
 | 18 | Creation means `init` **or `import`**; `import --mode dev` is allowed and **drops the backup targets**, `import --mode production` from a dev export is refused. Staged-but-unapplied releases are exempt from retention | Import reproduces the export wholesale, which would otherwise block [0003](0003-secrets-recovery-and-onboarding.md)'s `import → update → restore` — the way a vendor tests a customer's backup. But an import keeps the original installation id and [0009](0009-backup-targets.md) puts targets *and credentials* in the export, so a sandbox would push throwaway backups into the customer's bucket under a matching id. Dropping them is not optional, and the drop is reported. Demote at creation, never promote. |
 | 19 | [0002](0002-rich-terminal-renderer.md) **P5 ships in P2 of this RFC**, not in 0002 | Its gate — "a bundle actually shipping a `RELEASE.md`" — could not open by itself, since nothing created such a file. [0013 decision 14](0013-bundle-authoring-experience.md) makes bundles carry one and a staged update is where reading the notes matters. Consequence: 0002 stays ✅ Complete with P5 recorded as delivered elsewhere, rather than being reopened. |

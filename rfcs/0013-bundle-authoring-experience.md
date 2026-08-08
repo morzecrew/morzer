@@ -48,8 +48,8 @@ treat them as templates, and stop keeping a non-template in `templates/`.
 
 And `morzer release new`, which writes a skeleton carrying all three. Without
 it those three are conventions taught by documentation, which every bundle
-written from now on will need retrofitted; with it they are what a bundle
-starts as.
+written from now on acquires by hand or not at all; with it they are what a
+bundle starts as.
 
 ## 2. Motivation
 
@@ -228,10 +228,13 @@ and the manifests that reference it follow. `.yaml.tmpl` rather than `.tmpl`
 so an editor can still infer the output language, and because the double
 extension is the convention Helm, Hugo and `envsubst` users already recognise.
 
-**This is a convention, not a format change.** The manifest names the path, so
-an existing bundle keeps working untouched; what changes is what the examples
-and the documentation teach. Vendors who prefer `.yaml` may keep it and keep
-the editor noise.
+**This is a convention, not a format change** — and deliberately so even though
+nothing has been released and it *could* be enforced. The manifest names the
+path, so dictating a file extension would be the manager telling vendors how to
+name files it was handed the location of. A vendor whose build system emits
+`config.yaml.gotmpl`, or who templates a `.env`, is not doing anything wrong.
+What changes is what the examples and the documentation teach; vendors who
+prefer `.yaml` may keep it and keep the editor noise.
 
 `authoring/your-first-bundle.md` gains a short note on the editor association
 (`*.yaml.tmpl` → Go template) for the two editors most vendors use.
@@ -392,9 +395,12 @@ is a claim about editors, and asserting it here would be theatre.
 - **Renaming examples touches the acceptance scenario and the docs snippets.**
   Cheap, gated by `docs-check`, and still the kind of change that breaks a
   fixture path nobody remembered.
-- **Vendors with existing bundles see documentation that no longer matches
-  their layout.** Nothing breaks, but the docs describe a convention their
-  bundle does not follow. The pages must say the paths are theirs to choose.
+- **The conventions describe a layout no bundle is obliged to follow.** Nothing
+  has been released, so this is not about stranding anyone — it is that the
+  pages will show `.yaml.tmpl` and `secrets.schema.yaml` while the manifest
+  accepts any path, and a reader can easily take the examples for requirements.
+  The pages must say the paths are the vendor's to choose, or the convention
+  hardens into a believed rule that `verify` does not enforce.
 
 ## 10. Unresolved questions
 
@@ -421,10 +427,10 @@ and how the walk over `TemplateData`'s fields (§9) is spelled.
 | 2 | Rendering against a synthetic context is opt-in (`--render-check`), not default | A synthetic context cannot promise what a real one delivers; making it default would turn "verify passed" into a guarantee it cannot keep — the exact failure this RFC exists to fix. Consequence: the docs must call it a smoke test, and unresolved question 1 revisits it. |
 | 3 | Parsing lives in `verify`, not in `Load` | `Load` also runs during `apply` on the operator's machine; adding work there moves the failure later, not earlier. |
 | 4 | The schema modeline is added to examples and documented, not enforced | It is a comment; a manifest without it is unaffected and an editor that ignores it loses nothing. Turns an already-published artifact into daily value. |
-| 5 | `.yaml.tmpl` for templates, as a **convention** | The manifest names the path, so no existing bundle changes. Double extension keeps the output language inferable and matches what Helm/Hugo users expect. |
+| 5 | `.yaml.tmpl` for templates, as a **convention** rather than a requirement | Not for compatibility — nothing is released, so it could be enforced. The manifest names the path, so requiring an extension would be the manager dictating filenames it was handed the location of, and a vendor templating a `.env` or emitting `.gotmpl` is not misbehaving. Double extension keeps the output language inferable and matches what Helm/Hugo users expect. |
 | 6 | The secret schema moves out of `templates/` | It is not a template; it is read, not rendered. Same convention-not-format reasoning as decision 5. |
 | 7 | Rendered output is not validated as YAML | The manifest does not declare a target's format, and a template may legitimately produce something else. |
-| 8 | `release new` ships **in this RFC**, not a later one | Decisions 4–6 are retrofits for existing bundles and defaults for new ones; without a scaffold they stay documentation, and every bundle authored in the meantime needs the retrofit by hand. |
+| 8 | `release new` ships **in this RFC**, not a later one | Without a scaffold, decisions 4–6 are documentation rather than defaults, and every bundle authored between this RFC and a later scaffold acquires them by hand or not at all. The scaffold is where the conventions stop being advice. |
 | 9 | The scaffold writes version `0.0.0` in both `manifest.yaml` and `VERSION` | A placeholder [0014 §5.2](0014-building-a-release-bundle.md) stamps at build time. Writing a real-looking version would invite hand-maintaining the one field the tooling should own. |
 | 10 | The scaffold is a **skeleton**, not a working product; `--from-example` copies `testdata/bundle` for those who want one | A generated bundle that guesses an architecture produces work to undo. The example path costs nothing because that fixture is already exercised on every CI run. |
 | 11 | The scaffold's output must pass `verify --render-check` unedited, asserted by a test | Couples §5.5 to §5.1 in both directions: neither the scaffold nor the verifier can move without the other. |

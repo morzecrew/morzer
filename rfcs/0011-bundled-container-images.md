@@ -175,12 +175,16 @@ images:
     from: bundle                              # where the bytes come from
 ```
 
-`from` takes `registry` (default) or `bundle`. Old manifests keep working with
-no edit, which matters because the schema is generated and drift-gated.
+`from` takes `registry` (default) or `bundle`. A manifest that does not care
+says nothing — which is the point of the default, not a compatibility
+concession: nothing has been released, so there are no old manifests to keep
+working. The reason to accept both the scalar and the mapping form is that most
+images will never be bundled, and making every one of them carry a `from:` key
+to say so is noise in the file a vendor reads most.
 
-The dual shape is not invention: `PortSpec` already accepts an integer or a
-string for the same backward-compatibility reason
-([`manifest.go:168`](../internal/domain/manifest.go)), and this follows it.
+The dual shape is not invention either: `PortSpec` already accepts an integer or
+a string ([`manifest.go:168`](../internal/domain/manifest.go)), so the parsing
+pattern and its tests exist.
 
 **Three delivery modes fall out of one mechanism**, and none of them is a
 separate feature:
