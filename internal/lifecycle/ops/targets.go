@@ -662,10 +662,22 @@ func FetchRemote(ctx context.Context, d *Deps, opts FetchOptions) (Result, error
 		}
 	}
 
+	// Made durable before it is promoted, and the promotion after it. The
+	// components' own bytes are flushed by whoever wrote them; this is the
+	// directory half they cannot reach, plus the entry the rename creates.
+	//
+	// Every other path that promotes something into place already does this --
+	// release staging fsyncs its parent, backup creation fsyncs the store and
+	// its ciphertext. Fetch is the one that did not, and it is the one an
+	// operator runs when they are already having a bad day: a power cut here
+	// could leave the entry non-durable and take the recovery with it.
+	atomicfs.SyncTree(staging)
+
 	if err := os.Rename(staging, dest); err != nil {
 		_ = atomicfs.RemoveAll(staging)
 		return Result{}, domain.BackupError(err, "cannot place the fetched backup at %s", dest)
 	}
+	atomicfs.SyncDir(filepath.Dir(dest))
 	ref := ports.BackupRef{ID: manifest.ID, Path: dest, At: manifest.CreatedAt}
 
 	return Result{
@@ -859,7 +871,11 @@ func adoptBackupID(dir, id string) error {
 	if err != nil {
 		return domain.Internal(err, "cannot record the id of the fetched backup")
 	}
-	if err := os.WriteFile(path, out, 0o600); err != nil {
+	// atomicfs rather than os.WriteFile: this rewrites the manifest of a
+	// backup that is about to be promoted, and a truncate-then-write
+	// interrupted by a crash would leave the staged manifest neither the old
+	// content nor the new.
+	if err := atomicfs.WriteFile(path, out, 0o600); err != nil {
 		return domain.BackupError(err, "cannot record the id of the fetched backup")
 	}
 	return nil

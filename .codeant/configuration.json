@@ -1,0 +1,7 @@
+{
+  "file_filters": {
+    "config": {
+      "include_files": "cmd/**/*.go,internal/**/*.go,tools/**/*.go,rfcs/*.md"
+    }
+  }
+}

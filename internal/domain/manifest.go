@@ -157,6 +157,12 @@ type Requirements struct {
 // A distinct type rather than a bare string so YAML's `[18080]` decodes without
 // quoting -- an existing manifest keeps working, and a vendor does not have to
 // learn that a number must now be a string.
+//
+// Accepting the integer means accepting YAML's bases with it: `010` is octal
+// and becomes port 8, `0x10` is hex and becomes port 16. Left alone for the
+// same reason as ByteSize -- a zero-padded port is not a real spelling, and
+// refusing integers would undo exactly what this type exists for -- and pinned
+// by test so it is recorded rather than discovered.
 type PortSpec string
 
 func (p *PortSpec) UnmarshalYAML(unmarshal func(any) error) error {

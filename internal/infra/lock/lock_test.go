@@ -2,6 +2,7 @@ package lock_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -476,4 +477,102 @@ func TestAcquireRefusesADirectoryItCannotCreate(t *testing.T) {
 	if err == nil {
 		t.Fatal("a lock was taken in a directory that could not be created")
 	}
+}
+
+// TestARecycledPIDIsNotTheHolder.
+//
+// The case the PID alone cannot answer. A holder killed with SIGKILL releases
+// its flock and leaves its record; the kernel is then free to hand that PID to
+// something unrelated, and `kill(pid, 0)` says "alive" about a process that
+// never touched this deployment. `status` then reports the lock held, and the
+// operator goes looking for -- or worse, kills -- an innocent process.
+//
+// Uses this test binary's own PID, which is genuinely alive: the only thing
+// separating it from the recorded holder is the start time.
+func TestARecycledPIDIsNotTheHolder(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "locks")
+	l := lock.New(dir)
+	ctx := context.Background()
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// A record naming a live PID, but a start time no live process can have:
+	// ticks since boot, so a holder that started before this machine did is
+	// the record's way of saying "not the same process".
+	record := fmt.Sprintf(
+		`{"pid":%d,"operation_id":"op-killed","type":"update","pid_start":1}`,
+		os.Getpid())
+	if err := os.WriteFile(filepath.Join(dir, "deployment.owner.json"),
+		[]byte(record), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, found, err := l.Owner(ctx, "deployment"); err != nil {
+		t.Fatal(err)
+	} else if found && procStatReadable() {
+		t.Error("a recycled PID was reported as the holder; the operator is " +
+			"now looking at a process that has nothing to do with this lock")
+	}
+
+	// A record from before the field existed still falls back to the PID
+	// alone, so an older lock file does not start reading as stale.
+	legacy := fmt.Sprintf(
+		`{"pid":%d,"operation_id":"op-live","type":"update"}`, os.Getpid())
+	if err := os.WriteFile(filepath.Join(dir, "deployment.owner.json"),
+		[]byte(legacy), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := l.Owner(ctx, "deployment"); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Error("a record without a start time stopped being trusted, so " +
+			"upgrading the manager would report every held lock as free")
+	}
+}
+
+// A live holder records its own start time, and still reports as held.
+func TestAGenuineHolderCarriesItsStartTime(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "locks")
+	l := lock.New(dir)
+	ctx := context.Background()
+
+	release, err := l.Acquire(ctx, "deployment", ports.LockOptions{Owner: owner("op-live")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = release() }()
+
+	got, found, err := l.Owner(ctx, "deployment")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("the lock this test is holding was not reported as held")
+	}
+	if !procStatReadable() {
+		// Without procfs there is no start time to record, and ownerAlive
+		// falls back to the PID alone -- which is the documented behaviour,
+		// not a failure. The recycled-PID assertion above is skipped for the
+		// same reason.
+		t.Skip("no /proc/<pid>/stat on this platform: nothing to record")
+	}
+	if got.PIDStart == 0 {
+		t.Error("the holder recorded no start time, so a recycled PID would " +
+			"still read as this operation")
+	}
+}
+
+// procStatReadable reports whether this platform can answer what pidStart asks
+// it. Linux can; a developer's macOS cannot, and the fallback there is the
+// PID-only behaviour that came before -- correct, and not what these two
+// assertions are about.
+func procStatReadable() bool {
+	_, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", os.Getpid()))
+	return err == nil
 }

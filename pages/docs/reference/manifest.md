@@ -165,9 +165,15 @@ A list of templates rendered onto the host.
 | --- | --- | :---: | --- |
 | `template` | path | ✅ | Release-relative template file. |
 | `target` | path | ✅ | Absolute destination on the host. |
-| `mode` | octal | | File mode. Default `0640`. |
+| `mode` | quoted octal | | File mode. Default `"0640"`. |
 
 Rendered files contain *paths* to secrets, never secret values.
+
+The quotes on `mode` are load-bearing. YAML reads an unquoted `0640` as the
+decimal number 416, which is the permission `0416` — owner read-only, group
+execute-only, other read/write. Unquoted modes are refused rather than applied,
+so a manifest that gets this wrong fails to load instead of installing a file
+with permissions nobody chose.
 
 ## secrets
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -389,6 +390,99 @@ func TestScalarRoundTrips(t *testing.T) {
 
 		require.Error(t, m.UnmarshalText([]byte("99999")))
 		require.Error(t, m.UnmarshalText([]byte("0999")), "9 is not an octal digit")
+	})
+
+	// Every scalar below is reachable from YAML in more than one node shape,
+	// and until this test existed the suite only ever drove UnmarshalText --
+	// eleven assertions, none of them through a decode. That is how an
+	// unquoted mode went on decoding to the wrong permission through a whole
+	// remediation cycle while the scalar test above passed: the defect is in
+	// the layer this reaches and that one does not.
+	t.Run("scalars decode from the node shape a manifest actually carries", func(t *testing.T) {
+		decode := func(t *testing.T, src string, into any) error {
+			t.Helper()
+			return yaml.UnmarshalWithOptions([]byte(src+"\n"), into,
+				yaml.Strict(), yaml.DisallowUnknownField())
+		}
+
+		t.Run("a quoted mode is the permission it spells", func(t *testing.T) {
+			var c ConfigurationFile
+			require.NoError(t, decode(t, "template: t.tmpl\ntarget: /etc/app.conf\nmode: \"0640\"", &c))
+			assert.Equal(t, uint32(0o640), c.Mode.Perm())
+		})
+
+		// The whole point. Unquoted, YAML reads 0640 as decimal 416, which
+		// re-parses as 0416: owner read-only, group execute-only, other
+		// read/write. Refused now rather than applied silently.
+		t.Run("an unquoted mode is refused, not reinterpreted", func(t *testing.T) {
+			for _, mode := range []string{
+				// The silent side: decimal digits that are all octal digits.
+				"0400", "0640", "0644", "0660", "0664", "0770", "0777",
+				// The loud side: an 8 or 9 in the decimal form. Refused
+				// before too, but for the wrong reason -- assert it stays
+				// refused for the right one.
+				"0600", "0755",
+			} {
+				var c ConfigurationFile
+				err := decode(t, "template: t.tmpl\ntarget: /etc/app.conf\nmode: "+mode, &c)
+				require.Error(t, err, "unquoted mode %s was accepted", mode)
+				assert.Contains(t, err.Error(), "quoted octal string",
+					"the refusal for %s should say how to spell it", mode)
+			}
+		})
+
+		// A control: the type that already refuses a bare integer, and the
+		// reason the class is avoidable rather than inherent to YAML.
+		//
+		// Driven through the decode rather than through UnmarshalText, which
+		// is the whole point of this block -- a control that tested the layer
+		// below the defect would have been the same mistake in miniature, and
+		// would stay green if a future Duration.UnmarshalYAML started taking
+		// bare integers.
+		t.Run("a duration still refuses a bare number", func(t *testing.T) {
+			var d struct {
+				V Duration `yaml:"v"`
+			}
+			require.Error(t, decode(t, "v: 30", &d), "30 what?")
+			require.NoError(t, decode(t, `v: "30s"`, &d))
+			assert.Equal(t, 30*time.Second, d.V.Duration())
+		})
+
+		// The two types that accept a bare integer on purpose inherit YAML's
+		// bases along with it. Pinned rather than fixed: refusing integers
+		// would undo the documented reason both types exist, and a zero-padded
+		// size or port is not a spelling anyone writes. Recorded here so it is
+		// a known property, and so the decision has somewhere to be revisited.
+		t.Run("bare integers carry YAML's bases, by inheritance", func(t *testing.T) {
+			var size struct {
+				V ByteSize `yaml:"v"`
+			}
+			require.NoError(t, decode(t, "v: 1024", &size))
+			assert.Equal(t, int64(1024), size.V.Bytes(), "a plain count is itself")
+
+			require.NoError(t, decode(t, "v: 010", &size))
+			assert.Equal(t, int64(8), size.V.Bytes(), "YAML read 010 as octal before we saw it")
+
+			require.NoError(t, decode(t, `v: "4GiB"`, &size))
+			assert.Equal(t, int64(4*GiB), size.V.Bytes(), "the quoted form is unaffected")
+
+			var port struct {
+				V PortSpec `yaml:"v"`
+			}
+			require.NoError(t, decode(t, "v: 18080", &port))
+			assert.Equal(t, PortSpec("18080"), port.V, "the unquoted port this type exists for")
+
+			require.NoError(t, decode(t, "v: 010", &port))
+			assert.Equal(t, PortSpec("8"), port.V, "same inheritance, same reason")
+
+			// The comment on both types names hex alongside octal. A claim
+			// with no test under it is what this whole block exists to stop.
+			require.NoError(t, decode(t, "v: 0x10", &size))
+			assert.Equal(t, int64(16), size.V.Bytes(), "0x10 is YAML hex")
+
+			require.NoError(t, decode(t, "v: 0x10", &port))
+			assert.Equal(t, PortSpec("16"), port.V, "0x10 is YAML hex here too")
+		})
 	})
 
 	t.Run("byte size accepts what operators type", func(t *testing.T) {

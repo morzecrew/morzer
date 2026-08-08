@@ -8,12 +8,16 @@
 package lock
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -147,6 +151,9 @@ func (l *Locker) writeOwner(name string, owner ports.LockOwner) {
 	if owner.PID == 0 {
 		owner.PID = os.Getpid()
 	}
+	if owner.PIDStart == 0 {
+		owner.PIDStart = pidStart(owner.PID)
+	}
 	if owner.StartedAt.IsZero() {
 		owner.StartedAt = domain.NewTime(time.Now())
 	}
@@ -215,6 +222,67 @@ func ownerAlive(o ports.LockOwner) bool {
 	if host, err := os.Hostname(); err == nil && o.Host != "" && o.Host != host {
 		return true
 	}
-	err := syscall.Kill(o.PID, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
+	if err := syscall.Kill(o.PID, 0); err != nil && !errors.Is(err, syscall.EPERM) {
+		return false
+	}
+	// Something answers to that PID. Whether it is the process that took the
+	// lock is a different question, and the one that matters after a SIGKILL:
+	// the flock is already gone, this record is not, and the kernel may have
+	// handed the number to somebody else. A start time that does not match is
+	// a different process wearing the same PID.
+	//
+	// Only decides when both sides are known. A record written before this
+	// field existed, or a platform that cannot report the start time, falls
+	// back to the PID alone.
+	if o.PIDStart != 0 {
+		if live := pidStart(o.PID); live != 0 && live != o.PIDStart {
+			return false
+		}
+	}
+	return true
+}
+
+// pidStart reads the kernel's start time for a PID, in clock ticks since boot.
+//
+// Field 22 of /proc/<pid>/stat, counted after the comm field rather than by
+// splitting the whole line: comm is the executable name in parentheses and may
+// contain spaces, which is what breaks the naive split.
+//
+// Zero when it cannot be read -- a kernel without procfs, a PID that has
+// already gone. Callers treat zero as "unknown" and fall back.
+func pidStart(pid int) uint64 {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0
+	}
+	return parsePIDStart(data)
+}
+
+// parsePIDStart pulls field 22 out of a /proc/<pid>/stat line.
+//
+// Split from the read so the parsing is testable without a process to point
+// at: the shapes that break a naive reader -- a comm with a space in it, a
+// comm with a parenthesis in it, a truncated line -- are the ones no live
+// process on the machine running the tests is likely to have.
+//
+// Zero for anything it cannot read, which callers treat as "unknown".
+func parsePIDStart(data []byte) uint64 {
+	// Last ')' rather than first: comm is the executable name in parentheses
+	// and may itself contain one, so scanning forward finds the wrong end.
+	commEnd := bytes.LastIndexByte(data, ')')
+	if commEnd < 0 || commEnd+2 >= len(data) {
+		return 0
+	}
+	// After "(comm) " the fields are state (3) onward, so the start time --
+	// field 22 -- is the 20th of what remains.
+	fields := strings.Fields(string(data[commEnd+2:]))
+	const startTimeOffset = 19
+	if len(fields) <= startTimeOffset {
+		return 0
+	}
+	v, err := strconv.ParseUint(fields[startTimeOffset], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return v
 }

@@ -429,6 +429,15 @@ func getFile(ctx context.Context, s Store, key, localPath string) error {
 		_ = f.Close()
 		return domain.BackupError(err, "cannot write %s", localPath)
 	}
+	// Flushed before the close, the way localdir already flushes what it
+	// writes. atomicfs holds this contract for the files it writes and leaves
+	// file contents to whoever wrote them -- this is a writer, and the bytes
+	// it is writing are the copy an operator fetched because they are about to
+	// need it.
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return domain.BackupError(err, "cannot flush %s to disk", localPath)
+	}
 	return f.Close()
 }
 

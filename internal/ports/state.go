@@ -94,4 +94,18 @@ type LockOwner struct {
 	Type        string      `json:"type"`
 	StartedAt   domain.Time `json:"started_at"`
 	Host        string      `json:"host,omitempty"`
+
+	// PIDStart distinguishes the process that took the lock from whatever
+	// now happens to wear its PID.
+	//
+	// A holder killed with SIGKILL releases its flock and leaves this record
+	// behind; the kernel is then free to hand that PID to something else, and
+	// a liveness probe answers "still running" about a process that has
+	// nothing to do with this deployment. The kernel's own start time for the
+	// PID settles it: recycled PIDs get a new one.
+	//
+	// Zero on a record written before this field existed, and on any platform
+	// that cannot report it -- both fall back to the PID alone, which is the
+	// behaviour that came before.
+	PIDStart uint64 `json:"pid_start,omitempty"`
 }
