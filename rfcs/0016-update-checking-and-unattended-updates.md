@@ -11,7 +11,7 @@
   watches one mutable OCI tag through `Resolve`, which is what a vendor
   iterating against a sandbox actually needs and what `List` structurally cannot
   provide. And unattended apply, opt-in, refused unless the release **declares**
-  it cannot require a human, with a relaxed variant confined to a declared
+  that a failure will not need a database restore, with a relaxed variant confined to a declared
   **dev mode** that is fixed when the installation is created and never
   transitions in either direction. Covers the gate, the mode, the systemd timer,
   lock contention and the phone-home question — and carries
@@ -56,8 +56,10 @@ must declare about itself — lets an update apply without a human.
 The load-bearing decision is the gate. Not "patch versions only", which is a
 proxy: **a release is auto-applicable only if it declares `rollback_safe: true`
 and its declared schema range leaves the previous release able to read what its
-migrations produce.** That is the property that decides whether a failure needs
-a person, and the manifest already carries it.
+migrations produce.** That is the property deciding whether a failure could need
+a *database restore* — the one decision [0001](0001-update-and-rollback.md)
+refuses to make automatically — and the manifest already carries it. It does not
+promise no human is ever needed; §5.3 is explicit about the paths it cannot see.
 
 ## 2. Motivation
 
@@ -143,7 +145,7 @@ wait for one.*
 
 ### 5.1 `update --check` — version discovery
 
-```
+```text
 morzer update --check [ref]
 ```
 
@@ -163,8 +165,15 @@ this feature.
 **The installation records where its current release came from.** It does not
 today — nothing persists the ref an operator passed to `update` — so `--check`
 with no argument has nothing to query, and the `doctor` check cannot run
-unattended at all, which is the context that makes it useful. One string,
-written when a release is staged.
+unattended at all, which is the context that makes it useful.
+
+One string, written **when a release becomes current**, not when a candidate is
+staged. An earlier draft said "when a release is staged", which would have had
+`--check` and the `doctor` check querying the *candidate's* source while the
+installed release was still the old one — reporting on a release nobody is
+running. A staged candidate needs no recorded ref of its own: it was fetched
+from the configured channel (§5.2) moments earlier, and that is where it is
+still reachable.
 
 It rides the schema bump [0015](0015-notifications.md) is already making rather
 than needing one of its own; see §5.4 on why that matters for `mode` too. If
@@ -189,6 +198,18 @@ its job on the versions, while the channel does its job on the pointer. This is
 exactly how a container registry's own `latest` works, and it is why the two
 designs compose instead of fighting.
 
+**The digest `Resolve` returned is what gets fetched.** A channel is a *mutable*
+tag by construction, so the tag can move between the resolve and the fetch —
+and `update` does not close that today: `resolveUpdateTarget` sets
+`ref.Digest = opts.ExpectDigest` ([`update.go:215`](../internal/lifecycle/ops/update.go)),
+which is empty unless the operator passed `--digest`, so the fetch is unpinned
+and only the *version* is compared afterwards. On the interactive path that is
+tolerable — a human typed a reference seconds ago. On a polling loop watching a
+tag that exists to move, it means the manager can install a bundle it never
+resolved and never compared. So channel following passes the resolved digest
+into the fetch and refuses a staged bundle whose digest differs from the one the
+decision was made against.
+
 The cost is one `Resolve` per tick. Whether that is affordable at a five-minute
 cadence is a property of the vendor's registry, not of the manager — so there is
 **no hardcoded interval floor**. What the documentation must say is that a
@@ -208,7 +229,23 @@ An update is auto-applicable only if **all** of these hold:
 | `policy.require_signature` is true and `policy.signing_keys` is non-empty | `Policy` |
 | The pre-update backup is not disabled | `!policy.skip_backup_before_update` |
 
-The first four are one idea: **after this update, could a human be required?**
+The first four are one idea, and its name has to be exact: **could this update
+end needing a database restore?** Not "could a human be required" — that was the
+first draft's phrasing and it claims more than the gate delivers. An update can
+still reach `requires-manual-intervention` through failures nothing here
+inspects: a migration hook that exits non-zero, a health check that never
+passes, a converge the engine cannot compensate. Those paths already stop and
+wait for a person ([`errors.go:323`](../internal/domain/errors.go),
+`RestartPreventExitStatus=12`), and this gate does not and cannot promise they
+will not happen.
+
+What it does promise is narrower and is the one that matters for running
+unattended: **the failure will not be the unrecoverable kind.** A failed
+unattended update that compensates back to the previous release is an incident
+report; one that needs a restore decision at 03:00 is the thing
+[0001](0001-update-and-rollback.md) refuses to make automatically. The gate
+bounds the second, not the first.
+
 That is precisely what `AssessRollback` answers
 ([`version.go:356-373`](../internal/domain/version.go)) — it sets
 `RestoreRequired` when the installed release's migrations are one-way, or when
@@ -303,7 +340,19 @@ value — a field absent from a hand-edited file, a record written before the
 field existed — meant *do not back up*, and the one place a missing bool decides
 something is the one place it must not decide that."
 
-**Mode is fixed at creation and never transitions.** Not one-way — *no* way.
+**Mode is fixed at creation and never transitions** *through the manager*. Not
+one-way — *no* way. The qualifier is load-bearing and was missing from the first
+draft: `mode` is a field in a JSON file, so root can edit it, and no
+schema-version check or `config` refusal detects a same-version value change.
+Nothing here is tamper-evident.
+
+That is not a hole this RFC should try to close, and adding a signed or
+duplicated creation record to defend one boolean would be defending it against
+an operator who can equally edit the recipient list, the backup targets, or the
+installation id. Root on the machine is outside every threat model in this
+corpus. The claim is therefore about the manager's own surfaces — `config set`,
+`import`, every command — and §6's assertions are about those, not about
+detecting a hand-edited state file.
 An earlier draft of this section allowed dev → production on the reasoning that
 only the reverse was dangerous. That is wrong; both directions are, in different
 shapes:
@@ -444,8 +493,25 @@ must not be retried by the supervisor
 An update check contacts the vendor's registry, which reveals an IP, a
 timestamp, and by inference an installed version. For a self-hosted product
 whose customers chose self-hosting, turning that on by default would be a
-phone-home nobody agreed to. It is opt-in, and the documentation says what it
-discloses.
+phone-home nobody agreed to.
+
+"Opt-in" needs a name, or it is a sentiment rather than a contract. The setting
+is `update.check` on the installation, default **false**, and **absent means
+false** — the same absence-means-safe rule `mode` follows (§5.4) and for the
+same reason.
+
+What it gates is equally explicit, because the natural reading is wrong in one
+of the three cases:
+
+| Path | Honours `update.check`? |
+| --- | --- |
+| `morzer update --check` | **No.** An operator typing the command *is* the consent; refusing it because a persisted flag is false would be the manager arguing with a direct instruction. |
+| The `doctor` check and the `status` line | **Yes.** These run unprompted — under a timer, in a script, in someone's dashboard — so an unset flag must mean no network. |
+| The background timer (§5.5) | **Yes**, necessarily: the timer is only installed when the setting is on. |
+
+So the registry is unreachable by default and reachable when explicitly asked
+for, which is the property the phone-home concern actually wants — not silence
+in the face of a direct request.
 
 ### 5.7 Release notes, and where [0002](0002-rich-terminal-renderer.md) P5 finally lands
 
@@ -487,10 +553,10 @@ nothing, exactly as `release show` behaves today.
 - **Enabling auto-apply without a signing key is refused at configuration
   time**, not at update time. A machine that accepts the setting and then always
   refuses to act is worse than one that refuses the setting.
-- **`mode` cannot change after creation**, in either direction: not by
-  `config set`, not by hand-editing the operator-facing file, not by import.
-  Six assertions, and the hand-edit pair matters most because that file invites
-  editing.
+- **`mode` cannot change after creation through any manager surface**, in
+  either direction: not by `config set`, not by `import`, not by any command
+  that writes the installation. Not a test that a hand-edited state file is
+  detected — §5.4 explains why that is not claimed.
 - **`import --mode dev` drops the backup targets**, asserted by importing an
   export that carries targets *with credentials* and checking the rebuilt
   installation has neither — and that the drop is reported, not silent. This is
@@ -639,6 +705,11 @@ disk, and whether `--check`'s "cannot enumerate" is a distinct exit code.
 | 17 | `mode` is **immutable** — fixed at creation, no transition in either direction. **Supersedes decision 10** | Both directions are dangerous, differently: production → dev puts real data under relaxed rules immediately, dev → production presents untrusted history as trustworthy and surfaces during an incident. An immutable field is also the simplest invariant to test. Consequence: promotion is backup → fresh `init` → restore, and there is no shortcut. |
 | 18 | Creation means `init` **or `import`**; `import --mode dev` is allowed and **drops the backup targets**, `import --mode production` from a dev export is refused. Staged-but-unapplied releases are exempt from retention | Import reproduces the export wholesale, which would otherwise block [0003](0003-secrets-recovery-and-onboarding.md)'s `import → update → restore` — the way a vendor tests a customer's backup. But an import keeps the original installation id and [0009](0009-backup-targets.md) puts targets *and credentials* in the export, so a sandbox would push throwaway backups into the customer's bucket under a matching id. Dropping them is not optional, and the drop is reported. Demote at creation, never promote. |
 | 19 | [0002](0002-rich-terminal-renderer.md) **P5 ships in P2 of this RFC**, not in 0002 | Its gate — "a bundle actually shipping a `RELEASE.md`" — could not open by itself, since nothing created such a file. [0013 decision 14](0013-bundle-authoring-experience.md) makes bundles carry one and a staged update is where reading the notes matters. Consequence: 0002 stays ✅ Complete with P5 recorded as delivered elsewhere, rather than being reopened. |
+| 20 | **Refines decision 5** (2026-08-09): the gate promises "**no database restore will be required**", not "no human will be required" | An update still reaches `requires-manual-intervention` through a failed migration hook, a health check that never passes, or a converge the engine cannot compensate — none of which this gate inspects. What it bounds is the *unrecoverable* failure, which is the one that cannot wait for morning. Consequence: unattended apply can still stop and page someone; it will not stop needing a restore decision. |
+| 21 | **Refines decision 15** (2026-08-09): the recorded source ref is written when a release becomes **current**, never when a candidate is staged, and carries no schema bump | Writing it at staging would have `--check` and `doctor` reporting on a release nobody is running. And its loss to an older binary's write-back is a visible degradation (`--check` stops answering) rather than a silent one, which is the line schema bumps are supposed to draw. |
+| 22 | Channel following **passes the resolved digest into the fetch** and refuses a staged bundle whose digest differs | A channel is a mutable tag by construction, and `resolveUpdateTarget` pins only `opts.ExpectDigest` ([`update.go:215`](../internal/lifecycle/ops/update.go)) — empty unless the operator passed `--digest`. Tolerable when a human typed a reference seconds ago; not when a loop is watching a tag that exists to move. |
+| 23 | The setting is `update.check`, default **false**, absent means false. `update --check` **ignores** it; `doctor`, `status` and the timer **honour** it | "Opt-in" without a named setting is a sentiment. Refusing an explicitly typed command because a persisted flag is false would be the manager arguing with a direct instruction; running unprompted with the flag unset is the phone-home. |
+| 24 | **Refines decision 17** (2026-08-09): `mode` is immutable **through the manager's surfaces**; a hand-edited state file is not detected and is not claimed to be | Defending one boolean with a tamper-evident record would defend it against an operator who can equally edit the recipient list, the backup targets or the installation id. Root on the machine is outside every threat model in this corpus. |
 
 ## 12. Phasing
 
