@@ -69,11 +69,15 @@ jobs:
               - 'justfile'
               - '.golangci.yml'
               - 'testdata/**'
-              # The scripts the gates below execute. `acceptance.sh` *is* the
-              # acceptance scenario, and a change to it used to match no
-              # filter that runs it -- so the one edit guaranteed to affect
-              # that job was the one edit that could not trigger it.
+              # The scripts the gates below execute, and the workflow that
+              # defines them. `acceptance.sh` *is* the acceptance scenario and
+              # this file decides when it runs, yet neither matched a filter
+              # that runs it -- so the two edits guaranteed to affect that job
+              # were the two edits that could not trigger it. `workflows/**`
+              # rather than the whole of `.github`, so a dependabot config or
+              # an issue template does not drag the container suites in.
               - '.github/scripts/**'
+              - '.github/workflows/**'
             docs:
               - 'pages/**'
               - 'README.md'
@@ -479,3 +483,128 @@ jobs:
             coverage.out
             union.out
           retention-days: 7
+
+  # The one check a branch ruleset should require.
+  #
+  # Requiring the individual jobs does not work here: they are change-gated, and
+  # a required check that never reports blocks a pull request forever rather
+  # than failing it. A docs-only change legitimately skips `test`, `acceptance`
+  # and the rest, and GitHub cannot tell "skipped because the filter said so"
+  # from "never going to report".
+  #
+  # So this job always runs, and reduces every gate to one verdict.
+  required:
+    name: Required Continuous Integration
+    # always(), so it reports even when something upstream failed -- without
+    # it this job would itself be skipped, which is the failure mode it exists
+    # to prevent.
+    if: always()
+    needs:
+      - changes
+      - workflows
+      - quality
+      - test
+      - docs
+      - acceptance
+      - containers
+      - coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # This job reads the workflow file and runs no git operation, so the
+          # token the default checkout leaves in .git/config would sit there
+          # for the rest of the job serving nothing.
+          persist-credentials: false
+
+      # `needs` above is a hand-written list, and toJSON serialises exactly
+      # that list -- so a gate added to this workflow and forgotten here would
+      # be invisible to the verdict below, and this check would stay green
+      # while that gate failed. A required check with a silent hole in it is
+      # worse than no required check, because it is believed.
+      #
+      # So the list is compared against the workflow rather than trusted: every
+      # job defined here, except this one, has to be wired in.
+      #
+      # Parsed rather than pattern-matched. A line pattern is blind to a name
+      # with a capital in it, a trailing comment after the colon, or a quoted
+      # key -- and every one of those *removes* a job from the comparison
+      # rather than adding one, which is this check's own failure mode turned
+      # on itself.
+      - name: Every gate in this workflow is wired into this check
+        env:
+          WIRED: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+
+          # yq on the runner image, PyYAML if a future image drops it. Neither
+          # is installed here on purpose: this is the check a ruleset requires,
+          # and a gate that reaches out to a package index before it can answer
+          # has traded a clear failure for a flaky one.
+          #
+          # So the reader is named and the absence of one is reported as
+          # itself. A parse failure is swallowed for the same reason -- the
+          # check below says which gate is unwired, or why it cannot tell,
+          # rather than the run ending on a bare jq error or a traceback.
+          reader=""
+          if command -v yq >/dev/null 2>&1; then
+            reader="yq"
+            all=$(yq -r '.jobs | keys[]' .github/workflows/ci.yml 2>/dev/null || true)
+          elif python3 -c 'import yaml' 2>/dev/null; then
+            reader="python3+PyYAML"
+            all=$(python3 -c 'import sys, yaml; print("\n".join(yaml.safe_load(open(sys.argv[1]))["jobs"]))' \
+              .github/workflows/ci.yml 2>/dev/null || true)
+          else
+            echo "::error::no YAML reader on this runner (need yq or PyYAML) —" \
+              "this check cannot confirm every gate is wired in, so it refuses"
+            exit 1
+          fi
+          echo "job names read with ${reader}"
+
+          # The reader has to be able to see *this* job, or it cannot be
+          # trusted to see the others: a parse that returned nothing would
+          # otherwise read as "nothing missing", which is the exact verdict
+          # this step exists to make impossible.
+          if ! printf '%s\n' "$all" | grep -qx required; then
+            echo "::error::cannot read job names from .github/workflows/ci.yml"
+            exit 1
+          fi
+
+          # LC_ALL=C on both, because comm compares bytes: a sort in the
+          # runner's locale can order "-" and "_" differently and make comm
+          # report a difference that is not there.
+          defined=$(printf '%s\n' "$all" | grep -vx required | LC_ALL=C sort)
+          wired=$(printf '%s' "$WIRED" | jq -r 'keys[]' | LC_ALL=C sort)
+
+          missing=$(LC_ALL=C comm -23 <(printf '%s\n' "$defined") <(printf '%s\n' "$wired"))
+          if [ -n "$missing" ]; then
+            echo "::error::gates missing from the required check's needs: $(printf '%s' "$missing" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "every gate in this workflow is wired in"
+
+      - name: Every gate passed or was legitimately skipped
+        env:
+          # Exactly the jobs named in `needs` above -- which the step before
+          # this one has just proved is all of them.
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' | sort
+
+          # A failed job is a failure. A *skipped* one is not: it is either
+          # change-gated away, or downstream of something that already failed
+          # -- and that something reports its own failure here, so nothing is
+          # lost by letting the skip pass.
+          bad=$(echo "$RESULTS" | jq -r '
+            [to_entries[]
+             | select(.value.result == "failure" or .value.result == "cancelled")
+             | .key] | join(", ")')
+
+          if [ -n "$bad" ]; then
+            echo "::error::continuous integration did not pass: ${bad}"
+            exit 1
+          fi
+          echo "every gate passed or was legitimately skipped"
