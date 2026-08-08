@@ -296,9 +296,17 @@ digest in the manager's own source, local-first, and reported by `doctor`.
 
 **Fallback — a verified local index.** Where no registry helper can run, the
 manager ingests the layout directly, verifies each blob against the digest
-`index.json` claims, records the mapping from manifest reference to local image
-ID in installation state, and answers `HasImage` from that mapping when the
-daemon does not recognise the reference.
+`index.json` claims, loads it into the daemon, and **tags the loaded image with
+the reference the manifest pins** so the daemon answers to it. The mapping from
+manifest reference to local image ID is recomputed from the bundle each time it
+is needed and never written to installation state (decision 14).
+
+Both halves of that sentence are corrections. An earlier draft said the mapping
+was *recorded in installation state*, contradicting decision 14 in the same
+document — and recording it would not have been enough anyway: `Pull` and the
+Compose project both work from the reference, so a mapping the manager consults
+privately leaves the daemon unable to create the service. The image has to
+answer to the name, which means tagging it, not remembering it.
 
 The fallback is deliberately *verified*, not merely recorded. The trust chain
 is minisign signature → `SHA256SUMS` → blob bytes → computed digest → local
@@ -399,11 +407,23 @@ the mitigation because it is checked afterwards.
 Three ways to raise the ceiling without simply removing the guard. **Decision
 11 takes the first two together**; the third is recorded as rejected:
 
-1. **A declared budget read from the stream.** `manifest.yaml` is an entry in
-   the same tar; read it before committing to the rest and size the budget from
-   what the release says it carries. An archive that then exceeds its own
-   declaration is refused. Keeps a bound proportional to a claim, at the cost
-   of ordering constraints on the archive.
+1. **A declared budget read from the stream, under a hard cap.** `manifest.yaml`
+   is an entry in the same tar; read it before committing to the rest and size
+   the budget from what the release says it carries. An archive that then
+   exceeds its own declaration is refused.
+
+   **The declaration is untrusted, so it may only ever lower the ceiling.** The
+   effective limit is `min(declared, hard_cap)` with `hard_cap = 50 GiB` total
+   and `5 GiB` per file, and `MaxEntries` unchanged. A first draft of this
+   section said the budget "keeps a bound proportional to a claim" — but the
+   claim is made by the same unverified bytes the guard exists to bound, so an
+   attacker declaring 500 GiB would simply have raised it. The free-space
+   preflight does not substitute: on a machine with a large disk it passes.
+
+   A bundle needing more than the cap is refused and says so, which is the
+   correct answer for a limit that exists to bound *unverified* input. Raising
+   it is a change to the manager, made once, in the open — not something a
+   bundle can ask for.
 
    **Amended 2026-08-08 (decision 15):** those ordering constraints now have an
    owner — [0014 decision 2](0014-building-a-release-bundle.md) makes
@@ -560,6 +580,8 @@ recomputation, and the wording of every refusal.
 | 13 | A bundled image is **preferred** over a registry copy, never compared against one | The digest is the identity: agreeing copies are the same bytes, and differing ones make the bundle authoritative because the vendor's signature covers it. Comparing would add a network round-trip to the path whose purpose is not needing one. |
 | 14 | The reference → image ID mapping is **recomputed from the bundle**, never persisted | State that can go stale will. Only the fallback path needs it at all; where the ephemeral registry runs, the daemon holds the truth. |
 | 15 | **Refines decision 11** (2026-08-08): the manifest-first ordering it requires is owned by [0014](0014-building-a-release-bundle.md), and the budget read **fails closed** when the first tar entry is not `manifest.yaml` | Decision 11 named [0012](0012-packing-images-into-a-bundle.md) as controlling the ordering; 0012 §8 excluded archiving, so the guarantee was asserted here and enforced nowhere. 0014 decision 2 locks the order as a property of the archive format, and this row adds the consuming half: an archive that does not honour it is **refused**, not silently given the default ceiling. Consequence: a hand-rolled `tar` over a bundle carrying images is refused unless the vendor orders it, which `publishing.md` must show — a real cost, accepted because a guarantee nothing checks decays into a comment. |
+| 16 | **Refines decision 11** (2026-08-09): the declared budget may only ever **lower** the ceiling — the effective limit is `min(declared, hard_cap)`, `hard_cap` being 50 GiB total and 5 GiB per file | The declaration is read from the same unverified bytes the guard bounds, so a budget that could *raise* the ceiling is one an attacker sets. Decision 11's "a bound proportional to a claim" was the error; the free-space preflight does not cover it, since a large disk simply passes. Consequence: a bundle above the cap is refused, and raising the cap is a change to the manager rather than something a bundle can request. |
+| 17 | **Refines decision 14** (2026-08-09): the fallback **tags** the loaded image with the manifest's reference; the reference → image ID mapping is recomputed and still never persisted | §5.3 said the mapping was recorded in installation state, contradicting decision 14 in the same document — and persisting it would not have sufficed regardless: `Pull` and the Compose project resolve by *reference*, so a mapping the manager consults privately leaves the daemon unable to create the service. |
 
 ## 12. Phasing
 

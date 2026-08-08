@@ -248,6 +248,22 @@ having because it is where a reader will look, not because it reserves space.
 Reuses `ByteSize`, which already parses `12GiB` and already carries the
 inherited-YAML-base documentation from an earlier defect.
 
+**Its validation matters more than its location.** The value is read from the
+archive *before the signature is checked*, so it is attacker-controlled input
+in the strictest sense. Two rules, both in
+[0011 decision 16](0011-bundled-container-images.md):
+
+- It may only ever **lower** the extraction ceiling — the effective limit is
+  `min(declared, hard_cap)`. A declaration that would raise it is not honoured,
+  and a bundle needing more than `hard_cap` is refused rather than trusted.
+- Absent means the default ceiling, not "unbounded". A missing field must never
+  be the permissive reading of anything that gates untrusted bytes.
+
+Manifest-level validation is the ordinary kind — non-negative, parses as a
+`ByteSize` — and is *not* where the security lives. The clamp is, and it lives
+in the extractor, because by the time the manifest validates it has already
+been read out of the untrusted stream.
+
 ### 5.4 What `extensions` is, and the one thing it is good for
 
 Recorded because §3 shows it looking dead and it is not: `extensions` exists so
@@ -374,7 +390,7 @@ each, because an unrecorded rejection is re-proposed.
 | 4 | `metadata.release_notes` is **declared**, with no `RELEASE.md` fallback | Every other path a bundle ships is declared and existence-checked; a convention layered under a declaration reintroduces the ambiguity the field removes. Consequence: [0013](0013-bundle-authoring-experience.md)'s scaffold emits the field, not just the file. |
 | 5 | `health.checks[].start_period` | Without it, slow-to-start and dead are the same observation, and the only lever is a timeout long enough to delay noticing the second. |
 | 6 | `metadata.support_url`, `https` only, surfaced by `status` and failing `doctor` checks | The operator is not the vendor; "where do I get help" has no home today. Not appended to error hints — that is a vendor URL in every log line. |
-| 7 | The extraction budget lives at **`bundle.uncompressed_size`** | `requirements` describes the host; this describes the artifact. The block is where a reader will look — it reserves nothing, because §2 verified nesting confers no forward compatibility. |
+| 7 | The extraction budget lives at **`bundle.uncompressed_size`**, and may only ever **lower** the ceiling | `requirements` describes the host; this describes the artifact. The block is where a reader will look — it reserves nothing, because §2 verified nesting confers no forward compatibility. The clamp to `min(declared, hard_cap)` lives in the extractor, not in manifest validation: the value is read from the archive before the signature is checked, so it is attacker-controlled, and absent must mean the default ceiling rather than unbounded. See [0011 decision 16](0011-bundled-container-images.md). |
 | 8 | The six rejected fields in §8 stay rejected, each with a named trigger | An unrecorded rejection is re-proposed. |
 | 9 | `extensions` is **left exactly as it is** | It is not dead: it exists to be tolerated, so a vendor's namespaced keys do not trip strict decoding. Consequence recorded rather than adopted: it is a usable home for *experimental* manager fields, which is invisible from the code. |
 
