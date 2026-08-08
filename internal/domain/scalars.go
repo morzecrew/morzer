@@ -62,6 +62,34 @@ func (m FileMode) String() string { return fmt.Sprintf("%04o", uint32(m)) }
 
 func (m FileMode) MarshalText() ([]byte, error) { return []byte(m.String()), nil }
 
+// UnmarshalYAML refuses any node that is not a string, because YAML's own
+// number rules rewrite the value before this type ever sees it.
+//
+// An unquoted `0640` is a YAML integer: it decodes to 416, arrives at
+// UnmarshalText as "416", and parses back as 0416 -- owner read-only, group
+// execute-only, other read/write. What makes that worse than a plain misread
+// is that it is selective. A mode whose decimal form contains an 8 or a 9 is
+// not a valid octal string, so it is refused loudly: 0600 -> "384", 0755 ->
+// "493". Every mode whose decimal digits happen to all be octal digits passes
+// silently -- 0400, 0640, 0644, 0660, 0664, 0770 and 0777, which is most of
+// what anybody writes.
+//
+// The comment on the type has claimed since the beginning that "the parser
+// insists on a string". This is the code that makes it true.
+func (m *FileMode) UnmarshalYAML(unmarshal func(any) error) error {
+	var raw any
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return ValidationError(nil, "file mode must be a quoted octal string").
+			WithHint(`quote it -- mode: "0640". Unquoted, YAML reads 0640 as the ` +
+				`decimal number 416, which is the permission 0416`)
+	}
+	return m.UnmarshalText([]byte(s))
+}
+
 func (m *FileMode) UnmarshalText(b []byte) error {
 	s := strings.TrimSpace(string(b))
 	if s == "" {

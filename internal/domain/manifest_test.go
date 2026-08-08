@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -389,6 +390,53 @@ func TestScalarRoundTrips(t *testing.T) {
 
 		require.Error(t, m.UnmarshalText([]byte("99999")))
 		require.Error(t, m.UnmarshalText([]byte("0999")), "9 is not an octal digit")
+	})
+
+	// Every scalar below is reachable from YAML in more than one node shape,
+	// and until this test existed the suite only ever drove UnmarshalText --
+	// eleven assertions, none of them through a decode. That is how an
+	// unquoted mode went on decoding to the wrong permission through a whole
+	// remediation cycle while the scalar test above passed: the defect is in
+	// the layer this reaches and that one does not.
+	t.Run("scalars decode from the node shape a manifest actually carries", func(t *testing.T) {
+		decode := func(t *testing.T, src string, into any) error {
+			t.Helper()
+			return yaml.UnmarshalWithOptions([]byte(src+"\n"), into,
+				yaml.Strict(), yaml.DisallowUnknownField())
+		}
+
+		t.Run("a quoted mode is the permission it spells", func(t *testing.T) {
+			var c ConfigurationFile
+			require.NoError(t, decode(t, "template: t.tmpl\ntarget: /etc/app.conf\nmode: \"0640\"", &c))
+			assert.Equal(t, uint32(0o640), c.Mode.Perm())
+		})
+
+		// The whole point. Unquoted, YAML reads 0640 as decimal 416, which
+		// re-parses as 0416: owner read-only, group execute-only, other
+		// read/write. Refused now rather than applied silently.
+		t.Run("an unquoted mode is refused, not reinterpreted", func(t *testing.T) {
+			for _, mode := range []string{
+				// The silent side: decimal digits that are all octal digits.
+				"0400", "0640", "0644", "0660", "0664", "0770", "0777",
+				// The loud side: an 8 or 9 in the decimal form. Refused
+				// before too, but for the wrong reason -- assert it stays
+				// refused for the right one.
+				"0600", "0755",
+			} {
+				var c ConfigurationFile
+				err := decode(t, "template: t.tmpl\ntarget: /etc/app.conf\nmode: "+mode, &c)
+				require.Error(t, err, "unquoted mode %s was accepted", mode)
+				assert.Contains(t, err.Error(), "quoted octal string",
+					"the refusal for %s should say how to spell it", mode)
+			}
+		})
+
+		// A control: the type that already refuses a bare integer, and the
+		// reason the class is avoidable rather than inherent to YAML.
+		t.Run("a duration still refuses a bare number", func(t *testing.T) {
+			var d Duration
+			require.Error(t, d.UnmarshalText([]byte("30")), "30 what?")
+		})
 	})
 
 	t.Run("byte size accepts what operators type", func(t *testing.T) {
