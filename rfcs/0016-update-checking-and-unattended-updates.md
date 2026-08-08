@@ -1,6 +1,9 @@
 # RFC 0016 — Update checking and unattended updates
 
-- **Status:** 📝 Draft — design proposed
+- **Status:** 📝 Draft — **design locked** 2026-08-08. Every question in §10 is
+  resolved into §11; P3 is gated on [0015](0015-notifications.md) shipping, and
+  decision 16 adds the first new manifest field since strict decoding's cost was
+  measured (§5.3).
 - **Scope:** Three separable capabilities, in increasing order of risk.
   `update --check` tells an operator a release exists, consuming
   `ReleaseSource.List` — a port method that is implemented, commented as
@@ -28,7 +31,12 @@
   whole RFC bends around) · [0015](0015-notifications.md) (prerequisite for P3) ·
   [0014](0014-building-a-release-bundle.md) (the versions a channel points at) ·
   [0011](0011-bundled-container-images.md) (the customers this does **not**
-  serve)
+  serve) · [0003](0003-secrets-recovery-and-onboarding.md) (`installation
+  import`, the second creation path) · [0009](0009-backup-targets.md) (the
+  export that carries backup credentials into it) ·
+  [`internal/cli/installation.go`](../internal/cli/installation.go) ·
+  [`internal/release/load.go`](../internal/release/load.go) (strict decoding,
+  which prices the new manifest field)
 
 ---
 
@@ -149,6 +157,16 @@ that honestly: "this transport cannot enumerate versions." Reporting "up to
 date" for a source that cannot answer would be the worst possible outcome of
 this feature.
 
+**The installation records where its current release came from.** It does not
+today — nothing persists the ref an operator passed to `update` — so `--check`
+with no argument has nothing to query, and the `doctor` check cannot run
+unattended at all, which is the context that makes it useful. One string,
+written when a release is staged.
+
+It rides the schema bump [0015](0015-notifications.md) is already making rather
+than needing one of its own; see §5.4 on why that matters for `mode` too. If
+this ships before 0015, it carries the bump instead.
+
 ### 5.2 Channel following — a different operation
 
 ```yaml
@@ -182,23 +200,58 @@ An update is auto-applicable only if **all** of these hold:
 | --- | --- |
 | `CheckUpgrade` reports no problems | Already run by `update` today |
 | The target declares `rollback_safe: true` | `target.Compatibility.RollbackSafe` |
-| The **current** release can still read the schema the target's migrations will produce | `current.DatabaseSchemaMax >= target.DatabaseSchemaMin` |
+| The target declares **`database_schema_produces`** | new field; absent means not auto-applicable |
+| The **current** release can read that schema | `current.DatabaseSchemaMax >= target.DatabaseSchemaProduces` |
 | `policy.require_signature` is true and `policy.signing_keys` is non-empty | `Policy` |
 | The pre-update backup is not disabled | `!policy.skip_backup_before_update` |
 
-The first three are one idea: **after this update, could a human be required?**
+The first four are one idea: **after this update, could a human be required?**
 That is precisely what `AssessRollback` answers
 ([`version.go:356-373`](../internal/domain/version.go)) — it sets
 `RestoreRequired` when the installed release's migrations are one-way, or when
 the previous release cannot read the current schema. The gate is that assessment
-run *predictively*, before the update, using the target's `database_schema_min`
-as the stand-in for the schema its migrations will leave behind.
+run *predictively*, before the update.
 
-That stand-in is a pessimistic approximation and is named as one: the exact
-post-migration schema is not knowable before the migration runs, and
-`database_schema_min` is the lowest schema the target supports, which its
-migrations must therefore reach. A release whose migrations go further than its
-own declared minimum would defeat it — which is unresolved question 2.
+**Running it predictively needs a number the manifest does not currently
+carry**, and that gap is where a first draft of this design went wrong. The
+obvious stand-in is the target's `database_schema_min` — the lowest schema it
+supports, which its migrations must therefore reach. But a release whose
+migrations go *beyond* its own declared minimum slips straight through, and the
+whole argument for this gate is that it rests on a declaration rather than a
+proxy. Using a proxy for half of it is incoherent.
+
+So the manifest gains one integer:
+
+```yaml
+compatibility:
+  rollback_safe: true
+  database_schema_min: 12
+  database_schema_max: 14
+  database_schema_produces: 14   # what my migrations leave the database at
+```
+
+**Absent means not auto-applicable.** No migration burden on any existing
+vendor, no guessing, and it degrades in exactly the right direction: a vendor
+who has never heard of unattended updates gets none, and one who wants them
+states the fact that makes them safe.
+
+**The field is not free, and the cost is not where it looks.** Manifest
+decoding is strict — `ParseManifest` uses `DisallowUnknownField`
+([`load.go`](../internal/release/load.go)) — so an older manager meeting a
+manifest carrying this field **fails to load it**. `min_manager_version` is the
+mechanism for exactly this, but it cannot help here: it is read by
+`CheckUpgrade`, which runs on an already-loaded manifest, so the decode error
+arrives first. The operator sees `unknown field "database_schema_produces"`
+with a hint about typos, not "this release needs manager ≥ X".
+
+That is a pre-existing property of the format rather than something this RFC
+introduces — it is true of *any* new manifest field — but this is the first RFC
+to add one since the constraint was noticed, so it is recorded here. Two ways to
+soften it, neither in this RFC's scope: teach the decoder to check
+`api_version` and `min_manager_version` before rejecting unknown fields, or
+reserve an `extensions.`-style escape that strict decoding already tolerates.
+The practical mitigation is that a vendor adding this field is opting into
+unattended updates, which already implies a recent manager on both sides.
 
 **Why not a version range.** "Auto-apply patch releases" is a proxy for "this
 release has no migrations", and it is a bad one in both directions: a patch
@@ -239,29 +292,71 @@ value — a field absent from a hand-edited file, a record written before the
 field existed — meant *do not back up*, and the one place a missing bool decides
 something is the one place it must not decide that."
 
-**It is chosen at `init` and it is one-way: an installation can leave dev mode
-and can never enter it.** The asymmetry is the point. Dev mode's relaxations
-mean the machine's history is untrusted — backups may have been skipped,
-releases aggressively pruned — so a machine that has been running as production
-must not be downgradable into a mode that tolerates data loss. And the drift
-this guards against only goes one direction: sandboxes become demo boxes become
-production, never the reverse. Leaving dev mode is a normal edit; entering it
-requires a fresh `init`.
+**Mode is fixed at creation and never transitions.** Not one-way — *no* way.
+An earlier draft of this section allowed dev → production on the reasoning that
+only the reverse was dangerous. That is wrong; both directions are, in different
+shapes:
+
+| Transition | What breaks | When it surfaces |
+| --- | --- | --- |
+| production → dev | Real customer data now under relaxed rules — no pre-update backup, aggressive pruning, auto-apply skipping the gate | Immediately |
+| dev → production | Untrusted history presented as trustworthy: you find out at rollback time that `previous` was pruned and no pre-update backup was ever taken | During an incident |
+
+The second is quieter and lands when it costs most. Since neither is acceptable,
+the field is immutable, which is also the simplest invariant to state and to
+test: *mode is a property of the installation, chosen when the installation is
+created.*
+
+**Creation means `init` or `import`**, and the second is not an afterthought.
+`installation import` reproduces `export.Installation` wholesale, so a
+production export would rebuild as a production machine — silently blocking the
+workflow that most wants a sandbox, since [0003](0003-secrets-recovery-and-onboarding.md)'s
+`import → update → restore` is exactly how a vendor tests a customer's backup.
+So `import --mode dev` exists, and the asymmetry lives there instead: **you may
+demote at creation, never promote at all.** `import --mode production` from a
+dev export is refused, because that is the deferred-risk transition wearing a
+different hat.
+
+**`import --mode dev` must drop the backup targets, and this is not optional.**
+Import preserves the original installation id — deliberately, so a lost
+machine's backups stay restorable — and [0009](0009-backup-targets.md) has the
+export carry backup targets *with their credentials*, because a rebuilt machine
+has to reach them. A sandbox imported from a production export would therefore
+hold the customer's bucket, the customer's credentials, and a matching
+installation id, and would push its own throwaway backups straight into them.
+A sandbox that can write to production's backup target is worse than no sandbox.
+So the targets are dropped, and the drop is reported rather than silent.
+
+The cost of all this: **there is no path from sandbox to production.** Promotion
+is backup → fresh `init` → restore, which already works today, and which is the
+right amount of ceremony for a machine about to hold real data.
 
 `status` and `doctor` mark it permanently and prominently. Not a first-run
 notice — a persistent line, because the failure mode is a machine nobody
 remembers the provenance of.
 
-Neither `mode` nor the `update` block bumps `InstallationSchemaVersion`. The
-rule the field states is "bumped only when the on-disk shape changes in a way a
-previous manager would **misread**"
-([`installation.go:9`](../internal/domain/installation.go)), and both of these
-misread in the safe direction: an older binary sees no `mode` and treats the
-machine as production, and sees no channel and polls nothing — which it would
-not do anyway, since it generates no timer. This is the opposite of
-[0015 decision 9](0015-notifications.md), where absence means an operator is
-silently not told, and the contrast is the point: the bump is a judgement about
-which direction the omission fails in, not a reflex on every new field.
+**`mode` must land at or after a schema bump**, and the reason is not the one
+that first suggests itself. Reading is the safe direction: an older binary that
+sees no `mode` treats the machine as production, which is stricter. *Writing* is
+not. `config set` rewrites the state, unknown fields are dropped on the way
+through, and a dev sandbox touched once by an older binary silently loses its
+mode and thereafter presents as production — the deferred-risk row of the table
+above, arrived at by accident.
+
+What prevents that is not a bump dedicated to `mode`: it is that a manager
+refuses a state file from the future — `migrateInstallation` is forward-only and
+`Installation.Validate` "rejects a schema version from the future"
+([`state.go:103-107`](../internal/infra/state/state.go)). So `mode` needs to
+land at or after *a* bump, not to cause one — and [0015](0015-notifications.md)
+is already taking `InstallationSchemaVersion` to 4 for `notify`, whose omission
+fails in the direction that forces it. If both ship at schema 4, `mode` and the
+recorded source ref are protected by that same refusal. If this RFC ships first,
+it carries the bump itself.
+
+The contrast with [0015 decision 9](0015-notifications.md) is worth keeping in
+view: a bump is a judgement about which direction an omission fails in, not a
+reflex on every new field — and the judgement has to consider the write path,
+not only the read.
 
 **What dev mode relaxes:**
 
@@ -277,6 +372,14 @@ which direction the omission fails in, not a reflex on every new field.
 - Prerelease versions are admissible update candidates. In production the
   default is stable-only, since [0014](0014-building-a-release-bundle.md) makes
   every dev build a prerelease.
+
+Retention has one exemption that is **not** mode-specific: a release **staged
+but not applied** (§5.3) is exempt from `retain_releases` in either mode, the
+way `current` and `previous` already are — the prune command exempts both
+unconditionally ([`release.go`](../internal/cli/release.go)). Staging ahead of
+the operator's decision is most of what makes the middle mode worth having, and
+a retention pass that prunes the candidate it just fetched makes it pointless.
+The exemption ends when the candidate is applied or superseded by a newer one.
 
 **What dev mode never relaxes: the verification chain.** Signature checking,
 digest pinning, `SHA256SUMS` completeness — all unchanged. The sandbox's entire
@@ -332,10 +435,19 @@ discloses.
 - **Enabling auto-apply without a signing key is refused at configuration
   time**, not at update time. A machine that accepts the setting and then always
   refuses to act is worse than one that refuses the setting.
-- **Dev mode cannot be entered.** An installation without `mode: dev` cannot
-  acquire it by `config set`, by hand-editing, or by import — three paths, three
-  assertions. Hand-editing is the one that matters, since the file is
-  operator-facing.
+- **`mode` cannot change after creation**, in either direction: not by
+  `config set`, not by hand-editing the operator-facing file, not by import.
+  Six assertions, and the hand-edit pair matters most because that file invites
+  editing.
+- **`import --mode dev` drops the backup targets**, asserted by importing an
+  export that carries targets *with credentials* and checking the rebuilt
+  installation has neither — and that the drop is reported, not silent. This is
+  the assertion that stops a sandbox writing into production's bucket, so it
+  must fail if the drop is ever removed for convenience.
+- **`import --mode production` from a dev export is refused.**
+- **The `database_schema_produces` gate, both halves**: a release declaring it
+  is auto-applicable, and one omitting it is not. Without the second, the field
+  could default to something permissive and no test would notice.
 - **A tick that cannot take the lock exits 0** and journals why.
 - **Channel following**: a moved tag with an unchanged digest is a no-op; a
   moved tag with a new digest is a candidate. The first assertion is what stops
@@ -354,6 +466,10 @@ discloses.
   to a vendor. It has always gated `rollback`; it now also decides whether a
   release may install without a human, which raises the cost of declaring it
   carelessly. This is the most important documentation change in the RFC.
+- `reference/manifest.md`: `database_schema_produces`, what declaring it opts
+  into, and that omitting it is a valid and conservative choice.
+  [0006](0006-documentation-site.md)'s `docs-check` fails the build on an
+  undocumented manifest field, so this is gated rather than remembered.
 - `reference/installation-commands.md` and the installation-file reference: the
   `update` block and `mode`, including that `mode` cannot be turned on.
 
@@ -390,9 +506,18 @@ discloses.
   already set it being asked. The documentation change in §7 is the only
   mitigation and it is weak; a stronger one would be a manifest `api_version`
   bump, which is a large hammer for one field's semantics.
-- **Dev mode escaping to production.** Mitigated by the one-way rule and the
+- **Dev mode escaping to production.** Mitigated by immutability and the
   permanent marker, not eliminated: a machine that was *always* dev mode and
-  quietly became load-bearing is the case neither guard catches.
+  quietly became load-bearing is the case neither guard catches. Immutability
+  makes it *visible* — the machine still says `mode: dev` — which is the most a
+  config field can do about an organisational problem.
+- **A new manifest field is a hard break for older managers.** Strict decoding
+  rejects `database_schema_produces` with `unknown field` before
+  `min_manager_version` is ever consulted, so the operator gets a message about
+  typos rather than about versions. Accepted here because a vendor adding the
+  field is opting into unattended updates and therefore into a recent manager on
+  both sides — but the next RFC that wants a manifest field will meet the same
+  wall with a weaker excuse, and §5.3 names the two ways out.
 - **This serves the opposite customer from [0011](0011-bundled-container-images.md).**
   Polling needs registry credentials living permanently on the customer's
   machine — precisely what 0011 exists because vendors often cannot grant. The
@@ -411,25 +536,29 @@ discloses.
 
 ## 10. Unresolved questions
 
-1. **Should `--check` be able to run without a configured channel or source?**
-   The installation does not record where the current release came from, so
-   `--check` with no argument has nothing to query. Recording the source ref at
-   install time is a small state addition with a schema bump, and it is what
-   makes the `doctor` check work unattended. Leaning toward recording it.
-2. **Is `database_schema_min` a sound stand-in for the post-migration schema?**
-   It is the lowest schema the target supports, so its migrations must reach it
-   — but a release whose migrations go *beyond* its declared minimum would slip
-   past the gate. The alternative is a new manifest field stating what the
-   migrations produce, which is more honest and asks vendors for something they
-   have never been asked for.
-3. **Does entering dev mode need to be impossible, or merely loud?** Impossible
-   is the safer rule and it forecloses a legitimate case: a production machine
-   being deliberately retired into a test fixture. The escape hatch is a fresh
-   `init`, which loses the installation id — acceptable for a machine being
-   retired, and the question is whether anyone will disagree.
-4. Should staged-but-not-applied releases count against `retain_releases`?
-   Staging is what makes the middle mode valuable, and a retention policy that
-   prunes the staged candidate makes it pointless.
+All four are resolved as of 2026-08-08 and recorded as decisions 15–18. Kept
+here because what was open, and what answering it uncovered, is part of the
+record.
+
+1. ~~Can `--check` run without a configured channel or source?~~ → decision 15.
+   The installation records the ref its current release came from. It rides
+   [0015](0015-notifications.md)'s schema bump rather than needing one of its
+   own.
+2. ~~Is `database_schema_min` a sound stand-in for the post-migration schema?~~
+   → decision 16. **No** — a release whose migrations go beyond its own declared
+   minimum slips past, and a gate whose whole argument is "rests on a
+   declaration, not a proxy" cannot use a proxy for half of itself. The manifest
+   gains `database_schema_produces`; absent means not auto-applicable.
+3. ~~Impossible to enter dev mode, or merely loud?~~ → decisions 17 and 18.
+   Neither, as posed: the question assumed one dangerous direction and there are
+   two, so the field is immutable and chosen at creation. Answering it surfaced
+   `import` as a second creation path — and the backup-target hazard that comes
+   with it (§5.4).
+4. ~~Do staged releases count against `retain_releases`?~~ → decision 18's
+   second half. Exempt, as `current` and `previous` already are.
+
+What implementation is still free to settle: how a staged candidate is marked on
+disk, and whether `--check`'s "cannot enumerate" is a distinct exit code.
 
 ## 11. Decisions
 
@@ -439,8 +568,8 @@ discloses.
 | 2 | `--check` uses `List`; channel following uses `Resolve` | They are different operations: `List` skips non-semver tags by design, so it cannot follow a mutable channel. Consequence: a channel is a single ref, not a tag pattern. |
 | 3 | A channel is a **mutable pointer to immutable versions** | Composes with [0014 §5.2](0014-building-a-release-bundle.md), which gives every build a distinct version, so the never-republish refusal keeps working untouched. |
 | 4 | **No hardcoded poll interval floor** | The cost belongs to the vendor's registry, not the manager. Consequence: the documentation must state that rate-limited registries count manifest requests, because nothing enforces it. |
-| 5 | Auto-apply is gated on the release **declaring** it cannot require a human — `rollback_safe: true` plus a schema range the previous release can still read — not on a version range | A version range is a proxy for "has no one-way migration"; the manifest states the real property. Consequence: `rollback_safe`'s meaning widens for vendors who already set it, which the docs must carry. |
-| 6 | The gate is `AssessRollback` run **predictively**, with `database_schema_min` standing in for the post-migration schema | Reuses a written, tested function rather than a second compatibility judgement. Consequence: a pessimistic approximation that unresolved question 2 may replace with a declared field. |
+| 5 | Auto-apply is gated on the release **declaring** it cannot require a human — `rollback_safe: true` plus a schema the previous release can still read — not on a version range | A version range is a proxy for "has no one-way migration"; the manifest states the real property. Consequence: `rollback_safe`'s meaning widens for vendors who already set it, which the docs must carry. |
+| 6 | The gate is `AssessRollback` run **predictively**, over declared values only | Reuses a written, tested function rather than a second compatibility judgement, and keeps the gate free of estimates — see decision 16 for the value it needs and does not yet have. |
 | 7 | Enabling auto-apply **refuses** without `require_signature` and a pinned key | Unattended apply hands the vendor unattended root. Refused at configuration time, not at update time — matching how `--skip-backup` requires `--force`. |
 | 8 | Anything failing the gate is **fetched, staged and notified**, never silently skipped | Moves the network, the credentials and the verification off the human's critical path while leaving the downtime decision with them. This is where most of the value is. |
 | 9 | Dev mode is on `Installation`, not `Policy`, and **absence means production** | `Policy` is what `config` may change; this may not be. Absence-means-safe is the rule [`installation.go:120-131`](../internal/domain/installation.go) already learned the hard way for `SkipBackupBeforeUpdate`. |
@@ -449,6 +578,10 @@ discloses.
 | 12 | `OnCalendar` **is** the maintenance window | systemd already expresses it better than a config field would, and the timer is a sibling of the backup timer that already ships. |
 | 13 | A tick that cannot take the lock **exits 0** | The next tick is soon; queueing makes the start time unpredictable, and a non-zero exit would fight `Restart=on-failure`. |
 | 14 | Update checking is **off by default** | It contacts the vendor's registry, which for a self-hosted product is a phone-home nobody agreed to. |
+| 15 | The installation **records the ref its current release came from** | Without it `--check` has nothing to query and the `doctor` check cannot run unattended, which is the context that makes it useful. Rides [0015](0015-notifications.md)'s bump to schema 4; carries its own if this ships first. |
+| 16 | The manifest gains **`database_schema_produces`**; **absent means not auto-applicable** | Replaces the `database_schema_min` stand-in, which a release migrating past its own declared minimum would slip through — and a gate arguing "declaration, not proxy" cannot use a proxy for half of itself. Fails closed with no burden on existing vendors. Consequence: strict decoding means an older manager **rejects the manifest outright** with `unknown field`, and `min_manager_version` cannot soften it because `CheckUpgrade` runs after the decode. |
+| 17 | `mode` is **immutable** — fixed at creation, no transition in either direction | Both directions are dangerous, differently: production → dev puts real data under relaxed rules immediately, dev → production presents untrusted history as trustworthy and surfaces during an incident. An immutable field is also the simplest invariant to test. Consequence: promotion is backup → fresh `init` → restore, and there is no shortcut. |
+| 18 | Creation means `init` **or `import`**; `import --mode dev` is allowed and **drops the backup targets**, `import --mode production` from a dev export is refused. Staged-but-unapplied releases are exempt from retention | Import reproduces the export wholesale, which would otherwise block [0003](0003-secrets-recovery-and-onboarding.md)'s `import → update → restore` — the way a vendor tests a customer's backup. But an import keeps the original installation id and [0009](0009-backup-targets.md) puts targets *and credentials* in the export, so a sandbox would push throwaway backups into the customer's bucket under a matching id. Dropping them is not optional, and the drop is reported. Demote at creation, never promote. |
 
 ## 12. Phasing
 

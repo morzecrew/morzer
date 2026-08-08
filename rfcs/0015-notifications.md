@@ -1,6 +1,8 @@
 # RFC 0015 — Notifications
 
-- **Status:** 📝 Draft — design proposed
+- **Status:** 📝 Draft — **design locked** 2026-08-08. Every question in §10 is
+  resolved into §11. [0016](0016-update-checking-and-unattended-updates.md) P3
+  is gated on this shipping.
 - **Scope:** Implements `ports.Notifier`, a port that has existed since the
   lifecycle layer was written and has **no adapter, no wiring and no
   configuration** — so every `d.notify(...)` call in the codebase returns on a
@@ -132,9 +134,12 @@ notify:
   targets:
     - url: https://hooks.example/morzer
       credentials: notify-webhook      # a secret name, not a value
+      min_level: error                 # default; `warn` opts into doctor warnings
+    - name: chat
+      url_secret: notify-chat-url      # the whole URL is the credential
 ```
 
-Same two fields, same reasoning, same `Notifiers` fan-out already on the port.
+Same shape, same reasoning, same `Notifiers` fan-out already on the port.
 The credential is a secret **name** because this file is a report an operator
 reads and `doctor` prints, and a bearer token in it is a bearer token in every
 support ticket — [0009](0009-backup-targets.md)'s wording, and it applies here
@@ -144,6 +149,22 @@ unchanged.
 webhook adapter reads one field from it, a header value, so both
 `Authorization: Bearer …` and a vendor-specific signing header are expressible
 without a new schema per service.
+
+**Two URL forms, because some services put the credential in the path.** A
+Slack or Teams incoming-webhook URL *is* a bearer token spelled as a path, so
+`url` in a file an operator reads and `doctor` prints would leak it exactly as
+an inline token would. `url_secret` names a secret holding the whole URL
+instead. Both forms exist rather than only the second: forcing an internal
+endpoint that carries no credential into the secret store is friction for no
+gain, and it would put a value into `installation export` that has no business
+travelling with a recovery key.
+
+The cost is diagnostic and worth naming: a target using `url_secret` can only
+be identified by its `name`, so `doctor` reports "chat: unreachable" rather
+than naming the host. That is the same trade [0009](0009-backup-targets.md)
+made for target credentials, one level further in.
+
+`min_level` is per target and defaults to `error` — see §5.2.
 
 Only `https` is accepted. A plaintext `http` webhook would carry operational
 detail about a deployment across an unencrypted hop, and the release-source
@@ -157,7 +178,21 @@ success, and leaves it on the machine the operator configured a target to
 survive" ([`installation.go:17-22`](../internal/domain/installation.go)). A
 `notify` block has the identical shape — an older binary sees no targets, runs
 an operation, reports success, and the operator it was supposed to interrupt is
-never told. Same class, same remedy: a refusal naming the manager version.
+never told. Same class, same remedy: a refusal naming the manager version,
+which `Installation.Validate` already delivers by rejecting a schema version
+from the future ([`state.go:103-107`](../internal/infra/state/state.go)).
+
+**The bump needs a migration arm, and forgetting it breaks every existing
+installation.** `migrateInstallation` is a forward-only loop whose `default`
+case returns "no migration path from installation schema %d to %d"
+([`state.go:108-129`](../internal/infra/state/state.go)), so raising the
+constant to 4 without adding `case 3:` makes every schema-3 installation on
+disk fail to load. Like the 2 → 3 arm before it there is nothing to convert —
+an installation written before `notify` existed has no targets, and the zero
+value reads correctly — so the arm is one line and a comment. It is one line
+that is easy not to write, which is why it is here rather than left to the
+implementer, and the existing `TestASchemaTwoInstallationStillLoads` names the
+shape of the test that pins it.
 
 ### 5.2 What may leave the machine — an allowlist
 
@@ -166,7 +201,18 @@ Not every kind. The forwarded set is:
 | Kind | Why |
 | --- | --- |
 | `operation.finished` | The outcome. This is the event a human wants. |
-| `check` at `warn` or `error` | `doctor`'s findings — the things that are wrong and nobody has looked at. |
+| `check` at or above the target's `min_level` | `doctor`'s findings — the things that are wrong and nobody has looked at. |
+
+**`min_level` defaults to `error`, and `warn` is opt-in per target.** The
+tension is real in both directions: warnings include "a secret rotation is
+overdue", which is precisely what a forgotten machine needs to be told — and
+they also fire on *every* `doctor` run until someone fixes them, which is how
+alert fatigue starts. Deduplication is out of scope (§8), so a default of `warn`
+would ship a known-noisy channel with no way to quiet it.
+
+One field settles it without needing dedup at all: an operator who wants
+rotation reminders sets `min_level: warn` on the target that should carry them,
+and an operator who wants to be interrupted only by failures changes nothing.
 
 Everything else — `step.started`, `step.progress`, `step.finished`, `plan`,
 `message`, and above all `step.output` — is **not** forwarded, and the mechanism
@@ -264,11 +310,19 @@ throughout.
   secret rather than a fixture string.
 - **The credential comes from the secret state**, and the installation file and
   `doctor` output contain no token — the same assertion
-  [0009](0009-backup-targets.md) makes for backup targets.
+  [0009](0009-backup-targets.md) makes for backup targets. Asserted for both URL
+  forms, since `url_secret` exists precisely because the URL can *be* the token.
+- **`min_level` gates delivery**: a `check` at `warn` reaches a target set to
+  `warn` and not one left at the default. Both halves, or the default silently
+  stops meaning anything.
 - **`http://` is refused** at configuration time, not at delivery time.
 - **A failed push is distinguishable from a failed backup** in the payload.
 - **Several targets each receive the event, and one failing does not stop the
   others** — `Notifiers` fans out today with no implementation to fan out to.
+- **A schema-3 installation still loads after the bump to 4**, the sibling of
+  the existing `TestASchemaTwoInstallationStillLoads`. Without the `case 3:`
+  migration arm this fails for every installation on disk, which makes it the
+  highest-consequence test in the RFC and the cheapest to forget.
 
 ## 7. Docs
 
@@ -314,31 +368,33 @@ throughout.
   and it is a weak one. The stronger mitigation is
   [0016](0016-update-checking-and-unattended-updates.md) not depending on
   delivery, which this RFC states as a constraint on that one.
-- **Webhook URLs are themselves credentials for many services.** A Slack
-  incoming-webhook URL is a bearer token spelled as a path. Storing it in the
-  `url` field puts it in the operator-facing file — the exact thing the
-  `credentials` field exists to avoid. This is unresolved question 1.
+- **Webhook URLs are themselves credentials for many services**, and nothing
+  makes an operator use the right field. `url_secret` exists (decision 10) but
+  `url` is still there and still accepts a Slack URL, which lands in the
+  operator-facing file. The only mitigations are documentation and a possible
+  `doctor` heuristic on known webhook hosts — the second is guesswork about
+  other people's URL schemes and is not proposed.
 - **A misconfigured target adds 5s to every operation.** Bounded, but a human at
   a terminal will notice a `config set` that pauses. Acceptable; worth
   documenting.
 
 ## 10. Unresolved questions
 
-1. **Should the whole `url` be allowed to live in a secret?** Some services put
-   the credential in the path, defeating the value/name split. Options: accept a
-   secret name in place of a URL; or keep the URL in the file and document that a
-   path-embedded token is the operator's risk. Leaning toward the first — it
-   costs one field and closes the hole properly — but it makes `doctor`'s output
-   less useful, since it can then name only the target and not where it points.
-2. **Does a `check` event at `warn` deserve a notification, or only `error`?**
-   Warnings include "a secret rotation is overdue", which is exactly what a
-   forgotten machine needs to be told; they also fire on every `doctor` run
-   until fixed, which is how alerting fatigue starts. Deduplication is out of
-   scope, so this may need to be `error`-only until it is not.
-3. Should the notifier be constructed at all when no targets are configured, or
-   should `Deps.Notifier` stay nil? Nil keeps the existing no-op path exercised;
-   an empty `Notifiers{}` keeps the code path uniform. Implementation may settle
-   it.
+All three are resolved as of 2026-08-08 and recorded as decisions 10–12. Kept
+here because what was open is part of the record.
+
+1. ~~Should the whole `url` be allowed to live in a secret?~~ → decision 10.
+   **Both forms**, rather than replacing one with the other: a path-embedded
+   token needs `url_secret`, and an internal endpoint carrying no credential
+   should not be pushed into the secret store — or into an `installation
+   export` alongside a recovery key.
+2. ~~Notify on `warn`, or `error` only?~~ → decision 11. `error` by default,
+   `warn` opt-in per target via `min_level`. One field, and it needs none of
+   the deduplication §8 excludes.
+3. ~~Nil `Notifier`, or an empty `Notifiers{}`?~~ → decision 12. Stay nil.
+
+What implementation is still free to settle: the credential document's field
+name, and whether the two URL forms share one accessor.
 
 ## 11. Decisions
 
@@ -352,7 +408,10 @@ throughout.
 | 6 | Delivery is **at-most-once**: synchronous, 5s timeout, no retry, no persistence | Keeps the adapter free of queue lifetime and shutdown ordering in a one-shot CLI. Consequence, and it binds another RFC: [0016](0016-update-checking-and-unattended-updates.md) may not treat "notified" as a precondition — the journal is the record. |
 | 7 | `backup` and `restore` gain notify call sites | `backup` is the only operation with a generated timer, so it is the only one that already runs unattended — and it is the one with no call site today. |
 | 8 | The adapter does **not** re-redact | A second scrubber hides defects in the first. The guard is a test asserting no secret appears in a delivered payload, at the boundary where a leak costs most. |
-| 9 | `InstallationSchemaVersion` bumps to **4** | Identical in shape to the bump to 3: an older manager reads a newer state file, sees no `notify` targets, reports success, and the operator who configured a way to be told is never told. Consequence: an older binary refuses the state file naming its own version, rather than silently running without notifications. |
+| 9 | `InstallationSchemaVersion` bumps to **4** | Identical in shape to the bump to 3: an older manager reads a newer state file, sees no `notify` targets, reports success, and the operator who configured a way to be told is never told. Consequence: an older binary refuses the state file naming its own version, rather than silently running without notifications — and that refusal is what protects every *other* field added at schema 4, including [0016](0016-update-checking-and-unattended-updates.md)'s `mode`. |
+| 10 | A target names its endpoint as either `url` or **`url_secret`** | Some services spell the credential as a path, so a plain `url` field would leak it into the operator-facing file, `doctor` output, and `installation export`. Both forms rather than only the secret one: an endpoint carrying no credential should not be forced into the secret store. Consequence: a `url_secret` target is identifiable only by `name`, so `doctor` cannot say where it points. |
+| 11 | `min_level` is per target, defaulting to **`error`**; `warn` is opt-in | Warnings are both the thing a forgotten machine needs (overdue rotation) and the thing that fires on every `doctor` run until fixed. Since deduplication is out of scope, a `warn` default would ship a known-noisy channel with no way to quiet it; one field gives the operator the choice instead. |
+| 12 | `Deps.Notifier` stays **nil** when no targets are configured | Keeps the existing no-op path exercised on every installation rather than replacing it with an empty fan-out that is never covered. |
 
 ## 12. Phasing
 

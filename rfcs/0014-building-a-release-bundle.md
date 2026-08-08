@@ -1,10 +1,12 @@
 # RFC 0014 — Building a release bundle
 
-- **Status:** 📝 Draft — design proposed. The version-scheme constraints in §5.2
-  are verified by measurement (§3): semver ordering and `String()`/`Compare()`
-  behaviour against the pinned `Masterminds/semver/v3`, OCI tag acceptance
-  against `oras-go`'s own validator, and `git describe` output including the
-  shallow-clone failure.
+- **Status:** 📝 Draft — **design locked** 2026-08-08. Every question in §10 is
+  resolved into §11, and the version-scheme constraints in §5.2 are verified by
+  measurement (§3): semver ordering and `String()`/`Compare()` behaviour against
+  the pinned `Masterminds/semver/v3`, OCI tag acceptance against `oras-go`'s own
+  validator, and `git describe` output including the shallow-clone failure.
+  **P1 is gated by [0011](0011-bundled-container-images.md) rather than the
+  reverse** — see §12.
 - **Scope:** Gives a vendor the two commands that stand between a bundle source
   tree and something publishable: `morzer release build`, which resolves and
   stamps the version (from a flag or from `git describe`), packs any bundled
@@ -217,6 +219,21 @@ Three ways to arrive at a version, in precedence order:
    `build` only sums and packs. This keeps `build` usable by a vendor who
    manages versions their own way.
 
+**With one refusal: path 3 rejects `0.0.0`.** `Version.IsZero()` tests
+`sv == nil`, not a zero version, so `metadata.version: 0.0.0` parses,
+validates, sums, signs and installs exactly like any other release — and
+[0013 decision 9](0013-bundle-authoring-experience.md) has the scaffold write
+precisely that. A vendor who forgets `--version` in CI therefore ships a bundle
+that is clean at every gate, and the mistake surfaces on the *second* such
+build as the never-republish refusal, on whichever machine reaches it first.
+Not "possible": guaranteed, because every forgetful build lands on the same
+version. `CheckUpgrade` makes it quieter still — a lower target is a *warning*,
+so updating a real installation with a forgotten-flag build proceeds.
+
+Refusing the null version specifically is what separates the mistake from the
+legitimate case. A vendor on path 3 carries a deliberate version; nobody ships
+`0.0.0` on purpose. The refusal names both flags in its hint.
+
 **The scheme.** `git describe --tags --long` on a tree seven commits past
 `v1.4.0` at `abc1234` produces `v1.4.0-7-gabc1234`, which renders as:
 
@@ -324,8 +341,13 @@ RFC creates the dependency; recorded against 0011 as a new decision row so the
 consuming side carries it too.
 
 **Determinism.** Tar headers are normalised — uid/gid `0`, owner names empty,
-mtime from `SOURCE_DATE_EPOCH` when set and `0` otherwise, no atime/ctime — so
-two archives of the same tree are byte-identical. This is cheap here and cannot
+no atime/ctime — so two archives of the same tree are byte-identical. The mtime
+resolves in three steps: `SOURCE_DATE_EPOCH` when set; otherwise the commit date
+when `--version-from-git` supplied the version; otherwise `0`. The
+reproducible-builds convention wins where it is expressed, the git path gets a
+timestamp that means something instead of the epoch, and the archive writer
+still knows nothing about git — it is handed a time by whatever resolved the
+version. This is cheap here and cannot
 be bolted on later by a vendor's `tar` invocation. It is also free of
 consequence for bundle identity: the content digest covers contents, paths and
 the executable bit, not timestamps, so normalising mtimes changes the archive
@@ -363,7 +385,14 @@ again. It gains one paragraph it did not previously need: that a hand-rolled
 - **Round trip**: `build` → sign → `archive` → `ExtractTarZst` → `release.Load`
   yields the stamped version, driven by `testdata/bundle`.
 - **Determinism**: two archives of the same tree are byte-identical, under a
-  changed `SOURCE_DATE_EPOCH` and an unchanged one.
+  changed `SOURCE_DATE_EPOCH` and an unchanged one — and the three-step mtime
+  precedence as a table, because the middle step (commit date under
+  `--version-from-git`) is the one a simplifying refactor would drop.
+- **The `0.0.0` refusal, as a pair**: `build` with no `--version` refuses a
+  manifest at `0.0.0` and accepts one at `0.1.0`. The second half is what stops
+  the refusal being widened into §5.2's sums-only path. Driven by the scaffold's
+  own output, so [0013 decision 9](0013-bundle-authoring-experience.md) and this
+  refusal cannot drift apart.
 - **The version scheme as a table** — distance 0, distance N, dirty, a tag with
   a `v` prefix, and no reachable tag (which must fail, not default).
 - **Both files stamped**: a test that asserts `VERSION` and `metadata.version`
@@ -438,17 +467,23 @@ again. It gains one paragraph it did not previously need: that a hand-rolled
 
 ## 10. Unresolved questions
 
-1. Should `build` refuse to run when `metadata.version` is a placeholder and no
-   `--version` was given? Refusing catches the vendor who forgot the flag;
-   accepting keeps `build` usable as a sums-only command. Leaning toward
-   accepting, because §5.2's third path is a real use.
-2. Is `SOURCE_DATE_EPOCH` the right knob, or should the archive mtime be pinned
-   to the commit date under `--version-from-git`? The commit date is more
-   meaningful and couples the archive to git; the environment variable is the
-   reproducible-builds convention and couples it to nothing.
-3. Should `archive`'s output name be derived (`<name>-<version>.tar.zst`) or
-   required? Derivation is convenient and guessable; a required `-o` is
-   explicit. Implementation may settle this.
+All three are resolved as of 2026-08-08 and recorded as decisions 13–15. Kept
+here because what was open is part of the record.
+
+1. ~~Refuse a placeholder version, or accept it?~~ → decision 13. **Refuse
+   `0.0.0` and nothing else.** The question assumed a binary choice between
+   catching the forgetful vendor and keeping the sums-only path; checking the
+   code dissolved it. `0.0.0` is legal today and is exactly what the scaffold
+   writes, so the forgetful case is not merely possible but guaranteed to
+   collide — while a path-3 vendor always carries a deliberate version. The
+   null version separates them.
+2. ~~`SOURCE_DATE_EPOCH`, or the commit date?~~ → decision 14. Both, in that
+   precedence.
+3. ~~Derived output name, or required `-o`?~~ → decision 15. Derived, with
+   `-o` to override.
+
+What implementation is still free to settle: the wording of every refusal, and
+whether the three version paths share one resolver type.
 
 ## 11. Decisions
 
@@ -466,6 +501,9 @@ again. It gains one paragraph it did not previously need: that a hand-rolled
 | 10 | `build` writes **in place**; there is no `--out` | Matches [0012 decision 7](0012-packing-images-into-a-bundle.md); copying a multi-gigabyte `images/` layout to protect a stamped field is a poor trade. Consequence: `build` leaves the working tree modified, which must be documented. |
 | 11 | Sums regeneration is **one routine** called by both `pack` and `build` | A bundle without bundled images is otherwise the case nothing covers. |
 | 12 | `archive` **warns** on a missing signature rather than refusing | `require_signature` is an operator-side policy; an unsigned bundle is legitimate for some vendors. Consequence: the "vendor forgot to sign" failure is caught by the operator's policy, not by the vendor's tooling. |
+| 13 | With no `--version`, `build` refuses **`0.0.0`** and accepts every other version | `0.0.0` is legal today (`IsZero()` tests `sv == nil`) and is what [0013](0013-bundle-authoring-experience.md)'s scaffold writes, so a forgotten flag ships a bundle clean at every gate whose collision is guaranteed rather than possible — and `CheckUpgrade` only *warns* on a lower target, so it installs. Refusing the null version alone keeps §5.2's sums-only path, since a vendor using it carries a deliberate version. |
+| 14 | Archive mtime resolves `SOURCE_DATE_EPOCH` → commit date under `--version-from-git` → `0` | The reproducible-builds convention wins where expressed; the git path gets a meaningful timestamp rather than the epoch; the archive writer stays ignorant of git, receiving a time from whatever resolved the version. |
+| 15 | `archive` derives `<name>-<version>.tar.zst`, overridable with `-o` | Guessable by a human and scriptable without a lookup; the override covers pipelines that name artifacts their own way. |
 
 ## 12. Phasing
 

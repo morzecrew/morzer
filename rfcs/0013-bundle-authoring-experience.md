@@ -1,6 +1,8 @@
 # RFC 0013 — Bundle authoring experience
 
-- **Status:** 📝 Draft — design proposed
+- **Status:** 📝 Draft — **design locked** 2026-08-08. Both questions in §10 are
+  resolved into decisions 12 and 13; the motivating failure (§2) is demonstrated
+  against a real bundle.
 - **Scope:** Makes a vendor's own CI able to catch the bundle errors that
   currently reach the customer, and stops the authoring surface fighting the
   editor. Five changes: `release verify` parses every template it currently
@@ -179,6 +181,12 @@ on those (`{{- if .Domains }}`) exercises only the branch the synthetic values
 choose. Making it the default would turn "verify passed" into a guarantee it
 cannot keep, which is the failure this whole RFC is about. The documentation
 must say it is a smoke test.
+
+**It stays opt-in permanently** (decision 12). The obvious future move — "the
+synthetic context has matured, make it default" — treats this as a maturity
+question, and it is not one. The values are invented however good they get, so
+the guarantee never becomes real; a better context widens what the smoke test
+covers without ever making it a promise.
 
 The refusal is fail-closed either way: a template that cannot be read, parsed,
 or (under `--render-check`) rendered fails the command.
@@ -378,14 +386,20 @@ is a claim about editors, and asserting it here would be theatre.
 
 ## 10. Unresolved questions
 
-1. Should `--render-check` be the default in a future release once the
-   synthetic context has proven itself, with an opt-out? Making it default is
-   the stronger gate and the stronger over-trust risk; deferring the question
-   keeps this RFC's first version honest.
-2. Does the synthetic context belong in `internal/release` (beside `verify`) or
-   in the render adapter (beside the real one it imitates)? The second keeps
-   them adjacent and drifting together; the first keeps the adapter free of
-   test-shaped code.
+Both are resolved as of 2026-08-08 and recorded as decisions 12 and 13. Kept
+here because what was open is part of the record.
+
+1. ~~Should `--render-check` become the default once the synthetic context has
+   proven itself?~~ → decision 12. **No, and not later either.** The question
+   was posed as a maturity question and it is not one: a synthetic context
+   cannot promise what a real one delivers no matter how good it gets, because
+   the values are invented. Time does not fix that, so deferring the question
+   only meant a future maintainer would answer it wrongly.
+2. ~~Where does the synthetic context live?~~ → decision 13. In the render
+   adapter, beside the real context it imitates.
+
+What implementation is still free to settle: the synthetic values themselves,
+and how the walk over `TemplateData`'s fields (§9) is spelled.
 
 ## 11. Decisions
 
@@ -402,6 +416,8 @@ is a claim about editors, and asserting it here would be theatre.
 | 9 | The scaffold writes version `0.0.0` in both `manifest.yaml` and `VERSION` | A placeholder [0014 §5.2](0014-building-a-release-bundle.md) stamps at build time. Writing a real-looking version would invite hand-maintaining the one field the tooling should own. |
 | 10 | The scaffold is a **skeleton**, not a working product; `--from-example` copies `testdata/bundle` for those who want one | A generated bundle that guesses an architecture produces work to undo. The example path costs nothing because that fixture is already exercised on every CI run. |
 | 11 | The scaffold's output must pass `verify --render-check` unedited, asserted by a test | Couples §5.5 to §5.1 in both directions: neither the scaffold nor the verifier can move without the other. |
+| 12 | `--render-check` is **permanently** opt-in — not deferred, decided | A synthetic context invents its values, so it can never promise what a real install delivers; that is structural, not a maturity gap time closes. Making it default would turn "verify passed" into a guarantee it cannot keep, which is the exact failure this RFC exists to fix. Consequence: there will never be a `--no-render-check`, and anyone proposing the flip is re-opening decision 2. |
+| 13 | The synthetic context lives in the **render adapter**, beside the real one | They imitate each other, so they should drift together; a context that lives away from the renderer it mimics goes stale silently. Consequence: the adapter carries code only `verify` calls, which is the cost accepted for adjacency. |
 
 ## 12. Phasing
 
