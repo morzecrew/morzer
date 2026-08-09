@@ -114,7 +114,13 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, ref strin
 		if mismatch := srv.Mismatch(); mismatch != nil {
 			return mismatch
 		}
-		return wrapExit(err, "cannot load "+shortImage(ref)+" out of the bundle",
+		// A listener that died is a different failure with a different
+		// remedy, and reporting it as the daemon's refusal would send an
+		// operator to inspect a bundle that is fine.
+		if serveErr := srv.ServeError(); serveErr != nil {
+			return serveErr
+		}
+		return wrapExit(err, "cannot load "+domain.ShortImageRef(ref)+" out of the bundle",
 			"the image is served from this machine, so this is the local daemon "+
 				"refusing it rather than a network failure; `morzer release verify` "+
 				"checks whether the bundle's layout is intact")
@@ -125,7 +131,7 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, ref strin
 	// even though the bytes are safely in the store.
 	tag := r.command(ports.RuntimeConfig{}, 2*time.Minute, r.docker, "tag", loopback, alias)
 	if _, err := r.runner.Run(ctx, tag); err != nil {
-		return wrapExit(err, "cannot name "+shortImage(ref)+" locally", "")
+		return wrapExit(err, "cannot name "+domain.ShortImageRef(ref)+" locally", "")
 	}
 
 	// The loopback reference names a port that stops listening when this

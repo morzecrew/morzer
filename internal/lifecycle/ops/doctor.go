@@ -732,7 +732,7 @@ func (d *Deps) checkRegistryReachable(rel domain.Release) preflight.Check {
 					"check network access and registry credentials (`docker login`); "+
 						"updates will fail while this is unreachable",
 					"cannot reach the registry for %s: %s",
-					shortRef(refs[0]), domain.AsError(err).Message)
+					domain.ShortImageRef(refs[0]), domain.AsError(err).Message)
 			}
 			return preflight.OK("reachable")
 		},
@@ -835,7 +835,7 @@ func (d *Deps) checkImagesLocal(rel domain.Release) preflight.Check {
 						"cannot check local images: %s", domain.AsError(err).Message)
 				}
 				if !present {
-					missing = append(missing, shortRef(ref))
+					missing = append(missing, domain.ShortImageRef(ref))
 				}
 			}
 
@@ -850,13 +850,6 @@ func (d *Deps) checkImagesLocal(rel domain.Release) preflight.Check {
 				len(missing), len(refs), strings.Join(missing, ", "))
 		},
 	}
-}
-
-func shortRef(ref string) string {
-	if i := strings.Index(ref, "@"); i > 0 {
-		return ref[:i]
-	}
-	return ref
 }
 
 func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) preflight.Check {
@@ -1263,14 +1256,14 @@ func (d *Deps) checkVolumeHelperImage(inst domain.Installation, rel domain.Relea
 			present, err := inspector.HasImage(ctx, ref)
 			if err != nil {
 				return preflight.Warn("check that the Docker daemon is running: `docker info`",
-					"cannot tell whether %s is here: %s", shortRef(ref), domain.AsError(err).Message)
+					"cannot tell whether %s is here: %s", domain.ShortImageRef(ref), domain.AsError(err).Message)
 			}
 			if !present {
 				return preflight.Warn(
 					fmt.Sprintf("run `docker pull %s` -- do it now rather than "+
 						"during a backup on a machine that has lost its network", ref),
 					"%s is not on this machine, so a backup cannot capture volumes",
-					shortRef(ref))
+					domain.ShortImageRef(ref))
 			}
 			// The full pinned reference, not shortRef. Every other
 			// check abbreviates because it names several images for

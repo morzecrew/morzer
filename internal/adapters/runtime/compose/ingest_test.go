@@ -198,6 +198,17 @@ func TestRepositoryPathIsCosmeticButHasToBeLegal(t *testing.T) {
 		{"library/postgres@" + appDigest, "library/postgres"},
 		// A tag is not part of the path.
 		{"postgres:17@" + appDigest, "postgres"},
+		// Not a host with a port: a registry host needs a path after it
+		// to be one, so by Docker's own grammar this is the repository
+		// `registry.example` with the tag `5000`. Kept because the
+		// reading is not obvious and the alternative -- treating it as
+		// a host and producing an empty path -- is what a naive split
+		// would do.
+		{"registry.example:5000@" + appDigest, "registry.example"},
+		// Nothing left to address it by. Unreachable through a validated
+		// manifest, and answered rather than left to produce an empty
+		// URL segment the daemon would refuse in its own vocabulary.
+		{":5000@" + appDigest, "bundled"},
 		{"registry.example/demo/app:v2@" + appDigest, "demo/app"},
 	}
 
@@ -211,5 +222,50 @@ func TestRepositoryPathIsCosmeticButHasToBeLegal(t *testing.T) {
 				t.Errorf("%q is not a repository path a daemon would accept", got)
 			}
 		})
+	}
+}
+
+// TestIngestRefusesAnUnpinnedBundledImage.
+//
+// A bundled image is addressed by the digest its manifest pins, and there is
+// nothing else to look it up by: no digest means no blob to fetch and no alias
+// to leave behind. Unreachable through a validated manifest, and reachable
+// through the port, which is where this is asserted.
+func TestIngestRefusesAnUnpinnedBundledImage(t *testing.T) {
+	runner := exec.NewScripted()
+	runner.OnExit("image inspect", 1, "Error: No such image")
+
+	r := New(runner)
+	err := r.IngestImages(context.Background(), emptyLayout(t),
+		[]string{"registry.example/demo/app:latest"})
+	if err == nil {
+		t.Fatal("an unpinned bundled image was ingested")
+	}
+	if !strings.Contains(err.Error(), "pinned by digest") {
+		t.Errorf("the refusal does not say what is wrong: %v", err)
+	}
+	if runner.Ran("pull") {
+		t.Errorf("something was pulled for an image with no digest:\n%s",
+			runner.CommandLines())
+	}
+}
+
+// TestAFailedTagIsReportedRatherThanSwallowed.
+//
+// The alias is the only name the deployment can resolve, so an image loaded
+// but not named is an image nothing can use -- and the bytes being safely in
+// the store is exactly what would make this easy to ignore.
+func TestAFailedTagIsReportedRatherThanSwallowed(t *testing.T) {
+	runner := exec.NewScripted()
+	runner.OnExit("image inspect", 1, "Error: No such image")
+	runner.OnExit(" tag ", 1, "Error response from daemon: no such image")
+
+	r := New(runner)
+	err := r.IngestImages(context.Background(), emptyLayout(t), []string{appRef})
+	if err == nil {
+		t.Fatal("an image that was loaded but never named was reported as ingested")
+	}
+	if !strings.Contains(err.Error(), "locally") {
+		t.Errorf("the failure does not say naming was what went wrong: %v", err)
 	}
 }

@@ -493,6 +493,13 @@ func remoteRepository(reference string) (*remote.Repository, error) {
 //
 // Nothing outside loopback is affected: every other registry still requires
 // TLS, with no fallback and no flag to remove it.
+//
+// One configuration this *breaks*, stated rather than discovered: a registry
+// serving TLS on a loopback address. Docker tries HTTPS there and falls back;
+// this forces HTTP, so such a registry stops working. Accepted because the
+// combination is rare, the failure is loud rather than silent, and adding a
+// probe-then-fall-back would put a network round trip and a second failure
+// mode in front of every open.
 func isLoopbackRegistry(registry string) bool {
 	host, _, err := net.SplitHostPort(registry)
 	if err != nil {

@@ -315,3 +315,44 @@ func TestAManifestWithNoBundledImagesAnswersAsItAlwaysDid(t *testing.T) {
 		t.Errorf("bundled = %v, want nothing", got)
 	}
 }
+
+// TestRuntimeRefFallsBackRatherThanReturningNothing.
+//
+// A bundled image with no digest has no alias to be deployed under. Returning
+// the manifest's reference keeps the Compose environment builder total -- what
+// the deployment then does with an unpinned reference is what it did before
+// bundling existed, which is better than a service with an empty image.
+//
+// Unreachable through a validated manifest, and decided here rather than left
+// to whatever the string arithmetic produced.
+func TestRuntimeRefFallsBackRatherThanReturningNothing(t *testing.T) {
+	spec := ImageSpec{Ref: "registry.example/demo/app:latest", From: ImageFromBundle}
+	if got := spec.RuntimeRef(); got != spec.Ref {
+		t.Errorf("RuntimeRef() = %q, want the manifest reference %q", got, spec.Ref)
+	}
+}
+
+// TestShortImageRefLeavesAReferenceWithNoDigestAlone.
+//
+// The empty case of a "cut at the separator" helper, decided rather than
+// inherited: a reference with no digest is already short, and returning ""
+// would put a message in front of an operator that names no image at all.
+func TestShortImageRefLeavesAReferenceWithNoDigestAlone(t *testing.T) {
+	const sha = "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+
+	cases := map[string]string{
+		"registry.example/demo/app@" + sha: "registry.example/demo/app",
+		"registry.example/demo/app:v2":     "registry.example/demo/app:v2",
+		"postgres":                         "postgres",
+		"":                                 "",
+		// A leading "@" leaves nothing in front of it, and the whole
+		// string is the least misleading thing to print.
+		"@" + sha: "@" + sha,
+	}
+
+	for ref, want := range cases {
+		if got := ShortImageRef(ref); got != want {
+			t.Errorf("ShortImageRef(%q) = %q, want %q", ref, got, want)
+		}
+	}
+}

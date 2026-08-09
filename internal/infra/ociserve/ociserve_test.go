@@ -367,6 +367,42 @@ func TestItBindsLoopbackOnly(t *testing.T) {
 	}
 }
 
+// TestASegmentedReferenceIsNotABlobName.
+//
+// A digest is one path segment. Something with a slash in it is a request for
+// a path the layout does not have a name for, and is refused before the digest
+// grammar is even consulted.
+func TestASegmentedReferenceIsNotABlobName(t *testing.T) {
+	dir, _, _ := layout(t)
+	s := serve(t, dir)
+
+	for _, path := range []string{
+		"/v2/demo/app/blobs/sha256/abc",
+		"/v2/demo/app/manifests/sha256/abc",
+		"/v2/demo/app/blobs/",
+		"/not-v2/demo/app/blobs/sha256:abc",
+		"/",
+	} {
+		if res := get(t, http.MethodGet, "http://"+s.Addr()+path); res.status != http.StatusNotFound {
+			t.Errorf("%q answered %d, want 404", path, res.status)
+		}
+	}
+}
+
+// TestAnIndexThatIsNotJSONIsRefusedAtTheDoor.
+//
+// Before a port is bound. A layout whose index cannot be read serves nothing,
+// so the caller gets one error rather than a listener plus a pull that fails
+// for a reason it cannot explain.
+func TestAnIndexThatIsNotJSONIsRefusedAtTheDoor(t *testing.T) {
+	dir, _, _ := layout(t)
+	write(t, filepath.Join(dir, ocispec.ImageIndexFile), []byte("this is not an index"))
+
+	if _, err := Start(dir); err == nil {
+		t.Fatal("a layout whose index is not JSON was served")
+	}
+}
+
 // TestALayoutWithNoIndexIsRefusedAtTheDoor.
 //
 // Before a port is bound, so a bundle that cannot be served does not leave a

@@ -186,20 +186,11 @@ func (r *Runtime) Pull(ctx context.Context, cfg ports.RuntimeConfig, images []st
 
 		cmd := r.command(cfg, 30*time.Minute, r.docker, "pull", ref)
 		if _, err := r.runner.Run(ctx, cmd); err != nil {
-			return wrapExit(err, "cannot pull "+shortImage(ref),
+			return wrapExit(err, "cannot pull "+domain.ShortImageRef(ref),
 				"check registry reachability and credentials; `morzer doctor` tests both")
 		}
 	}
 	return nil
-}
-
-// shortImage drops the digest, which is 71 characters of noise in an error
-// message that already names the failure.
-func shortImage(ref string) string {
-	if i := strings.Index(ref, "@"); i > 0 {
-		return ref[:i]
-	}
-	return ref
 }
 
 // Up converges the project to running.

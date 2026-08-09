@@ -66,6 +66,10 @@ type Server struct {
 	// mismatch records the first blob whose bytes did not hash to the
 	// digest they were requested under. See Mismatch.
 	mismatch error
+	// serveErr records the listener dying, which is a different fact about
+	// a different subject. Folding it into mismatch would report a bundle
+	// as corrupt because a socket closed.
+	serveErr error
 }
 
 // Start reads the layout at dir and serves it on a loopback port.
@@ -110,7 +114,11 @@ func Start(dir string) (*Server, error) {
 		defer s.wg.Done()
 		// http.ErrServerClosed is what Close looks like from in here.
 		if err := s.srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			s.recordMismatch(domain.RuntimeError(err, "the image layout server stopped"))
+			s.mu.Lock()
+			if s.serveErr == nil {
+				s.serveErr = domain.RuntimeError(err, "the image layout server stopped")
+			}
+			s.mu.Unlock()
 		}
 	}()
 	return s, nil
@@ -137,6 +145,18 @@ func (s *Server) Mismatch() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.mismatch
+}
+
+// ServeError reports the listener having died, if it did.
+//
+// Separate from Mismatch because they are claims about different things: one
+// says the bundle is not what it says it is, the other says this process
+// stopped answering. A caller that folded them together would tell an operator
+// their release was corrupt because a socket closed.
+func (s *Server) ServeError() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.serveErr
 }
 
 // Close stops serving and releases the layout.

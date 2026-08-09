@@ -293,8 +293,9 @@ type ImageInspector interface {
 // answer a question it cannot have.
 //
 // The contract is about the outcome, not the mechanism: after IngestImages
-// returns, every reference in aliases must resolve locally. How the bytes got
-// there is the adapter's business.
+// returns without error, every image named in refs resolves locally under the
+// name domain.ImageSpec.LocalAlias derives for it. How the bytes got there is
+// the adapter's business.
 type ImageIngester interface {
 	// IngestImages makes the images in an OCI layout resolvable locally.
 	//

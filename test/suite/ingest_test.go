@@ -13,6 +13,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 )
 
@@ -202,5 +203,34 @@ func TestAReleaseThatBundlesNothingIngestsNothing(t *testing.T) {
 	res, err := ops.IngestImages(context.Background(), h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Contains(t, res.Summary, "bundles no images")
+	assert.Empty(t, h.Runtime.IngestedRefs)
+}
+
+// runtimeOnly hides every optional capability the Compose adapter happens to
+// have, leaving a runtime that can converge but has no local image store.
+//
+// Embedding the interface rather than the fake: a wrapper that forwarded the
+// optional methods would still satisfy the type assertions, and what is under
+// test is what happens when they fail.
+type runtimeOnly struct{ ports.Runtime }
+
+// TestARuntimeThatCannotIngestRefusesRatherThanSkipping.
+//
+// The release says its images travel in the bundle. A runtime with no image
+// store will not find them anywhere else, so converging would fail later and
+// further from the cause -- inside Compose, about a name nothing can resolve.
+func TestARuntimeThatCannotIngestRefusesRatherThanSkipping(t *testing.T) {
+	h := newHarness(t)
+	h.bundleImage(t)
+	h.install()
+	h.Deps.Runtime = runtimeOnly{h.Runtime}
+
+	_, err := ops.IngestImages(context.Background(), h.Deps, ops.Options{})
+	require.Error(t, err, "a runtime with no image store reported the images as loaded")
+	assert.Contains(t, err.Error(), "cannot load images out of a bundle")
+	assert.Contains(t, domain.AsError(err).Hint, "from: bundle",
+		"the remedy must say which manifest field put the manager here")
+
+	// And nothing was ingested behind the refusal.
 	assert.Empty(t, h.Runtime.IngestedRefs)
 }

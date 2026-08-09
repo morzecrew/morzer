@@ -22,7 +22,10 @@
   to remove it. A bounded weakening, recorded rather than assumed: a process
   able to bind a loopback port can serve this client, and what arrives is
   checked afterwards regardless — `pack` against the digest the manifest pins,
-  a fetched release against `SHA256SUMS` and a signature.
+  a fetched release against `SHA256SUMS` and a signature. It also *breaks* one
+  configuration, recorded rather than left to be discovered: a registry serving
+  TLS on a loopback address, which Docker reaches by trying HTTPS first and
+  falling back. Accepted — rare, and it fails loudly.
 - **Scope:** Gives a vendor a supported way to produce the bundles
   [0011](0011-bundled-container-images.md) defines: a `morzer release pack`
   that copies the images a manifest marks `from: bundle` out of the vendor's

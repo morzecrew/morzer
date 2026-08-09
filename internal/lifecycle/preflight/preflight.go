@@ -684,7 +684,7 @@ func BundledImages(refs []string, has ImagePresence) Check {
 						domain.AsError(err).Message)
 				}
 				if !present {
-					missing = append(missing, shortImageRef(ref))
+					missing = append(missing, domain.ShortImageRef(ref))
 				}
 			}
 
@@ -697,13 +697,4 @@ func BundledImages(refs []string, has ImagePresence) Check {
 				len(missing), len(refs), strings.Join(missing, ", "))
 		},
 	}
-}
-
-// shortImageRef drops the digest, which is 71 characters of noise beside a
-// name that already identifies the image.
-func shortImageRef(ref string) string {
-	if i := strings.Index(ref, "@"); i > 0 {
-		return ref[:i]
-	}
-	return ref
 }

@@ -119,10 +119,18 @@ func stepIngestImages(d *Deps, of releaseOf) engine.Step {
 		Check: func(ctx context.Context, st *engine.State) (bool, error) {
 			rel, ok := of(st)
 			if !ok {
-				// No release to read. In `init` that means
-				// staging did not run, so there is no bundle
-				// and nothing to load.
-				return true, nil
+				// No release to read yet, which happens in
+				// exactly one place: a dry run of `init`, where
+				// the plan is built before staging has resolved
+				// anything.
+				//
+				// "Will run" rather than "already satisfied".
+				// The step is only in the list when a bundle
+				// was named, so the honest answer to a question
+				// that cannot be answered here is the one that
+				// does not promise the operator a step will be
+				// skipped.
+				return false, nil
 			}
 			refs := rel.Manifest.BundledImageRefs()
 			if len(refs) == 0 {

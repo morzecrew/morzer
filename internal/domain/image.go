@@ -192,6 +192,25 @@ func (s ImageSpec) RuntimeRef() string {
 	return s.Ref
 }
 
+// ShortImageRef is a reference with its digest dropped, for a message.
+//
+// A digest is 71 characters, and every message that carries one already names
+// the image beside it -- so the digest is the part a reader skips to find the
+// part that identifies anything. Three copies of this existed, one per layer,
+// which is the arithmetic ImageSpec.Digest already ran once: they agreed by
+// coincidence rather than by construction, and the next one would have been
+// written by whoever needed it next.
+//
+// Cut at the first "@" rather than the last, unlike Digest, and deliberately:
+// this answers "what should a human read", so for a malformed reference the
+// least of it is the safest thing to print.
+func ShortImageRef(ref string) string {
+	if i := strings.Index(ref, "@"); i > 0 {
+		return ref[:i]
+	}
+	return ref
+}
+
 // UnmarshalYAML accepts the scalar and the mapping spelling.
 func (s *ImageSpec) UnmarshalYAML(unmarshal func(any) error) error {
 	var ref string
