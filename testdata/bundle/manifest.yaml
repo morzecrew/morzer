@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json
 # Example release bundle exercised by the test suite.
 #
 # It is a real, valid bundle: the manifest loader, the step engine and the

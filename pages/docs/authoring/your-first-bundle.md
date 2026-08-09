@@ -15,6 +15,7 @@ real Docker on every CI run, so what you are reading is what passes.
 Start with identity and the runtime:
 
 ```yaml title="manifest.yaml"
+# yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json
 api_version: selfhost/v1alpha1
 kind: application-release
 
@@ -32,6 +33,17 @@ runtime:
     embedded: [compose/compose.embedded.yaml]
     external-db: [compose/compose.external-db.yaml]
 ```
+
+**That first line is worth typing.** It is a comment, so a manifest without it
+behaves identically and an editor that ignores it loses nothing — but every
+editor that speaks the language-server protocol reads it and gives you
+completion, hover documentation and inline validation against the schema this
+project generates from the types that enforce the manifest. There is an
+equivalent line for the secret schema, pointing at
+`selfhost-v1alpha1-secrets.json`.
+
+It would have caught the unquoted-`mode` trap that decoded to the wrong
+permission for months.
 
 `metadata.name` is load-bearing: it becomes `/etc/demo`, `/var/lib/demo`,
 `/run/demo`, `/opt/demo` and the `DEMO_*` prefix every hook sees. It is
