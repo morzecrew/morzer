@@ -28,6 +28,7 @@ func newReleaseCommand(app *App) *cobra.Command {
 		newReleaseListCommand(app),
 		newReleaseShowCommand(app),
 		newReleaseVerifyCommand(app),
+		newReleaseArchiveCommand(app),
 		newReleaseFetchCommand(app),
 		newReleasePruneCommand(app),
 	)
@@ -228,18 +229,7 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 					rel.Manifest.APIVersion, warning)
 			}
 
-			// Every declared template must at least parse. Checking
-			// it here rather than in Load is deliberate: Load also
-			// runs during an operator's `apply`, and a parse failure
-			// there is the failure this moves earlier, not a place
-			// to add work.
-			if err := checkTemplatesParse(rel); err != nil {
-				return err
-			}
-
-			// A per-file sums list is what a third party can check
-			// with sha256sum, independently of this tool.
-			if err := checksum.VerifySumsFile(rel.Root); err != nil {
+			if err := checkBundleIntegrity(rel); err != nil {
 				return err
 			}
 
@@ -281,6 +271,28 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 	cmd.Flags().StringArrayVar(&signingKeys, "signing-key", nil,
 		"minisign public key the bundle's signature must verify against; repeat for several")
 	return cmd
+}
+
+// checkBundleIntegrity runs the checks every command that blesses a bundle
+// shares: `verify`, and the two commands that produce one.
+//
+// Shared rather than restated so `archive` cannot come to accept a bundle
+// `verify` refuses. A vendor whose CI runs `verify` and whose release step runs
+// `archive` would otherwise be gated by two rules that drift apart, and the
+// direction they drift in is always the same one -- the producing command grows
+// lenient, because that is the one somebody is fighting at the time.
+func checkBundleIntegrity(rel domain.Release) error {
+	// Every declared template must at least parse. Checking it here rather
+	// than in Load is deliberate: Load also runs during an operator's
+	// `apply`, and a parse failure there is the failure this moves earlier,
+	// not a place to add work.
+	if err := checkTemplatesParse(rel); err != nil {
+		return err
+	}
+
+	// A per-file sums list is what a third party can check with sha256sum,
+	// independently of this tool.
+	return checksum.VerifySumsFile(rel.Root)
 }
 
 // checkTemplatesParse parses every template the manifest declares.
