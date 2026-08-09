@@ -17,6 +17,10 @@ minisign -Sm ./my-product/SHA256SUMS
 morzer release archive ./my-product
 ```
 
+If your release [carries its own images](bundled-images.md), `morzer release
+pack ./my-product` comes first — it copies them out of your registry into the
+bundle, and `build` then sums the result.
+
 The order is forced rather than chosen. The signature is a file *inside* the
 bundle — a sibling would not survive being packed and unpacked — so it has to
 exist before the bundle is packed. And morzer does not sign, so the step in the
