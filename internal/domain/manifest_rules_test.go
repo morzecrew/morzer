@@ -36,6 +36,15 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 		"no version": {
 			func(m *Manifest) { m.Metadata.Version = Version{} }, "metadata.version",
 		},
+		// Build metadata is retained by String() -- so it reaches the
+		// release store's directory name -- and ignored by Compare, so
+		// two builds differing only in metadata occupy different
+		// directories that the digest-conflict check never compares.
+		// Two bundles then claim one version and nothing notices.
+		"a version carrying build metadata": {
+			func(m *Manifest) { m.Metadata.Version = MustParseVersion("1.2.0+build.7") },
+			"metadata.version",
+		},
 
 		// providers and runtime
 		"no runtime provider": {
@@ -289,6 +298,30 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 					"guess which field is wrong:\n%v", tc.field, err)
 			}
 		})
+	}
+}
+
+// TestAConstraintMayStillCarryBuildMetadata is the other half of the refusal
+// above.
+//
+// A release's own version may not carry metadata, because that identity keys
+// the store; a *constraint* may, because it is a range rather than an identity
+// and metadata already decides nothing inside one. Without this, widening the
+// refusal into the constraint path would break `upgrade_from` and nothing would
+// fail.
+func TestAConstraintMayStillCarryBuildMetadata(t *testing.T) {
+	m := validManifest()
+	constraint, err := ParseConstraint(">=1.0.0+build.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Compatibility.UpgradeFrom = constraint
+
+	if err := m.Validate(); err != nil {
+		t.Fatalf("a constraint carrying build metadata was refused: %v", err)
+	}
+	if !m.Compatibility.UpgradeFrom.Allows(MustParseVersion("1.5.0")) {
+		t.Error("the constraint no longer admits a version inside its range")
 	}
 }
 

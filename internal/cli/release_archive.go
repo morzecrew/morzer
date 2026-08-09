@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -50,10 +49,14 @@ func newReleaseArchiveCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			// Zero: the commit-date step of the precedence needs a
-			// version resolved from a repository, which `archive`
-			// never does. So SOURCE_DATE_EPOCH, or the epoch.
-			modTime, err := release.ArchiveModTime(time.Time{})
+			// The commit date is the middle step of the timestamp
+			// precedence. `build` and `archive` are separate
+			// commands, so nothing carries "the version came from
+			// git" between them -- the bundle sitting in a
+			// repository is the fact this command can actually
+			// observe, and it gives the same answer for the case the
+			// step exists for. Outside a repository it is the epoch.
+			modTime, err := release.ArchiveModTime(release.CommitTime(rel.Root))
 			if err != nil {
 				return err
 			}

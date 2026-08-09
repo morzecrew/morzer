@@ -58,6 +58,55 @@ func (v Version) LessThan(o Version) bool    { return v.Compare(o) < 0 }
 func (v Version) GreaterThan(o Version) bool { return v.Compare(o) > 0 }
 func (v Version) Equal(o Version) bool       { return v.Compare(o) == 0 }
 
+// Prerelease is the identifier after the "-", or "" for a release version.
+func (v Version) Prerelease() string {
+	if v.sv == nil {
+		return ""
+	}
+	return v.sv.Prerelease()
+}
+
+// Metadata is the identifier after the "+", or "" for a version without one.
+//
+// Worth having a name because build metadata is the quietest trap in semver:
+// String() keeps it, so it reaches directory names and store keys, while
+// Compare ignores it, so two versions differing only in metadata are equal to
+// every comparison and distinct to every path. A release identity may not carry
+// one -- see Manifest.Validate.
+func (v Version) Metadata() string {
+	if v.sv == nil {
+		return ""
+	}
+	return v.sv.Metadata()
+}
+
+// NextPatch is the version whose patch is one higher, with no prerelease and no
+// metadata.
+//
+// It exists for the VCS version scheme: a prerelease sorts *below* its own
+// release, so a development build named after the tag it follows would sort
+// behind the release it comes after. Guessing the next patch is what makes it
+// sort forward.
+func (v Version) NextPatch() Version {
+	if v.sv == nil {
+		return Version{}
+	}
+	next := v.sv.IncPatch()
+	return Version{sv: &next}
+}
+
+// WithPrerelease returns v carrying the given prerelease identifiers.
+func (v Version) WithPrerelease(pre string) (Version, error) {
+	if v.sv == nil {
+		return Version{}, Internal(nil, "cannot add a prerelease to an unset version")
+	}
+	next, err := v.sv.SetPrerelease(pre)
+	if err != nil {
+		return Version{}, ValidationError(err, "%q is not a valid prerelease identifier", pre)
+	}
+	return Version{sv: &next}, nil
+}
+
 func (v Version) MarshalText() ([]byte, error) { return []byte(v.String()), nil }
 
 func (v *Version) UnmarshalText(b []byte) error {

@@ -74,7 +74,21 @@ same way `verify` does.
 
 | Flag | Meaning |
 | --- | --- |
+| `--version` | Version to stamp into `manifest.yaml` **and** `VERSION`. |
+| `--version-from-git` | Derive it from `git describe`: `<next-patch>-dev.<distance>.g<sha>`. Mutually exclusive with `--version`. |
+| `--allow-dirty` | With `--version-from-git`, permit a work tree with uncommitted changes; the version gains a `.dirty` identifier. |
 | `--force` | Discard an existing `SHA256SUMS.minisig`, which regenerating the list invalidates. |
+
+With neither version flag, the manifest's own version is used and nothing is
+stamped — except `0.0.0`, which is refused. See
+[Versioning](../authoring/publishing.md#versioning) for the scheme and why the
+patch is bumped.
+
+Stamping edits the manifest's `version:` line in place rather than re-encoding
+the document, so comments and key order survive, and the result is re-parsed
+before the command returns. A manifest whose `metadata.version` cannot be
+located unambiguously — a flow-style mapping, say — is refused rather than
+guessed at.
 
 Writes **in place** — the bundle directory is modified. Copying a tree whose
 `images/` layout may be tens of gigabytes to protect a checksum file is a poor

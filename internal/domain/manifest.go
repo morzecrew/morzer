@@ -444,6 +444,19 @@ func (m *Manifest) Validate() error {
 	}
 	if m.Metadata.Version.IsZero() {
 		v.add("metadata.version", "is required and must be a semantic version")
+	} else if meta := m.Metadata.Version.Metadata(); meta != "" {
+		// Build metadata is a silent bypass of the guard that makes
+		// version identity mean anything. String() retains it, so the
+		// release store -- keyed by the string -- puts two
+		// metadata-differing builds in different directories; Compare
+		// ignores it, so the "already installed with a different
+		// digest" check never compares them at all. Two different
+		// bundles then claim one version and nothing notices.
+		//
+		// Constraints keep accepting metadata: `upgrade_from:
+		// ">=1.0.0+build.7"` is a range, not an identity, and metadata
+		// already decides nothing there.
+		v.add("metadata.version", "must not carry build metadata, and this carries %q", "+"+meta)
 	}
 
 	// providers

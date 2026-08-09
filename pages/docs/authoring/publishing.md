@@ -213,11 +213,67 @@ published as 1.3.0".
 ## Versioning
 
 The version in your manifest is semantic and the manager compares it as such.
-Two things follow that are easy to get wrong:
 
-- **Never republish a version with different content.** The manager refuses a
-  version already installed with a different digest, rather than overwriting it.
-  That refusal is a feature, and it will land on your users.
-- **Bump `database_schema_max` when a release can read a newer schema**, and set
-  `rollback_safe: false` when its migrations are one-way. These are what let the
-  manager refuse an unsafe rollback instead of corrupting a database quietly.
+### Never republish a version with different content
+
+The manager refuses a version already installed with a different digest, rather
+than overwriting it. There is no `--force`. The refusal is deliberate: the
+release store is keyed by the version string and `current` and `previous` are
+symlinks into it, so overwriting a directory would silently change what
+`rollback` returns to.
+
+**What to do instead is publish a prerelease.** Every build that is not a
+release gets its own version, so nothing ever collides:
+
+```sh
+morzer release build ./my-product --version-from-git
+# 1.4.1-dev.7.g3be286c
+```
+
+`--version-from-git` runs `git describe --tags --long --dirty` and renders it as
+`<next-patch>-dev.<distance>.g<sha>`. Three properties, each load-bearing:
+
+- **The patch is bumped.** `1.4.0-dev.7` sorts *below* `1.4.0`, so a development
+  build named after the tag it follows would sort behind the release it comes
+  after. Guessing the next patch is what makes it sort forward.
+- **The sha is in there.** Commit distance is not unique across branches: two
+  branches seven commits past `v1.4.0` both produce `dev.7` with different
+  content, which is exactly the collision the never-republish rule catches.
+- **The sha is a prerelease identifier, never build metadata.** OCI tag grammar
+  excludes `+`, so a version carrying metadata could never be a registry tag —
+  and `metadata.version` refuses one anyway, because build metadata is kept in
+  the store's directory name and ignored by every comparison. Two builds
+  differing only in metadata would be distinct releases that nothing can tell
+  apart. Constraints such as `upgrade_from: ">=1.0.0+build.7"` are unaffected:
+  a range is not an identity.
+
+Exactly on a tag with a clean tree, the version is the tag verbatim — `1.4.0`,
+no suffix. That is the release build, and the only shape that produces a
+non-prerelease version.
+
+A dirty tree is refused. `--allow-dirty` stamps
+`1.4.1-dev.7.g3be286c.dirty`, which sorts after the clean build at the same
+commit — the correct reading, since it has content the commit does not.
+
+!!! warning "Shallow checkouts fetch no tags"
+
+    `actions/checkout` defaults to `fetch-depth: 1` and fetches no tags, so
+    `git describe` fails. morzer **fails loudly** rather than defaulting to
+    something plausible: a silent `0.0.0` would produce a bundle that installs,
+    collides, and confuses. Set `fetch-depth: 0`, or pass `--version`.
+
+`--version` is the real interface and accepts any valid semver, so calendar
+versioning or a CI build number works — `--version-from-git` is the sugar on
+top of it.
+
+With neither flag, `build` uses the manifest's own version and stamps nothing.
+The one version it refuses there is `0.0.0`, the placeholder a scaffolded
+bundle carries: it is legal at every other gate, so a forgotten flag in CI
+ships a bundle that is clean everywhere and collides with the *next* forgetful
+build.
+
+### Say what a release can and cannot do
+
+**Bump `database_schema_max` when a release can read a newer schema**, and set
+`rollback_safe: false` when its migrations are one-way. These are what let the
+manager refuse an unsafe rollback instead of corrupting a database quietly.

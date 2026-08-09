@@ -371,7 +371,9 @@ func newReleaseFetchCommand(app *App) *cobra.Command {
 					return domain.ValidationError(domain.ErrDigestMismatch,
 						"release %s is already installed with a different digest", resolved.Version).
 						WithHint("installed %s, incoming %s — these are different bundles "+
-							"claiming the same version", existing.Digest, resolved.Digest)
+							"claiming the same version. A vendor iterating on a release "+
+							"should publish a prerelease (1.4.1-dev.7.gabc1234) rather "+
+							"than republishing one", existing.Digest, resolved.Digest)
 				}
 				app.finish(ops.Result{
 					Summary: fmt.Sprintf("release %s is already present", resolved.Version)})

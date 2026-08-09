@@ -14,14 +14,22 @@ import (
 )
 
 func newReleaseBuildCommand(app *App) *cobra.Command {
-	var force bool
+	var (
+		force      bool
+		version    string
+		fromGit    bool
+		allowDirty bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "build <bundle-dir>",
-		Short: "Regenerate a bundle's checksum list and check the result",
-		Long: "Writes SHA256SUMS over every file in the bundle and then verifies the\n" +
-			"bundle the same way `release verify` does, so a broken one fails on\n" +
-			"the vendor's machine rather than on a customer's.\n\n" +
+		Short: "Stamp a version, regenerate the checksum list, and check the result",
+		Long: "Resolves the version, stamps it into manifest.yaml and VERSION, writes\n" +
+			"SHA256SUMS over every file in the bundle, and then verifies the bundle\n" +
+			"the same way `release verify` does — so a broken one fails on the\n" +
+			"vendor's machine rather than on a customer's.\n\n" +
+			"With neither --version nor --version-from-git the manifest's own\n" +
+			"version is used as-is and nothing is stamped.\n\n" +
 			"Writes in place. The next step is signing — `minisign -Sm\n" +
 			"<bundle-dir>/SHA256SUMS` — and then `release archive`.",
 		Args: cobra.ExactArgs(1),
@@ -33,7 +41,13 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 			// rather than sum: writing a checksum list over a broken
 			// tree produces evidence that the tree is exactly as
 			// broken as it is.
-			if _, err := release.Load(dir); err != nil {
+			loaded, err := release.Load(dir)
+			if err != nil {
+				return err
+			}
+
+			stamp, err := resolveBuildVersion(dir, loaded, version, fromGit, allowDirty)
+			if err != nil {
 				return err
 			}
 			if err := clearStaleSignature(app, dir, force); err != nil {
@@ -42,17 +56,22 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 
 			if app.Flags.dryRun {
 				app.finish(ops.Result{
-					Summary: fmt.Sprintf("would regenerate %s in %s",
-						ports.SumsFileName, dir)})
+					Summary: fmt.Sprintf("would build %s at %s",
+						dir, stampedVersion(stamp, loaded))})
 				return nil
+			}
+			if !stamp.IsZero() {
+				if err := release.Stamp(dir, stamp); err != nil {
+					return err
+				}
 			}
 			if err := release.WriteSums(dir); err != nil {
 				return err
 			}
 
-			// Reloaded rather than reused: the tree gained a file, so
-			// the digest computed a moment ago describes a bundle
-			// that no longer exists.
+			// Reloaded rather than reused: the tree gained a file and
+			// possibly a version, so the release loaded a moment ago
+			// describes a bundle that no longer exists.
 			rel, err := release.Load(dir)
 			if err != nil {
 				return err
@@ -79,7 +98,77 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 
 	cmd.Flags().BoolVar(&force, "force", false,
 		"discard an existing signature, which regenerating the checksum list invalidates")
+	cmd.Flags().StringVar(&version, "version", "",
+		"version to stamp into manifest.yaml and VERSION")
+	cmd.Flags().BoolVar(&fromGit, "version-from-git", false,
+		"derive the version from `git describe`: <next-patch>-dev.<distance>.g<sha>")
+	cmd.Flags().BoolVar(&allowDirty, "allow-dirty", false,
+		"with --version-from-git, allow a work tree with uncommitted changes")
+	cmd.MarkFlagsMutuallyExclusive("version", "version-from-git")
 	return cmd
+}
+
+// resolveBuildVersion answers what to stamp, and returns the zero version when
+// the answer is "nothing -- use what the manifest already says".
+//
+// Three ways in, in precedence order: an explicit --version, a version derived
+// from the repository, or the manifest's own. The first is the plumbing and the
+// second is sugar on top of it; the third keeps `build` usable by a vendor who
+// manages versions their own way.
+func resolveBuildVersion(
+	dir string, loaded domain.Release, explicit string, fromGit, allowDirty bool,
+) (domain.Version, error) {
+	switch {
+	case explicit != "":
+		v, err := domain.ParseVersion(explicit)
+		if err != nil {
+			return domain.Version{}, err
+		}
+		// Refused here as well as in Manifest.Validate, because the
+		// message an operator needs is about the flag they just typed
+		// rather than about a field in a file.
+		if meta := v.Metadata(); meta != "" {
+			return domain.Version{}, domain.Usage(
+				"a release version may not carry build metadata, and %s carries %q",
+				v, "+"+meta).
+				WithHint("metadata is retained in the store's directory name and " +
+					"ignored by every comparison, so two builds differing only " +
+					"in metadata are distinct releases nothing can tell apart. " +
+					"Use a prerelease identifier: 1.4.1-dev.7.gabc1234")
+		}
+		return v, nil
+
+	case fromGit:
+		described, err := release.DescribeRepository(dir)
+		if err != nil {
+			return domain.Version{}, err
+		}
+		return described.Version(allowDirty)
+
+	default:
+		// The null version is refused and nothing else is. It is legal
+		// today -- IsZero tests "unset", not "zero" -- and it is
+		// exactly what a scaffolded bundle carries, so a forgotten flag
+		// in CI ships a bundle that is clean at every gate and whose
+		// collision with the next forgetful build is guaranteed rather
+		// than possible. A vendor deliberately managing versions their
+		// own way never carries 0.0.0.
+		if loaded.Version().Equal(domain.MustParseVersion("0.0.0")) {
+			return domain.Version{}, domain.Usage(
+				"the manifest still carries the placeholder version 0.0.0").
+				WithHint("pass --version, or --version-from-git to derive one " +
+					"from the repository")
+		}
+		return domain.Version{}, nil
+	}
+}
+
+// stampedVersion is what a dry run reports it would produce.
+func stampedVersion(stamp domain.Version, loaded domain.Release) domain.Version {
+	if stamp.IsZero() {
+		return loaded.Version()
+	}
+	return stamp
 }
 
 // clearStaleSignature refuses to leave a signature over a list that is about to
