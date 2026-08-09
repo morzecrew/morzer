@@ -92,12 +92,65 @@ func (s *Store) SaveInstallation(ctx context.Context, i domain.Installation) err
 	if err := i.Validate(); err != nil {
 		return err
 	}
+	if err := s.checkModeUnchanged(ctx, i); err != nil {
+		return err
+	}
 	env := installationEnvelope{SchemaVersion: i.SchemaVersion, Installation: i}
 	data, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
 		return domain.Internal(err, "cannot serialise installation state")
 	}
 	return atomicfs.WriteFile(s.paths.InstallationState(), append(data, '\n'), 0o640)
+}
+
+// checkModeUnchanged enforces that `mode` is fixed when an installation is
+// created.
+//
+// Here rather than in a command, because the claim is about *every* surface: not
+// `config set`, not `import`, not any command that writes installation state.
+// One chokepoint is also the only version of this rule that a command added
+// later cannot forget to honour.
+//
+// Both directions are refused, which took a correction to get right. The first
+// draft allowed dev → production on the reasoning that only the reverse was
+// dangerous. It is not: production → dev puts real data under relaxed rules
+// immediately, and dev → production presents untrusted history as trustworthy --
+// you find out at rollback time that `previous` was pruned and no pre-update
+// backup was ever taken. The second is quieter and lands when it costs most.
+//
+// A machine with no installation yet is *creating* one, which is when the choice
+// is made. That is why `init --mode dev` and `import --mode dev` work and
+// nothing else does.
+func (s *Store) checkModeUnchanged(ctx context.Context, next domain.Installation) error {
+	current, err := s.LoadInstallation(ctx)
+	if err != nil {
+		// No installation, or one this manager cannot read. Neither is a
+		// mode change: the first is a creation, and the second fails on
+		// its own terms at the next read rather than being reported here
+		// as something about modes.
+		return nil //nolint:nilerr // absence is creation, not a transition
+	}
+	if current.Mode == next.Mode {
+		return nil
+	}
+
+	refusal := domain.ValidationError(nil,
+		"mode is fixed when an installation is created: this one is %s",
+		describeMode(current.Mode))
+	if next.Mode == domain.ModeDev {
+		return refusal.WithHint("a production machine cannot be demoted to a sandbox; " +
+			"its data would immediately be under relaxed rules")
+	}
+	return refusal.WithHint("a sandbox cannot be promoted to production -- its history is " +
+		"not trustworthy, and you would find that out at rollback time. " +
+		"Promotion is backup, fresh `init`, restore")
+}
+
+func describeMode(m domain.Mode) string {
+	if m == "" {
+		return "production"
+	}
+	return string(m)
 }
 
 // migrateInstallation runs forward-only state migrations.
@@ -134,6 +187,20 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// installation on disk. TestASchemaThreeInstallationStillLoads
 			// pins it.
 			i.SchemaVersion = 4
+		case 4:
+			// 4 -> 5 added `mode`. Nothing to convert: an installation
+			// written before modes existed is a production machine, and
+			// the absent value reads that correctly.
+			//
+			// The bump is for the write path rather than the read one,
+			// which is what distinguishes it from the two above. An
+			// older manager reading a dev sandbox would treat it as
+			// production -- stricter, and therefore safe -- but `config
+			// set` rewrites the whole state, unknown fields are dropped
+			// on the way through, and the sandbox would silently stop
+			// being one. Refusing a state file from the future is the
+			// only thing that prevents it.
+			i.SchemaVersion = 5
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

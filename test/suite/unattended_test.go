@@ -1,0 +1,475 @@
+package suite
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
+)
+
+// The auto-apply gate decides whether a release may install itself on a machine
+// nobody is watching. What it promises is narrower than it first reads, and the
+// tests are written to that promise: not "no human will be needed", but "the
+// failure will not be the unrecoverable kind".
+
+func compat(produces int, rollbackSafe bool) domain.Compatibility {
+	return domain.Compatibility{
+		DatabaseSchemaMin:      1,
+		DatabaseSchemaMax:      produces,
+		DatabaseSchemaProduces: produces,
+		RollbackSafe:           rollbackSafe,
+	}
+}
+
+// signedInstallation is a machine that could auto-apply if the release let it.
+func signedInstallation() domain.Installation {
+	inst := domain.Installation{
+		SchemaVersion: domain.InstallationSchemaVersion,
+		ID:            "inst_01",
+		Product:       "demo",
+		Policy:        domain.DefaultPolicy(),
+	}
+	inst.Policy.RequireSignature = true
+	inst.Policy.SigningKeys = []string{"RWQfakekey"}
+	return inst
+}
+
+func TestTheAutoApplyGate(t *testing.T) {
+	// The current release reads up to schema 14 and produced 14.
+	current := compat(14, true)
+
+	cases := []struct {
+		name    string
+		current domain.Compatibility
+		target  domain.Compatibility
+		inst    func() domain.Installation
+		ok      bool
+		because string
+	}{
+		{
+			name:    "a release that declares what it produces and stays readable",
+			current: current,
+			target:  compat(14, true),
+			inst:    signedInstallation,
+			ok:      true,
+		},
+		{
+			name:    "a release that declares nothing about its migrations",
+			current: current,
+			target:  domain.Compatibility{RollbackSafe: true, DatabaseSchemaMax: 14},
+			inst:    signedInstallation,
+			// Without this half, the field could default to something
+			// permissive and no test would notice.
+			because: "database_schema_produces",
+		},
+		{
+			name:    "a release whose migrations cannot be undone",
+			current: current,
+			target:  compat(14, false),
+			inst:    signedInstallation,
+			because: "rollback_safe",
+		},
+		{
+			name:    "a release that leaves a schema the previous one cannot read",
+			current: compat(14, true),
+			// Produces 15, and the installed release reads at most 14:
+			// rolling the containers back would leave the application
+			// reading a schema it does not understand.
+			target:  domain.Compatibility{DatabaseSchemaMax: 15, DatabaseSchemaProduces: 15, RollbackSafe: true},
+			inst:    signedInstallation,
+			because: "schema",
+		},
+		{
+			name:    "a machine that does not require signatures",
+			current: current,
+			target:  compat(14, true),
+			inst: func() domain.Installation {
+				inst := signedInstallation()
+				inst.Policy.RequireSignature = false
+				return inst
+			},
+			because: "require_signature",
+		},
+		{
+			name:    "a machine with the pre-update backup disabled",
+			current: current,
+			target:  compat(14, true),
+			inst: func() domain.Installation {
+				inst := signedInstallation()
+				inst.Policy.SkipBackupBeforeUpdate = true
+				return inst
+			},
+			because: "skip_backup_before_update",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := domain.AssessUnattended(tc.current, tc.target, tc.inst())
+
+			if tc.ok {
+				assert.True(t, got.OK, "refused: %s", got.Why())
+				return
+			}
+			require.False(t, got.OK, "this should not install itself")
+			assert.Contains(t, got.Why(), tc.because,
+				"the refusal does not name what has to change")
+		})
+	}
+}
+
+// TestASandboxSkipsTheRecoveryGateAndKeepsTheSignatureOne.
+//
+// Both halves in one test, because either alone would pass on a gate that had
+// been deleted. A sandbox's data is disposable, so nothing about recovering it
+// applies; its *fidelity* is the whole point, so relaxing verification would
+// mean the rehearsal is not of the thing being shipped.
+func TestASandboxSkipsTheRecoveryGateAndKeepsTheSignatureOne(t *testing.T) {
+	sandbox := signedInstallation()
+	sandbox.Mode = domain.ModeDev
+
+	// A release declaring none of what production requires.
+	target := domain.Compatibility{RollbackSafe: false}
+
+	got := domain.AssessUnattended(compat(14, true), target, sandbox)
+	assert.True(t, got.OK, "a sandbox refused an update it has nothing to lose to: %s", got.Why())
+
+	unsigned := sandbox
+	unsigned.Policy.RequireSignature = false
+	refused := domain.AssessUnattended(compat(14, true), target, unsigned)
+	assert.False(t, refused.OK,
+		"a sandbox skipped signature verification, so the rehearsal is not of the release being shipped")
+}
+
+// TestAutoApplyIsRefusedAtConfigurationTime.
+//
+// At the moment the setting is written rather than at the tick that would have
+// acted on it, in the same shape as `--skip-backup` requiring `--force`. A
+// machine that accepts the setting and then refuses to act every night is worse
+// than one that refuses the setting: the operator believes it is armed.
+func TestAutoApplyIsRefusedAtConfigurationTime(t *testing.T) {
+	inst := signedInstallation()
+	inst.Policy.RequireSignature = false
+	inst.Update.AutoApply = true
+
+	err := inst.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "require_signature")
+
+	inst.Policy.RequireSignature = true
+	assert.NoError(t, inst.Validate())
+}
+
+// TestModeCannotChangeThroughAnyManagerSurface.
+//
+// Asserted at the state store rather than per command, because that is where
+// the rule lives: every surface that changes an installation writes through
+// here, so a command added next year cannot forget it.
+//
+// Not a test that a hand-edited state file is detected -- `mode` is a field in a
+// JSON file and root can edit it. Defending one boolean against an operator who
+// can equally edit the recipient list would be defending the wrong thing.
+func TestModeCannotChangeThroughAnyManagerSurface(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	production := h.install()
+	require.False(t, production.IsDev())
+
+	// Demotion: real data would immediately be under relaxed rules.
+	demoted := production
+	demoted.Mode = domain.ModeDev
+	err := h.Deps.State.SaveInstallation(ctx, demoted)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mode is fixed")
+
+	// And the reverse, which the first draft of this design allowed. It is
+	// the quieter of the two and lands during an incident: you find out at
+	// rollback time that `previous` was pruned and no pre-update backup was
+	// ever taken.
+	sandbox := newHarness(t)
+	created := sandbox.install()
+
+	// A machine with no installation is *creating* one, which is the only
+	// moment a mode may be chosen. Removing the state is how this test gets
+	// back to that moment rather than by writing a mode change it is here
+	// to prove impossible.
+	require.NoError(t, os.Remove(sandbox.Paths.InstallationState()))
+	created.Mode = domain.ModeDev
+	require.NoError(t, sandbox.Deps.State.SaveInstallation(ctx, created))
+
+	promoted := created
+	promoted.Mode = ""
+	err = sandbox.Deps.State.SaveInstallation(ctx, promoted)
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Hint, "backup, fresh `init`, restore")
+}
+
+// TestImportingAsASandboxDropsTheBackupTargets is the assertion that stops a
+// sandbox writing into production's bucket.
+//
+// The setup is the dangerous one, deliberately: an export from a machine that
+// backs up to a real target, carrying the credentials, imported as a sandbox.
+// Import keeps the original installation id -- which is the point of importing
+// rather than re-initialising -- so a sandbox that kept the targets would push
+// throwaway backups into the customer's bucket under a matching id.
+//
+// It must fail if the drop is ever removed for convenience, which is why the
+// assertion is on the rebuilt installation rather than on the summary.
+func TestImportingAsASandboxDropsTheBackupTargets(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+
+	inst, err := origin.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Backup.Targets = []domain.BackupTargetConfig{{
+		URL:         "s3://backups.example/demo",
+		Credentials: "backup_credentials",
+	}}
+	require.NoError(t, origin.Deps.State.SaveInstallation(ctx, inst))
+
+	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
+	_, err = ops.Export(ctx, origin.Deps, ops.ExportOptions{Path: exportPath})
+	require.NoError(t, err)
+
+	export, err := ops.LoadExport(exportPath)
+	require.NoError(t, err)
+	require.NotEmpty(t, export.Installation.Backup.Targets,
+		"the export must carry the targets, or this test proves nothing")
+
+	sandbox := newMachine(t, t.TempDir())
+	result, err := ops.Import(ctx, sandbox.Deps, ops.ImportOptions{
+		SourcePath:   exportPath,
+		Export:       export,
+		IdentityFile: recoveryPath,
+		Mode:         domain.ModeDev,
+		ModeSet:      true,
+	})
+	require.NoError(t, err)
+
+	rebuilt, err := sandbox.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.True(t, rebuilt.IsDev())
+	assert.Empty(t, rebuilt.Backup.Targets,
+		"the sandbox kept production's backup target, so it can write into it")
+
+	// Reported, not silent: an operator who believes their sandbox is still
+	// backing up finds out during a recovery that it was not.
+	assert.Contains(t, result.Summary, "backup target")
+}
+
+// TestASandboxCannotBeImportedAsProduction.
+//
+// The deferred-risk transition wearing a different hat. Refused by name, so an
+// operator reads why rather than discovering at rollback time that `previous`
+// was pruned and no pre-update backup was ever taken.
+func TestASandboxCannotBeImportedAsProduction(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+
+	inst, err := origin.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(origin.Paths.InstallationState()))
+	inst.Mode = domain.ModeDev
+	require.NoError(t, origin.Deps.State.SaveInstallation(ctx, inst))
+
+	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
+	_, err = ops.Export(ctx, origin.Deps, ops.ExportOptions{Path: exportPath})
+	require.NoError(t, err)
+	export, err := ops.LoadExport(exportPath)
+	require.NoError(t, err)
+	require.True(t, export.Installation.IsDev())
+
+	rebuilt := newMachine(t, t.TempDir())
+	_, err = ops.Import(ctx, rebuilt.Deps, ops.ImportOptions{
+		SourcePath:   exportPath,
+		Export:       export,
+		IdentityFile: recoveryPath,
+		ModeSet:      true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be imported as production")
+
+	// And with no flag it rebuilds as what it was, which is the safe
+	// reading: a lost sandbox comes back a sandbox.
+	_, err = ops.Import(ctx, rebuilt.Deps, ops.ImportOptions{
+		SourcePath:   exportPath,
+		Export:       export,
+		IdentityFile: recoveryPath,
+	})
+	require.NoError(t, err)
+	got, err := rebuilt.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.True(t, got.IsDev())
+}
+
+// armedSandbox is a machine configured to install what its channel offers:
+// signatures required, auto-apply on.
+//
+// Signature *policy*, not a real signature: what is being tested is the gate's
+// arithmetic, and the verification chain has its own suite. A machine that
+// requires signatures with a key configured is what the gate asks about.
+func armAutoApply(t *testing.T, h *harness) {
+	t.Helper()
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Policy.RequireSignature = true
+	inst.Policy.SigningKeys = []string{"RWQfakekey"}
+	inst.Update.AutoApply = true
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+}
+
+// TestAnUnattendedTickStagesWhatItMayNotInstall.
+//
+// The 1.3.0 fixture declares that its migrations leave the database at 14, and
+// the installed 1.2.0 reads at most 12 -- so rolling back after this update
+// would need a restore, which is precisely the failure the gate refuses to risk
+// unattended.
+//
+// It is still fetched, verified and staged. That is the whole design: the
+// network, the credentials and the verification move off the human's critical
+// path, and what waits for them is only the decision that costs downtime.
+func TestAnUnattendedTickStagesWhatItMayNotInstall(t *testing.T) {
+	h, _, _, _ := followingHarness(t)
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+	ctx := context.Background()
+
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err, "a release left staged is a successful tick, not a failure")
+
+	assert.False(t, res.Applied)
+	assert.False(t, res.Assessment.OK)
+	assert.Contains(t, res.Assessment.Why(), "schema",
+		"the refusal does not say which declaration blocked it")
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String(),
+		"a release that failed the gate was installed anyway")
+
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.True(t, candidate.IsStaged(),
+		"the release was not staged, so the operator's decision costs a download")
+}
+
+// TestAnUnattendedTickInstallsWhatDeclaresItselfRecoverable.
+//
+// The same machine, the same channel, one field different: this release's
+// migrations leave the database at 12, which the installed release can still
+// read -- so a failure compensates back rather than needing a restore.
+//
+// Both this and the test above are needed. Either alone passes on a gate that
+// always says the same thing.
+func TestAnUnattendedTickInstallsWhatDeclaresItselfRecoverable(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		path := filepath.Join(dir, "manifest.yaml")
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		patched := strings.Replace(string(raw),
+			"database_schema_produces: 14", "database_schema_produces: 12", 1)
+		require.NotEqual(t, string(raw), patched, "the fixture no longer declares what this patches")
+		require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+	ctx := context.Background()
+
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+
+	assert.True(t, res.Applied, "refused: %s", res.Assessment.Why())
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
+
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.True(t, candidate.IsZero(), "the installed candidate is still recorded as waiting")
+}
+
+// TestAutoApplyOffLeavesEverythingStaged.
+//
+// The default, and the one an operator should be able to rely on: a machine
+// following a channel fetches and reports, and installs nothing until somebody
+// turns auto-apply on.
+func TestAutoApplyOffLeavesEverythingStaged(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		path := filepath.Join(dir, "manifest.yaml")
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(raw),
+			"database_schema_produces: 14", "database_schema_produces: 12", 1)), 0o644))
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+
+	assert.False(t, res.Applied)
+	assert.Contains(t, res.Assessment.Why(), "auto_apply")
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String(),
+		"a machine that never opted in installed a release by itself")
+}
+
+// TestATickThatCannotTakeTheLockDoesNotFailTheUnit.
+//
+// The next tick is soon, and an update waiting behind an operator's interactive
+// backup is an update that starts at an unpredictable moment. What this asserts
+// is the error's identity -- ErrLocked -- because that is what the command maps
+// to exit 0; asserting the exit code here would test the CLI's mapping twice and
+// this behaviour not at all.
+func TestATickThatCannotTakeTheLockDoesNotFailTheUnit(t *testing.T) {
+	// A bundle the gate admits, or the tick would stop before it ever
+	// reached the lock and this test would pass having exercised nothing.
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		path := filepath.Join(dir, "manifest.yaml")
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(raw),
+			"database_schema_produces: 14", "database_schema_produces: 12", 1)), 0o644))
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+	ctx := context.Background()
+
+	// Someone else is mid-operation.
+	release, err := h.Locker.Acquire(ctx, "deployment", ports.LockOptions{})
+	require.NoError(t, err)
+	defer func() { _ = release() }()
+
+	// The poll itself takes no lock -- it stages, which touches nothing the
+	// lock protects -- so the contention appears at the install.
+	_, err = ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrLocked)
+}

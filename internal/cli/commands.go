@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -34,6 +35,7 @@ func newInitCommand(app *App) *cobra.Command {
 		requireSig     bool
 		signingKeys    []string
 		set            []string
+		mode           string
 	)
 
 	cmd := &cobra.Command{
@@ -93,8 +95,14 @@ func newInitCommand(app *App) *cobra.Command {
 				}
 			}
 
+			parsedMode, err := domain.ParseMode(mode)
+			if err != nil {
+				return err
+			}
+
 			opts := ops.InitOptions{
 				Options:           app.operationOptions(),
+				Mode:              parsedMode,
 				Product:           product,
 				ReleasePath:       releasePath,
 				Profile:           profile,
@@ -171,6 +179,9 @@ func newInitCommand(app *App) *cobra.Command {
 	f.BoolVar(&requireSig, "require-signature", false,
 		"refuse any release that is not signed by a configured signing key")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
+	f.StringVar(&mode, "mode", "",
+		"what this machine is for: `dev` for a sandbox, or production (the default). "+
+			"Fixed at creation and never changeable afterwards")
 
 	return cmd
 }
@@ -209,8 +220,9 @@ func newApplyCommand(app *App) *cobra.Command {
 
 func newUpdateCommand(app *App) *cobra.Command {
 	var (
-		check bool
-		stage bool
+		check      bool
+		stage      bool
+		unattended bool
 	)
 
 	var (
@@ -276,6 +288,9 @@ func newUpdateCommand(app *App) *cobra.Command {
 				printStagedNotes(cmd.Context(), app)
 				return nil
 			}
+			if unattended {
+				return runUnattendedTick(cmd, app, opts)
+			}
 			if stage {
 				if to != "" {
 					return domain.Usage("--stage and --to are alternatives").
@@ -307,7 +322,12 @@ func newUpdateCommand(app *App) *cobra.Command {
 			// Skipping the backup is the one choice here that removes
 			// a safety net rather than adding a risk, so it needs the
 			// same explicit authorisation a destructive action does.
-			if skipBackup && !opts.Force {
+			//
+			// A sandbox is the exception, and the only one: its data is
+			// disposable, which is what it is for, and requiring --force
+			// on every iteration of a rebuild loop is ceremony that
+			// teaches an operator to type --force without reading.
+			if skipBackup && !opts.Force && !app.installationIsDev(cmd.Context()) {
 				return domain.Usage("--skip-backup also requires --force").
 					WithHint("the pre-update backup is what a failed update is recovered from")
 			}
@@ -346,8 +366,58 @@ func newUpdateCommand(app *App) *cobra.Command {
 	f.BoolVar(&stage, "stage", false,
 		"follow the configured channel: fetch and verify what it points at, "+
 			"without installing it")
+	f.BoolVar(&unattended, "unattended", false,
+		"one scheduled tick: follow the channel, stage, and install only what "+
+			"declares a failure cannot need a database restore")
 
 	return cmd
+}
+
+// runUnattendedTick is what the update timer runs.
+//
+// Two things make it different from every other command here, and both are
+// about being a unit rather than a person.
+//
+// **A tick that cannot take the lock exits 0.** An operator's backup or apply is
+// in the way; the next tick is soon, and queueing would make the start time
+// unpredictable. A non-zero exit would also fight `Restart=on-failure` on any
+// unit that grew one.
+//
+// **A staged-but-not-installed release is a success.** That is the configured
+// behaviour when the gate refuses or auto-apply is off, and a unit that failed
+// every night because a release is waiting would train an operator to ignore it
+// -- which is the one outcome worse than not having the timer.
+func runUnattendedTick(cmd *cobra.Command, app *App, opts ops.Options) error {
+	res, err := ops.RunUnattended(cmd.Context(), app.Deps, ops.UnattendedOptions{Options: opts})
+
+	if errors.Is(err, domain.ErrLocked) {
+		// Journalled, because "nothing happened tonight" and "something
+		// else was running" are different facts to find at 09:00.
+		fmt.Fprintf(app.Stream.Err,
+			"another operation holds the lock; skipping this tick\n")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if app.json != nil {
+		app.jsonData = res
+		return nil
+	}
+	app.finish(ops.Result{Summary: res.Summary()})
+	return nil
+}
+
+// installationIsDev reports whether this machine declared itself a sandbox.
+//
+// Read here rather than passed down because it gates a *flag check*, before any
+// operation is built. An unreadable installation answers false, which is the
+// strict reading: a machine whose state cannot be read is not one to relax a
+// safety rule for.
+func (a *App) installationIsDev(ctx context.Context) bool {
+	inst, err := a.Deps.State.LoadInstallation(ctx)
+	return err == nil && inst.IsDev()
 }
 
 // printStagedNotes shows what a waiting release changes.

@@ -41,6 +41,7 @@ nav = [
     ] },
     { "Operating" = [
         "operating/updating.md",
+        "operating/unattended-updates.md",
         "operating/rolling-back.md",
         "operating/secrets.md",
         "operating/backups.md",

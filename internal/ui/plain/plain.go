@@ -260,6 +260,12 @@ func RenderStatus(w io.Writer, s ops.Status) {
 
 	f("%s", s.Product)
 	f("  installation   %s", s.InstallationID)
+	// Permanently, not once: the failure mode is a machine nobody
+	// remembers the provenance of, and the moment that matters is months
+	// later when somebody decides whether its data is real.
+	if s.Mode != "" {
+		f("  mode           %s -- a sandbox: relaxed retention, no pre-update backup guarantee", s.Mode)
+	}
 
 	if s.CurrentRelease == nil {
 		f("  release        none installed")

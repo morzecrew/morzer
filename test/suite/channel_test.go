@@ -51,6 +51,17 @@ func (n *recordingNotifier) kinds() []events.Kind {
 // publishes 1.3.0 under a moving tag.
 func followingHarness(t *testing.T) (*harness, *fakeRegistry, *httptest.Server, *recordingNotifier) {
 	t.Helper()
+	return followingHarnessWith(t, nil)
+}
+
+// followingHarnessWith lets a test change the published bundle before it is
+// packed, which is the only way to vary what the *vendor* declared -- the
+// manifest is inside the archive the registry serves, so patching it afterwards
+// would change a digest the manager verifies.
+func followingHarnessWith(
+	t *testing.T, patch func(t *testing.T, bundleDir string),
+) (*harness, *fakeRegistry, *httptest.Server, *recordingNotifier) {
+	t.Helper()
 
 	h := newHarness(t)
 	h.install()
@@ -61,6 +72,9 @@ func followingHarness(t *testing.T) (*harness, *fakeRegistry, *httptest.Server, 
 	staged := filepath.Join(t.TempDir(), "bundle-1.3.0")
 	copyBundle(t, filepath.Join(testBundlePath(t), "..", "bundle-1.3.0"), staged)
 	retargetManifest(t, staged, h.Root)
+	if patch != nil {
+		patch(t, staged)
+	}
 
 	archivePath := filepath.Join(t.TempDir(), "bundle.tar.zst")
 	writeTarZst(t, staged, archivePath)

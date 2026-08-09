@@ -53,6 +53,7 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 		fromBackup      bool
 		targetURL       string
 		credentialsFile string
+		mode            string
 	)
 
 	cmd := &cobra.Command{
@@ -139,12 +140,19 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			err := app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+			parsedMode, err := domain.ParseMode(mode)
+			if err != nil {
+				return err
+			}
+
+			err = app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				return ops.Import(ctx, app.Deps, ops.ImportOptions{
 					Options:      app.operationOptions(),
 					SourcePath:   source,
 					Export:       export,
 					IdentityFile: identity,
+					Mode:         parsedMode,
+					ModeSet:      cmd.Flags().Changed("mode"),
 				})
 			})
 			if err != nil {
@@ -179,6 +187,10 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 		"read the backup from this target rather than from this machine")
 	cmd.Flags().StringVar(&credentialsFile, "credentials-file", "",
 		"credentials for --target, when the secret store that held them is gone")
+	cmd.Flags().StringVar(&mode, "mode", "",
+		"rebuild as a sandbox with `dev`, which also drops the export's backup "+
+			"targets. Omitted keeps whatever the export was; a sandbox can never "+
+			"be imported as production")
 	return cmd
 }
 

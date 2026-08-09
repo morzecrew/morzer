@@ -174,6 +174,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	// temporarily unreachable should still be told a fixed version exists.
 	// Inside that branch, a broken release silently removed the check.
 	checks = append(checks, d.checkUpdateAvailable(inst))
+	checks = append(checks, checkMode(inst))
 
 	if d.Supervisor != nil {
 		checks = append(checks, d.checkUnits(inst))
@@ -777,6 +778,37 @@ func (d *Deps) checkUpdateAvailable(inst domain.Installation) preflight.Check {
 					res.Latest, res.Installed)
 			}
 			return preflight.OK("%s is installed; nothing newer is offered", res.Installed)
+		},
+	}
+}
+
+// checkMode says what this machine is for, permanently.
+//
+// A warning rather than an ok, and this is the deliberate part: a sandbox is
+// *fine*, so there is nothing to fix, but a green `doctor` on a machine somebody
+// is about to put real data on is the report that lets them. What the check
+// costs is one warn line on a machine that is doing exactly what it should; what
+// it buys is that "is this a sandbox?" is answerable without reading a state
+// file.
+//
+// A production machine gets nothing at all -- not an "ok, this is production"
+// line, which would be a check whose passing case is noise.
+func checkMode(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "installation.mode",
+		Category:    preflight.CategoryConfig,
+		Description: "what this machine is for",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			if !inst.IsDev() {
+				return preflight.OK("production")
+			}
+			return preflight.Warn(
+				"nothing to fix -- but do not put real data here: promotion is "+
+					"backup, fresh `init`, restore",
+				"this installation is a %s sandbox: relaxed retention, no "+
+					"pre-update backup guarantee, prereleases admissible",
+				inst.Mode)
 		},
 	}
 }

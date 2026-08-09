@@ -121,6 +121,14 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 		if !v.GreaterThan(current.Version) {
 			continue
 		}
+		// Prereleases are for the sandbox that asked for them. RFC 0014
+		// gives every development build a prerelease version, so a
+		// production machine offered them would be told about its
+		// vendor's commits -- and a check whose answer is "1.4.1-dev.7 is
+		// available" trains an operator to ignore the check.
+		if v.Prerelease() != "" && !inst.IsDev() {
+			continue
+		}
 		rep := domain.CheckUpgrade(current.Version, v, releaseCompatibility(d, v),
 			d.ManagerVersion, current.SchemaAtInstall)
 		if !rep.OK {

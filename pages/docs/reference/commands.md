@@ -83,6 +83,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
 | `--repair` | Restore missing directories on an existing installation. |
+| `--mode` | What this machine is for: `dev` for a sandbox, or production (the default). Fixed at creation and never changeable — see [unattended updates](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth). |
 
 ### The interactive first run
 
@@ -158,6 +159,7 @@ morzer update --to 1.3.0
 | `--skip-backup` | Skip the pre-update backup. Requires `--force` and is recorded in the journal. |
 | `--check` | Report whether a newer release exists, without installing anything. |
 | `--stage` | Follow the configured channel: fetch and verify what it points at, without installing it. |
+| `--unattended` | One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see [unattended updates](../operating/unattended-updates.md). |
 
 `--check` and `--stage` are alternatives, and both stop short of installing.
 See [following a channel](../operating/updating.md#following-a-channel) for what

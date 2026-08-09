@@ -60,6 +60,9 @@
         "database_schema_min": {
           "type": "integer"
         },
+        "database_schema_produces": {
+          "type": "integer"
+        },
         "min_manager_version": {
           "description": "A semantic version, e.g. 1.2.0.",
           "examples": [

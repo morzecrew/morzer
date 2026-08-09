@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -83,44 +82,24 @@ func newReleaseListCommand(app *App) *cobra.Command {
 }
 
 // installedReleases enumerates the release store, marking current and previous.
+// installedReleases reads the store through the lifecycle layer.
+//
+// The listing and the retention pass share one implementation because they share
+// one definition of what a release *is*: a directory whose manifest loads, with
+// the roles that make it unprunable. Two readers of the same directory is how
+// `release list` and `release prune` come to disagree about what is there.
 func (a *App) installedReleases(ctx context.Context) ([]releaseEntry, error) {
-	dir := a.Deps.Paths.ReleasesDir()
-
-	dirEntries, err := os.ReadDir(dir)
+	entries, err := ops.InstalledReleases(ctx, a.Deps)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, domain.InstallationError(err, "cannot list %s", dir)
+		return nil, err
 	}
-
-	current, _ := a.Deps.State.CurrentRelease(ctx)
-	previous, _ := a.Deps.State.PreviousRelease(ctx)
-
-	var out []releaseEntry
-	for _, entry := range dirEntries {
-		if !entry.IsDir() {
-			continue
-		}
-		root := filepath.Join(dir, entry.Name())
-
-		// A directory whose manifest will not load is not a release.
-		// Skipping it keeps `release list` working when a fetch was
-		// interrupted midway.
-		manifest, err := release.LoadManifest(filepath.Join(root, release.ManifestFileName))
-		if err != nil {
-			continue
-		}
-
+	out := make([]releaseEntry, 0, len(entries))
+	for _, e := range entries {
 		out = append(out, releaseEntry{
-			Version:  manifest.Metadata.Version,
-			Root:     root,
-			Current:  !current.IsZero() && current.Root == root,
-			Previous: !previous.IsZero() && previous.Root == root,
+			Version: e.Version, Root: e.Root,
+			Current: e.Current, Previous: e.Previous,
 		})
 	}
-
-	sort.Slice(out, func(i, j int) bool { return out[i].Version.GreaterThan(out[j].Version) })
 	return out, nil
 }
 
@@ -482,77 +461,17 @@ func newReleasePruneCommand(app *App) *cobra.Command {
 			"pruning the candidate a poll just fetched makes staging pointless.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			entries, err := app.installedReleases(cmd.Context())
+			res, err := ops.PruneReleases(cmd.Context(), app.Deps, keep, app.Flags.dryRun)
 			if err != nil {
 				return err
-			}
-
-			// Read once, outside the loop: a candidate that appeared
-			// mid-prune would exempt some entries and not others.
-			candidate, err := app.Deps.State.UpdateCandidate(cmd.Context())
-			if err != nil {
-				return err
-			}
-
-			retain := keep
-			if retain <= 0 {
-				inst, err := app.Deps.State.LoadInstallation(cmd.Context())
-				if err != nil {
-					return err
-				}
-				current, err := app.Deps.State.CurrentRelease(cmd.Context())
-				if err != nil {
-					return err
-				}
-				retain = domain.DefaultRetentionReleases
-				if !current.IsZero() {
-					if rel, err := release.Load(current.Root); err == nil {
-						retain = inst.RetentionReleases(rel.Manifest)
-					}
-				}
-			}
-
-			var removed []string
-			kept := 0
-			for _, e := range entries {
-				// The current and previous releases are exempt
-				// unconditionally: pruning either would remove
-				// the thing rollback returns to.
-				if e.Current || e.Previous {
-					kept++
-					continue
-				}
-				// And so is a staged candidate, in either mode
-				// (RFC 0016 §5.4): it was fetched ahead of the
-				// operator's decision, which is the whole value
-				// of staging, and retention that removed it
-				// would leave the decision waiting on a bundle
-				// the machine had thrown away. The exemption
-				// ends when it is applied or superseded, which
-				// is when the record is cleared.
-				if candidate.IsStaged() && candidate.Version.Equal(e.Version) {
-					kept++
-					continue
-				}
-				if kept < retain {
-					kept++
-					continue
-				}
-				if app.Flags.dryRun {
-					removed = append(removed, e.Version.String())
-					continue
-				}
-				if err := atomicfs.RemoveAll(e.Root); err != nil {
-					return err
-				}
-				removed = append(removed, e.Version.String())
 			}
 
 			if app.json != nil {
-				app.jsonData = map[string]any{"removed": removed, "retained": retain}
+				app.jsonData = map[string]any{
+					"removed": res.Removed, "retained": res.Retained}
 				return nil
 			}
-			if len(removed) == 0 {
+			if len(res.Removed) == 0 {
 				app.finish(ops.Result{Summary: "nothing to prune"})
 				return nil
 			}
@@ -561,7 +480,8 @@ func newReleasePruneCommand(app *App) *cobra.Command {
 				verb = "would remove"
 			}
 			app.finish(ops.Result{
-				Summary: fmt.Sprintf("%s %d release(s): %v", verb, len(removed), removed)})
+				Summary: fmt.Sprintf("%s %d release(s): %v",
+					verb, len(res.Removed), res.Removed)})
 			return nil
 		},
 	}

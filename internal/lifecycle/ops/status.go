@@ -19,8 +19,17 @@ import (
 type Status struct {
 	Product        string `json:"product"`
 	InstallationID string `json:"installation_id"`
-	Profile        string `json:"profile,omitempty"`
-	PublicURL      string `json:"public_url,omitempty"`
+
+	// Mode is empty on a production machine.
+	//
+	// Shown permanently and prominently rather than as a first-run notice,
+	// because the failure mode is a machine nobody remembers the provenance
+	// of -- and the moment that matters is months later, when somebody is
+	// deciding whether the data on it is real.
+	Mode string `json:"mode,omitempty"`
+
+	Profile   string `json:"profile,omitempty"`
+	PublicURL string `json:"public_url,omitempty"`
 
 	// SupportURL is the release's own "where do I get help". Shown here
 	// and on a failing doctor check, and nowhere else: appending it to
@@ -99,6 +108,7 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 	out := Status{
 		Product:        inst.Product,
 		InstallationID: inst.ID,
+		Mode:           string(inst.Mode),
 		Profile:        inst.Profile,
 		PublicURL:      inst.PublicURL(),
 	}

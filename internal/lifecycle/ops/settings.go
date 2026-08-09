@@ -57,6 +57,23 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Update.Check = false },
 	},
+	"update.auto_apply": {
+		Description: "install what the channel offers, when the release declares it is recoverable",
+		Read:        func(i domain.Installation) string { return strconv.FormatBool(i.Update.AutoApply) },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			v, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return domain.Usage("%q is not a boolean (true or false)", raw)
+			}
+			// The refusal for an installation with no signature policy
+			// lives in Installation.Validate rather than here, so it
+			// fires wherever the state is written -- including a path
+			// that sets the two in the other order.
+			i.Update.AutoApply = v
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Update.AutoApply = false },
+	},
 	"update.channel": {
 		Description: "a mutable reference to follow, e.g. oci://registry.example/demo/bundle:stable",
 		Read:        func(i domain.Installation) string { return i.Update.Channel },
@@ -252,13 +269,80 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 				return err
 			}
 		}
-		return d.saveInstallation(ctx, fresh)
+		if err := d.saveInstallation(ctx, fresh); err != nil {
+			return err
+		}
+		// After the state, not before: the units are derived from it,
+		// and a crash between the two leaves a timer that the next
+		// setting change reconciles rather than a state nothing polls.
+		return d.refreshUnits(ctx, fresh)
 	})
 	if err != nil {
 		return Result{}, err
 	}
 
 	return Result{Summary: "set " + strings.Join(changed, ", ")}, nil
+}
+
+// refreshUnits makes the installed unit set match what the installation
+// declares.
+//
+// It exists because the update timer is generated from a setting rather than
+// from a flag at `init`: an operator who configures a channel a month later must
+// get a timer, and one who clears it must stop having one. Units installed only
+// at creation would make the second impossible, and a machine polling a channel
+// nobody has configured any more is a phone-home with no owner.
+//
+// Reconciliation, not installation: the units this installation should have are
+// written, and every *managed* unit not among them is removed. ManagedUnitNames
+// is deliberately the superset for exactly this -- it is what lets a machine
+// that once followed a channel have its timer taken away without the lifecycle
+// layer knowing what a timer is called.
+//
+// A host with no supervisor is not an error. That is the same host that gets no
+// units at `init`, and a container deployment is a legitimate one.
+func (d *Deps) refreshUnits(ctx context.Context, inst domain.Installation) error {
+	if d.Supervisor == nil || !d.Supervisor.Available(ctx) {
+		return nil
+	}
+
+	// A machine that manages no units keeps managing none. `init
+	// --install-units=false` is a supported choice -- a container, a host
+	// where this does not run as root -- and installing units into it now
+	// would be the manager overruling a decision somebody already made.
+	installed, err := d.Supervisor.InstalledUnits(ctx, inst.Product)
+	if err != nil || len(installed) == 0 {
+		return err
+	}
+
+	units, err := d.Supervisor.Units(ports.UnitParams{
+		Product:     inst.Product,
+		ManagerPath: d.ManagerPath,
+		ConfigPath:  d.Paths.InstallationFile(),
+		UpdateTimer: inst.Update.FollowsChannel(),
+	})
+	if err != nil {
+		return err
+	}
+
+	wanted := make(map[string]bool, len(units))
+	for _, unit := range units {
+		wanted[unit.Name] = true
+	}
+	var stale []string
+	for _, name := range d.Supervisor.ManagedUnitNames(inst.Product) {
+		if !wanted[name] {
+			stale = append(stale, name)
+		}
+	}
+
+	if err := d.Supervisor.InstallUnits(ctx, units); err != nil {
+		return err
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	return d.Supervisor.RemoveUnits(ctx, stale)
 }
 
 // zeroFor returns the installation with one setting cleared, so "already at its

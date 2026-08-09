@@ -31,6 +31,14 @@ type InitOptions struct {
 	Profile string
 	Domains []string
 
+	// Mode declares this machine a sandbox. Empty means production.
+	//
+	// Only settable here and at `import`, because those are the two ways an
+	// installation is created and mode is fixed at creation -- see
+	// domain.Installation.Mode. There is no command that changes it later,
+	// deliberately and in both directions.
+	Mode domain.Mode
+
 	// RecoveryRecipient is the offline age public key. Mandatory unless
 	// explicitly waived: a machine that loses its identity with no second
 	// recipient has lost its secrets permanently, and the moment to notice
@@ -303,6 +311,7 @@ func (d *Deps) buildInstallation(ctx context.Context, opts InitOptions) (domain.
 		SchemaVersion: domain.InstallationSchemaVersion,
 		Product:       opts.Product,
 		CreatedAt:     domain.NewTime(d.now()),
+		Mode:          opts.Mode,
 		Profile:       opts.Profile,
 		Domains:       opts.Domains,
 		Policy:        domain.DefaultPolicy(),
@@ -321,6 +330,15 @@ func (d *Deps) buildInstallation(ctx context.Context, opts InitOptions) (domain.
 			inst.Domains = existing.Domains
 		}
 		inst.Policy = existing.Policy
+		// A repair inherits the mode rather than resetting it. `init
+		// --repair` on a sandbox is re-creating directories, not
+		// deciding what the machine is for -- and the state store
+		// refuses the change anyway, so without this an operator
+		// repairing a sandbox would meet a refusal about modes when
+		// they asked about a missing directory.
+		if opts.Mode == "" {
+			inst.Mode = existing.Mode
+		}
 	} else {
 		inst.ID = NewOperationID(d.now())
 	}

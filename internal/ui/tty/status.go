@@ -27,6 +27,9 @@ func statusBody(t *theme.Theme, s ops.Status) string {
 
 	f("%s", t.Bold(s.Product))
 	field("installation", t.Dim(s.InstallationID))
+	if s.Mode != "" {
+		field("mode", t.Warn(s.Mode)+t.Dim(" -- a sandbox, not a production machine"))
+	}
 
 	if s.CurrentRelease == nil {
 		field("release", t.Dim("none installed"))

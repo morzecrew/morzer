@@ -288,10 +288,23 @@ func TestBuildUnitsRendersTheSetAndItsDefaults(t *testing.T) {
 	for _, u := range units {
 		byName[u.Name] = u
 	}
-	for _, want := range systemd.UnitNames("demo") {
+	// UnitNames is the superset -- it is what *removal* walks, so it names
+	// the update pair whether or not this installation generates one.
+	for _, want := range []string{
+		systemd.ServiceUnitName("demo"),
+		systemd.BackupServiceUnitName("demo"),
+		systemd.BackupTimerUnitName("demo"),
+	} {
 		if _, ok := byName[want]; !ok {
 			t.Errorf("no unit named %s", want)
 		}
+	}
+
+	// A machine that follows no channel gets no update timer: an installed
+	// timer that polls nothing still appears in `systemctl list-timers` as
+	// though it did.
+	if _, ok := byName[systemd.UpdateTimerUnitName("demo")]; ok {
+		t.Error("an installation with no channel got an update timer")
 	}
 
 	// The timer is enabled and the oneshot backup service is not: enabling
@@ -335,4 +348,80 @@ func TestManagerPathIsAbsolute(t *testing.T) {
 	if p := systemd.ManagerPath(); !filepath.IsAbs(p) && p != "morzer" {
 		t.Errorf("ManagerPath returned %q; a relative path breaks when systemd runs it from /", p)
 	}
+}
+
+// TestTheUpdateTimerIsGeneratedOnlyWhenAsked, and carries what makes it safe to
+// leave running.
+func TestTheUpdateTimerIsGeneratedOnlyWhenAsked(t *testing.T) {
+	units, err := systemd.BuildUnits(systemd.UnitParams{
+		Product:     "demo",
+		ManagerPath: "/usr/local/bin/morzer",
+		UpdateTimer: true,
+	})
+	if err != nil {
+		t.Fatalf("BuildUnits: %v", err)
+	}
+
+	byName := map[string]ports.Unit{}
+	for _, u := range units {
+		byName[u.Name] = u
+	}
+
+	service, ok := byName[systemd.UpdateServiceUnitName("demo")]
+	if !ok {
+		t.Fatal("no update service unit")
+	}
+	if !strings.Contains(string(service.Contents), "update --unattended") {
+		t.Errorf("the update service does not run an unattended update:\n%s", service.Contents)
+	}
+	// A oneshot that just refused an update must not be retried every
+	// thirty seconds until the journal is the only thing on the disk.
+	if strings.Contains(string(service.Contents), "Restart=") {
+		t.Errorf("the update service restarts on failure:\n%s", service.Contents)
+	}
+	if service.Enable {
+		t.Error("the update service is enabled, so it would run at every boot")
+	}
+
+	timer, ok := byName[systemd.UpdateTimerUnitName("demo")]
+	if !ok {
+		t.Fatal("no update timer unit")
+	}
+	if !timer.Enable {
+		t.Error("the update timer is not enabled, so nothing would poll")
+	}
+	// Without a spread, every installation of a product asks the vendor's
+	// registry at the same second, and the vendor discovers their customer
+	// base by watching their own rate limiter.
+	if !strings.Contains(string(timer.Contents), "RandomizedDelaySec=") {
+		t.Errorf("the update timer has no randomised delay:\n%s", timer.Contents)
+	}
+	if !strings.Contains(string(timer.Contents), systemd.DefaultUpdateSchedule) {
+		t.Errorf("the update timer does not carry the default schedule:\n%s", timer.Contents)
+	}
+}
+
+// TestTheUpdateScheduleIsTheMaintenanceWindow.
+//
+// Worth an assertion because "add a maintenance window" is the obvious next
+// feature request, and the answer is that OnCalendar already is one.
+func TestTheUpdateScheduleIsTheMaintenanceWindow(t *testing.T) {
+	units, err := systemd.BuildUnits(systemd.UnitParams{
+		Product:        "demo",
+		ManagerPath:    "/usr/local/bin/morzer",
+		UpdateTimer:    true,
+		UpdateSchedule: "Sun *-*-* 04:00:00",
+	})
+	if err != nil {
+		t.Fatalf("BuildUnits: %v", err)
+	}
+	for _, u := range units {
+		if u.Name == systemd.UpdateTimerUnitName("demo") {
+			if !strings.Contains(string(u.Contents), "OnCalendar=Sun *-*-* 04:00:00") {
+				t.Errorf("the operator's window is not in the timer:\n%s", u.Contents)
+			}
+			return
+		}
+	}
+	t.Fatal("no update timer unit")
 }

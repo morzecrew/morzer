@@ -283,3 +283,27 @@ build.
 **Bump `database_schema_max` when a release can read a newer schema**, and set
 `rollback_safe: false` when its migrations are one-way. These are what let the
 manager refuse an unsafe rollback instead of corrupting a database quietly.
+
+`rollback_safe: true` now decides more than it used to, and this is the most
+important thing on this page to re-read. It has always gated `rollback`. It also
+decides whether a release may install itself on a customer's machine with nobody
+present — so declaring it carelessly no longer costs a refused rollback, it
+costs an unattended update that ends somewhere the previous release cannot read.
+
+Unattended installs are opt-in from **both** sides, and yours is
+`database_schema_produces`:
+
+```yaml
+compatibility:
+  rollback_safe: true
+  database_schema_min: 12
+  database_schema_max: 14
+  database_schema_produces: 14   # what my migrations leave the database at
+```
+
+Declaring it says what your migrations do, which is what lets the manager run
+the rollback assessment *before* installing rather than after. Omitting it is a
+valid and conservative choice: your releases are still fetched, verified and
+staged on your customers' machines, and they are still told one is waiting —
+they just install it themselves. See
+[unattended updates](../operating/unattended-updates.md).

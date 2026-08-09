@@ -286,9 +286,171 @@ func (d *Deps) stageCandidate(ctx context.Context, pinned ports.Ref) (domain.Rel
 				"prerelease (1.4.1-dev.7.gabc1234) rather than republishing one")
 	}
 
+	if resolved.Version.Prerelease() != "" {
+		inst, err := d.loadInstallation(ctx)
+		if err != nil {
+			return domain.Release{}, err
+		}
+		if !inst.IsDev() {
+			// Not a refusal of the channel, a refusal of this
+			// artefact: a vendor whose stable tag briefly points at
+			// a build has not reconfigured the customer's machine.
+			return domain.Release{}, domain.ValidationError(nil,
+				"the channel points at the prerelease %s, and this is not a sandbox",
+				resolved.Version).
+				WithHint("prerelease versions are admissible on an installation " +
+					"created with `--mode dev`")
+		}
+	}
+
 	rel, _, err := FetchIntoStore(ctx, d, pinned, resolved)
 	if err != nil {
 		return domain.Release{}, err
 	}
 	return rel, nil
+}
+
+// UnattendedOptions are the inputs to one scheduled tick.
+type UnattendedOptions struct {
+	Options
+}
+
+// UnattendedResult is what the tick did.
+type UnattendedResult struct {
+	// Follow is the channel poll that opened it. Reported whatever
+	// happened next, because "the tag has not moved" is the answer on most
+	// ticks and the one that says the machine is watching at all.
+	Follow FollowChannelResult `json:"follow"`
+
+	// Applied is true when a release was installed without a human.
+	Applied bool `json:"applied"`
+
+	// Assessment is why not, when a release was staged and left alone. Zero
+	// when nothing was waiting.
+	Assessment domain.UnattendedAssessment `json:"assessment,omitzero"`
+
+	// Update is the operation record, when one ran.
+	Update *Result `json:"update,omitempty"`
+}
+
+// Summary renders the tick for a journal a human reads at 09:00.
+func (r UnattendedResult) Summary() string {
+	switch {
+	case r.Applied && r.Update != nil:
+		return r.Update.Summary
+	case r.Follow.Candidate.IsStaged():
+		return fmt.Sprintf("%s is staged and was not installed: %s",
+			r.Follow.Candidate.Version, r.Assessment.Why())
+	default:
+		return r.Follow.Summary()
+	}
+}
+
+// RunUnattended is one tick of the update timer.
+//
+// Poll, stage, and install only what declares it cannot end needing a database
+// restore. Everything else is left staged and notified rather than silently
+// skipped -- which is where most of the value is: the network, the credentials
+// and the verification are off the human's critical path, and the only thing
+// still waiting for them is the decision that costs downtime.
+//
+// The promise the gate makes is narrower than it first reads, and the naming
+// matters because an operator will rely on it: this does *not* promise no human
+// will be needed. An unattended update can still stop at
+// requires-manual-intervention through a failed migration hook, a health check
+// that never passes, or a converge the engine cannot compensate. What it bounds
+// is the *unrecoverable* failure -- the one that cannot wait until morning.
+func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (UnattendedResult, error) {
+	inst, err := d.loadInstallation(ctx)
+	if err != nil {
+		return UnattendedResult{}, err
+	}
+
+	// Explicit is false: a timer is the unprompted path by definition, so
+	// it is gated by `update.check` exactly as `doctor` and `status` are.
+	follow, err := FollowChannel(ctx, d, FollowChannelOptions{Options: opts.Options})
+	out := UnattendedResult{Follow: follow}
+	if err != nil {
+		return out, err
+	}
+
+	candidate, err := d.State.UpdateCandidate(ctx)
+	if err != nil {
+		return out, err
+	}
+	if !candidate.IsStaged() {
+		return out, nil
+	}
+
+	if !inst.Update.AutoApply {
+		// Not a refusal to report as a failure: staging *is* the
+		// configured behaviour here, and a timer that exited non-zero
+		// every night because a release is waiting would train an
+		// operator to ignore the unit.
+		out.Assessment = domain.UnattendedAssessment{
+			Reasons: []string{"update.auto_apply is off, so installing is your decision"},
+		}
+		return out, nil
+	}
+
+	out.Assessment, err = d.assessUnattended(ctx, inst, candidate)
+	if err != nil {
+		return out, err
+	}
+	if !out.Assessment.OK {
+		return out, nil
+	}
+
+	// A dry run stops here on purpose. It has already reported what it
+	// would install, and a plan that converged a deployment would be the
+	// one command in this program that lies about what it does.
+	if opts.DryRun {
+		return out, nil
+	}
+
+	result, err := Update(ctx, d, UpdateOptions{Options: opts.Options, To: candidate.Version.String()})
+	out.Update = &result
+	out.Applied = err == nil
+	return out, err
+}
+
+// assessUnattended answers whether the staged candidate may install itself.
+//
+// Two gates, and they are different questions. CheckUpgrade asks whether this
+// machine may move to that release at all -- the same gate an operator's
+// `update` runs, so a candidate failing it would fail for them too.
+// AssessUnattended asks the narrower one: if it goes wrong, can this machine
+// get back without a restore decision at three in the morning?
+func (d *Deps) assessUnattended(
+	ctx context.Context, inst domain.Installation, candidate domain.UpdateCandidate,
+) (domain.UnattendedAssessment, error) {
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil {
+		return domain.UnattendedAssessment{}, err
+	}
+	if current.IsZero() {
+		return domain.UnattendedAssessment{
+			Reasons: []string{"no release is installed, so there is nothing to update"},
+		}, nil
+	}
+
+	installed, err := d.resolveCurrentRelease(ctx, current)
+	if err != nil {
+		return domain.UnattendedAssessment{}, err
+	}
+	target, err := release.Load(candidate.Root)
+	if err != nil {
+		return domain.UnattendedAssessment{}, err
+	}
+
+	assessment := domain.AssessUnattended(
+		installed.Manifest.Compatibility, target.Manifest.Compatibility, inst)
+
+	if report := domain.CheckUpgrade(current.Version, target.Version(),
+		target.Manifest.Compatibility, d.ManagerVersion,
+		current.SchemaAtInstall); !report.OK {
+		assessment.OK = false
+		assessment.Reasons = append(assessment.Reasons, report.Problems...)
+	}
+	return assessment, nil
 }
