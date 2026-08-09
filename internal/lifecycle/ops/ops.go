@@ -481,11 +481,18 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 	// back to whatever default it carries, and the manifest's pinning -- the
 	// rule that makes a release immutable and rollback meaningful -- decides
 	// nothing at all.
-	// The reference, whichever source the bytes came from: `from` is
-	// metadata about the image, never part of its name, and Compose has to
-	// receive something the daemon can resolve.
+	// The reference the *daemon* can resolve, which for an image travelling
+	// in the bundle is not the one the manifest pins. Nothing can make a
+	// local store answer to a digest reference for a repository it never
+	// pulled from -- measured, and recorded as RFC 0011 decision 19 -- so a
+	// bundled image is deployed under the alias ingest leaves behind.
+	//
+	// `ref` remains the identity: it is what the signature covers, what
+	// `release show` reports, and what the alias is derived from. This is
+	// the one place the two part company, because this is the only place
+	// the value is handed to something that has to look it up.
 	for name, spec := range rel.Manifest.Images {
-		env[envName(inst.Product, "IMAGE_"+imageVarName(name))] = spec.Ref
+		env[envName(inst.Product, "IMAGE_"+imageVarName(name))] = spec.RuntimeRef()
 	}
 
 	return ports.RuntimeConfig{

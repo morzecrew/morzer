@@ -282,6 +282,33 @@ type ImageInspector interface {
 	HasImage(ctx context.Context, imageRef string) (bool, error)
 }
 
+// ImageIngester loads the images a bundle carries into the local image store.
+//
+// Optional and type-asserted, like the capabilities above, and for a sharper
+// reason than theirs: ingest is the most runtime-specific operation in this
+// interface. It exists because a local image store has an idea of which
+// registry an image came from, and a bundle is not a registry -- so the way in
+// is whatever that particular runtime's store will accept. A runtime with no
+// local store has nothing to ingest into, and a mandatory method would make it
+// answer a question it cannot have.
+//
+// The contract is about the outcome, not the mechanism: after IngestImages
+// returns, every reference in aliases must resolve locally. How the bytes got
+// there is the adapter's business.
+type ImageIngester interface {
+	// IngestImages makes the images in an OCI layout resolvable locally.
+	//
+	// layoutDir is the layout -- the directory holding oci-layout,
+	// index.json and blobs/. refs are the images to ingest, by the
+	// reference the manifest pins; the implementation derives from each
+	// the digest to fetch and the local name to leave behind, so that the
+	// caller and the adapter cannot disagree about either.
+	//
+	// Idempotent: an image already present is not fetched again, which is
+	// what lets a failed update be retried without re-reading gigabytes.
+	IngestImages(ctx context.Context, layoutDir string, refs []string) error
+}
+
 // VolumeInspector reports the storage a project's resolved configuration
 // declares.
 //

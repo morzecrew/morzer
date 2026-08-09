@@ -156,6 +156,7 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 				preflight.CPUs(rel.Manifest.Requirements.CPUs),
 				preflight.RequiredParameters(rel.Manifest.Parameters, inst.Parameters),
 				preflight.Directories(d.Paths),
+				preflight.BundledImages(rel.Manifest.BundledImageRefs(), d.imagePresence()),
 			)
 
 			// The port check only makes sense when the project is not
@@ -480,7 +481,18 @@ func stepPullImages(d *Deps, inst domain.Installation, rel domain.Release, opts 
 			if err != nil {
 				return err
 			}
-			images := rel.Manifest.ImageRefs()
+			// The images that come from a registry, not every image
+			// the release names. A bundled one is already on this
+			// machine under an alias, and asking for it here would
+			// contact the vendor's registry -- the single thing
+			// bundling exists to avoid -- under a reference that no
+			// longer resolves anywhere the daemon can see.
+			//
+			// That its absence is not merely a redundant pull is
+			// preflight's job: `images.bundled` refuses before this
+			// step runs, so a bundled image missing from the store
+			// never reaches here to be quietly pulled.
+			images := rel.Manifest.PulledImageRefs()
 			st.Detail("%d image(s)", len(images))
 			return d.Runtime.Pull(ctx, cfg, images)
 		},
