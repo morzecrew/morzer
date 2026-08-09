@@ -142,14 +142,17 @@ func TestStampingSurvivesACommentAtColumnZero(t *testing.T) {
 	}
 }
 
-// TestStampingRefusesWhenTheRewriteLandsSomewhereElse.
+// TestStampingRefusesWhenTheRewriteWouldLandTwice.
 //
 // A line-based rewrite cannot see YAML structure, so a block scalar inside
 // `metadata` whose content happens to be a `version:` line looks exactly like
-// the key. The text edit is plausible and only the loader can say whether it
-// landed -- which is what the re-parse in Stamp is for, and this is the case
-// that proves it is not decoration.
-func TestStampingRefusesWhenTheRewriteLandsSomewhereElse(t *testing.T) {
+// the key. What catches it is the duplicate detection, not the re-parse: a
+// manifest that has both is refused before anything is written, and one that
+// has *only* the decoy has no real version at all, so the loader refuses it
+// first for that. The re-parse behind them stays as defence in depth -- see
+// Stamp -- and this test names the refusal that actually fires rather than
+// accepting whichever came out.
+func TestStampingRefusesWhenTheRewriteWouldLandTwice(t *testing.T) {
 	dir := bundle(t, func(dir string) {
 		manifest := filepath.Join(dir, release.ManifestFileName)
 		data, err := os.ReadFile(manifest)
@@ -173,10 +176,18 @@ func TestStampingRefusesWhenTheRewriteLandsSomewhereElse(t *testing.T) {
 	if err == nil {
 		t.Fatal("a rewrite that hit two lines was accepted")
 	}
-	// Either refusal is correct -- two matches, or one that did not land
-	// where the loader reads the version. What must not happen is silence.
-	if !strings.Contains(err.Error(), "twice") && !strings.Contains(err.Error(), "reads") {
-		t.Errorf("the refusal does not describe what went wrong: %v", err)
+	if !strings.Contains(err.Error(), "twice") {
+		t.Errorf("the refusal does not say two lines matched: %v", err)
+	}
+
+	// And nothing was written: the refusal has to come before the edit, or
+	// a manifest is left with a version somewhere it does not belong.
+	rel, loadErr := release.Load(dir)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if rel.Version().String() != "1.2.0" {
+		t.Errorf("a refused stamp changed the manifest to %s", rel.Version())
 	}
 }
 

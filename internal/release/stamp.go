@@ -46,10 +46,17 @@ func Stamp(dir string, version domain.Version) error {
 		return err
 	}
 
-	// Re-read through the real loader. The rewrite is textual, so this is
-	// the only thing standing between a clever regex and a manifest that no
-	// longer parses -- and it also proves the value landed where it was
-	// meant to rather than in some other `version:` key.
+	// Re-read through the real loader.
+	//
+	// Defence in depth rather than the working guard, and worth being
+	// honest about which: the checks that actually fire are the duplicate
+	// detection above (two matching lines are refused before anything is
+	// written) and the manifest's own requirement that a version exist.
+	// Neither of the two failures below is reachable today -- the
+	// substituted text is always a bare semver, so it cannot break the
+	// parse, and a rewrite that missed the real key would have had to match
+	// twice. They cost one read of a small file and they are what would
+	// catch the next spelling of "the edit was plausible and wrong".
 	m, err := LoadManifest(manifestPath)
 	if err != nil {
 		return domain.ValidationError(err,
