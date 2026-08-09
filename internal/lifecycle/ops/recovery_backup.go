@@ -2,6 +2,7 @@ package ops
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -175,12 +176,8 @@ func selectBackup(
 }
 
 func hasExportComponent(m ports.BackupManifest) bool {
-	for _, c := range m.Components {
-		if c.Component == ports.ComponentExport {
-			return true
-		}
-	}
-	return false
+	_, ok := exportRecord(m)
+	return ok
 }
 
 // noExportIn explains a backup that carries no identity, and the two reasons
@@ -236,12 +233,9 @@ const exportComponentSchemaVersion = 4
 func readExportComponent(
 	backupsDir string, m ports.BackupManifest, identityFile string,
 ) (domain.InstallationExport, error) {
-	var record ports.ComponentRecord
-	for _, c := range m.Components {
-		if c.Component == ports.ComponentExport {
-			record = c
-			break
-		}
+	record, ok := exportRecord(m)
+	if !ok {
+		return domain.InstallationExport{}, noExportIn(m)
 	}
 
 	path := filepath.Join(backupsDir, m.ID, record.Path)
@@ -325,4 +319,117 @@ func DescribeBackupExport(b BackupExport) []string {
 		"back data that predates these secrets; restore from this backup, or from a "+
 		"newer one, unless you know otherwise")
 	return lines
+}
+
+// ExportFromRemoteBackup reads an installation export off a backup target
+// without downloading the backup.
+//
+// This is the path the recovery story actually takes: the machine is gone, the
+// backups are in a bucket, and the operator has an access key and a recovery
+// key. Transferring the archive to read four kilobytes of it would cost an
+// hour at the worst possible moment.
+func ExportFromRemoteBackup(
+	ctx context.Context, d *Deps, opts TargetOptions, backupID, identityFile string,
+) (BackupExport, error) {
+	if strings.TrimSpace(identityFile) == "" {
+		return BackupExport{}, domain.Usage("an offline recovery identity is required").
+			WithHint("pass --identity <file>; the export inside a backup is " +
+				"encrypted to the recovery keys alone")
+	}
+
+	targets, err := d.targetsFor(ctx, opts)
+	if err != nil {
+		return BackupExport{}, err
+	}
+
+	// Only the manifests cross the network here, which is what `backup list
+	// --remote` already costs: they are the one plaintext file in a backup,
+	// so this works from a machine that has lost every key it ever had.
+	var (
+		manifests []ports.BackupManifest
+		refs      = map[string]ports.RemoteRef{}
+	)
+	for _, target := range targets {
+		found, listErr := d.Targets.List(ctx, target)
+		if listErr != nil {
+			return BackupExport{}, listErr
+		}
+		for _, m := range found {
+			if _, seen := refs[m.ID]; seen {
+				// The same backup pushed to two targets. The
+				// first wins: they are the same bytes by
+				// construction, and choosing between them would
+				// be inventing a preference.
+				continue
+			}
+			refs[m.ID] = ports.RemoteRef{Target: target, ID: m.ID}
+			manifests = append(manifests, m)
+		}
+	}
+	if len(manifests) == 0 {
+		return BackupExport{}, domain.BackupError(domain.ErrNotFound,
+			"no backups were found on the target").
+			WithHint("`morzer backup list --remote --target <url>` shows what is there")
+	}
+	sort.SliceStable(manifests, func(i, j int) bool {
+		return manifests[j].CreatedAt.Before(manifests[i].CreatedAt.Time)
+	})
+
+	chosen, newest, err := selectBackup(manifests, backupID)
+	if err != nil {
+		return BackupExport{}, err
+	}
+
+	record, ok := exportRecord(chosen)
+	if !ok {
+		return BackupExport{}, noExportIn(chosen)
+	}
+
+	// A directory shaped like the local backup store, so the same reader
+	// checks the same things. The digest binding in particular is not
+	// optional here: a named remote key returns whatever sits at it, and an
+	// attacker with write access to the bucket can put another
+	// installation's identity under that name.
+	staging, err := os.MkdirTemp("", "morzer-export-")
+	if err != nil {
+		return BackupExport{}, domain.Internal(err, "cannot create a staging directory")
+	}
+	defer func() { _ = atomicfs.RemoveAll(staging) }()
+
+	if err := d.Targets.FetchFile(ctx, refs[chosen.ID], record.Path,
+		filepath.Join(staging, chosen.ID)); err != nil {
+		return BackupExport{}, err
+	}
+
+	// Re-read from what was fetched rather than trusting the listing: the
+	// manifest that binds the component is the one that travelled with it.
+	fetched, err := readBackupManifests(staging)
+	if err != nil {
+		return BackupExport{}, err
+	}
+	if len(fetched) != 1 || fetched[0].ID != chosen.ID {
+		return BackupExport{}, domain.BackupError(domain.ErrValidation,
+			"the target returned a manifest for a different backup than %s", chosen.ID)
+	}
+
+	export, err := readExportComponent(staging, fetched[0], identityFile)
+	if err != nil {
+		return BackupExport{}, err
+	}
+
+	out := BackupExport{Export: export, Backup: chosen}
+	if newest.ID != chosen.ID {
+		out.Newest = newest
+	}
+	return out, nil
+}
+
+// exportRecord finds the export component in a manifest.
+func exportRecord(m ports.BackupManifest) (ports.ComponentRecord, bool) {
+	for _, c := range m.Components {
+		if c.Component == ports.ComponentExport {
+			return c, true
+		}
+	}
+	return ports.ComponentRecord{}, false
 }

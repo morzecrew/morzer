@@ -49,8 +49,10 @@ func newInstallationExportCommand(app *App) *cobra.Command {
 
 func newInstallationImportCommand(app *App) *cobra.Command {
 	var (
-		identity   string
-		fromBackup bool
+		identity        string
+		fromBackup      bool
+		targetURL       string
+		credentialsFile string
 	)
 
 	cmd := &cobra.Command{
@@ -97,11 +99,8 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 				if len(args) == 1 {
 					id = args[0]
 				}
-				found, err := ops.ExportFromBackup(app.Deps.Paths,
-					ops.ExportFromBackupOptions{
-						BackupID:     id,
-						IdentityFile: identity,
-					})
+				found, err := readBackupIdentity(cmd.Context(), app,
+					id, identity, targetURL, credentialsFile)
 				if err != nil {
 					return err
 				}
@@ -147,7 +146,39 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&fromBackup, "from-backup", false,
 		"read the identity out of a backup rather than an export file; "+
 			"with no id, the newest backup that carries one")
+	cmd.Flags().StringVar(&targetURL, "target", "",
+		"read the backup from this target rather than from this machine")
+	cmd.Flags().StringVar(&credentialsFile, "credentials-file", "",
+		"credentials for --target, when the secret store that held them is gone")
 	return cmd
+}
+
+// readBackupIdentity gets an export out of a backup, here or on a target.
+//
+// The remote path exists because of a circle RFC 0009 named: on a rebuilt
+// machine the bucket credentials are in the secret state, the secret state is
+// in the backup, and the backup is in the bucket. `--credentials-file` is how
+// an operator breaks it from outside — and the whole point of fetching one
+// named file is that breaking it costs kilobytes rather than the archive.
+func readBackupIdentity(
+	ctx context.Context, app *App, backupID, identity, targetURL, credentialsFile string,
+) (ops.BackupExport, error) {
+	if targetURL == "" && credentialsFile == "" {
+		return ops.ExportFromBackup(app.Deps.Paths, ops.ExportFromBackupOptions{
+			BackupID:     backupID,
+			IdentityFile: identity,
+		})
+	}
+
+	creds, err := readCredentialsFile(credentialsFile)
+	if err != nil {
+		return ops.BackupExport{}, err
+	}
+	return ops.ExportFromRemoteBackup(ctx, app.Deps, ops.TargetOptions{
+		Options:     app.operationOptions(),
+		URL:         targetURL,
+		Credentials: creds,
+	}, backupID, identity)
 }
 
 // printImportNextSteps says what an operator must do next, and the one thing
