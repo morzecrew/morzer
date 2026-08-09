@@ -79,12 +79,24 @@ func ImageLayoutDigests(dir string) ([]string, error) {
 		// refusal to exist before that ships.
 		blob := filepath.Join(dir, ImagesDirName, "blobs",
 			m.Digest.Algorithm().String(), m.Digest.Encoded())
-		if _, err := os.Stat(blob); err != nil {
+		info, err := os.Stat(blob)
+		if err != nil {
 			return nil, domain.ValidationError(domain.ErrNotFound,
 				"%s/%s names %s and the bundle does not carry it",
 				ImagesDirName, ImageIndexFileName, m.Digest).
 				WithHint("re-run `morzer release pack`; a layout whose index " +
 					"outruns its blobs installs nowhere")
+		}
+		// Stat succeeds for a directory, and an empty directory named
+		// after a digest passes everything else: the tree digest walks
+		// it, and the checksum list does not name directories because
+		// they carry no content. So "the path exists" is not the
+		// question -- "there is a blob there" is.
+		if !info.Mode().IsRegular() {
+			return nil, domain.ValidationError(domain.ErrValidation,
+				"%s/%s names %s and the bundle has a %s in its place",
+				ImagesDirName, ImageIndexFileName, m.Digest, describeMode(info.Mode())).
+				WithHint("a blob is a file; re-run `morzer release pack`")
 		}
 		digests = append(digests, m.Digest.String())
 	}
@@ -179,6 +191,18 @@ func checkBundledImages(rel domain.Release) error {
 				"the digest the manifest pins, and the layout must carry nothing else")
 	}
 	return nil
+}
+
+// describeMode names what was found where a blob should be.
+func describeMode(mode fs.FileMode) string {
+	switch {
+	case mode.IsDir():
+		return "directory"
+	case mode&fs.ModeSymlink != 0:
+		return "symlink"
+	default:
+		return "non-regular file"
+	}
 }
 
 // quoteAll quotes each name, so a list of one reads as a name rather than as

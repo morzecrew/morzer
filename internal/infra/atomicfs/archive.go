@@ -197,7 +197,7 @@ func negotiateLimits(
 		return limits, err
 	}
 
-	if err := WriteFileIn(root, rel, manifest, normalizeArchiveMode(hdr.FileInfo().Mode())); err != nil {
+	if err := writeManifestEntry(root, rel, manifest, hdr); err != nil {
 		return limits, err
 	}
 
@@ -238,6 +238,44 @@ func chargeForManifest(limits ExtractLimits, size int64) (ExtractLimits, error) 
 		limits.MaxEntries--
 	}
 	return limits, nil
+}
+
+// writeManifestEntry writes the one entry that was read before the limits were
+// settled.
+//
+// Deliberately not WriteFileIn, which finishes with a directory fsync whose
+// failure it propagates. That is right where it is used -- a state file whose
+// directory entry never landed is a file that never existed -- and wrong here:
+// every *other* entry in this archive is written by extractFile, which fsyncs
+// the file and not its directory. Using the stricter helper for exactly one
+// entry made a filesystem that cannot fsync a directory reject an otherwise
+// valid bundle, and made the manifest the odd one out in its own extraction.
+func writeManifestEntry(root *os.Root, rel string, data []byte, hdr *tar.Header) error {
+	mode := normalizeArchiveMode(hdr.FileInfo().Mode())
+
+	out, err := root.OpenFile(rel, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return domain.ValidationError(err, "cannot create %q from the archive", rel)
+	}
+	defer func() { _ = out.Close() }()
+
+	if _, err := out.Write(data); err != nil {
+		return domain.ValidationError(err, "cannot write %q from the archive", rel)
+	}
+	if err := out.Chmod(mode); err != nil {
+		return domain.Internal(err, "cannot set mode on %q", rel)
+	}
+	// The same reason extractFile gives: the digest is verified against
+	// what the page cache holds, and a power cut after promotion would
+	// otherwise leave `current` durably pointing at a truncated file the
+	// verification blessed.
+	if err := out.Sync(); err != nil {
+		return domain.Internal(err, "cannot flush %q to disk", rel)
+	}
+	if err := out.Close(); err != nil {
+		return domain.Internal(err, "cannot finish writing %q", rel)
+	}
+	return nil
 }
 
 // clampToBudget applies a declared size to the limits.

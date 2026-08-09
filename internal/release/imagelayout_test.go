@@ -154,6 +154,34 @@ func TestAnIndexNamingABlobTheBundleDoesNotCarryIsRefused(t *testing.T) {
 	}
 }
 
+// TestABlobThatIsADirectoryIsRefused.
+//
+// `os.Stat` succeeds for a directory, and an empty directory named after a
+// digest passes everything else: the tree digest walks it, and the checksum
+// list does not name directories because they carry no content. So the
+// question is not whether the path exists.
+func TestABlobThatIsADirectoryIsRefused(t *testing.T) {
+	dir := bundleWithLayout(t, []string{appDigest})
+
+	blob := filepath.Join(dir, "images", "blobs", "sha256",
+		strings.TrimPrefix(appDigest, "sha256:"))
+	if err := os.Remove(blob); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(blob, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sumTree(t, dir)
+
+	_, err := release.Load(dir)
+	if err == nil {
+		t.Fatal("a directory standing in for a blob was accepted")
+	}
+	if !strings.Contains(err.Error(), "directory") {
+		t.Errorf("the refusal does not say what was found: %v", err)
+	}
+}
+
 // TestAnIndexEntryThatIsNotADigestIsRefused, rather than compared as a string.
 func TestAnIndexEntryThatIsNotADigestIsRefused(t *testing.T) {
 	dir := bundleWithLayout(t, []string{appDigest})
