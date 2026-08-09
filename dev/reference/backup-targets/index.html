@@ -1285,6 +1285,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#recovering-an-identity-without-downloading-the-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Recovering an identity without downloading the backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hardening-a-bucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Hardening a bucket
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1841,6 +1863,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#recovering-an-identity-without-downloading-the-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Recovering an identity without downloading the backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hardening-a-bucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Hardening a bucket
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2077,6 +2121,36 @@ error you get instead.</p>
 files — an interrupted restore leaves decrypted components in a staging
 directory beside the encrypted ones — and copying those would put a plaintext
 database dump on a second machine.</p>
+<h2 id="recovering-an-identity-without-downloading-the-backup">Recovering an identity without downloading the backup<a class="headerlink" href="#recovering-an-identity-without-downloading-the-backup" title="Permanent link">&para;</a></h2>
+<p>Every backup carries the deployment's identity, and reading it does not require
+fetching the archive around it:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>--from-backup<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--target<span class="w"> </span>s3://backups.example/demo<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--credentials-file<span class="w"> </span>./bucket.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--identity<span class="w"> </span>~/recovery.key
+</code></pre></div>
+<p>That transfers the identity document and the backup's manifest, and nothing
+else — a few kilobytes rather than however large the data is. The manifest
+comes too because a named key is not a bound file: it records each component's
+digest over the stored bytes, so the manager can check that what it fetched
+belongs to the backup it asked for rather than to whatever someone put under
+that name.</p>
+<p><code>--credentials-file</code> exists for the circle a rebuilt machine is in: the bucket
+credentials are in the secret state, the secret state is in the backup, and the
+backup is in the bucket.</p>
+<h2 id="hardening-a-bucket">Hardening a bucket<a class="headerlink" href="#hardening-a-bucket" title="Permanent link">&para;</a></h2>
+<p>Give the manager <code>PutObject</code> and <code>GetObject</code>, withhold <code>DeleteObject</code>, run with
+<code>--no-prune-remote</code>, and let the bucket's own lifecycle rules do retention. The
+manager then cannot delete a backup even if the host is compromised.</p>
+<div class="admonition warning">
+<p class="admonition-title">Withholding <code>DeleteObject</code> is necessary and not sufficient</p>
+<p>On S3 a <code>PutObject</code> to an existing key <strong>replaces</strong> it. Credentials that can
+write can therefore destroy history without ever calling delete, so this
+bounds the damage rather than preventing it.</p>
+<p>The property you actually want is immutability: Object Lock, or versioning
+with a lifecycle policy the backup credentials cannot alter. Without one of
+those, treat put+get as a speed bump rather than a guarantee.</p>
+</div>
 
 
 

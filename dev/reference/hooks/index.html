@@ -2166,8 +2166,15 @@ present, and their names and contents may change:</p>
   encrypted, so <code>backup list</code> needs no key.</li>
 <li><code>installation.yaml</code>, <code>application.yaml</code> — a copy of the operator-facing
   configuration, for an incident review.</li>
-<li><code>secrets.sops.yaml</code>, <code>secrets.recipients.yaml</code> — the encrypted secret state
-  and the recipient list, so a rebuilt machine can recover its secrets.</li>
+<li><code>export.yaml</code> — the installation export: the authoritative installation
+  record, the encrypted secret state, and who can decrypt it. Encrypted to the
+  <strong>recovery keys only</strong>, so unlike every other component the machine that
+  wrote the backup cannot read it — and neither can a hook running on that
+  machine.</li>
+<li>~~<code>secrets.sops.yaml</code>, <code>secrets.recipients.yaml</code>~~ — <strong>retired.</strong> <code>export.yaml</code>
+  carries the same encrypted state byte for byte, and the recipient roles the
+  sidecar existed to preserve. Backups taken by earlier versions still have
+  them, and a restore still reads them.</li>
 <li><code>manifest.yaml</code> — the release manifest as it was at the time.</li>
 <li><code>volumes/&lt;name&gt;.tar</code> — captured named volumes.</li>
 <li><code>.age</code> suffixes on any of the above, since components are encrypted at rest.</li>

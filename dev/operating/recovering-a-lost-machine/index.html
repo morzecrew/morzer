@@ -967,15 +967,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#if-you-did-not-take-an-export" class="md-nav__link">
+  <a href="#if-your-backups-carry-no-identity" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        If you did not take an export
+        If your backups carry no identity
       </span>
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="If you did not take an export">
+    <nav class="md-nav" aria-label="If your backups carry no identity">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1993,15 +1993,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#if-you-did-not-take-an-export" class="md-nav__link">
+  <a href="#if-your-backups-carry-no-identity" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        If you did not take an export
+        If your backups carry no identity
       </span>
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="If you did not take an export">
+    <nav class="md-nav" aria-label="If your backups carry no identity">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2104,23 +2104,39 @@
 
 <h1 id="recovering-a-lost-machine">Recovering a lost machine<a class="headerlink" href="#recovering-a-lost-machine" title="Permanent link">&para;</a></h1>
 <p>The machine is gone — a failed disk, a deleted VM, a host you no longer trust.
-You have three things, or you do not recover:</p>
+You need <strong>two</strong> things:</p>
 <ol>
 <li>An <strong>offline recovery key</strong>, created at <code>init</code> and kept somewhere the machine
    could not reach.</li>
-<li>An <strong>installation export</strong>, taken while the machine was healthy.</li>
 <li>A <strong>backup</strong>, stored offsite.</li>
 </ol>
-<p>The first two rebuild the deployment's identity and secrets. The third brings
-back the data. They are separate artifacts on purpose: an export is small and
-static, a backup is large and changes constantly, and one file that was both
-would be a file nobody takes often enough.</p>
+<p>Every backup carries the deployment's identity — the installation record, the
+encrypted secret state, and who can decrypt it — encrypted to the recovery keys
+alone. So the artifact a timer produces every night is the one that rebuilds the
+machine, and the recovery key is the only thing you have to keep by hand.</p>
+<div class="admonition warning">
+<p class="admonition-title">This changed, and older backups did not get the benefit</p>
+<p>A backup taken before this manager version carries no identity, and neither
+does one from an installation with <strong>no recovery recipient</strong> — there is no
+offline key to encrypt it to, so the component is skipped rather than
+written in a form only the dead machine could read. <code>morzer doctor</code> reports
+that as <code>secrets.recovery-recipient</code>.</p>
+<p>For those, recovery still needs an <a href="#if-your-backups-carry-no-identity">installation
+export</a> — which is also the answer for a
+product that can never take a backup at all.</p>
+</div>
+<p>An <strong>installation export</strong> is still supported and still the fastest path. What
+changed is its status: from a prerequisite you had to remember to take, to an
+optimisation and a fallback.</p>
 <div class="admonition info">
 <p class="admonition-title">This procedure is tested, not described</p>
-<p><code>TestRecoveryRebuildsAMachineFromAnOfflineKey</code> runs it end to end against
-real age keys on every CI run: create an installation, export it, delete the
-machine's entire root, rebuild from the export and the offline key, and
-assert the secrets come back readable by the new host's own key.</p>
+<p><code>TestRecoveryRebuildsAMachineFromABackupAlone</code> runs the two-artifact
+procedure end to end against real age keys on every CI run: create an
+installation, take one backup, delete the machine's entire root, and rebuild
+identity and every secret from that backup plus the offline key. No export
+file exists at any point in it.</p>
+<p><code>TestRecoveryRebuildsAMachineFromAnOfflineKey</code> does the same for the export
+path, so both remain proven rather than one being described.</p>
 <p><code>TestRecoveryFetchesTheBackupFromATarget</code> runs the whole of it, including
 step 4: the backup is pushed to a target, the machine is destroyed, and the
 rebuilt one lists and fetches it back with nothing copied by hand. That test
@@ -2152,12 +2168,34 @@ opened.</p>
 <h2 id="when-the-machine-is-gone">When the machine is gone<a class="headerlink" href="#when-the-machine-is-gone" title="Permanent link">&para;</a></h2>
 <h3 id="1-prepare-the-replacement">1. Prepare the replacement<a class="headerlink" href="#1-prepare-the-replacement" title="Permanent link">&para;</a></h3>
 <p>Install <code>morzer</code>, <code>docker</code>, <code>docker compose</code> and <code>sops</code> on the new host. Put the
-export and the recovery key where you can reach them.</p>
+recovery key where you can reach it.</p>
 <h3 id="2-import-the-identity">2. Import the identity<a class="headerlink" href="#2-import-the-identity" title="Permanent link">&para;</a></h3>
+<p>From the backup target directly, which transfers a few kilobytes rather than
+the archive:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>--from-backup<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--target<span class="w"> </span>s3://backups.example/demo<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--credentials-file<span class="w"> </span>./bucket.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--identity<span class="w"> </span>~/recovery.key
+</code></pre></div>
+<p><code>--product</code> is needed because nothing on this host knows what it is yet: every
+managed directory derives from the product name, and on a rebuilt machine the
+identity you are about to read is the only place it is written down.</p>
+<p><code>--credentials-file</code> breaks a circle: the bucket credentials live in the secret
+state, the secret state is in the backup, and the backup is in the bucket. An
+operator with an access key can start from outside it.</p>
+<p>From a backup already on this machine — one you fetched, or copied off a disk:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>--from-backup<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key
+</code></pre></div>
+<p>With no id it uses the <strong>newest</strong> backup that carries an identity, which is
+almost always what you want: staleness here only ever loses information, so the
+newest export is the most complete one. Naming an id is honoured and warns when
+it is not the newest, because a backup chosen for the <em>data</em> it holds is not
+necessarily the one whose <em>secrets</em> you want.</p>
+<p>From an export file, if you have one:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>demo.export.yaml<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key
 </code></pre></div>
-<p>This restores the installation with its <strong>original id</strong>, generates a new age
-identity for this host, re-encrypts the secret state for it, and revokes the old
+<p>All three restore the installation with its <strong>original id</strong>, generate a new age
+identity for this host, re-encrypt the secret state for it, and revoke the old
 machine's key.</p>
 <p>It prints what it assumed and what to do next. If the identity you passed cannot
 open the export, it says so before creating anything, and names the keys that
@@ -2215,9 +2253,15 @@ optional.</p>
 <p>Then <strong>decommission the old machine</strong> if any part of it still exists. Two live
 hosts sharing an installation id will confuse every backup either takes, and the
 old host's key was revoked precisely so it cannot follow along.</p>
-<h2 id="if-you-did-not-take-an-export">If you did not take an export<a class="headerlink" href="#if-you-did-not-take-an-export" title="Permanent link">&para;</a></h2>
-<p>You can still recover data, but not identity. Create a new installation, install
-the release, and restore across installations explicitly:</p>
+<h2 id="if-your-backups-carry-no-identity">If your backups carry no identity<a class="headerlink" href="#if-your-backups-carry-no-identity" title="Permanent link">&para;</a></h2>
+<p>Two kinds of backup have none: those taken before this manager version, and
+those from an installation with no recovery recipient. <code>--from-backup</code> says
+which case you are in and what to do about it — they need different answers,
+and telling the second kind to "take a new backup" would prescribe the action
+that reproduces the problem.</p>
+<p>If you have an export file, use it: the procedure above works unchanged.</p>
+<p>If you have neither, you can still recover data, but not identity. Create a new
+installation, install the release, and restore across installations explicitly:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--release<span class="w"> </span>./demo-1.2.0<span class="w"> </span>--recovery-recipient<span class="w"> </span>&lt;a<span class="w"> </span>new<span class="w"> </span>key&gt;
 morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.2.0
 morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;the<span class="w"> </span>NEW<span class="w"> </span>id&gt;<span class="w"> </span>--allow-cross-installation
@@ -2229,10 +2273,13 @@ distinct decision and needs its own answer.</p>
 secrets. <code>restore</code> brings back the database and the volumes; it does not
 reinstate the secret state.</p>
 <p><strong>The secrets are not necessarily lost, though — that depends on the recovery
-key, not on the export.</strong> A backup carries <code>secrets.sops.yaml</code> and
-<code>secrets.recipients.yaml</code>, encrypted to the same recipients as everything else
-in it. If the recovery key was one of them, you can get the values back by hand
-and set them again with <code>morzer secret set</code>.</p>
+key, not on the export.</strong> A backup from before this change carries
+<code>secrets.sops.yaml</code> and <code>secrets.recipients.yaml</code>, encrypted to the same
+recipients as everything else in it. If the recovery key was one of them, you
+can get the values back by hand and set them again with <code>morzer secret set</code>.</p>
+<p>Backups taken since carry <code>export.yaml</code> instead, which holds the same encrypted
+state and the recipient roles beside it — and <code>--from-backup</code> reads it for you,
+so the recipe below is only for the older shape.</p>
 <p>There are two layers, because the <abbr title="Secrets OPerationS">SOPS</abbr> document is itself stored as an
 encrypted backup component:</p>
 <div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/var/lib/demo/backups/&lt;id&gt;

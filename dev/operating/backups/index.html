@@ -729,6 +729,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#a-backup-is-an-identity-artifact" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A backup is an identity artifact
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-a-backup-contains" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1926,6 +1937,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#a-backup-is-an-identity-artifact" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A backup is an identity artifact
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-a-backup-contains" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2222,6 +2244,32 @@ release's own <code>backup</code> hook, wraps what that produces in a self-descr
 manifest, and verifies the checksums by re-reading what was written. It does
 know how to read the project's <strong>volumes</strong>, which is the part the hook usually
 forgets.</p>
+<h2 id="a-backup-is-an-identity-artifact">A backup is an identity artifact<a class="headerlink" href="#a-backup-is-an-identity-artifact" title="Permanent link">&para;</a></h2>
+<p>Every backup carries the deployment's identity as well as its data: the
+installation record, the encrypted secret state, and the list of who can
+decrypt it. That is what makes <a href="../recovering-a-lost-machine/">recovering a lost
+machine</a> a matter of a recovery key and a backup
+rather than a recovery key, a backup and an export somebody remembered to take.</p>
+<p>It changes where you should be willing to store one.</p>
+<p><strong>The identity part is encrypted to the recovery keys alone</strong> — not to the
+machine's own key like every other component. The machine that wrote the backup
+cannot read it. So compromising the live host, which is the one that is online
+and attackable, yields the data and not the ability to become the deployment;
+only the offline key opens that, and by construction the offline key is not on
+the machine.</p>
+<p>What that does not remove:</p>
+<ul>
+<li><strong>An attacker with backup read access <em>and</em> the recovery key gets
+  everything</strong> — the installation, the secrets, and the credentials for the
+  backup target itself. This was nearly true before (the secret state was
+  already in every backup); what changed is that it now takes one command
+  rather than manual <code>sops</code> work.</li>
+<li><strong>Retention multiplies the copies.</strong> Thirty nightly backups are thirty copies
+  of the identity bundle where there used to be one export file.</li>
+</ul>
+<p>An installation with no recovery recipient gets <strong>no</strong> identity in its backups,
+rather than one encrypted to the key that would die with the machine. <code>morzer
+doctor</code> reports that as <code>secrets.recovery-recipient</code>.</p>
 <h2 id="what-a-backup-contains">What a backup contains<a class="headerlink" href="#what-a-backup-contains" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2245,18 +2293,30 @@ forgets.</p>
 </tr>
 <tr>
 <td><code>config</code></td>
-<td>the rendered configuration</td>
+<td>the operator-facing files as they stood — <strong>forensic, not recoverable</strong></td>
 </tr>
 <tr>
-<td><code>secrets</code></td>
-<td>the encrypted secret state, as it is on disk</td>
+<td><code>export</code></td>
+<td>the installation identity: the authoritative record, the encrypted secret state, and who can decrypt it</td>
 </tr>
 <tr>
 <td><code>manifest</code></td>
 <td>the release identity, schema version, checksums, installation id</td>
 </tr>
+<tr>
+<td>~~<code>secrets</code>~~</td>
+<td><strong>retired.</strong> <code>export</code> carries the same state byte for byte, plus the recipient roles</td>
+</tr>
 </tbody>
 </table>
+<p><code>config</code> and <code>export</code> look similar and are not. <code>config</code> holds
+<code>installation.yaml</code>, the file an operator edits — and <code>doctor</code> ships a
+<code>config.installation-file</code> check for it disagreeing with the authoritative
+state, which is exactly what makes it useful in an incident review and useless
+for rebuilding a machine. <code>export</code> is the authoritative record. Naming both
+roles is what turns a trap into two labelled artifacts.</p>
+<p><code>--component secrets</code> is still accepted, because a restore reads backups this
+manager did not write. On a recent backup it selects nothing.</p>
 <p>The manifest is what makes a backup self-describing: which release took it,
 which database schema was current, and which installation it belongs to.</p>
 <h2 id="volumes">Volumes<a class="headerlink" href="#volumes" title="Permanent link">&para;</a></h2>
