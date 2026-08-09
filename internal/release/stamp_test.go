@@ -105,6 +105,81 @@ func TestStampingDoesNotTouchAnotherVersionKey(t *testing.T) {
 	}
 }
 
+// TestStampingSurvivesACommentAtColumnZero.
+//
+// Found by audit, not by use: an earlier version treated any line starting in
+// column zero as the end of the block it was scanning, so a vendor commenting
+// between `name:` and `version:` at the left margin -- legal YAML, and a
+// perfectly ordinary thing to write -- made stamping refuse a manifest it
+// should have rewritten.
+func TestStampingSurvivesACommentAtColumnZero(t *testing.T) {
+	dir := bundle(t, func(dir string) {
+		manifest := filepath.Join(dir, release.ManifestFileName)
+		data, err := os.ReadFile(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		annotated := strings.Replace(string(data),
+			"  name: demo\n",
+			"  name: demo\n# The product name is load-bearing; see the docs.\n", 1)
+		if annotated == string(data) {
+			t.Fatal("the fixture no longer has the shape this annotates")
+		}
+		if err := os.WriteFile(manifest, []byte(annotated), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if err := release.Stamp(dir, mustVersion(t, "9.9.9")); err != nil {
+		t.Fatalf("a manifest with a column-zero comment was refused: %v", err)
+	}
+	rel, err := release.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.Version().String() != "9.9.9" {
+		t.Errorf("version = %s", rel.Version())
+	}
+}
+
+// TestStampingRefusesWhenTheRewriteLandsSomewhereElse.
+//
+// A line-based rewrite cannot see YAML structure, so a block scalar inside
+// `metadata` whose content happens to be a `version:` line looks exactly like
+// the key. The text edit is plausible and only the loader can say whether it
+// landed -- which is what the re-parse in Stamp is for, and this is the case
+// that proves it is not decoration.
+func TestStampingRefusesWhenTheRewriteLandsSomewhereElse(t *testing.T) {
+	dir := bundle(t, func(dir string) {
+		manifest := filepath.Join(dir, release.ManifestFileName)
+		data, err := os.ReadFile(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A description whose text contains a line that looks like the
+		// key. Legal YAML, and a plausible thing for a vendor to write.
+		trapped := strings.Replace(string(data),
+			"  description: Demo self-hosted bundle used by the test suite\n",
+			"  description: |\n    Demo bundle.\n    version: not-the-key\n", 1)
+		if trapped == string(data) {
+			t.Fatal("the fixture's description no longer has the shape this replaces")
+		}
+		if err := os.WriteFile(manifest, []byte(trapped), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	err := release.Stamp(dir, mustVersion(t, "9.9.9"))
+	if err == nil {
+		t.Fatal("a rewrite that hit two lines was accepted")
+	}
+	// Either refusal is correct -- two matches, or one that did not land
+	// where the loader reads the version. What must not happen is silence.
+	if !strings.Contains(err.Error(), "twice") && !strings.Contains(err.Error(), "reads") {
+		t.Errorf("the refusal does not describe what went wrong: %v", err)
+	}
+}
+
 // TestStampingRefusesAManifestItCannotRewrite rather than guessing.
 //
 // A build that stamped the wrong key would produce a bundle that loads,

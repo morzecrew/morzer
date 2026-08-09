@@ -90,6 +90,44 @@ func TestAGeneratedSumsFileSatisfiesTheVerifier(t *testing.T) {
 	}
 }
 
+// TestSumsCanBeRegeneratedOverThemselves is the ordinary vendor loop -- build,
+// edit, build again -- and it had no direct test.
+//
+// Found by a sabotage that survived: dropping the exemption for SHA256SUMS
+// itself passed every test in this file, because each one sums a tree that has
+// none yet. The rule is only reachable on the *second* build, where a list that
+// named itself would carry its own previous digest and fail verification
+// immediately.
+func TestSumsCanBeRegeneratedOverThemselves(t *testing.T) {
+	dir := bundle(t, nil)
+
+	if err := release.WriteSums(dir); err != nil {
+		t.Fatal(err)
+	}
+	first := sumsPaths(t, dir)
+
+	if err := os.WriteFile(filepath.Join(dir, "extra.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := release.WriteSums(dir); err != nil {
+		t.Fatalf("a second build over an already-summed tree failed: %v", err)
+	}
+
+	second := sumsPaths(t, dir)
+	for _, p := range second {
+		if p == ports.SumsFileName {
+			t.Fatalf("%s lists itself, so its own digest is stale the moment it is written",
+				ports.SumsFileName)
+		}
+	}
+	if len(second) != len(first)+1 {
+		t.Errorf("the rebuilt list has %d entries, want %d", len(second), len(first)+1)
+	}
+	if err := checksum.VerifySumsFile(dir); err != nil {
+		t.Fatalf("a regenerated checksum list does not verify: %v", err)
+	}
+}
+
 // TestSumsLineOrderMatchesTheArchiveOrder.
 //
 // Two orderings of one tree would make the list's bytes depend on how the

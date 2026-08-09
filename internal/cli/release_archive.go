@@ -93,13 +93,14 @@ func newReleaseArchiveCommand(app *App) *cobra.Command {
 //
 // Each one guards the same thing from a different side: an archive is the
 // artifact a customer receives, and every property it lacks at this moment it
-// lacks permanently. A tree that was summed after it changed, or signed before
-// it changed, produces a bundle whose integrity evidence describes a different
-// bundle -- and the customer's manager cannot tell the difference, because both
-// are internally consistent.
+// lacks permanently. A tree that changed after it was summed, or was signed
+// before it changed, produces a bundle whose integrity evidence describes a
+// different bundle -- and the customer's manager cannot tell the difference,
+// because both are internally consistent.
 func checkArchivable(app *App, rel domain.Release) error {
 	sums := filepath.Join(rel.Root, ports.SumsFileName)
-	if _, err := os.Stat(sums); err != nil {
+	sumsInfo, err := os.Stat(sums)
+	if err != nil {
 		return domain.ValidationError(domain.ErrNotFound,
 			"the bundle has no %s, so its contents cannot be attested", ports.SumsFileName).
 			WithHint("run `morzer release build %s` to write one", rel.Root)
@@ -123,10 +124,6 @@ func checkArchivable(app *App, rel domain.Release) error {
 		return nil
 	}
 
-	sumsInfo, err := os.Stat(sums)
-	if err != nil {
-		return domain.ValidationError(err, "cannot read %s", ports.SumsFileName)
-	}
 	if sigInfo.ModTime().Before(sumsInfo.ModTime()) {
 		return domain.ValidationError(nil,
 			"%s is older than %s, so it signs a list that has since changed",

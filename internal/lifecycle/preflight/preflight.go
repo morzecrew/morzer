@@ -492,31 +492,46 @@ func availableCPUs() int {
 	if err != nil {
 		return logical
 	}
-	// "<quota> <period>", or "max <period>" for no quota at all.
-	fields := strings.Fields(string(data))
-	if len(fields) != 2 || fields[0] == "max" {
+	allowed, ok := quotaCPUs(string(data))
+	if !ok || allowed >= logical {
 		return logical
 	}
+	return allowed
+}
+
+// quotaCPUs reads a cgroup v2 `cpu.max` value.
+//
+// Split out from availableCPUs so the rounding is testable: what a quota
+// rounds to is a decision, and one that depends on how many cores the test
+// machine happens to have is a decision nothing pins.
+//
+// The format is "<quota> <period>", or "max <period>" for no quota at all.
+// Anything else reports false and the caller keeps the OS count -- a cgroup
+// file it cannot parse is not evidence of a narrower limit.
+func quotaCPUs(content string) (int, bool) {
+	fields := strings.Fields(content)
+	if len(fields) != 2 || fields[0] == "max" {
+		return 0, false
+	}
 	quota, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil {
-		return logical
+	if err != nil || quota < 0 {
+		return 0, false
 	}
 	period, err := strconv.ParseFloat(fields[1], 64)
 	if err != nil || period <= 0 {
-		return logical
+		return 0, false
 	}
 
-	// Rounded up, and never below one: a 0.5-CPU quota is not zero CPUs,
-	// and reporting it as zero would fail every requirement including
-	// `cpus: 1`.
-	allowed := int(math.Ceil(quota / period))
+	// Rounded down, and never below one. Down because a 1.5-CPU quota does
+	// not give a product that asked for two cores what it asked for, and
+	// rounding up would hide exactly the shortfall this check exists to
+	// report; never below one because a 0.5-CPU quota is not zero CPUs, and
+	// reporting zero would fail every requirement including `cpus: 1`.
+	allowed := int(math.Floor(quota / period))
 	if allowed < 1 {
 		allowed = 1
 	}
-	if allowed < logical {
-		return allowed
-	}
-	return logical
+	return allowed, true
 }
 
 // RequiredParameters refuses to deploy with a required parameter unset.

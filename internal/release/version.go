@@ -65,11 +65,12 @@ func DescribeRepository(dir string) (GitDescription, error) {
 	return d, nil
 }
 
-// CommitTime is HEAD's commit date, or the zero time when dir is not in a
-// repository.
+// CommitTime is HEAD's commit date, or the zero time when git cannot answer --
+// no repository, no git, no commits, an unreadable object store.
 //
-// Deliberately quiet: it feeds the archive's timestamp fallback, where "this is
-// not a repository" is an ordinary answer rather than a problem to report.
+// Quiet about all of them, not only the first: it feeds the archive's timestamp
+// fallback, where every one of those is an ordinary answer that resolves to the
+// epoch rather than a problem worth failing an archive over.
 func CommitTime(dir string) time.Time {
 	stamp, err := runGit(dir, "log", "-1", "--format=%ct")
 	if err != nil {

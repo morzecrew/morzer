@@ -2,9 +2,11 @@ package clitest_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/morzecrew/morzer/test/clitest"
 )
@@ -74,6 +76,51 @@ func TestReleaseArchiveWarnsAboutAnUnsignedBundle(t *testing.T) {
 		filepath.Join(t.TempDir(), "demo.tar.zst"))
 
 	out.ExitCode(0).StderrContains("no SHA256SUMS.minisig")
+}
+
+// TestReleaseArchiveRefusesASignatureOlderThanTheListItSigns, and accepts one
+// that is newer.
+//
+// The pair, and the refusal had no test at all until an audit sabotage
+// survived: a signature over a tree that has since changed is the exact
+// failure the whole chain exists to prevent, and it is invisible downstream --
+// the bundle is internally consistent, so only the vendor's own tooling is in
+// a position to catch it.
+func TestReleaseArchiveRefusesASignatureOlderThanTheListItSigns(t *testing.T) {
+	r := clitest.New(t)
+	r.Run("release", "build", r.Bundle).ExitCode(0)
+
+	sums := filepath.Join(r.Bundle, "SHA256SUMS")
+	signature := filepath.Join(r.Bundle, "SHA256SUMS.minisig")
+	if err := os.WriteFile(signature, []byte("untrusted comment: fake\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sumsInfo, err := os.Stat(sums)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Backdated rather than raced: the two files are written within the
+	// same second, and on a filesystem with coarse timestamps a real race
+	// would prove nothing either way.
+	stale := sumsInfo.ModTime().Add(-time.Hour)
+	if err := os.Chtimes(signature, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(t.TempDir(), "demo.tar.zst")
+	r.Run("release", "archive", r.Bundle, "-o", out).
+		Failed().OutputContains("older than")
+
+	// And the other half: a signature newer than the list is what the
+	// vendor's own pipeline produces, and archiving it must work. Without
+	// this the refusal could be widened to "any signature" and nothing
+	// would fail.
+	fresh := sumsInfo.ModTime().Add(time.Hour)
+	if err := os.Chtimes(signature, fresh, fresh); err != nil {
+		t.Fatal(err)
+	}
+	r.Run("release", "archive", r.Bundle, "-o", out).ExitCode(0)
 }
 
 // TestReleaseBuildRefusesToInvalidateASignature, and --force discards it.
@@ -170,6 +217,93 @@ func TestReleaseBuildRefusesThePlaceholderVersionAndNothingElse(t *testing.T) {
 
 	setVersion("0.0.0", "0.1.0")
 	r.Run("release", "build", r.Bundle).ExitCode(0)
+}
+
+// TestReleaseBuildDerivesAVersionFromTheRepository is the phase's whole point,
+// and patch coverage found nothing ran it end to end.
+//
+// Driven through a real repository rather than a hand-written describe string:
+// the parsing is unit-tested against strings already, and what this adds is
+// that the command actually reaches git, gets an answer, and stamps it into
+// both files.
+func TestReleaseBuildDerivesAVersionFromTheRepository(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	r := clitest.New(t)
+
+	git := func(args ...string) {
+		t.Helper()
+		full := append([]string{
+			"-C", r.Bundle,
+			"-c", "user.email=audit@example",
+			"-c", "user.name=audit",
+			"-c", "commit.gpgsign=false",
+		}, args...)
+		if out, err := exec.Command("git", full...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("add", ".")
+	git("commit", "-q", "-m", "the bundle")
+	git("tag", "v1.4.0")
+	git("commit", "-q", "--allow-empty", "-m", "one more")
+
+	out := r.Run("release", "build", r.Bundle, "--version-from-git")
+	// The next patch, not the tag: a prerelease sorts below its own
+	// release, so 1.4.0-dev.1 would sort behind the 1.4.0 it comes after.
+	out.ExitCode(0).OutputContains("1.4.1-dev.1.g")
+
+	version, err := os.ReadFile(filepath.Join(r.Bundle, "VERSION"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(string(version)), "1.4.1-dev.1.g") {
+		t.Errorf("VERSION = %q", version)
+	}
+
+	// The build stamped two files, so the tree is now dirty -- and a second
+	// build refuses rather than stamping a version that names a commit it
+	// is not. This is the awkward interaction the design accepted, so it is
+	// pinned rather than left to surprise someone.
+	r.Run("release", "build", r.Bundle, "--version-from-git").
+		Failed().OutputContains("uncommitted")
+	r.Run("release", "build", r.Bundle, "--version-from-git", "--allow-dirty").
+		ExitCode(0).OutputContains(".dirty")
+}
+
+// TestAllowDirtyWithoutVersionFromGitIsRefused.
+//
+// A flag that quietly does nothing is worse than one that refuses: an operator
+// who passed it believes they permitted something.
+func TestAllowDirtyWithoutVersionFromGitIsRefused(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("release", "build", r.Bundle, "--version", "1.4.0", "--allow-dirty").
+		Failed().OutputContains("--version-from-git")
+}
+
+// TestReleaseBuildDryRunWritesNothing.
+//
+// `--dry-run` is a global contract every command honours, and patch coverage
+// found this command's dry-run branch was never entered by any test.
+func TestReleaseBuildDryRunWritesNothing(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("--dry-run", "release", "build", r.Bundle, "--version", "1.4.0").
+		ExitCode(0).OutputContains("1.4.0")
+
+	if _, err := os.Stat(filepath.Join(r.Bundle, "SHA256SUMS")); err == nil {
+		t.Error("a dry run wrote a checksum list")
+	}
+	manifest, err := os.ReadFile(filepath.Join(r.Bundle, "manifest.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(manifest), "version: 1.2.0") {
+		t.Error("a dry run stamped the manifest")
+	}
 }
 
 // TestReleaseBuildRefusesABrokenBundleBeforeWritingAnything.

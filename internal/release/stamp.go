@@ -71,6 +71,12 @@ func Stamp(dir string, version domain.Version) error {
 // rewritten. Anything it cannot locate unambiguously is refused rather than
 // guessed at: a build that stamped the wrong key would produce a bundle that
 // loads, verifies, and is not the version anybody asked for.
+//
+// What a line-based rewrite cannot see is YAML structure -- a block scalar
+// inside `metadata` whose *content* happens to be a `version:` line looks
+// exactly like the key. That case is caught by Stamp's re-parse rather than
+// here, which is the whole reason the re-parse exists: the text edit is
+// plausible, and only the loader can say whether it landed.
 func stampManifest(text string, version domain.Version) (string, error) {
 	lines := strings.Split(text, "\n")
 
@@ -79,7 +85,16 @@ func stampManifest(text string, version domain.Version) (string, error) {
 	for i, line := range lines {
 		trimmed := strings.TrimRight(line, "\r")
 
-		// A line starting in column zero ends whatever block was open.
+		// A comment at column zero is not a key, so it does not end the
+		// block it sits inside. Treating it as one refused a perfectly
+		// valid manifest -- a vendor commenting between `name:` and
+		// `version:` at the left margin is legal YAML, and this
+		// declined to stamp it.
+		if strings.HasPrefix(strings.TrimSpace(trimmed), "#") {
+			continue
+		}
+
+		// A key starting in column zero ends whatever block was open.
 		if trimmed != "" && !strings.HasPrefix(trimmed, " ") && !strings.HasPrefix(trimmed, "\t") {
 			inMetadata = strings.HasPrefix(trimmed, "metadata:")
 			continue

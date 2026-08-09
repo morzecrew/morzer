@@ -1,7 +1,9 @@
 package release_test
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -176,16 +178,8 @@ func TestGitWithNoReachableTagFailsRatherThanDefaulting(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	for _, args := range [][]string{
-		{"init", "-q"},
-		{"-c", "user.email=t@example", "-c", "user.name=t", "commit", "-q",
-			"--allow-empty", "-m", "first"},
-	} {
-		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
+	gitIn(t, dir, "init", "-q")
+	gitIn(t, dir, "commit", "-q", "--allow-empty", "-m", "first")
 
 	_, err := release.DescribeRepository(dir)
 	if err == nil {
@@ -195,6 +189,106 @@ func TestGitWithNoReachableTagFailsRatherThanDefaulting(t *testing.T) {
 	// failure is a checkout that fetched no tags rather than a missing tag.
 	if hint := domain.AsError(err).Hint; !strings.Contains(hint, "fetch-depth") {
 		t.Errorf("the refusal should point at the usual cause, hint was %q (%v)", hint, err)
+	}
+}
+
+// TestDescribeAgainstARealRepository.
+//
+// The table above exercises the scheme against strings; this exercises the half
+// that talks to git, which patch coverage found was reached only by its failure
+// case. `--version-from-git` is the whole point of the phase, and nothing ran
+// it against a repository that has a tag.
+func TestDescribeAgainstARealRepository(t *testing.T) {
+	dir := newRepository(t)
+
+	described, err := release.DescribeRepository(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if described.Tag.String() != "1.4.0" {
+		t.Errorf("tag = %s, want 1.4.0", described.Tag)
+	}
+	if described.Distance != 2 {
+		t.Errorf("distance = %d, want 2", described.Distance)
+	}
+	if described.SHA == "" {
+		t.Error("no commit sha, so two branches at the same distance would collide")
+	}
+	if described.Dirty {
+		t.Error("a clean tree was reported dirty")
+	}
+	// The commit date is what the archive's timestamp falls back to, so a
+	// zero here silently turns every archive into an epoch-stamped one.
+	if described.CommitTime.IsZero() {
+		t.Error("no commit date")
+	}
+
+	version, err := described.Version(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "1.4.1-dev.2.g" + described.SHA
+	if version.String() != want {
+		t.Errorf("version = %s, want %s", version, want)
+	}
+
+	// And a dirty tree is refused, through the real `--dirty` flag rather
+	// than a hand-written string -- which is the half that would break if
+	// git's spelling ever changed.
+	if err := os.WriteFile(filepath.Join(dir, "untracked-change"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", ".")
+
+	dirty, err := release.DescribeRepository(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty.Dirty {
+		t.Fatal("a modified work tree was not reported dirty")
+	}
+	if _, err := dirty.Version(false); err == nil {
+		t.Error("a dirty tree must be refused without --allow-dirty")
+	}
+}
+
+// newRepository builds a repository two commits past the tag v1.4.0.
+func newRepository(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+
+	dir := t.TempDir()
+	gitIn(t, dir, "init", "-q")
+	commit := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, dir, "add", ".")
+		gitIn(t, dir, "commit", "-q", "-m", name)
+	}
+	commit("first")
+	gitIn(t, dir, "tag", "v1.4.0")
+	commit("second")
+	commit("third")
+	return dir
+}
+
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	// Identity and signing are forced off: a developer's global config that
+	// signs every commit would make this fail for a reason unrelated to
+	// what it tests.
+	full := append([]string{
+		"-C", dir,
+		"-c", "user.email=audit@example",
+		"-c", "user.name=audit",
+		"-c", "commit.gpgsign=false",
+	}, args...)
+	if out, err := exec.Command("git", full...).CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
 

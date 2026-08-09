@@ -127,10 +127,10 @@ func WriteArchive(dir, out string, modTime time.Time) error {
 //
 // SOURCE_DATE_EPOCH wins where it is expressed, because that is the convention
 // a reproducible-builds pipeline already sets and this tool has no business
-// overriding it. Otherwise the caller's suggestion is used -- the commit date,
-// when the version came from a repository -- and otherwise the epoch, which is
-// a timestamp that is obviously not a build time rather than one that looks
-// like a real date and is not.
+// overriding it. Otherwise the caller's suggestion is used -- `archive` passes
+// the commit date of the repository the bundle sits in, when there is one --
+// and otherwise the epoch, which is a timestamp that is obviously not a build
+// time rather than one that looks like a real date and is not.
 func ArchiveModTime(fallback time.Time) (time.Time, error) {
 	raw, ok := os.LookupEnv(SourceDateEpochEnv)
 	if !ok || strings.TrimSpace(raw) == "" {

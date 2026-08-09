@@ -212,7 +212,10 @@ records — and every entry carries one timestamp, resolved in this order:
    ignored: a pipeline that sets the variable is asking for a specific time, and
    silently substituting a different one produces an archive that is
    reproducible by accident.
-2. The commit date, when the version came from a repository.
+2. The commit date of the repository the bundle sits in, when there is one.
+   `build` and `archive` are separate commands and nothing in a bundle records
+   how its version was resolved, so this is the fact `archive` can actually
+   observe — and it gives the same answer for the case the step exists for.
 3. The epoch — a timestamp that is obviously not a build time, rather than one
    that looks like a real date and is not.
 

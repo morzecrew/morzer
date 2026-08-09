@@ -41,6 +41,16 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 			// rather than sum: writing a checksum list over a broken
 			// tree produces evidence that the tree is exactly as
 			// broken as it is.
+			// The operator's own arguments are settled first, so a
+			// typo is not reported behind a complaint about the
+			// bundle they pointed at. A flag that quietly does
+			// nothing is worse than one that refuses: whoever passed
+			// --allow-dirty believes they permitted something.
+			if allowDirty && !fromGit {
+				return domain.Usage(
+					"--allow-dirty only means something with --version-from-git")
+			}
+
 			loaded, err := release.Load(dir)
 			if err != nil {
 				return err

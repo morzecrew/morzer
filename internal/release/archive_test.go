@@ -156,6 +156,21 @@ func TestAnArchiveRoundTripsIntoALoadableRelease(t *testing.T) {
 	if rel.Version().String() != "1.2.0" {
 		t.Errorf("version = %s", rel.Version())
 	}
+
+	// The documented claim, asserted rather than assumed: "a bundle and its
+	// archive produce the same content digest, so a digest recorded from
+	// the directory verifies the archive and vice versa". It survives
+	// normalisation because the digest covers contents, paths and the
+	// executable bit -- not ownership, not the other permission bits, and
+	// not timestamps, all three of which this writer rewrites.
+	source, err := release.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !atomicfs.SameDigest(source.Digest, rel.Digest) {
+		t.Errorf("packing changed the release's identity:\n  directory %s\n  archive   %s",
+			source.Digest, rel.Digest)
+	}
 }
 
 // TestSourceDateEpochIsRefusedRatherThanIgnored.
