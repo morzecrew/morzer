@@ -58,6 +58,14 @@ func Notes(rel domain.Release) string {
 	return string(raw)
 }
 
+// maxSummaryRunes bounds the one-liner.
+//
+// The file is already bounded, but a bound of 256 KiB is no bound at all for the
+// place this goes: a notification body. Nothing stops a vendor writing their
+// whole changelog as one line, and the first thing that happens to it is being
+// posted to somebody's chat channel.
+const maxSummaryRunes = 200
+
 // NotesSummary is the first line worth reading, for somewhere a paragraph does
 // not fit -- a notification body, a status line.
 //
@@ -70,7 +78,17 @@ func NotesSummary(notes string) string {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		return line
+		return truncateRunes(line, maxSummaryRunes)
 	}
 	return ""
+}
+
+// truncateRunes cuts on a rune boundary, so a multi-byte character is never
+// split into the mojibake that a byte-wise cut produces.
+func truncateRunes(s string, limit int) string {
+	runes := []rune(s)
+	if len(runes) <= limit {
+		return s
+	}
+	return string(runes[:limit]) + "…"
 }

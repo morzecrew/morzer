@@ -369,11 +369,16 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	}
 
 	if opts.DryRun {
-		return Result{
-			Summary: fmt.Sprintf("would import installation %s (%s) from %s",
-				export.Installation.ID, export.Installation.Product, opts.SourcePath),
-			Data: importSummary(export, recoveryKey, ""),
-		}, nil
+		summary := fmt.Sprintf("would import installation %s (%s) from %s",
+			export.Installation.ID, export.Installation.Product, opts.SourcePath)
+		if dropped > 0 {
+			// A plan that omitted this would be planning a different
+			// import from the one it would perform, and the omitted
+			// part is the one an operator would want to know before
+			// agreeing.
+			summary += fmt.Sprintf(", dropping %d backup target(s)", dropped)
+		}
+		return Result{Summary: summary, Data: importSummary(export, recoveryKey, "")}, nil
 	}
 
 	opID := d.newOpID()
@@ -440,7 +445,7 @@ func modeForImport(
 	if requested != domain.ModeDev {
 		return domain.Installation{}, 0, domain.ValidationError(nil,
 			"this export is from a %s installation and cannot be imported as production",
-			describeInstallationMode(inst.Mode)).
+			inst.Mode.Describe()).
 			WithHint("a sandbox's history is not trustworthy -- releases pruned, " +
 				"pre-update backups skipped -- and you would find that out at " +
 				"rollback time. Build the production machine with `morzer init`")
@@ -450,13 +455,6 @@ func modeForImport(
 	dropped := len(inst.Backup.Targets)
 	inst.Backup.Targets = nil
 	return inst, dropped, nil
-}
-
-func describeInstallationMode(m domain.Mode) string {
-	if m == "" {
-		return "production"
-	}
-	return string(m)
 }
 
 func importFlags(opts ImportOptions) map[string]string {

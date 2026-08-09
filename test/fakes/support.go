@@ -605,6 +605,14 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 	names := s.ManagedUnitNames(params.Product)
 	out := make([]ports.Unit, 0, len(names))
 	for _, name := range names {
+		// The update pair is conditional, exactly as a real supervisor
+		// makes it. A fake that returned every managed unit whatever it
+		// was asked for would make any test about UpdateTimer vacuous --
+		// it would pass whether the lifecycle layer set the field or
+		// not, which is the only thing such a test is checking.
+		if strings.Contains(name, "-update.") && !params.UpdateTimer {
+			continue
+		}
 		out = append(out, ports.Unit{
 			Name:     name,
 			Contents: []byte("# fake unit for " + params.Product + "\n"),

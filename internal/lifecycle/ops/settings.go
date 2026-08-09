@@ -319,7 +319,12 @@ func (d *Deps) refreshUnits(ctx context.Context, inst domain.Installation) error
 		Product:     inst.Product,
 		ManagerPath: d.ManagerPath,
 		ConfigPath:  d.Paths.InstallationFile(),
-		UpdateTimer: inst.Update.FollowsChannel(),
+		// Both, not either. A timer exists to poll, and polling is
+		// gated by `update.check` (RFC 0016 §5.6) -- so a machine with a
+		// channel and checking off would install a unit that fails every
+		// night on a refusal, which is how an operator learns to ignore
+		// the unit.
+		UpdateTimer: inst.Update.FollowsChannel() && inst.Update.Check,
 	})
 	if err != nil {
 		return err

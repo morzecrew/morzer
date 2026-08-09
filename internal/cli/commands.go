@@ -249,23 +249,22 @@ func newUpdateCommand(app *App) *cobra.Command {
 			opts.Profile = profile
 			opts.SkipBackup = skipBackup
 
+			// Three flags turn `update` into a different operation, and
+			// each stops short of installing in a different way.
+			// Refused together rather than resolved by precedence: an
+			// operator who typed two of them meant one, and silently
+			// picking would tell them the machine did what they asked.
+			if err := oneUpdateMode(check, stage, unattended, to); err != nil {
+				return err
+			}
+
 			// Before everything else an update needs and a check does
 			// not: the --skip-backup/--force rule below, the backup
 			// engine, the lock and every confirmation. Asking what
 			// exists installs nothing, so `update --check
 			// --skip-backup` must not fail for a backup option the
 			// check never uses.
-			if check && stage {
-				return domain.Usage("--check and --stage are alternatives").
-					WithHint("--check asks what exists; --stage fetches what the " +
-						"channel points at")
-			}
 			if check {
-				if to != "" {
-					return domain.Usage("--check and --to are alternatives").
-						WithHint("--to names a release already in the store; " +
-							"--check asks the source what it offers")
-				}
 				checkRef := ""
 				if len(args) == 1 {
 					checkRef = args[0]
@@ -292,11 +291,6 @@ func newUpdateCommand(app *App) *cobra.Command {
 				return runUnattendedTick(cmd, app, opts)
 			}
 			if stage {
-				if to != "" {
-					return domain.Usage("--stage and --to are alternatives").
-						WithHint("--to installs a release already in the store; " +
-							"--stage fetches one without installing it")
-				}
 				stageRef := ""
 				if len(args) == 1 {
 					stageRef = args[0]
@@ -371,6 +365,34 @@ func newUpdateCommand(app *App) *cobra.Command {
 			"declares a failure cannot need a database restore")
 
 	return cmd
+}
+
+// oneUpdateMode refuses a command that asks for two different operations.
+//
+// `--to` is included because it is the one that installs: pairing it with a flag
+// whose whole promise is "this does not install anything" is a contradiction,
+// and picking a winner would resolve it in silence.
+func oneUpdateMode(check, stage, unattended bool, to string) error {
+	named := []string{}
+	for _, mode := range []struct {
+		on   bool
+		flag string
+	}{{check, "--check"}, {stage, "--stage"}, {unattended, "--unattended"}} {
+		if mode.on {
+			named = append(named, mode.flag)
+		}
+	}
+	if to != "" && len(named) > 0 {
+		return domain.Usage("%s and --to are alternatives", named[0]).
+			WithHint("--to installs a release already in the store; %s stops "+
+				"short of installing anything", named[0])
+	}
+	if len(named) > 1 {
+		return domain.Usage("%s are alternatives", strings.Join(named, " and ")).
+			WithHint("--check asks what exists, --stage fetches it, and " +
+				"--unattended does both and may install; each is one command")
+	}
+	return nil
 }
 
 // runUnattendedTick is what the update timer runs.

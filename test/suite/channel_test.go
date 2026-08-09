@@ -287,3 +287,73 @@ func TestFollowingNothingIsARefusalThatNamesTheSetting(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Hint, "update.channel")
 }
+
+// TestAnApplyDoesNotEraseARecordedRefusal.
+//
+// Found by re-reading the retirement rule against a state it was not written
+// for. A refusal carries no version, so "clear anything not newer than what just
+// became current" swept it away on *every* `apply` -- and the next poll then
+// re-downloaded the bundle it had already judged unusable, forever. The refusal
+// record exists precisely to stop that.
+func TestAnApplyDoesNotEraseARecordedRefusal(t *testing.T) {
+	h, registry, _, _ := followingHarness(t)
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// Make the channel offer a downgrade, which is refused and recorded.
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	current.Version = domain.MustParseVersion("1.4.0")
+	require.NoError(t, h.Deps.State.SetCurrentRelease(ctx, current))
+
+	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.Error(t, err)
+	refused, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, refused.Refused)
+
+	// An ordinary converge, which touches nothing about the channel.
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	kept, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, refused.UpstreamDigest, kept.UpstreamDigest,
+		"the apply forgot which artefact had been refused")
+
+	before := registry.blobBytes.Load()
+	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+	assert.Equal(t, before, registry.blobBytes.Load(),
+		"the refused bundle was downloaded again after an apply")
+}
+
+// TestAPlanStagesNothing.
+//
+// Staging writes a bundle into the release store and a record the next tick
+// reads. Both are changes to the machine, so a `--dry-run` that made them would
+// be the one command in this program that lies about what it does — and the
+// operator asking for a plan is often the one deciding whether to allow a
+// download at all.
+func TestAPlanStagesNothing(t *testing.T) {
+	h, registry, _, notifier := followingHarness(t)
+	ctx := context.Background()
+
+	res, err := ops.FollowChannel(ctx, h.Deps,
+		ops.FollowChannelOptions{Options: ops.Options{DryRun: true}, Explicit: true})
+	require.NoError(t, err)
+
+	// It still says what it found. A plan that reported nothing would be
+	// useless, and the peek costs a manifest whether or not anything follows.
+	assert.True(t, res.Moved)
+	assert.Contains(t, res.Summary(), "would")
+
+	assert.Zero(t, registry.blobBytes.Load(),
+		"a plan downloaded the bundle it was planning to download")
+
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.True(t, candidate.IsZero(), "a plan left a candidate record behind")
+	assert.Empty(t, notifier.kinds(), "a plan told somebody a release was staged")
+}

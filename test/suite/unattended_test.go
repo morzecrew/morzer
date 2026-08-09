@@ -473,3 +473,138 @@ func TestATickThatCannotTakeTheLockDoesNotFailTheUnit(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrLocked)
 }
+
+// TestPrereleaseAdmissibilityDiffersByMode.
+//
+// RFC 0014 gives every development build a prerelease version, so this is not a
+// corner case: it is what a vendor's own CI publishes on every commit. A
+// production machine offered them would be told about its vendor's work in
+// progress, and a channel that installed one would be a customer running an
+// untagged build.
+//
+// Both directions asserted. A refusal that fired in either mode would be a
+// sandbox that cannot do the one thing it exists for.
+func TestPrereleaseAdmissibilityDiffersByMode(t *testing.T) {
+	prerelease := func(t *testing.T, dir string) {
+		t.Helper()
+		for _, name := range []string{"manifest.yaml", "VERSION"} {
+			path := filepath.Join(dir, name)
+			raw, err := os.ReadFile(path)
+			require.NoError(t, err)
+			patched := strings.ReplaceAll(string(raw), "1.3.0", "1.3.0-dev.7")
+			require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+		}
+	}
+
+	t.Run("a production machine refuses it", func(t *testing.T) {
+		h, _, _, _ := followingHarnessWith(t, prerelease)
+
+		_, err := ops.FollowChannel(context.Background(), h.Deps,
+			ops.FollowChannelOptions{Explicit: true})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "prerelease")
+	})
+
+	t.Run("a sandbox stages it", func(t *testing.T) {
+		h, _, _, _ := followingHarnessWith(t, prerelease)
+		ctx := context.Background()
+
+		// Created as a sandbox, which is the only moment a mode may be
+		// chosen -- so the state is removed and written afresh rather
+		// than edited, which the store refuses.
+		inst, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		require.NoError(t, os.Remove(h.Paths.InstallationState()))
+		inst.Mode = domain.ModeDev
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+		res, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+		require.NoError(t, err)
+		assert.True(t, res.Candidate.IsStaged())
+		assert.Equal(t, "1.3.0-dev.7", res.Candidate.Version.String())
+	})
+}
+
+// TestTheUpdateTimerNeedsBothTheChannelAndPermission.
+//
+// A timer exists to poll, and polling is gated by `update.check`. A machine with
+// a channel and checking off would install a unit that fails every night on a
+// refusal -- which is exactly how an operator learns to ignore a unit, and then
+// misses the night it means something.
+func TestTheUpdateTimerNeedsBothTheChannelAndPermission(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+	ctx := context.Background()
+
+	// The machine manages units, which is what makes reconciliation its
+	// business at all.
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+
+	timer := "demo-update.timer"
+
+	// A channel with no permission to use it.
+	_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+		Set: map[string]string{"update.channel": "oci://registry.example/demo/bundle:stable"},
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, h.Supervisor.Installed, timer,
+		"a timer was installed on a machine that may not contact a registry")
+
+	// Both, and it appears.
+	_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+		Set: map[string]string{"update.check": "true"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, h.Supervisor.Installed, timer)
+
+	// And clearing the channel takes it away again, which is the half a
+	// unit set installed once at `init` could never do.
+	_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+		Unset: []string{"update.channel"},
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, h.Supervisor.Installed, timer,
+		"the timer outlived the channel it was polling")
+}
+
+// TestAnUpdateCheckOffersPrereleasesOnlyToASandbox.
+//
+// Found by the sabotage sweep, not by reading: deleting the filter left every
+// test green, because the fake registry's tag list had no prerelease in it. The
+// check had a rule nothing exercised.
+//
+// It matters because RFC 0014 gives every development build a prerelease
+// version, so a vendor's repository accumulates them on every commit. A
+// production machine told "1.4.0-dev.1 is available" learns to ignore the check.
+func TestAnUpdateCheckOffersPrereleasesOnlyToASandbox(t *testing.T) {
+	h, registry, srv, _ := followingHarness(t)
+	ctx := context.Background()
+
+	// A repository as a vendor's CI leaves it: releases beside the builds
+	// that led to them.
+	registry.tags = []string{"1.2.0", "1.3.0", "1.4.0-dev.1", "latest"}
+	ref := ociRef(srv, "demo/bundle", "1.2.0").String()
+
+	production, err := ops.CheckForUpdate(ctx, h.Deps,
+		ops.UpdateCheckOptions{Ref: ref, Explicit: true})
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", production.Latest.String(),
+		"a production machine was offered a development build")
+
+	// The same repository, read by a sandbox, which exists to run them.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(h.Paths.InstallationState()))
+	inst.Mode = domain.ModeDev
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	sandbox, err := ops.CheckForUpdate(ctx, h.Deps,
+		ops.UpdateCheckOptions{Ref: ref, Explicit: true})
+	require.NoError(t, err)
+	assert.Equal(t, "1.4.0-dev.1", sandbox.Latest.String(),
+		"a sandbox was not offered the build it exists to test")
+}

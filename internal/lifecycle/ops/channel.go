@@ -52,6 +52,10 @@ func (r FollowChannelResult) Summary() string {
 	switch {
 	case !r.Moved:
 		return fmt.Sprintf("%s is unchanged; nothing to stage", r.Ref)
+	case r.Candidate.IsZero():
+		// Moved, with no candidate: a plan. The version is unknown
+		// because finding it out is the download a plan declines.
+		return fmt.Sprintf("%s has moved; a real run would fetch and stage it", r.Ref)
 	case r.Candidate.IsStaged():
 		return fmt.Sprintf("staged %s, not installed -- `morzer update --to %s` applies it",
 			r.Candidate, r.Candidate.Version)
@@ -133,6 +137,18 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 		return result, nil
 	}
 	result.Moved = true
+
+	// A plan stops here. Staging fetches a bundle into the release store and
+	// writes a record the next tick reads -- both are changes to the
+	// machine, and a --dry-run that made them would be the one command in
+	// this program that lies about what it does.
+	//
+	// What it can honestly report is that the channel has moved. The version
+	// behind it is not knowable without the download this is declining to
+	// do.
+	if opts.DryRun {
+		return result, nil
+	}
 
 	candidate := domain.UpdateCandidate{
 		SchemaVersion:  domain.UpdateCandidateSchemaVersion,
@@ -235,6 +251,16 @@ func (d *Deps) retireStagedCandidate(ctx context.Context, record domain.ReleaseR
 		// Unreadable is not fatal here for the same reason as above:
 		// this file is rebuilt by the next poll.
 		return nil //nolint:nilerr // derived state; the next poll rewrites it
+	}
+
+	// A *refusal* is not retired by anything an operator installs. It
+	// records which upstream digest was already judged unusable, and
+	// clearing it would have the next poll re-download that bundle to reach
+	// the same refusal -- which is the whole reason refusals are recorded.
+	// Its Version is zero, so without this it would look like a candidate
+	// older than everything and be cleared by every `apply`.
+	if !candidate.IsStaged() {
+		return nil
 	}
 	if candidate.Version.GreaterThan(record.Version) {
 		return nil

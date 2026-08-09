@@ -813,6 +813,18 @@ could: whether this installation manages units at all. `init
 units into a machine that deliberately has none would be the manager overruling
 a decision somebody already made.
 
+### `status` names the staged release; it does not print the notes
+
+§5.7 said "`update --check` and the staged-release line in `status` render the
+incoming release's notes". `--check` does. `status` shows the line and stops.
+
+A `status` reading is a compact report of what is deployed and whether it works,
+and a vendor's changelog inside it would push the service list and the health
+results off a terminal — every time it is run, until somebody installs the
+update. The notes are one command away, and the page says which one. The
+divergence is recorded rather than quietly taken because the difference is
+visible to anyone reading §5.7 beside the output.
+
 ### `release prune` moved into the lifecycle layer
 
 Dev mode prunes after every update (§5.4), and the retention pass lived in

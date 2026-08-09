@@ -136,7 +136,7 @@ func (s *Store) checkModeUnchanged(ctx context.Context, next domain.Installation
 
 	refusal := domain.ValidationError(nil,
 		"mode is fixed when an installation is created: this one is %s",
-		describeMode(current.Mode))
+		current.Mode.Describe())
 	if next.Mode == domain.ModeDev {
 		return refusal.WithHint("a production machine cannot be demoted to a sandbox; " +
 			"its data would immediately be under relaxed rules")
@@ -144,13 +144,6 @@ func (s *Store) checkModeUnchanged(ctx context.Context, next domain.Installation
 	return refusal.WithHint("a sandbox cannot be promoted to production -- its history is " +
 		"not trustworthy, and you would find that out at rollback time. " +
 		"Promotion is backup, fresh `init`, restore")
-}
-
-func describeMode(m domain.Mode) string {
-	if m == "" {
-		return "production"
-	}
-	return string(m)
 }
 
 // migrateInstallation runs forward-only state migrations.

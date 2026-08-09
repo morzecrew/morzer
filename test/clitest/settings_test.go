@@ -72,3 +72,24 @@ func TestAChannelMustBeAReferenceThisManagerCouldFollow(t *testing.T) {
 
 	r.Run("config", "get", "update.channel").ExitCode(0)
 }
+
+// TestUpdateModesAreRefusedTogether.
+//
+// `--check`, `--stage` and `--unattended` each turn `update` into a different
+// operation, and `--to` is the one that installs. An operator who typed two of
+// them meant one; picking a winner silently would tell them the machine did what
+// they asked when it did something else.
+func TestUpdateModesAreRefusedTogether(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	for _, args := range [][]string{
+		{"update", "--check", "--stage"},
+		{"update", "--check", "--unattended"},
+		{"update", "--stage", "--unattended"},
+		{"update", "--check", "--to", "1.3.0"},
+		{"update", "--stage", "--to", "1.3.0"},
+		{"update", "--unattended", "--to", "1.3.0"},
+	} {
+		r.Run(args...).Failed().OutputContains("alternatives")
+	}
+}

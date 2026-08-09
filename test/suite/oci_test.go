@@ -52,6 +52,10 @@ type fakeRegistry struct {
 	// corruptBlob serves bytes that do not match the advertised digest.
 	corruptBlob bool
 
+	// tags overrides what the repository enumerates. Empty means the default
+	// list, so every existing test keeps the shape it was written against.
+	tags []string
+
 	// served counts the bytes each kind of request cost, which is the only
 	// way to assert that a poll is cheap. A test asserting that Peek
 	// returned the right digest would pass just as happily if it had
@@ -131,7 +135,16 @@ func (r *fakeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// installing whatever it pointed at today.
 	case strings.HasSuffix(req.URL.Path, "/tags/list"):
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"name":"demo/bundle","tags":["1.2.0","1.3.0","latest"]}`))
+		tags := r.tags
+		if len(tags) == 0 {
+			tags = []string{"1.2.0", "1.3.0", "latest"}
+		}
+		body, err := json.Marshal(map[string]any{"name": "demo/bundle", "tags": tags})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write(body)
 
 	case strings.Contains(req.URL.Path, "/blobs/"):
 		if r.blobStatus != 0 {

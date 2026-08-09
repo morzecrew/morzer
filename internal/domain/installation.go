@@ -95,6 +95,18 @@ func joinModes() string {
 	return strings.Join(out, ", ")
 }
 
+// Describe renders a mode for an operator, including the one spelled by
+// absence.
+//
+// One implementation, because two of them is how a refusal comes to say
+// "mode is fixed: this one is " with nothing after the colon.
+func (m Mode) Describe() string {
+	if m == "" {
+		return "production"
+	}
+	return string(m)
+}
+
 // IsDev reports whether this installation is a sandbox.
 //
 // Asked as a question about the installation rather than by comparing the field
