@@ -71,6 +71,19 @@ type Manifest struct {
 	// when the vendor declared nothing.
 	Backup BackupSpec `yaml:"backup" json:"backup,omitzero"`
 
+	// Bundle describes the *artefact*, not the host it installs on.
+	//
+	// A separate block from `requirements` deliberately: everything in that
+	// one -- architectures, OS, tools, memory, disk -- says what the machine
+	// must provide. This says what the bundle itself is, and a reader
+	// looking for "how big is this thing" should not have to find it among
+	// the host's obligations.
+	//
+	// omitzero for the same reason Backup carries it: an empty struct is not
+	// omitted by omitempty, so every release without one would announce a
+	// `"bundle": {}` in `release show --json`.
+	Bundle BundleSpec `yaml:"bundle" json:"bundle,omitzero"`
+
 	Health        HealthSpec                `yaml:"health" json:"health"`
 	Compatibility Compatibility             `yaml:"compatibility" json:"compatibility"`
 	Retention     Retention                 `yaml:"retention" json:"retention"`
@@ -331,6 +344,25 @@ func (b BackupSpec) Consistency(volume string) VolumeConsistency {
 	return spec.Consistency
 }
 
+// BundleSpec is what a release says about its own packaging.
+type BundleSpec struct {
+	// UncompressedSize is what the archive expands to, and it exists to
+	// raise the extraction ceiling for a bundle carrying container images.
+	//
+	// It is read out of the tar stream *before the signature is checked*, so
+	// it is attacker-controlled input in the strictest sense: it may only
+	// ever **lower** the effective limit, never raise it above the hard cap.
+	// A declaration is a request for a smaller budget than the manager
+	// allows, not permission to exceed it, and an absent one means the
+	// default ceiling rather than "unbounded" -- a missing field must never
+	// be the permissive reading of anything that gates untrusted bytes.
+	//
+	// The clamp lives in the extractor, not in this validation. By the time
+	// a manifest validates, the value has already been read from the stream
+	// and used.
+	UncompressedSize ByteSize `yaml:"uncompressed_size" json:"uncompressed_size,omitempty"`
+}
+
 type HealthSpec struct {
 	Checks []HealthCheck `yaml:"checks" json:"checks,omitempty"`
 }
@@ -545,6 +577,11 @@ func (m *Manifest) Validate() error {
 
 	// parameters
 	ValidateParameters(m.Parameters, &v)
+
+	if m.Bundle.UncompressedSize < 0 {
+		v.add("bundle.uncompressed_size", "must not be negative, got %s",
+			m.Bundle.UncompressedSize)
+	}
 
 	if m.Requirements.CPUs < 0 {
 		v.add("requirements.cpus", "must not be negative, got %d", m.Requirements.CPUs)

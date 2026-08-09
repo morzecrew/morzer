@@ -37,6 +37,20 @@
       },
       "type": "object"
     },
+    "bundle": {
+      "additionalProperties": false,
+      "properties": {
+        "uncompressed_size": {
+          "description": "A byte size, e.g. 2GiB.",
+          "examples": [
+            "2GiB",
+            "512MiB"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "compatibility": {
       "additionalProperties": false,
       "properties": {

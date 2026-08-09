@@ -44,6 +44,7 @@ published version stays readable until it is explicitly deprecated.
 | `secrets` | table | | Where the encrypted state lives and where it renders. |
 | `operations` | map | | Named lifecycle operations: migrate, smoke test, backup, restore. |
 | `backup` | table | | What the manager may do about the project's volumes. |
+| `bundle` | table | | What the release says about its own packaging, as distinct from what it needs of the host. |
 | `health` | table | | How to tell whether the product is working. |
 | `compatibility` | table | | What this release can be installed over, and rolled back from. |
 | `retention` | table | | How many releases and backups to keep. |
@@ -108,6 +109,31 @@ Checked in preflight and reported by `doctor`.
 | `disk` | size | Minimum free disk, e.g. `5GiB`. |
 | `cpus` | int | Logical CPUs the release wants. A cgroup quota is honoured where one is in force, so a containerised manager sees what it may actually use rather than what the host has. |
 | `ports` | list | TCP ports the release binds, checked for conflicts. A literal number, or `"{{ .Parameters.<name> }}"` so the check follows the port the deployment actually publishes. |
+
+## bundle
+
+What the release says about its own packaging, as distinct from what it needs
+of the host.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `uncompressed_size` | size | What the archive expands to, e.g. `12GiB`. Raises the extraction ceiling for a bundle carrying container images. |
+
+A separate block from `requirements` on purpose: everything there describes the
+*host*, and this describes the *artefact*.
+
+!!! warning "It can only ever lower the limit"
+
+    This value is read out of the tar stream **before the signature is
+    checked**, so it is attacker-controlled input in the strictest sense. The
+    effective limit is `min(declared, hard cap)` — a declaration is a request
+    for a smaller budget than the manager allows, never permission to exceed
+    it. A bundle needing more than the cap is refused, and raising the cap is a
+    change to morzer rather than something a bundle can ask for.
+
+    Omitting it means the **default** ceiling, not "unbounded". A missing field
+    must never be the permissive reading of anything that gates untrusted
+    bytes.
 
 ## parameters
 

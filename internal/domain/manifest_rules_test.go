@@ -72,6 +72,12 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			"metadata.support_url",
 		},
 
+		// bundle -- the artefact's own description
+		"a negative uncompressed size": {
+			func(m *Manifest) { m.Bundle.UncompressedSize = ByteSize(-1) },
+			"bundle.uncompressed_size",
+		},
+
 		// requirements
 		"a negative cpu requirement": {
 			func(m *Manifest) { m.Requirements.CPUs = -1 }, "requirements.cpus",
