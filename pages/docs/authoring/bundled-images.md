@@ -120,6 +120,47 @@ tells you whether the result is well formed.
     `tar` that does not is refused. See
     [publishing](publishing.md#if-you-roll-your-own-tar).
 
+## What the customer's machine does with it
+
+Nothing they have to think about: `init` and `update` load the bundle's images
+as part of staging the release, before the converge that needs them. There is no
+preload step and no flag.
+
+Underneath, the manager serves the `images/` layout to the container runtime
+over `127.0.0.1`, read-only, for the length of the operation, and the runtime
+performs an ordinary registry pull out of it. Ordinary is the point: the runtime
+verifies every blob it fetches against the digest the manifest names, so a
+bundle whose bytes are not what its index claims is refused there rather than
+discovered later.
+
+### The image is deployed under a name you did not publish
+
+```text
+registry.example/demo/app:morzer-sha256-0000000000000000…
+```
+
+A container runtime records the repository it *pulled* an image from, and
+nothing can add a digest reference for a repository it never contacted —
+`docker tag` refuses outright, with `refusing to create a tag with a digest
+reference`. So a bundled image cannot answer to `registry.example/demo/app@sha256:…`
+on the customer's machine, however the bytes arrived, and Compose has to receive
+a name that resolves.
+
+`ref` is unaffected as the identity: it is what your signature covers, what
+`release show` reports, and what the tag above is derived from — which is also
+why the tag is identical on every machine and every run, and why a rendered
+Compose file does not change between deployments.
+
+Two consequences worth knowing before a customer asks:
+
+- **`docker images` on their machine shows a tag you never published.** It is
+  the manager's, and the `morzer-` prefix is there so that is obvious.
+- **A missing bundled image is a refusal, not a pull.** If the image store is
+  pruned, `apply` stops with `1 of 1 bundled image(s) are not in the local image
+  store` and names `morzer release ingest`. It does not fall back to your
+  registry: the deployed name is a tag, and a tag your registry happened to
+  serve would let a digest-pinned deployment converge on bytes nobody verified.
+
 ## Size
 
 Measured from real layouts, because the numbers are not what estimating
@@ -163,3 +204,9 @@ read as no budget at all.
 
     It also means an unsigned bundle carrying images asks the customer to trust
     the transport alone. Sign your releases.
+
+    The chain is checked twice over, at different granularities: `SHA256SUMS`
+    covers every file under `images/` before anything is installed, and the
+    container runtime independently verifies each blob it fetches during the
+    load. The second is not redundant — it is what catches a layout that is
+    internally inconsistent while being perfectly signed.
