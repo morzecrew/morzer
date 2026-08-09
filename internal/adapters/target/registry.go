@@ -135,6 +135,14 @@ func (r *Registry) Fetch(ctx context.Context, ref ports.RemoteRef, destDir strin
 	return t.Fetch(ctx, ref, destDir)
 }
 
+func (r *Registry) FetchFile(ctx context.Context, ref ports.RemoteRef, name, destDir string) error {
+	t, err := r.For(ref.Target)
+	if err != nil {
+		return err
+	}
+	return t.FetchFile(ctx, ref, name, destDir)
+}
+
 func (r *Registry) Verify(ctx context.Context, ref ports.RemoteRef) error {
 	t, err := r.For(ref.Target)
 	if err != nil {

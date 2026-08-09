@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
+
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -49,7 +51,27 @@ const ManifestFileName = ports.BackupManifestFileName
 // directory and hands them to a restore hook that was never told about them --
 // so the database comes back, the uploads do not, and nothing says so. A
 // refusal naming the manager version is the only honest answer.
-const BackupManifestSchemaVersion = 3
+//
+// 4 adds the export component and retires `secrets`. An older manager reading
+// a schema-4 backup would find no `secrets.sops.yaml.age` where it expects one
+// and an `export.yaml.age` it has no idea is the replacement -- so it would
+// restore the data and silently drop the half of the backup that carries
+// identity. Nothing is released, so this protects nobody today; it is here
+// because it will matter after the first tag, and because the bump is free now
+// and impossible later.
+const BackupManifestSchemaVersion = 4
+
+// ExportProvider builds the installation export a backup carries.
+//
+// The signature is the lifecycle layer's ops.BuildExport, supplied by the CLI
+// where adapters are named. The engine takes a function rather than importing
+// that package: an adapter reaching into the lifecycle layer would invert the
+// dependency the whole architecture rests on, and the engine has no business
+// knowing how an export is assembled -- only that it gets one.
+// The boolean is "this installation has an export to carry", distinct from an
+// error: an installation with no recovery recipient has made a choice, not hit
+// a fault, and a backup for it succeeds without the component.
+type ExportProvider func(context.Context) (domain.InstallationExport, bool, error)
 
 // Engine is the hook-coordinating backup engine.
 type Engine struct {
@@ -76,6 +98,10 @@ type Engine struct {
 	// command, and a backup taken after it must be readable by the key it
 	// added.
 	recipients func(context.Context) ([]string, error)
+
+	// export builds the identity document the backup carries. Nil means no
+	// export component; see Config.Export.
+	export ExportProvider
 
 	// runtime reads the project's volumes. Nil in a build or a test that
 	// wires none, in which case a backup covers what the hook produces and
@@ -113,6 +139,18 @@ type Config struct {
 	// Required. An engine that cannot answer it refuses to take a backup
 	// rather than writing a plaintext one -- see Create.
 	Recipients func(context.Context) ([]string, error)
+
+	// Export builds the InstallationExport a backup carries.
+	//
+	// A function rather than a document, for the same reason Recipients is
+	// one: the export has to describe the machine at the moment the backup
+	// is taken, not at the moment the engine was constructed.
+	//
+	// Optional. Without it a backup carries no export component, which is
+	// what every test that does not care about recovery gets -- and what
+	// makes the absence of the component a testable state rather than an
+	// unreachable one.
+	Export ExportProvider
 
 	// Runtime reads and writes the project's volumes, and stops the
 	// services that mount them.
@@ -159,6 +197,7 @@ func New(cfg Config) *Engine {
 		newID:          cfg.NewID,
 		now:            cfg.Now,
 		recipients:     cfg.Recipients,
+		export:         cfg.Export,
 		freeSpace:      cfg.FreeSpace,
 		runtime:        cfg.Runtime,
 		runtimeConfig:  cfg.RuntimeConfig,
@@ -355,6 +394,17 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 	}
 	records = append(records, managed...)
 
+	// The identity document, and the recipients it alone is encrypted to.
+	// Written after the refusal above, so a backup that captured nothing
+	// does not acquire an export on its way to being rejected.
+	exportRecord, exportRecipients, err := e.captureExport(ctx, dir, components)
+	if err != nil {
+		return fail(err)
+	}
+	if exportRecord != nil {
+		records = append(records, *exportRecord)
+	}
+
 	// Encrypted last, so the hook and the copy above stay unchanged: they
 	// write plaintext into a 0700 directory, and it is protected before the
 	// backup is complete enough for anything to move it anywhere.
@@ -367,7 +417,13 @@ func (e *Engine) Create(ctx context.Context, scope ports.Scope, labels map[strin
 		_ = atomicfs.RemoveWithOverwrite(dir)
 		return ports.BackupRef{}, err
 	}
-	if records, err = encryptComponents(dir, records, recipients); err != nil {
+	records, err = encryptComponents(dir, records, func(rec ports.ComponentRecord) []string {
+		if rec.Component == ports.ComponentExport {
+			return exportRecipients
+		}
+		return recipients
+	})
+	if err != nil {
 		_ = atomicfs.RemoveWithOverwrite(dir)
 		return ports.BackupRef{}, err
 	}
@@ -449,14 +505,16 @@ func (e *Engine) captureManagedComponents(dir string, components []ports.Compone
 			}
 			err = copyOne(c, e.paths.ApplicationFile(), "application.yaml")
 		case ports.ComponentSecrets:
-			if err = copyOne(c, e.paths.SecretsFile(), "secrets.sops.yaml"); err != nil {
-				return nil, err
-			}
-			// The recipient sidecar travels with the encrypted file:
-			// without it a restore loses which key was the recovery
-			// key.
-			err = copyOne(c, filepath.Join(e.paths.EtcDir, "secrets.recipients.yaml"),
-				"secrets.recipients.yaml")
+			// Retired. The export component carries the same state
+			// byte for byte and the recipient roles the sidecar
+			// existed to preserve, so writing both would put the
+			// secret state in one backup twice.
+			//
+			// Still accepted in a scope so an explicit
+			// `--component secrets` is not an error on a manager
+			// that no longer produces one; it simply contributes
+			// nothing.
+			continue
 		case ports.ComponentManifest:
 			err = copyOne(c, filepath.Join(e.release.Root, "manifest.yaml"), "manifest.yaml")
 		default:
@@ -468,6 +526,97 @@ func (e *Engine) captureManagedComponents(dir string, components []ports.Compone
 		}
 	}
 	return out, nil
+}
+
+// ExportFileName is the identity document inside a backup, before encryption.
+const ExportFileName = "export.yaml"
+
+// captureExport writes the installation export into the backup.
+//
+// It returns the record and the recipients that record is encrypted to, which
+// are *not* the backup's own: the export goes to the recovery keys alone, so
+// the machine that wrote the backup cannot read the identity inside it.
+// Compromising the live host then yields the data and not the ability to
+// become the machine.
+//
+// A nil record means no export was written, and there are two honest reasons
+// for that: no provider was wired, or the installation has no recovery
+// recipient. The second is the interesting one. Falling back to the backup's
+// full recipient list would produce an identity bundle readable by exactly the
+// key that dies with the machine -- the appearance of a recovery path with
+// none of the substance -- so the component is skipped and `--from-backup`
+// says why rather than handing back something unusable.
+func (e *Engine) captureExport(
+	ctx context.Context, dir string, components []ports.Component,
+) (*ports.ComponentRecord, []string, error) {
+	if !containsComponent(components, ports.ComponentExport) || e.export == nil {
+		return nil, nil, nil
+	}
+
+	export, ok, err := e.export(ctx)
+	if err != nil {
+		return nil, nil, domain.BackupError(err,
+			"cannot assemble the installation export this backup carries")
+	}
+	if !ok {
+		return nil, nil, nil
+	}
+
+	// Belt and braces against the provider and this engine disagreeing:
+	// the provider decides whether there is an export to carry, and this
+	// decides who can read it. If the second answer is empty the first was
+	// wrong, and writing a component nobody can open is worse than writing
+	// none.
+	recipients := recoveryRecipients(export)
+	if len(recipients) == 0 {
+		return nil, nil, nil
+	}
+
+	data, err := yaml.Marshal(export)
+	if err != nil {
+		return nil, nil, domain.Internal(err, "cannot serialise the installation export")
+	}
+
+	dst := filepath.Join(dir, ExportFileName)
+	if err := atomicfs.WriteFile(dst, data, 0o600); err != nil {
+		return nil, nil, err
+	}
+	sum, err := atomicfs.DigestFile(dst)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return &ports.ComponentRecord{
+		Component: ports.ComponentExport,
+		Path:      ExportFileName,
+		Size:      int64(len(data)),
+		SHA256:    sum,
+	}, recipients, nil
+}
+
+// recoveryRecipients is the offline keys an export names, and nothing else.
+//
+// Read off the export rather than asked of the secret store, because the
+// export is the document being protected and its own recipient list is the
+// authority on who the recovery keys are. Asking twice would admit an answer
+// that disagrees with the file it guards.
+func recoveryRecipients(export domain.InstallationExport) []string {
+	var out []string
+	for _, r := range export.Secrets.Recipients {
+		if r.Kind == domain.RecipientKindRecovery && strings.TrimSpace(r.PublicKey) != "" {
+			out = append(out, r.PublicKey)
+		}
+	}
+	return out
+}
+
+func containsComponent(components []ports.Component, want ports.Component) bool {
+	for _, c := range components {
+		if c == want {
+			return true
+		}
+	}
+	return false
 }
 
 // recordArtifacts checksums the files the hook reported.
@@ -567,8 +716,17 @@ func (e *Engine) backupRecipients(ctx context.Context) ([]string, error) {
 // The plaintext is overwritten before removal rather than merely unlinked.
 // That is meaningful on tmpfs and very little else -- the backups directory is
 // ordinarily not tmpfs -- but it costs one write and removes the easiest case.
+// The recipient list is per record rather than per backup, which is RFC 0017
+// decision 11 arriving in the one place it can be enforced. Everything a
+// running machine may need to read again is encrypted to the deployment's full
+// list; the export component is encrypted to the recovery keys alone. A single
+// list for the whole backup could not express that, and the property it buys
+// -- the machine cannot read its own identity bundle -- is the difference
+// between compromising a host and inheriting it.
 func encryptComponents(
-	dir string, records []ports.ComponentRecord, recipients []string,
+	dir string,
+	records []ports.ComponentRecord,
+	recipientsFor func(ports.ComponentRecord) []string,
 ) ([]ports.ComponentRecord, error) {
 	out := make([]ports.ComponentRecord, 0, len(records))
 
@@ -576,6 +734,15 @@ func encryptComponents(
 		plain := filepath.Join(dir, rec.Path)
 		encrypted := plain + agecrypt.Extension
 
+		recipients := recipientsFor(rec)
+		if len(recipients) == 0 {
+			// Never a plaintext component. An empty list here would
+			// mean a bug in the caller rather than a configuration
+			// an operator chose -- the no-recovery-recipient case
+			// is handled by not writing the component at all.
+			return nil, domain.Internal(nil,
+				"no recipients for the %s component of this backup", rec.Component)
+		}
 		if err := encryptFile(plain, encrypted, recipients); err != nil {
 			return nil, err
 		}
@@ -839,6 +1006,21 @@ func (e *Engine) stage(
 		// decrypt a hundred gigabytes of uploads it will not use.
 		if c.Component == ports.ComponentVolumes &&
 			!componentSelected(opts.Components, ports.ComponentVolumes) {
+			continue
+		}
+		// The export is never staged, and this is the one component
+		// where that is a correctness requirement rather than a saving.
+		// It is encrypted to the recovery keys alone, so the machine
+		// running the restore *cannot* decrypt it -- and a restore that
+		// tried would fail at the point of putting the data back, on a
+		// backup that is perfectly good.
+		//
+		// Nor should it be staged if it could be: a restore puts back
+		// data, identity comes from `import`, and the two have
+		// different preconditions. Handing a restore hook the
+		// installation's identity would be handing it something it has
+		// no business reading.
+		if c.Component == ports.ComponentExport {
 			continue
 		}
 		encrypted = append(encrypted, c)

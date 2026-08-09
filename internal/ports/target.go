@@ -45,6 +45,26 @@ type BackupTarget interface {
 	// Fetch copies one backup down into destDir, which the caller owns.
 	Fetch(ctx context.Context, ref RemoteRef, destDir string) error
 
+	// FetchFile copies one named file out of a remote backup into destDir,
+	// along with the backup's own manifest.
+	//
+	// It exists so that recovering an *identity* from a remote backup costs
+	// kilobytes rather than the whole archive: a 4 KB document should not
+	// cost 50 GB and an hour, least of all during an incident.
+	//
+	// Not a new capability, which is why it is a small addition: List
+	// already reads one named object per backup without transferring the
+	// rest, and this is the same mechanism with the filename as a
+	// parameter.
+	//
+	// The manifest travels with it because a named key is not a bound file.
+	// Nothing in "fetch export.yaml.age from backup X" establishes that the
+	// bytes belong to backup X -- an attacker with write access to the
+	// target, or a botched sync, can put another installation's file there
+	// -- and backup.json records every component's digest over the stored
+	// bytes, so the caller can check the binding without a key.
+	FetchFile(ctx context.Context, ref RemoteRef, name, destDir string) error
+
 	// Verify reads a backup back off the target and checks its checksums,
 	// writing nothing.
 	//

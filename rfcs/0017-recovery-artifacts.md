@@ -1,10 +1,22 @@
 # RFC 0017 — Recovery artifacts
 
-- **Status:** 🚧 In progress — P0 shipped 2026-08-08: `<PRODUCT>_BACKUP_DIR` is
+- **Status:** ✅ Complete — P0 shipped 2026-08-08: `<PRODUCT>_BACKUP_DIR` is
   documented as an ABI, which is what makes P1's retirement of the `secrets`
-  component legitimate rather than a removal from an unstated contract. P1–P3
-  remain, and P1 is the one that changes the answer to "my VM died and I never
-  took an export"
+  component legitimate rather than a removal from an unstated contract.
+  **P1–P3 shipped 2026-08-09.** `TestRecoveryRebuildsAMachineFromABackupAlone`
+  is the claim: a machine created, backed up once, destroyed entirely, and
+  rebuilt — identity and every secret — from that backup plus the offline key,
+  with no export file existing at any point.
+
+  One thing the design did not anticipate, found by the acceptance run and not
+  by any unit test: **`restore` decrypts every component with the machine's
+  identity**, and decision 11 makes the export the one component the machine
+  cannot read. A perfectly good backup therefore failed at the step that puts
+  data back, after the services had been stopped. `restore` now skips the
+  export, which §4 already implied — "identity comes from `import`, before it"
+  — without anyone noticing it had to be enforced somewhere.
+
+  Question 2 is settled by omission and question 3 stays open; see §10.
 - **Scope:** Makes a backup sufficient to rebuild a machine's identity, by having
   it carry a real `InstallationExport` instead of the four-file approximation it
   copies today — one of which is the operator-facing `installation.yaml` that
@@ -506,10 +518,13 @@ into the last step would reverse the order it depends on.
    place. My earlier lean — "identity is not a thing to guess at" — had the
    emphasis wrong, since staleness in identity only ever *loses* information and
    the newest export is strictly the most complete.
-2. **Does `export.yaml` need its own schema version inside the backup, separate
-   from `BackupManifest.SchemaVersion`?** The export document already carries
-   `api_version`; a second version would be belt and braces, and possibly the
-   kind that rots. Nothing is released, so this can be settled late.
+2. ~~**Does `export.yaml` need its own schema version inside the backup,
+   separate from `BackupManifest.SchemaVersion`?**~~ → **No, settled 2026-08-09
+   by shipping without one.** The document already carries `api_version` and
+   `Validate` refuses one it does not know, so a second version would have been
+   a number nothing read. What the *backup* schema bump buys is different and
+   was kept: it makes an older manager refuse a backup whose identity it would
+   otherwise restore around silently.
 3. **Does the cannot-back-up case need `secrets.export-freshness` after all?**
    It is the one installation shape where an export is still mandatory and
    nothing checks it. The check would be correct and would fire on very few

@@ -505,7 +505,7 @@ func newBackupCommand(app *App) *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&reason, "reason", "manual", "why this backup was taken; recorded in its manifest")
 	f.StringSliceVar(&components, "component", nil,
-		"limit the backup to these components: database, files, config, secrets, manifest, volumes")
+		"limit the backup to these components: database, files, config, export, manifest, volumes")
 	// Named for what it costs, like --no-push: an operator reaching for
 	// this is choosing a backup that omits volumes over one that briefly
 	// stops services, and the help text should say so rather than leaving
@@ -757,7 +757,8 @@ func newRestoreCommand(app *App) *cobra.Command {
 	f.StringVar(&backupID, "backup", "", "backup id; the most recent when omitted")
 	f.StringVar(&confirm, "confirm", "", "the installation id, typed to confirm a destructive restore")
 	f.StringSliceVar(&components, "component", nil,
-		"limit the restore to these components: database, files, config, secrets, manifest, volumes")
+		"limit the restore to these components: database, files, config, manifest, volumes "+
+			"(`secrets` names a retired component, still accepted for older backups)")
 	f.StringVar(&identity, "identity", "",
 		"age identity that can decrypt the backup; defaults to this machine's own key")
 	f.BoolVar(&crossInst, "allow-cross-installation", false,
@@ -805,8 +806,11 @@ func parseComponents(names []string) ([]ports.Component, error) {
 		return nil, nil
 	}
 
+	// Every name the manager understands, not every name it writes: a
+	// restore of an older backup may legitimately name a retired component,
+	// and refusing the word would make the retirement a refusal to restore.
 	valid := map[string]ports.Component{}
-	for _, c := range ports.AllComponents {
+	for _, c := range ports.KnownComponents {
 		valid[string(c)] = c
 	}
 

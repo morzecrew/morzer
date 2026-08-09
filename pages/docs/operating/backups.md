@@ -18,6 +18,37 @@ manifest, and verifies the checksums by re-reading what was written. It does
 know how to read the project's **volumes**, which is the part the hook usually
 forgets.
 
+## A backup is an identity artifact
+
+Every backup carries the deployment's identity as well as its data: the
+installation record, the encrypted secret state, and the list of who can
+decrypt it. That is what makes [recovering a lost
+machine](recovering-a-lost-machine.md) a matter of a recovery key and a backup
+rather than a recovery key, a backup and an export somebody remembered to take.
+
+It changes where you should be willing to store one.
+
+**The identity part is encrypted to the recovery keys alone** — not to the
+machine's own key like every other component. The machine that wrote the backup
+cannot read it. So compromising the live host, which is the one that is online
+and attackable, yields the data and not the ability to become the deployment;
+only the offline key opens that, and by construction the offline key is not on
+the machine.
+
+What that does not remove:
+
+- **An attacker with backup read access *and* the recovery key gets
+  everything** — the installation, the secrets, and the credentials for the
+  backup target itself. This was nearly true before (the secret state was
+  already in every backup); what changed is that it now takes one command
+  rather than manual `sops` work.
+- **Retention multiplies the copies.** Thirty nightly backups are thirty copies
+  of the identity bundle where there used to be one export file.
+
+An installation with no recovery recipient gets **no** identity in its backups,
+rather than one encrypted to the key that would die with the machine. `morzer
+doctor` reports that as `secrets.recovery-recipient`.
+
 ## What a backup contains
 
 | Component | Comes from |
@@ -25,9 +56,20 @@ forgets.
 | `database` | the release's backup hook |
 | `files` | the release's backup hook |
 | `volumes` | the project's named volumes, read by the manager |
-| `config` | the rendered configuration |
-| `secrets` | the encrypted secret state, as it is on disk |
+| `config` | the operator-facing files as they stood — **forensic, not recoverable** |
+| `export` | the installation identity: the authoritative record, the encrypted secret state, and who can decrypt it |
 | `manifest` | the release identity, schema version, checksums, installation id |
+| ~~`secrets`~~ | **retired.** `export` carries the same state byte for byte, plus the recipient roles |
+
+`config` and `export` look similar and are not. `config` holds
+`installation.yaml`, the file an operator edits — and `doctor` ships a
+`config.installation-file` check for it disagreeing with the authoritative
+state, which is exactly what makes it useful in an incident review and useless
+for rebuilding a machine. `export` is the authoritative record. Naming both
+roles is what turns a trap into two labelled artifacts.
+
+`--component secrets` is still accepted, because a restore reads backups this
+manager did not write. On a recent backup it selects nothing.
 
 The manifest is what makes a backup self-describing: which release took it,
 which database schema was current, and which installation it belongs to.

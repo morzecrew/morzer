@@ -91,6 +91,14 @@ func (t *Target) Fetch(ctx context.Context, ref ports.RemoteRef, destDir string)
 	return blob.Fetch(ctx, store, ref, destDir)
 }
 
+func (t *Target) FetchFile(ctx context.Context, ref ports.RemoteRef, name, destDir string) error {
+	store, err := t.store(ref.Target, false)
+	if err != nil {
+		return err
+	}
+	return blob.FetchFile(ctx, store, ref, name, destDir)
+}
+
 func (t *Target) Verify(ctx context.Context, ref ports.RemoteRef) error {
 	store, err := t.store(ref.Target, false)
 	if err != nil {

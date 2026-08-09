@@ -114,3 +114,42 @@ Only what the manifest names is uploaded. A backup directory can hold other
 files — an interrupted restore leaves decrypted components in a staging
 directory beside the encrypted ones — and copying those would put a plaintext
 database dump on a second machine.
+
+## Recovering an identity without downloading the backup
+
+Every backup carries the deployment's identity, and reading it does not require
+fetching the archive around it:
+
+```sh
+morzer --product demo installation import --from-backup \
+    --target s3://backups.example/demo \
+    --credentials-file ./bucket.yaml \
+    --identity ~/recovery.key
+```
+
+That transfers the identity document and the backup's manifest, and nothing
+else — a few kilobytes rather than however large the data is. The manifest
+comes too because a named key is not a bound file: it records each component's
+digest over the stored bytes, so the manager can check that what it fetched
+belongs to the backup it asked for rather than to whatever someone put under
+that name.
+
+`--credentials-file` exists for the circle a rebuilt machine is in: the bucket
+credentials are in the secret state, the secret state is in the backup, and the
+backup is in the bucket.
+
+## Hardening a bucket
+
+Give the manager `PutObject` and `GetObject`, withhold `DeleteObject`, run with
+`--no-prune-remote`, and let the bucket's own lifecycle rules do retention. The
+manager then cannot delete a backup even if the host is compromised.
+
+!!! warning "Withholding `DeleteObject` is necessary and not sufficient"
+
+    On S3 a `PutObject` to an existing key **replaces** it. Credentials that can
+    write can therefore destroy history without ever calling delete, so this
+    bounds the damage rather than preventing it.
+
+    The property you actually want is immutability: Object Lock, or versioning
+    with a lifecycle policy the backup credentials cannot alter. Without one of
+    those, treat put+get as a speed bump rather than a guarantee.

@@ -50,9 +50,45 @@ type Component string
 const (
 	ComponentDatabase Component = "database"
 	ComponentFiles    Component = "files"
-	ComponentConfig   Component = "config"  // installation.yaml, application.yaml
-	ComponentSecrets  Component = "secrets" // the encrypted SOPS file only
 	ComponentManifest Component = "manifest"
+
+	// ComponentConfig is the operator-facing files as they stood:
+	// installation.yaml and application.yaml.
+	//
+	// **Forensic, not recoverable.** `installation.yaml` is the file an
+	// operator edits and `doctor` watches for drift -- the authoritative
+	// state is installation.json, and the two can legitimately disagree.
+	// That makes this useful in an incident review precisely *because* it
+	// may differ from what the manager believed, and useless for rebuilding
+	// a machine. ComponentExport is what rebuilds a machine.
+	ComponentConfig Component = "config"
+
+	// ComponentExport is the full InstallationExport document: the
+	// authoritative installation, the encrypted secret state, the
+	// recipients with their roles, and the release by version *and* digest.
+	//
+	// It is what makes a backup sufficient to rebuild identity, so that
+	// recovery is a recovery key plus any backup rather than a recovery key
+	// plus an export nothing schedules and no check reports on.
+	//
+	// Encrypted to the *recovery* recipients only, unlike every other
+	// component (RFC 0017 decision 11): a running machine never reads the
+	// export out of its own backup, so giving it that ability buys nothing
+	// and widens the blast radius. The property that buys is worth stating
+	// plainly -- the machine that wrote the backup cannot read this part of
+	// it, so compromising the live host yields the data and not the
+	// identity.
+	ComponentExport Component = "export"
+
+	// ComponentSecrets was the encrypted SOPS file and its recipient
+	// sidecar, and is **retired**: ComponentExport carries the same state
+	// byte for byte, plus the recipient roles the sidecar existed to
+	// preserve. Keeping both would put the secret state in one backup
+	// twice.
+	//
+	// The constant stays because restores read backups this manager did not
+	// write. Nothing produces it any more.
+	ComponentSecrets Component = "secrets"
 
 	// ComponentVolumes is the contents of the project's named volumes,
 	// read by the manager rather than produced by a hook.
@@ -73,8 +109,21 @@ const (
 // backup that quietly omits the uploads is one that passes verification and
 // does not work.
 var AllComponents = []Component{
-	ComponentDatabase, ComponentFiles, ComponentConfig, ComponentSecrets,
+	ComponentDatabase, ComponentFiles, ComponentConfig, ComponentExport,
 	ComponentManifest, ComponentVolumes,
+}
+
+// KnownComponents is every component name this manager understands, which is
+// deliberately more than it writes.
+//
+// A restore reads backups this manager did not take, and RFC 0017 decision 10
+// requires that retiring a component must not widen into a refusal to restore
+// an older backup that has one. So `--component secrets` stays a name the CLI
+// accepts and nothing produces: on a schema-4 backup it selects nothing, and
+// on an older one it selects exactly what it always did.
+var KnownComponents = []Component{
+	ComponentDatabase, ComponentFiles, ComponentConfig, ComponentExport,
+	ComponentSecrets, ComponentManifest, ComponentVolumes,
 }
 
 // Scope selects what a backup covers.

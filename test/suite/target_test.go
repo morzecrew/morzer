@@ -754,3 +754,95 @@ func TestACredentialDocumentIsCheckedFieldByField(t *testing.T) {
 		})
 	}
 }
+
+// TestFetchFileTransfersOneFile.
+//
+// Asserted by byte count against the target, not by reading the result. That
+// distinction is the whole test: a correct file obtained by downloading the
+// fifty-gigabyte archive around it passes every equality check and fails the
+// entire point of having the method, which is that recovering an identity from
+// a bucket costs kilobytes.
+func TestFetchFileTransfersOneFile(t *testing.T) {
+	ctx := context.Background()
+
+	fake := fakes.NewBackupTarget()
+	ref := ports.TargetRef{Scheme: "memory", Path: "/backups"}
+
+	const (
+		id    = "20260101T000000Z"
+		small = "the identity document"
+		big   = "the data, which is what nobody wants to move during an incident"
+	)
+	local := writeTestBackup(t, id, map[string]string{
+		"export.yaml.age":  small,
+		"database.sql.age": big,
+	})
+	remote, err := fake.Push(ctx, ref, local, id)
+	require.NoError(t, err)
+
+	fake.ResetBytesRead()
+	dest := filepath.Join(t.TempDir(), id)
+	require.NoError(t, fake.FetchFile(ctx, remote, "export.yaml.age", dest))
+
+	got, err := os.ReadFile(filepath.Join(dest, "export.yaml.age"))
+	require.NoError(t, err)
+	assert.Equal(t, small, string(got))
+
+	// The manifest travels with it, because a named key is not a bound
+	// file: nothing in "fetch export.yaml.age from this backup" says the
+	// bytes belong to it, and backup.json is what settles that.
+	assert.FileExists(t, filepath.Join(dest, ports.BackupManifestFileName))
+	assert.NoFileExists(t, filepath.Join(dest, "database.sql.age"),
+		"the data came down too, which is the cost this method exists to avoid")
+
+	// The number, which is the assertion that cannot be satisfied by a
+	// correct answer obtained expensively.
+	manifestSize := manifestBytes(t, fake, ref, id)
+	assert.Equal(t, int64(len(small))+manifestSize, fake.BytesRead(),
+		"fetching one file transferred more than that file and the manifest")
+}
+
+// TestFetchFileRefusesAFileTheManifestDoesNotName.
+//
+// Otherwise this is a general remote-read primitive pointed at a backup store,
+// and the caller's guarantee that what came back is part of the backup rests
+// on nothing.
+func TestFetchFileRefusesAFileTheManifestDoesNotName(t *testing.T) {
+	ctx := context.Background()
+
+	fake := fakes.NewBackupTarget()
+	ref := ports.TargetRef{Scheme: "memory", Path: "/backups"}
+	const id = "20260101T000000Z"
+	local := writeTestBackup(t, id, map[string]string{"export.yaml.age": "x"})
+	remote, err := fake.Push(ctx, ref, local, id)
+	require.NoError(t, err)
+
+	// An object that genuinely sits under this backup's prefix and is not in
+	// its manifest. Without one, this test passes on a `not found` from the
+	// store and says nothing about the manifest check -- which is how the
+	// first version of it passed with that check deleted.
+	planted := strings.Trim(ref.Path, "/") + "/" + id + "/planted.age"
+	fake.SetObject(planted, []byte("another installation's identity"))
+
+	dest := filepath.Join(t.TempDir(), id)
+	err = fake.FetchFile(ctx, remote, "planted.age", dest)
+	require.Error(t, err,
+		"an object the manifest does not name was served; a named key is not a "+
+			"bound file, and this is how another installation's export arrives "+
+			"under the right filename")
+	assert.NoFileExists(t, filepath.Join(dest, "planted.age"))
+
+	// And the traversal is refused too, by a different guard: the
+	// destination is resolved rather than joined blindly.
+	err = fake.FetchFile(ctx, remote, "../../etc/shadow", filepath.Join(t.TempDir(), id))
+	require.Error(t, err, "a path outside the backup was fetched")
+}
+
+// manifestBytes is how large the backup's own header is on the target, so the
+// byte-count assertion above measures the file rather than the header.
+func manifestBytes(t *testing.T, fake *fakes.BackupTarget, ref ports.TargetRef, id string) int64 {
+	t.Helper()
+	data, ok := fake.Object(strings.Trim(ref.Path, "/") + "/" + id + "/" + ports.BackupManifestFileName)
+	require.True(t, ok, "the backup's manifest is not on the target")
+	return int64(len(data))
+}

@@ -41,6 +41,30 @@ type BackupTarget struct {
 	// target that accepts a push and refuses a prune -- the case that
 	// separates "the backup is safe" from "the disk is tidy".
 	FailRemoveWith error
+
+	// bytesRead counts what has been transferred *off* the target.
+	//
+	// It exists for one claim that cannot be tested any other way: that
+	// fetching a single file out of a remote backup transfers that file
+	// rather than the archive around it. A correct file obtained by
+	// downloading fifty gigabytes passes every equality check and fails the
+	// entire point of having the method.
+	bytesRead int64
+}
+
+// BytesRead is how much has been transferred off this target.
+func (t *BackupTarget) BytesRead() int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.bytesRead
+}
+
+// ResetBytesRead zeroes the counter, so a test can measure one operation
+// rather than everything that set it up.
+func (t *BackupTarget) ResetBytesRead() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.bytesRead = 0
 }
 
 func NewBackupTarget() *BackupTarget {
@@ -72,6 +96,13 @@ func (t *BackupTarget) Fetch(ctx context.Context, ref ports.RemoteRef, destDir s
 	return blob.Fetch(ctx, t.store(ref.Target), ref, destDir)
 }
 
+func (t *BackupTarget) FetchFile(ctx context.Context, ref ports.RemoteRef, name, destDir string) error {
+	if t.FailWith != nil {
+		return t.FailWith
+	}
+	return blob.FetchFile(ctx, t.store(ref.Target), ref, name, destDir)
+}
+
 func (t *BackupTarget) Verify(ctx context.Context, ref ports.RemoteRef) error {
 	if t.FailWith != nil {
 		return t.FailWith
@@ -101,6 +132,28 @@ func (t *BackupTarget) Objects() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// SetObject writes an object directly, bypassing Push.
+//
+// It arranges the one state a well-behaved client cannot produce and a target
+// can still be in: an object sitting under a backup's prefix that the backup's
+// own manifest does not name. That is a botched sync, or an attacker with
+// write access to the bucket — and it is the state that makes "fetch this
+// named file" different from "fetch a file belonging to this backup".
+func (t *BackupTarget) SetObject(key string, data []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.objects[key] = data
+}
+
+// Object returns one stored object, so a test can measure a specific one
+// rather than inferring its size.
+func (t *BackupTarget) Object(key string) ([]byte, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	data, ok := t.objects[key]
+	return data, ok
 }
 
 // store namespaces the map by target path, so one fake can answer for several
@@ -140,6 +193,10 @@ func (s *memStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 		// "unreachable" and so must every adapter.
 		return nil, fs.ErrNotExist
 	}
+	// Counted on handing the bytes over rather than as they are consumed:
+	// what a test asks is how much the target was made to serve, and a
+	// caller that reads half an object still cost the transfer.
+	s.target.bytesRead += int64(len(data))
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 

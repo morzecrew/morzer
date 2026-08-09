@@ -1,30 +1,49 @@
 ---
 title: Recovering a lost machine
 icon: lucide/life-buoy
-summary: Rebuilding a deployment from an offline recovery key, an installation export and a backup
+summary: Rebuilding a deployment from an offline recovery key and a backup
 ---
 
 # Recovering a lost machine
 
 The machine is gone — a failed disk, a deleted VM, a host you no longer trust.
-You have three things, or you do not recover:
+You need **two** things:
 
 1. An **offline recovery key**, created at `init` and kept somewhere the machine
    could not reach.
-2. An **installation export**, taken while the machine was healthy.
-3. A **backup**, stored offsite.
+2. A **backup**, stored offsite.
 
-The first two rebuild the deployment's identity and secrets. The third brings
-back the data. They are separate artifacts on purpose: an export is small and
-static, a backup is large and changes constantly, and one file that was both
-would be a file nobody takes often enough.
+Every backup carries the deployment's identity — the installation record, the
+encrypted secret state, and who can decrypt it — encrypted to the recovery keys
+alone. So the artifact a timer produces every night is the one that rebuilds the
+machine, and the recovery key is the only thing you have to keep by hand.
+
+!!! warning "This changed, and older backups did not get the benefit"
+
+    A backup taken before this manager version carries no identity, and neither
+    does one from an installation with **no recovery recipient** — there is no
+    offline key to encrypt it to, so the component is skipped rather than
+    written in a form only the dead machine could read. `morzer doctor` reports
+    that as `secrets.recovery-recipient`.
+
+    For those, recovery still needs an [installation
+    export](#if-your-backups-carry-no-identity) — which is also the answer for a
+    product that can never take a backup at all.
+
+An **installation export** is still supported and still the fastest path. What
+changed is its status: from a prerequisite you had to remember to take, to an
+optimisation and a fallback.
 
 !!! info "This procedure is tested, not described"
 
-    `TestRecoveryRebuildsAMachineFromAnOfflineKey` runs it end to end against
-    real age keys on every CI run: create an installation, export it, delete the
-    machine's entire root, rebuild from the export and the offline key, and
-    assert the secrets come back readable by the new host's own key.
+    `TestRecoveryRebuildsAMachineFromABackupAlone` runs the two-artifact
+    procedure end to end against real age keys on every CI run: create an
+    installation, take one backup, delete the machine's entire root, and rebuild
+    identity and every secret from that backup plus the offline key. No export
+    file exists at any point in it.
+
+    `TestRecoveryRebuildsAMachineFromAnOfflineKey` does the same for the export
+    path, so both remain proven rather than one being described.
 
     `TestRecoveryFetchesTheBackupFromATarget` runs the whole of it, including
     step 4: the backup is pushed to a target, the machine is destroyed, and the
@@ -74,16 +93,48 @@ opened.
 ### 1. Prepare the replacement
 
 Install `morzer`, `docker`, `docker compose` and `sops` on the new host. Put the
-export and the recovery key where you can reach them.
+recovery key where you can reach it.
 
 ### 2. Import the identity
+
+From the backup target directly, which transfers a few kilobytes rather than
+the archive:
+
+```sh
+morzer --product demo installation import --from-backup \
+    --target s3://backups.example/demo \
+    --credentials-file ./bucket.yaml \
+    --identity ~/recovery.key
+```
+
+`--product` is needed because nothing on this host knows what it is yet: every
+managed directory derives from the product name, and on a rebuilt machine the
+identity you are about to read is the only place it is written down.
+
+`--credentials-file` breaks a circle: the bucket credentials live in the secret
+state, the secret state is in the backup, and the backup is in the bucket. An
+operator with an access key can start from outside it.
+
+From a backup already on this machine — one you fetched, or copied off a disk:
+
+```sh
+morzer --product demo installation import --from-backup --identity ~/recovery.key
+```
+
+With no id it uses the **newest** backup that carries an identity, which is
+almost always what you want: staleness here only ever loses information, so the
+newest export is the most complete one. Naming an id is honoured and warns when
+it is not the newest, because a backup chosen for the *data* it holds is not
+necessarily the one whose *secrets* you want.
+
+From an export file, if you have one:
 
 ```sh
 morzer installation import demo.export.yaml --identity ~/recovery.key
 ```
 
-This restores the installation with its **original id**, generates a new age
-identity for this host, re-encrypts the secret state for it, and revokes the old
+All three restore the installation with its **original id**, generate a new age
+identity for this host, re-encrypt the secret state for it, and revoke the old
 machine's key.
 
 It prints what it assumed and what to do next. If the identity you passed cannot
@@ -168,10 +219,18 @@ Then **decommission the old machine** if any part of it still exists. Two live
 hosts sharing an installation id will confuse every backup either takes, and the
 old host's key was revoked precisely so it cannot follow along.
 
-## If you did not take an export
+## If your backups carry no identity
 
-You can still recover data, but not identity. Create a new installation, install
-the release, and restore across installations explicitly:
+Two kinds of backup have none: those taken before this manager version, and
+those from an installation with no recovery recipient. `--from-backup` says
+which case you are in and what to do about it — they need different answers,
+and telling the second kind to "take a new backup" would prescribe the action
+that reproduces the problem.
+
+If you have an export file, use it: the procedure above works unchanged.
+
+If you have neither, you can still recover data, but not identity. Create a new
+installation, install the release, and restore across installations explicitly:
 
 ```sh
 morzer init --release ./demo-1.2.0 --recovery-recipient <a new key>
@@ -188,10 +247,14 @@ secrets. `restore` brings back the database and the volumes; it does not
 reinstate the secret state.
 
 **The secrets are not necessarily lost, though — that depends on the recovery
-key, not on the export.** A backup carries `secrets.sops.yaml` and
-`secrets.recipients.yaml`, encrypted to the same recipients as everything else
-in it. If the recovery key was one of them, you can get the values back by hand
-and set them again with `morzer secret set`.
+key, not on the export.** A backup from before this change carries
+`secrets.sops.yaml` and `secrets.recipients.yaml`, encrypted to the same
+recipients as everything else in it. If the recovery key was one of them, you
+can get the values back by hand and set them again with `morzer secret set`.
+
+Backups taken since carry `export.yaml` instead, which holds the same encrypted
+state and the recipient roles beside it — and `--from-backup` reads it for you,
+so the recipe below is only for the older shape.
 
 There are two layers, because the SOPS document is itself stored as an
 encrypted backup component:

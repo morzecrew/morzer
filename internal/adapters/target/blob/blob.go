@@ -276,6 +276,70 @@ func Fetch(ctx context.Context, s Store, ref ports.RemoteRef, destDir string) er
 	return getFile(ctx, s, manifestKey, filepath.Join(destDir, ports.BackupManifestFileName))
 }
 
+// FetchFile copies one named file out of a remote backup, with its manifest.
+//
+// The manifest is not an extra: it is what lets the caller tell whether the
+// file it just fetched belongs to the backup it asked for. Fetching the file
+// alone would be fetching whatever sits at that key.
+// The manifest lands *first* here, which is the opposite of Fetch and for a
+// reason worth stating: the caller needs it to decide whether the file it is
+// about to receive belongs to this backup, and reading it off the target twice
+// -- once to check, once to keep -- would make the byte count this method
+// exists to minimise depend on how the check was implemented.
+//
+// The cost is that an interrupted FetchFile leaves a manifest with no
+// component, so destDir must be staging the caller owns rather than the backup
+// store. Fetch writes into the store and orders itself the other way for
+// exactly that reason.
+func FetchFile(ctx context.Context, s Store, ref ports.RemoteRef, name, destDir string) error {
+	if err := atomicfs.MkdirAll(destDir, 0o700); err != nil {
+		return err
+	}
+
+	// Read into memory under the same bound readManifest applies, then
+	// written down. Fetching it to disk first would leave the size of a
+	// hostile target's answer deciding how much of this machine's disk it
+	// gets -- and the parse that follows would read all of it back.
+	manifest, err := readManifest(ctx, s, path.Join(ref.ID, ports.BackupManifestFileName))
+	if err != nil {
+		return err
+	}
+
+	// Only a file the manifest names. A caller asking for anything else is
+	// asking for a key rather than a component, and answering would make
+	// this a general remote-read primitive that happens to be pointed at a
+	// backup store.
+	var known bool
+	for _, c := range manifest.Components {
+		if c.Path == name {
+			known = true
+			break
+		}
+	}
+	if !known {
+		return domain.BackupError(domain.ErrNotFound,
+			"backup %s has no component %q", ref.ID, name)
+	}
+
+	local, err := safeDestination(destDir, name)
+	if err != nil {
+		return err
+	}
+	if err := getFile(ctx, s, path.Join(ref.ID, name), local); err != nil {
+		return err
+	}
+
+	// The manifest is written from the bytes already validated as a
+	// manifest, so the caller reads the same document this function
+	// checked the component name against.
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return domain.Internal(err, "cannot serialise the backup manifest")
+	}
+	return atomicfs.WriteFile(
+		filepath.Join(destDir, ports.BackupManifestFileName), encoded, 0o600)
+}
+
 // Verify reads a backup back off the target and checks its checksums.
 //
 // A full transfer, which is the honest cost of the claim: a backup nobody has

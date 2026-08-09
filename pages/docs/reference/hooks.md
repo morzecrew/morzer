@@ -90,8 +90,15 @@ present, and their names and contents may change:
   encrypted, so `backup list` needs no key.
 - `installation.yaml`, `application.yaml` — a copy of the operator-facing
   configuration, for an incident review.
-- `secrets.sops.yaml`, `secrets.recipients.yaml` — the encrypted secret state
-  and the recipient list, so a rebuilt machine can recover its secrets.
+- `export.yaml` — the installation export: the authoritative installation
+  record, the encrypted secret state, and who can decrypt it. Encrypted to the
+  **recovery keys only**, so unlike every other component the machine that
+  wrote the backup cannot read it — and neither can a hook running on that
+  machine.
+- ~~`secrets.sops.yaml`, `secrets.recipients.yaml`~~ — **retired.** `export.yaml`
+  carries the same encrypted state byte for byte, and the recipient roles the
+  sidecar existed to preserve. Backups taken by earlier versions still have
+  them, and a restore still reads them.
 - `manifest.yaml` — the release manifest as it was at the time.
 - `volumes/<name>.tar` — captured named volumes.
 - `.age` suffixes on any of the above, since components are encrypted at rest.
