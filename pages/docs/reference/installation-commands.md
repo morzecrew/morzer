@@ -10,6 +10,11 @@ An **installation export** carries the identity of a deployment and its
 encrypted secret state, so a machine that is gone can be rebuilt. It carries no
 application data: [`backup`](commands.md#backup) owns that.
 
+Every backup now carries one too, so `installation export` is an optimisation
+and a fallback rather than a prerequisite. It stays the fastest path, and it is
+the *only* path for a deployment that can never take a backup — a release with
+no backup hook and no capturable volume is refused one.
+
 The procedure that uses these commands is
 [Recovering a lost machine](../operating/recovering-a-lost-machine.md). This page
 is the surface.
@@ -64,13 +69,43 @@ morzer secret recipients add <the printed public key> --kind recovery
 
 ```sh
 morzer installation import <path> --identity <recovery-key-file>
+morzer installation import --from-backup [<id>] --identity <recovery-key-file>
+morzer installation import --from-backup --target <url> \
+    --credentials-file <file> --identity <recovery-key-file>
 ```
 
-Rebuilds this machine from an export and the offline key that can decrypt it.
+Rebuilds this machine from an installation export and the offline key that can
+decrypt it. The export comes from a file, or out of a backup — every backup
+carries one.
 
 | Flag | Meaning |
 | --- | --- |
 | `--identity` | Private age identity that can decrypt the export. Required; there is no default, because the whole point is that this key was not on the machine that was lost. |
+| `--from-backup` | Read the identity out of a backup rather than a file. With no id, the **newest** backup that carries one. |
+| `--target` | Read the backup from a target rather than from this machine. Transfers the identity document and the manifest, not the archive. |
+| `--credentials-file` | Credentials for `--target`, for when the secret store that held them is on the machine that died. |
+
+With `--from-backup` the positional argument is a backup id rather than a path.
+
+**No id means the newest, and that is the safer default rather than the lazier
+one.** Identity and data are separate choices: a backup picked for the database
+it holds is not necessarily the one whose secrets you want, and staleness in
+identity only ever *loses* information. Naming an id is honoured — point-in-time
+identity recovery is real — and warns when it is not the newest, naming the
+newer backup.
+
+A backup with no identity is refused, and the message says which of the two
+reasons applies: it predates this manager version, or the installation that took
+it had no recovery recipient to encrypt one to. The remedies differ, which is
+why the messages do.
+
+!!! info "On a rebuilt machine, pass `--product`"
+
+    Every managed directory derives from the product name, and with
+    `--from-backup` the manager has to find the backups *before* it can read the
+    identity that names the product. `morzer --product demo installation import
+    --from-backup …`. Importing from a file does not need it: the file is read
+    first.
 
 What it does, in order:
 
