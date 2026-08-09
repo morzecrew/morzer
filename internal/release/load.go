@@ -76,6 +76,14 @@ func Load(dir string) (domain.Release, error) {
 		return domain.Release{}, err
 	}
 
+	// After the declared paths, because a bundle missing its templates is a
+	// more basic problem than one whose image layout disagrees with its
+	// manifest, and reporting the smaller problem first sends an author down
+	// the wrong road.
+	if err := checkBundledImages(rel); err != nil {
+		return domain.Release{}, err
+	}
+
 	return rel, nil
 }
 

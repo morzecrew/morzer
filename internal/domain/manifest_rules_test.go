@@ -394,8 +394,8 @@ func TestDefaultsAreAppliedBeforeValidation(t *testing.T) {
 		Metadata:   Metadata{Name: "demo", Version: MustParseVersion("1.0.0")},
 		Providers:  Providers{Runtime: Provider{Name: "compose"}},
 		Runtime:    RuntimeSpec{Files: []string{"compose/compose.yaml"}},
-		Images: map[string]string{
-			"app": "registry.example/demo/app@sha256:" + strings.Repeat("a", 64),
+		Images: map[string]ImageSpec{
+			"app": {Ref: "registry.example/demo/app@sha256:" + strings.Repeat("a", 64)},
 		},
 		Operations: map[string]OperationSpec{
 			"migrate": {Kind: OperationKindHook, Command: []string{"hooks/migrate"}},

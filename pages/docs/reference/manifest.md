@@ -220,6 +220,45 @@ A bare tag is rejected. An unpinned image makes a release mutable, and a mutable
 release makes rollback meaningless — the same version could produce a different
 system on a different day.
 
+### Where the bytes come from
+
+An entry may instead be a mapping, which adds one field:
+
+```yaml
+images:
+  db: postgres@sha256:0000…0002              # pulled, as above
+  app:
+    ref: registry.example/demo/app@sha256:0000…0001
+    from: bundle                             # travels inside the bundle
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `ref` | string | The image reference, pinned by digest. Same rule as the scalar spelling. |
+| `from` | string | `registry` (default) or `bundle`. |
+
+Both spellings exist because most images are never bundled, and making every one
+of them carry a `from:` to say so is noise in the file you read most.
+
+`from: bundle` means the image travels in the bundle as an OCI layout under
+`images/`, covered by the same `SHA256SUMS` and signature as every other file —
+so a customer installs a release containing your private images without ever
+holding credentials for the registry they came from. **Per-image**, so a release
+bundles what is private and keeps pulling `postgres` from Docker Hub.
+
+`ref` stays a real image reference in both spellings. It is interpolated into
+Compose as `<PRODUCT>_IMAGE_<NAME>`, so it must remain something the daemon can
+resolve — which is why the source is a separate field rather than a scheme on
+the reference the way `update` references are spelled.
+
+An unrecognised `from` is refused rather than defaulted. The two plausible
+typos — `bundled`, and `from` under the wrong image — both fail towards a
+release you believe ships its own bytes and does not, which surfaces as a
+credential failure on your customer's machine.
+
+See [bundled images](../authoring/bundled-images.md) for the layout, what
+`release verify` checks, and how to produce one.
+
 ## configuration
 
 A list of templates rendered onto the host.

@@ -168,7 +168,30 @@
     },
     "images": {
       "additionalProperties": {
-        "type": "string"
+        "description": "A digest-pinned image reference, or a mapping with `ref` and optionally `from`.",
+        "oneOf": [
+          {
+            "description": "A digest-pinned reference; the image is pulled.",
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "description": "Where the image's bytes come from. `registry` is the default and needs no declaration: the runtime pulls it. `bundle` means the image travels inside the bundle, under images/.",
+                "enum": [
+                  "registry",
+                  "bundle"
+                ],
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        ]
       },
       "type": "object"
     },

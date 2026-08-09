@@ -62,6 +62,13 @@ func manifestSchema() map[string]any {
 	props, _ := s["properties"].(map[string]any)
 	props["api_version"] = withEnum(props["api_version"], apiVersions())
 	props["kind"] = withEnum(props["kind"], []string{domain.KindApplicationRelease})
+
+	// `images` accepts two spellings and reflection can only see one. The
+	// Go type is the mapping; the scalar arm exists in UnmarshalYAML, which
+	// no amount of struct-walking reveals. Stated here rather than left out,
+	// because an editor validating against this schema would otherwise
+	// underline every manifest written the ordinary way.
+	props["images"] = imagesSchema(props["images"])
 	s["required"] = []string{"api_version", "kind", "metadata", "runtime", "images"}
 
 	return s
@@ -98,6 +105,30 @@ func withEnum(node any, values []string) any {
 	}
 	m["enum"] = values
 	return m
+}
+
+// imagesSchema widens the generated `images` map to both spellings.
+//
+// The mapping arm comes from the Go type by reflection; the scalar arm is the
+// one ImageSpec.UnmarshalYAML accepts and reflection cannot see.
+func imagesSchema(generated any) any {
+	mapping, ok := generated.(map[string]any)
+	if !ok {
+		return generated
+	}
+	entry := mapping["additionalProperties"]
+	mapping["additionalProperties"] = map[string]any{
+		"description": "A digest-pinned image reference, or a mapping with " +
+			"`ref` and optionally `from`.",
+		"oneOf": []any{
+			map[string]any{
+				"type":        "string",
+				"description": "A digest-pinned reference; the image is pulled.",
+			},
+			entry,
+		},
+	}
+	return mapping
 }
 
 // scalarSchemas maps the domain's wrapper types onto what they serialise as.
@@ -233,6 +264,15 @@ func stringSchema(t reflect.Type) map[string]any {
 			"and needs no declaration: the services mounting it are stopped for " +
 			"the copy. `hot` claims a copy taken while they run is usable. " +
 			"`exclude` keeps the manager out of it entirely."
+	case reflect.TypeOf(domain.ImageFromRegistry):
+		values := make([]string, len(domain.ImageSources))
+		for i, src := range domain.ImageSources {
+			values[i] = string(src)
+		}
+		out["enum"] = values
+		out["description"] = "Where the image's bytes come from. `registry` is " +
+			"the default and needs no declaration: the runtime pulls it. " +
+			"`bundle` means the image travels inside the bundle, under images/."
 	case reflect.TypeOf(domain.PortSpec("")):
 		out["description"] = "A port number, or a {{ .Parameters.<name> }} reference."
 		out["examples"] = []string{"18080", "{{ .Parameters.http_port }}"}

@@ -55,6 +55,7 @@ nav = [
         "authoring/a-three-tier-bundle.md",
         "authoring/hooks.md",
         "authoring/backing-up-volumes.md",
+        "authoring/bundled-images.md",
         "authoring/publishing.md",
     ] },
     { "Reference" = [

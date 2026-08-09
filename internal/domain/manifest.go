@@ -57,7 +57,7 @@ type Manifest struct {
 	Runtime       RuntimeSpec              `yaml:"runtime" json:"runtime"`
 	Requirements  Requirements             `yaml:"requirements" json:"requirements"`
 	Parameters    map[string]ParameterSpec `yaml:"parameters" json:"parameters,omitempty"`
-	Images        map[string]string        `yaml:"images" json:"images"`
+	Images        map[string]ImageSpec     `yaml:"images" json:"images"`
 	Configuration []ConfigurationFile      `yaml:"configuration" json:"configuration"`
 	Secrets       SecretsSpec              `yaml:"secrets" json:"secrets"`
 	Operations    map[string]OperationSpec `yaml:"operations" json:"operations"`
@@ -611,13 +611,26 @@ func (m *Manifest) Validate() error {
 		}
 	}
 
-	// images -- the pinning rule
+	// images -- the pinning rule, and where the bytes come from
 	if len(m.Images) == 0 {
 		v.add("images", "must declare at least one image")
 	}
-	for name, ref := range m.Images {
-		if !digestRef.MatchString(ref) {
-			v.add("images."+name, "must be pinned by digest (name@sha256:...), got %q", ref)
+	for _, name := range sortedImageNames(m.Images) {
+		spec := m.Images[name]
+		field := "images." + name
+		if !digestRef.MatchString(spec.Ref) {
+			v.add(field, "must be pinned by digest (name@sha256:...), got %q", spec.Ref)
+		}
+		// A misspelled source is refused rather than defaulted. Both
+		// plausible typos -- `bundled`, and `from` under the wrong image
+		// -- fail towards a release the vendor believes ships its own
+		// bytes and does not, which surfaces as a credential failure on
+		// a customer's machine.
+		switch spec.From {
+		case ImageFromRegistry, ImageFromBundle, "":
+		default:
+			v.add(field+".from", "must be %s, got %q",
+				joinImageSources(ImageSources), spec.From)
 		}
 	}
 
@@ -781,17 +794,17 @@ func (m *Manifest) Operation(name string) (OperationSpec, bool) {
 	return op, ok
 }
 
-// ImageRefs returns image references in a stable order, so pull plans and
+// ImageRefs returns every image reference in a stable order, so pull plans and
 // dry-run output do not shuffle between runs.
+//
+// Every image, bundled or not: this answers "what does this release consist
+// of". For "what will be fetched from a registry", which is a different
+// question with a different answer, see PulledImageRefs.
 func (m *Manifest) ImageRefs() []string {
-	names := make([]string, 0, len(m.Images))
-	for name := range m.Images {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := sortedImageNames(m.Images)
 	refs := make([]string, 0, len(names))
 	for _, n := range names {
-		refs = append(refs, m.Images[n])
+		refs = append(refs, m.Images[n].Ref)
 	}
 	return refs
 }
