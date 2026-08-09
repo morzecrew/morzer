@@ -362,6 +362,13 @@ So P5 ships in [0016](0016-update-checking-and-unattended-updates.md) P2. This
 RFC stays ✅ Complete rather than being reopened — the renderer it specified is
 built, and what was missing was never renderer work.
 
+**Delivered 2026-08-10** in 0016 P2. `internal/ui.RenderNotes` renders a staged
+release's `RELEASE.md` with `glamour` in rich mode and the source text in plain
+mode — the second is not a degradation but the rule this RFC already set: plain
+output is line-oriented and stable in a log, and ANSI colour in a journal entry
+outlives the terminal that wanted it. It is printed by `update --check` beside
+the staged-release line, and its first line rides the notification.
+
 **The general lesson, which is why this is written down rather than quietly
 retargeted:** a phase gated on a condition the project cannot itself produce is
 not deferred, it is abandoned with a comment. The gate should name who opens it.
