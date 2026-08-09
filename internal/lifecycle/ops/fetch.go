@@ -44,15 +44,34 @@ func FetchIntoStore(
 		return existing, true, nil
 	}
 
+	// The policy is read before anything is downloaded, and absence is the
+	// only policy-free case -- asked about on its own terms rather than
+	// inferred from a load that failed. A state file that exists and cannot
+	// be parsed says nothing about whether signatures are required, and
+	// treating "cannot tell" as "not required" is how a machine with a
+	// pinned key ends up admitting a bundle on its content digest alone,
+	// which any registry that served those bytes can satisfy.
+	//
+	// Before rather than after the fetch, so a machine that cannot tell what
+	// it requires does not first write the thing it could not have checked.
+	expect := ports.Expectation{Digest: resolved.Digest}
+	exists, err := d.State.InstallationExists(ctx)
+	if err != nil {
+		return domain.Release{}, false, err
+	}
+	if exists {
+		inst, err := d.State.LoadInstallation(ctx)
+		if err != nil {
+			return domain.Release{}, false, err
+		}
+		expect.Required = inst.Policy.RequireSignature
+		expect.PublicKeys = inst.Policy.SigningKeys
+	}
+
 	if _, err := d.Source.Fetch(ctx, ref, dest); err != nil {
 		return domain.Release{}, false, err
 	}
 
-	expect := ports.Expectation{Digest: resolved.Digest}
-	if inst, loadErr := d.State.LoadInstallation(ctx); loadErr == nil {
-		expect.Required = inst.Policy.RequireSignature
-		expect.PublicKeys = inst.Policy.SigningKeys
-	}
 	if err := d.Verifier.Verify(ctx, ports.BundlePath(dest), expect); err != nil {
 		// Removed rather than left for someone to notice. A bundle that
 		// failed verification sitting in the store is one `update --to`

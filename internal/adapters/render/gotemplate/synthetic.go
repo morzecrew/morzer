@@ -187,7 +187,7 @@ func CheckRender(rel domain.Release, schema domain.SecretSchema, name string, ra
 	var sb strings.Builder
 	if err := tmpl.Execute(&sb, newView(SyntheticData(rel, schema))); err != nil {
 		return domain.ValidationError(fmt.Errorf("%w: %w", domain.ErrTemplateRender, err),
-			"%s does not render: %s", name, executionDetail(err)).
+			"%s does not render: %s", name, executionDetail(name, err)).
 			WithHint("%s", renderHint(err))
 	}
 	return nil
@@ -197,8 +197,13 @@ func CheckRender(rel domain.Release, schema domain.SecretSchema, name string, ra
 //
 // text/template prefixes every one with "template: <name>:", and the caller has
 // just named the template -- so quoting it whole reads as a stutter in a list of
-// several problems.
-func executionDetail(err error) string {
-	msg := err.Error()
-	return strings.TrimPrefix(msg, "template: ")
+// several problems. The name is trimmed with the prefix rather than left behind
+// it: dropping only "template: " kept the stutter and merely moved it, which is
+// what "configuration[0].template: config.yaml.tmpl does not render:
+// config.yaml.tmpl:3:12: ..." reads as.
+//
+// What remains is the line, the column and the action that failed, which is the
+// part carrying the information.
+func executionDetail(name string, err error) string {
+	return strings.TrimPrefix(err.Error(), "template: "+name+":")
 }

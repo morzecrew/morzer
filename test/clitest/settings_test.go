@@ -93,3 +93,22 @@ func TestUpdateModesAreRefusedTogether(t *testing.T) {
 		r.Run(args...).Failed().OutputContains("alternatives")
 	}
 }
+
+// TestUnattendedRefusesABundleArgument.
+//
+// `update --check ./bundle` and `update --stage ./bundle` both act on the
+// reference they are given, so an operator has every reason to expect the third
+// does. It did not: the argument was accepted by the parser and never read, so
+// the tick polled the configured channel and reported success for an operation
+// nobody asked for.
+//
+// Refused rather than plumbed through, because a tick is what a timer runs
+// against the machine's own configuration -- and the refusal names the two
+// commands that do take a bundle.
+func TestUnattendedRefusesABundleArgument(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	out := r.Run("update", "--unattended", r.BundleAt("1.3.0")).Failed()
+	out.OutputContains("takes no bundle")
+	out.OutputContains("--stage")
+}

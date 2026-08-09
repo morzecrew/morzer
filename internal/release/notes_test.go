@@ -27,22 +27,27 @@ func releaseAt(t *testing.T, files map[string]string) domain.Release {
 	return rel
 }
 
-// TestNotesAreReadByDeclarationAndByConvention.
+// TestNotesAreReadByDeclarationAndNotByConvention.
 //
-// The declaration is what RFC 0013 added so a scaffolded RELEASE.md is pointed
-// at rather than merely dropped beside the manifest. The convention still works,
-// because a bundle that ships the file without declaring it has notes worth
-// reading and nothing is gained by refusing to read them.
-func TestNotesAreReadByDeclarationAndByConvention(t *testing.T) {
+// `Metadata.ReleaseNotes` says there is deliberately no fallback to finding
+// RELEASE.md, and this is that sentence as a test. An undeclared file is one
+// nothing validates and `release verify` never checks the existence of, so
+// reading it would put unvalidated bundle content in front of an operator
+// deciding on an update -- and would make a typo'd declaration succeed against
+// the wrong file rather than fail.
+//
+// The second half is why the first costs nothing: `release new` writes
+// RELEASE.md *and* declares it.
+func TestNotesAreReadByDeclarationAndNotByConvention(t *testing.T) {
 	declared := releaseAt(t, map[string]string{"CHANGES.md": "declared\n"})
 	declared.Manifest.Metadata.ReleaseNotes = "CHANGES.md"
 	if got := release.Notes(declared); !strings.Contains(got, "declared") {
 		t.Errorf("the declared notes file was not read: %q", got)
 	}
 
-	conventional := releaseAt(t, map[string]string{"RELEASE.md": "by convention\n"})
-	if got := release.Notes(conventional); !strings.Contains(got, "by convention") {
-		t.Errorf("RELEASE.md was not read: %q", got)
+	undeclared := releaseAt(t, map[string]string{"RELEASE.md": "by convention\n"})
+	if got := release.Notes(undeclared); got != "" {
+		t.Errorf("an undeclared RELEASE.md was read as release notes: %q", got)
 	}
 }
 
@@ -69,6 +74,7 @@ func TestNotesAreReadThroughTheReleaseRoot(t *testing.T) {
 	}
 
 	rel := releaseAt(t, map[string]string{"placeholder": "x"})
+	rel.Manifest.Metadata.ReleaseNotes = "RELEASE.md"
 	if err := os.Symlink(secret, filepath.Join(rel.Root, "RELEASE.md")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
@@ -78,17 +84,36 @@ func TestNotesAreReadThroughTheReleaseRoot(t *testing.T) {
 	}
 }
 
-// TestNotesAreBounded.
+// TestNotesAreBoundedAndSayWhereTheyWereCut.
 //
 // Vendor-supplied text that reaches a terminal, a notification body and an
-// operator's screen. A bundle shipping a gigabyte of it should render nothing
-// rather than exhaust the machine deciding whether to install it.
-func TestNotesAreBounded(t *testing.T) {
+// operator's screen, so a bundle shipping a gigabyte of it must not be able to
+// exhaust the machine deciding whether to install it.
+//
+// The second assertion is the one worth having. A bound that silently returns
+// the first 256 KiB hands an operator a changelog that stops mid-sentence and
+// looks complete -- they cannot tell the difference between "that is all the
+// vendor wrote" and "the rest was dropped", and the decision they are making is
+// whether to accept downtime.
+func TestNotesAreBoundedAndSayWhereTheyWereCut(t *testing.T) {
 	huge := strings.Repeat("a", 2*256*1024)
 	rel := releaseAt(t, map[string]string{"RELEASE.md": huge})
+	rel.Manifest.Metadata.ReleaseNotes = "RELEASE.md"
 
-	if got := len(release.Notes(rel)); got >= len(huge) {
-		t.Errorf("read %d bytes of notes; nothing bounded the file", got)
+	got := release.Notes(rel)
+	if len(got) >= len(huge) {
+		t.Errorf("read %d bytes of notes; nothing bounded the file", len(got))
+	}
+	if !strings.Contains(got, "truncated") {
+		t.Errorf("the notes were cut without saying so:\n%q", got[max(0, len(got)-120):])
+	}
+
+	// The bound is not a trap for an ordinary file: one byte under it is
+	// returned whole and unannotated.
+	exact := releaseAt(t, map[string]string{"RELEASE.md": strings.Repeat("b", 256*1024)})
+	exact.Manifest.Metadata.ReleaseNotes = "RELEASE.md"
+	if got := release.Notes(exact); strings.Contains(got, "truncated") {
+		t.Errorf("a file exactly at the bound was reported as truncated")
 	}
 }
 

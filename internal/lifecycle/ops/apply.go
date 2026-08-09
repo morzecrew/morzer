@@ -751,8 +751,18 @@ func stepRecordState(d *Deps, inst domain.Installation, rel domain.Release, opts
 			// finding the tag unmoved -- the other order would leave
 			// a machine that has forgotten what it staged and has not
 			// recorded installing it.
+			//
+			// Reported rather than returned. What follows it is the
+			// symlink swap that makes `current` true for anything
+			// reading the filesystem, and state has already been
+			// written -- so a failure to forget a candidate would
+			// leave the deployment naming one release and pointing
+			// at another over a bookkeeping file whose entire cost
+			// of loss is one fetch. An advisory write must not
+			// outrank the outcome it trails.
 			if err := d.retireStagedCandidate(ctx, record); err != nil {
-				return err
+				st.Warn("the staged update candidate could not be cleared: %s",
+					domain.AsError(err).Message)
 			}
 			// The symlink swap is what makes `current` atomic for
 			// anything reading the filesystem directly.

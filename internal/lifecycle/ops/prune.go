@@ -13,10 +13,15 @@ import (
 
 // ReleaseEntry is one release in the store, with the roles that make it
 // unprunable.
+//
+// No digest: this listing reads manifests, and a content digest is a property
+// of every byte under the root. Reporting one would mean hashing the whole store
+// to answer `release list`, and reporting an empty string -- which is what the
+// field did before it was removed -- tells a machine reader the release has no
+// digest. `release show` computes it for the one release being asked about.
 type ReleaseEntry struct {
 	Version  domain.Version `json:"version"`
 	Root     string         `json:"root"`
-	Digest   string         `json:"digest"`
 	Current  bool           `json:"current"`
 	Previous bool           `json:"previous"`
 
@@ -45,9 +50,24 @@ func InstalledReleases(ctx context.Context, d *Deps) ([]ReleaseEntry, error) {
 		return nil, domain.InstallationError(err, "cannot list %s", dir)
 	}
 
-	current, _ := d.State.CurrentRelease(ctx)
-	previous, _ := d.State.PreviousRelease(ctx)
-	candidate, _ := d.State.UpdateCandidate(ctx)
+	// Propagated, never discarded. These three reads are what make an entry
+	// exempt, and a read that failed answers "not current, not previous, not
+	// staged" -- so a transient I/O error would hand `prune` the running
+	// release and the rollback target as things to remove. A listing that
+	// refuses because it cannot tell costs an operator a retry; the other
+	// way costs them the deployment.
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil {
+		return nil, err
+	}
+	previous, err := d.State.PreviousRelease(ctx)
+	if err != nil {
+		return nil, err
+	}
+	candidate, err := d.State.UpdateCandidate(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var out []ReleaseEntry
 	for _, entry := range dirEntries {
@@ -103,11 +123,16 @@ func PruneReleases(ctx context.Context, d *Deps, keep int, dryRun bool) (PruneRe
 		}
 	}
 
+	// Counted over the non-exempt entries only, because that is what the
+	// number means everywhere it is written down: `--keep 1` retains one
+	// release beyond the ones roles already protect. Counting the current
+	// and previous releases toward the quota made `--keep 1` on an ordinary
+	// machine -- which always has both -- delete every inactive release,
+	// which is the opposite of what the operator asked for.
 	out := PruneResult{Retained: retain}
 	kept := 0
 	for _, e := range entries {
 		if e.Exempt() {
-			kept++
 			continue
 		}
 		if kept < retain {
@@ -140,5 +165,10 @@ func (d *Deps) retentionReleases(ctx context.Context) (int, error) {
 			return inst.RetentionReleases(rel.Manifest), nil
 		}
 	}
-	return domain.DefaultRetentionReleases, nil
+	// Still through the installation, with nothing from a manifest to read:
+	// the precedence rule puts the operator's policy above the vendor's
+	// declaration, so a release that will not load must not also lose them
+	// the number they configured. RetentionReleases falls through to the
+	// default on its own when no policy is set.
+	return inst.RetentionReleases(domain.Manifest{}), nil
 }

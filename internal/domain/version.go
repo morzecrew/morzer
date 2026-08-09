@@ -515,11 +515,16 @@ func AssessUnattended(current, target Compatibility, inst Installation) Unattend
 		return a
 	}
 
-	if target.DatabaseSchemaProduces == 0 {
-		// Absent, not zero-and-meaningful: schema numbering starts at 1
-		// wherever it is used here, and a release that declares nothing
-		// has said nothing about what its migrations do.
-		a.refuse("the release does not declare compatibility.database_schema_produces, " +
+	if target.DatabaseSchemaProduces <= 0 {
+		// Absent *or* nonsensical, and they get the same answer. Schema
+		// numbering starts at 1 wherever it is used here, so a release
+		// that declares nothing has said nothing about what its
+		// migrations do -- and one declaring -1 has said something that
+		// cannot be true. Testing only for zero let that second release
+		// through the schema half of the gate entirely: every downstream
+		// comparison is guarded by `> 0`, so a negative prediction is
+		// silently no prediction at all.
+		a.refuse("the release declares no usable compatibility.database_schema_produces, " +
 			"so what its migrations leave behind is unknown")
 	} else {
 		predicted := AssessRollback(target, current, target.DatabaseSchemaProduces)

@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,6 +69,18 @@ func TestTheAutoApplyGate(t *testing.T) {
 			inst:    signedInstallation,
 			// Without this half, the field could default to something
 			// permissive and no test would notice.
+			because: "database_schema_produces",
+		},
+		{
+			name:    "a release declaring a schema number that cannot be true",
+			current: current,
+			// Every comparison downstream is guarded by `> 0`, so a
+			// negative prediction is no prediction at all -- it would
+			// pass the schema half of the gate by not being looked
+			// at, while a release declaring *nothing* is refused.
+			// Worse than absent must not be treated as better.
+			target:  domain.Compatibility{DatabaseSchemaMax: 14, DatabaseSchemaProduces: -1, RollbackSafe: true},
+			inst:    signedInstallation,
 			because: "database_schema_produces",
 		},
 		{
@@ -211,6 +224,41 @@ func TestModeCannotChangeThroughAnyManagerSurface(t *testing.T) {
 	err = sandbox.Deps.State.SaveInstallation(ctx, promoted)
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Hint, "backup, fresh `init`, restore")
+}
+
+// TestAStateFileThatWillNotParseCannotLaunderAModeChange.
+//
+// The guard read the existing installation and treated *any* failure as a
+// creation, on the reasoning that an unreadable state fails on its own terms at
+// the next read. It does not: the write it was about to allow replaces the file
+// with valid content, so the next read succeeds and reports whatever mode was
+// written over it. A production machine whose state was momentarily corrupt --
+// including one the new unknown-mode rule rejects -- could be silently rewritten
+// as a sandbox, and a sandbox promoted.
+//
+// The assertion is on the file, not only on the error: a refusal that still
+// wrote would be the defect with a message attached.
+func TestAStateFileThatWillNotParseCannotLaunderAModeChange(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	production := h.install()
+	require.False(t, production.IsDev())
+
+	path := h.Paths.InstallationState()
+	corrupt := []byte("{\"schema_version\": 5, \"product\":\n")
+	require.NoError(t, os.WriteFile(path, corrupt, 0o640))
+
+	demoted := production
+	demoted.Mode = domain.ModeDev
+	err := h.Deps.State.SaveInstallation(ctx, demoted)
+	require.Error(t, err, "an unreadable state file admitted a mode change")
+	assert.Contains(t, err.Error(), "mode")
+
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, corrupt, after,
+		"the refusal wrote the installation anyway, which is what it was refusing")
 }
 
 // TestImportingAsASandboxDropsTheBackupTargets is the assertion that stops a
@@ -467,11 +515,20 @@ func TestATickThatCannotTakeTheLockDoesNotFailTheUnit(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = release() }()
 
-	// The poll itself takes no lock -- it stages, which touches nothing the
-	// lock protects -- so the contention appears at the install.
+	// The contention appears at the poll, which is where the tick first
+	// writes: staging fetches a bundle into the release store and records a
+	// candidate, both of which the lock protects. It used to appear at the
+	// install, because staging ran outside the lock entirely.
 	_, err = ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrLocked)
+
+	// What the command does with that error is exit 0 and say so, and the
+	// saying is a field rather than an absence: every quiet tick has an
+	// empty result, so a machine reading `--json` could not otherwise tell
+	// "another operation was running" from "the tag has not moved".
+	skipped := ops.UnattendedResult{Skipped: "another operation holds the lock"}
+	assert.Contains(t, skipped.Summary(), "another operation holds the lock")
 }
 
 // TestPrereleaseAdmissibilityDiffersByMode.
@@ -569,6 +626,55 @@ func TestTheUpdateTimerNeedsBothTheChannelAndPermission(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, h.Supervisor.Installed, timer,
 		"the timer outlived the channel it was polling")
+}
+
+// TestARetryFinishesAUnitReconciliationThatFailed.
+//
+// The state is written before the units, deliberately: the units are derived
+// from it, and a crash between the two leaves a timer to reconcile rather than a
+// state nothing polls. What that ordering left open is the repair. Unit
+// installation can fail on its own -- a busy systemd, a read-only /etc -- and
+// the operator's obvious response is to run the command again, which matched
+// every value, reported "no change" and returned before reaching the step that
+// had not finished. The machine then advertises a channel it never polls, and
+// nothing an operator can type fixes it.
+//
+// So a run that changes nothing still reconciles. That is the whole assertion:
+// the second command is byte-for-byte the first.
+func TestARetryFinishesAUnitReconciliationThatFailed(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+	ctx := context.Background()
+
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+
+	set := ops.SetSettingsOptions{Set: map[string]string{
+		"update.check":   "true",
+		"update.channel": "oci://registry.example/demo/bundle:stable",
+	}}
+
+	h.Supervisor.Fail = map[string]error{"InstallUnits": errors.New("systemd is busy")}
+	_, err = ops.SetSettings(ctx, h.Deps, set)
+	require.Error(t, err, "the failure to install the unit was not reported")
+
+	timer := "demo-update.timer"
+	require.NotContains(t, h.Supervisor.Installed, timer)
+
+	// The state took the change even though the units did not, which is
+	// what makes the retry necessary rather than merely tidy.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	require.True(t, inst.Update.FollowsChannel())
+
+	h.Supervisor.Fail = nil
+	_, err = ops.SetSettings(ctx, h.Deps, set)
+	require.NoError(t, err)
+	assert.Contains(t, h.Supervisor.Installed, timer,
+		"repeating the command that failed did not install the unit it failed to install")
 }
 
 // TestAnUpdateCheckOffersPrereleasesOnlyToASandbox.

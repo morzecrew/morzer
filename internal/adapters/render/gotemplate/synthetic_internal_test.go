@@ -147,3 +147,34 @@ func TestASyntheticParameterSatisfiesItsDeclaration(t *testing.T) {
 		t.Errorf("a declared default is not normalised: %q", got)
 	}
 }
+
+// TestARenderFailureNamesItsTemplateOnce.
+//
+// `--render-check` reports every template in one list, each line already
+// labelled with the manifest field it came from. text/template prefixes its own
+// error with `template: <name>:`, so a detail that dropped only the literal
+// "template: " left the name in and produced
+// `configuration[0].template: x.tmpl does not render: x.tmpl:1:2: ...`.
+//
+// The detail must therefore open at the position rather than at the name.
+// text/template also writes the name inside its own `executing "x" at <...>`
+// clause, which stays: that is the library's sentence about which template was
+// running, and rewriting it would be editing an error to look tidier than the
+// thing it describes.
+func TestARenderFailureNamesItsTemplateOnce(t *testing.T) {
+	const name = "application.yaml.tmpl"
+
+	rel := domain.Release{}
+	rel.Manifest.Metadata.Name = "demo"
+
+	err := CheckRender(rel, domain.SecretSchema{}, name,
+		[]byte("port: {{ .Parameters.nothing.at.all }}\n"))
+	if err == nil {
+		t.Fatal("a template referring to nothing rendered without complaint")
+	}
+
+	msg := domain.AsError(err).Message
+	if !strings.HasPrefix(msg, name+" does not render: 1:") {
+		t.Errorf("the detail does not open at the failing position: %q", msg)
+	}
+}

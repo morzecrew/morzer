@@ -150,6 +150,51 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 		return result, nil
 	}
 
+	// Everything past this point writes to the machine -- a bundle into the
+	// release store, a record the next tick reads -- so it happens under the
+	// deployment lock, like every other operation that does. The peek above
+	// deliberately stays outside it: the overwhelmingly common tick finds
+	// nothing and must never queue behind a running apply.
+	//
+	// The seen check is made again inside, because the answer can have
+	// changed while the lock was being waited on. Without it an operator's
+	// `update --stage` and a timer tick that peeked at the same moment both
+	// fetch the same bundle and each overwrite the other's record.
+	var staged domain.Release
+	err = d.withLock(ctx, d.newOpID(), domain.OpTypeRelease, opts.Options,
+		func(ctx context.Context) error {
+			seen, err := d.lastSeenUpstream(ctx)
+			if err != nil {
+				return err
+			}
+			if state.UpstreamDigest == seen {
+				result.Moved = false
+				return nil
+			}
+			staged, err = d.stageUnderLock(ctx, state, &result)
+			return err
+		})
+	if err != nil {
+		return result, err
+	}
+	if !result.Moved || result.Candidate.IsZero() {
+		return result, nil
+	}
+
+	result.Notes = release.Notes(staged)
+	d.notify(ctx, events.UpdateStaged(staged.Name(), staged.Version().String(),
+		result.Ref, release.NotesSummary(result.Notes)))
+	return result, nil
+}
+
+// stageUnderLock fetches what the channel points at and records the outcome.
+//
+// Split out so the lock's scope is one statement rather than the body of
+// FollowChannel: what must be serialised is the fetch and the record, and a
+// reader should be able to see where that begins and ends.
+func (d *Deps) stageUnderLock(
+	ctx context.Context, state ports.ChannelState, result *FollowChannelResult,
+) (domain.Release, error) {
 	candidate := domain.UpdateCandidate{
 		SchemaVersion:  domain.UpdateCandidateSchemaVersion,
 		SourceRef:      result.Ref,
@@ -165,10 +210,10 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 		// to reach the same refusal.
 		candidate.Refused = domain.AsError(stageErr).Message
 		if err := d.State.SetUpdateCandidate(ctx, candidate); err != nil {
-			return result, err
+			return domain.Release{}, err
 		}
 		result.Candidate = candidate
-		return result, stageErr
+		return domain.Release{}, stageErr
 	}
 
 	candidate.Name = rel.Name()
@@ -176,15 +221,11 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 	candidate.Digest = rel.Digest
 	candidate.Root = rel.Root
 	if err := d.State.SetUpdateCandidate(ctx, candidate); err != nil {
-		return result, err
+		return domain.Release{}, err
 	}
 
 	result.Candidate = candidate
-	result.Notes = release.Notes(rel)
-
-	d.notify(ctx, events.UpdateStaged(rel.Name(), rel.Version().String(),
-		result.Ref, release.NotesSummary(result.Notes)))
-	return result, nil
+	return rel, nil
 }
 
 // lastSeenUpstream is what this machine has already decided about.
@@ -247,10 +288,15 @@ func (d *Deps) adoptStagedCandidate(ctx context.Context, record *domain.ReleaseR
 // rollback, or an update to something else while the newer one still waits.
 func (d *Deps) retireStagedCandidate(ctx context.Context, record domain.ReleaseRecord) error {
 	candidate, err := d.State.UpdateCandidate(ctx)
-	if err != nil || candidate.IsZero() {
-		// Unreadable is not fatal here for the same reason as above:
-		// this file is rebuilt by the next poll.
-		return nil //nolint:nilerr // derived state; the next poll rewrites it
+	if err != nil {
+		// Returned rather than swallowed, and the caller decides what it
+		// is worth: mid-converge it is a warning, because the record it
+		// could not read cannot be allowed to outrank the release that
+		// was just installed.
+		return err
+	}
+	if candidate.IsZero() {
+		return nil
 	}
 
 	// A *refusal* is not retired by anything an operator installs. It
@@ -357,11 +403,22 @@ type UnattendedResult struct {
 
 	// Update is the operation record, when one ran.
 	Update *Result `json:"update,omitempty"`
+
+	// Skipped says why the tick did nothing, when something other than the
+	// channel decided that -- today, only the deployment lock being held.
+	//
+	// A field rather than an absence, because absence is what every other
+	// quiet tick looks like: a machine reading `--json` cannot otherwise
+	// tell "another operation was running" from "the tag has not moved",
+	// and those are different facts about the same night.
+	Skipped string `json:"skipped,omitempty"`
 }
 
 // Summary renders the tick for a journal a human reads at 09:00.
 func (r UnattendedResult) Summary() string {
 	switch {
+	case r.Skipped != "":
+		return r.Skipped + "; skipping this tick"
 	case r.Applied && r.Update != nil:
 		return r.Update.Summary
 	case r.Follow.Candidate.IsStaged():

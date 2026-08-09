@@ -17,6 +17,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // A channel is a mutable tag polled on a timer, so the two things these tests
@@ -356,4 +357,44 @@ func TestAPlanStagesNothing(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, candidate.IsZero(), "a plan left a candidate record behind")
 	assert.Empty(t, notifier.kinds(), "a plan told somebody a release was staged")
+}
+
+// TestAnUnreadableInstallationCannotSoftenTheSignaturePolicy.
+//
+// The fetch loaded the installation for its signature policy and ignored the
+// error, so a state file that could not be parsed left `Expectation` zeroed:
+// signatures not required, no pinned keys, and a bundle admitted on its content
+// digest alone -- which any registry that served those bytes can satisfy. The
+// bundle then sits in the release store, one `update --to` away from being
+// installed by an operator who never saw the error.
+//
+// Absence is the one policy-free case, and it is asked about separately. This
+// machine has a policy; what it does not have is a readable copy of it.
+func TestAnUnreadableInstallationCannotSoftenTheSignaturePolicy(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	inst := h.install()
+	inst.Policy.RequireSignature = true
+	inst.Policy.SigningKeys = []string{"RWQfakekey"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	ref, err := ports.ParseRef(filepath.Join(testBundlePath(t), "..", "bundle-1.3.0"))
+	require.NoError(t, err)
+	resolved, err := h.Deps.Source.Resolve(ctx, ref)
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(h.Paths.InstallationState(),
+		[]byte("{\"schema_version\": 5, \"product\":\n"), 0o640))
+
+	_, _, err = ops.FetchIntoStore(ctx, h.Deps, ref, resolved)
+	require.Error(t, err, "an unsigned bundle was accepted by a machine that requires signatures")
+
+	// The refusal is about the state rather than about the signature: the
+	// manager cannot say the bundle failed a policy it was unable to read.
+	assert.Contains(t, err.Error(), h.Paths.InstallationState())
+
+	// And nothing was left behind for `update --to` to find.
+	_, err = os.Stat(h.Paths.ReleaseDir(resolved.Version.String()))
+	assert.True(t, os.IsNotExist(err), "the unverified bundle stayed in the release store")
 }

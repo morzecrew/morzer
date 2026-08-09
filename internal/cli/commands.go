@@ -288,6 +288,19 @@ func newUpdateCommand(app *App) *cobra.Command {
 				return nil
 			}
 			if unattended {
+				// Refused rather than ignored. `--check` and
+				// `--stage` both take a reference, so an operator
+				// has every reason to expect this one does --
+				// and a tick that silently polled the configured
+				// channel instead would report success for an
+				// operation nobody asked for.
+				if len(args) == 1 {
+					return domain.Usage(
+						"--unattended follows the configured channel and takes no bundle").
+						WithHint("`morzer update %s` installs that bundle; "+
+							"`--stage %s` fetches it without installing",
+							args[0], args[0])
+				}
 				return runUnattendedTick(cmd, app, opts)
 			}
 			if stage {
@@ -414,7 +427,16 @@ func runUnattendedTick(cmd *cobra.Command, app *App, opts ops.Options) error {
 
 	if errors.Is(err, domain.ErrLocked) {
 		// Journalled, because "nothing happened tonight" and "something
-		// else was running" are different facts to find at 09:00.
+		// else was running" are different facts to find at 09:00 --
+		// which is equally true of whatever is reading `--json`. An
+		// empty payload cannot tell a skipped tick from a tick that
+		// found nothing, so the skip is reported in the result's own
+		// shape rather than by omission.
+		res.Skipped = "another operation holds the lock"
+		if app.json != nil {
+			app.jsonData = res
+			return nil
+		}
 		fmt.Fprintf(app.Stream.Err,
 			"another operation holds the lock; skipping this tick\n")
 		return nil

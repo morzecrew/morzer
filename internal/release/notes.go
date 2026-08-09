@@ -13,9 +13,10 @@ import (
 //
 // Release notes are vendor-supplied text that reaches a terminal, a
 // notification body and an operator's screen. A bundle shipping a gigabyte of
-// them should render nothing rather than exhaust the machine deciding whether to
-// install it -- and 256 KiB is around forty pages, which is more changelog than
-// anyone reads before accepting downtime.
+// them must not be able to exhaust the machine deciding whether to install it,
+// so this much is read and the rest is refused with the cut said out loud --
+// 256 KiB is around forty pages, which is more changelog than anyone reads
+// before accepting downtime.
 const maxNotesBytes = 256 * 1024
 
 // Notes reads a release's notes, or "" when it ships none.
@@ -30,13 +31,19 @@ const maxNotesBytes = 256 * 1024
 // that is a symlink to /etc/shadow must fail to open rather than be printed to
 // the operator and posted to their Slack channel.
 func Notes(rel domain.Release) string {
+	// The declaration and nothing else. There is no fallback to finding
+	// RELEASE.md by convention: `Metadata.ReleaseNotes` says so in the one
+	// place a vendor reads about the field, and a convention layered under a
+	// declaration reintroduces exactly the ambiguity the declaration
+	// removes -- an undeclared file, which nothing validates and which
+	// `release verify` never checks the existence of, printed to an operator
+	// and posted to their chat channel as the vendor's release notes.
+	//
+	// `release new` scaffolds RELEASE.md *and* declares it, so a bundle
+	// authored by this manager has notes without needing the fallback.
 	name := rel.Manifest.Metadata.ReleaseNotes
 	if name == "" {
-		// The convention, layered under the declaration: a bundle that
-		// ships RELEASE.md without declaring it still has notes worth
-		// reading, and `release new` declares it precisely so this
-		// fallback is not the only path.
-		name = ReleaseNotesFileName
+		return ""
 	}
 
 	root, err := os.OpenRoot(rel.Root)
@@ -51,9 +58,19 @@ func Notes(rel domain.Release) string {
 	}
 	defer func() { _ = f.Close() }()
 
-	raw, err := io.ReadAll(io.LimitReader(f, maxNotesBytes))
+	// One byte past the bound, so an oversized file is *known* to be
+	// oversized rather than silently becoming a changelog that stops
+	// mid-sentence. What the reader gets is the bound's worth plus a line
+	// saying the rest was not read -- discarding it entirely would hide a
+	// vendor's actual notes over their formatting, and saying nothing would
+	// have an operator decide on text they cannot tell is incomplete.
+	raw, err := io.ReadAll(io.LimitReader(f, maxNotesBytes+1))
 	if err != nil {
 		return ""
+	}
+	if len(raw) > maxNotesBytes {
+		return string(raw[:maxNotesBytes]) +
+			"\n\n_(release notes truncated at 256 KiB)_\n"
 	}
 	return string(raw)
 }

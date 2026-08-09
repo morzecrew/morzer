@@ -354,6 +354,25 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			},
 			"compatibility",
 		},
+		// Negative schema numbers are refused rather than ignored,
+		// because every check that reads one is guarded by `> 0`: a
+		// vendor who typed one would have made a declaration that
+		// decides nothing while looking like a declaration. For
+		// database_schema_produces that is the difference between the
+		// unattended gate refusing a release and passing its schema half
+		// without looking at it.
+		"a schema minimum below zero": {
+			func(m *Manifest) { m.Compatibility.DatabaseSchemaMin = -1 },
+			"compatibility.database_schema_min",
+		},
+		"a schema maximum below zero": {
+			func(m *Manifest) { m.Compatibility.DatabaseSchemaMax = -1 },
+			"compatibility.database_schema_max",
+		},
+		"a negative prediction of what the migrations produce": {
+			func(m *Manifest) { m.Compatibility.DatabaseSchemaProduces = -1 },
+			"compatibility.database_schema_produces",
+		},
 		"keeping no releases": {
 			func(m *Manifest) { m.Retention.Releases = 0 }, "retention.releases",
 		},

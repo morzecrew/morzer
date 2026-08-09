@@ -38,15 +38,6 @@ func newReleaseCommand(app *App) *cobra.Command {
 	return cmd
 }
 
-// releaseEntry is one installed release, as `release list` reports it.
-type releaseEntry struct {
-	Version  domain.Version `json:"version"`
-	Root     string         `json:"root"`
-	Digest   string         `json:"digest"`
-	Current  bool           `json:"current"`
-	Previous bool           `json:"previous"`
-}
-
 func newReleaseListCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -67,12 +58,18 @@ func newReleaseListCommand(app *App) *cobra.Command {
 				return nil
 			}
 			for _, e := range entries {
+				// A staged release is marked because `prune` refuses
+				// to remove it: a listing that showed no reason for
+				// that would leave an operator arguing with the
+				// retention policy about a release it cannot see.
 				marker := " "
 				switch {
 				case e.Current:
 					marker = "*"
 				case e.Previous:
 					marker = "-"
+				case e.Staged:
+					marker = "+"
 				}
 				fmt.Fprintf(app.Stream.Out, "%s %-12s %s\n", marker, e.Version, e.Root)
 			}
@@ -81,26 +78,19 @@ func newReleaseListCommand(app *App) *cobra.Command {
 	}
 }
 
-// installedReleases enumerates the release store, marking current and previous.
 // installedReleases reads the store through the lifecycle layer.
 //
 // The listing and the retention pass share one implementation because they share
 // one definition of what a release *is*: a directory whose manifest loads, with
 // the roles that make it unprunable. Two readers of the same directory is how
 // `release list` and `release prune` come to disagree about what is there.
-func (a *App) installedReleases(ctx context.Context) ([]releaseEntry, error) {
-	entries, err := ops.InstalledReleases(ctx, a.Deps)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]releaseEntry, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, releaseEntry{
-			Version: e.Version, Root: e.Root,
-			Current: e.Current, Previous: e.Previous,
-		})
-	}
-	return out, nil
+//
+// The entries are passed through rather than copied into a second struct. The
+// copy is what let `release list` drop the staged role while `release prune`
+// enforced it -- the disagreement this function exists to prevent, reintroduced
+// one field at a time.
+func (a *App) installedReleases(ctx context.Context) ([]ops.ReleaseEntry, error) {
+	return ops.InstalledReleases(ctx, a.Deps)
 }
 
 func newReleaseShowCommand(app *App) *cobra.Command {
@@ -307,6 +297,36 @@ func checkBundleIntegrity(rel domain.Release) error {
 	return checksum.VerifySumsFile(rel.Root)
 }
 
+// checkEveryTemplate runs one check over every declared template and collects
+// what it says.
+//
+// The walk is shared because the two checks differ only in what they do with the
+// bytes: both label the problem `configuration[i].template`, both read through
+// the release root, and both report every template rather than the first. What
+// they must *not* share is the error and the hint, so the caller keeps those --
+// a parse failure and a render failure send an author to different places.
+//
+// Reading through the release root is the part that must not be duplicated by
+// accident: os.ReadFile would follow a symlink out of the bundle, so a template
+// pointing at a host file would check clean here and be refused at apply, which
+// is verifying something other than what installs.
+func checkEveryTemplate(rel domain.Release, check func(name string, raw []byte) error) []string {
+	var problems []string
+	for i, c := range rel.Manifest.Configuration {
+		field := fmt.Sprintf("configuration[%d].template", i)
+
+		raw, err := gotemplate.ReadTemplate(rel.Root, c.Template)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
+			continue
+		}
+		if err := check(c.Template, raw); err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
+		}
+	}
+	return problems
+}
+
 // checkTemplatesParse parses every template the manifest declares.
 //
 // Reports all of them rather than the first: a vendor fixing one broken
@@ -319,25 +339,7 @@ func checkBundleIntegrity(rel domain.Release) error {
 // values only an installation can supply -- and reporting "valid" for more than
 // was checked is the over-claim this whole check exists to remove.
 func checkTemplatesParse(rel domain.Release) error {
-	var problems []string
-
-	for i, c := range rel.Manifest.Configuration {
-		field := fmt.Sprintf("configuration[%d].template", i)
-
-		// Read exactly as the renderer will, through the release root.
-		// os.ReadFile would follow a symlink out of the bundle, so a
-		// template pointing at a host file would parse here and be
-		// refused at apply -- verifying something other than what
-		// installs is the failure this check exists to remove.
-		raw, err := gotemplate.ReadTemplate(rel.Root, c.Template)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
-			continue
-		}
-		if err := gotemplate.CheckSyntax(c.Template, raw); err != nil {
-			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
-		}
-	}
+	problems := checkEveryTemplate(rel, gotemplate.CheckSyntax)
 
 	if len(problems) > 0 {
 		return domain.ValidationError(domain.ErrTemplateSyntax,
@@ -371,20 +373,9 @@ func checkTemplatesRender(rel domain.Release) error {
 		return err
 	}
 
-	var problems []string
-	for i, c := range rel.Manifest.Configuration {
-		field := fmt.Sprintf("configuration[%d].template", i)
-
-		raw, err := gotemplate.ReadTemplate(rel.Root, c.Template)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
-			continue
-		}
-		if err := gotemplate.CheckRender(rel, schema, c.Template, raw); err != nil {
-			problems = append(problems,
-				fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
-		}
-	}
+	problems := checkEveryTemplate(rel, func(name string, raw []byte) error {
+		return gotemplate.CheckRender(rel, schema, name, raw)
+	})
 
 	if len(problems) > 0 {
 		// The field list is derived from the render context rather than
@@ -432,17 +423,21 @@ func newReleaseFetchCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = map[string]any{
-					"version": rel.Version(), "digest": rel.Digest, "root": rel.Root,
-				}
+			// Carried on the result rather than assigned beside it:
+			// finish is what publishes JSON, and it publishes
+			// result.Data -- so a payload written to app.jsonData
+			// first is overwritten by this call's empty one, and
+			// `release fetch --json` reports nothing about what it
+			// fetched.
+			data := map[string]any{
+				"version": rel.Version(), "digest": rel.Digest, "root": rel.Root,
 			}
 			if present {
-				app.finish(ops.Result{
+				app.finish(ops.Result{Data: data,
 					Summary: fmt.Sprintf("release %s is already present", rel.Version())})
 				return nil
 			}
-			app.finish(ops.Result{
+			app.finish(ops.Result{Data: data,
 				Summary: fmt.Sprintf("fetched %s %s into %s", rel.Name(), rel.Version(), rel.Root)})
 			return nil
 		},

@@ -129,17 +129,25 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		out.PreviousRelease = &previous
 	}
 
-	// A refused candidate is a problem rather than a section: the operator
-	// needs to know their channel produced something unusable, and giving it
-	// the same line as a staged release would read as "there is an update
-	// waiting" when there is not.
-	if candidate, err := d.State.UpdateCandidate(ctx); err == nil && !candidate.IsZero() {
-		if candidate.IsStaged() {
-			out.StagedRelease = &candidate
-		} else {
-			out.Problems = append(out.Problems,
-				"the update channel offered something that was refused: "+candidate.Refused)
-		}
+	candidate, err := d.State.UpdateCandidate(ctx)
+	switch {
+	case err != nil:
+		// Reported like the two release pointers above rather than
+		// dropped. This record is what `release prune` consults before
+		// removing a staged release, so a corrupt one that `status` did
+		// not mention would leave an operator with a refusing prune and
+		// no diagnosis.
+		out.Problems = append(out.Problems,
+			"cannot read the update candidate: "+domain.AsError(err).Message)
+	case candidate.IsStaged():
+		out.StagedRelease = &candidate
+	case !candidate.IsZero():
+		// A refused candidate is a problem rather than a section: the
+		// operator needs to know their channel produced something
+		// unusable, and giving it the same line as a staged release
+		// would read as "there is an update waiting" when there is not.
+		out.Problems = append(out.Problems,
+			"the update channel offered something that was refused: "+candidate.Refused)
 	}
 
 	if owner, held, err := d.Locker.Owner(ctx, "deployment"); err == nil && held {

@@ -15,10 +15,14 @@ warning. That is what makes a rollback target unambiguous.
 
 ## release list
 
-Lists installed releases, newest first, marking the one currently pointed at.
+Lists installed releases, newest first, marking the roles that keep a release in
+the store: `*` current, `-` previous, `+` staged by a channel poll and not yet
+installed.
 
 The release store keeps more than the running release so that `rollback --to`
-has somewhere to go. How many is the manifest's `retention.releases`.
+has somewhere to go. How many is the manifest's `retention.releases`, which
+counts the releases holding *none* of those roles — the three marked ones are
+kept regardless.
 
 ## release show
 

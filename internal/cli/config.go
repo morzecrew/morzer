@@ -69,7 +69,7 @@ func newConfigGetCommand(app *App) *cobra.Command {
 			// The same dispatch `set` makes, and for the same reason:
 			// a dotted name is never a parameter, so reporting it as
 			// an undeclared one sends the reader to the manifest.
-			if ops.IsSetting(args[0]) || ops.LooksLikeSetting(args[0]) {
+			if ops.IsSettingName(args[0]) {
 				setting, err := ops.GetSetting(cmd.Context(), app.Deps, args[0])
 				if err != nil {
 					return err
@@ -164,7 +164,7 @@ func newConfigUnsetCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var settings, parameters []string
 			for _, name := range args {
-				if ops.IsSetting(name) || ops.LooksLikeSetting(name) {
+				if ops.IsSettingName(name) {
 					settings = append(settings, name)
 					continue
 				}
@@ -231,7 +231,7 @@ func newConfigSettingsCommand(app *App) *cobra.Command {
 func splitSettings(assignments map[string]string) (settings, parameters map[string]string) {
 	settings, parameters = map[string]string{}, map[string]string{}
 	for name, value := range assignments {
-		if ops.IsSetting(name) || ops.LooksLikeSetting(name) {
+		if ops.IsSettingName(name) {
 			settings[name] = value
 			continue
 		}

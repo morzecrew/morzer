@@ -122,13 +122,27 @@ func (s *Store) SaveInstallation(ctx context.Context, i domain.Installation) err
 // is made. That is why `init --mode dev` and `import --mode dev` work and
 // nothing else does.
 func (s *Store) checkModeUnchanged(ctx context.Context, next domain.Installation) error {
+	// Absence is creation, and absence is asked about on its own terms
+	// rather than inferred from a load failing. A state file that exists and
+	// will not parse still says something about what this machine is, and
+	// the caller is about to replace it with valid content -- so "it fails
+	// at the next read" is not true of it: the next read succeeds and
+	// reports whatever mode was written over it.
+	exists, err := s.InstallationExists(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 	current, err := s.LoadInstallation(ctx)
 	if err != nil {
-		// No installation, or one this manager cannot read. Neither is a
-		// mode change: the first is a creation, and the second fails on
-		// its own terms at the next read rather than being reported here
-		// as something about modes.
-		return nil //nolint:nilerr // absence is creation, not a transition
+		return domain.InstallationError(err,
+			"cannot confirm this installation's mode before writing").
+			WithHint("mode is fixed when an installation is created, so the existing "+
+				"state must be readable to know this is not a transition; repair %s, "+
+				"or move it aside if you are rebuilding this machine from an export",
+				s.paths.InstallationState())
 	}
 	if current.Mode == next.Mode {
 		return nil
@@ -263,9 +277,12 @@ func (s *Store) SetCurrentRelease(ctx context.Context, r domain.ReleaseRecord) e
 // UpdateCandidate reads what the channel last pointed at.
 //
 // A missing file is the ordinary state -- most machines follow no channel --
-// and so is an unreadable one: this record is derived from a poll and rebuilt by
-// the next, so refusing to report `status` because a disposable file is corrupt
-// would take a diagnostic away over something that repairs itself.
+// and it is the only one read as "nothing is staged". A file that exists and
+// cannot be read is not disposable in the way it first looks: `release prune`
+// consults this record to decide that a release in the store is exempt, so
+// answering "no candidate" for a corrupt one removes the bundle a poll fetched
+// and then re-downloads it. Callers report the failure; they do not paper over
+// it.
 func (s *Store) UpdateCandidate(ctx context.Context) (domain.UpdateCandidate, error) {
 	data, err := os.ReadFile(s.paths.UpdateCandidateFile())
 	if err != nil {

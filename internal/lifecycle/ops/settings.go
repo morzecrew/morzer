@@ -140,6 +140,15 @@ func IsSetting(name string) bool {
 // to look for something that was never going to be there.
 func LooksLikeSetting(name string) bool { return strings.Contains(name, ".") }
 
+// IsSettingName is the routing question `config` asks: does this name belong to
+// the settings side at all, known or mistyped.
+//
+// One predicate rather than the pair spelled out at each of `get`, `set` and
+// `unset`. They must route a name identically -- an operator who sets
+// `update.chanel` and then unsets it has to reach the same refusal both times --
+// and three copies of a two-term condition is how that stops being true.
+func IsSettingName(name string) bool { return IsSetting(name) || LooksLikeSetting(name) }
+
 // SettingsReport is every installation setting and its current value.
 type SettingsReport struct {
 	Settings []SettingEntry `json:"settings"`
@@ -242,14 +251,23 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		changed = append(changed, name)
 	}
 
-	if len(changed) == 0 {
-		return Result{Summary: "no change: every value already matches"}, nil
-	}
 	sort.Strings(changed)
 
 	if opts.DryRun {
+		if len(changed) == 0 {
+			return Result{Summary: "no change: every value already matches"}, nil
+		}
 		return Result{Summary: "would set " + strings.Join(changed, ", ")}, nil
 	}
+
+	// A run that changes no value still reconciles the units, and that is
+	// the only reason it does any work at all. Unit installation is the half
+	// of a setting change that can fail after the state has been written --
+	// leaving a machine whose state says it follows a channel and whose
+	// supervisor has no timer -- and without this, repeating the command
+	// that failed would match every value, report "no change", and never
+	// reach the step that did not finish. Reconciliation is idempotent, so
+	// the cost of the ordinary no-op case is one unit comparison.
 
 	opID := d.newOpID()
 	err = d.withLock(ctx, opID, domain.OpTypeConfig, opts.Options, func(ctx context.Context) error {
@@ -269,8 +287,10 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 				return err
 			}
 		}
-		if err := d.saveInstallation(ctx, fresh); err != nil {
-			return err
+		if len(changed) > 0 {
+			if err := d.saveInstallation(ctx, fresh); err != nil {
+				return err
+			}
 		}
 		// After the state, not before: the units are derived from it,
 		// and a crash between the two leaves a timer that the next
@@ -281,6 +301,9 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		return Result{}, err
 	}
 
+	if len(changed) == 0 {
+		return Result{Summary: "no change: every value already matches"}, nil
+	}
 	return Result{Summary: "set " + strings.Join(changed, ", ")}, nil
 }
 

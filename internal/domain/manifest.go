@@ -768,6 +768,27 @@ func (m *Manifest) Validate() error {
 	}
 
 	// compatibility
+	//
+	// Negative schema numbers are refused by name rather than ignored.
+	// Every check that reads one is guarded by `> 0` so that an *absent*
+	// declaration decides nothing -- which means a negative one decides
+	// nothing either, while looking to a vendor like a declaration they
+	// made. For database_schema_produces that is the difference between a
+	// release being refused by the unattended gate and passing its schema
+	// half without being looked at.
+	for _, f := range []struct {
+		name  string
+		value int
+	}{
+		{"database_schema_min", m.Compatibility.DatabaseSchemaMin},
+		{"database_schema_max", m.Compatibility.DatabaseSchemaMax},
+		{"database_schema_produces", m.Compatibility.DatabaseSchemaProduces},
+	} {
+		if f.value < 0 {
+			v.add("compatibility."+f.name,
+				"must not be negative, and is %d", f.value)
+		}
+	}
 	if m.Compatibility.DatabaseSchemaMin > 0 && m.Compatibility.DatabaseSchemaMax > 0 &&
 		m.Compatibility.DatabaseSchemaMin > m.Compatibility.DatabaseSchemaMax {
 		v.add("compatibility", "database_schema_min (%d) exceeds database_schema_max (%d)",
