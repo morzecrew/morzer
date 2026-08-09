@@ -217,6 +217,71 @@ func TestReleaseVerifyRefusesATemplateThatCannotParse(t *testing.T) {
 		OutputContains("bundle is valid")
 }
 
+// TestRenderCheckCatchesWhatParsingCannot is the pair that keeps the two modes
+// from collapsing into one.
+//
+// A template naming a secret the schema does not declare parses perfectly: it is
+// a function call with a string argument, and nothing at parse time knows what
+// the bundle declares. It fails the moment it is rendered. Without both halves
+// asserted here, `--render-check` could be an alias for the parse pass and
+// nothing would notice -- which is the flag's entire justification gone.
+func TestRenderCheckCatchesWhatParsingCannot(t *testing.T) {
+	r := clitest.New(t)
+
+	tmpl := filepath.Join(r.Bundle, "templates", "application.yaml.tmpl")
+	original, err := os.ReadFile(tmpl)
+	if err != nil {
+		t.Fatalf("cannot read the example template: %v", err)
+	}
+
+	// Valid syntax, undeclared secret. This is the shape of a real typo:
+	// the schema calls it db_password.
+	broken := "secrets:\n  db: {{ secretFile .Secrets \"db_passwrod\" }}\n"
+	if err := os.WriteFile(tmpl, []byte(broken), 0o600); err != nil {
+		t.Fatalf("cannot write the template: %v", err)
+	}
+
+	r.Run("release", "verify", r.Bundle).ExitCode(0).
+		OutputContains("bundle is valid")
+
+	failed := r.Run("release", "verify", r.Bundle, "--render-check").Failed()
+	failed.OutputContains("does not render")
+	// And names the secret, because "does not render" alone tells an author
+	// which template failed and nothing about why.
+	failed.OutputContains("db_passwrod")
+
+	// A correct bundle still passes both, so the new gate cannot start
+	// refusing what it is supposed to bless.
+	if err := os.WriteFile(tmpl, original, 0o600); err != nil {
+		t.Fatalf("cannot restore the template: %v", err)
+	}
+	r.Run("release", "verify", r.Bundle).ExitCode(0)
+	r.Run("release", "verify", r.Bundle, "--render-check").ExitCode(0).
+		OutputContains("synthetic context")
+}
+
+// TestRenderCheckIsOptIn.
+//
+// Decision 12 is that it stays opt-in permanently, so the default path must not
+// acquire it by accident. A bundle that fails the render check and passes plain
+// `verify` is the assertion; the reverse -- a flag that silently became the
+// default -- is what it catches.
+func TestRenderCheckIsOptIn(t *testing.T) {
+	r := clitest.New(t)
+
+	tmpl := filepath.Join(r.Bundle, "templates", "application.yaml.tmpl")
+	// `.Installation.Urrl` is a field that does not exist on the type: it
+	// parses, and rendering it is an error rather than an empty string
+	// because the renderer runs with missingkey=error.
+	if err := os.WriteFile(tmpl,
+		[]byte("url: {{ .Installation.Urrl }}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Run("release", "verify", r.Bundle).ExitCode(0)
+	r.Run("release", "verify", r.Bundle, "--render-check").Failed()
+}
+
 // TestUpdateCheckRefusesRatherThanReportingUpToDate.
 //
 // The command's value is that it never answers a question nobody asked. A

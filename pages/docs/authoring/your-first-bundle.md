@@ -185,7 +185,21 @@ morzer release verify ./my-product
 
 Reports **every** violation in one pass rather than the first, with the line and
 column from your YAML. Run it in your own CI; it needs no installation on the
-machine.
+machine. It parses every template you declare, so an unterminated action fails
+here rather than during someone else's `apply`.
+
+Once your templates reference secrets and parameters, add the render pass:
+
+```sh
+morzer release verify ./my-product --render-check
+```
+
+It renders each template against invented values, which catches the mistake
+parsing cannot see — `{{ secretFile .Secrets "db_passwrod" }}` is valid syntax
+and a broken deployment. It is a smoke test rather than a promise about a
+customer's machine; [what it does and does not
+check](../reference/release-commands.md#what-render-check-checks-and-what-it-does-not)
+is worth reading once before you rely on it.
 
 There is also a JSON Schema for editor completion — see
 [Validating a manifest](../reference/manifest.md#validating-a-manifest).

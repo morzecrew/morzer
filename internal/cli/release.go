@@ -205,17 +205,23 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 	var (
 		expectDigest string
 		signingKeys  []string
+		renderCheck  bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "verify <path>",
 		Short: "Validate a bundle's manifest and check its integrity",
 		Long: "Loads and validates the manifest, checks every referenced file exists,\n" +
-			"computes the content digest, and verifies SHA256SUMS when the bundle\n" +
-			"ships one.\n\n" +
+			"parses every template it declares, computes the content digest, and\n" +
+			"verifies SHA256SUMS when the bundle ships one.\n\n" +
 			"Pass --signing-key to check the bundle's signature too. This is the\n" +
 			"command a bundle vendor runs in their own CI, so it needs no\n" +
-			"installation on the machine.",
+			"installation on the machine.\n\n" +
+			"--render-check additionally renders each template against a synthetic\n" +
+			"context. It is a smoke test, not a guarantee: the values are invented,\n" +
+			"so a template that branches on them exercises only the branch they\n" +
+			"choose. What it does catch is a template referring to a field or a\n" +
+			"secret that nothing declares.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]
@@ -235,6 +241,17 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 
 			if err := checkBundleIntegrity(rel); err != nil {
 				return err
+			}
+
+			// After integrity, not before: a bundle whose SHA256SUMS
+			// disagrees with its contents has a more fundamental
+			// problem than a template, and rendering the file that
+			// is not the file the vendor signed would report on the
+			// wrong bytes.
+			if renderCheck {
+				if err := checkTemplatesRender(rel); err != nil {
+					return err
+				}
 			}
 
 			// The signature check is opt-in here rather than driven by
@@ -258,15 +275,24 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 
 			if app.json != nil {
 				app.jsonData = map[string]any{
-					"valid":   true,
-					"name":    rel.Name(),
-					"version": rel.Version(),
-					"digest":  rel.Digest,
+					"valid":        true,
+					"name":         rel.Name(),
+					"version":      rel.Version(),
+					"digest":       rel.Digest,
+					"render_check": renderCheck,
 				}
 				return nil
 			}
 			fmt.Fprintf(app.Stream.Out, "%s %s\n%s\n", rel.Name(), rel.Version(), rel.Digest)
-			app.finish(ops.Result{Summary: "bundle is valid"})
+			// The summary says which check ran. "bundle is valid" after
+			// a render check and after a parse check would be the same
+			// sentence for two different claims, and the stronger one is
+			// the one a vendor would quote.
+			summary := "bundle is valid"
+			if renderCheck {
+				summary = "bundle is valid; templates render against a synthetic context"
+			}
+			app.finish(ops.Result{Summary: summary})
 			return nil
 		},
 	}
@@ -274,6 +300,9 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&expectDigest, "digest", "", "expected content digest; a mismatch is an error")
 	cmd.Flags().StringArrayVar(&signingKeys, "signing-key", nil,
 		"minisign public key the bundle's signature must verify against; repeat for several")
+	cmd.Flags().BoolVar(&renderCheck, "render-check", false,
+		"also render each template against a synthetic context; a smoke test, "+
+			"not a promise about a real installation")
 	return cmd
 }
 
@@ -337,6 +366,59 @@ func checkTemplatesParse(rel domain.Release) error {
 			strings.Join(problems, "\n  - ")).
 			WithHint("a template that cannot parse cannot render, so this bundle " +
 				"would fail during an operator's `apply`")
+	}
+	return nil
+}
+
+// checkTemplatesRender renders every declared template against a synthetic
+// context.
+//
+// Opt-in, and permanently so (RFC 0013 decision 12). The context invents its
+// values, so a passing render check says the template referred to nothing that
+// does not exist -- not that it will render on a customer's machine. Making it
+// default would turn "verify passed" into a guarantee it cannot keep, which is
+// the failure `verify` parsing templates at all exists to remove.
+//
+// The bundle's own declarations are not invented: the secret names come from the
+// schema the manifest points at, so `{{ secretFile .Secrets "typo" }}` fails
+// here. That is the half of this check that carries information a parse cannot.
+func checkTemplatesRender(rel domain.Release) error {
+	// A declared-but-broken schema is this function's failure to report,
+	// not a reason to render against an empty secret map: every
+	// `secretFile` call would then fail with a message about the secret
+	// rather than about the schema that could not be read.
+	schema, err := release.LoadSecretSchema(rel)
+	if err != nil {
+		return err
+	}
+
+	var problems []string
+	for i, c := range rel.Manifest.Configuration {
+		field := fmt.Sprintf("configuration[%d].template", i)
+
+		raw, err := gotemplate.ReadTemplate(rel.Root, c.Template)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
+			continue
+		}
+		if err := gotemplate.CheckRender(rel, schema, c.Template, raw); err != nil {
+			problems = append(problems,
+				fmt.Sprintf("%s: %s", field, domain.AsError(err).Message))
+		}
+	}
+
+	if len(problems) > 0 {
+		// The field list is derived from the render context rather than
+		// restated, so it cannot come to advertise a field that was
+		// renamed -- which is the one thing an author reading this hint
+		// would take at face value.
+		return domain.ValidationError(domain.ErrTemplateRender,
+			"the bundle declares templates that do not render:\n  - %s",
+			strings.Join(problems, "\n  - ")).
+			WithHint("the context is synthetic, so this is a smoke test -- but a "+
+				"template that cannot render against invented values usually "+
+				"refers to something no installation defines either. "+
+				"Top-level fields: %s", strings.Join(ports.TemplateFields(), ", "))
 	}
 	return nil
 }

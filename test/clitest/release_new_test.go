@@ -16,13 +16,20 @@ import (
 // TestReleaseNewVerifiesWithNoEdits is the assertion that couples the
 // generator to the verifier, in both directions: a scaffold that drifts fails
 // here, and so does a verifier that grows stricter than the scaffold.
+//
+// Under `--render-check`, which is the strongest gate `verify` has (RFC 0013
+// decision 11). It matters for this bundle specifically: the scaffolded template
+// calls `secretFile` against the scaffolded schema, so the two files have to
+// agree about the secret's name -- and nothing but a render would notice if a
+// later edit renamed one of them.
 func TestReleaseNewVerifiesWithNoEdits(t *testing.T) {
 	r := clitest.New(t)
 	dir := filepath.Join(t.TempDir(), "my-product")
 
 	r.Run("release", "new", dir, "--vendor", "example").ExitCode(0)
 
-	r.Run("release", "verify", dir).ExitCode(0).OutputContains("bundle is valid")
+	r.Run("release", "verify", dir, "--render-check").ExitCode(0).
+		OutputContains("bundle is valid")
 }
 
 // TestReleaseNewCarriesTheConventions, asserted against the file tree rather

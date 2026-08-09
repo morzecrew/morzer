@@ -83,6 +83,19 @@ var (
 	// message, which made rewording the message silently disable the check.
 	ErrTemplateSyntax = errors.New("template does not parse")
 
+	// ErrTemplateRender marks a template that parses and then fails against
+	// a context: a missing key, a field that does not exist on the type, a
+	// `required` that was not satisfied.
+	//
+	// Distinct from ErrTemplateSyntax because the two carry different
+	// promises. A parse failure is unconditional -- that template cannot
+	// render anywhere. A render failure under `verify --render-check` is
+	// against a *synthetic* context whose values are invented, so it is a
+	// smoke test result rather than a verdict about the operator's machine
+	// (RFC 0013 decision 12), and a caller that could not tell them apart
+	// would have to over-claim about one of them.
+	ErrTemplateRender = errors.New("template does not render")
+
 	// ErrMeasureIncomplete marks a measurement that did not run, as opposed
 	// to one that ran and could not produce an answer.
 	//
