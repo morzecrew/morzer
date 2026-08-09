@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/authoring/publishing/">
       
       
-        <link rel="prev" href="../backing-up-volumes/">
+        <link rel="prev" href="../bundled-images/">
       
       
         <link rel="next" href="../../reference/commands/">
@@ -994,6 +994,35 @@
     
   
   Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bundled-images/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-container" viewBox="0 0 24 24"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1M10 14l11.9-6.9M14 19.8v-8.1M18 17.5V9.4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundled images
 
     
   </span>
@@ -2025,6 +2054,9 @@ and putting it somewhere your users can reach.</p>
 minisign<span class="w"> </span>-Sm<span class="w"> </span>./my-product/SHA256SUMS
 morzer<span class="w"> </span>release<span class="w"> </span>archive<span class="w"> </span>./my-product
 </code></pre></div>
+<p>If your release <a href="../bundled-images/">carries its own images</a>, <code>morzer release
+pack ./my-product</code> comes first — it copies them out of your registry into the
+bundle, and <code>build</code> then sums the result.</p>
 <p>The order is forced rather than chosen. The signature is a file <em>inside</em> the
 bundle — a sibling would not survive being packed and unpacked — so it has to
 exist before the bundle is packed. And morzer does not sign, so the step in the
@@ -2084,10 +2116,12 @@ minisign<span class="w"> </span>-Sm<span class="w"> </span>SHA256SUMS
 <span class="o">}</span><span class="w"> </span>&gt;<span class="w"> </span>../entries.txt
 tar<span class="w"> </span>--zstd<span class="w"> </span>-cf<span class="w"> </span>../demo-1.3.0.tar.zst<span class="w"> </span>--no-recursion<span class="w"> </span>-T<span class="w"> </span>../entries.txt
 </code></pre></div>
-<p><strong><code>manifest.yaml</code> must be the first entry</strong> if your bundle carries images: the
-extraction budget is read from the manifest before anything large is extracted,
-which only works while it arrives first. <code>tar -C ./my-product .</code> emits entries
-in directory order, which no <code>tar</code> implementation specifies.</p>
+<p><strong><code>manifest.yaml</code> must be the first entry.</strong> The extraction budget is read from
+the manifest before anything large is extracted, which only works while it
+arrives first — so an archive that begins with anything else is <strong>refused</strong>,
+whatever it contains. <code>tar -C ./my-product .</code> emits entries in directory order,
+which no <code>tar</code> implementation specifies, and is the usual way to get this
+wrong.</p>
 <p><strong>The checksum list must be complete.</strong> If your pipeline writes one by hand,
 verify it with <code>sha256sum -c SHA256SUMS</code> <em>and</em> by comparing its line count
 against the same file set the list covers:</p>
@@ -2270,7 +2304,7 @@ manager refuse an unsafe rollback instead of corrupting a database quietly.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../backing-up-volumes/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Declaring volume consistency">
+          <a href="../bundled-images/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Bundled images">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2280,7 +2314,7 @@ manager refuse an unsafe rollback instead of corrupting a database quietly.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Declaring volume consistency
+                Bundled images
               </div>
             </div>
           </a>

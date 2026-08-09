@@ -1008,6 +1008,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/bundled-images/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-container" viewBox="0 0 24 24"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1M10 14l11.9-6.9M14 19.8v-8.1M18 17.5V9.4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundled images
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -1449,6 +1478,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        bundle
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#parameters" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1484,6 +1524,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="images">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-the-bytes-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where the bytes come from
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1951,6 +2008,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        bundle
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#parameters" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1986,6 +2054,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="images">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-the-bytes-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where the bytes come from
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2284,6 +2369,12 @@ later. Vendor-specific keys go under <code>extensions.&lt;namespace&gt;</code>.<
 <td>What the manager may do about the project's volumes.</td>
 </tr>
 <tr>
+<td><code>bundle</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>What the release says about its own packaging, as distinct from what it needs of the host.</td>
+</tr>
+<tr>
 <td><code>health</code></td>
 <td>table</td>
 <td style="text-align: center;"></td>
@@ -2483,6 +2574,39 @@ Deploying the wrong topology quietly is worse than refusing.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="bundle">bundle<a class="headerlink" href="#bundle" title="Permanent link">&para;</a></h2>
+<p>What the release says about its own packaging, as distinct from what it needs
+of the host.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uncompressed_size</code></td>
+<td>size</td>
+<td>What the archive expands to, e.g. <code>12GiB</code>. Raises the extraction ceiling for a bundle carrying container images.</td>
+</tr>
+</tbody>
+</table>
+<p>A separate block from <code>requirements</code> on purpose: everything there describes the
+<em>host</em>, and this describes the <em>artefact</em>.</p>
+<div class="admonition warning">
+<p class="admonition-title">It can only ever lower the limit</p>
+<p>This value is read out of the tar stream <strong>before the signature is
+checked</strong>, so it is attacker-controlled input in the strictest sense. The
+effective limit is <code>min(declared, hard cap)</code> — a declaration is a request
+for a smaller budget than the manager allows, never permission to exceed
+it. A bundle needing more than the cap is refused, and raising the cap is a
+change to morzer rather than something a bundle can ask for.</p>
+<p>Omitting it means the <strong>default</strong> ceiling, not "unbounded". A missing field
+must never be the permissive reading of anything that gates untrusted
+bytes.</p>
+</div>
 <h2 id="parameters">parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
 <p>What an operator may change, and nothing else. Each entry declares a <code>type</code>, an
 optional <code>default</code>, and — for an enum — the <code>values</code> it accepts.</p>
@@ -2605,6 +2729,58 @@ digest</strong>:</p>
 <p>A bare tag is rejected. An unpinned image makes a release mutable, and a mutable
 release makes rollback meaningless — the same version could produce a different
 system on a different day.</p>
+<p><strong>The key</strong> is lowercase letters, digits and hyphens, starting and ending with a
+letter or digit — the same rule parameters carry, and for the same reason: it
+becomes the tail of <code>&lt;PRODUCT&gt;_IMAGE_&lt;NAME&gt;</code>, which your Compose file
+interpolates. Dots and underscores are refused because the variable name folds
+both to <code>_</code>, so <code>web-ui</code> and <code>web.ui</code> would name the same variable and one
+pinned reference would silently overwrite the other.</p>
+<h3 id="where-the-bytes-come-from">Where the bytes come from<a class="headerlink" href="#where-the-bytes-come-from" title="Permanent link">&para;</a></h3>
+<p>An entry may instead be a mapping, which adds one field:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">images</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">db</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgres@sha256:0000…0002</span><span class="w">              </span><span class="c1"># pulled, as above</span>
+<span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry.example/demo/app@sha256:0000…0001</span>
+<span class="w">    </span><span class="nt">from</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bundle</span><span class="w">                             </span><span class="c1"># travels inside the bundle</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ref</code></td>
+<td>string</td>
+<td>The image reference, pinned by digest. Same rule as the scalar spelling.</td>
+</tr>
+<tr>
+<td><code>from</code></td>
+<td>string</td>
+<td><code>registry</code> (default) or <code>bundle</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Both spellings exist because most images are never bundled, and making every one
+of them carry a <code>from:</code> to say so is noise in the file you read most.</p>
+<p><code>from: bundle</code> means the image travels in the bundle as an <abbr title="Open Container Initiative">OCI</abbr> layout under
+<code>images/</code>, covered by the same <code>SHA256SUMS</code> and signature as every other file —
+so a customer installs a release containing your private images without ever
+holding credentials for the registry they came from. <strong>Per-image</strong>, so a release
+bundles what is private and keeps pulling <code>postgres</code> from Docker Hub.</p>
+<p><code>ref</code> stays a real image reference in both spellings. It is interpolated into
+Compose as <code>&lt;PRODUCT&gt;_IMAGE_&lt;NAME&gt;</code>, so it must remain something the daemon can
+resolve — which is why the source is a separate field rather than a scheme on
+the reference the way <code>update</code> references are spelled.</p>
+<p>An unrecognised <code>from</code> is refused rather than defaulted. The two plausible
+typos — <code>bundled</code>, and <code>from</code> under the wrong image — both fail towards a
+release you believe ships its own bytes and does not, which surfaces as a
+credential failure on your customer's machine.</p>
+<p>See <a href="../../authoring/bundled-images/">bundled images</a> for the layout, what
+<code>release verify</code> checks, and how to produce one.</p>
 <h2 id="configuration">configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>A list of templates rendered onto the host.</p>
 <table>

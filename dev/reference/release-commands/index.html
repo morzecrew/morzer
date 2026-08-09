@@ -1008,6 +1008,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/bundled-images/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-container" viewBox="0 0 24 24"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1M10 14l11.9-6.9M14 19.8v-8.1M18 17.5V9.4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundled images
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -1293,6 +1322,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-pack" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release pack
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release pack">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#platform-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Platform selection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-build" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1316,7 +1384,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-refuses" class="md-nav__link">
+  <a href="#what-it-refuses_1" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         What it refuses
@@ -1392,6 +1460,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         From an OCI registry
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-extraction-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The extraction budget
       </span>
     </span>
   </a>
@@ -1924,6 +2003,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-pack" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release pack
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release pack">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#platform-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Platform selection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-build" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1947,7 +2065,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-refuses" class="md-nav__link">
+  <a href="#what-it-refuses_1" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         What it refuses
@@ -2023,6 +2141,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         From an OCI registry
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-extraction-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The extraction budget
       </span>
     </span>
   </a>
@@ -2242,6 +2371,80 @@ bundle author fixing one problem should not discover the next one on the retry.<
 needs no installation on the machine, because there is no policy to read there.
 On a deployment host, <code>policy.signing_keys</code> in <code>installation.yaml</code> decides
 instead. See <a href="#verification">Verification</a>.</p>
+<h2 id="release-pack">release pack<a class="headerlink" href="#release-pack" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>pack<span class="w"> </span>&lt;bundle-dir&gt;<span class="w"> </span><span class="o">[</span>--platform<span class="w"> </span>linux/amd64<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+</code></pre></div>
+<p>Copies every image the manifest marks <code>from: bundle</code> out of its registry into
+an <abbr title="Open Container Initiative">OCI</abbr> layout under <code>&lt;bundle-dir&gt;/images/</code>, then regenerates <code>SHA256SUMS</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--platform</code></td>
+<td>Which platform to select from a multi-platform image, e.g. <code>linux/amd64</code>. Defaults to whatever the registry resolves.</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>Discard an existing <code>SHA256SUMS.minisig</code>, which repacking invalidates.</td>
+</tr>
+</tbody>
+</table>
+<p>Credentials come from the ambient Docker configuration, exactly as a
+<code>docker pull</code> on this machine would — so this runs on your build machine, and
+your customers never need them. That is the whole point:
+<a href="../../authoring/bundled-images/">bundled images</a> exist so a customer can install
+a release containing your private images without holding a credential for the
+registry they came from.</p>
+<p><strong>Idempotent.</strong> The layout is content-addressed, so running it twice copies
+nothing the second time, and re-running after adding an image adds only that
+image's blobs.</p>
+<h3 id="what-it-refuses">What it refuses<a class="headerlink" href="#what-it-refuses" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No image is marked <code>from: bundle</code></td>
+<td>Refused. There is nothing to pack, and silently succeeding would suggest there was.</td>
+</tr>
+<tr>
+<td>An image cannot be resolved or copied</td>
+<td>Refused, and <strong><code>SHA256SUMS</code> is not regenerated</strong> — so the half-populated tree fails <code>release verify</code> until a later pack completes.</td>
+</tr>
+<tr>
+<td>The registry serves a different digest than the manifest pins</td>
+<td>Refused, naming both. This is the check that makes a bundle's provenance mean anything.</td>
+</tr>
+<tr>
+<td>An existing <code>SHA256SUMS.minisig</code></td>
+<td>Refused unless <code>--force</code>, which <strong>deletes</strong> it. A signature over a list that packing is about to invalidate is the exact failure the chain exists to prevent.</td>
+</tr>
+</tbody>
+</table>
+<p>On a partial write: <code>pack</code> writes in place, so a failure on the fourth image
+leaves the first three copied. Blobs are content-addressed, so what that leaves
+is <em>orphans</em> rather than corruption — and because the checksum list is
+regenerated only after every image succeeds, the tree fails <code>release verify</code>
+until a later pack finishes. Staging the whole layout to make a stronger promise
+would double the disk for a multi-gigabyte bundle.</p>
+<h3 id="platform-selection">Platform selection<a class="headerlink" href="#platform-selection" title="Permanent link">&para;</a></h3>
+<p>A registry reference may resolve to a multi-platform index. <code>--platform</code> picks
+one; the default is whatever the registry resolves for this machine, which is
+least surprising for a vendor building on the architecture they ship and wrong
+for one cross-building on arm64 for amd64 customers.</p>
+<p>If you pin a multi-platform <em>index</em> digest and then select a platform, the copy
+resolves to a per-platform manifest whose digest is not the one you pinned, and
+<code>pack</code> refuses rather than quietly bundling an image the manifest does not
+describe. Pin the digest you actually want to ship.</p>
 <h2 id="release-build">release build<a class="headerlink" href="#release-build" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>build<span class="w"> </span>&lt;bundle-dir&gt;<span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
 </code></pre></div>
@@ -2325,7 +2528,7 @@ than one. The signature is a file <em>inside</em> the bundle — a sibling file 
 survive being packed and unpacked — so it has to exist before the bundle is
 packed. And morzer does not sign: a manager that signs is a manager that holds
 signing keys.</p>
-<h3 id="what-it-refuses">What it refuses<a class="headerlink" href="#what-it-refuses" title="Permanent link">&para;</a></h3>
+<h3 id="what-it-refuses_1">What it refuses<a class="headerlink" href="#what-it-refuses_1" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2511,6 +2714,38 @@ its archive produce the same content digest, so a digest recorded from one
 verifies the other. That is asserted by a test comparing every source against
 the same bundle, because pinning a release would otherwise mean pinning a
 transport too.</p>
+<h3 id="the-extraction-budget">The extraction budget<a class="headerlink" href="#the-extraction-budget" title="Permanent link">&para;</a></h3>
+<p>Extraction happens <strong>before</strong> the signature is checked — a bundle is written to
+disk, then verified — so the extraction limits are the only thing standing
+between a hostile archive and the disk, and the signature cannot be the
+mitigation because it comes afterwards.</p>
+<p>The default ceiling is 2 GiB in total and 1 GiB per file, which a bundle
+carrying container images cannot live within. Such a bundle raises its own by
+declaring what it expands to:</p>
+<div class="highlight"><span class="filename">manifest.yaml</span><pre><span></span><code><span class="nt">bundle</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">uncompressed_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12GiB</span>
+</code></pre></div>
+<p>Three rules, and each is the answer to a way of getting this wrong:</p>
+<ul>
+<li><strong>The archive must begin with <code>manifest.yaml</code>.</strong> That is where the
+  declaration lives, and it has to be readable before the bytes it bounds.
+  <code>release archive</code> guarantees the order; an archive that does not honour it is
+  <strong>refused</strong>, not quietly given the default ceiling — a fallback would make the
+  ordering advisory, and an advisory guarantee decays.</li>
+<li><strong>A declaration may only ever lower the ceiling.</strong> The effective limit is
+  <code>min(declared, hard cap)</code>, where the hard caps are <strong>50 GiB total and 5 GiB
+  per file</strong>. The declaration is made by the same unverified bytes the guard
+  bounds, so a budget that could raise the ceiling is one an attacker sets. A
+  bundle needing more than the cap is refused; raising the cap is a change to
+  morzer, made once, in the open.</li>
+<li><strong>Absent means the default, not unbounded.</strong> A missing field must never be the
+  permissive reading of anything that gates untrusted bytes.</li>
+</ul>
+<p>A declaration smaller than the default is honoured as the stricter bound you
+asked for: an archive that exceeds its own declared size is refused. And before
+anything is written, the declared ceiling is checked against free disk space, so
+a bundle too large for the machine is a clean refusal rather than a full
+filesystem.</p>
 <h3 id="what-extraction-refuses">What extraction refuses<a class="headerlink" href="#what-extraction-refuses" title="Permanent link">&para;</a></h3>
 <p>An archive is the largest attack surface here: a format chosen by whoever
 produced the bundle, unpacked onto the host as root before anything in it has
