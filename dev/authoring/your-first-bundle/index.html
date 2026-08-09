@@ -1940,12 +1940,22 @@
 
 
 <h1 id="your-first-bundle">Your first bundle<a class="headerlink" href="#your-first-bundle" title="Permanent link">&para;</a></h1>
+<p>Start with a skeleton that already verifies:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>new<span class="w"> </span>./my-product<span class="w"> </span>--vendor<span class="w"> </span>example
+morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product
+</code></pre></div>
+<p>It writes a bundle that passes with no edits, carrying the conventions this
+page explains — the schema modeline, templates named <code>.yaml.tmpl</code>, the secret
+schema outside <code>templates/</code>. It deploys nothing useful, deliberately: a
+generated bundle that guessed your architecture would be work to un-write.
+Everything below explains what it wrote and what to change.</p>
 <p>Every fragment on this page is extracted from <code>testdata/bundle/</code> at build time.
 That bundle is installed, updated, backed up, restored and rolled back against
 real Docker on every CI run, so what you are reading is what passes.</p>
 <h2 id="the-manifest">The manifest<a class="headerlink" href="#the-manifest" title="Permanent link">&para;</a></h2>
 <p>Start with identity and the runtime:</p>
-<div class="highlight"><span class="filename">manifest.yaml</span><pre><span></span><code><span class="nt">api_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">selfhost/v1alpha1</span>
+<div class="highlight"><span class="filename">manifest.yaml</span><pre><span></span><code><span class="c1"># yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json</span>
+<span class="nt">api_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">selfhost/v1alpha1</span>
 <span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application-release</span>
 
 <span class="nt">metadata</span><span class="p">:</span>
@@ -1962,6 +1972,15 @@ real Docker on every CI run, so what you are reading is what passes.</p>
 <span class="w">    </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
 </code></pre></div>
+<p><strong>That first line is worth typing.</strong> It is a comment, so a manifest without it
+behaves identically and an editor that ignores it loses nothing — but every
+editor that speaks the language-server protocol reads it and gives you
+completion, hover documentation and inline validation against the schema this
+project generates from the types that enforce the manifest. There is an
+equivalent line for the secret schema, pointing at
+<code>selfhost-v1alpha1-secrets.json</code>.</p>
+<p>It would have caught the unquoted-<code>mode</code> trap that decoded to the wrong
+permission for months.</p>
 <p><code>metadata.name</code> is load-bearing: it becomes <code>/etc/demo</code>, <code>/var/lib/demo</code>,
 <code>/run/demo</code>, <code>/opt/demo</code> and the <code>DEMO_*</code> prefix every hook sees. It is
 validated as a path component, not merely as a string, because it comes from
@@ -2002,13 +2021,20 @@ declared too tightly is an installation that refuses for no reason.</p>
 <em>before</em> the containers fight over it.</p>
 <h3 id="configuration-templates">Configuration templates<a class="headerlink" href="#configuration-templates" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><span class="nt">configuration</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml.tmpl</span>
 <span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/application.yaml</span>
 <span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0640&quot;</span>
 </code></pre></div>
+<p>The <code>.tmpl</code> suffix is a convention, not a requirement — the manifest names the
+path, so morzer has no business dictating filenames it was handed the location
+of. It is worth following: a Go template named <code>.yaml</code> makes every editor's <abbr title="YAML Ain't Markup Language">YAML</abbr>
+language server parse <code>{{- range .Domains }}</code> and report errors that are not
+errors. The double extension keeps the output language inferable, and it is what
+Helm, Hugo and <code>envsubst</code> users already recognise. Associate <code>*.yaml.tmpl</code> with
+Go templates in your editor and the noise stops.</p>
 <p>Rendered with the installation's own facts. <strong>Secrets appear as paths, never as
 values</strong> — there is a <code>secretFile</code> helper for exactly this:</p>
-<div class="highlight"><span class="filename">templates/application.yaml</span><pre><span></span><code><span class="nt">secrets</span><span class="p">:</span>
+<div class="highlight"><span class="filename">templates/application.yaml.tmpl</span><pre><span></span><code><span class="nt">secrets</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">db_password_file</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">secretFile .Secrets &quot;db_password&quot;</span><span class="w"> </span><span class="p p-Indicator">}}</span>
 <span class="w">  </span><span class="nt">session_key_file</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">secretFile .Secrets &quot;session_key&quot;</span><span class="w"> </span><span class="p p-Indicator">}}</span>
 </code></pre></div>
@@ -2034,7 +2060,8 @@ every backup, every support bundle and every <code>cat</code> an operator ever r
 refuse the rollback and name the pre-update backup instead, which is the honest
 answer and the one your users need.</p>
 <h2 id="the-secret-schema">The secret schema<a class="headerlink" href="#the-secret-schema" title="Permanent link">&para;</a></h2>
-<div class="highlight"><span class="filename">templates/secrets.yaml</span><pre><span></span><code><span class="c1"># Declares what secrets exist, so `init` can provision them and `doctor` can</span>
+<div class="highlight"><span class="filename">secrets.schema.yaml</span><pre><span></span><code><span class="c1"># yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-secrets.json</span>
+<span class="c1"># Declares what secrets exist, so `init` can provision them and `doctor` can</span>
 <span class="c1"># audit them without the manager knowing anything about the product.</span>
 <span class="nt">api_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">selfhost/v1alpha1</span>
 
@@ -2061,6 +2088,9 @@ answer and the one your users need.</p>
 <span class="w">    </span><span class="nt">required</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
 <span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
 </code></pre></div>
+<p>It sits at the bundle root rather than under <code>templates/</code>, because it is not a
+template: the manager reads it, nothing renders it. Like the suffix above this
+is a convention — <code>secrets.schema</code> in the manifest names wherever you put it.</p>
 <p>Declaring a <code>generator</code> means the manager can create the value itself at <code>init</code>
 and rotate it on request. Declaring <code>services</code> means a rotation restarts only
 those, rather than the whole product. Declaring <code>rotation_period</code> means <code>doctor</code>
@@ -2074,7 +2104,8 @@ machine.</p>
 <p>There is also a <abbr title="JavaScript Object Notation">JSON</abbr> Schema for editor completion — see
 <a href="../../reference/manifest/#validating-a-manifest">Validating a manifest</a>.</p>
 <h2 id="the-complete-manifest">The complete manifest<a class="headerlink" href="#the-complete-manifest" title="Permanent link">&para;</a></h2>
-<div class="highlight"><span class="filename">testdata/bundle/manifest.yaml</span><pre><span></span><code><span class="c1"># Example release bundle exercised by the test suite.</span>
+<div class="highlight"><span class="filename">testdata/bundle/manifest.yaml</span><pre><span></span><code><span class="c1"># yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json</span>
+<span class="c1"># Example release bundle exercised by the test suite.</span>
 <span class="c1">#</span>
 <span class="c1"># It is a real, valid bundle: the manifest loader, the step engine and the</span>
 <span class="c1"># contract suites all run against it, so a change that breaks the release</span>
@@ -2087,6 +2118,8 @@ machine.</p>
 <span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.2.0</span>
 <span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Demo self-hosted bundle used by the test suite</span>
 <span class="w">  </span><span class="nt">vendor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example</span>
+<span class="w">  </span><span class="nt">release_notes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RELEASE.md</span>
+<span class="w">  </span><span class="nt">support_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://support.example/demo</span>
 
 <span class="nt">providers</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">runtime</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">compose</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span><span class="p p-Indicator">}</span>
@@ -2112,6 +2145,7 @@ machine.</p>
 <span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span>
 <span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2GiB</span>
 <span class="w">  </span><span class="nt">disk</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5GiB</span>
+<span class="w">  </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="w">  </span><span class="c1"># Follows the parameter rather than restating it: preflight has to check the</span>
 <span class="w">  </span><span class="c1"># port this deployment will actually publish, not the one the vendor chose.</span>
 <span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}&quot;</span><span class="p p-Indicator">]</span>
@@ -2138,14 +2172,14 @@ machine.</p>
 <span class="w">  </span><span class="nt">db</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry.example/demo/db@sha256:0000000000000000000000000000000000000000000000000000000000000002</span>
 
 <span class="nt">configuration</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml.tmpl</span>
 <span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/application.yaml</span>
 <span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0640&quot;</span>
 
 <span class="nt">secrets</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/secrets.sops.yaml</span>
 <span class="w">  </span><span class="nt">render_to</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/demo/secrets</span>
-<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/secrets.yaml</span>
+<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secrets.schema.yaml</span>
 
 <span class="nt">operations</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">migrate</span><span class="p">:</span>

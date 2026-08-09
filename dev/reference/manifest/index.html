@@ -1457,6 +1457,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        required
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1942,6 +1959,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        required
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2310,8 +2344,29 @@ later. Vendor-specific keys go under <code>extensions.&lt;namespace&gt;</code>.<
 <td style="text-align: center;"></td>
 <td>Who publishes this.</td>
 </tr>
+<tr>
+<td><code>release_notes</code></td>
+<td>path</td>
+<td style="text-align: center;"></td>
+<td>Bundle-relative path to what changed in this release, conventionally <code>RELEASE.md</code>.</td>
+</tr>
+<tr>
+<td><code>support_url</code></td>
+<td>https URL</td>
+<td style="text-align: center;"></td>
+<td>Where an operator goes when something is wrong.</td>
+</tr>
 </tbody>
 </table>
+<p><code>release_notes</code> is <strong>declared, not discovered</strong>. Every other path a bundle
+ships is declared and existence-checked, and a declared-but-missing file fails
+<code>release verify</code>; there is deliberately no fallback to looking for a
+<code>RELEASE.md</code> that nothing points at, because a convention layered under a
+declaration reintroduces the ambiguity the declaration removes.</p>
+<p><code>support_url</code> must be <code>https</code>. It is shown by <code>status</code> and by <code>doctor</code> <strong>when a
+check fails</strong> — not appended to every error hint, which would put a vendor URL
+in every log line. The operator of a self-hosted product is usually not its
+vendor, and "where do I get help" otherwise has no home.</p>
 <h2 id="providers">providers<a class="headerlink" href="#providers" title="Permanent link">&para;</a></h2>
 <p>Each entry selects a port implementation by <code>name</code>, with an optional <code>version</code>
 constraint. New capabilities arrive as new provider names, never as changes to
@@ -2417,6 +2472,11 @@ Deploying the wrong topology quietly is worse than refusing.</p>
 <td>Minimum free disk, e.g. <code>5GiB</code>.</td>
 </tr>
 <tr>
+<td><code>cpus</code></td>
+<td>int</td>
+<td>Logical CPUs the release wants. A cgroup quota is honoured where one is in force, so a containerised manager sees what it may actually use rather than what the host has.</td>
+</tr>
+<tr>
 <td><code>ports</code></td>
 <td>list</td>
 <td>TCP ports the release binds, checked for conflicts. A literal number, or <code>"{{ .Parameters.&lt;name&gt; }}"</code> so the check follows the port the deployment actually publishes.</td>
@@ -2459,6 +2519,12 @@ optional <code>default</code>, and — for an enum — the <code>values</code> i
 <td>string</td>
 <td style="text-align: center;"></td>
 <td>Used when the operator sets nothing. Validated against <code>type</code> at <code>release verify</code>.</td>
+</tr>
+<tr>
+<td><code>required</code></td>
+<td>bool</td>
+<td style="text-align: center;"></td>
+<td>The operator must supply a value. Declaring it alongside a <code>default</code> is a validation error.</td>
 </tr>
 <tr>
 <td><code>description</code></td>
@@ -2513,6 +2579,22 @@ the journal, and in <code>installation.yaml</code> in the clear. Anything that m
 not be is a <a href="../../authoring/">secret</a>, which has its own declared,
 audited path and is rendered to tmpfs as a file.</p>
 </div>
+<h3 id="required">required<a class="headerlink" href="#required" title="Permanent link">&para;</a></h3>
+<p>Without it, a parameter with no default resolves silently to the empty string —
+so a vendor could declare a knob that exists to be an operator choice and had
+no way to say the choice was not optional, while a <em>secret</em> could be required
+all along.</p>
+<p><code>required: true</code> <strong>and</strong> a <code>default</code> is refused. It is a vendor saying two
+contradictory things, and picking a winner silently would leave them believing
+they had made the choice mandatory.</p>
+<p>An unset required parameter fails preflight, so it is refused by <code>init</code>, by
+<code>config unset</code>, and by <code>apply</code>. That last one is deliberate: a release that
+introduces a required parameter fails to deploy rather than deploying with an
+empty value the product then misreads, and the currently running release keeps
+serving. Set the value first:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">admin_email</span><span class="o">=</span>ops@example
+morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.4.0.tar.zst
+</code></pre></div>
 <p>See <a href="../parameters/">Parameters</a> for the operator's side.</p>
 <h2 id="images">images<a class="headerlink" href="#images" title="Permanent link">&para;</a></h2>
 <p>A map of logical name to image reference. <strong>Every reference must be pinned by
@@ -2702,8 +2784,8 @@ manager captures a database volume the hook already owns.</p>
 <a href="../../authoring/backing-up-volumes/">declaring volume consistency</a> for what it
 commits a vendor to. Bind mounts are never captured and have no declaration.</p>
 <h2 id="health">health<a class="headerlink" href="#health" title="Permanent link">&para;</a></h2>
-<p><code>checks</code> is a list; each entry has a unique <code>name</code>, a <code>type</code>, and a <code>timeout</code>
-(default <code>120s</code>).</p>
+<p><code>checks</code> is a list; each entry has a unique <code>name</code>, a <code>type</code>, a <code>timeout</code>
+(default <code>120s</code>) and an optional <code>start_period</code>.</p>
 <table>
 <thead>
 <tr>
@@ -2730,6 +2812,26 @@ commits a vendor to. Bind mounts are never captured and have no declaration.</p>
 </tr>
 </tbody>
 </table>
+<p><code>timeout</code> bounds a <strong>single attempt</strong>. <code>start_period</code> is different: it is how
+long the check may keep failing before the failure means anything.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">health</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">checks</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api</span>
+<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http</span>
+<span class="w">      </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://127.0.0.1:18080/health</span>
+<span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5s</span>
+<span class="w">      </span><span class="nt">start_period</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">90s</span>
+</code></pre></div>
+<p>Without it, a product with a ninety-second first boot and a product that is
+dead are the same observation, and the only lever is a timeout long enough to
+delay noticing the second. With it, <code>apply</code> stops waiting once every
+still-failing check has outlived its own declared period, and says so in
+different words from a plain timeout — "the vendor said how long this takes and
+it took longer" is acted on differently from "we ran out of time".</p>
+<p>Omitted means the waiter keeps trying for as long as the operation allows,
+which is what it has always done. A check that declares none also holds the
+wait open for the checks beside it, so adding <code>start_period</code> to one check never
+shortens the wait for another.</p>
 <h2 id="compatibility">compatibility<a class="headerlink" href="#compatibility" title="Permanent link">&para;</a></h2>
 <p>The declarations that make <code>update</code> and <code>rollback</code> decidable without running
 anything.</p>
@@ -2806,9 +2908,9 @@ manager takes it literally and refuses the rollback, naming the backup instead.<
 inside a vendor block.</p>
 <hr />
 <h2 id="the-secret-schema">The secret schema<a class="headerlink" href="#the-secret-schema" title="Permanent link">&para;</a></h2>
-<p><code>templates/secrets.yaml</code> declares what secrets exist, so <code>init</code> can provision
-them and <code>doctor</code> can audit them without the manager knowing anything about the
-product.</p>
+<p>The document <code>secrets.schema</code> names — <code>secrets.schema.yaml</code> at the bundle root
+by convention — declares what secrets exist, so <code>init</code> can provision them and
+<code>doctor</code> can audit them without the manager knowing anything about the product.</p>
 <table>
 <thead>
 <tr>
@@ -2904,7 +3006,8 @@ catches a typo in an editor; <code>morzer release verify</code> catches everythi
 <p>This is <code>testdata/bundle/manifest.yaml</code>, included from the repository rather
 than transcribed: the manifest loader, the step engine and the contract suites
 all run against it, so it cannot drift from what the manager actually accepts.</p>
-<div class="highlight"><span class="filename">testdata/bundle/manifest.yaml</span><pre><span></span><code><span class="c1"># Example release bundle exercised by the test suite.</span>
+<div class="highlight"><span class="filename">testdata/bundle/manifest.yaml</span><pre><span></span><code><span class="c1"># yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json</span>
+<span class="c1"># Example release bundle exercised by the test suite.</span>
 <span class="c1">#</span>
 <span class="c1"># It is a real, valid bundle: the manifest loader, the step engine and the</span>
 <span class="c1"># contract suites all run against it, so a change that breaks the release</span>
@@ -2917,6 +3020,8 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.2.0</span>
 <span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Demo self-hosted bundle used by the test suite</span>
 <span class="w">  </span><span class="nt">vendor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example</span>
+<span class="w">  </span><span class="nt">release_notes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RELEASE.md</span>
+<span class="w">  </span><span class="nt">support_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://support.example/demo</span>
 
 <span class="nt">providers</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">runtime</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">compose</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span><span class="p p-Indicator">}</span>
@@ -2942,6 +3047,7 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span>
 <span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2GiB</span>
 <span class="w">  </span><span class="nt">disk</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5GiB</span>
+<span class="w">  </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="w">  </span><span class="c1"># Follows the parameter rather than restating it: preflight has to check the</span>
 <span class="w">  </span><span class="c1"># port this deployment will actually publish, not the one the vendor chose.</span>
 <span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}&quot;</span><span class="p p-Indicator">]</span>
@@ -2968,14 +3074,14 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="w">  </span><span class="nt">db</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry.example/demo/db@sha256:0000000000000000000000000000000000000000000000000000000000000002</span>
 
 <span class="nt">configuration</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml.tmpl</span>
 <span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/application.yaml</span>
 <span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0640&quot;</span>
 
 <span class="nt">secrets</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/secrets.sops.yaml</span>
 <span class="w">  </span><span class="nt">render_to</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/demo/secrets</span>
-<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/secrets.yaml</span>
+<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secrets.schema.yaml</span>
 
 <span class="nt">operations</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">migrate</span><span class="p">:</span>
@@ -3034,7 +3140,8 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://telemetry.example/ingest</span>
 </code></pre></div>
 <p>And its secret schema:</p>
-<div class="highlight"><span class="filename">testdata/bundle/templates/secrets.yaml</span><pre><span></span><code><span class="c1"># Declares what secrets exist, so `init` can provision them and `doctor` can</span>
+<div class="highlight"><span class="filename">testdata/bundle/secrets.schema.yaml</span><pre><span></span><code><span class="c1"># yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-secrets.json</span>
+<span class="c1"># Declares what secrets exist, so `init` can provision them and `doctor` can</span>
 <span class="c1"># audit them without the manager knowing anything about the product.</span>
 <span class="nt">api_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">selfhost/v1alpha1</span>
 

@@ -1076,10 +1076,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#pack-it" class="md-nav__link">
+  <a href="#build-it" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Pack it
+        Build it
       </span>
     </span>
   </a>
@@ -1095,8 +1095,30 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Sign it">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pack-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Pack it
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pack it">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#if-you-roll-your-own-tar" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        If you roll your own <code>tar</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#the-key" class="md-nav__link">
@@ -1155,6 +1177,34 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Versioning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#never-republish-a-version-with-different-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Never republish a version with different content
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#say-what-a-release-can-and-cannot-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Say what a release can and cannot do
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1764,10 +1814,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#pack-it" class="md-nav__link">
+  <a href="#build-it" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Pack it
+        Build it
       </span>
     </span>
   </a>
@@ -1783,8 +1833,30 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Sign it">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pack-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Pack it
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pack it">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#if-you-roll-your-own-tar" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        If you roll your own <code>tar</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#the-key" class="md-nav__link">
@@ -1843,6 +1915,34 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Versioning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#never-republish-a-version-with-different-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Never republish a version with different content
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#say-what-a-release-can-and-cannot-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Say what a release can and cannot do
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1918,24 +2018,35 @@
 
 
 <h1 id="signing-and-publishing">Signing and publishing<a class="headerlink" href="#signing-and-publishing" title="Permanent link">&para;</a></h1>
-<p>A bundle is a directory. Publishing it means packing it, signing it, and putting
-it somewhere your users can reach.</p>
-<h2 id="pack-it">Pack it<a class="headerlink" href="#pack-it" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>tar<span class="w"> </span>--zstd<span class="w"> </span>-cf<span class="w"> </span>demo-1.3.0.tar.zst<span class="w"> </span>-C<span class="w"> </span>./my-product<span class="w"> </span>.
+<p>A bundle is a directory. Publishing it means summing it, signing it, packing it,
+and putting it somewhere your users can reach.</p>
+<p>Three commands, in this order, and the middle one is not morzer's:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>build<span class="w">   </span>./my-product
+minisign<span class="w"> </span>-Sm<span class="w"> </span>./my-product/SHA256SUMS
+morzer<span class="w"> </span>release<span class="w"> </span>archive<span class="w"> </span>./my-product
 </code></pre></div>
-<p><code>tar.zst</code> is the format the manager reads. A bundle and its archive produce the
-<strong>same content digest</strong>, so a digest you record from the directory verifies the
-archive and vice versa — publishing does not change what a release <em>is</em>.</p>
-<p>Nothing but regular files and directories. Symlinks, hardlinks and device nodes
-are refused at extraction, so an archive containing one will not install.</p>
+<p>The order is forced rather than chosen. The signature is a file <em>inside</em> the
+bundle — a sibling would not survive being packed and unpacked — so it has to
+exist before the bundle is packed. And morzer does not sign, so the step in the
+middle is yours.</p>
+<h2 id="build-it">Build it<a class="headerlink" href="#build-it" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>build<span class="w"> </span>./my-product
+</code></pre></div>
+<p>Writes <code>SHA256SUMS</code> over every file in the bundle, then verifies the result the
+same way <code>release verify</code> does, so a broken bundle fails on your machine rather
+than on a customer's.</p>
+<p>It writes <strong>in place</strong>: the bundle directory is modified. Your CI checks out
+fresh so it never notices; running it in a working tree leaves a file to commit
+or ignore.</p>
+<p>A bundle that already carries a signature is refused, because regenerating the
+list necessarily invalidates any signature over it. <code>--force</code> discards the
+signature rather than building around it — keeping one that no longer verifies
+produces exactly the artifact the chain exists to prevent.</p>
 <h2 id="sign-it">Sign it<a class="headerlink" href="#sign-it" title="Permanent link">&para;</a></h2>
-<p>The signature covers a <code>SHA256SUMS</code> file that lists every other file. Two small
+<p>The signature covers the <code>SHA256SUMS</code> that lists every other file. Two small
 steps, each checkable by hand with standard tools, rather than one bespoke
 signature only this program can verify.</p>
-<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>./my-product
-find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS.minisig<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>-exec<span class="w"> </span>sha256sum<span class="w"> </span><span class="o">{}</span><span class="w"> </span>+<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">&#39;s| \./| |&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>SHA256SUMS
-minisign<span class="w"> </span>-Sm<span class="w"> </span>SHA256SUMS
+<div class="highlight"><pre><span></span><code>minisign<span class="w"> </span>-Sm<span class="w"> </span>./my-product/SHA256SUMS
 </code></pre></div>
 <p>That leaves both files <strong>inside</strong> the bundle:</p>
 <div class="highlight"><pre><span></span><code>my-product/
@@ -1948,12 +2059,44 @@ archive and unpacked again on the other machine.</p>
 <p>The list has to be complete. A bundle that ships a <code>SHA256SUMS</code> naming only some
 of its files is refused, naming the ones it left out — an unlisted file is a
 file the signature does not cover, and the file an attacker adds is a file
-nobody listed. The <code>find</code> above produces a complete list; if your pipeline
-writes one by hand, verify it with <code>sha256sum -c SHA256SUMS</code> <em>and</em> by comparing
-its line count against the same file set the list covers:</p>
+nobody listed. <code>release build</code> produces a complete list by construction.</p>
+<h2 id="pack-it">Pack it<a class="headerlink" href="#pack-it" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>archive<span class="w"> </span>./my-product
+<span class="c1"># wrote demo-1.3.0.tar.zst</span>
+</code></pre></div>
+<p><code>tar.zst</code> is the format the manager reads. A bundle and its archive produce the
+<strong>same content digest</strong>, so a digest you record from the directory verifies the
+archive and vice versa — publishing does not change what a release <em>is</em>.</p>
+<p>Two archives of the same tree are byte-identical, and <code>SOURCE_DATE_EPOCH</code> is
+honoured. See <a href="../../reference/release-commands/#release-archive">entry order and reproducibility</a>
+for what that costs and what it buys.</p>
+<h3 id="if-you-roll-your-own-tar">If you roll your own <code>tar</code><a class="headerlink" href="#if-you-roll-your-own-tar" title="Permanent link">&para;</a></h3>
+<p>Supported, and sometimes necessary — a pipeline that cannot run morzer still
+has to produce a bundle. Two rules it must keep, both of which the commands
+above keep for you:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>./my-product
+find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS.minisig<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-exec<span class="w"> </span>sha256sum<span class="w"> </span><span class="o">{}</span><span class="w"> </span>+<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">&#39;s| \./| |&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>SHA256SUMS
+minisign<span class="w"> </span>-Sm<span class="w"> </span>SHA256SUMS
+
+<span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span>manifest.yaml
+<span class="w">  </span>find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>!<span class="w"> </span>-path<span class="w"> </span>./manifest.yaml<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">&#39;s|^\./||&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="nv">LC_ALL</span><span class="o">=</span>C<span class="w"> </span>sort
+<span class="o">}</span><span class="w"> </span>&gt;<span class="w"> </span>../entries.txt
+tar<span class="w"> </span>--zstd<span class="w"> </span>-cf<span class="w"> </span>../demo-1.3.0.tar.zst<span class="w"> </span>--no-recursion<span class="w"> </span>-T<span class="w"> </span>../entries.txt
+</code></pre></div>
+<p><strong><code>manifest.yaml</code> must be the first entry</strong> if your bundle carries images: the
+extraction budget is read from the manifest before anything large is extracted,
+which only works while it arrives first. <code>tar -C ./my-product .</code> emits entries
+in directory order, which no <code>tar</code> implementation specifies.</p>
+<p><strong>The checksum list must be complete.</strong> If your pipeline writes one by hand,
+verify it with <code>sha256sum -c SHA256SUMS</code> <em>and</em> by comparing its line count
+against the same file set the list covers:</p>
 <div class="highlight"><pre><span></span><code>find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS.minisig<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
 wc<span class="w"> </span>-l<span class="w"> </span>&lt;<span class="w"> </span>SHA256SUMS
 </code></pre></div>
+<p>Nothing but regular files and directories, either way. Symlinks, hardlinks and
+device nodes are refused at extraction, so an archive containing one will not
+install.</p>
 <h3 id="the-key">The key<a class="headerlink" href="#the-key" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>minisign<span class="w"> </span>-G<span class="w"> </span>-p<span class="w"> </span>morzer-bundles.pub<span class="w"> </span>-s<span class="w"> </span>morzer-bundles.key
 </code></pre></div>
@@ -2033,16 +2176,60 @@ fetch the bundle that pins them.</p>
 <p>— the difference between "a release claiming to be 1.3.0" and "the release you
 published as 1.3.0".</p>
 <h2 id="versioning">Versioning<a class="headerlink" href="#versioning" title="Permanent link">&para;</a></h2>
-<p>The version in your manifest is semantic and the manager compares it as such.
-Two things follow that are easy to get wrong:</p>
+<p>The version in your manifest is semantic and the manager compares it as such.</p>
+<h3 id="never-republish-a-version-with-different-content">Never republish a version with different content<a class="headerlink" href="#never-republish-a-version-with-different-content" title="Permanent link">&para;</a></h3>
+<p>The manager refuses a version already installed with a different digest, rather
+than overwriting it. There is no <code>--force</code>. The refusal is deliberate: the
+release store is keyed by the version string and <code>current</code> and <code>previous</code> are
+symlinks into it, so overwriting a directory would silently change what
+<code>rollback</code> returns to.</p>
+<p><strong>What to do instead is publish a prerelease.</strong> Every build that is not a
+release gets its own version, so nothing ever collides:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>build<span class="w"> </span>./my-product<span class="w"> </span>--version-from-git
+<span class="c1"># 1.4.1-dev.7.g3be286c</span>
+</code></pre></div>
+<p><code>--version-from-git</code> runs <code>git describe --tags --long --dirty</code> and renders it as
+<code>&lt;next-patch&gt;-dev.&lt;distance&gt;.g&lt;sha&gt;</code>. Three properties, each load-bearing:</p>
 <ul>
-<li><strong>Never republish a version with different content.</strong> The manager refuses a
-  version already installed with a different digest, rather than overwriting it.
-  That refusal is a feature, and it will land on your users.</li>
-<li><strong>Bump <code>database_schema_max</code> when a release can read a newer schema</strong>, and set
-  <code>rollback_safe: false</code> when its migrations are one-way. These are what let the
-  manager refuse an unsafe rollback instead of corrupting a database quietly.</li>
+<li><strong>The patch is bumped.</strong> <code>1.4.0-dev.7</code> sorts <em>below</em> <code>1.4.0</code>, so a development
+  build named after the tag it follows would sort behind the release it comes
+  after. Guessing the next patch is what makes it sort forward.</li>
+<li><strong>The sha is in there.</strong> Commit distance is not unique across branches: two
+  branches seven commits past <code>v1.4.0</code> both produce <code>dev.7</code> with different
+  content, which is exactly the collision the never-republish rule catches.</li>
+<li><strong>The sha is a prerelease identifier, never build metadata.</strong> <abbr title="Open Container Initiative">OCI</abbr> tag grammar
+  excludes <code>+</code>, so a version carrying metadata could never be a registry tag —
+  and <code>metadata.version</code> refuses one anyway, because build metadata is kept in
+  the store's directory name and ignored by every comparison. Two builds
+  differing only in metadata would be distinct releases that nothing can tell
+  apart. Constraints such as <code>upgrade_from: "&gt;=1.0.0+build.7"</code> are unaffected:
+  a range is not an identity.</li>
 </ul>
+<p>Exactly on a tag with a clean tree, the version is the tag verbatim — <code>1.4.0</code>,
+no suffix. That is the release build, and the only shape that produces a
+non-prerelease version.</p>
+<p>A dirty tree is refused. <code>--allow-dirty</code> stamps
+<code>1.4.1-dev.7.g3be286c.dirty</code>, which sorts after the clean build at the same
+commit — the correct reading, since it has content the commit does not.</p>
+<div class="admonition warning">
+<p class="admonition-title">Shallow checkouts fetch no tags</p>
+<p><code>actions/checkout</code> defaults to <code>fetch-depth: 1</code> and fetches no tags, so
+<code>git describe</code> fails. morzer <strong>fails loudly</strong> rather than defaulting to
+something plausible: a silent <code>0.0.0</code> would produce a bundle that installs,
+collides, and confuses. Set <code>fetch-depth: 0</code>, or pass <code>--version</code>.</p>
+</div>
+<p><code>--version</code> is the real interface and accepts any valid semver, so calendar
+versioning or a CI build number works — <code>--version-from-git</code> is the sugar on
+top of it.</p>
+<p>With neither flag, <code>build</code> uses the manifest's own version and stamps nothing.
+The one version it refuses there is <code>0.0.0</code>, the placeholder a scaffolded
+bundle carries: it is legal at every other gate, so a forgotten flag in CI
+ships a bundle that is clean everywhere and collides with the <em>next</em> forgetful
+build.</p>
+<h3 id="say-what-a-release-can-and-cannot-do">Say what a release can and cannot do<a class="headerlink" href="#say-what-a-release-can-and-cannot-do" title="Permanent link">&para;</a></h3>
+<p><strong>Bump <code>database_schema_max</code> when a release can read a newer schema</strong>, and set
+<code>rollback_safe: false</code> when its migrations are one-way. These are what let the
+manager refuse an unsafe rollback instead of corrupting a database quietly.</p>
 
 
 
