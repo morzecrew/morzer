@@ -613,3 +613,88 @@ func NoUnfinishedOperation(records []domain.OperationRecord) Check {
 		},
 	}
 }
+
+// ImagePresence answers whether an image is already in the local store.
+//
+// A function rather than a port interface, because preflight is the one layer
+// below ports: it is handed the question, not the runtime that answers it.
+type ImagePresence func(ctx context.Context, ref string) (bool, error)
+
+// BundledImages refuses to converge when an image the bundle carries is not in
+// the local store.
+//
+// A refusal, and fatal, and both are the point. An image that travels in the
+// bundle is deployed under an alias the manager creates -- a tag, because a
+// local store cannot be made to answer to a digest reference for a registry it
+// never contacted. A tag is mutable. So if this check merely warned and let
+// the converge proceed, Compose would resolve that tag the only way it can
+// when the image is absent: by asking the vendor's registry for it. A
+// digest-pinned deployment would then be running whatever that tag pointed at,
+// nobody having verified any of it, and the manifest's pinning -- the rule
+// that makes a release immutable -- would have decided nothing.
+//
+// The remedy is a command rather than advice, because there is exactly one:
+// the bytes are in the bundle already, and something has to put them in the
+// store.
+// Takes the manifest's references and derives each alias from its digest, so
+// there is no second list to fall out of step with the first -- the check
+// would then report on an image nobody deployed, or miss the one they did.
+func BundledImages(refs []string, has ImagePresence) Check {
+	return Check{
+		ID:          "images.bundled",
+		Category:    CategoryRuntime,
+		Description: "images the bundle carries are loaded",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			if len(refs) == 0 {
+				return OK("the release bundles no images")
+			}
+			if has == nil {
+				// No inspector: a runtime with no local image
+				// store has no answer, and inventing one in
+				// either direction would be worse than saying
+				// so. Not a failure, because the deployment may
+				// well work -- this check simply cannot tell.
+				return OK("the configured runtime has no local image store")
+			}
+
+			var missing []string
+			for _, ref := range refs {
+				alias, ok := domain.ImageSpec{Ref: ref}.LocalAlias()
+				if !ok {
+					// Unreachable through a validated
+					// manifest, whose pinning rule refuses
+					// an unpinned reference first. A
+					// refusal rather than a skip, because
+					// the alternative is passing this image
+					// silently and letting Compose decide
+					// what an unpinned bundled image means.
+					return Fail(
+						"pin it by digest, as every image in a manifest must be",
+						"the bundled image %q is not pinned by digest", ref)
+				}
+				present, err := has(ctx, alias)
+				if err != nil {
+					// "Cannot tell" is not "absent", and the
+					// difference decides whether an operator
+					// starts the daemon or runs an ingest.
+					return Fail(
+						"check that the container runtime is running",
+						"cannot check the local image store: %s",
+						domain.AsError(err).Message)
+				}
+				if !present {
+					missing = append(missing, domain.ShortImageRef(ref))
+				}
+			}
+
+			if len(missing) == 0 {
+				return OK("all %d bundled image(s) are loaded", len(refs))
+			}
+			return Fail(
+				"run `morzer release ingest` to load them out of the bundle",
+				"%d of %d bundled image(s) are not in the local image store: %s",
+				len(missing), len(refs), strings.Join(missing, ", "))
+		},
+	}
+}

@@ -177,7 +177,10 @@ func initSteps(d *Deps, opts InitOptions) []engine.Step {
 	}
 
 	if opts.ReleasePath != "" {
-		steps = append(steps, stepStageRelease(d, opts))
+		// Staging puts the bundle on disk and the release into the
+		// engine's state; ingest reads it back from there, because
+		// this list is built before anything has been resolved.
+		steps = append(steps, stepStageRelease(d, opts), stepIngestImages(d, stagedRelease()))
 	}
 
 	steps = append(steps,

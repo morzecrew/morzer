@@ -293,7 +293,7 @@ func (r *Runtime) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 		_ = out.Close()
 		_ = os.Remove(destPath)
 		return wrapExit(err, "cannot read volume "+volume,
-			"check that the Docker daemon is running and that "+shortImage(r.HelperImage())+" is available")
+			"check that the Docker daemon is running and that "+domain.ShortImageRef(r.HelperImage())+" is available")
 	}
 	if err := out.Close(); err != nil {
 		// Removed like every other failure here, and for the reason
@@ -697,7 +697,7 @@ func (r *Runtime) requireHelper(ctx context.Context) error {
 	}
 	if !present {
 		return domain.RuntimeError(domain.ErrToolMissing,
-			"the volume helper image %s is not on this machine", shortImage(ref)).
+			"the volume helper image %s is not on this machine", domain.ShortImageRef(ref)).
 			WithHint("run `docker pull %s` while this machine has a network; "+
 				"volumes are read through a container, so a backup cannot "+
 				"capture them without it", ref)

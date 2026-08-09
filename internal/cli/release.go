@@ -33,6 +33,7 @@ func newReleaseCommand(app *App) *cobra.Command {
 		newReleaseBuildCommand(app),
 		newReleaseArchiveCommand(app),
 		newReleaseFetchCommand(app),
+		newReleaseIngestCommand(app),
 		newReleasePruneCommand(app),
 	)
 	return cmd
@@ -530,4 +531,34 @@ func (a *App) releaseRoot(ctx context.Context, args []string) (string, error) {
 			WithHint("pass a bundle path, or install one first")
 	}
 	return current.Root, nil
+}
+
+// newReleaseIngestCommand loads the images the installed release carries.
+//
+// An operator-facing command because the condition it fixes is one an operator
+// meets: `apply` refuses to converge while an image marked `from: bundle` is
+// not in the local store, and the alternative to this command would be
+// re-installing a release to load images it already contains.
+//
+// It is also what `init` and `update` run, rather than a second implementation
+// of the same idea -- RFC 0011 decision 12, which asked for an explicit,
+// re-runnable step precisely so that the lifecycle and the operator would not
+// be doing two different things.
+func newReleaseIngestCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "ingest",
+		Short: "Load the images the installed release carries into the local store",
+		Long: "Serves the release's OCI layout on loopback and has the container\n" +
+			"runtime pull each bundled image out of it, leaving each one named\n" +
+			"locally so the deployment can resolve it with no registry.\n\n" +
+			"Idempotent: an image already loaded is not read again. Nothing here\n" +
+			"touches the network -- the bytes are the ones the bundle shipped, and\n" +
+			"the signature that covered them covered these.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.IngestImages(ctx, app.Deps, app.operationOptions())
+			})
+		},
+	}
 }

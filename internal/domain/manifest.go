@@ -802,9 +802,10 @@ func (m *Manifest) Operation(name string) (OperationSpec, bool) {
 // ImageRefs returns every image reference in a stable order, so pull plans and
 // dry-run output do not shuffle between runs.
 //
-// Every image, bundled or not: this answers "what does this release consist
-// of". For "what will be fetched from a registry", which is a different
-// question with a different answer, see PulledImageRefs.
+// Every image, bundled or not, under the reference the manifest pins: this
+// answers "what does this release consist of". Two neighbouring questions have
+// different answers -- what a deployment fetches from a registry is
+// PulledImageRefs, and what the daemon must resolve is RuntimeImageRefs.
 func (m *Manifest) ImageRefs() []string {
 	names := sortedImageNames(m.Images)
 	refs := make([]string, 0, len(names))

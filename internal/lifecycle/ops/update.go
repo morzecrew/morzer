@@ -338,6 +338,12 @@ func updateSteps(
 	if opts.DryRun {
 		converge = source
 	}
+	// Between staging and converging, because the images have to be on the
+	// machine before the preflight that refuses without them -- and because
+	// the bundle they come out of is only on disk once staging has put it
+	// there. A dry run ingests from wherever the bundle currently sits, for
+	// the same reason the converge does.
+	steps = append(steps, stepIngestImages(d, fixedRelease(converge)))
 	// The ref the operator resolved is recorded with the release once it
 	// becomes current, which is what gives `update --check` something to
 	// query later without asking them to remember.

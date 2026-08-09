@@ -42,6 +42,11 @@ HTTP_PORT="${ACCEPTANCE_HTTP_PORT:-18099}"
 # than merely to agree with one already in place.
 MOVED_PORT="${ACCEPTANCE_MOVED_PORT:-18098}"
 
+# The air-gapped scenario's port. Its own, for the same reason every other
+# scenario here has one: a failure message naming a port has to identify which
+# install it came from.
+AIRGAP_HTTP_PORT="${ACCEPTANCE_AIRGAP_HTTP_PORT:-18097}"
+
 # The three-tier example's own ports, distinct from the single-tier scenario's
 # so the two can never be confused for one another in a failure message.
 WEB_HTTP_PORT="${ACCEPTANCE_WEB_HTTP_PORT:-18090}"
@@ -619,3 +624,101 @@ for op in init apply backup restore update; do
 		fail "no ${op} in the journal"
 done
 info "init, apply, backup, restore, update and rollback are all journaled"
+
+# ----------------------------------------------------------------------------
+# A bundle that carries its own images, installed with no registry at all
+#
+# RFC 0011 P4. Everything above proves the lifecycle against a registry that is
+# up; this proves the one case the feature exists for -- a customer who cannot
+# reach the vendor's registry, because for some of them that is simply true.
+#
+# The registry is stopped rather than merely ignored, and the local copy of the
+# bundled image is deleted first. Both are necessary: a scenario that left
+# either in place would pass on a machine where the image happened to be
+# present, which is every machine that has just run the steps above.
+
+step "the earlier deployment comes down first"
+# The air-gapped bundle is derived from the same source and so carries the same
+# Compose project name. Converging over the running 1.3.0 would leave this
+# scenario asserting against somebody else's containers.
+docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
+info "the demo project is down"
+
+step "packing app into a bundle, and leaving db to be pulled"
+BUNDLED="${WORK}/bundle-bundled"
+prepare_bundle testdata/bundle "${BUNDLED}"
+
+# Only `app` travels. The mixed case is the design -- a vendor ships their two
+# private images and keeps pulling postgres -- and it is the one that neither a
+# bundle-everything nor a bundle-nothing scenario can show.
+sed -i \
+	-e "s|^  app: .*|  app:\n    ref: ${REGISTRY}/demo/app@${APP_DIGEST}\n    from: bundle|" \
+	"${BUNDLED}/manifest.yaml"
+grep -q '    from: bundle' "${BUNDLED}/manifest.yaml" ||
+	fail "the manifest rewrite did not take; nothing below would be testing bundling"
+
+"${MORZER}" release pack "${BUNDLED}"
+[ -f "${BUNDLED}/images/index.json" ] || fail "pack wrote no image layout"
+info "$(find "${BUNDLED}/images" -type f | wc -l) file(s) under images/"
+
+step "release verify accepts the packed bundle"
+"${MORZER}" release verify "${BUNDLED}"
+
+step "the registry goes away, and so does the local copy of app"
+docker rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
+STARTED_REGISTRY=0
+if curl -fsS "http://${REGISTRY}/v2/" >/dev/null 2>&1; then
+	fail "the registry is still answering, so this proves nothing"
+fi
+# Every local reference to the image the bundle carries. Without this the
+# converge below could succeed on a copy the earlier steps left behind.
+docker rmi "${REGISTRY}/demo/app:acceptance" >/dev/null 2>&1 || true
+docker rmi "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1 || true
+if docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1; then
+	fail "the app image is still local, so the install would not be proving anything"
+fi
+info "registry stopped, app gone from the local store"
+
+step "init installs it with no registry to reach"
+AIR_ROOT="${WORK}/airgapped-root"
+"${MORZER}" --root "${AIR_ROOT}" init \
+	--release "${BUNDLED}" \
+	--profile embedded \
+	--domain airgapped.example \
+	--no-recovery-recipient \
+	--install-units=false \
+	--set http_port="${AIRGAP_HTTP_PORT}" \
+	--set log_level=debug
+
+"${MORZER}" --root "${AIR_ROOT}" apply
+
+running=$(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)
+[ "${running}" = "2" ] ||
+	fail "expected 2 running container(s) after the air-gapped install, found ${running}"
+info "2 container(s) running, with no registry in existence"
+
+step "the deployment runs the alias, not the reference no daemon can resolve"
+image=$(docker compose -p demo ps --format '{{.Image}}' | grep -F 'demo/app' | head -1)
+case "${image}" in
+*:morzer-sha256-*) info "app runs as ${image}" ;;
+*) fail "app is running as ${image}, which is not the alias ingest creates" ;;
+esac
+# The other half, and the one that would rot silently: the reference the
+# manifest pins must still not resolve. If this ever starts passing, the
+# measurement RFC 0011 decision 19 rests on has changed, and the design can be
+# revisited rather than worked around.
+if docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1; then
+	fail "the manifest's own reference resolves locally, which contradicts decision 19"
+fi
+info "the manifest reference still resolves nowhere, as measured"
+
+step "doctor is content with an installation that pulls nothing it cannot reach"
+"${MORZER}" --root "${AIR_ROOT}" --json doctor >"${WORK}/airgapped-doctor.json" 2>&1 ||
+	fail "doctor failed on the air-gapped installation: $(cat "${WORK}/airgapped-doctor.json")"
+jq -e '[.data.results[] | select(.id == "images.bundled")] | length == 1 and .[0].status == "ok"' \
+	"${WORK}/airgapped-doctor.json" >/dev/null ||
+	fail "doctor did not report the bundled images as loaded: $(jq -c '.data.results[] | select(.id == "images.bundled")' "${WORK}/airgapped-doctor.json")"
+info "images.bundled is ok"
+
+step "tearing the air-gapped deployment down"
+docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true

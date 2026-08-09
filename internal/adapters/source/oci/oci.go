@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -451,6 +452,7 @@ func remoteRepository(reference string) (*remote.Repository, error) {
 	if err != nil {
 		return nil, domain.Usage("invalid oci reference %q: %v", repoRef, err)
 	}
+	repo.PlainHTTP = isLoopbackRegistry(repo.Reference.Registry)
 
 	store, err := credentials.NewStoreFromDocker(credentials.StoreOptions{
 		AllowPlaintextPut: false,
@@ -469,6 +471,45 @@ func remoteRepository(reference string) (*remote.Repository, error) {
 		Credential: credentials.Credential(store),
 	}
 	return repo, nil
+}
+
+// isLoopbackRegistry reports whether a registry host is this machine.
+//
+// Docker's own rule, and the reason to match it is that both halves of this
+// package claim parity with it: `release pack` says credentials come from the
+// ambient Docker configuration "exactly as a `docker pull` on this machine
+// would", and a registry `docker pull` reaches over HTTP while this one
+// refuses to is that claim being false. A loopback registry is the ordinary
+// shape of a build machine's throwaway registry and of this project's own
+// acceptance run.
+//
+// It is a real, bounded weakening: a process that can bind a loopback port can
+// serve HTTP to this client, where insisting on TLS would have refused it.
+// Bounded because the address is this machine -- anything able to bind it can
+// already read the Docker socket's environment -- and because what arrives is
+// checked afterwards regardless. `pack` compares every image against the
+// digest the manifest pins, and a release fetched here is verified against
+// SHA256SUMS and a signature. Neither trusts the transport.
+//
+// Nothing outside loopback is affected: every other registry still requires
+// TLS, with no fallback and no flag to remove it.
+//
+// One configuration this *breaks*, stated rather than discovered: a registry
+// serving TLS on a loopback address. Docker tries HTTPS there and falls back;
+// this forces HTTP, so such a registry stops working. Accepted because the
+// combination is rare, the failure is loud rather than silent, and adding a
+// probe-then-fall-back would put a network round trip and a second failure
+// mode in front of every open.
+func isLoopbackRegistry(registry string) bool {
+	host, _, err := net.SplitHostPort(registry)
+	if err != nil {
+		host = registry
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
 }
 
 // readExactly reads a body with a declared size, refusing one that overruns it.

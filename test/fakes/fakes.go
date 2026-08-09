@@ -45,6 +45,16 @@ type Runtime struct {
 	// PulledImages records what Pull was asked for.
 	PulledImages []string
 
+	// IngestedFrom is the layout directory IngestImages was pointed at,
+	// and IngestedRefs what it was asked to load.
+	IngestedFrom string
+	IngestedRefs []string
+
+	// localImages are the names ingest left behind. Unexported because a
+	// test arranges them by ingesting rather than by writing the field:
+	// which name becomes resolvable is the behaviour under test.
+	localImages []string
+
 	// UpCount counts how many times Up ran, for idempotence assertions.
 	UpCount int
 
@@ -102,6 +112,7 @@ func NewRuntime() *Runtime {
 var (
 	_ ports.Runtime         = (*Runtime)(nil)
 	_ ports.ImageInspector  = (*Runtime)(nil)
+	_ ports.ImageIngester   = (*Runtime)(nil)
 	_ ports.VolumeInspector = (*Runtime)(nil)
 	_ ports.VolumeCapturer  = (*Runtime)(nil)
 )
@@ -385,16 +396,43 @@ func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.
 	return out, nil
 }
 
-// HasImage answers from PulledImages, so a test can arrange a machine that has
-// never pulled and assert doctor says so.
+// IngestImages loads a bundle's images the way the real adapter does: what
+// becomes resolvable afterwards is the *alias*, never the reference the
+// manifest pins.
+//
+// That asymmetry is the whole of RFC 0011 decision 19, and a fake that made
+// both resolve would be a fake that agreed with an implementation which had
+// quietly gone back to deploying the manifest's reference -- the exact
+// regression the design cannot survive.
+func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []string) error {
+	if err := r.record("IngestImages"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.IngestedFrom = layoutDir
+	r.IngestedRefs = append(r.IngestedRefs, refs...)
+	for _, ref := range refs {
+		alias, ok := domain.ImageSpec{Ref: ref}.LocalAlias()
+		if !ok {
+			return domain.ValidationError(nil, "%q is not pinned by digest", ref)
+		}
+		r.localImages = append(r.localImages, alias)
+	}
+	return nil
+}
+
+// HasImage answers from what was pulled and what was ingested, so a test can
+// arrange a machine that has never pulled and assert doctor says so.
 func (r *Runtime) HasImage(ctx context.Context, imageRef string) (bool, error) {
 	if err := r.record("HasImage"); err != nil {
 		return false, err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, pulled := range r.PulledImages {
-		if pulled == imageRef {
+	for _, present := range append(append([]string{}, r.PulledImages...), r.localImages...) {
+		if present == imageRef {
 			return true, nil
 		}
 	}

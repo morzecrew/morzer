@@ -10,7 +10,22 @@
   into §11; the copy mechanism (§5.2) is verified by spike. **Amended
   2026-08-08** (decision 10): archiving moves from "excluded" to "delegated to
   [0014](0014-building-a-release-bundle.md)", which also takes the
-  reproducibility requirement §8 deferred to whoever owned that step.
+  reproducibility requirement §8 deferred to whoever owned that step. **The
+  deferred test landed with [0011](0011-bundled-container-images.md) P2 on
+  2026-08-09**, and paying it off found a gap: `pack` could not reach a
+  **loopback registry over plain HTTP**, which `docker pull` does by default —
+  so its promise that credentials work "exactly as a `docker pull` on this
+  machine would" was false for the throwaway registry a build machine and this
+  project's own acceptance run both use. `oras-go` requires TLS and offers no
+  fallback. Now a registry on `localhost` or a loopback address is reached over
+  HTTP, matching Docker's rule; everything else still requires TLS with no flag
+  to remove it. A bounded weakening, recorded rather than assumed: a process
+  able to bind a loopback port can serve this client, and what arrives is
+  checked afterwards regardless — `pack` against the digest the manifest pins,
+  a fetched release against `SHA256SUMS` and a signature. It also *breaks* one
+  configuration, recorded rather than left to be discovered: a registry serving
+  TLS on a loopback address, which Docker reaches by trying HTTPS first and
+  falling back. Accepted — rare, and it fails loudly.
 - **Scope:** Gives a vendor a supported way to produce the bundles
   [0011](0011-bundled-container-images.md) defines: a `morzer release pack`
   that copies the images a manifest marks `from: bundle` out of the vendor's

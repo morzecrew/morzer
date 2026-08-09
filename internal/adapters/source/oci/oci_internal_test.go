@@ -116,3 +116,48 @@ func TestAnErrorThatNamesNoStatusIsReportedAsUnreachable(t *testing.T) {
 	assert.False(t, errors.Is(err, domain.ErrReleaseNotFound))
 	assert.Contains(t, domain.AsError(err).Message, "cannot reach")
 }
+
+// TestOnlyLoopbackRegistriesAreReachedOverPlainHTTP.
+//
+// The rule is Docker's, and matching it is what makes `release pack`'s claim
+// of parity with `docker pull` true. What matters more is the other direction:
+// a host that merely *looks* local must still require TLS, or an attacker who
+// can answer for `localhost.evil.example` gets an unencrypted channel by
+// naming it well.
+func TestOnlyLoopbackRegistriesAreReachedOverPlainHTTP(t *testing.T) {
+	cases := []struct {
+		registry string
+		plain    bool
+	}{
+		{"localhost:5000", true},
+		{"localhost", true},
+		{"127.0.0.1:5000", true},
+		{"127.0.0.1", true},
+		{"127.1.2.3:5000", true}, // the whole 127/8 block is loopback
+		{"[::1]:5000", true},
+		// SplitHostPort strips the brackets when a port is present, so
+		// this is the only case the trim in isLoopbackRegistry serves.
+		{"[::1]", true},
+		{"::1", true},
+		{"[2001:db8::1]:5000", false},
+
+		// Everything else, including the near misses.
+		{"registry.example", false},
+		{"registry.example:5000", false},
+		{"localhost.evil.example", false},
+		{"notlocalhost", false},
+		{"ghcr.io", false},
+		{"192.168.1.10:5000", false},
+		{"10.0.0.1", false},
+		{"", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.registry, func(t *testing.T) {
+			if got := isLoopbackRegistry(tc.registry); got != tc.plain {
+				t.Errorf("isLoopbackRegistry(%q) = %t, want %t",
+					tc.registry, got, tc.plain)
+			}
+		})
+	}
+}

@@ -115,6 +115,115 @@ func (s ImageSpec) Digest() (string, bool) {
 	return s.Ref[at+1:], true
 }
 
+// localAliasPrefix marks a tag as one the manager made rather than one a
+// vendor published.
+//
+// It is a tag and not a digest reference because the daemon offers nothing
+// else. Measured on Docker 29.6.2: `docker tag` answers "refusing to create a
+// tag with a digest reference", and a digest reference naming a repository the
+// daemon never pulled from is absent from its reference store, so
+// `docker image inspect registry.example/demo/app@sha256:...` reports no such
+// image however the bytes arrived. RFC 0011 decision 19 is that measurement.
+const localAliasPrefix = "morzer-"
+
+// LocalAlias is the name a bundled image answers to on this machine.
+//
+// `<repo>:morzer-sha256-<hex>`, and every part of that is load-bearing. The
+// repository is the vendor's, so an operator reading `docker images` sees
+// which product the image belongs to. The digest is the one the manifest pins,
+// so the alias is *derived* rather than invented: identical on every apply,
+// which is what keeps the rendered configuration -- and therefore `diff` and
+// `status` -- from reporting a change on every run. And the prefix says who
+// made it, because it is a tag the vendor never published and an operator will
+// eventually find it and wonder.
+//
+// False when the reference pins no digest, which a validated manifest cannot
+// produce: the pinning rule refuses an unpinned reference first. Stated
+// anyway, because this is exported on a domain type and reachable from
+// anywhere.
+//
+// The identity is unaffected. Ref stays what the manifest pinned, what the
+// signature covers, and what `release show` reports; this is only the name the
+// daemon can be made to answer to.
+func (s ImageSpec) LocalAlias() (string, bool) {
+	digest, ok := s.Digest()
+	if !ok {
+		return "", false
+	}
+	// "sha256:abc" becomes "sha256-abc": a tag may not contain a colon,
+	// which is the character separating it from the repository.
+	return RepositoryOf(s.Ref) + ":" +
+		localAliasPrefix + strings.ReplaceAll(digest, ":", "-"), true
+}
+
+// RepositoryOf is a reference with its digest and its tag removed.
+//
+// One definition, for the same reason Digest and ShortImageRef have one: the
+// alias builder needs it to append a tag, and the ingest needs it to address
+// the loopback server, and two implementations of "where does the tag end"
+// agree right up until one of them is edited.
+//
+// The subtlety both need is the same. A reference may carry a tag *and* a
+// digest -- `postgres:17@sha256:…` is legal and the pinning rule permits it --
+// while a colon may equally be a registry's port. The tag is whatever follows
+// a colon in the last path segment; a colon before the last slash is a port.
+func RepositoryOf(ref string) string {
+	repo := ref
+	if at := strings.LastIndex(repo, "@"); at > 0 {
+		repo = repo[:at]
+	}
+
+	segment := repo
+	if slash := strings.LastIndex(repo, "/"); slash >= 0 {
+		segment = repo[slash+1:]
+	}
+	if colon := strings.LastIndex(segment, ":"); colon >= 0 {
+		repo = repo[:len(repo)-len(segment)+colon]
+	}
+	return repo
+}
+
+// RuntimeRef is the reference the runtime is handed for this image.
+//
+// The alias for a bundled image, Ref for every other -- and the distinction
+// exists because the daemon cannot be made to resolve a bundled image by the
+// reference its manifest pins. Compose has to receive a name that resolves, so
+// for a bundled image this is the only candidate there is.
+//
+// Falls back to Ref when no alias can be built, which means the reference pins
+// no digest and the manifest would not have validated. Falling back rather
+// than returning an error keeps the Compose environment builder total; what
+// the deployment then does with an unpinned reference is what it did before
+// bundling existed.
+func (s ImageSpec) RuntimeRef() string {
+	if !s.Bundled() {
+		return s.Ref
+	}
+	if alias, ok := s.LocalAlias(); ok {
+		return alias
+	}
+	return s.Ref
+}
+
+// ShortImageRef is a reference with its digest dropped, for a message.
+//
+// A digest is 71 characters, and every message that carries one already names
+// the image beside it -- so the digest is the part a reader skips to find the
+// part that identifies anything. Three copies of this existed, one per layer,
+// which is the arithmetic ImageSpec.Digest already ran once: they agreed by
+// coincidence rather than by construction, and the next one would have been
+// written by whoever needed it next.
+//
+// Cut at the first "@" rather than the last, unlike Digest, and deliberately:
+// this answers "what should a human read", so for a malformed reference the
+// least of it is the safest thing to print.
+func ShortImageRef(ref string) string {
+	if i := strings.Index(ref, "@"); i > 0 {
+		return ref[:i]
+	}
+	return ref
+}
+
 // UnmarshalYAML accepts the scalar and the mapping spelling.
 func (s *ImageSpec) UnmarshalYAML(unmarshal func(any) error) error {
 	var ref string
@@ -170,13 +279,6 @@ func (s *ImageSpec) UnmarshalJSON(b []byte) error {
 
 // BundledImages returns the images that travel inside the bundle, by name, in
 // a stable order.
-//
-// There is deliberately no counterpart returning the *pulled* set yet. Until
-// ingest lands (RFC 0011 P2) a bundled image is still fetched from its
-// registry, because nothing else brings it onto the machine -- so narrowing the
-// pull set today would leave a deployment with no image at all rather than with
-// a redundant pull. RFC 0011 §5.4 assigns that narrowing to the phase that
-// makes it true.
 func (m *Manifest) BundledImages() []string {
 	var names []string
 	for name, spec := range m.Images {
@@ -186,6 +288,50 @@ func (m *Manifest) BundledImages() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// BundledImageRefs is the same set as BundledImages, by reference.
+//
+// The manifest's references, not the aliases: this is what ingest is asked to
+// make present, and it is the identity the layout is addressed by.
+func (m *Manifest) BundledImageRefs() []string {
+	return m.imageRefs(func(spec ImageSpec) bool { return spec.Bundled() })
+}
+
+// PulledImageRefs is what a deployment fetches from a registry.
+//
+// Distinct from ImageRefs, which is what the release *consists of*: passing a
+// bundled image to Pull would send the deployment to the vendor's registry for
+// bytes the bundle already carries -- the one contact bundling exists to
+// remove -- and it would ask for it under a reference that no longer resolves
+// locally, so the pull would fail rather than merely be redundant.
+func (m *Manifest) PulledImageRefs() []string {
+	return m.imageRefs(func(spec ImageSpec) bool { return !spec.Bundled() })
+}
+
+// RuntimeImageRefs is what the daemon must be able to resolve.
+//
+// The alias for a bundled image and the manifest's reference for every other,
+// which is the set Compose is handed and therefore the set whose absence is a
+// converge failure. Asking about ImageRefs instead would report every bundled
+// image as missing on a machine where ingest had just succeeded.
+func (m *Manifest) RuntimeImageRefs() []string {
+	names := sortedImageNames(m.Images)
+	refs := make([]string, 0, len(names))
+	for _, n := range names {
+		refs = append(refs, m.Images[n].RuntimeRef())
+	}
+	return refs
+}
+
+func (m *Manifest) imageRefs(keep func(ImageSpec) bool) []string {
+	var refs []string
+	for _, n := range sortedImageNames(m.Images) {
+		if spec := m.Images[n]; keep(spec) {
+			refs = append(refs, spec.Ref)
+		}
+	}
+	return refs
 }
 
 func sortedImageNames(images map[string]ImageSpec) []string {

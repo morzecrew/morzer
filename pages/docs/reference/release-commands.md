@@ -483,6 +483,73 @@ base64 line an operator can paste into a config. The manager only ever verifies
 — there is no `morzer sign`, because the signing key belongs in a vendor's
 release pipeline rather than on a deployment host.
 
+## release ingest
+
+```sh
+morzer release ingest
+```
+
+Loads the images the installed release carries into the local image store. No
+arguments: it acts on the release that is current, because that is the one a
+deployment is about to run.
+
+Nothing here touches the network. The manager serves the release's
+`images/` layout to the container runtime over `127.0.0.1`, read-only, for the
+length of the command, and the runtime pulls each image out of it — a real
+registry pull, so the runtime verifies every blob it fetches against the digest
+the manifest names.
+
+**You rarely run this.** `init` and `update` run the same step, so a release
+installed the ordinary way arrives with its images already loaded. It exists for
+the case where they are not: a machine whose image store was pruned, a runtime
+that was reinstalled, a converge that refuses with
+
+```text
+images the bundle carries are loaded
+  1 of 1 bundled image(s) are not in the local image store: registry.example/demo/app
+  → run `morzer release ingest` to load them out of the bundle
+```
+
+**Idempotent.** An image already present is not read again, so re-running after
+a partial failure costs nothing for the images that succeeded.
+
+### What it refuses
+
+| Situation | Behaviour |
+| --- | --- |
+| The release bundles no images | Not an error. It says so and does nothing. |
+| A blob whose bytes are not what the layout's index claims | Refused, naming the blob and the digest it actually hashes to. The runtime is what rejects the bytes; the manager is what tells you which ones. |
+| The runtime has no local image store | Refused. A release marking images `from: bundle` will not find them anywhere else. |
+| The runtime cannot reach this machine's loopback | Refused. A daemon on another host — a remote `DOCKER_HOST` — cannot pull from a server bound to this one, and there is no fallback behind it. |
+
+### What it leaves behind
+
+An image that travelled in the bundle ends up named
+`<repository>:morzer-sha256-<digest>` rather than the `name@sha256:…` the
+manifest pins:
+
+```text
+$ docker images
+REPOSITORY                  TAG                          IMAGE ID
+registry.example/demo/app   morzer-sha256-0000000000…    a1b2c3d4e5f6
+```
+
+That tag is the manager's, and it is not a cosmetic choice. A container runtime
+records the repository it *pulled* an image from, and nothing can add a digest
+reference for a repository it never contacted — `docker tag` refuses outright:
+`refusing to create a tag with a digest reference`. So a bundled image cannot
+answer to the reference its manifest pins, and Compose has to be given a name
+that resolves.
+
+The digest stays the identity. It is what the signature covers, what
+`release show` reports, and what the tag is derived from — which is also why the
+tag is the same on every machine and every run.
+
+Because the tag is derived rather than invented, `apply` **refuses** rather than
+pulls when a bundled image is missing. A tag is mutable; if a registry happened
+to serve that name, a missing image would let a digest-pinned deployment
+converge on bytes nobody verified.
+
 ## release prune
 
 Removes old releases beyond the retention policy. The running release and the

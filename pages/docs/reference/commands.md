@@ -233,11 +233,17 @@ Three checks are advisory by design, and warn rather than fail:
 | --- | --- |
 | `secrets.rotation` | A secret is older than the `rotation_period` its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all. |
 | `secrets.ephemeral-storage` | The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this. |
-| `runtime.images-local` | Some of the release's images are not present locally, so this machine would not come up without network access. See [Installing without a network](../operating/installing-offline.md). |
+| `runtime.images-local` | Some of the release's **pulled** images are not present locally, so this machine would not come up without network access. Images that travel in the bundle are not counted here — they are either loaded or the deployment is refused, which is `images.bundled` below. See [Installing without a network](../operating/installing-offline.md). |
 
 The rotation remedy names the command that will actually work: `secret rotate`
 for a secret the release declares a generator for, and `secret set` for one it
 does not — pointing at `rotate` there would point at a command that fails.
+
+One check about images does **fail** rather than warn:
+
+| Check | What it means |
+| --- | --- |
+| `images.bundled` | An image the release marks `from: bundle` is not in the local image store. Fatal, and `apply` refuses on it: a bundled image is deployed under a tag the manager creates, and letting a converge proceed without it would send the deployment to the vendor's registry for whatever that tag pointed at. `morzer release ingest` loads it out of the bundle, with no network. |
 
 ## backup
 

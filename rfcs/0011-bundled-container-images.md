@@ -1,21 +1,36 @@
 # RFC 0011 — Bundled container images
 
-- **Status:** 🚧 In progress — **P1 shipped 2026-08-09**: the manifest's dual
+- **Status:** ✅ Complete — **P2–P4 shipped 2026-08-09**: ingest through an
+  in-process loopback registry, the digest-derived alias, the refusal that
+  replaces a pull, the `doctor` vocabulary, and an acceptance scenario that
+  installs a hybrid bundle with the registry stopped and its local copy deleted.
+  What remains open is what §8 excluded, plus three paths with no test: the
+  listener failing to bind, a response failing mid-copy, and the serve-error
+  report. Each needs the process to break underneath itself, and a test that
+  simulated that would assert the simulation. **P1 shipped 2026-08-09**: the manifest's dual
   image spelling, the layout's completeness refusals in both directions, and the
   extraction budget with its hard caps, its manifest-first requirement and its
   free-space preflight. A bundle carrying images is now *inspectable*; nothing
-  installs one yet. **P2 (ingest via the ephemeral registry) is the phase that
-  either works or sends the design back**, and nothing after it is worth
-  scheduling until it lands. §5.4's `doctor` vocabulary rides with P3, since a
-  check distinguishing "present in the bundle, not yet loaded" needs the loading
-  to exist. **Design locked** 2026-08-08. Every
+  installs one yet. **P2 (ingest via the ephemeral registry) was written as the
+  phase that either works or sends the design back**, with nothing after it
+  worth scheduling until it landed — and it sent the design back, which is the
+  entry below. §5.4's `doctor` vocabulary rode with P3, since a check
+  distinguishing "present in the bundle, not yet loaded" needs the loading to
+  exist. **Design locked** 2026-08-08. Every
   question in §10 is resolved into §11; the ingest mechanism (§5.3) is verified
   by spike. Ready to execute from P1. **Amended 2026-08-08** (decision 15):
   decision 11's archive-ordering requirement is owned by
   [0014](0014-building-a-release-bundle.md) rather than
   [0012](0012-packing-images-into-a-bundle.md), and the budget read now fails
   closed when the ordering is not honoured — so P1 gains a dependency on
-  0014 P1.
+  0014 P1. **Amended 2026-08-09 (decisions 18–21): P2 sent the design back,
+  which is what P2 was for.** Measured against a real daemon, a bundled image
+  cannot answer to the reference the manifest pins — no supported command
+  creates a digest reference for a repository the daemon did not pull from — so
+  decisions 5, 17 and half of §5.3 do not survive. What replaces them: the
+  registry moves *into the manager's process*, and Compose receives a
+  manager-created alias while `ref` stays the identity. §5.3 carries the
+  measurements.
 - **Scope:** Lets a release bundle carry its own container images, so installing
   it needs no credentials for the vendor's registry. Per-image: the manifest
   says which images travel in the bundle and which are still pulled, so a
@@ -50,10 +65,16 @@
 A release manifest may mark an image as travelling in the bundle rather than
 being pulled. Such images ship as an OCI image layout under `images/` in the
 bundle, covered by the same `SHA256SUMS` and minisign signature as every other
-file. At install time the manager ingests them into the local image store and
-`apply` proceeds unchanged, because `Pull` already skips images that are
-present. The result: a customer installs a release containing private images
+file. At install time the manager ingests them into the local image store,
+where they answer to an alias it derives from the digest the manifest pins —
+`apply` renders that alias into Compose, narrows its pull to the images a
+registry actually serves, and refuses to converge while a bundled one is
+absent. The result: a customer installs a release containing private images
 without ever holding credentials for the registry those images came from.
+
+*(This paragraph originally read "`apply` proceeds unchanged, because `Pull`
+already skips images that are present". Decisions 19 and 20 made all three
+clauses false; §5.4 carries what replaced them.)*
 
 Per-image, not per-bundle. A release bundles what is private and keeps pulling
 what is public, which is what keeps bundles from growing by a gigabyte of
@@ -260,8 +281,66 @@ already holds, one level up.
 
 ### 5.3 Ingest: making a bundled image satisfy its digest
 
-This is the load-bearing part. Two mechanisms, tried in order, both ending with
-the image resolvable by its manifest reference.
+This is the load-bearing part, and **the part P2 sent back**. What follows is
+the amended design (decisions 18–21); the original is kept below it, because
+what was believed and why it was wrong is the most useful thing this section
+carries.
+
+#### What P2 measured
+
+Docker 29.6.2, `overlay2`, no containerd image store — the configuration the
+original spike also ran on. Three results:
+
+| Attempt | Result |
+| --- | --- |
+| pull `127.0.0.1:<port>/demo/app@sha256:X`, then `docker image inspect registry.example/demo/app@sha256:X` | **`No such image`.** `RepoDigests` holds `127.0.0.1:<port>/demo/app@sha256:X` and nothing else |
+| `docker tag <src> registry.example/demo/app@sha256:X` | **`refusing to create a tag with a digest reference`** |
+| `docker load` of an OCI image layout | **`invalid archive: does not contain a manifest.json`** |
+
+The first kills the primary path's central claim. A digest reference resolves
+through the daemon's reference store, which records the name that was *pulled*;
+a repository the daemon never contacted has no entry, and nothing puts one
+there. The second kills decision 17's repair: a tag names `repo:tag`, never
+`repo@digest`, so the fallback could not have tagged an image with the
+reference the manifest pins either. The third means the fallback's load step
+needed a format conversion nobody designed.
+
+**How the original spike passed.** It inspected `<ref>@sha256:40baa8cf…` where
+`<ref>` was the *loopback* repository — the same name it had just pulled. The
+evidence line below records exactly that: `.RepoDigests contains
+127.0.0.1:.../ingested/app@sha256:…`. The one inspect that mattered, of the
+vendor's own reference, was never run. A spike that verifies the step you
+doubted and skips the step you assumed is a spike that confirms the assumption
+it was built to test.
+
+#### What replaces it
+
+**One mechanism, and the registry is in-process.** The manager serves the
+bundle's OCI layout over the distribution API from its own process, on
+`127.0.0.1:0`, read-only, for the duration of one ingest; the runtime pulls
+each bundled image from `127.0.0.1:<port>/<repo>@sha256:…`; the manager then
+tags the result under the alias of decision 19 and drops the loopback
+reference. Verified by a cold pull against a real daemon — the requests the
+daemon made were `GET /v2/`, one manifest fetch by digest, and one blob fetch
+per layer.
+
+The container form is withdrawn (decision 18) for a reason the original
+understated. It called `registry:2` "a bootstrap dependency, handled the way
+[0010](0010-compose-volume-capture.md) handled the volume helper" — but busybox
+is needed for a *backup*, on a machine that has already installed something,
+while this is needed for the *install*. A customer who cannot reach a registry
+cannot obtain the registry image, so the primary path would have been
+unavailable in precisely the case the feature exists for, and every such
+install would have fallen to the path with the least testing.
+
+**Verification is not lost with the fallback.** The daemon performs a real V2
+pull, which verifies every blob against the digest the manifest names — so a
+corrupted blob is refused by the puller rather than recorded, which is
+decision 6's requirement met by the primary path instead of by a second one.
+§6 tests it by corrupting a blob and watching the ingest refuse, against a real
+daemon rather than a fake that would agree with whatever it was told.
+
+#### The original design, superseded
 
 **Primary — an ephemeral local registry.** The manager starts a registry
 container bound to `127.0.0.1` on an ephemeral port, serves the bundle's OCI
@@ -271,8 +350,8 @@ computes and commits `RepoDigests` itself: afterwards the image answers to its
 original reference with no further intervention, and `HasImage` needs no
 special case at all.
 
-**Verified end to end**, against a real registry and a real daemon, before this
-RFC was locked:
+~~**Verified end to end**~~ — the claim below is false, and the table above
+says how. Kept verbatim, against a real registry and a real daemon:
 
 ```
 oras.Copy  registry -> OCI layout   index.json digest = sha256:40baa8cf…
@@ -283,12 +362,11 @@ docker image inspect <ref>@sha256:40baa8cf…  -> resolves
 ```
 
 The digest the registry reported on push survives the copy into the layout, the
-copy back out, and the pull — and the daemon records it as a `RepoDigest`
-without being asked. `HasImage` runs exactly that inspect
-([`compose.go:516`](../internal/adapters/runtime/compose/compose.go)), so after
-ingest a bundled image is indistinguishable from a pulled one. This is the
-claim P2 exists to establish, and it holds on an `overlay2` daemon with no
-containerd image store.
+copy back out, and the pull — that much is true, and the amended design still
+rests on it. What does not follow is the next sentence: the daemon records the
+`RepoDigest` of the name it pulled, which is the loopback one, so a bundled
+image is **not** indistinguishable from a pulled one and `HasImage` on the
+manifest's reference returns false. Decision 19 exists because of this line.
 
 This is not a novel trick in this repository — the acceptance scenario has run
 a throwaway registry since [0005](0005-continuous-integration-and-release.md)
@@ -300,7 +378,9 @@ polling, name collision and teardown ownership.
 
 The registry image itself is a bootstrap dependency, handled the way
 [0010](0010-compose-volume-capture.md) handled the volume helper: pinned by
-digest in the manager's own source, local-first, and reported by `doctor`.
+digest in the manager's own source, local-first, and reported by `doctor`. —
+*Withdrawn by decision 18: an install that needs an image from a registry is
+not an install that works without one.*
 
 **Fallback — a verified local index.** Where no registry helper can run, the
 manager ingests the layout directly, verifies each blob against the digest
@@ -332,7 +412,13 @@ last sentence is why §6 tests ingest against a real daemon.
 doc comment already frames it as answering "will this deployment come up on a
 host that cannot reach a registry"
 ([`runtime.go:268`](../internal/ports/runtime.go)) — this design is what that
-sentence was waiting for.
+sentence was waiting for. It asks about the alias of decision 19 rather than
+about `ref`, which is the one adjustment the amendment forces on it.
+
+*Withdrawn by decision 21.* With the registry in the manager's own process
+there is no helper left to be unable to run, so the fallback answers a question
+the amended design does not ask. Its verification obligation is not withdrawn
+with it: see decision 6, now discharged by the daemon's own pull.
 
 #### Alternatives considered — ingest
 
@@ -364,11 +450,35 @@ runs `overlay2`.
 
 Ingest happens once, in `init` and in `update` — the operations that stage a
 release — before the converge that uses the images. It is journaled like any
-other step, and compensating means removing what it loaded.
+other step.
 
-`apply` is untouched. `stepPullImages` calls `Pull`, `Pull` skips what is
-present, and after ingest every bundled image is present. `apply --startup`
-continues to skip the pull entirely.
+**It does not compensate**, which reverses the sentence this paragraph used to
+end with. An ingested image is content-addressed and shared by digest, so the
+alias a failed update would remove is the *same* alias a previous release
+carrying the same image resolves through — and undoing the load would take the
+deployment being rolled back to down with it. What compensation was protecting
+against is disk, which [§8](#8-out-of-scope) already assigns to `docker`'s own
+pruning.
+
+**`apply` is not untouched**, which is the other thing decision 19 costs.
+Three changes, all of them consequences of a bundled image answering to an
+alias rather than to `ref`:
+
+- `<PRODUCT>_IMAGE_<NAME>` carries the alias for a bundled image and `ref` for
+  every other. Compose has to receive something the daemon can resolve, and for
+  a bundled image that is the only such name there is.
+- `Pull` receives the images whose source is a registry, not all of them.
+  Passing a bundled image to `Pull` would send the deployment to the vendor's
+  registry for bytes it already has — the exact contact the bundle exists to
+  avoid — and it would do it under a reference no longer resolvable locally.
+- A bundled image that is absent locally is a **refusal** (decision 20), raised
+  in preflight, before anything mutates. Not a pull: the alias is a tag, and a
+  tag the vendor's registry happens to serve would let a digest-pinned
+  deployment converge on bytes nobody verified.
+
+`apply --startup` continues to skip the pull entirely, and the refusal above
+still runs — a boot-time apply on a machine whose image store was pruned should
+say so rather than fail inside Compose.
 
 `doctor` gains the vocabulary it lacks: `runtime.images-local` can distinguish
 "absent" from "present in the bundle, not yet loaded" and name the command that
@@ -471,12 +581,20 @@ what is private keeps the common case to the vendor's own layers.
 - **Ingest, against real Docker**, in the container suites — the only place the
   claim can be tested, because the claim is about what the daemon believes. The
   assertion that matters: after ingest, `HasImage` returns true for the
-  *original* reference, and `Pull` performs no network operation. A test that
-  asserted only "the image is present" would pass against the `docker load`
-  implementation this RFC rejects.
-- **Fallback ingest** with the registry helper unavailable, asserting the same
-  `HasImage` outcome and that a blob whose bytes do not match its claimed digest
-  is refused rather than recorded.
+  ~~*original* reference~~ **alias** and **false for the original**, and `Pull`
+  performs no network operation. A test that asserted only "the image is
+  present" would pass against the `docker load` implementation this RFC
+  rejects — and one that asserted only the alias would pass against an
+  implementation that had quietly gone back to the original reference, which is
+  why both halves are in the same test.
+- **A blob whose bytes do not match its claimed digest is refused** rather than
+  recorded — against a real daemon, since decision 21 makes the daemon's own
+  pull the thing that checks it. ~~Fallback ingest with the registry helper
+  unavailable~~ has no subject left to test.
+- **The alias resolves and `ref` does not**, asserted in the same test. Half of
+  that is the regression guard: an implementation that quietly went back to
+  handing Compose the manifest's reference would pass every test that only
+  checked the alias.
 - **Acceptance**, extending the scenario that already builds and pushes stub
   images: install a hybrid bundle with the registry stopped afterwards, proving
   the deployment converges with no reachable registry.
@@ -522,12 +640,24 @@ what is private keeps the common case to the vendor's own layers.
   mirror is worse where it applies. If the isolated deployments go away, this
   machinery outlives its reason — and the honest response then is to retire it,
   not to keep it because it exists.
-- **The ingest mechanism no longer carries design risk, but it carries
-  environment risk.** §5.3 is verified end to end on a real daemon, so the
-  question is no longer whether it works but whether a customer can run a
-  helper container and bind a loopback port. Where they cannot, the fallback
-  carries everything, and the fallback is a verified mapping in installation
-  state — more surface than it appears.
+- **The ingest mechanism carried design risk after all, and P2 found it.** The
+  amended §5.3 is verified by a cold pull rather than by the reading of a spike
+  that tested the adjacent thing. What remains is environment risk with a
+  narrower shape: the manager serves the layout on its own loopback, so a
+  daemon that does not share that loopback cannot reach the ingest at all. A
+  remote `DOCKER_HOST` is the obvious case and the only one that can be
+  *detected* — a unix socket proves nothing, since one can front a daemon in a
+  VM with a loopback of its own, and a `docker context` can point anywhere
+  without touching the environment. So the refusal is two-part and deliberately
+  asymmetric: a `tcp://` or `ssh://` host is refused before a port is bound,
+  and everything else fails at the pull with a message that names loopback
+  reachability instead of blaming the bundle. There is no fallback behind it
+  any more, which is why the message matters as much as the check.
+- **The alias is a tag, and tags are mutable.** Decision 19 buys local
+  resolution with a name a registry could also serve. Decision 20 is what keeps
+  that from mattering — absent means refuse, never pull — and if that refusal
+  is ever softened to a pull "for convenience", digest pinning stops meaning
+  anything for bundled images. It is one `if` away at all times.
 - **Raising the extraction ceiling weakens a guard that runs on untrusted
   bytes.** Extraction precedes verification (§5.5), so `ExtractLimits` is the
   only defence against a hostile archive, and the signature cannot substitute
@@ -577,7 +707,7 @@ recomputation, and the wording of every refusal.
 | 2 | Per-image, not per-bundle | A release bundles what is private and pulls what is public. Without it every bundle carries Postgres. Consequence: the manifest grows a second spelling, and both must be documented and tested. |
 | 3 | OCI image layout, not `docker save` | Only the layout preserves the registry manifest digest, which is the identity `manifest.yaml` pins and `HasImage` asks about. Verified: `docker save` writes `RepoTags: null` and no digest. |
 | 4 | `ref` stays a resolvable image reference; `from` is separate | The reference is interpolated into Compose. Consequence: scheme dispatch, the house pattern for transports, is unavailable here. |
-| 5 | Ephemeral registry primary, verified index fallback | A real V2 pull makes the daemon commit `RepoDigests` natively, so nothing downstream needs a special case. **Verified by spike** (§5.3): the digest survives registry → layout → registry → pull, and `docker image inspect` resolves it afterwards on an `overlay2` daemon. The fallback exists for environments that cannot run the helper. |
+| 5 | ~~Ephemeral registry primary, verified index fallback~~ — **superseded by decisions 18 and 21** | The mechanism survives and both its halves changed: the registry moved into the manager's process, and the fallback is gone. What the spike actually established was that the digest survives registry → layout → registry → pull; what it was read as establishing — that `docker image inspect` then resolves the *manifest's* reference — it never tested. |
 | 6 | The fallback verifies, never merely records | Recording without recomputing asserts provenance without checking it — the property [0005 §12](0005-continuous-integration-and-release.md) found missing once already, where the digest-pinned `images` map had no effect on what ran. |
 | 7 | Daemon metadata is never written directly | Undocumented, root-only, driver-specific, racy — and it forges the guarantee. Recorded as rejected so it is not re-proposed. |
 | 8 | Existing verification chain extends unchanged | Image blobs are files; `SHA256SUMS` and the unlisted-file refusal already cover them. No second verification mechanism. |
@@ -589,7 +719,11 @@ recomputation, and the wording of every refusal.
 | 14 | The reference → image ID mapping is **recomputed from the bundle**, never persisted | State that can go stale will. Only the fallback path needs it at all; where the ephemeral registry runs, the daemon holds the truth. |
 | 15 | **Refines decision 11** (2026-08-08): the manifest-first ordering it requires is owned by [0014](0014-building-a-release-bundle.md), and the budget read **fails closed** when the first tar entry is not `manifest.yaml` | Decision 11 named [0012](0012-packing-images-into-a-bundle.md) as controlling the ordering; 0012 §8 excluded archiving, so the guarantee was asserted here and enforced nowhere. 0014 decision 2 locks the order as a property of the archive format, and this row adds the consuming half: an archive that does not honour it is **refused**, not silently given the default ceiling. Consequence: a hand-rolled `tar` over a bundle carrying images is refused unless the vendor orders it, which `publishing.md` must show — a real cost, accepted because a guarantee nothing checks decays into a comment. |
 | 16 | **Refines decision 11** (2026-08-09): the declared budget may only ever **lower** the ceiling — the effective limit is `min(declared, hard_cap)`, `hard_cap` being 50 GiB total and 5 GiB per file | The declaration is read from the same unverified bytes the guard bounds, so a budget that could *raise* the ceiling is one an attacker sets. Decision 11's "a bound proportional to a claim" was the error; the free-space preflight does not cover it, since a large disk simply passes. Consequence: a bundle above the cap is refused, and raising the cap is a change to the manager rather than something a bundle can request. |
-| 17 | **Refines decision 14** (2026-08-09): the fallback **tags** the loaded image with the manifest's reference; the reference → image ID mapping is recomputed and still never persisted | §5.3 said the mapping was recorded in installation state, contradicting decision 14 in the same document — and persisting it would not have sufficed regardless: `Pull` and the Compose project resolve by *reference*, so a mapping the manager consults privately leaves the daemon unable to create the service. |
+| 17 | ~~**Refines decision 14** (2026-08-09): the fallback **tags** the loaded image with the manifest's reference~~ — **withdrawn by decision 19** | Not expressible: `docker tag` answers `refusing to create a tag with a digest reference`. A tag names `repo:tag` and never `repo@digest`, so no amount of tagging makes an image answer to the reference a manifest pins. The half that survives is that the mapping is recomputed and never persisted (decision 14). |
+| 18 | **The registry is in the manager's process**, not a container: `127.0.0.1:0`, read-only, serving the bundle's layout, closed when the ingest ends *(2026-08-09, replaces the container half of decision 5)* | The container form needs `registry:2` on the machine, and the only way to get an image is from a registry — so the primary path was unavailable in exactly the case this RFC exists for, and those installs would all have fallen through to the least-tested path. Verified by a cold `docker pull` against a Go HTTP server serving the layout. Consequence: [0004](0004-distribution-and-verification.md)'s "the manager does not run a registry" narrows further than decision 10 narrowed it — the manager now *contains* one, read-only, on loopback, for the length of one ingest. |
+| 19 | **A bundled image is deployed under a manager-created alias**, `<repo>:morzer-sha256-<hex>`, derived from the digest the manifest pins *(2026-08-09, refines decision 4)* | Measured: no supported command creates a digest reference for a repository the daemon did not pull from, so `ref` cannot be what Compose receives for a bundled image. `ref` stays the identity — pinned, verified, recorded, reported by `release show` — and the alias is what resolves. Derived from the digest rather than invented, so it is identical on every apply and the rendered configuration does not move; a random or timestamped alias would make `diff` and `status` report a change on every run. Consequence: an operator reading `docker images` sees a tag the vendor never published, which the docs have to explain. |
+| 20 | **A bundled image that is not present locally is a refusal, never a pull** *(2026-08-09)* | The alias is a tag and a tag is mutable, so an absent image plus a registry that serves that tag equals a digest-pinned deployment converging on unverified bytes. Refusing keeps the guarantee the digest was for. Consequence: `apply` gains a failure mode on a machine whose image store was pruned — the correct one, and `morzer release ingest` is the remedy it names. |
+| 21 | **The fallback ingest is withdrawn; there is one mechanism** *(2026-08-09)* | It existed for hosts that cannot run the registry helper, and decision 18 leaves no helper to fail. Decision 6's obligation stands and moves: the daemon's own V2 pull verifies every blob against the digest the manifest names, so a corrupted blob is refused rather than recorded — tested by corrupting one against a real daemon. Consequence: P3 keeps the `doctor` vocabulary and loses its second code path, and a daemon the manager cannot reach over loopback now has no ingest at all. A remote `DOCKER_HOST` is refused before anything is served; a socket fronting a VM cannot be distinguished from a local one, so that case fails at the pull with a message naming loopback reachability rather than the bundle. |
 
 ## 12. Phasing
 
@@ -600,9 +734,14 @@ recomputation, and the wording of every refusal.
   ingest. A bundle can be *validated* before anything can install one.
 - **P2 — ingest via the ephemeral registry**, with the container-suite tests
   that assert the original reference resolves afterwards. This is the phase
-  that either works or sends the design back.
-- **P3 — fallback ingest and `doctor` integration**, including the mismatched
-  blob refusal.
+  that either works or sends the design back. — **It sent it back.** The
+  original reference does not resolve and cannot be made to; P2 as shipped is
+  the in-process registry of decision 18 and the alias of decision 19, and the
+  container-suite test asserts the *alias* resolves, with the manifest's own
+  reference asserted absent so the distinction cannot quietly rot back.
+- **P3 — ~~fallback ingest and~~ `doctor` integration**, including the
+  mismatched blob refusal — which decision 21 moves onto the primary path
+  rather than deleting.
 - **P4 — acceptance**: a hybrid bundle installed with the registry stopped.
 
 P1 is useful alone: it makes bundles inspectable and gives

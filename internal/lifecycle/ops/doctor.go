@@ -149,6 +149,11 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			d.checkSecretRotation(rel),
 			d.checkRegistryReachable(rel),
 			d.checkImagesLocal(rel),
+			// The same check `apply` refuses on, asked where an
+			// operator can act on it: "the bundle carries this
+			// image and it is not loaded" is a condition with a
+			// remedy, which is what runtime.images-local never had.
+			preflight.BundledImages(rel.Manifest.BundledImageRefs(), d.imagePresence()),
 			d.checkServices(inst, rel),
 			d.checkHealth(inst, rel),
 		)
@@ -697,8 +702,17 @@ func (d *Deps) checkRegistryReachable(rel domain.Release) preflight.Check {
 		Description: "container registry is reachable",
 		Fatal:       false,
 		Run: func(ctx context.Context) events.CheckResult {
-			refs := rel.Manifest.ImageRefs()
+			// The images actually fetched from a registry. A
+			// release that bundles everything contacts no registry
+			// at all, and warning that one is unreachable would
+			// report a fault in the case the whole feature exists
+			// to produce.
+			refs := rel.Manifest.PulledImageRefs()
 			if len(refs) == 0 {
+				if len(rel.Manifest.BundledImages()) > 0 {
+					return preflight.OK(
+						"every image travels in the bundle; no registry is contacted")
+				}
 				return preflight.OK("the release declares no images")
 			}
 
@@ -718,7 +732,7 @@ func (d *Deps) checkRegistryReachable(rel domain.Release) preflight.Check {
 					"check network access and registry credentials (`docker login`); "+
 						"updates will fail while this is unreachable",
 					"cannot reach the registry for %s: %s",
-					shortRef(refs[0]), domain.AsError(err).Message)
+					domain.ShortImageRef(refs[0]), domain.AsError(err).Message)
 			}
 			return preflight.OK("reachable")
 		},
@@ -779,6 +793,12 @@ func (d *Deps) checkUpdateAvailable(inst domain.Installation) preflight.Check {
 // A warning rather than a failure: needing the network is the normal case, and
 // failing `doctor` over it would make the exit code mean "this machine is
 // online" instead of "this machine is healthy".
+//
+// Scoped to the images a registry serves. An image travelling in the bundle is
+// not a question about the network -- it is either loaded or it is not, the
+// bytes are on this machine either way, and `images.bundled` answers that with
+// a remedy and a refusal. Reporting them here as well would tell an operator
+// twice about one condition and put the weaker of the two verdicts second.
 func (d *Deps) checkImagesLocal(rel domain.Release) preflight.Check {
 	return preflight.Check{
 		ID:          "runtime.images-local",
@@ -786,8 +806,12 @@ func (d *Deps) checkImagesLocal(rel domain.Release) preflight.Check {
 		Description: "release images are available offline",
 		Fatal:       false,
 		Run: func(ctx context.Context) events.CheckResult {
-			refs := rel.Manifest.ImageRefs()
+			refs := rel.Manifest.PulledImageRefs()
 			if len(refs) == 0 {
+				if len(rel.Manifest.BundledImages()) > 0 {
+					return preflight.OK(
+						"every image travels in the bundle, so none is pulled")
+				}
 				return preflight.OK("the release declares no images")
 			}
 
@@ -811,7 +835,7 @@ func (d *Deps) checkImagesLocal(rel domain.Release) preflight.Check {
 						"cannot check local images: %s", domain.AsError(err).Message)
 				}
 				if !present {
-					missing = append(missing, shortRef(ref))
+					missing = append(missing, domain.ShortImageRef(ref))
 				}
 			}
 
@@ -819,20 +843,13 @@ func (d *Deps) checkImagesLocal(rel domain.Release) preflight.Check {
 				return preflight.OK("all %d image(s) are present locally", len(refs))
 			}
 			return preflight.Warn(
-				"run `morzer apply` while online, or preload with "+
-					"`docker load < images.tar`, if this machine has to come up "+
-					"without network access",
-				"%d of %d image(s) are not local: %s",
+				"run `morzer apply` while online; if this machine has to come up "+
+					"without network access, the durable answer is a release that "+
+					"marks these images `from: bundle` so they travel with it",
+				"%d of %d pulled image(s) are not local: %s",
 				len(missing), len(refs), strings.Join(missing, ", "))
 		},
 	}
-}
-
-func shortRef(ref string) string {
-	if i := strings.Index(ref, "@"); i > 0 {
-		return ref[:i]
-	}
-	return ref
 }
 
 func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) preflight.Check {
@@ -1239,14 +1256,14 @@ func (d *Deps) checkVolumeHelperImage(inst domain.Installation, rel domain.Relea
 			present, err := inspector.HasImage(ctx, ref)
 			if err != nil {
 				return preflight.Warn("check that the Docker daemon is running: `docker info`",
-					"cannot tell whether %s is here: %s", shortRef(ref), domain.AsError(err).Message)
+					"cannot tell whether %s is here: %s", domain.ShortImageRef(ref), domain.AsError(err).Message)
 			}
 			if !present {
 				return preflight.Warn(
 					fmt.Sprintf("run `docker pull %s` -- do it now rather than "+
 						"during a backup on a machine that has lost its network", ref),
 					"%s is not on this machine, so a backup cannot capture volumes",
-					shortRef(ref))
+					domain.ShortImageRef(ref))
 			}
 			// The full pinned reference, not shortRef. Every other
 			// check abbreviates because it names several images for
