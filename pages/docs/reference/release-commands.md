@@ -1,7 +1,7 @@
 ---
 title: release
 icon: lucide/package
-summary: The release command group — list, show, verify, archive, fetch, prune
+summary: The release command group — list, show, verify, build, archive, fetch, prune
 ---
 
 # `morzer release`
@@ -63,6 +63,36 @@ needs no installation on the machine, because there is no policy to read there.
 On a deployment host, `policy.signing_keys` in `installation.yaml` decides
 instead. See [Verification](#verification).
 
+## release build
+
+```sh
+morzer release build <bundle-dir> [--force]
+```
+
+Writes `SHA256SUMS` over every file in the bundle, then verifies the result the
+same way `verify` does.
+
+| Flag | Meaning |
+| --- | --- |
+| `--force` | Discard an existing `SHA256SUMS.minisig`, which regenerating the list invalidates. |
+
+Writes **in place** — the bundle directory is modified. Copying a tree whose
+`images/` layout may be tens of gigabytes to protect a checksum file is a poor
+trade, so there is no `--out`.
+
+The manifest is validated *before* anything is written. A checksum list over a
+broken tree is evidence that the tree is exactly as broken as it is, signed and
+shipped.
+
+A bundle that already carries a signature is refused: regenerating the list
+necessarily invalidates any signature over it. `--force` **deletes** the
+signature rather than building around it — keeping one that no longer verifies
+produces a bundle that fails on the customer's machine for a reason the vendor
+cannot see from their own tree.
+
+The list is written in the archive's entry order, and the checksums are bare
+hex, so `sha256sum -c SHA256SUMS` reads it without this tool.
+
 ## release archive
 
 ```sh
@@ -80,7 +110,7 @@ checking it the same way `verify` does. Writes
 This is the last of the three steps that publish a release:
 
 ```sh
-morzer release build   ./my-product --version 1.4.0
+morzer release build   ./my-product
 minisign -Sm ./my-product/SHA256SUMS
 morzer release archive ./my-product
 ```

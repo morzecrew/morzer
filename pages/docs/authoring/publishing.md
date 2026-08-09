@@ -1,38 +1,54 @@
 ---
 title: Signing and publishing
 icon: lucide/upload
-summary: Packing a bundle, signing it so operators can verify who published it, and where to put it
+summary: Building, signing and packing a bundle, and where to put it
 ---
 
 # Signing and publishing
 
-A bundle is a directory. Publishing it means packing it, signing it, and putting
-it somewhere your users can reach.
+A bundle is a directory. Publishing it means summing it, signing it, packing it,
+and putting it somewhere your users can reach.
 
-## Pack it
+Three commands, in this order, and the middle one is not morzer's:
 
 ```sh
-tar --zstd -cf demo-1.3.0.tar.zst -C ./my-product .
+morzer release build   ./my-product
+minisign -Sm ./my-product/SHA256SUMS
+morzer release archive ./my-product
 ```
 
-`tar.zst` is the format the manager reads. A bundle and its archive produce the
-**same content digest**, so a digest you record from the directory verifies the
-archive and vice versa — publishing does not change what a release *is*.
+The order is forced rather than chosen. The signature is a file *inside* the
+bundle — a sibling would not survive being packed and unpacked — so it has to
+exist before the bundle is packed. And morzer does not sign, so the step in the
+middle is yours.
 
-Nothing but regular files and directories. Symlinks, hardlinks and device nodes
-are refused at extraction, so an archive containing one will not install.
+## Build it
+
+```sh
+morzer release build ./my-product
+```
+
+Writes `SHA256SUMS` over every file in the bundle, then verifies the result the
+same way `release verify` does, so a broken bundle fails on your machine rather
+than on a customer's.
+
+It writes **in place**: the bundle directory is modified. Your CI checks out
+fresh so it never notices; running it in a working tree leaves a file to commit
+or ignore.
+
+A bundle that already carries a signature is refused, because regenerating the
+list necessarily invalidates any signature over it. `--force` discards the
+signature rather than building around it — keeping one that no longer verifies
+produces exactly the artifact the chain exists to prevent.
 
 ## Sign it
 
-The signature covers a `SHA256SUMS` file that lists every other file. Two small
+The signature covers the `SHA256SUMS` that lists every other file. Two small
 steps, each checkable by hand with standard tools, rather than one bespoke
 signature only this program can verify.
 
 ```sh
-cd ./my-product
-find . -type f ! -name SHA256SUMS ! -name SHA256SUMS.minisig \
-    -exec sha256sum {} + | sed 's| \./| |' > SHA256SUMS
-minisign -Sm SHA256SUMS
+minisign -Sm ./my-product/SHA256SUMS
 ```
 
 That leaves both files **inside** the bundle:
@@ -50,14 +66,58 @@ archive and unpacked again on the other machine.
 The list has to be complete. A bundle that ships a `SHA256SUMS` naming only some
 of its files is refused, naming the ones it left out — an unlisted file is a
 file the signature does not cover, and the file an attacker adds is a file
-nobody listed. The `find` above produces a complete list; if your pipeline
-writes one by hand, verify it with `sha256sum -c SHA256SUMS` *and* by comparing
-its line count against the same file set the list covers:
+nobody listed. `release build` produces a complete list by construction.
+
+## Pack it
+
+```sh
+morzer release archive ./my-product
+# wrote demo-1.3.0.tar.zst
+```
+
+`tar.zst` is the format the manager reads. A bundle and its archive produce the
+**same content digest**, so a digest you record from the directory verifies the
+archive and vice versa — publishing does not change what a release *is*.
+
+Two archives of the same tree are byte-identical, and `SOURCE_DATE_EPOCH` is
+honoured. See [entry order and reproducibility](../reference/release-commands.md#release-archive)
+for what that costs and what it buys.
+
+### If you roll your own `tar`
+
+Supported, and sometimes necessary — a pipeline that cannot run morzer still
+has to produce a bundle. Two rules it must keep, both of which the commands
+above keep for you:
+
+```sh
+cd ./my-product
+find . -type f ! -name SHA256SUMS ! -name SHA256SUMS.minisig \
+    -exec sha256sum {} + | sed 's| \./| |' > SHA256SUMS
+minisign -Sm SHA256SUMS
+
+{ echo manifest.yaml
+  find . -type f ! -path ./manifest.yaml | sed 's|^\./||' | LC_ALL=C sort
+} > ../entries.txt
+tar --zstd -cf ../demo-1.3.0.tar.zst --no-recursion -T ../entries.txt
+```
+
+**`manifest.yaml` must be the first entry** if your bundle carries images: the
+extraction budget is read from the manifest before anything large is extracted,
+which only works while it arrives first. `tar -C ./my-product .` emits entries
+in directory order, which no `tar` implementation specifies.
+
+**The checksum list must be complete.** If your pipeline writes one by hand,
+verify it with `sha256sum -c SHA256SUMS` *and* by comparing its line count
+against the same file set the list covers:
 
 ```sh
 find . -type f ! -name SHA256SUMS ! -name SHA256SUMS.minisig | wc -l
 wc -l < SHA256SUMS
 ```
+
+Nothing but regular files and directories, either way. Symlinks, hardlinks and
+device nodes are refused at extraction, so an archive containing one will not
+install.
 
 ### The key
 
