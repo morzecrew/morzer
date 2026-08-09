@@ -1,14 +1,19 @@
 # RFC 0011 — Bundled container images
 
-- **Status:** 🚧 In progress — **P1 shipped 2026-08-09**: the manifest's dual
+- **Status:** ✅ Complete — **P2–P4 shipped 2026-08-09**: ingest through an
+  in-process loopback registry, the digest-derived alias, the refusal that
+  replaces a pull, the `doctor` vocabulary, and an acceptance scenario that
+  installs a hybrid bundle with the registry stopped and its local copy deleted.
+  What remains open is only what §8 excluded. **P1 shipped 2026-08-09**: the manifest's dual
   image spelling, the layout's completeness refusals in both directions, and the
   extraction budget with its hard caps, its manifest-first requirement and its
   free-space preflight. A bundle carrying images is now *inspectable*; nothing
-  installs one yet. **P2 (ingest via the ephemeral registry) is the phase that
-  either works or sends the design back**, and nothing after it is worth
-  scheduling until it lands. §5.4's `doctor` vocabulary rides with P3, since a
-  check distinguishing "present in the bundle, not yet loaded" needs the loading
-  to exist. **Design locked** 2026-08-08. Every
+  installs one yet. **P2 (ingest via the ephemeral registry) was written as the
+  phase that either works or sends the design back**, with nothing after it
+  worth scheduling until it landed — and it sent the design back, which is the
+  entry below. §5.4's `doctor` vocabulary rode with P3, since a check
+  distinguishing "present in the bundle, not yet loaded" needs the loading to
+  exist. **Design locked** 2026-08-08. Every
   question in §10 is resolved into §11; the ingest mechanism (§5.3) is verified
   by spike. Ready to execute from P1. **Amended 2026-08-08** (decision 15):
   decision 11's archive-ordering requirement is owned by
