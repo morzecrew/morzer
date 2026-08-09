@@ -153,7 +153,7 @@ func ParseManifest(data []byte, source string) (domain.Manifest, error) {
 	return m, nil
 }
 
-// LoadSecretSchema reads templates/secrets.yaml from a release.
+// LoadSecretSchema reads the secret schema a manifest declares.
 //
 // A release without a secret schema is valid -- not every product has
 // secrets -- and yields an empty schema rather than an error.
@@ -322,6 +322,12 @@ func checkReferencedFiles(rel domain.Release) error {
 			missing = append(missing, fmt.Sprintf("%s: %s does not exist", field, relPath))
 		}
 	}
+
+	// Declared like every other path a bundle ships, and checked like
+	// every other one: a bundle promising release notes and shipping none
+	// fails on the vendor's machine rather than showing an operator
+	// nothing at the moment they were told to read something.
+	check("metadata.release_notes", rel.Manifest.Metadata.ReleaseNotes)
 
 	for i, f := range rel.Manifest.Runtime.Files {
 		check(fmt.Sprintf("runtime.files[%d]", i), f)

@@ -115,6 +115,15 @@
               "name": {
                 "type": "string"
               },
+              "start_period": {
+                "description": "A duration, e.g. 30s or 10m.",
+                "examples": [
+                  "30s",
+                  "10m"
+                ],
+                "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
+                "type": "string"
+              },
               "timeout": {
                 "description": "A duration, e.g. 30s or 10m.",
                 "examples": [
@@ -162,6 +171,12 @@
           "type": "string"
         },
         "name": {
+          "type": "string"
+        },
+        "release_notes": {
+          "type": "string"
+        },
+        "support_url": {
           "type": "string"
         },
         "vendor": {
@@ -221,6 +236,9 @@
           },
           "description": {
             "type": "string"
+          },
+          "required": {
+            "type": "boolean"
           },
           "services": {
             "items": {
@@ -329,6 +347,9 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "cpus": {
+          "type": "integer"
         },
         "disk": {
           "description": "A byte size, e.g. 2GiB.",

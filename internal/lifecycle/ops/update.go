@@ -255,7 +255,9 @@ func (d *Deps) resolveUpdateTarget(
 				domain.ValidationError(domain.ErrDigestMismatch,
 					"release %s is already installed with a different digest", source.Version()).
 					WithHint("installed %s, incoming %s — these are different bundles "+
-						"claiming the same version", shortDigest(existing.Digest), shortDigest(source.Digest))
+						"claiming the same version. A vendor iterating on a release "+
+						"should publish a prerelease (1.4.1-dev.7.gabc1234) rather than "+
+						"republishing one", shortDigest(existing.Digest), shortDigest(source.Digest))
 		}
 	}
 

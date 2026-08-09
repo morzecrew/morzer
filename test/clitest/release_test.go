@@ -193,7 +193,7 @@ func storeEntries(t *testing.T, r *clitest.Runner) int {
 func TestReleaseVerifyRefusesATemplateThatCannotParse(t *testing.T) {
 	r := clitest.New(t)
 
-	tmpl := filepath.Join(r.Bundle, "templates", "application.yaml")
+	tmpl := filepath.Join(r.Bundle, "templates", "application.yaml.tmpl")
 	original, err := os.ReadFile(tmpl)
 	if err != nil {
 		t.Fatalf("cannot read the example template: %v", err)

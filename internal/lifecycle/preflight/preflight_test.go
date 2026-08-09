@@ -622,6 +622,86 @@ func TestMemory(t *testing.T) {
 	})
 }
 
+func TestCPUs(t *testing.T) {
+	t.Run("no requirement stated", func(t *testing.T) {
+		res := preflight.CPUs(0).Run(context.Background())
+		if res.Status != events.CheckOK {
+			t.Errorf("status = %v with no CPU requirement", res.Status)
+		}
+	})
+
+	t.Run("a requirement every machine meets", func(t *testing.T) {
+		res := preflight.CPUs(1).Run(context.Background())
+		if res.Status != events.CheckOK {
+			t.Errorf("one CPU was reported insufficient: %s", res.Message)
+		}
+	})
+
+	t.Run("more CPUs than any machine has", func(t *testing.T) {
+		check := preflight.CPUs(1 << 20)
+		if check.Fatal {
+			t.Error("a machine with fewer cores than recommended is slow, not " +
+				"broken; refusing would overrule an operator who may know " +
+				"their workload better than the vendor's guess")
+		}
+		res := check.Run(context.Background())
+		if res.Status != events.CheckWarn {
+			t.Fatalf("this machine claims a million CPUs: %s", res.Message)
+		}
+	})
+}
+
+// TestRequiredParameters is what makes `required` more than decorative.
+//
+// Fatal, and checked on every apply rather than only where a value can be
+// supplied: a release that introduces a required parameter must fail to deploy
+// rather than deploy with an empty value the product then misreads. The
+// current release keeps running, which is the safe side of that trade.
+func TestRequiredParameters(t *testing.T) {
+	declared := map[string]domain.ParameterSpec{
+		"admin_email": {Type: domain.ParamString, Required: true},
+		"http_port":   {Type: domain.ParamPort, Default: "8080"},
+	}
+
+	t.Run("unset", func(t *testing.T) {
+		check := preflight.RequiredParameters(declared, map[string]string{})
+		if !check.Fatal {
+			t.Error("deploying with a required parameter unset must not be a warning")
+		}
+		res := check.Run(context.Background())
+		if res.Status != events.CheckFail {
+			t.Fatalf("status = %v with a required parameter unset", res.Status)
+		}
+		if !strings.Contains(res.Message, "admin_email") {
+			t.Errorf("the refusal does not name the parameter: %s", res.Message)
+		}
+		// The one with a default must not be dragged in: it is not
+		// required, and naming it would send the operator to set a
+		// value the vendor already chose.
+		if strings.Contains(res.Message, "http_port") {
+			t.Errorf("a parameter with a default was reported missing: %s", res.Message)
+		}
+	})
+
+	t.Run("set", func(t *testing.T) {
+		res := preflight.RequiredParameters(declared,
+			map[string]string{"admin_email": "ops@example"}).Run(context.Background())
+		if res.Status != events.CheckOK {
+			t.Errorf("status = %v with every required parameter set: %s", res.Status, res.Message)
+		}
+	})
+
+	t.Run("set to whitespace", func(t *testing.T) {
+		// An empty value dressed up. The product receives "" either
+		// way, so accepting this would make the check performative.
+		res := preflight.RequiredParameters(declared,
+			map[string]string{"admin_email": "   "}).Run(context.Background())
+		if res.Status != events.CheckFail {
+			t.Errorf("status = %v for a required parameter set to whitespace", res.Status)
+		}
+	})
+}
+
 func TestNoUnfinishedOperation(t *testing.T) {
 	t.Run("a clean history", func(t *testing.T) {
 		res := preflight.NoUnfinishedOperation(nil).Run(context.Background())

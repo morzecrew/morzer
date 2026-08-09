@@ -248,3 +248,163 @@ func TestWaitReadyTimesOutNamingWhatNeverCameUp(t *testing.T) {
 		t.Errorf("the results from the last round were lost: %+v", results)
 	}
 }
+
+// startPeriodSpec is a check the vendor said takes a while to come up.
+func startPeriodSpec(name string, kind domain.HealthCheckType, period time.Duration) ports.CheckSpec {
+	return ports.CheckSpec{Check: domain.HealthCheck{
+		Name: name, Type: kind, StartPeriod: domain.Duration(period),
+	}}
+}
+
+// TestStartPeriodDistinguishesASlowStartFromADeadProduct.
+//
+// The pair, and it has to be a pair: with only the first half a waiter that
+// gave up immediately would pass, and with only the second one that never gave
+// up would. Without the field, a product with a ninety-second first boot and a
+// product that is dead are the same observation, and the only lever is a
+// timeout long enough to delay noticing the second.
+//
+// The clock is injected rather than slept through, because a test that proved
+// this by waiting out a real start period is a test nobody runs.
+func TestStartPeriodDistinguishesASlowStartFromADeadProduct(t *testing.T) {
+	// Slow: fails twice, then comes up -- inside its declared period.
+	t.Run("failing inside the period does not fail the operation", func(t *testing.T) {
+		slow := &scriptedProber{kind: domain.HealthHTTP, replies: []ports.HealthResult{
+			bad("connection refused"), bad("connection refused"), ok("ready"),
+		}}
+
+		now := time.Unix(0, 0)
+		waiter := health.NewWaiter(slow).WithInterval(time.Millisecond).
+			WithClock(func() time.Time {
+				now = now.Add(10 * time.Second)
+				return now
+			})
+
+		results, err := waiter.WaitReady(context.Background(),
+			[]ports.CheckSpec{startPeriodSpec("api", domain.HealthHTTP, 90*time.Second)})
+		if err != nil {
+			t.Fatalf("a check still inside its start period failed the operation: %v", err)
+		}
+		if !results[0].OK {
+			t.Error("the check came up and was not recorded as passing")
+		}
+	})
+
+	// Dead: never comes up, and the clock walks past the declared period.
+	t.Run("still failing after it does", func(t *testing.T) {
+		dead := &scriptedProber{kind: domain.HealthHTTP,
+			replies: []ports.HealthResult{bad("connection refused")}}
+
+		now := time.Unix(0, 0)
+		waiter := health.NewWaiter(dead).WithInterval(time.Millisecond).
+			WithClock(func() time.Time {
+				now = now.Add(60 * time.Second)
+				return now
+			})
+
+		// The deadline is a backstop, not the mechanism: it exists so a
+		// regression fails in a second rather than hanging. What proves
+		// the field works is the *wording* asserted below -- a waiter
+		// that ignored start_period would end on the deadline and
+		// produce the timeout refusal instead.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		_, err := waiter.WaitReady(ctx,
+			[]ports.CheckSpec{startPeriodSpec("api", domain.HealthHTTP, 90*time.Second)})
+		if err == nil {
+			t.Fatal("a check that outlived its start period was reported healthy")
+		}
+
+		de := domain.AsError(err)
+		if de.Code != domain.CodeHealth {
+			t.Errorf("exit code %v, want the health code", de.Code)
+		}
+		// Worded differently from the timeout refusal on purpose: "we
+		// ran out of time" and "the vendor said how long this takes
+		// and it took longer" are acted on differently.
+		if !strings.Contains(de.Message, "start period") {
+			t.Errorf("message %q does not say the declared period elapsed", de.Message)
+		}
+		if !strings.Contains(de.Message, "api") {
+			t.Errorf("message %q does not name the check", de.Message)
+		}
+	})
+}
+
+// blockingProber never answers; only the probe's own deadline ends it.
+type blockingProber struct{ kind domain.HealthCheckType }
+
+func (p *blockingProber) Type() domain.HealthCheckType { return p.kind }
+
+func (p *blockingProber) Check(ctx context.Context, spec ports.CheckSpec) (ports.HealthResult, error) {
+	<-ctx.Done()
+	return ports.HealthResult{Name: spec.Name(), OK: false, Message: "timed out"}, nil
+}
+
+// TestTheStartPeriodEndsTheWaitWithoutWaitingOutTheProbe.
+//
+// A start period shorter than the probe timeout, on a real clock. Before the
+// round was bounded, the deadline was only observed *between* rounds, so a
+// 20ms period on a 2s probe reported its failure 2.001s later -- the field
+// promises to say a product is dead rather than slow, and saying it two
+// seconds late is most of the way back to not saying it.
+func TestTheStartPeriodEndsTheWaitWithoutWaitingOutTheProbe(t *testing.T) {
+	spec := ports.CheckSpec{Check: domain.HealthCheck{
+		Name: "api", Type: domain.HealthHTTP,
+		Timeout:     domain.Duration(5 * time.Second),
+		StartPeriod: domain.Duration(50 * time.Millisecond),
+	}}
+
+	started := time.Now()
+	_, err := health.NewWaiter(&blockingProber{kind: domain.HealthHTTP}).
+		WithInterval(time.Millisecond).
+		WaitReady(context.Background(), []ports.CheckSpec{spec})
+	elapsed := time.Since(started)
+
+	if err == nil {
+		t.Fatal("a check that never answered was reported healthy")
+	}
+	if !strings.Contains(domain.AsError(err).Message, "start period") {
+		t.Errorf("the refusal is not the start-period one: %v", err)
+	}
+	// Generously bounded: what must not happen is waiting out the 5s probe.
+	if elapsed > 2*time.Second {
+		t.Errorf("the wait took %s for a 50ms start period, so the deadline is "+
+			"only being observed between rounds", elapsed.Round(time.Millisecond))
+	}
+}
+
+// TestOneSlowCheckDoesNotCondemnADeploymentStillStarting.
+//
+// A check with no declared period must keep the waiter waiting, or adding
+// start_period to one check in a manifest would silently shorten the readiness
+// wait for every other check beside it.
+func TestOneSlowCheckDoesNotCondemnADeploymentStillStarting(t *testing.T) {
+	overdue := &scriptedProber{kind: domain.HealthHTTP,
+		replies: []ports.HealthResult{bad("connection refused")}}
+	undeclared := &scriptedProber{kind: domain.HealthTCP,
+		replies: []ports.HealthResult{bad("connection refused")}}
+
+	now := time.Unix(0, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	waiter := health.NewWaiter(overdue, undeclared).WithInterval(time.Millisecond).
+		WithClock(func() time.Time {
+			now = now.Add(60 * time.Second)
+			return now
+		})
+
+	_, err := waiter.WaitReady(ctx, []ports.CheckSpec{
+		startPeriodSpec("api", domain.HealthHTTP, 30*time.Second),
+		checkSpec("db", domain.HealthTCP),
+	})
+	if err == nil {
+		t.Fatal("the wait should still have ended in a refusal")
+	}
+	// The context deadline is what ended it, not the start period.
+	if strings.Contains(domain.AsError(err).Message, "start period") {
+		t.Error("a check with no declared start period was cut short by another check's")
+	}
+}

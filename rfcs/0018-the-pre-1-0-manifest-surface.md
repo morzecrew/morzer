@@ -1,6 +1,10 @@
 # RFC 0018 — The pre-1.0 manifest surface
 
-- **Status:** 📝 Draft — design proposed. Written as a deliberate one-time sweep
+- **Status:** 🚧 In progress — P1 shipped 2026-08-08 (the two-pass decode) and
+  P2 shipped 2026-08-09 (the five fields). P3 (`bundle.uncompressed_size`)
+  follows [0011](0011-bundled-container-images.md)'s schedule, since it is only
+  useful once 0011 reads it. Unresolved questions 2 and 3 are resolved into
+  decisions 10 and 11. Written as a deliberate one-time sweep
   of the release manifest before the first tag, because manifest decoding is
   strict and **recursive** (verified, §3), so every field at every level is
   frozen the moment a manifest exists that this project did not write.
@@ -366,19 +370,21 @@ each, because an unrecorded rejection is re-proposed.
 
 ## 10. Unresolved questions
 
+Questions 2 and 3 are resolved as of 2026-08-09, into decisions 10 and 11. Kept
+here because what was open is part of the record.
+
 1. **Should the preamble pass also refuse an unrecognised `api_version` before
    the strict decode?** It would turn "unknown field" into "this bundle uses
    `selfhost/v2`, which this manager does not read" — the same improvement one
    level up. Against: `api_version` is already validated after decoding with a
    good message, and two checks for one thing is how they drift apart.
-2. **Does `requirements.cpus` mean physical cores, logical CPUs, or a cgroup
-   quota?** On a container-hosted manager the three differ and the wrong one is
-   worse than nothing. Probably logical CPUs with the quota honoured when
-   present, but it needs deciding before the field exists rather than after.
-3. **Should `start_period` be per-check or a single value on `health`?**
-   Per-check is more precise; one value is what most products actually want, and
-   a per-check field that is always set to the same number is noise in every
-   manifest.
+2. ~~Does `requirements.cpus` mean physical cores, logical CPUs, or a cgroup
+   quota?~~ → decision 10. **Logical CPUs, narrowed by a cgroup quota where one
+   is in force.**
+3. ~~Should `start_period` be per-check or a single value on `health`?~~ →
+   decision 11. **Per-check**, which decision 5 had already committed to by
+   naming the field `health.checks[].start_period`; what was actually open was
+   whether to move it, and the answer is no.
 
 ## 11. Decisions
 
@@ -393,6 +399,9 @@ each, because an unrecorded rejection is re-proposed.
 | 7 | The extraction budget lives at **`bundle.uncompressed_size`**, and may only ever **lower** the ceiling | `requirements` describes the host; this describes the artifact. The block is where a reader will look — it reserves nothing, because §2 verified nesting confers no forward compatibility. The clamp to `min(declared, hard_cap)` lives in the extractor, not in manifest validation: the value is read from the archive before the signature is checked, so it is attacker-controlled, and absent must mean the default ceiling rather than unbounded. See [0011 decision 16](0011-bundled-container-images.md). |
 | 8 | The six rejected fields in §8 stay rejected, each with a named trigger | An unrecorded rejection is re-proposed. |
 | 9 | `extensions` is **left exactly as it is** | It is not dead: it exists to be tolerated, so a vendor's namespaced keys do not trip strict decoding. Consequence recorded rather than adopted: it is a usable home for *experimental* manager fields, which is invisible from the code. |
+| 10 | `requirements.cpus` means **logical CPUs, narrowed by a cgroup quota** where one is in force | Those are the three things a machine can mean by "how many CPUs", and the one that decides how much parallelism the product gets is the last that applies. A manager running inside a container sees every host CPU through the OS and may use far fewer. Consequence: the check reads `/sys/fs/cgroup/cpu.max` and falls back to the OS count, so it is a Linux answer — which is the only platform this manages. |
+| 11 | `start_period` stays **per-check** | Decision 5 named the field `health.checks[].start_period` and the implementation followed it; what was open was whether to hoist it to `health`. Per-check matches `timeout`, which is already per-check, and a sibling concept placed one level up is the kind of asymmetry this whole RFC exists to remove. Consequence: a product wanting one value writes it on the check that is actually slow, rather than on all of them. |
+| 12 | An unset **required** parameter fails preflight, so `apply` refuses too | Not only `init` and `config`, which is where the no-default rule already refused. A release that introduces a required parameter must fail to *deploy* rather than deploy with an empty value the product then misreads; the currently running release keeps serving, which is the safe side. Consequence: an unattended update that meets a new required parameter refuses rather than proceeding — which is the behaviour [0016](0016-update-checking-and-unattended-updates.md) P3 wants anyway. |
 
 ## 12. Phasing
 

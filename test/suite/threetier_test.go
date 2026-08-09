@@ -134,7 +134,7 @@ func TestOnlyTheBackendHoldsTheDatabaseCredential(t *testing.T) {
 func TestTheExampleRendersItsConfiguration(t *testing.T) {
 	rel := webBundle(t)
 
-	path, err := rel.Path("templates/application.yaml")
+	path, err := rel.Path("templates/application.yaml.tmpl")
 	require.NoError(t, err)
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)

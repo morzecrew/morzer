@@ -38,7 +38,7 @@ const schemaBase = "https://morzecrew.github.io/morzer/schemas/"
 // Manifest returns the generated manifest schema as formatted JSON.
 func Manifest() ([]byte, error) { return render(manifestSchema()) }
 
-// Secrets returns the generated schema for templates/secrets.yaml.
+// Secrets returns the generated schema for a bundle's secret schema.
 func Secrets() ([]byte, error) { return render(secretSchema()) }
 
 func render(s map[string]any) ([]byte, error) {
@@ -73,7 +73,8 @@ func secretSchema() map[string]any {
 	s["$id"] = schemaBase + SecretSchemaFile
 	s["title"] = "morzer secret schema"
 	s["description"] = "The declaration of what secrets a release needs, " +
-		"templates/secrets.yaml. Generated from the Go types; do not edit by hand."
+		"conventionally secrets.schema.yaml at the bundle root, though the manifest " +
+		"names the path. Generated from the Go types; do not edit by hand."
 
 	props, _ := s["properties"].(map[string]any)
 	props["api_version"] = withEnum(props["api_version"], apiVersions())

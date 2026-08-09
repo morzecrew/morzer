@@ -1,6 +1,10 @@
 # RFC 0017 — Recovery artifacts
 
-- **Status:** 📝 Draft — design proposed
+- **Status:** 🚧 In progress — P0 shipped 2026-08-08: `<PRODUCT>_BACKUP_DIR` is
+  documented as an ABI, which is what makes P1's retirement of the `secrets`
+  component legitimate rather than a removal from an unstated contract. P1–P3
+  remain, and P1 is the one that changes the answer to "my VM died and I never
+  took an export"
 - **Scope:** Makes a backup sufficient to rebuild a machine's identity, by having
   it carry a real `InstallationExport` instead of the four-file approximation it
   copies today — one of which is the operator-facing `installation.yaml` that

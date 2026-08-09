@@ -36,6 +36,67 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 		"no version": {
 			func(m *Manifest) { m.Metadata.Version = Version{} }, "metadata.version",
 		},
+		// Build metadata is retained by String() -- so it reaches the
+		// release store's directory name -- and ignored by Compare, so
+		// two builds differing only in metadata occupy different
+		// directories that the digest-conflict check never compares.
+		// Two bundles then claim one version and nothing notices.
+		"a version carrying build metadata": {
+			func(m *Manifest) { m.Metadata.Version = MustParseVersion("1.2.0+build.7") },
+			"metadata.version",
+		},
+
+		"release notes outside the bundle": {
+			func(m *Manifest) { m.Metadata.ReleaseNotes = "../../etc/passwd" },
+			"metadata.release_notes",
+		},
+		// A support link is shown to an operator who is already in
+		// trouble, which is the worst moment to send them somewhere
+		// over plaintext -- or to a URL with no host, or to a string
+		// carrying terminal escape sequences, since it is printed to a
+		// terminal by `status` and by a failing `doctor`.
+		"a plaintext support url": {
+			func(m *Manifest) { m.Metadata.SupportURL = "http://support.example" },
+			"metadata.support_url",
+		},
+		"a support url with no host": {
+			func(m *Manifest) { m.Metadata.SupportURL = "https://" },
+			"metadata.support_url",
+		},
+		"a support url whose host is empty but path is not": {
+			func(m *Manifest) { m.Metadata.SupportURL = "https:///help" },
+			"metadata.support_url",
+		},
+		"a support url carrying an escape sequence": {
+			func(m *Manifest) { m.Metadata.SupportURL = "https://ok.example/\x1b[2J" },
+			"metadata.support_url",
+		},
+
+		// requirements
+		"a negative cpu requirement": {
+			func(m *Manifest) { m.Requirements.CPUs = -1 }, "requirements.cpus",
+		},
+
+		// parameters -- two contradictory statements
+		"a parameter that is required and has a default": {
+			func(m *Manifest) {
+				m.Parameters = map[string]ParameterSpec{
+					"http_port": {Type: ParamPort, Required: true, Default: "8080"},
+				}
+			},
+			"parameters.http_port",
+		},
+
+		// health
+		"a negative start period": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{{
+					Name: "api", Type: HealthHTTP, URL: "http://127.0.0.1/health",
+					StartPeriod: Duration(-1),
+				}}
+			},
+			"health.checks[0].start_period",
+		},
 
 		// providers and runtime
 		"no runtime provider": {
@@ -289,6 +350,30 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 					"guess which field is wrong:\n%v", tc.field, err)
 			}
 		})
+	}
+}
+
+// TestAConstraintMayStillCarryBuildMetadata is the other half of the refusal
+// above.
+//
+// A release's own version may not carry metadata, because that identity keys
+// the store; a *constraint* may, because it is a range rather than an identity
+// and metadata already decides nothing inside one. Without this, widening the
+// refusal into the constraint path would break `upgrade_from` and nothing would
+// fail.
+func TestAConstraintMayStillCarryBuildMetadata(t *testing.T) {
+	m := validManifest()
+	constraint, err := ParseConstraint(">=1.0.0+build.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Compatibility.UpgradeFrom = constraint
+
+	if err := m.Validate(); err != nil {
+		t.Fatalf("a constraint carrying build metadata was refused: %v", err)
+	}
+	if !m.Compatibility.UpgradeFrom.Allows(MustParseVersion("1.5.0")) {
+		t.Error("the constraint no longer admits a version inside its range")
 	}
 }
 

@@ -153,6 +153,8 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 			checks = append(checks,
 				preflight.Disk(d.Paths.VarDir, rel.Manifest.Requirements.Disk),
 				preflight.Memory(rel.Manifest.Requirements.Memory),
+				preflight.CPUs(rel.Manifest.Requirements.CPUs),
+				preflight.RequiredParameters(rel.Manifest.Parameters, inst.Parameters),
 				preflight.Directories(d.Paths),
 			)
 

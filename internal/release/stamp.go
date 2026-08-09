@@ -1,0 +1,154 @@
+package release
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+)
+
+// versionLine matches `  version: 1.2.0`, capturing the indentation and key so
+// the rewrite preserves them, and any trailing comment so the rewrite preserves
+// that too.
+var versionLine = regexp.MustCompile(`^(\s+version:\s*)(\S+)(\s*(?:#.*)?)$`)
+
+// Stamp writes a version into a bundle's manifest and VERSION file.
+//
+// Both, or the bundle stops loading: checkVersionFile refuses a disagreement
+// between them. Stamping one and not the other is the single most likely defect
+// in this file, which is why it has a test of its own.
+//
+// The manifest is edited line by line rather than decoded and re-encoded. A
+// round trip through the YAML marshaller would discard every comment in the
+// file and reorder the keys to struct order -- turning a vendor's annotated,
+// hand-ordered manifest into machine output, on a command whose entire job was
+// to change one field. The edit is verified afterwards by re-parsing, which is
+// what makes a surgical rewrite safe rather than merely quick.
+func Stamp(dir string, version domain.Version) error {
+	if version.IsZero() {
+		return domain.Internal(nil, "cannot stamp an unset version")
+	}
+
+	manifestPath := filepath.Join(dir, ManifestFileName)
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return domain.ValidationError(err, "cannot read %s", manifestPath)
+	}
+
+	stamped, err := stampManifest(string(data), version)
+	if err != nil {
+		return err
+	}
+	if err := atomicfs.WriteFile(manifestPath, []byte(stamped), 0o644); err != nil {
+		return err
+	}
+
+	// Everything after this point can fail, and every one of those failures
+	// leaves a manifest on disk that the vendor did not write. Restoring the
+	// original bytes is what keeps a *detected* fault from becoming a
+	// persisted one -- reachable, not theoretical: a VERSION file that
+	// cannot be replaced leaves the manifest stamped and the two disagreeing,
+	// which is a bundle that no longer loads at all.
+	restore := func(cause error) error {
+		if err := atomicfs.WriteFile(manifestPath, data, 0o644); err != nil {
+			return domain.Internal(err,
+				"%s could not be restored after a failed stamp, so it now reads %s",
+				ManifestFileName, version)
+		}
+		return cause
+	}
+
+	// Re-read through the real loader.
+	//
+	// Defence in depth rather than the working guard, and worth being
+	// honest about which: the checks that actually fire are the duplicate
+	// detection above (two matching lines are refused before anything is
+	// written) and the manifest's own requirement that a version exist.
+	// Neither of the two failures below is reachable today -- the
+	// substituted text is always a bare semver, so it cannot break the
+	// parse, and a rewrite that missed the real key would have had to match
+	// twice. They cost one read of a small file and they are what would
+	// catch the next spelling of "the edit was plausible and wrong".
+	m, err := LoadManifest(manifestPath)
+	if err != nil {
+		return restore(domain.ValidationError(err,
+			"stamping %s produced a manifest that no longer loads", version))
+	}
+	if !m.Metadata.Version.Equal(version) {
+		return restore(domain.Internal(nil,
+			"stamping wrote %s but the manifest reads %s", version, m.Metadata.Version))
+	}
+
+	// The version file last, and its failure restores the manifest too. The
+	// loader refuses a bundle whose two version statements disagree, so a
+	// stamped manifest beside an unstamped VERSION is worse than either
+	// alone: it is a bundle that will not load.
+	if err := atomicfs.WriteFile(
+		filepath.Join(dir, VersionFileName), []byte(version.String()+"\n"), 0o644); err != nil {
+		return restore(err)
+	}
+	return nil
+}
+
+// stampManifest replaces metadata.version in a manifest's text.
+//
+// It looks only inside the top-level `metadata:` block, so a `version:` under
+// `providers.runtime` or inside a vendor's `extensions` block is not the one
+// rewritten. Anything it cannot locate unambiguously is refused rather than
+// guessed at: a build that stamped the wrong key would produce a bundle that
+// loads, verifies, and is not the version anybody asked for.
+//
+// What a line-based rewrite cannot see is YAML structure -- a block scalar
+// inside `metadata` whose *content* happens to be a `version:` line looks
+// exactly like the key. That case is caught by Stamp's re-parse rather than
+// here, which is the whole reason the re-parse exists: the text edit is
+// plausible, and only the loader can say whether it landed.
+func stampManifest(text string, version domain.Version) (string, error) {
+	lines := strings.Split(text, "\n")
+
+	inMetadata := false
+	replaced := -1
+	for i, line := range lines {
+		trimmed := strings.TrimRight(line, "\r")
+
+		// A comment at column zero is not a key, so it does not end the
+		// block it sits inside. Treating it as one refused a perfectly
+		// valid manifest -- a vendor commenting between `name:` and
+		// `version:` at the left margin is legal YAML, and this
+		// declined to stamp it.
+		if strings.HasPrefix(strings.TrimSpace(trimmed), "#") {
+			continue
+		}
+
+		// A key starting in column zero ends whatever block was open.
+		if trimmed != "" && !strings.HasPrefix(trimmed, " ") && !strings.HasPrefix(trimmed, "\t") {
+			inMetadata = strings.HasPrefix(trimmed, "metadata:")
+			continue
+		}
+		if !inMetadata {
+			continue
+		}
+		m := versionLine.FindStringSubmatch(trimmed)
+		if m == nil {
+			continue
+		}
+		if replaced >= 0 {
+			return "", domain.ValidationError(nil,
+				"the manifest's metadata block declares version twice, on lines %d and %d",
+				replaced+1, i+1)
+		}
+		lines[i] = m[1] + version.String() + m[3]
+		replaced = i
+	}
+
+	if replaced < 0 {
+		return "", domain.ValidationError(domain.ErrNotFound,
+			"cannot find metadata.version in the manifest").
+			WithHint("stamping rewrites the `version:` line inside the top-level " +
+				"`metadata:` block; a flow-style mapping cannot be rewritten in place")
+	}
+	return strings.Join(lines, "\n"), nil
+}

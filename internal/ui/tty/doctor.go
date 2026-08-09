@@ -45,6 +45,13 @@ func RenderDoctor(w io.Writer, t *theme.Theme, report ops.DoctorReport, width in
 
 	f("")
 	f("%s", summary(t, report))
+
+	// Only when something failed: a support link on a clean run is one
+	// nobody reads on the run that mattered.
+	if report.SupportURL != "" {
+		f("")
+		f("%s %s", t.Bold("support"), report.SupportURL)
+	}
 }
 
 // doctorTable renders one category.

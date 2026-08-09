@@ -240,6 +240,24 @@ type Waiter struct {
 	// readiness usually arrives within seconds, and a backoff would turn a
 	// service that took 30s to start into a 60s wait.
 	interval time.Duration
+
+	// clock is time.Now unless a test replaced it. Injected because the
+	// start-period rule is about elapsed time, and a test that proved it by
+	// sleeping for the period would be a test nobody runs.
+	clock func() time.Time
+}
+
+func (w *Waiter) now() time.Time {
+	if w.clock == nil {
+		return time.Now()
+	}
+	return w.clock()
+}
+
+// WithClock overrides the waiter's notion of now. Tests only.
+func (w *Waiter) WithClock(clock func() time.Time) *Waiter {
+	w.clock = clock
+	return w
 }
 
 func NewWaiter(probers ...ports.HealthProber) *Waiter {
@@ -318,6 +336,7 @@ func (w *Waiter) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]port
 	passed := make([]bool, len(specs))
 	attempts := make([]int, len(specs))
 
+	started := w.now()
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
@@ -334,7 +353,17 @@ func (w *Waiter) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]port
 			return final, nil
 		}
 
-		round, err := w.CheckOnce(ctx, pending)
+		// The round is bounded by the start periods it is waiting on,
+		// when every pending check declares one. Without this the
+		// deadline is only *observed* between rounds, so a check with a
+		// five-second period and a thirty-second probe timeout reports
+		// its failure twenty-five seconds late -- the field promises to
+		// tell an operator that a product is dead rather than slow, and
+		// telling them half a minute after the fact is most of the way
+		// back to not telling them.
+		roundCtx, cancel := w.boundByStartPeriods(ctx, pending, started)
+		round, err := w.CheckOnce(roundCtx, pending)
+		cancel()
 		if err != nil {
 			return final, err
 		}
@@ -352,12 +381,111 @@ func (w *Waiter) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]port
 			return final, nil
 		}
 
+		// A check that has been failing for longer than the vendor
+		// said it may take to start is not slow, it is unhealthy.
+		// Without this the two are the same observation, and a dead
+		// product occupies the whole operation timeout before saying
+		// so -- fifteen minutes of "waiting for health" that were
+		// decidable after ninety seconds.
+		//
+		// Only when *every* still-failing check has outlived its own
+		// declared period: one slow service must not condemn the
+		// deployment while another is still legitimately starting.
+		if overdue := overdueChecks(specs, passed, w.now().Sub(started)); overdue {
+			return final, startPeriodError(specs, passed, final)
+		}
+
 		select {
 		case <-ctx.Done():
 			return final, timeoutError(specs, passed, final)
 		case <-ticker.C:
 		}
 	}
+}
+
+// boundByStartPeriods caps a round at the last start-period deadline among the
+// checks it is waiting on.
+//
+// Only when *every* pending check declares one: a check without a period must
+// keep the round open for as long as the operation allows, and cutting it short
+// because a sibling declared five seconds would turn one vendor's precision
+// into every other check's timeout.
+//
+// The cap is the *latest* of the deadlines, not the earliest. Cutting at the
+// earliest would abandon a check that is still legitimately inside its own
+// longer period, which is the opposite of what the field is for.
+func (w *Waiter) boundByStartPeriods(
+	ctx context.Context, pending []ports.CheckSpec, started time.Time,
+) (context.Context, context.CancelFunc) {
+	var last time.Duration
+	for _, spec := range pending {
+		period := spec.StartPeriod()
+		if period <= 0 {
+			return ctx, func() {}
+		}
+		if period > last {
+			last = period
+		}
+	}
+	if last == 0 {
+		return ctx, func() {}
+	}
+
+	remaining := last - w.now().Sub(started)
+	if remaining <= 0 {
+		// Already past every deadline: let the round run its normal
+		// course rather than handing the probers a dead context, and
+		// the overdue check below ends the wait when it returns.
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, remaining)
+}
+
+// overdueChecks reports whether every check still failing has outlived the
+// start period its own manifest entry declared.
+//
+// False when any of them declared none, which is what keeps the previous
+// behaviour for every manifest written before the field existed: no
+// declaration means the waiter waits for as long as the operation allows.
+func overdueChecks(specs []ports.CheckSpec, passed []bool, elapsed time.Duration) bool {
+	any := false
+	for i, spec := range specs {
+		if passed[i] {
+			continue
+		}
+		period := spec.StartPeriod()
+		if period <= 0 || elapsed < period {
+			return false
+		}
+		any = true
+	}
+	return any
+}
+
+// startPeriodError says the product had its grace period and did not use it.
+//
+// Deliberately worded differently from timeoutError: one means "we ran out of
+// time", the other means "the vendor told us how long this takes and it took
+// longer". An operator acts on those differently.
+func startPeriodError(specs []ports.CheckSpec, passed []bool, results []ports.HealthResult) error {
+	var failed []string
+	for i, spec := range specs {
+		if passed[i] {
+			continue
+		}
+		msg := results[i].Message
+		if msg == "" {
+			msg = "no response"
+		}
+		failed = append(failed, fmt.Sprintf("%s (%s, start period %s)",
+			spec.Name(), msg, spec.StartPeriod()))
+	}
+
+	return domain.HealthError(nil,
+		"the product did not become healthy within the start period the release declares: %s",
+		strings.Join(failed, ", ")).
+		WithHint("this is longer than the vendor said startup takes, so it is a failure " +
+			"rather than a slow boot; check service logs with `docker compose logs`")
 }
 
 func allTrue(bs []bool) bool {

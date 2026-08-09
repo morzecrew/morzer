@@ -143,10 +143,10 @@ func TestABundleIsRefusedForEveryWayItCanBeWrong(t *testing.T) {
 		},
 		"a template the manifest names but the bundle lacks": {
 			func(t *testing.T, dir string) {
-				if err := os.Remove(filepath.Join(dir, "templates", "application.yaml")); err != nil {
+				if err := os.Remove(filepath.Join(dir, "templates", "application.yaml.tmpl")); err != nil {
 					t.Fatal(err)
 				}
-			}, "application.yaml",
+			}, "application.yaml.tmpl",
 		},
 		"a hook that is not executable": {
 			func(t *testing.T, dir string) {
@@ -265,9 +265,31 @@ func TestRetentionDistinguishesAbsentFromZero(t *testing.T) {
 	}
 }
 
+// TestDeclaredReleaseNotesMustExist.
+//
+// Every other path a bundle ships is declared and existence-checked; release
+// notes must not be the one exception, or a bundle can promise notes and ship
+// none -- showing an operator nothing at the moment they were told to read
+// something.
+func TestDeclaredReleaseNotesMustExist(t *testing.T) {
+	dir := bundle(t, func(dir string) {
+		if err := os.Remove(filepath.Join(dir, "RELEASE.md")); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	_, err := release.Load(dir)
+	if err == nil {
+		t.Fatal("a declared-but-missing release_notes must fail verification")
+	}
+	if !strings.Contains(err.Error(), "metadata.release_notes") {
+		t.Errorf("the refusal should name the field: %v", err)
+	}
+}
+
 func TestLoadSecretSchemaRefusesWhatItCannotRead(t *testing.T) {
 	dir := bundle(t, func(d string) {
-		edit(t, filepath.Join(d, "templates", "secrets.yaml"),
+		edit(t, filepath.Join(d, "secrets.schema.yaml"),
 			func(string) string { return "\tnot: [valid" })
 	})
 
@@ -285,7 +307,7 @@ func TestLoadSecretSchemaRefusesWhatItCannotRead(t *testing.T) {
 func TestLoadSecretSchemaOnABundleThatDeclaresNone(t *testing.T) {
 	dir := bundle(t, func(d string) {
 		edit(t, filepath.Join(d, "manifest.yaml"), func(s string) string {
-			return strings.Replace(s, "  schema: templates/secrets.yaml\n", "", 1)
+			return strings.Replace(s, "  schema: secrets.schema.yaml\n", "", 1)
 		})
 	})
 

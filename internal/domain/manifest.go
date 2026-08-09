@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
 	"sort"
@@ -81,6 +82,24 @@ type Metadata struct {
 	Version     Version `yaml:"version" json:"version"`
 	Description string  `yaml:"description" json:"description,omitempty"`
 	Vendor      string  `yaml:"vendor" json:"vendor,omitempty"`
+
+	// ReleaseNotes is a bundle-relative path to what changed in this
+	// release.
+	//
+	// Declared rather than found by convention, because every other path a
+	// bundle ships is declared and existence-checked -- a declared-but-
+	// missing file is a validation error. There is deliberately no fallback
+	// to looking for RELEASE.md: a convention layered under a declaration
+	// reintroduces exactly the ambiguity the declaration removes.
+	ReleaseNotes string `yaml:"release_notes" json:"release_notes,omitempty"`
+
+	// SupportURL is where an operator goes when something is wrong.
+	//
+	// The operator of a self-hosted product is not its vendor, and "where
+	// do I get help" otherwise has no home. Surfaced by `status` and by a
+	// failing `doctor` check -- deliberately not appended to every error
+	// hint, which would put a vendor URL in every log line.
+	SupportURL string `yaml:"support_url" json:"support_url,omitempty"`
 }
 
 // Provider selects a port implementation by name. New capabilities arrive as
@@ -144,6 +163,14 @@ type Requirements struct {
 	Tools         map[string]Constraint `yaml:"tools" json:"tools,omitempty"`
 	Memory        ByteSize              `yaml:"memory" json:"memory,omitempty"`
 	Disk          ByteSize              `yaml:"disk" json:"disk,omitempty"`
+
+	// CPUs is the number of logical CPUs the release wants.
+	//
+	// Logical rather than physical cores, and a cgroup quota is honoured
+	// where one is in force: those are the three things a machine can mean
+	// by "how many CPUs", and the one that matters is how much parallelism
+	// the product will actually get.
+	CPUs int `yaml:"cpus" json:"cpus,omitempty"`
 
 	// Ports are strings so one field covers both a literal `18080` and a
 	// `"{{ .Parameters.http_port }}"`. Resolve them with
@@ -323,6 +350,16 @@ type HealthCheck struct {
 	Address string          `yaml:"address" json:"address,omitempty"`
 	Command []string        `yaml:"command" json:"command,omitempty"`
 	Timeout Duration        `yaml:"timeout" json:"timeout,omitempty"`
+
+	// StartPeriod is how long this check may keep failing before the
+	// failure means anything.
+	//
+	// Distinct from Timeout, which bounds a single attempt. Without it a
+	// product with a slow first boot and a product that is dead are the
+	// same observation, and the only lever is a timeout long enough to
+	// delay noticing the second. Zero means the waiter keeps trying for as
+	// long as the operation allows, which is what it has always done.
+	StartPeriod Duration `yaml:"start_period" json:"start_period,omitempty"`
 }
 
 type Retention struct {
@@ -444,6 +481,45 @@ func (m *Manifest) Validate() error {
 	}
 	if m.Metadata.Version.IsZero() {
 		v.add("metadata.version", "is required and must be a semantic version")
+	} else if meta := m.Metadata.Version.Metadata(); meta != "" {
+		// Build metadata is a silent bypass of the guard that makes
+		// version identity mean anything. String() retains it, so the
+		// release store -- keyed by the string -- puts two
+		// metadata-differing builds in different directories; Compare
+		// ignores it, so the "already installed with a different
+		// digest" check never compares them at all. Two different
+		// bundles then claim one version and nothing notices.
+		//
+		// Constraints keep accepting metadata: `upgrade_from:
+		// ">=1.0.0+build.7"` is a range, not an identity, and metadata
+		// already decides nothing there.
+		v.add("metadata.version", "must not carry build metadata, and this carries %q", "+"+meta)
+	}
+	if m.Metadata.ReleaseNotes != "" {
+		v.checkRelPath("metadata.release_notes", m.Metadata.ReleaseNotes)
+	}
+	if u := m.Metadata.SupportURL; u != "" {
+		// Parsed rather than prefix-matched. A prefix check accepts
+		// `https://` and `https:///help`, which have no host to reach,
+		// and it accepts a value carrying terminal escape sequences --
+		// this string is printed by `status` and by a failing `doctor`,
+		// so it reaches a terminal at the worst possible moment. Parsing
+		// answers all three: url.Parse refuses ASCII control characters
+		// outright, and scheme and host are then checkable facts rather
+		// than the first eight bytes of a string.
+		//
+		// https only, matching every other URL this project accepts from
+		// a bundle. A support link is shown to an operator who is
+		// already in trouble, which is the worst moment to send them
+		// somewhere over plaintext.
+		switch parsed, err := url.Parse(u); {
+		case err != nil:
+			v.add("metadata.support_url", "is not a URL: %s", err)
+		case parsed.Scheme != "https":
+			v.add("metadata.support_url", "must be an https URL, got scheme %q", parsed.Scheme)
+		case parsed.Host == "":
+			v.add("metadata.support_url", "names no host, got %q", u)
+		}
 	}
 
 	// providers
@@ -469,6 +545,10 @@ func (m *Manifest) Validate() error {
 
 	// parameters
 	ValidateParameters(m.Parameters, &v)
+
+	if m.Requirements.CPUs < 0 {
+		v.add("requirements.cpus", "must not be negative, got %d", m.Requirements.CPUs)
+	}
 
 	// requirements.ports -- literal or a parameter reference, never junk
 	for i, port := range m.Requirements.Ports {
@@ -626,6 +706,9 @@ func (m *Manifest) Validate() error {
 			v.add(field+".type", "is required (%q, %q or %q)", HealthHTTP, HealthTCP, HealthCommand)
 		default:
 			v.add(field+".type", "unknown health check type %q", c.Type)
+		}
+		if c.StartPeriod < 0 {
+			v.add(field+".start_period", "must not be negative")
 		}
 	}
 

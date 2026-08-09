@@ -6,6 +6,19 @@ summary: Building a working bundle from the one the test suite runs against
 
 # Your first bundle
 
+Start with a skeleton that already verifies:
+
+```sh
+morzer release new ./my-product --vendor example
+morzer release verify ./my-product
+```
+
+It writes a bundle that passes with no edits, carrying the conventions this
+page explains — the schema modeline, templates named `.yaml.tmpl`, the secret
+schema outside `templates/`. It deploys nothing useful, deliberately: a
+generated bundle that guessed your architecture would be work to un-write.
+Everything below explains what it wrote and what to change.
+
 Every fragment on this page is extracted from `testdata/bundle/` at build time.
 That bundle is installed, updated, backed up, restored and rolled back against
 real Docker on every CI run, so what you are reading is what passes.
@@ -15,6 +28,7 @@ real Docker on every CI run, so what you are reading is what passes.
 Start with identity and the runtime:
 
 ```yaml title="manifest.yaml"
+# yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json
 api_version: selfhost/v1alpha1
 kind: application-release
 
@@ -32,6 +46,17 @@ runtime:
     embedded: [compose/compose.embedded.yaml]
     external-db: [compose/compose.external-db.yaml]
 ```
+
+**That first line is worth typing.** It is a comment, so a manifest without it
+behaves identically and an editor that ignores it loses nothing — but every
+editor that speaks the language-server protocol reads it and gives you
+completion, hover documentation and inline validation against the schema this
+project generates from the types that enforce the manifest. There is an
+equivalent line for the secret schema, pointing at
+`selfhost-v1alpha1-secrets.json`.
+
+It would have caught the unquoted-`mode` trap that decoded to the wrong
+permission for months.
 
 `metadata.name` is load-bearing: it becomes `/etc/demo`, `/var/lib/demo`,
 `/run/demo`, `/opt/demo` and the `DEMO_*` prefix every hook sees. It is
@@ -89,15 +114,23 @@ Declaring `ports` is what lets the manager tell an operator their port is taken
 
 ```yaml
 configuration:
-  - template: templates/application.yaml
+  - template: templates/application.yaml.tmpl
     target: /etc/demo/application.yaml
     mode: "0640"
 ```
 
+The `.tmpl` suffix is a convention, not a requirement — the manifest names the
+path, so morzer has no business dictating filenames it was handed the location
+of. It is worth following: a Go template named `.yaml` makes every editor's YAML
+language server parse `{{- range .Domains }}` and report errors that are not
+errors. The double extension keeps the output language inferable, and it is what
+Helm, Hugo and `envsubst` users already recognise. Associate `*.yaml.tmpl` with
+Go templates in your editor and the noise stops.
+
 Rendered with the installation's own facts. **Secrets appear as paths, never as
 values** — there is a `secretFile` helper for exactly this:
 
-```yaml title="templates/application.yaml"
+```yaml title="templates/application.yaml.tmpl"
 secrets:
   db_password_file: {{ secretFile .Secrets "db_password" }}
   session_key_file: {{ secretFile .Secrets "session_key" }}
@@ -131,9 +164,13 @@ answer and the one your users need.
 
 ## The secret schema
 
-```yaml title="templates/secrets.yaml"
---8<-- "testdata/bundle/templates/secrets.yaml"
+```yaml title="secrets.schema.yaml"
+--8<-- "testdata/bundle/secrets.schema.yaml"
 ```
+
+It sits at the bundle root rather than under `templates/`, because it is not a
+template: the manager reads it, nothing renders it. Like the suffix above this
+is a convention — `secrets.schema` in the manifest names wherever you put it.
 
 Declaring a `generator` means the manager can create the value itself at `init`
 and rotate it on request. Declaring `services` means a rotation restarts only

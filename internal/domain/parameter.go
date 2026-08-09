@@ -45,6 +45,18 @@ type ParameterSpec struct {
 	// Values is the permitted set for an enum, and is meaningless otherwise.
 	Values []string `yaml:"values" json:"values,omitempty"`
 
+	// Required makes "the operator must choose this" expressible.
+	//
+	// Without it a parameter with no default resolves silently to the empty
+	// string with source `release`, so a vendor could declare a knob that
+	// exists to be an operator choice and had no way to say the choice was
+	// not optional -- while a *secret* could be required all along.
+	//
+	// Required with a Default is a validation error: it is a vendor saying
+	// two contradictory things, and picking a winner would hide the
+	// mistake.
+	Required bool `yaml:"required" json:"required,omitempty"`
+
 	// Services are restarted when the value changes. The same field
 	// secrets already use for rotation, so an operator changing a port and
 	// an operator rotating a password get the same behaviour.
@@ -86,6 +98,15 @@ func ValidateParameters(params map[string]ParameterSpec, v *validationErrors) {
 			v.add(field+".values", "is required for type %q", ParamEnum)
 		case spec.Type != ParamEnum && len(spec.Values) > 0:
 			v.add(field+".values", "is only meaningful for type %q", ParamEnum)
+		}
+
+		// Two contradictory statements: "the operator must choose"
+		// and "here is what it is if they do not". Refusing the pair
+		// is what stops `required` becoming decorative -- a winner
+		// picked silently would leave the vendor believing they had
+		// made the choice mandatory.
+		if spec.Required && spec.Default != "" {
+			v.add(field, "cannot be both required and have a default")
 		}
 
 		// A default that does not satisfy its own declaration is the
@@ -217,8 +238,7 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 }
 
 // MissingValues lists declared parameters that have neither a default nor a
-// value: the ones an operator has to choose, and the only spelling a manifest
-// has for "you must choose this".
+// value: the ones an operator has to choose.
 //
 // Separate from ResolveParameters because only the commands that can accept a
 // value should refuse over one. `init` does; an `apply` reading state that was
@@ -228,6 +248,28 @@ func MissingValues(declared map[string]ParameterSpec, set map[string]string) []s
 	var missing []string
 	for name, spec := range declared {
 		if spec.Default != "" {
+			continue
+		}
+		if value, ok := set[name]; !ok || strings.TrimSpace(value) == "" {
+			missing = append(missing, name)
+		}
+	}
+	sort.Strings(missing)
+	return missing
+}
+
+// MissingRequired is the subset of MissingValues the vendor marked required.
+//
+// Narrower on purpose, and usable in more places for exactly that reason. An
+// unset parameter that merely has no default is the operator's business;
+// an unset *required* one is the vendor saying the product will not work, so
+// `apply` refuses over it too -- and a release that adds a required parameter
+// therefore fails to deploy rather than deploying with an empty value the
+// product then misreads.
+func MissingRequired(declared map[string]ParameterSpec, set map[string]string) []string {
+	var missing []string
+	for name, spec := range declared {
+		if !spec.Required {
 			continue
 		}
 		if value, ok := set[name]; !ok || strings.TrimSpace(value) == "" {

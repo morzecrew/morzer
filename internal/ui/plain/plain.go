@@ -275,6 +275,9 @@ func RenderStatus(w io.Writer, s ops.Status) {
 	if s.PublicURL != "" {
 		f("  url            %s", s.PublicURL)
 	}
+	if s.SupportURL != "" {
+		f("  support        %s", s.SupportURL)
+	}
 
 	if len(s.Services) > 0 {
 		f("")
@@ -378,6 +381,14 @@ func RenderDoctor(w io.Writer, report ops.DoctorReport) {
 
 	f("")
 	f("%d ok, %d warning, %d failed", report.Summary.OK, report.Summary.Warn, report.Summary.Fail)
+
+	// Only when something failed, and only here. An operator whose system
+	// is fine does not need a support link, and one printed on every clean
+	// run is one nobody reads on the run that mattered.
+	if report.SupportURL != "" {
+		f("")
+		f("support: %s", report.SupportURL)
+	}
 }
 
 // RenderConfig prints the release's parameters and their effective values.

@@ -1,6 +1,11 @@
 # RFC 0014 — Building a release bundle
 
-- **Status:** 📝 Draft — **design locked** 2026-08-08. Every question in §10 is
+- **Status:** ✅ Complete — **shipped 2026-08-09**: P1 (`release archive`, the
+  locked entry order, reproducible headers), P2 (`release build`, one checksum
+  routine, the stale-signature refusal and `--force`) and P3 (version stamping,
+  `--version-from-git`, and the `+metadata` refusal in `metadata.version`).
+  Three divergences from the design as written are recorded in §13.
+  **Design locked** 2026-08-08. Every question in §10 is
   resolved into §11, and the version-scheme constraints in §5.2 are verified by
   measurement (§3): semver ordering and `String()`/`Compare()` behaviour against
   the pinned `Masterminds/semver/v3`, OCI tag acceptance against `oras-go`'s own
@@ -531,6 +536,44 @@ whether the three version paths share one resolver type.
 | 15 | `archive` derives `<name>-<version>.tar.zst`, overridable with `-o` | Guessable by a human and scriptable without a lookup; the override covers pipelines that name artifacts their own way. |
 | 16 | **Refines decision 4** (2026-08-09): entries are **sorted lexicographically by normalised relative path within each rank**, and `SHA256SUMS` uses the same order | Normalised headers alone do not make an archive reproducible — directory traversal order is unspecified, so entry order and checksum line order could both vary. The ranks serve the budget read; the sort serves reproducibility; neither substitutes for the other. |
 | 17 | `--force` **deletes** `SHA256SUMS.minisig` and propagates to the pack step | Same postcondition as [0012 decision 11](0012-packing-images-into-a-bundle.md), for the same reason: forcing past the refusal while keeping the signature produces the wrongly-signed bundle the refusal exists to stop. Propagating means there is no run where part of a build is forced and part is not. |
+
+## 13. Execution notes
+
+Recorded rather than silently absorbed, because each is a place where the
+implementation answered a question this document had left to it — or declined
+to answer one it had assigned.
+
+**Decision 3's consuming-side guard did not ship here.** The refusal is about
+[0011](0011-bundled-container-images.md)'s budget read, and without that read
+there is nothing to fail closed. Enforcing manifest-first at extraction today
+would refuse *every* hand-rolled archive, including the ones carrying no images
+at all — far wider than the decision authorises, and it would break the manual
+path §5.5 deliberately keeps documented. It lands with 0011 P1, which is where
+the read it guards lives.
+
+**The pack step is not invoked.** §5.1 has `build` call
+[0012](0012-packing-images-into-a-bundle.md)'s pack for images marked
+`from: bundle`. 0012 is unimplemented, so `build` sums and stamps and nothing
+else. `--force` therefore has nothing to propagate to yet; decision 17's second
+half arrives with 0012.
+
+**`archive` derives the commit date itself.** Decision 14 phrases the middle
+step of the mtime precedence as "the commit date **when `--version-from-git`
+supplied the version**", which two separate commands cannot carry between them —
+nothing in the bundle records how its version was resolved. The implementation
+uses the fact `archive` can actually observe: the bundle sitting inside a git
+work tree. It answers the same case, and outside a repository it falls through
+to the epoch as specified.
+
+Two corners §10 left to implementation, decided:
+
+- **Distance 0 with a dirty tree** takes the development shape
+  (`1.4.1-dev.0.gabc1234.dirty`), not the tag verbatim. The tree carries content
+  the tag does not, and `1.4.0-dirty` would sort *below* the tag it is ahead of.
+- **A prerelease tag is refused** under `--version-from-git`. Is the next thing
+  after `1.4.0-rc.1` another rc, or `1.4.0`? A wrong guess produces a version
+  that sorts wrongly, which is the single failure the scheme exists to prevent.
+  `--version` expresses whatever the vendor actually meant.
 
 ## 12. Phasing
 

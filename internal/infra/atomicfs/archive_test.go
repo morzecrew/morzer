@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 
@@ -306,5 +307,85 @@ func TestTheArchiveRootEntryIsSkippedNotRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dst, "manifest.yaml")); err != nil {
 		t.Errorf("the entry under ./ did not arrive: %v", err)
+	}
+}
+
+// TestWriteTarZstRefusesWhatExtractionWouldRefuse.
+//
+// Two guards, and writing the test found they are not the one guard the code
+// reads like. The containment guard fires first and on a different case than
+// the format guard, so asserting one message for both would have pinned
+// whichever happened to run.
+//
+// Tested here rather than through `release archive`, where neither is
+// reachable: DigestTree refuses a non-regular file first, so a bundle carrying
+// one never gets as far as being packed. The guards are backstops, and a test
+// in the wrong package would be asserting something else's behaviour.
+func TestWriteTarZstRefusesWhatExtractionWouldRefuse(t *testing.T) {
+	// The containment guard: os.Root refuses a symlink that leaves the
+	// tree at the syscall, before anything asks what kind of file it is.
+	t.Run("a symlink out of the bundle", func(t *testing.T) {
+		dir := t.TempDir()
+		writeArchiveFixture(t, dir, "manifest.yaml")
+		if err := os.Symlink("/etc/shadow", filepath.Join(dir, "link")); err != nil {
+			t.Skipf("cannot create a symlink here: %v", err)
+		}
+
+		out := filepath.Join(t.TempDir(), "out.tar.zst")
+		err := atomicfs.WriteTarZst(out, dir, []string{"manifest.yaml", "link"}, time.Unix(0, 0))
+		if err == nil {
+			t.Fatal("a symlink pointing out of the bundle was packed")
+		}
+		if !strings.Contains(err.Error(), "escapes") {
+			t.Errorf("the refusal should name the containment failure: %v", err)
+		}
+		assertNoArchiveLeftBehind(t, out)
+	})
+
+	// The format guard: anything that opens but is not a regular file.
+	// Extraction refuses these, so writing one produces an archive this
+	// manager cannot install -- and the vendor finds out from a customer.
+	t.Run("something that is not a regular file", func(t *testing.T) {
+		dir := t.TempDir()
+		writeArchiveFixture(t, dir, "manifest.yaml")
+		if err := os.Mkdir(filepath.Join(dir, "compose"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		out := filepath.Join(t.TempDir(), "out.tar.zst")
+		err := atomicfs.WriteTarZst(out, dir, []string{"manifest.yaml", "compose"}, time.Unix(0, 0))
+		if err == nil {
+			t.Fatal("a directory was packed as a file entry")
+		}
+		if !strings.Contains(err.Error(), "regular file") {
+			t.Errorf("the refusal should say why: %v", err)
+		}
+		assertNoArchiveLeftBehind(t, out)
+	})
+}
+
+func writeArchiveFixture(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// assertNoArchiveLeftBehind: a refused archive must leave neither a truncated
+// file that looks finished nor the temporary it was streaming into.
+func assertNoArchiveLeftBehind(t *testing.T, out string) {
+	t.Helper()
+
+	if _, err := os.Stat(out); err == nil {
+		t.Error("a refused archive left a partial file in place")
+	}
+	entries, err := os.ReadDir(filepath.Dir(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".partial") {
+			t.Errorf("a refused archive left its temporary file %s behind", e.Name())
+		}
 	}
 }
