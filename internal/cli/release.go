@@ -445,49 +445,11 @@ func newReleaseFetchCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			dest := app.Deps.Paths.ReleaseDir(resolved.Version.String())
-
-			// A version already present with a different digest is an
-			// error, not something to overwrite: two different
-			// bundles claiming one version is exactly the situation
-			// content-addressed identity exists to catch.
-			if existing, err := release.Load(dest); err == nil {
-				if !atomicfs.SameDigest(existing.Digest, resolved.Digest) {
-					return domain.ValidationError(domain.ErrDigestMismatch,
-						"release %s is already installed with a different digest", resolved.Version).
-						WithHint("installed %s, incoming %s — these are different bundles "+
-							"claiming the same version. A vendor iterating on a release "+
-							"should publish a prerelease (1.4.1-dev.7.gabc1234) rather "+
-							"than republishing one", existing.Digest, resolved.Digest)
-				}
-				app.finish(ops.Result{
-					Summary: fmt.Sprintf("release %s is already present", resolved.Version)})
-				return nil
-			}
-
-			if _, err := app.Deps.Source.Fetch(cmd.Context(), ref, dest); err != nil {
-				return err
-			}
-
-			// Verified before anything in it is trusted as
-			// configuration or executed as a hook, and against this
-			// machine's policy rather than a default: a fetch that
-			// accepted an unsigned bundle would leave one in the
-			// store for `update --to` to install later.
-			expect := ports.Expectation{Digest: resolved.Digest}
-			if inst, loadErr := app.Deps.State.LoadInstallation(cmd.Context()); loadErr == nil {
-				expect.Required = inst.Policy.RequireSignature
-				expect.PublicKeys = inst.Policy.SigningKeys
-			}
-			if err := app.Deps.Verifier.Verify(cmd.Context(),
-				ports.BundlePath(dest), expect); err != nil {
-				_ = atomicfs.RemoveAll(dest)
-				return err
-			}
-
-			rel, err := release.Load(dest)
+			// Shared with channel staging rather than restated here:
+			// a poll and an operator must land the same bundle under
+			// the same signature policy.
+			rel, present, err := ops.FetchIntoStore(cmd.Context(), app.Deps, ref, resolved)
 			if err != nil {
-				_ = atomicfs.RemoveAll(dest)
 				return err
 			}
 
@@ -496,8 +458,13 @@ func newReleaseFetchCommand(app *App) *cobra.Command {
 					"version": rel.Version(), "digest": rel.Digest, "root": rel.Root,
 				}
 			}
+			if present {
+				app.finish(ops.Result{
+					Summary: fmt.Sprintf("release %s is already present", rel.Version())})
+				return nil
+			}
 			app.finish(ops.Result{
-				Summary: fmt.Sprintf("fetched %s %s into %s", rel.Name(), rel.Version(), dest)})
+				Summary: fmt.Sprintf("fetched %s %s into %s", rel.Name(), rel.Version(), rel.Root)})
 			return nil
 		},
 	}
@@ -510,10 +477,19 @@ func newReleasePruneCommand(app *App) *cobra.Command {
 		Use:   "prune",
 		Short: "Remove old releases beyond the retention policy",
 		Long: "Never removes the current or previous release, whatever the retention\n" +
-			"setting says: rollback depends on both being present.",
+			"setting says: rollback depends on both being present. A release\n" +
+			"staged and not yet installed is exempt too, for the same reason:\n" +
+			"pruning the candidate a poll just fetched makes staging pointless.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entries, err := app.installedReleases(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			// Read once, outside the loop: a candidate that appeared
+			// mid-prune would exempt some entries and not others.
+			candidate, err := app.Deps.State.UpdateCandidate(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -543,6 +519,18 @@ func newReleasePruneCommand(app *App) *cobra.Command {
 				// unconditionally: pruning either would remove
 				// the thing rollback returns to.
 				if e.Current || e.Previous {
+					kept++
+					continue
+				}
+				// And so is a staged candidate, in either mode
+				// (RFC 0016 §5.4): it was fetched ahead of the
+				// operator's decision, which is the whole value
+				// of staging, and retention that removed it
+				// would leave the decision waiting on a bundle
+				// the machine had thrown away. The exemption
+				// ends when it is applied or superseded, which
+				// is when the record is cleared.
+				if candidate.IsStaged() && candidate.Version.Equal(e.Version) {
 					kept++
 					continue
 				}

@@ -269,6 +269,12 @@ func RenderStatus(w io.Writer, s ops.Status) {
 			f("  previous       %s", s.PreviousRelease.Version)
 		}
 	}
+	// Beside the release rather than in a section of its own: it is the
+	// answer to "what is deployed", and an operator who reads that line and
+	// stops reading has still seen that a decision is waiting.
+	if s.StagedRelease != nil {
+		f("  staged         %s (not installed)", s.StagedRelease.Version)
+	}
 	if s.Profile != "" {
 		f("  profile        %s", s.Profile)
 	}

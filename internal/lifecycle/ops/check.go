@@ -62,7 +62,8 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 		return UpdateCheckResult{}, domain.ValidationError(domain.ErrUnsupported,
 			"update checking is not enabled on this installation").
 			WithHint("a check contacts the vendor's registry; enable it with " +
-				"`morzer config`, or ask for one now with `morzer update --check`")
+				"`morzer config set update.check=true`, or ask for one now with " +
+				"`morzer update --check`")
 	}
 
 	current, err := d.State.CurrentRelease(ctx)

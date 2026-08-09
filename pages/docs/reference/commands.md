@@ -156,6 +156,12 @@ morzer update --to 1.3.0
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
 | `--profile` | Override the installation's deployment profile. |
 | `--skip-backup` | Skip the pre-update backup. Requires `--force` and is recorded in the journal. |
+| `--check` | Report whether a newer release exists, without installing anything. |
+| `--stage` | Follow the configured channel: fetch and verify what it points at, without installing it. |
+
+`--check` and `--stage` are alternatives, and both stop short of installing.
+See [following a channel](../operating/updating.md#following-a-channel) for what
+staging leaves behind and what a poll costs.
 
 A failed update rolls back to the release that was running. **The database is
 never rolled back automatically**: when a migration cannot be undone, the

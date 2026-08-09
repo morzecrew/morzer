@@ -2,6 +2,7 @@ package contract
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,6 +134,68 @@ func RunStateStoreSuite(t *testing.T, newStore StateStoreFactory) {
 		require.NoError(t, err)
 		assert.True(t, previous.Version.Equal(v1.Version),
 			"a repeated apply must not overwrite the rollback target")
+	})
+
+	t.Run("an absent update candidate is a state, not an error", func(t *testing.T) {
+		store := newStore(t)
+		require.NoError(t, store.SaveInstallation(ctx, sample()))
+
+		// Most machines follow no channel, so `status` asking about one
+		// must not be how a store reports a missing file.
+		candidate, err := store.UpdateCandidate(ctx)
+		require.NoError(t, err)
+		assert.True(t, candidate.IsZero())
+
+		// And clearing what was never there holds, rather than failing:
+		// a poll retiring a candidate does not first ask whether it is
+		// the one that wrote it.
+		require.NoError(t, store.ClearUpdateCandidate(ctx))
+	})
+
+	t.Run("an update candidate survives a round trip", func(t *testing.T) {
+		store := newStore(t)
+		require.NoError(t, store.SaveInstallation(ctx, sample()))
+
+		want := domain.UpdateCandidate{
+			SchemaVersion:  domain.UpdateCandidateSchemaVersion,
+			SourceRef:      "oci://registry.example/demo/bundle:stable",
+			UpstreamDigest: "sha256:" + strings.Repeat("c", 64),
+			Version:        domain.MustParseVersion("1.4.0"),
+			Name:           "demo",
+			Root:           "/opt/demo/releases/1.4.0",
+			Digest:         "sha256:" + strings.Repeat("d", 64),
+		}
+		require.NoError(t, store.SetUpdateCandidate(ctx, want))
+
+		got, err := store.UpdateCandidate(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, want.UpstreamDigest, got.UpstreamDigest,
+			"the digest is what the next poll compares; losing it means re-fetching")
+		assert.True(t, got.IsStaged())
+
+		require.NoError(t, store.ClearUpdateCandidate(ctx))
+		after, err := store.UpdateCandidate(ctx)
+		require.NoError(t, err)
+		assert.True(t, after.IsZero())
+	})
+
+	t.Run("a refused candidate is remembered as refused", func(t *testing.T) {
+		store := newStore(t)
+		require.NoError(t, store.SaveInstallation(ctx, sample()))
+
+		// A refusal that did not persist would have every tick
+		// re-downloading the same bundle to reach the same answer.
+		require.NoError(t, store.SetUpdateCandidate(ctx, domain.UpdateCandidate{
+			UpstreamDigest: "sha256:" + strings.Repeat("e", 64),
+			Refused:        "the channel points at 1.1.0, older than the installed 1.2.0",
+		}))
+
+		got, err := store.UpdateCandidate(ctx)
+		require.NoError(t, err)
+		assert.False(t, got.IsZero())
+		assert.False(t, got.IsStaged(),
+			"a refused candidate must never read as installable")
+		assert.NotEmpty(t, got.Refused)
 	})
 
 	t.Run("journal is append-only and last-record-wins", func(t *testing.T) {

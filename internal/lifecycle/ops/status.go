@@ -33,6 +33,13 @@ type Status struct {
 	CurrentRelease  *domain.ReleaseRecord `json:"current_release"`
 	PreviousRelease *domain.ReleaseRecord `json:"previous_release"`
 
+	// StagedRelease is a release fetched and verified but not installed --
+	// a decision waiting for a person, which is exactly the kind of thing
+	// that is forgotten if it is not in front of them.
+	//
+	// A pointer for the same reason the two above are.
+	StagedRelease *domain.UpdateCandidate `json:"staged_release,omitempty"`
+
 	Services []ports.ServiceState `json:"services"`
 	Health   []ports.HealthResult `json:"health,omitempty"`
 
@@ -110,6 +117,19 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		out.Problems = append(out.Problems, "cannot read the previous release: "+domain.AsError(err).Message)
 	case !previous.IsZero():
 		out.PreviousRelease = &previous
+	}
+
+	// A refused candidate is a problem rather than a section: the operator
+	// needs to know their channel produced something unusable, and giving it
+	// the same line as a staged release would read as "there is an update
+	// waiting" when there is not.
+	if candidate, err := d.State.UpdateCandidate(ctx); err == nil && !candidate.IsZero() {
+		if candidate.IsStaged() {
+			out.StagedRelease = &candidate
+		} else {
+			out.Problems = append(out.Problems,
+				"the update channel offered something that was refused: "+candidate.Refused)
+		}
 	}
 
 	if owner, held, err := d.Locker.Owner(ctx, "deployment"); err == nil && held {

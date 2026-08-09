@@ -208,7 +208,10 @@ func newApplyCommand(app *App) *cobra.Command {
 }
 
 func newUpdateCommand(app *App) *cobra.Command {
-	var check bool
+	var (
+		check bool
+		stage bool
+	)
 
 	var (
 		skipBackup bool
@@ -240,6 +243,11 @@ func newUpdateCommand(app *App) *cobra.Command {
 			// exists installs nothing, so `update --check
 			// --skip-backup` must not fail for a backup option the
 			// check never uses.
+			if check && stage {
+				return domain.Usage("--check and --stage are alternatives").
+					WithHint("--check asks what exists; --stage fetches what the " +
+						"channel points at")
+			}
 			if check {
 				if to != "" {
 					return domain.Usage("--check and --to are alternatives").
@@ -262,6 +270,37 @@ func newUpdateCommand(app *App) *cobra.Command {
 					return nil
 				}
 				app.finish(ops.Result{Summary: res.Summary()})
+				// After the summary, because the notes are what an
+				// operator reads to decide and the summary is what
+				// they read to know there is a decision.
+				printStagedNotes(cmd.Context(), app)
+				return nil
+			}
+			if stage {
+				if to != "" {
+					return domain.Usage("--stage and --to are alternatives").
+						WithHint("--to installs a release already in the store; " +
+							"--stage fetches one without installing it")
+				}
+				stageRef := ""
+				if len(args) == 1 {
+					stageRef = args[0]
+				}
+				res, err := ops.FollowChannel(cmd.Context(), app.Deps,
+					ops.FollowChannelOptions{
+						Options: opts, Ref: stageRef, Explicit: true,
+					})
+				if err != nil {
+					return err
+				}
+				if app.json != nil {
+					app.jsonData = res
+					return nil
+				}
+				app.finish(ops.Result{Summary: res.Summary()})
+				if notes := ui.RenderNotes(app.Mode, res.Notes); notes != "" {
+					fmt.Fprintf(app.Stream.Err, "\n%s\n", notes)
+				}
 				return nil
 			}
 
@@ -304,8 +343,39 @@ func newUpdateCommand(app *App) *cobra.Command {
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
 	f.BoolVar(&check, "check", false,
 		"report whether a newer release exists, without installing anything")
+	f.BoolVar(&stage, "stage", false,
+		"follow the configured channel: fetch and verify what it points at, "+
+			"without installing it")
 
 	return cmd
+}
+
+// printStagedNotes shows what a waiting release changes.
+//
+// Printed by `update --check` because that is where an operator asks whether
+// there is anything to do, and the answer "yes, and it is already downloaded"
+// is incomplete without the part they are deciding on. Silent when nothing is
+// staged, and silent when the bundle ships no notes -- neither is a fault.
+//
+// Failures here are dropped. A release waiting to be installed is a fact worth
+// reporting even if the file describing it cannot be read.
+func printStagedNotes(ctx context.Context, app *App) {
+	candidate, err := app.Deps.State.UpdateCandidate(ctx)
+	if err != nil || !candidate.IsStaged() {
+		return
+	}
+
+	fmt.Fprintf(app.Stream.Err, "\n%s %s is staged and not installed; "+
+		"`morzer update --to %s` applies it\n",
+		candidate.Name, candidate.Version, candidate.Version)
+
+	rel, err := release.Load(candidate.Root)
+	if err != nil {
+		return
+	}
+	if notes := ui.RenderNotes(app.Mode, release.Notes(rel)); notes != "" {
+		fmt.Fprintf(app.Stream.Err, "\n%s\n", notes)
+	}
 }
 
 func newRollbackCommand(app *App) *cobra.Command {

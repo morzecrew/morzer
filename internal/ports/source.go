@@ -26,8 +26,16 @@ type ReleaseSource interface {
 	// half of a refusal, which is the only reason a caller ever asks.
 	Schemes() []string
 
-	// Resolve turns a reference into concrete facts without downloading the
-	// payload -- what version it is, what it will hash to.
+	// Resolve turns a reference into concrete facts -- what version it is,
+	// what it hashes to -- without installing anything.
+	//
+	// It is not necessarily cheap. This doc comment used to say "without
+	// downloading the payload", which is true of a directory and false of a
+	// registry: the OCI source computes a *content* digest, and a content
+	// digest is a property of the bytes, so it pulls the layer to get one.
+	// A poll loop that called Resolve every tick would download the whole
+	// bundle every tick. Anything watching a reference for change wants
+	// ChannelPeeker instead.
 	Resolve(ctx context.Context, ref Ref) (ResolvedRelease, error)
 
 	// Fetch places the bundle at destDir and returns the resulting path.
@@ -119,6 +127,43 @@ func ParseRef(s string) (Ref, error) {
 		return Ref{}, domain.Usage("unsupported release reference scheme %q", u.Scheme).
 			WithHint("supported schemes: file, https, oci")
 	}
+}
+
+// ChannelPeeker asks what a mutable reference points at, without fetching what
+// it points at.
+//
+// An optional capability rather than a method on ReleaseSource, because only a
+// transport with a server-side identity for its content can answer: a registry
+// has a manifest digest, a directory has nothing that changes when a file does
+// not. A source that does not implement it is not following channels, and the
+// caller says so rather than falling back to Resolve -- which would silently
+// turn a five-minute poll into a five-minute download.
+//
+// This is what makes channel following affordable. RFC 0016 §5.2 priced a tick
+// at "one Resolve", which was wrong by the size of the bundle.
+type ChannelPeeker interface {
+	// Peek reports what the reference currently addresses. The cost is one
+	// manifest request; nothing the manifest points at is fetched.
+	Peek(ctx context.Context, ref Ref) (ChannelState, error)
+}
+
+// ChannelState is what a mutable reference points at right now.
+type ChannelState struct {
+	// UpstreamDigest identifies the artefact *at the registry*: the
+	// manifest digest, not the bundle's content digest.
+	//
+	// The two are different values for the same thing, and only this one is
+	// knowable without a download. It is an opaque change token: compare it
+	// with the one recorded last time, never with a content digest.
+	UpstreamDigest string
+
+	// Pinned addresses exactly what was seen, immutably.
+	//
+	// A channel is a tag that exists to move, so the tag may point
+	// somewhere else by the time a decision made from this peek is acted
+	// on. Fetching Pinned rather than the tag closes that window, and it is
+	// built here because reference syntax belongs to the transport.
+	Pinned Ref
 }
 
 // ResolvedRelease is what a source can say about a reference before fetching.

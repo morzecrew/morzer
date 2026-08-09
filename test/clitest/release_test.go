@@ -1,11 +1,16 @@
 package clitest_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/state"
 	"github.com/morzecrew/morzer/test/clitest"
 )
 
@@ -215,6 +220,39 @@ func TestReleaseVerifyRefusesATemplateThatCannotParse(t *testing.T) {
 	}
 	r.Run("release", "verify", r.Bundle).ExitCode(0).
 		OutputContains("bundle is valid")
+}
+
+// TestPruneNeverRemovesAStagedCandidate.
+//
+// Staging ahead of the operator's decision is most of what makes channel
+// following worth having, and a retention pass that pruned the candidate it had
+// just fetched would make it pointless -- the decision would still be waiting,
+// with the bundle gone.
+//
+// The candidate is written through the real state store rather than by hand, so
+// a change to how it is stored breaks this test rather than leaving it passing
+// against a shape nothing produces.
+func TestPruneNeverRemovesAStagedCandidate(t *testing.T) {
+	r := clitest.NewInstalled(t).FetchReleases("1.3.0", "1.4.0", "1.5.0")
+	ctx := context.Background()
+
+	store := state.New(domain.PathsUnder(r.Root, "demo"))
+	require.NoError(t, store.SetUpdateCandidate(ctx, domain.UpdateCandidate{
+		SchemaVersion:  domain.UpdateCandidateSchemaVersion,
+		SourceRef:      "oci://registry.example/demo/bundle:stable",
+		UpstreamDigest: "sha256:" + strings.Repeat("a", 64),
+		Name:           "demo",
+		Version:        domain.MustParseVersion("1.3.0"),
+		Root:           filepath.Join(r.Root, "opt", "demo", "releases", "1.3.0"),
+	}))
+
+	// 1.3.0 is the oldest inactive release, so it is the first thing a
+	// prune with no room reaches -- which is what makes it the one worth
+	// asserting. A candidate that retention would have kept anyway proves
+	// nothing about the exemption.
+	r.Run("release", "prune", "--keep", "1").ExitCode(0).OutputContains("1.4.0")
+
+	r.Run("release", "list").ExitCode(0).OutputContains("1.3.0")
 }
 
 // TestRenderCheckCatchesWhatParsingCannot is the pair that keeps the two modes

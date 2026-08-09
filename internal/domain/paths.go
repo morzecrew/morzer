@@ -105,6 +105,16 @@ func (p Paths) CurrentReleaseFile() string {
 func (p Paths) PreviousReleaseFile() string {
 	return filepath.Join(p.ManagerDir(), "previous-release.json")
 }
+
+// UpdateCandidateFile records what a followed channel last pointed at.
+//
+// Beside the release pointers rather than in the installation state, because it
+// is derived: a poll writes it, `status` reads it, and deleting it costs one
+// fetch. Nothing about what is deployed depends on it.
+func (p Paths) UpdateCandidateFile() string {
+	return filepath.Join(p.ManagerDir(), "update-candidate.json")
+}
+
 func (p Paths) JournalFile() string { return filepath.Join(p.ManagerDir(), "operations.jsonl") }
 func (p Paths) LockDir() string     { return filepath.Join(p.ManagerDir(), "locks") }
 func (p Paths) LockFile(name string) string {

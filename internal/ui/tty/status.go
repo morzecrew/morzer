@@ -36,6 +36,10 @@ func statusBody(t *theme.Theme, s ops.Status) string {
 			field("previous", t.Dim(s.PreviousRelease.Version.String()))
 		}
 	}
+	if s.StagedRelease != nil {
+		field("staged", t.Active(s.StagedRelease.Version.String())+
+			t.Dim(" (not installed)"))
+	}
 	if s.Profile != "" {
 		field("profile", s.Profile)
 	}

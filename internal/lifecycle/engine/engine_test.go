@@ -51,6 +51,11 @@ func (s *journalStore) PreviousRelease(context.Context) (domain.ReleaseRecord, e
 	return domain.ReleaseRecord{}, nil
 }
 func (s *journalStore) SetCurrentRelease(context.Context, domain.ReleaseRecord) error { return nil }
+func (s *journalStore) UpdateCandidate(context.Context) (domain.UpdateCandidate, error) {
+	return domain.UpdateCandidate{}, nil
+}
+func (s *journalStore) SetUpdateCandidate(context.Context, domain.UpdateCandidate) error { return nil }
+func (s *journalStore) ClearUpdateCandidate(context.Context) error                       { return nil }
 func (s *journalStore) Operations(context.Context, ports.Filter) ([]domain.OperationRecord, error) {
 	return s.records, nil
 }

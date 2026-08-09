@@ -200,6 +200,51 @@ func (s *Store) SetCurrentRelease(ctx context.Context, r domain.ReleaseRecord) e
 	return s.writeRelease(s.paths.CurrentReleaseFile(), r)
 }
 
+// UpdateCandidate reads what the channel last pointed at.
+//
+// A missing file is the ordinary state -- most machines follow no channel --
+// and so is an unreadable one: this record is derived from a poll and rebuilt by
+// the next, so refusing to report `status` because a disposable file is corrupt
+// would take a diagnostic away over something that repairs itself.
+func (s *Store) UpdateCandidate(ctx context.Context) (domain.UpdateCandidate, error) {
+	data, err := os.ReadFile(s.paths.UpdateCandidateFile())
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return domain.UpdateCandidate{}, nil
+		}
+		return domain.UpdateCandidate{}, domain.InstallationError(err,
+			"cannot read %s", s.paths.UpdateCandidateFile())
+	}
+
+	var rec domain.UpdateCandidate
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return domain.UpdateCandidate{}, domain.InstallationError(err,
+			"the update candidate at %s is not valid JSON",
+			s.paths.UpdateCandidateFile())
+	}
+	return rec, nil
+}
+
+func (s *Store) SetUpdateCandidate(ctx context.Context, c domain.UpdateCandidate) error {
+	if c.SchemaVersion == 0 {
+		c.SchemaVersion = domain.UpdateCandidateSchemaVersion
+	}
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return domain.Internal(err, "cannot serialise the update candidate")
+	}
+	return atomicfs.WriteFile(s.paths.UpdateCandidateFile(), append(data, '\n'), 0o640)
+}
+
+// ClearUpdateCandidate forgets the candidate, which is what applying it means.
+func (s *Store) ClearUpdateCandidate(ctx context.Context) error {
+	if err := os.Remove(s.paths.UpdateCandidateFile()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return domain.InstallationError(err, "cannot remove %s",
+			s.paths.UpdateCandidateFile())
+	}
+	return nil
+}
+
 func (s *Store) writeRelease(path string, r domain.ReleaseRecord) error {
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {

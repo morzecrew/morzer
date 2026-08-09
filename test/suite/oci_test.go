@@ -12,12 +12,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"oras.land/oras-go/v2/registry/remote"
 
+	"github.com/morzecrew/morzer/internal/adapters/source"
+	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/adapters/source/oci"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -48,6 +51,13 @@ type fakeRegistry struct {
 	blobStatus int
 	// corruptBlob serves bytes that do not match the advertised digest.
 	corruptBlob bool
+
+	// served counts the bytes each kind of request cost, which is the only
+	// way to assert that a poll is cheap. A test asserting that Peek
+	// returned the right digest would pass just as happily if it had
+	// downloaded the bundle to find it out.
+	manifestBytes atomic.Int64
+	blobBytes     atomic.Int64
 }
 
 func digestOf(b []byte) string {
@@ -112,6 +122,7 @@ func (r *fakeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		r.manifestBytes.Add(int64(len(r.manifest)))
 		_, _ = w.Write(r.manifest)
 
 	// The one thing a registry can answer that a URL cannot: what versions
@@ -135,6 +146,7 @@ func (r *fakeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			body = append([]byte("tampered"), r.blob[len("tampered"):]...)
 		}
 		w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+		r.blobBytes.Add(int64(len(body)))
 		_, _ = w.Write(body)
 
 	default:
@@ -295,6 +307,71 @@ func TestOCIAppliesArchiveRulesToWhatItPulls(t *testing.T) {
 	_, err = source.Resolve(context.Background(), ociRef(srv, "demo/bundle", "1.2.0"))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrPathEscape), "got: %v", err)
+}
+
+// TestPeekReadsAManifestAndResolveReadsTheBundle is the measurement the whole
+// of channel following rests on.
+//
+// RFC 0016 §5.2 priced a tick at "one `Resolve`", on the assumption that
+// resolving a reference asks the registry a question. It does not: a
+// ResolvedRelease carries the bundle's *content* digest, which is a property of
+// the bytes, so the OCI source pulls the layer to compute one. A poll built on
+// Resolve would download the entire release every tick to discover that nothing
+// had changed -- at a five-minute cadence, the bundle 288 times a day.
+//
+// So the assertion is the byte count, not the digest. Checking that Peek
+// returned the right answer would pass just as happily if it had downloaded
+// everything to find it out, which is precisely the bug this is here to stop.
+func TestPeekReadsAManifestAndResolveReadsTheBundle(t *testing.T) {
+	archive := bundleArchive(t)
+	srv := newFakeRegistry(t, archive, oci.MediaType, 0)
+	handler, ok := srv.Config.Handler.(*fakeRegistry)
+	require.True(t, ok)
+
+	source := newTestSource(t, srv)
+	ctx := context.Background()
+	ref := ociRef(srv, "demo/bundle", "dev")
+
+	state, err := source.Peek(ctx, ref)
+	require.NoError(t, err)
+	assert.Equal(t, handler.manifestDig, state.UpstreamDigest,
+		"peek reports the registry's identity for the tag")
+
+	// Not one byte of the bundle. This is the claim.
+	assert.Zero(t, handler.blobBytes.Load(),
+		"peek fetched %d bytes of the bundle; a poll must not download what it is watching",
+		handler.blobBytes.Load())
+	assert.Less(t, handler.manifestBytes.Load(), int64(len(archive)),
+		"a peek cost more than the bundle it was avoiding")
+
+	// The pinned reference addresses what was seen, by digest, so a tag that
+	// moves between the decision and the fetch cannot substitute a different
+	// bundle for the one that was resolved.
+	assert.Contains(t, state.Pinned.Location, "@"+handler.manifestDig)
+	assert.NotContains(t, state.Pinned.Location, ":dev")
+
+	// And the contrast, measured rather than asserted from the source: the
+	// call the RFC assumed was cheap moves the whole archive.
+	_, err = source.Resolve(ctx, state.Pinned)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, handler.blobBytes.Load(), int64(len(archive)),
+		"resolve did not transfer the bundle, so this comparison proves nothing")
+}
+
+// TestPeekIsRefusedByTransportsThatCannotWatch.
+//
+// The tempting fallback -- peek is unsupported, so resolve instead -- turns a
+// cheap poll into a download loop. It is refused by name instead, so an
+// operator configuring `update.channel` against an https URL is told at once
+// rather than discovering the bandwidth later.
+func TestPeekIsRefusedByTransportsThatCannotWatch(t *testing.T) {
+	registry, err := source.NewRegistry(local.New())
+	require.NoError(t, err)
+
+	_, err = registry.Peek(context.Background(),
+		ports.Ref{Scheme: local.Scheme, Location: testBundlePath(t)})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrUnsupported), "got: %v", err)
 }
 
 func TestOCIPullsOnceForResolveAndFetch(t *testing.T) {

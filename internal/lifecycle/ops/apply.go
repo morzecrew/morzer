@@ -741,7 +741,17 @@ func stepRecordState(d *Deps, inst domain.Installation, rel domain.Release, opts
 			if record.SourceRef == "" {
 				record.SourceRef = d.recordedSourceRef(ctx, rel.Root)
 			}
+			d.adoptStagedCandidate(ctx, &record)
 			if err := d.State.SetCurrentRelease(ctx, record); err != nil {
+				return err
+			}
+			// Only after the release is recorded as current. A crash
+			// between the two leaves a candidate for a release that
+			// is already installed, which the next poll resolves by
+			// finding the tag unmoved -- the other order would leave
+			// a machine that has forgotten what it staged and has not
+			// recorded installing it.
+			if err := d.retireStagedCandidate(ctx, record); err != nil {
 				return err
 			}
 			// The symlink swap is what makes `current` atomic for

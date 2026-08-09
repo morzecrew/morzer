@@ -146,6 +146,58 @@ func (s *Source) Resolve(ctx context.Context, ref ports.Ref) (ports.ResolvedRele
 	return resolved, nil
 }
 
+// Peek reports what a reference points at, for one manifest request.
+//
+// This is the whole of channel following's per-tick cost, and it is here rather
+// than expressed as a Resolve because Resolve is not cheap: it computes the
+// bundle's *content* digest, which is a property of the bytes, so it pulls the
+// layer. A poll comparing content digests would download the bundle on every
+// tick to discover that nothing had changed.
+//
+// What comes back is the manifest digest -- the registry's own identity for
+// what the tag addresses. It is an opaque change token, not a content digest,
+// and the two must never be compared with each other.
+func (s *Source) Peek(ctx context.Context, ref ports.Ref) (ports.ChannelState, error) {
+	reference, err := s.reference(ref)
+	if err != nil {
+		return ports.ChannelState{}, err
+	}
+
+	repo, err := s.newRepository(reference)
+	if err != nil {
+		return ports.ChannelState{}, err
+	}
+
+	desc, body, err := repo.FetchReference(ctx, reference)
+	if err != nil {
+		return ports.ChannelState{}, registryError(err, reference)
+	}
+	// The manifest itself is not needed: the digest is in the descriptor,
+	// and reading the body would be reading a document this call has no
+	// question for. Closed rather than drained -- the next request opens
+	// its own connection at worst.
+	_ = body.Close()
+
+	if desc.Digest == "" {
+		return ports.ChannelState{}, domain.RuntimeError(nil,
+			"%s resolved to no digest", reference).
+			WithHint("the registry answered without a manifest digest, so there " +
+				"is nothing to compare against next time")
+	}
+
+	repoName, _, err := splitReference(reference)
+	if err != nil {
+		return ports.ChannelState{}, err
+	}
+	return ports.ChannelState{
+		UpstreamDigest: desc.Digest.String(),
+		// Addressed by digest, so what gets fetched is what was seen even
+		// if the tag moves in between. A channel is a tag that exists to
+		// move, so that window is not hypothetical.
+		Pinned: ports.Ref{Scheme: ref.Scheme, Location: repoName + "@" + desc.Digest.String()},
+	}, nil
+}
+
 func (s *Source) Fetch(ctx context.Context, ref ports.Ref, destDir string) (ports.BundlePath, error) {
 	archive, err := s.pull(ctx, ref)
 	if err != nil {

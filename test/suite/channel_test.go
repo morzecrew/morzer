@@ -1,0 +1,275 @@
+package suite
+
+import (
+	"context"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/morzecrew/morzer/internal/adapters/source"
+	"github.com/morzecrew/morzer/internal/adapters/source/local"
+	"github.com/morzecrew/morzer/internal/adapters/source/oci"
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+)
+
+// A channel is a mutable tag polled on a timer, so the two things these tests
+// are about are the cost of a tick and what a tick is allowed to change.
+
+// recordingNotifier keeps what left the machine.
+type recordingNotifier struct {
+	mu     sync.Mutex
+	events []events.Event
+}
+
+func (n *recordingNotifier) Name() string { return "recording" }
+
+func (n *recordingNotifier) Notify(_ context.Context, ev events.Event) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.events = append(n.events, ev)
+	return nil
+}
+
+func (n *recordingNotifier) kinds() []events.Kind {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := make([]events.Kind, 0, len(n.events))
+	for _, ev := range n.events {
+		out = append(out, ev.Kind)
+	}
+	return out
+}
+
+// followingHarness is an installed 1.2.0 machine watching a registry that
+// publishes 1.3.0 under a moving tag.
+func followingHarness(t *testing.T) (*harness, *fakeRegistry, *httptest.Server, *recordingNotifier) {
+	t.Helper()
+
+	h := newHarness(t)
+	h.install()
+
+	// The bundle behind the tag is the 1.3.0 fixture, retargeted the way
+	// every other update test retargets it -- so what the channel delivers
+	// is a release this machine could really install.
+	staged := filepath.Join(t.TempDir(), "bundle-1.3.0")
+	copyBundle(t, filepath.Join(testBundlePath(t), "..", "bundle-1.3.0"), staged)
+	retargetManifest(t, staged, h.Root)
+
+	archivePath := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeTarZst(t, staged, archivePath)
+	archive, err := os.ReadFile(archivePath)
+	require.NoError(t, err)
+
+	srv := newFakeRegistry(t, archive, oci.MediaType, 0)
+	registry, ok := srv.Config.Handler.(*fakeRegistry)
+	require.True(t, ok)
+
+	// The registry rather than the OCI source alone, exactly as production
+	// wires it: `update --to` installs from the store by path, so a harness
+	// holding only the registry transport would fail on the scheme rather
+	// than on anything this is testing.
+	sources, err := source.NewRegistry(local.New(), newTestSource(t, srv))
+	require.NoError(t, err)
+	h.Deps.Source = sources
+
+	notifier := &recordingNotifier{}
+	h.Deps.Notifier = notifier
+
+	inst, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	inst.Update.Check = true
+	inst.Update.Channel = ociRef(srv, "demo/bundle", "stable").String()
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	return h, registry, srv, notifier
+}
+
+// TestAnUnmovedChannelStagesNothingAndDownloadsNothing.
+//
+// This is the assertion that makes a five-minute cadence affordable, and it has
+// to be a byte count. A poll that returned "nothing new" after downloading the
+// whole release would pass any test written about its *answer*, and would move
+// a 200 MB bundle 288 times a day to keep saying it.
+func TestAnUnmovedChannelStagesNothingAndDownloadsNothing(t *testing.T) {
+	h, registry, _, notifier := followingHarness(t)
+	ctx := context.Background()
+
+	// The first poll moves the release, which is the point of the second.
+	first, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+	require.True(t, first.Moved)
+	require.True(t, first.Candidate.IsStaged())
+
+	fetched := registry.blobBytes.Load()
+	require.NotZero(t, fetched, "the first poll must have fetched the bundle")
+
+	second, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+
+	assert.False(t, second.Moved, "the tag has not moved, so there is nothing to stage")
+	assert.Equal(t, fetched, registry.blobBytes.Load(),
+		"a poll of an unmoved channel transferred %d more bytes; a tick must cost a manifest",
+		registry.blobBytes.Load()-fetched)
+
+	// And nobody was told twice about the same release.
+	assert.Len(t, notifier.kinds(), 1)
+}
+
+// TestAMovedChannelStagesTheReleaseWithoutInstallingIt.
+//
+// Staging is the middle state the whole design is built around: the network, the
+// credentials and the verification happen ahead of time, and the human decides
+// only when downtime happens.
+func TestAMovedChannelStagesTheReleaseWithoutInstallingIt(t *testing.T) {
+	h, _, _, notifier := followingHarness(t)
+	ctx := context.Background()
+
+	result, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+
+	require.True(t, result.Candidate.IsStaged())
+	assert.Equal(t, "1.3.0", result.Candidate.Version.String())
+	assert.NotEmpty(t, result.Candidate.UpstreamDigest)
+
+	// In the store, verified, and readable as a release.
+	assert.DirExists(t, filepath.Join(h.Paths.ReleasesDir(), "1.3.0"))
+
+	// And *not* installed. A poll that converged a deployment would be
+	// unattended apply, which is a separate decision with downtime attached.
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String(),
+		"following a channel installed the release; staging must stop short of that")
+
+	// The record survives the process, because the timer is a new process
+	// every tick.
+	stored, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, result.Candidate.UpstreamDigest, stored.UpstreamDigest)
+
+	// Somebody was told, because the decision is waiting for a person who is
+	// not at the terminal where the timer ran.
+	assert.Contains(t, notifier.kinds(), events.KindUpdateStaged)
+
+	// The notes ship with the bundle and are what the operator is deciding
+	// on. RFC 0002 P5's gate, finally open.
+	assert.NotEmpty(t, result.Notes,
+		"the staged release ships RELEASE.md; nothing read it")
+}
+
+// TestInstallingAStagedReleaseRetiresTheCandidate.
+//
+// Two halves. The candidate is forgotten, so `status` stops offering a release
+// that is now running -- and the upstream digest moves onto the release record,
+// which is what stops the next poll re-fetching the bundle it has just
+// installed.
+func TestInstallingAStagedReleaseRetiresTheCandidate(t *testing.T) {
+	h, registry, _, _ := followingHarness(t)
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	staged, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+	require.True(t, staged.Candidate.IsStaged())
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{To: "1.3.0"})
+	require.NoError(t, err)
+
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.True(t, candidate.IsZero(),
+		"the candidate survived being installed, so `status` still offers it")
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, staged.Candidate.UpstreamDigest, current.UpstreamDigest,
+		"the release did not adopt the channel's digest, so the next poll re-fetches it")
+
+	// Measured, because that is the claim: the tick after an install is free.
+	before := registry.blobBytes.Load()
+	after, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+	assert.False(t, after.Moved)
+	assert.Equal(t, before, registry.blobBytes.Load(),
+		"the poll after an install downloaded the release again")
+}
+
+// TestARefusedCandidateIsNotFetchedTwice.
+//
+// A channel that moves to something unusable is not hypothetical -- a vendor
+// republishing a tag, or moving it backwards, produces one. The refusal has to
+// be *recorded*, or every tick re-downloads the same bundle to reach the same
+// answer, forever.
+func TestARefusedCandidateIsNotFetchedTwice(t *testing.T) {
+	h, registry, _, _ := followingHarness(t)
+	ctx := context.Background()
+
+	// The machine is already running 1.4.0, so the channel's 1.3.0 is a
+	// downgrade: `update` refuses a backwards move, so staging one would
+	// only produce a candidate nobody can install.
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	current.Version = domain.MustParseVersion("1.4.0")
+	require.NoError(t, h.Deps.State.SetCurrentRelease(ctx, current))
+
+	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.Error(t, err)
+
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	require.False(t, candidate.IsStaged())
+	assert.NotEmpty(t, candidate.Refused, "the refusal was not recorded")
+
+	before := registry.blobBytes.Load()
+	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err, "a second poll of an unchanged tag has nothing to refuse")
+	assert.Equal(t, before, registry.blobBytes.Load(),
+		"the refused bundle was downloaded a second time")
+}
+
+// TestAnUnpromptedPollNeedsPermission.
+//
+// The same rule `update --check` follows: a poll contacts the vendor's registry,
+// which for a self-hosted product is a phone-home nobody agreed to. A timer
+// leaves Explicit false and is refused until the operator turns checking on.
+func TestAnUnpromptedPollNeedsPermission(t *testing.T) {
+	h, registry, _, _ := followingHarness(t)
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Update.Check = false
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	before := registry.manifestBytes.Load()
+
+	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrUnsupported)
+
+	assert.Equal(t, before, registry.manifestBytes.Load(),
+		"the refusal still contacted the registry, which is the whole thing it refuses")
+
+	// And the operator's own command is its own authorisation.
+	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+}
+
+// TestFollowingNothingIsARefusalThatNamesTheSetting.
+func TestFollowingNothingIsARefusalThatNamesTheSetting(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	_, err := ops.FollowChannel(context.Background(), h.Deps,
+		ops.FollowChannelOptions{Explicit: true})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Hint, "update.channel")
+}

@@ -98,7 +98,23 @@ type UpdateConfig struct {
 	// persisted flag is false would be the manager arguing with the person
 	// running it. See CheckAllowed.
 	Check bool `yaml:"check" json:"check,omitempty"`
+
+	// Channel is a mutable reference this deployment follows.
+	//
+	// A different operation from checking, not a spelling of it: a check
+	// enumerates version tags and picks the highest admissible one, which is
+	// what an operator wants from a stable repository. A channel is one
+	// reference that moves -- `oci://registry.example/demo/bundle:dev` --
+	// and enumeration structurally cannot follow one, because the tag is not
+	// a version and the versions behind it are not tags anybody lists.
+	//
+	// Empty means no channel, which is the default and the only state a
+	// machine reaches without someone saying otherwise.
+	Channel string `yaml:"channel" json:"channel,omitempty"`
 }
+
+// FollowsChannel reports whether a channel is configured.
+func (u UpdateConfig) FollowsChannel() bool { return strings.TrimSpace(u.Channel) != "" }
 
 // CheckAllowed reports whether an update check may contact the registry.
 //
