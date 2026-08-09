@@ -1,6 +1,10 @@
 # RFC 0015 — Notifications
 
-- **Status:** 📝 Draft — **design locked** 2026-08-08. Every question in §10 is
+- **Status:** ✅ Complete — shipped 2026-08-08: the webhook adapter, the
+  `notify` configuration block, the schema bump, and the two call sites — which
+  is where the audit found that every existing `d.notify` sat *after* the
+  failure guard, so only successes were ever reported. **Design locked**
+  2026-08-08. Every question in §10 is
   resolved into §11. [0016](0016-update-checking-and-unattended-updates.md) P3
   is gated on this shipping.
 - **Scope:** Implements `ports.Notifier`, a port that has existed since the

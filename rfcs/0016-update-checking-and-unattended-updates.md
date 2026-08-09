@@ -1,6 +1,10 @@
 # RFC 0016 — Update checking and unattended updates
 
-- **Status:** 📝 Draft — **design locked** 2026-08-08. Every question in §10 is
+- **Status:** 🚧 In progress — P1 shipped 2026-08-08: `update --check`, the
+  `update.check` setting, and the refusals that make a check say "I could not
+  ask" rather than "up to date". P2 (channel following and staging, carrying
+  [0002](0002-rich-terminal-renderer.md) P5) and P3 (unattended apply and dev
+  mode) remain. **Design locked** 2026-08-08. Every question in §10 is
   resolved into §11; P3 is gated on [0015](0015-notifications.md) shipping, and
   decision 16 adds the first new manifest field since strict decoding's cost was
   measured (§5.3).

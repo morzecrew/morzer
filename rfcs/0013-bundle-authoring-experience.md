@@ -1,6 +1,13 @@
 # RFC 0013 — Bundle authoring experience
 
-- **Status:** 📝 Draft — **design locked** 2026-08-08. Both questions in §10 are
+- **Status:** 🚧 In progress — P1 shipped 2026-08-08 (`verify` parses every
+  declared template); P2, P3 and P5 shipped 2026-08-09 (the schema modeline, the
+  `.yaml.tmpl` and `secrets.schema.yaml` moves, and `release new`). **P4
+  (`--render-check`) remains**, and P5 therefore ships with the weaker gate §12
+  allows for: its scaffold is asserted against plain `verify`. `--from-example`
+  (decision 10) is also unshipped — copying `testdata/bundle` needs it inside
+  the module's embed root, and a second copy would drift from the fixture, which
+  is that option's whole justification. **Design locked** 2026-08-08. Both questions in §10 are
   resolved into decisions 12 and 13; the motivating failure (§2) is demonstrated
   against a real bundle.
 - **Scope:** Makes a vendor's own CI able to catch the bundle errors that
