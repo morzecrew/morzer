@@ -6,6 +6,19 @@ summary: Building a working bundle from the one the test suite runs against
 
 # Your first bundle
 
+Start with a skeleton that already verifies:
+
+```sh
+morzer release new ./my-product --vendor example
+morzer release verify ./my-product
+```
+
+It writes a bundle that passes with no edits, carrying the conventions this
+page explains — the schema modeline, templates named `.yaml.tmpl`, the secret
+schema outside `templates/`. It deploys nothing useful, deliberately: a
+generated bundle that guessed your architecture would be work to un-write.
+Everything below explains what it wrote and what to change.
+
 Every fragment on this page is extracted from `testdata/bundle/` at build time.
 That bundle is installed, updated, backed up, restored and rolled back against
 real Docker on every CI run, so what you are reading is what passes.

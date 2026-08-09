@@ -27,6 +27,7 @@ func newReleaseCommand(app *App) *cobra.Command {
 	cmd.AddCommand(
 		newReleaseListCommand(app),
 		newReleaseShowCommand(app),
+		newReleaseNewCommand(app),
 		newReleaseVerifyCommand(app),
 		newReleaseBuildCommand(app),
 		newReleaseArchiveCommand(app),

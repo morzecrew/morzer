@@ -1,7 +1,7 @@
 ---
 title: release
 icon: lucide/package
-summary: The release command group — list, show, verify, build, archive, fetch, prune
+summary: The release command group — list, show, new, verify, build, archive, fetch, prune
 ---
 
 # `morzer release`
@@ -27,6 +27,41 @@ morzer release show [version]
 ```
 
 Shows a release manifest — the installed one when no version is given.
+
+## release new
+
+```sh
+morzer release new <dir> [--name NAME] [--vendor VENDOR]
+```
+
+Scaffolds a bundle skeleton that passes `release verify` with no edits.
+
+| Flag | Meaning |
+| --- | --- |
+| `--name` | Product name. Defaults to the directory's own name, and is validated the same way `metadata.name` is — it becomes `/etc/<name>` on someone's machine. |
+| `--vendor` | Who publishes this release. Left as a `TODO` when omitted. |
+
+```text
+my-product/
+├── manifest.yaml         # schema modeline on line 1, version 0.0.0
+├── VERSION               # 0.0.0, agreeing with the manifest
+├── RELEASE.md            # declared as metadata.release_notes
+├── secrets.schema.yaml
+├── compose/compose.yaml
+└── templates/app.yaml.tmpl
+```
+
+**A skeleton, not a product.** No image guessing, no Compose service inference,
+no hook stubs. A generated bundle that pretended to know your architecture
+would be work to un-write; one that verifies clean and deploys nothing useful
+is honest. Every value that must change before you publish is marked `TODO`.
+
+The version is `0.0.0` deliberately — a placeholder
+[`release build`](#release-build) stamps. A scaffold that wrote `1.0.0` would
+be inviting you to hand-maintain the one field the tooling owns, and `build`
+refuses `0.0.0` precisely so a forgotten `--version` cannot ship it.
+
+It refuses to write over anything. Scaffold into an empty directory.
 
 ## release verify
 
