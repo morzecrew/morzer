@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,6 +33,22 @@ const (
 
 // ImageSources is every legal value, for validation and the generated schema.
 var ImageSources = []ImageSource{ImageFromRegistry, ImageFromBundle}
+
+// imageName is the permitted shape of an image's key in the manifest.
+//
+// The same rule parameters already carry, and for the same reason: the key
+// becomes the tail of `<PRODUCT>_IMAGE_<NAME>`, which a Compose file
+// interpolates. Without it the key was unconstrained while the variable name
+// was normalised -- upper-cased with `-` and `.` folded to `_` -- so `web-ui`
+// and `web.ui` produced the same variable, one pinned reference silently
+// overwrote the other, and which one survived depended on Go's randomised map
+// iteration. A release whose image is chosen by map order is a release that
+// runs different bytes on different days.
+//
+// Hyphens are allowed and dots are not, rather than the reverse: `web-ui` is
+// the spelling image names actually use, and permitting exactly one of the two
+// makes the normalisation injective again.
+var imageName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
 // ImageSpec is one entry in a manifest's `images` map.
 //
@@ -153,6 +170,13 @@ func (s *ImageSpec) UnmarshalJSON(b []byte) error {
 
 // BundledImages returns the images that travel inside the bundle, by name, in
 // a stable order.
+//
+// There is deliberately no counterpart returning the *pulled* set yet. Until
+// ingest lands (RFC 0011 P2) a bundled image is still fetched from its
+// registry, because nothing else brings it onto the machine -- so narrowing the
+// pull set today would leave a deployment with no image at all rather than with
+// a redundant pull. RFC 0011 §5.4 assigns that narrowing to the phase that
+// makes it true.
 func (m *Manifest) BundledImages() []string {
 	var names []string
 	for name, spec := range m.Images {
@@ -162,21 +186,6 @@ func (m *Manifest) BundledImages() []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-// PulledImageRefs returns the references that will actually be fetched from a
-// registry, in a stable order.
-//
-// Used by the checks that ask about registry reachability: a release that
-// bundles everything should not warn about a registry it never contacts.
-func (m *Manifest) PulledImageRefs() []string {
-	var refs []string
-	for _, name := range sortedImageNames(m.Images) {
-		if !m.Images[name].Bundled() {
-			refs = append(refs, m.Images[name].Ref)
-		}
-	}
-	return refs
 }
 
 func sortedImageNames(images map[string]ImageSpec) []string {

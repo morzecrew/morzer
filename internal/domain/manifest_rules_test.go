@@ -151,6 +151,35 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 		"no images at all": {
 			func(m *Manifest) { m.Images = nil }, "images",
 		},
+		// The key becomes the tail of <PRODUCT>_IMAGE_<NAME>, which is
+		// upper-cased with "-" and "." folded to "_". Unconstrained,
+		// `web-ui` and `web.ui` produced the same variable and one
+		// pinned reference silently overwrote the other -- with Go's
+		// randomised map iteration deciding which.
+		"an image name with a dot": {
+			func(m *Manifest) {
+				m.Images = map[string]ImageSpec{
+					"web.ui": {Ref: "r/a@sha256:" + strings.Repeat("a", 64)},
+				}
+			},
+			"images.web.ui",
+		},
+		"an image name with an underscore": {
+			func(m *Manifest) {
+				m.Images = map[string]ImageSpec{
+					"web_ui": {Ref: "r/a@sha256:" + strings.Repeat("a", 64)},
+				}
+			},
+			"images.web_ui",
+		},
+		"an image name in capitals": {
+			func(m *Manifest) {
+				m.Images = map[string]ImageSpec{
+					"App": {Ref: "r/a@sha256:" + strings.Repeat("a", 64)},
+				}
+			},
+			"images.App",
+		},
 
 		// configuration
 		"a template outside the bundle": {

@@ -618,6 +618,11 @@ func (m *Manifest) Validate() error {
 	for _, name := range sortedImageNames(m.Images) {
 		spec := m.Images[name]
 		field := "images." + name
+		if !imageName.MatchString(name) {
+			v.add(field, "must be lowercase letters, digits and hyphens, "+
+				"starting and ending with a letter or digit")
+			continue
+		}
 		if !digestRef.MatchString(spec.Ref) {
 			v.add(field, "must be pinned by digest (name@sha256:...), got %q", spec.Ref)
 		}

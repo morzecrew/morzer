@@ -80,6 +80,7 @@ Beyond the ordinary checks, for a bundle that declares any image `from: bundle`:
 | No `images/index.json` | Refused — the manifest promises images the bundle does not carry. |
 | An image marked `from: bundle` that `index.json` does not name by the same digest | Refused, naming the image. |
 | An `index.json` entry no manifest image names | Refused. A layout carrying more than the release declares is a bundle whose contents nobody stated. |
+| An `index.json` entry whose blob the bundle does not carry | Refused. An index that outruns its blobs passes here and fails at install, on the machine with no registry to fall back to. |
 
 The completeness rule is the same one `SHA256SUMS` already holds, one level up:
 a bundle must be exactly what it says it is, in both directions.
@@ -148,7 +149,10 @@ bundle:
   uncompressed_size: 12GiB
 ```
 
-Without it the default ceiling applies, and a large bundle is refused.
+Without it the default ceiling applies, and a large bundle is refused. It must
+cover the whole archive **including the manifest**: a declaration too small for
+its own manifest is refused, because a remaining budget of zero would otherwise
+read as no budget at all.
 
 !!! info "What the customer's manager trusts, and why"
 

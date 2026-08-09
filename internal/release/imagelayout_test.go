@@ -130,6 +130,51 @@ func TestAnImagesDirectoryThatIsNotALayoutIsLeftAlone(t *testing.T) {
 	}
 }
 
+// TestAnIndexNamingABlobTheBundleDoesNotCarryIsRefused.
+//
+// Without it a bundle passes `verify` and fails at install, on the machine with
+// no registry to fall back to — which is the one case the whole feature exists
+// for.
+func TestAnIndexNamingABlobTheBundleDoesNotCarryIsRefused(t *testing.T) {
+	dir := bundleWithLayout(t, []string{appDigest})
+
+	blob := filepath.Join(dir, "images", "blobs", "sha256",
+		strings.TrimPrefix(appDigest, "sha256:"))
+	if err := os.Remove(blob); err != nil {
+		t.Fatal(err)
+	}
+	sumTree(t, dir)
+
+	_, err := release.Load(dir)
+	if err == nil {
+		t.Fatal("a layout whose index outruns its blobs was accepted")
+	}
+	if !strings.Contains(err.Error(), "does not carry it") {
+		t.Errorf("the refusal does not say what is missing: %v", err)
+	}
+}
+
+// TestAnIndexEntryThatIsNotADigestIsRefused, rather than compared as a string.
+func TestAnIndexEntryThatIsNotADigestIsRefused(t *testing.T) {
+	dir := bundleWithLayout(t, []string{appDigest})
+
+	index := filepath.Join(dir, "images", "index.json")
+	if err := os.WriteFile(index, []byte(
+		`{"schemaVersion":2,"manifests":[{"mediaType":"x","digest":"not-a-digest","size":2}]}`,
+	), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sumTree(t, dir)
+
+	_, err := release.Load(dir)
+	if err == nil {
+		t.Fatal("an index entry that is not a digest was accepted")
+	}
+	if !strings.Contains(err.Error(), "not a digest") {
+		t.Errorf("the refusal does not name the problem: %v", err)
+	}
+}
+
 // TestAMalformedIndexIsRefusedRatherThanIgnored.
 func TestAMalformedIndexIsRefusedRatherThanIgnored(t *testing.T) {
 	dir := bundleWithLayout(t, []string{appDigest})

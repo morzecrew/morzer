@@ -60,9 +60,17 @@ func newReleasePackCommand(app *App) *cobra.Command {
 			}
 
 			if app.Flags.dryRun {
+				bundled := manifest.BundledImages()
 				app.finish(ops.Result{
+					// Both, because `finish` carries Data in
+					// JSON mode and Summary in plain: a dry
+					// run that sets only the second answers
+					// `--json` with an envelope containing
+					// nothing about what it would do.
+					Data: map[string]any{"root": dir, "images": bundled},
 					Summary: fmt.Sprintf("would copy %d image(s) into %s",
-						len(manifest.BundledImages()), dir)})
+						len(bundled), dir),
+				})
 				return nil
 			}
 
@@ -81,6 +89,13 @@ func newReleasePackCommand(app *App) *cobra.Command {
 			}
 			rel, err := release.Load(dir)
 			if err != nil {
+				return err
+			}
+			// The same checks `verify` runs, not merely a load: a
+			// mismatch belongs on the vendor's machine rather than
+			// the customer's, and this is the command that has just
+			// rewritten the tree the checksum list describes.
+			if err := checkBundleIntegrity(rel); err != nil {
 				return err
 			}
 

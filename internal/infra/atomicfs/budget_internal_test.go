@@ -133,3 +133,79 @@ func TestTheFreeSpaceCheckRefusesBeforeAnythingIsWritten(t *testing.T) {
 		t.Errorf("an undeclared bundle was measured against the default ceiling: %v", err)
 	}
 }
+
+// TestAnExhaustedBudgetIsRefusedRatherThanRepresented.
+//
+// The whole point of this function, and the defect it was written to close: the
+// extractor reads a non-positive limit as *no limit*, so a subtraction landing
+// on zero converts an exhausted budget into an unlimited one. There is
+// therefore no "exhausted" state at all -- a declaration that does not leave
+// room for the rest of the archive is refused outright.
+func TestAnExhaustedBudgetIsRefusedRatherThanRepresented(t *testing.T) {
+	cases := []struct {
+		name     string
+		limits   ExtractLimits
+		manifest int64
+		refuse   bool
+	}{
+		{
+			name:     "room left over",
+			limits:   ExtractLimits{MaxEntries: 10, MaxTotalSize: 100},
+			manifest: 40,
+			refuse:   false,
+		},
+		{
+			// Exactly consumed: nothing may follow, and zero would
+			// have said "anything may".
+			name:     "the manifest is the whole budget",
+			limits:   ExtractLimits{MaxEntries: 10, MaxTotalSize: 40},
+			manifest: 40,
+			refuse:   true,
+		},
+		{
+			name:     "the manifest is larger than the budget",
+			limits:   ExtractLimits{MaxEntries: 10, MaxTotalSize: 32},
+			manifest: 63,
+			refuse:   true,
+		},
+		{
+			// The same hazard in the entry count.
+			name:     "the manifest is the only entry allowed",
+			limits:   ExtractLimits{MaxEntries: 1, MaxTotalSize: 100},
+			manifest: 10,
+			refuse:   true,
+		},
+		{
+			// No declaration: an unlimited limit stays unlimited
+			// rather than becoming a refusal.
+			name:     "no limits at all",
+			limits:   ExtractLimits{},
+			manifest: 1 << 20,
+			refuse:   false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := chargeForManifest(tc.limits, tc.manifest)
+			if tc.refuse {
+				if err == nil {
+					t.Fatalf("accepted, leaving %+v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			// The invariant: a limit that was finite stays finite.
+			if tc.limits.MaxTotalSize > 0 && got.MaxTotalSize <= 0 {
+				t.Errorf("a finite byte budget became %d, which reads as unlimited",
+					got.MaxTotalSize)
+			}
+			if tc.limits.MaxEntries > 0 && got.MaxEntries <= 0 {
+				t.Errorf("a finite entry budget became %d, which reads as unlimited",
+					got.MaxEntries)
+			}
+		})
+	}
+}

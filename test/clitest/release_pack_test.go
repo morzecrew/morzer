@@ -61,7 +61,7 @@ func TestReleasePackRefusesToInvalidateASignature(t *testing.T) {
 	}
 }
 
-// TestReleasePackDryRunTouchesNothing.
+// TestReleasePackDryRunTouchesNothing, and says what it would have done.
 func TestReleasePackDryRunTouchesNothing(t *testing.T) {
 	r := clitest.New(t)
 	markBundled(t, r.Bundle)
@@ -70,6 +70,24 @@ func TestReleasePackDryRunTouchesNothing(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(r.Bundle, "images")); err == nil {
 		t.Error("a dry run created an image layout")
+	}
+
+	// --json is a supported contract, and `finish` carries Data in JSON
+	// mode and Summary in plain -- so a dry run that set only the second
+	// answered a script with an envelope saying nothing about what it
+	// would do.
+	out := r.Run("--json", "--dry-run", "release", "pack", r.Bundle).ExitCode(0)
+	out.FieldLen("data.images", 1)
+
+	// And --force during a dry run must not delete the signature: the
+	// refusal it overrides is about a write this run is not making.
+	signature := filepath.Join(r.Bundle, "SHA256SUMS.minisig")
+	if err := os.WriteFile(signature, []byte("untrusted comment: fake\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.Run("--dry-run", "release", "pack", r.Bundle, "--force").ExitCode(0)
+	if _, err := os.Stat(signature); err != nil {
+		t.Errorf("a dry run deleted the signature: %v", err)
 	}
 }
 

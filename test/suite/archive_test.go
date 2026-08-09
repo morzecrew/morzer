@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -153,6 +154,39 @@ func TestTheManifestCountsAgainstTheBudgetItDeclares(t *testing.T) {
 	err := atomicfs.ExtractTarZst(path, filepath.Join(t.TempDir(), "out"), bundleLimits())
 
 	require.Error(t, err, "the archive exceeded its own declared size and was accepted")
+}
+
+// TestABudgetTooSmallForItsOwnManifestIsRefused.
+//
+// The subtlety this guards: the extractor reads a non-positive limit as *no
+// limit*, so a subtraction that lands on zero turns an exhausted budget into an
+// unlimited one. Before this refusal, a bundle declaring 32 bytes extracted
+// two thousand files and 64 KB without complaint -- and at a one-megabyte
+// manifest the same hole reaches twenty thousand entries at the per-file
+// ceiling, four orders of magnitude past the declaration.
+func TestABudgetTooSmallForItsOwnManifestIsRefused(t *testing.T) {
+	manifest := "api_version: selfhost/v1alpha1\nbundle:\n  uncompressed_size: 32\n"
+	require.Greater(t, len(manifest), 32, "the fixture must exceed its own declaration")
+
+	entries := []tarEntry{{Name: "manifest.yaml", Body: manifest}}
+	// Each within the per-file bound, so only the *total* can refuse them.
+	for i := range 2000 {
+		entries = append(entries, tarEntry{
+			Name: "blob" + strconv.Itoa(i) + ".bin", Body: strings.Repeat("x", 32)})
+	}
+
+	path := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeArchive(t, path, entries)
+
+	out := filepath.Join(t.TempDir(), "out")
+	err := atomicfs.ExtractTarZst(path, out, bundleLimits())
+
+	require.Error(t, err, "a budget too small for its own manifest must be refused")
+	assert.Contains(t, err.Error(), "the manifest alone is")
+
+	// And with nothing on disk: the refusal comes before the write.
+	_, statErr := os.Stat(filepath.Join(out, "manifest.yaml"))
+	assert.Error(t, statErr, "a refused archive wrote its manifest anyway")
 }
 
 // bundleLimits is the posture the release transports use: manifest first, and

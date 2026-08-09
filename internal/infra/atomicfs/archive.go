@@ -190,34 +190,54 @@ func negotiateLimits(
 		return limits, err
 	}
 
-	// Written last, so a refusal above leaves nothing behind.
+	// Charged before it is written, so a declaration too small to hold its
+	// own manifest is refused with nothing on disk.
+	limits, err = chargeForManifest(limits, int64(len(manifest)))
+	if err != nil {
+		return limits, err
+	}
+
 	if err := WriteFileIn(root, rel, manifest, normalizeArchiveMode(hdr.FileInfo().Mode())); err != nil {
 		return limits, err
 	}
 
-	// This entry has been extracted, so it counts against the budget like
-	// any other. Charging the rest of the archive the full ceiling would
-	// let an archive exceed its own declaration by exactly the size of the
-	// file that made the declaration.
-	limits.MaxEntries = reduce(limits.MaxEntries, 1)
-	limits.MaxTotalSize = reduceSize(limits.MaxTotalSize, int64(len(manifest)))
 	return limits, nil
 }
 
-// reduce subtracts from a limit without turning an unlimited one (0) into a
-// negative one, which the extractor reads as "no limit at all".
-func reduce(limit, used int) int {
-	if limit <= 0 {
-		return limit
+// chargeForManifest deducts the already-extracted manifest from the budget.
+//
+// The subtlety that makes this worth its own function: the extractor reads a
+// **non-positive limit as no limit at all**, so a subtraction that lands on
+// zero converts an exhausted budget into an unlimited one. A bundle declaring
+// one megabyte with a one-megabyte manifest would then have extracted every
+// remaining entry unbounded -- twenty thousand of them, at the per-file
+// ceiling, which is four orders of magnitude past what it declared.
+//
+// So an exhausted budget is not represented at all: a declaration that does not
+// leave room for the rest of the archive is refused outright. That is the same
+// rule the budget already carries -- an archive exceeding its own declaration
+// is refused -- applied to the one entry that had to be read before the rule
+// could be enforced.
+func chargeForManifest(limits ExtractLimits, size int64) (ExtractLimits, error) {
+	if limits.MaxTotalSize > 0 {
+		if size >= limits.MaxTotalSize {
+			return limits, domain.ValidationError(domain.ErrValidation,
+				"the manifest alone is %s and the bundle declares %s in total",
+				domain.ByteSize(size), domain.ByteSize(limits.MaxTotalSize)).
+				WithHint("bundle.uncompressed_size is what the whole archive expands to, " +
+					"including the manifest")
+		}
+		limits.MaxTotalSize -= size
 	}
-	return max(limit-used, 0)
-}
-
-func reduceSize(limit, used int64) int64 {
-	if limit <= 0 {
-		return limit
+	if limits.MaxEntries > 0 {
+		if limits.MaxEntries <= 1 {
+			return limits, domain.ValidationError(domain.ErrValidation,
+				"the archive may hold %d entries and the manifest is one of them",
+				limits.MaxEntries)
+		}
+		limits.MaxEntries--
 	}
-	return max(limit-used, 0)
+	return limits, nil
 }
 
 // clampToBudget applies a declared size to the limits.

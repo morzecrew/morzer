@@ -60,6 +60,32 @@ func ImageLayoutDigests(dir string) ([]string, error) {
 
 	digests := make([]string, 0, len(index.Manifests))
 	for _, m := range index.Manifests {
+		if err := m.Digest.Validate(); err != nil {
+			return nil, domain.ValidationError(err,
+				"%s/%s names %q, which is not a digest",
+				ImagesDirName, ImageIndexFileName, m.Digest)
+		}
+		// The blob the descriptor points at must be there. Without this
+		// a bundle passes `verify` and fails at install, on the machine
+		// with no registry to fall back to -- which is the one case the
+		// whole feature exists for.
+		//
+		// Existence, not content: the bytes are covered by SHA256SUMS
+		// and the signature over it, so tampering is already refused.
+		// What is *not* checked here is that a blob matches the digest
+		// its own descriptor claims, which is a different guarantee --
+		// RFC 0011 §5.3 assigns it to the fallback ingest, whose whole
+		// value is recomputing it, and requires the mismatched-blob
+		// refusal to exist before that ships.
+		blob := filepath.Join(dir, ImagesDirName, "blobs",
+			m.Digest.Algorithm().String(), m.Digest.Encoded())
+		if _, err := os.Stat(blob); err != nil {
+			return nil, domain.ValidationError(domain.ErrNotFound,
+				"%s/%s names %s and the bundle does not carry it",
+				ImagesDirName, ImageIndexFileName, m.Digest).
+				WithHint("re-run `morzer release pack`; a layout whose index " +
+					"outruns its blobs installs nowhere")
+		}
 		digests = append(digests, m.Digest.String())
 	}
 	sort.Strings(digests)

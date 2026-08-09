@@ -205,15 +205,18 @@ func LoadSecretSchema(rel domain.Release) (domain.SecretSchema, error) {
 
 // DeclaredBundleSize reads `bundle.uncompressed_size` out of manifest bytes.
 //
-// Leniently, like checkManagerVersion and for the same reason: this runs on the
-// first entry of an archive that has not been verified, and it must succeed
-// against a manifest written for a newer manager. A field it cannot read is a
-// field it declines to use -- the caller then applies the default ceiling,
-// which is the safe direction.
+// Lenient about the *document*, strict about the *field*, and the split matters.
 //
-// The one thing it refuses is a *negative* declaration, because that is not a
-// smaller budget but a nonsensical one, and silently treating it as absent
-// would let a manifest say something the manager pretends not to have heard.
+// This runs on the first entry of an archive that has not been verified, and it
+// must succeed against a manifest written for a newer manager -- so YAML it
+// cannot parse at all is left to the strict decode, which reports it properly,
+// with a position, once the archive is on disk.
+//
+// But a `bundle.uncompressed_size` that is present and unreadable is refused
+// rather than treated as absent. Absent means the default ceiling; unreadable
+// would mean extracting under that ceiling on the strength of a declaration
+// nobody could parse, which is the permissive reading of the one field that
+// gates untrusted bytes.
 func DeclaredBundleSize(manifest []byte) (int64, error) {
 	var p struct {
 		Bundle struct {
@@ -230,7 +233,14 @@ func DeclaredBundleSize(manifest []byte) (int64, error) {
 
 	var size domain.ByteSize
 	if err := size.UnmarshalText([]byte(raw)); err != nil {
-		return 0, nil
+		// A value that is there and unreadable is not the same as one
+		// that is absent. Reading it as absent would extract under the
+		// default ceiling on the strength of a declaration nobody could
+		// parse, which is the permissive reading of a field that gates
+		// untrusted bytes.
+		return 0, domain.ValidationError(err,
+			"the bundle declares an uncompressed size of %q, which is not a size", raw).
+			WithHint("bundle.uncompressed_size looks like 12GiB or 512MiB")
 	}
 	if size < 0 {
 		return 0, domain.ValidationError(domain.ErrValidation,

@@ -79,11 +79,11 @@ images:
 	if got := m.BundledImages(); len(got) != 1 || got[0] != "app" {
 		t.Errorf("BundledImages() = %v, want [app]", got)
 	}
-	// The pulled set is what registry-reachability checks ask about: a
-	// release that bundles everything must not warn about a registry it
-	// never contacts.
-	if got := m.PulledImageRefs(); len(got) != 3 {
-		t.Errorf("PulledImageRefs() has %d entries, want 3: %v", len(got), got)
+	// Every image is still in ImageRefs, bundled or not: until ingest
+	// lands, a bundled image is fetched from its registry like any other,
+	// because nothing else brings it onto the machine.
+	if got := m.ImageRefs(); len(got) != 4 {
+		t.Errorf("ImageRefs() has %d entries, want 4: %v", len(got), got)
 	}
 }
 
@@ -161,5 +161,46 @@ images:
 	}
 	if !strings.Contains(err.Error(), "[8:5]") {
 		t.Errorf("the refusal lost the line and column: %v", err)
+	}
+}
+
+// TestADeclaredSizeThatCannotBeReadIsRefused.
+//
+// Absent means the default ceiling; unreadable would mean extracting under that
+// ceiling on the strength of a declaration nobody could parse. The distinction
+// matters because this is the one field that gates untrusted bytes, and it is
+// read before the signature is checked.
+func TestADeclaredSizeThatCannotBeReadIsRefused(t *testing.T) {
+	// `12 GB` and `12GB` are legitimate decimal sizes and stay accepted;
+	// what is refused is a value ByteSize cannot read at all.
+	refused := []string{"twelve gigabytes", "-1GiB", "GiB", "12 gigs"}
+	for _, raw := range refused {
+		manifest := "api_version: selfhost/v1alpha1\nbundle:\n  uncompressed_size: " + raw + "\n"
+		if _, err := release.DeclaredBundleSize([]byte(manifest)); err == nil {
+			t.Errorf("%q was read as no declaration at all", raw)
+		}
+	}
+
+	// Absent is still absent, and still the default ceiling.
+	size, err := release.DeclaredBundleSize([]byte("api_version: selfhost/v1alpha1\n"))
+	if err != nil || size != 0 {
+		t.Errorf("an absent declaration gave (%d, %v), want (0, nil)", size, err)
+	}
+
+	// And YAML that does not parse is left to the strict decode, which
+	// reports it with a position once the archive is on disk. Failing here
+	// would replace a good diagnostic with a worse one.
+	if _, err := release.DeclaredBundleSize([]byte("{not yaml")); err != nil {
+		t.Errorf("unparseable YAML was refused here rather than by the decoder: %v", err)
+	}
+
+	// The ordinary case still works.
+	size, err = release.DeclaredBundleSize(
+		[]byte("bundle:\n  uncompressed_size: 12GiB\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size != 12<<30 {
+		t.Errorf("12GiB read as %d", size)
 	}
 }

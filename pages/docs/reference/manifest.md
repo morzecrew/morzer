@@ -220,6 +220,13 @@ A bare tag is rejected. An unpinned image makes a release mutable, and a mutable
 release makes rollback meaningless — the same version could produce a different
 system on a different day.
 
+**The key** is lowercase letters, digits and hyphens, starting and ending with a
+letter or digit — the same rule parameters carry, and for the same reason: it
+becomes the tail of `<PRODUCT>_IMAGE_<NAME>`, which your Compose file
+interpolates. Dots and underscores are refused because the variable name folds
+both to `_`, so `web-ui` and `web.ui` would name the same variable and one
+pinned reference would silently overwrite the other.
+
 ### Where the bytes come from
 
 An entry may instead be a mapping, which adds one field:
