@@ -353,7 +353,17 @@ func (w *Waiter) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]port
 			return final, nil
 		}
 
-		round, err := w.CheckOnce(ctx, pending)
+		// The round is bounded by the start periods it is waiting on,
+		// when every pending check declares one. Without this the
+		// deadline is only *observed* between rounds, so a check with a
+		// five-second period and a thirty-second probe timeout reports
+		// its failure twenty-five seconds late -- the field promises to
+		// tell an operator that a product is dead rather than slow, and
+		// telling them half a minute after the fact is most of the way
+		// back to not telling them.
+		roundCtx, cancel := w.boundByStartPeriods(ctx, pending, started)
+		round, err := w.CheckOnce(roundCtx, pending)
+		cancel()
 		if err != nil {
 			return final, err
 		}
@@ -391,6 +401,44 @@ func (w *Waiter) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]port
 		case <-ticker.C:
 		}
 	}
+}
+
+// boundByStartPeriods caps a round at the last start-period deadline among the
+// checks it is waiting on.
+//
+// Only when *every* pending check declares one: a check without a period must
+// keep the round open for as long as the operation allows, and cutting it short
+// because a sibling declared five seconds would turn one vendor's precision
+// into every other check's timeout.
+//
+// The cap is the *latest* of the deadlines, not the earliest. Cutting at the
+// earliest would abandon a check that is still legitimately inside its own
+// longer period, which is the opposite of what the field is for.
+func (w *Waiter) boundByStartPeriods(
+	ctx context.Context, pending []ports.CheckSpec, started time.Time,
+) (context.Context, context.CancelFunc) {
+	var last time.Duration
+	for _, spec := range pending {
+		period := spec.StartPeriod()
+		if period <= 0 {
+			return ctx, func() {}
+		}
+		if period > last {
+			last = period
+		}
+	}
+	if last == 0 {
+		return ctx, func() {}
+	}
+
+	remaining := last - w.now().Sub(started)
+	if remaining <= 0 {
+		// Already past every deadline: let the round run its normal
+		// course rather than handing the probers a dead context, and
+		// the overdue check below ends the wait when it returns.
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, remaining)
 }
 
 // overdueChecks reports whether every check still failing has outlived the

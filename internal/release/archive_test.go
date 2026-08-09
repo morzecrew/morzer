@@ -2,6 +2,8 @@ package release_test
 
 import (
 	"archive/tar"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -238,8 +240,15 @@ func archiveNames(t *testing.T, path string) []string {
 	tr := tar.NewReader(zr)
 	for {
 		hdr, err := tr.Next()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			break
+		}
+		// Distinguished from the end of the stream: a truncated archive
+		// would otherwise return a short list and be reported as an
+		// ordering failure, which is a confusing way to learn that the
+		// writer produced something unreadable.
+		if err != nil {
+			t.Fatalf("cannot read the archive: %v", err)
 		}
 		names = append(names, hdr.Name)
 	}

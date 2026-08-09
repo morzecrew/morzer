@@ -41,6 +41,9 @@ func WriteSums(dir string) error {
 			continue
 		}
 
+		if err := checkSumsPath(rel); err != nil {
+			return err
+		}
 		digest, err := atomicfs.DigestFile(filepath.Join(dir, filepath.FromSlash(rel)))
 		if err != nil {
 			return err
@@ -55,4 +58,39 @@ func WriteSums(dir string) error {
 			"%s contains nothing to check", dir)
 	}
 	return atomicfs.WriteFile(filepath.Join(dir, ports.SumsFileName), []byte(b.String()), 0o644)
+}
+
+// checkSumsPath refuses a name this format cannot carry unambiguously.
+//
+// `sha256sum`'s format is "<hex>  <path>", and readers of it -- this project's
+// verifier included -- recover the path by splitting on whitespace. That
+// round-trips every ordinary name, including one with single spaces, and
+// silently changes names with a tab, a double space, a leading or trailing
+// space, or a line break. GNU coreutils escapes those with a leading backslash
+// and `\n`/`\r`/`\\` sequences; implementing that would mean the writer, the
+// verifier and every third party's `sha256sum -c` agreeing on an escaping
+// dialect for filenames nobody ships.
+//
+// So it refuses instead, and refuses on the vendor's machine. The alternative
+// is not "it works": it is a bundle whose checksum list names a file that is
+// not there, failing verification on a customer's machine with a message about
+// a missing file the vendor can see perfectly well.
+func checkSumsPath(rel string) error {
+	if rel != strings.Join(strings.Fields(rel), " ") {
+		return domain.ValidationError(nil,
+			"%s cannot be listed in %s: its name has whitespace the format cannot carry",
+			rel, ports.SumsFileName).
+			WithHint("a single space is fine; tabs, line breaks, repeated spaces and " +
+				"leading or trailing spaces are not. Rename the file")
+	}
+	// A leading "*" is how sha256sum marks binary mode, and readers strip
+	// it -- including this project's, which would then look for a file
+	// whose name is one character shorter.
+	if strings.HasPrefix(rel, "*") || strings.Contains(rel, "\\") {
+		return domain.ValidationError(nil,
+			"%s cannot be listed in %s: its name starts with %q or contains a backslash",
+			rel, ports.SumsFileName, "*").
+			WithHint("both are meaningful to `sha256sum -c`; rename the file")
+	}
+	return nil
 }

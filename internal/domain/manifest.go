@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
 	"sort"
@@ -497,12 +498,28 @@ func (m *Manifest) Validate() error {
 	if m.Metadata.ReleaseNotes != "" {
 		v.checkRelPath("metadata.release_notes", m.Metadata.ReleaseNotes)
 	}
-	if u := m.Metadata.SupportURL; u != "" && !strings.HasPrefix(u, "https://") {
-		// https only, matching every other URL this project accepts
-		// from a bundle. A support link is shown to an operator who is
+	if u := m.Metadata.SupportURL; u != "" {
+		// Parsed rather than prefix-matched. A prefix check accepts
+		// `https://` and `https:///help`, which have no host to reach,
+		// and it accepts a value carrying terminal escape sequences --
+		// this string is printed by `status` and by a failing `doctor`,
+		// so it reaches a terminal at the worst possible moment. Parsing
+		// answers all three: url.Parse refuses ASCII control characters
+		// outright, and scheme and host are then checkable facts rather
+		// than the first eight bytes of a string.
+		//
+		// https only, matching every other URL this project accepts from
+		// a bundle. A support link is shown to an operator who is
 		// already in trouble, which is the worst moment to send them
 		// somewhere over plaintext.
-		v.add("metadata.support_url", "must be an https URL, got %q", u)
+		switch parsed, err := url.Parse(u); {
+		case err != nil:
+			v.add("metadata.support_url", "is not a URL: %s", err)
+		case parsed.Scheme != "https":
+			v.add("metadata.support_url", "must be an https URL, got scheme %q", parsed.Scheme)
+		case parsed.Host == "":
+			v.add("metadata.support_url", "names no host, got %q", u)
+		}
 	}
 
 	// providers

@@ -513,12 +513,17 @@ func quotaCPUs(content string) (int, bool) {
 	if len(fields) != 2 || fields[0] == "max" {
 		return 0, false
 	}
+	// ParseFloat accepts "NaN", "Inf" and "Infinity" without error, and NaN
+	// survives every ordering comparison below -- `NaN < 0` is false -- so
+	// it reached int(math.Floor(NaN)) and came out as one CPU. The kernel
+	// writes no such value, which is exactly why nothing downstream would
+	// have questioned it.
 	quota, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil || quota < 0 {
+	if err != nil || math.IsNaN(quota) || math.IsInf(quota, 0) || quota < 0 {
 		return 0, false
 	}
 	period, err := strconv.ParseFloat(fields[1], 64)
-	if err != nil || period <= 0 {
+	if err != nil || math.IsNaN(period) || math.IsInf(period, 0) || period <= 0 {
 		return 0, false
 	}
 

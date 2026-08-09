@@ -87,6 +87,47 @@ func TestTheScaffoldedVersionIsAPlaceholderTheBuildRefuses(t *testing.T) {
 	r.Run("release", "build", dir, "--version", "0.1.0").ExitCode(0).OutputContains("0.1.0")
 }
 
+// TestAFailedScaffoldLeavesNothingBehind.
+//
+// A half-written scaffold is worse than none: the retry meets the files the
+// failed attempt created and refuses over them, so the operator has to work out
+// which of the files in front of them this command wrote before they can try
+// again.
+//
+// The failure is provoked with an unwritable `templates/`, which sorts last --
+// so five files are written before the sixth fails. An earlier version of this
+// test used a directory where a file belongs and proved nothing: the existence
+// check saw the directory and refused *before* any write, so the rollback it
+// meant to exercise never ran.
+func TestAFailedScaffoldLeavesNothingBehind(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the directory mode this test depends on")
+	}
+
+	r := clitest.New(t)
+	dir := filepath.Join(t.TempDir(), "my-product")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The bundle root stays writable; only templates/ is not, so the
+	// writes ahead of it in sort order succeed.
+	if err := os.Mkdir(filepath.Join(dir, "templates"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(dir, "templates"), 0o755) })
+
+	r.Run("release", "new", dir).Failed()
+
+	// Every file the attempt got to before the failure, gone.
+	for _, name := range []string{
+		"manifest.yaml", "VERSION", "RELEASE.md", "secrets.schema.yaml", "compose/compose.yaml",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(name))); err == nil {
+			t.Errorf("a failed scaffold left %s behind, so a retry refuses over it", name)
+		}
+	}
+}
+
 // TestReleaseNewRefusesToWriteOverAnything.
 //
 // Scaffolding into a directory that already holds a bundle would replace a

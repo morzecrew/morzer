@@ -39,8 +39,10 @@ func TestTheVersionScheme(t *testing.T) {
 			want:     "1.4.0",
 		},
 		{
-			name:     "the v prefix is dropped, so git tags work unchanged",
-			describe: "v1.4.0-0-g3be286c",
+			// The same distance-0 case without the prefix, so the
+			// row earns its place: `v` is dropped either way.
+			name:     "the v prefix is optional, so git tags work unchanged",
+			describe: "1.4.0-0-g3be286c",
 			want:     "1.4.0",
 		},
 		{
@@ -235,10 +237,9 @@ func TestDescribeAgainstARealRepository(t *testing.T) {
 	// And a dirty tree is refused, through the real `--dirty` flag rather
 	// than a hand-written string -- which is the half that would break if
 	// git's spelling ever changed.
-	if err := os.WriteFile(filepath.Join(dir, "untracked-change"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "first"), []byte("edited"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gitIn(t, dir, "add", ".")
 
 	dirty, err := release.DescribeRepository(dir)
 	if err != nil {
@@ -249,6 +250,65 @@ func TestDescribeAgainstARealRepository(t *testing.T) {
 	}
 	if _, err := dirty.Version(false); err == nil {
 		t.Error("a dirty tree must be refused without --allow-dirty")
+	}
+}
+
+// TestAnUntrackedFileMakesTheTreeDirty.
+//
+// `git describe --dirty` reports only tracked modifications, and a bundle is
+// archived from the filesystem rather than from the index -- so without a
+// status check a brand-new file is packed, summed and signed while the version
+// names the commit as though it described the tree. Reproduced before the fix:
+// `git describe --tags --long --dirty` returned `v1.4.0-0-g…` with an
+// untracked file sitting beside it.
+func TestAnUntrackedFileMakesTheTreeDirty(t *testing.T) {
+	dir := newRepository(t)
+
+	clean, err := release.DescribeRepository(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clean.Dirty {
+		t.Fatal("a clean checkout was reported dirty")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "untracked.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	described, err := release.DescribeRepository(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !described.Dirty {
+		t.Fatal("an untracked file left the tree looking clean, so a version " +
+			"could name a commit that does not contain what was packed")
+	}
+	if _, err := described.Version(false); err == nil {
+		t.Error("the version must be refused without --allow-dirty")
+	}
+
+	// An ignored file is not dirtiness: a vendor who gitignores their
+	// build output has said what they meant, and refusing over it would
+	// make --version-from-git unusable in the loop it exists for.
+	if err := os.Remove(filepath.Join(dir, "untracked.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("build-output\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", ".gitignore")
+	gitIn(t, dir, "commit", "-q", "-m", "ignore build output")
+	if err := os.WriteFile(filepath.Join(dir, "build-output"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ignored, err := release.DescribeRepository(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ignored.Dirty {
+		t.Error("an ignored file was treated as uncommitted work")
 	}
 }
 

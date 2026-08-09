@@ -50,6 +50,18 @@ func DescribeRepository(dir string) (GitDescription, error) {
 		return GitDescription{}, err
 	}
 
+	// `git describe --dirty` reports only *tracked* modifications, and a
+	// bundle is archived from the filesystem rather than from the index --
+	// so a new untracked file is packed, summed and signed while the
+	// version still names the commit as though it described the tree. The
+	// status check is what closes that: anything git would report, tracked
+	// or not, makes this build dirty.
+	dirty, err := workTreeDirty(dir)
+	if err != nil {
+		return GitDescription{}, err
+	}
+	d.Dirty = d.Dirty || dirty
+
 	// A second call rather than a --format on the first: `git describe`
 	// has no format that carries the commit date.
 	stamp, err := runGit(dir, "log", "-1", "--format=%ct")
@@ -81,6 +93,25 @@ func CommitTime(dir string) time.Time {
 		return time.Time{}
 	}
 	return time.Unix(seconds, 0).UTC()
+}
+
+// workTreeDirty reports whether git sees anything uncommitted in dir.
+//
+// Scoped to the directory rather than the repository, because that is what
+// gets packed: a vendor whose bundle lives in a monorepo should not be refused
+// over an edit somewhere else in the tree.
+//
+// `--untracked-files=all` rather than the default `normal`, which reports a
+// directory of new files as one entry -- enough to detect, but the explicit
+// spelling is what stops a future git default from narrowing this silently.
+// Ignored files stay ignored: `status` does not list them without --ignored,
+// and a vendor who gitignores their build output has said what they meant.
+func workTreeDirty(dir string) (bool, error) {
+	out, err := runGit(dir, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
 }
 
 // ParseDescribe reads `v1.4.0-7-g3be286c` and `v1.4.0-7-g3be286c-dirty`.

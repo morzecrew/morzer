@@ -52,9 +52,23 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 		},
 		// A support link is shown to an operator who is already in
 		// trouble, which is the worst moment to send them somewhere
-		// over plaintext.
+		// over plaintext -- or to a URL with no host, or to a string
+		// carrying terminal escape sequences, since it is printed to a
+		// terminal by `status` and by a failing `doctor`.
 		"a plaintext support url": {
 			func(m *Manifest) { m.Metadata.SupportURL = "http://support.example" },
+			"metadata.support_url",
+		},
+		"a support url with no host": {
+			func(m *Manifest) { m.Metadata.SupportURL = "https://" },
+			"metadata.support_url",
+		},
+		"a support url whose host is empty but path is not": {
+			func(m *Manifest) { m.Metadata.SupportURL = "https:///help" },
+			"metadata.support_url",
+		},
+		"a support url carrying an escape sequence": {
+			func(m *Manifest) { m.Metadata.SupportURL = "https://ok.example/\x1b[2J" },
 			"metadata.support_url",
 		},
 

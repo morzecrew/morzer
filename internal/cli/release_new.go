@@ -104,16 +104,39 @@ func writeScaffold(dir string, files map[string]string, dryRun bool) error {
 		return nil
 	}
 
+	// Written with a rollback rather than left where it fell. A half-written
+	// scaffold is worse than none: the retry meets the files the failed
+	// attempt created and refuses over them, so the operator has to work out
+	// which of the files in front of them this command wrote before they can
+	// try again.
+	//
+	// Only paths this call created are removed, and only on the failure
+	// path -- never a file that was already there, which is what the check
+	// above has just established cannot be any of these.
+	var written []string
 	for _, rel := range sortedScaffoldPaths(files) {
 		path := filepath.Join(dir, filepath.FromSlash(rel))
 		if err := atomicfs.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
+			return rollbackScaffold(written, err)
 		}
 		if err := atomicfs.WriteFile(path, []byte(files[rel]), 0o644); err != nil {
-			return err
+			return rollbackScaffold(written, err)
 		}
+		written = append(written, path)
 	}
 	return nil
+}
+
+// rollbackScaffold removes what a failed scaffold managed to write.
+//
+// A failure to clean up does not replace the failure that caused it: the
+// operator needs to know why the scaffold stopped, and "and also could not tidy
+// up" is a detail on that, not a substitute for it.
+func rollbackScaffold(written []string, cause error) error {
+	for _, path := range written {
+		_ = os.Remove(path)
+	}
+	return cause
 }
 
 func sortedScaffoldPaths(files map[string]string) []string {

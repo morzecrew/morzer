@@ -332,6 +332,49 @@ func TestStartPeriodDistinguishesASlowStartFromADeadProduct(t *testing.T) {
 	})
 }
 
+// blockingProber never answers; only the probe's own deadline ends it.
+type blockingProber struct{ kind domain.HealthCheckType }
+
+func (p *blockingProber) Type() domain.HealthCheckType { return p.kind }
+
+func (p *blockingProber) Check(ctx context.Context, spec ports.CheckSpec) (ports.HealthResult, error) {
+	<-ctx.Done()
+	return ports.HealthResult{Name: spec.Name(), OK: false, Message: "timed out"}, nil
+}
+
+// TestTheStartPeriodEndsTheWaitWithoutWaitingOutTheProbe.
+//
+// A start period shorter than the probe timeout, on a real clock. Before the
+// round was bounded, the deadline was only observed *between* rounds, so a
+// 20ms period on a 2s probe reported its failure 2.001s later -- the field
+// promises to say a product is dead rather than slow, and saying it two
+// seconds late is most of the way back to not saying it.
+func TestTheStartPeriodEndsTheWaitWithoutWaitingOutTheProbe(t *testing.T) {
+	spec := ports.CheckSpec{Check: domain.HealthCheck{
+		Name: "api", Type: domain.HealthHTTP,
+		Timeout:     domain.Duration(5 * time.Second),
+		StartPeriod: domain.Duration(50 * time.Millisecond),
+	}}
+
+	started := time.Now()
+	_, err := health.NewWaiter(&blockingProber{kind: domain.HealthHTTP}).
+		WithInterval(time.Millisecond).
+		WaitReady(context.Background(), []ports.CheckSpec{spec})
+	elapsed := time.Since(started)
+
+	if err == nil {
+		t.Fatal("a check that never answered was reported healthy")
+	}
+	if !strings.Contains(domain.AsError(err).Message, "start period") {
+		t.Errorf("the refusal is not the start-period one: %v", err)
+	}
+	// Generously bounded: what must not happen is waiting out the 5s probe.
+	if elapsed > 2*time.Second {
+		t.Errorf("the wait took %s for a 50ms start period, so the deadline is "+
+			"only being observed between rounds", elapsed.Round(time.Millisecond))
+	}
+}
+
 // TestOneSlowCheckDoesNotCondemnADeploymentStillStarting.
 //
 // A check with no declared period must keep the waiter waiting, or adding

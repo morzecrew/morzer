@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,10 +102,16 @@ func newReleaseArchiveCommand(app *App) *cobra.Command {
 func checkArchivable(app *App, rel domain.Release) error {
 	sums := filepath.Join(rel.Root, ports.SumsFileName)
 	sumsInfo, err := os.Stat(sums)
-	if err != nil {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return domain.ValidationError(domain.ErrNotFound,
 			"the bundle has no %s, so its contents cannot be attested", ports.SumsFileName).
 			WithHint("run `morzer release build %s` to write one", rel.Root)
+	case err != nil:
+		// Distinguished from absence: a file this command cannot read
+		// is not a file that is not there, and reporting the second
+		// sends the vendor to write one that already exists.
+		return domain.ValidationError(err, "cannot read %s", sums)
 	}
 
 	if err := checkBundleIntegrity(rel); err != nil {
@@ -112,7 +120,8 @@ func checkArchivable(app *App, rel domain.Release) error {
 
 	signature := filepath.Join(rel.Root, ports.SignatureFileName)
 	sigInfo, sigErr := os.Stat(signature)
-	if sigErr != nil {
+	switch {
+	case errors.Is(sigErr, fs.ErrNotExist):
 		// A warning rather than a refusal: whether a signature is
 		// required is the operator's policy (`require_signature`), and
 		// a vendor whose customers do not require one is not doing
@@ -122,6 +131,11 @@ func checkArchivable(app *App, rel domain.Release) error {
 			"warning: the bundle carries no %s, so operators requiring a signature "+
 				"will refuse it\n", ports.SignatureFileName)
 		return nil
+	case sigErr != nil:
+		// Not the warning: a signature that cannot be read is not a
+		// signature that is absent, and packing past it would ship an
+		// archive whose integrity evidence nobody checked.
+		return domain.ValidationError(sigErr, "cannot read %s", signature)
 	}
 
 	if sigInfo.ModTime().Before(sumsInfo.ModTime()) {

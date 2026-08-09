@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -192,7 +194,17 @@ func stampedVersion(stamp domain.Version, loaded domain.Release) domain.Version 
 func clearStaleSignature(app *App, dir string, force bool) error {
 	signature := filepath.Join(dir, ports.SignatureFileName)
 	if _, err := os.Stat(signature); err != nil {
-		return nil
+		// Only a confirmed absence means "there is no signature". Any
+		// other error -- a permission denied on the directory, an I/O
+		// failure -- would otherwise be read as "nothing to protect",
+		// and the build would regenerate the checksum list while
+		// leaving a signature that no longer covers it. That is the
+		// exact artifact this guard exists to prevent, produced by the
+		// guard itself.
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return domain.ValidationError(err, "cannot read %s", signature)
 	}
 
 	if !force {

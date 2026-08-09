@@ -191,6 +191,45 @@ func TestStampingRefusesWhenTheRewriteWouldLandTwice(t *testing.T) {
 	}
 }
 
+// TestAFailedStampLeavesTheManifestAsItFoundIt.
+//
+// Every failure after the manifest is written leaves a file the vendor did not
+// write, and one of them is reachable rather than theoretical: a VERSION file
+// that cannot be replaced leaves the manifest stamped and the two version
+// statements disagreeing, which the loader refuses outright. A detected fault
+// must not become a persisted one.
+func TestAFailedStampLeavesTheManifestAsItFoundIt(t *testing.T) {
+	dir := bundle(t, nil)
+	manifest := filepath.Join(dir, release.ManifestFileName)
+
+	before, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A directory where the version file belongs: the atomic write cannot
+	// rename over it, which is the shape a full disk or a permission
+	// failure takes without needing either.
+	if err := os.Remove(filepath.Join(dir, release.VersionFileName)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, release.VersionFileName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := release.Stamp(dir, mustVersion(t, "9.9.9")); err == nil {
+		t.Fatal("a stamp that could not write VERSION reported success")
+	}
+
+	after, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("a failed stamp left the manifest rewritten:\n%s", after)
+	}
+}
+
 // TestStampingRefusesAManifestItCannotRewrite rather than guessing.
 //
 // A build that stamped the wrong key would produce a bundle that loads,

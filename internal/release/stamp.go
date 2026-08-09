@@ -46,6 +46,21 @@ func Stamp(dir string, version domain.Version) error {
 		return err
 	}
 
+	// Everything after this point can fail, and every one of those failures
+	// leaves a manifest on disk that the vendor did not write. Restoring the
+	// original bytes is what keeps a *detected* fault from becoming a
+	// persisted one -- reachable, not theoretical: a VERSION file that
+	// cannot be replaced leaves the manifest stamped and the two disagreeing,
+	// which is a bundle that no longer loads at all.
+	restore := func(cause error) error {
+		if err := atomicfs.WriteFile(manifestPath, data, 0o644); err != nil {
+			return domain.Internal(err,
+				"%s could not be restored after a failed stamp, so it now reads %s",
+				ManifestFileName, version)
+		}
+		return cause
+	}
+
 	// Re-read through the real loader.
 	//
 	// Defence in depth rather than the working guard, and worth being
@@ -59,16 +74,23 @@ func Stamp(dir string, version domain.Version) error {
 	// catch the next spelling of "the edit was plausible and wrong".
 	m, err := LoadManifest(manifestPath)
 	if err != nil {
-		return domain.ValidationError(err,
-			"stamping %s produced a manifest that no longer loads", version)
+		return restore(domain.ValidationError(err,
+			"stamping %s produced a manifest that no longer loads", version))
 	}
 	if !m.Metadata.Version.Equal(version) {
-		return domain.Internal(nil,
-			"stamping wrote %s but the manifest reads %s", version, m.Metadata.Version)
+		return restore(domain.Internal(nil,
+			"stamping wrote %s but the manifest reads %s", version, m.Metadata.Version))
 	}
 
-	return atomicfs.WriteFile(
-		filepath.Join(dir, VersionFileName), []byte(version.String()+"\n"), 0o644)
+	// The version file last, and its failure restores the manifest too. The
+	// loader refuses a bundle whose two version statements disagree, so a
+	// stamped manifest beside an unstamped VERSION is worse than either
+	// alone: it is a bundle that will not load.
+	if err := atomicfs.WriteFile(
+		filepath.Join(dir, VersionFileName), []byte(version.String()+"\n"), 0o644); err != nil {
+		return restore(err)
+	}
+	return nil
 }
 
 // stampManifest replaces metadata.version in a manifest's text.

@@ -80,13 +80,21 @@ func (v Version) Metadata() string {
 	return v.sv.Metadata()
 }
 
-// NextPatch is the version whose patch is one higher, with no prerelease and no
+// NextPatch is the next patch release after v, with no prerelease and no
 // metadata.
 //
-// It exists for the VCS version scheme: a prerelease sorts *below* its own
-// release, so a development build named after the tag it follows would sort
-// behind the release it comes after. Guessing the next patch is what makes it
-// sort forward.
+// "Next patch" rather than "patch plus one", because that is what the semver
+// library does and the difference matters: for a *prerelease* input it drops
+// the prerelease and leaves the patch alone, so 1.4.0-rc.1 becomes 1.4.0 rather
+// than 1.4.1. That is the right answer -- 1.4.0-rc.1 is on its way to 1.4.0 --
+// and it is why the VCS scheme refuses a prerelease tag rather than relying on
+// this: which release an rc is on its way to is a question about intent, not
+// arithmetic.
+//
+// It exists for that scheme: a prerelease sorts *below* its own release, so a
+// development build named after the tag it follows would sort behind the
+// release it comes after. Guessing the next patch is what makes it sort
+// forward.
 func (v Version) NextPatch() Version {
 	if v.sv == nil {
 		return Version{}

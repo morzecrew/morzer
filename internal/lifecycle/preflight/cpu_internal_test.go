@@ -31,6 +31,13 @@ func TestQuotaCPUs(t *testing.T) {
 		{"one field", "100000\n", 0, false},
 		{"three fields", "100000 100000 100000\n", 0, false},
 		{"a non-numeric quota", "lots 100000\n", 0, false},
+		// ParseFloat accepts these, and NaN survives every ordering
+		// comparison -- so before they were rejected, "NaN 100000"
+		// reported one CPU rather than no answer.
+		{"a NaN quota", "NaN 100000\n", 0, false},
+		{"an infinite quota", "Inf 100000\n", 0, false},
+		{"a spelled-out infinite quota", "Infinity 100000\n", 0, false},
+		{"a NaN period", "100000 NaN\n", 0, false},
 		{"a zero period", "100000 0\n", 0, false},
 		{"a negative period", "100000 -100000\n", 0, false},
 		{"a negative quota", "-100000 100000\n", 0, false},

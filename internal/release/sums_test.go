@@ -128,6 +128,51 @@ func TestSumsCanBeRegeneratedOverThemselves(t *testing.T) {
 	}
 }
 
+// TestNamesTheChecksumFormatCannotCarryAreRefused.
+//
+// `sha256sum`'s format recovers a path by splitting on whitespace, so a name
+// with a tab or a double space comes back different from the one written. The
+// failure without this is not a wrong verification -- it is fail-closed -- but
+// it lands on a customer's machine as "missing or unreadable", about a file the
+// vendor can see perfectly well. Refusing on the vendor's machine is the same
+// information, four steps earlier.
+func TestNamesTheChecksumFormatCannotCarryAreRefused(t *testing.T) {
+	refused := []string{
+		"two  spaces.txt",
+		"a\tb.txt",
+		" leading.txt",
+		"trailing.txt ",
+		"*binary-marker.txt",
+		"back\\slash.txt",
+	}
+	for _, name := range refused {
+		t.Run(name, func(t *testing.T) {
+			dir := bundle(t, nil)
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+				t.Skipf("this filesystem will not hold %q: %v", name, err)
+			}
+			if err := release.WriteSums(dir); err == nil {
+				t.Fatalf("%q was written into the checksum list", name)
+			}
+		})
+	}
+
+	// And a single space is fine, because it round-trips and refusing it
+	// would be inventing a restriction the format does not have.
+	t.Run("one space", func(t *testing.T) {
+		dir := bundle(t, nil)
+		if err := os.WriteFile(filepath.Join(dir, "release notes.txt"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := release.WriteSums(dir); err != nil {
+			t.Fatalf("a name with one space was refused: %v", err)
+		}
+		if err := checksum.VerifySumsFile(dir); err != nil {
+			t.Fatalf("a name with one space does not verify: %v", err)
+		}
+	})
+}
+
 // TestSumsLineOrderMatchesTheArchiveOrder.
 //
 // Two orderings of one tree would make the list's bytes depend on how the
