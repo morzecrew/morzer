@@ -1,9 +1,9 @@
 # RFC 0018 — The pre-1.0 manifest surface
 
-- **Status:** 🚧 In progress — P1 shipped 2026-08-08 (the two-pass decode) and
-  P2 shipped 2026-08-09 (the five fields). P3 (`bundle.uncompressed_size`)
-  follows [0011](0011-bundled-container-images.md)'s schedule, since it is only
-  useful once 0011 reads it. Unresolved questions 2 and 3 are resolved into
+- **Status:** ✅ Complete — P1 shipped 2026-08-08 (the two-pass decode), P2 on
+  2026-08-09 (the five fields) and P3 the same day
+  (`bundle.uncompressed_size`), alongside the
+  [0011](0011-bundled-container-images.md) P1 read that gives it a purpose. Unresolved questions 2 and 3 are resolved into
   decisions 10 and 11. Written as a deliberate one-time sweep
   of the release manifest before the first tag, because manifest decoding is
   strict and **recursive** (verified, §3), so every field at every level is
