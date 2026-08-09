@@ -817,11 +817,25 @@ func TestFetchFileRefusesAFileTheManifestDoesNotName(t *testing.T) {
 	remote, err := fake.Push(ctx, ref, local, id)
 	require.NoError(t, err)
 
+	// An object that genuinely sits under this backup's prefix and is not in
+	// its manifest. Without one, this test passes on a `not found` from the
+	// store and says nothing about the manifest check -- which is how the
+	// first version of it passed with that check deleted.
+	planted := strings.Trim(ref.Path, "/") + "/" + id + "/planted.age"
+	fake.SetObject(planted, []byte("another installation's identity"))
+
+	dest := filepath.Join(t.TempDir(), id)
+	err = fake.FetchFile(ctx, remote, "planted.age", dest)
+	require.Error(t, err,
+		"an object the manifest does not name was served; a named key is not a "+
+			"bound file, and this is how another installation's export arrives "+
+			"under the right filename")
+	assert.NoFileExists(t, filepath.Join(dest, "planted.age"))
+
+	// And the traversal is refused too, by a different guard: the
+	// destination is resolved rather than joined blindly.
 	err = fake.FetchFile(ctx, remote, "../../etc/shadow", filepath.Join(t.TempDir(), id))
 	require.Error(t, err, "a path outside the backup was fetched")
-
-	err = fake.FetchFile(ctx, remote, "database.sql.age", filepath.Join(t.TempDir(), id))
-	require.Error(t, err, "a component this backup does not have was fetched")
 }
 
 // manifestBytes is how large the backup's own header is on the target, so the

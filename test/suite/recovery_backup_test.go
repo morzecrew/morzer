@@ -3,6 +3,8 @@ package suite
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -20,6 +22,7 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // RFC 0017's claim is that a recovery key and a backup are enough — that the
@@ -262,6 +265,21 @@ func TestTheRetiredSecretsComponentIsGone(t *testing.T) {
 	// review precisely because it can disagree with the state.
 	assert.FileExists(t, filepath.Join(ref.Path, "installation.yaml"+agecrypt.Extension),
 		"config is forensic and stays; only secrets was subsumed")
+
+	// And asking for it *by name* contributes nothing, which is the half
+	// the default scope cannot test: `secrets` is no longer in
+	// AllComponents, so the retirement there is enforced by the component
+	// never being selected. A caller that names it explicitly -- which the
+	// CLI still accepts, because a restore reads backups this manager did
+	// not write -- reaches the code that must also decline.
+	explicit, err := origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: []ports.Component{ports.ComponentSecrets, ports.ComponentManifest},
+		Reason:     "manual",
+	}, nil)
+	require.NoError(t, err, "naming a retired component must not be an error")
+	assert.NoFileExists(t, filepath.Join(explicit.Path, "secrets.sops.yaml"+agecrypt.Extension),
+		"`--component secrets` wrote the secret state again, so it is in the backup "+
+			"twice: once here and once inside the export")
 }
 
 // TestTheSchemaVersionMovedWithTheComponent.
@@ -613,4 +631,183 @@ func swapFiles(t *testing.T, a, b string) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(a, db, 0o600))
 	require.NoError(t, os.WriteFile(b, da, 0o600))
+}
+
+// TestARestoreDoesNotTryToReadTheExportComponent.
+//
+// Found by the acceptance run rather than by design: the export is encrypted to
+// the recovery keys alone, and `restore` decrypts every component with the
+// machine's identity. So a perfectly good backup failed at the step that puts
+// the data back, having already stopped the services -- the worst place in the
+// operation to discover it.
+//
+// Skipping it is also correct on its own terms. A restore puts back data;
+// identity comes from `import`, before it, with different preconditions. A
+// restore hook has no business being handed the installation's identity.
+func TestARestoreDoesNotTryToReadTheExportComponent(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	_, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+	origin.wireBackupEngine(ctx)
+
+	ref, err := origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: ports.AllComponents, Reason: "manual",
+	}, nil)
+	require.NoError(t, err)
+	require.FileExists(t, filepath.Join(ref.Path, "export.yaml"+agecrypt.Extension),
+		"the backup must carry an export, or this proves nothing")
+
+	inst, err := origin.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+
+	// The machine's own identity, which is the default and the one that
+	// cannot open the export.
+	err = origin.Deps.Backup.Restore(ctx, ref, ports.RestoreOptions{
+		Force:                true,
+		TargetInstallationID: inst.ID,
+	})
+	require.NoError(t, err,
+		"a restore failed on a backup it should be able to read: the export is "+
+			"encrypted to the recovery keys, and staging it asks the machine for a "+
+			"key it does not have")
+}
+
+// TestIdentityComesOffATargetWithoutTheBackup.
+//
+// The remote half of the claim, and the one an operator actually uses: the
+// machine is gone, the backups are in a bucket, and what they have is an
+// access key and a recovery key. Fetching the archive to read four kilobytes
+// of it would cost an hour at the worst possible moment.
+//
+// The byte count is the assertion. A correct identity obtained by downloading
+// everything passes every equality check and defeats the point.
+func TestIdentityComesOffATargetWithoutTheBackup(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+	require.NoError(t, origin.Deps.Secrets.Set(ctx, "db_password", domain.NewSecret("v")))
+	origin.wireBackupEngine(ctx)
+
+	fake := fakes.NewBackupTarget()
+	origin.Deps.Targets = fake
+
+	ref, err := origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: ports.AllComponents, Reason: "manual",
+	}, nil)
+	require.NoError(t, err)
+
+	targetRef := ports.TargetRef{Scheme: "memory", Path: "/backups"}
+	_, err = fake.Push(ctx, targetRef, ref.Path, ref.ID)
+	require.NoError(t, err)
+
+	// The whole backup is on the target; only a fraction of it may move.
+	total := backupBytesOn(t, fake)
+	fake.ResetBytesRead()
+
+	found, err := ops.ExportFromRemoteBackup(ctx, origin.Deps,
+		ops.TargetOptions{URL: "memory:///backups"}, "", recoveryPath)
+	require.NoError(t, err, "identity must be readable off a target")
+	assert.Equal(t, ref.ID, found.Backup.ID)
+	assert.Equal(t, "demo", found.Export.Installation.Product)
+	assert.NotEmpty(t, found.Export.Secrets.State, "the secret state must have come with it")
+
+	moved := fake.BytesRead()
+	assert.Less(t, moved, total,
+		"reading an identity transferred the whole backup (%d of %d bytes)", moved, total)
+
+	// And specifically: the volume and database components stayed put. The
+	// comparison above would still pass if a manifest happened to be large,
+	// so the components that dominate a real backup are named.
+	manifest, err := origin.Deps.Backup.Inspect(ctx, ref)
+	require.NoError(t, err)
+	var identityBytes int64
+	for _, c := range manifest.Components {
+		if c.Component == ports.ComponentExport {
+			identityBytes = c.Size
+		}
+	}
+	require.NotZero(t, identityBytes, "the backup carries no export to measure")
+	assert.Less(t, moved, identityBytes*4,
+		"more than the identity document and a manifest crossed the network")
+}
+
+// backupBytesOn is everything the target holds, which is what a naive
+// implementation would transfer.
+func backupBytesOn(t *testing.T, fake *fakes.BackupTarget) int64 {
+	t.Helper()
+	var total int64
+	for _, key := range fake.Objects() {
+		data, ok := fake.Object(key)
+		require.True(t, ok)
+		total += int64(len(data))
+	}
+	require.NotZero(t, total, "nothing was pushed to the target")
+	return total
+}
+
+// TestAnUnencryptedExportComponentIsRefused.
+//
+// The recovery key is what anchors this whole path: an export the key never
+// had to open is one an attacker with write access to a backup store could
+// have written. Nothing produces an unencrypted component, which is exactly
+// why refusing one costs nothing and closes the shape.
+func TestAnUnencryptedExportComponentIsRefused(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+	origin.wireBackupEngine(ctx)
+
+	ref, err := origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: ports.AllComponents, Reason: "manual",
+	}, nil)
+	require.NoError(t, err)
+
+	// A backup whose export is plaintext and whose manifest says so, with
+	// the digest updated so the binding check is not what refuses it.
+	plantPlaintextExport(t, ref.Path)
+
+	_, err = ops.ExportFromBackup(origin.Paths, ops.ExportFromBackupOptions{
+		BackupID:     ref.ID,
+		IdentityFile: recoveryPath,
+	})
+	require.Error(t, err, "an unencrypted identity document was accepted")
+	assert.Contains(t, err.Error(), "not encrypted")
+}
+
+// plantPlaintextExport replaces the export with a readable one, consistently.
+func plantPlaintextExport(t *testing.T, dir string) {
+	t.Helper()
+
+	path := filepath.Join(dir, ports.BackupManifestFileName)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var m ports.BackupManifest
+	require.NoError(t, json.Unmarshal(data, &m))
+
+	forged := []byte("api_version: v1alpha1\nkind: installation-export\n")
+	for i, c := range m.Components {
+		if c.Component != ports.ComponentExport {
+			continue
+		}
+		require.NoError(t, os.Remove(filepath.Join(dir, c.Path)))
+		name := strings.TrimSuffix(c.Path, agecrypt.Extension)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), forged, 0o600))
+
+		sum := sha256.Sum256(forged)
+		m.Components[i].Path = name
+		m.Components[i].Encryption = ports.EncryptionNone
+		m.Components[i].Size = int64(len(forged))
+		m.Components[i].SHA256 = hex.EncodeToString(sum[:])
+	}
+
+	out, err := json.MarshalIndent(m, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, out, 0o600))
 }

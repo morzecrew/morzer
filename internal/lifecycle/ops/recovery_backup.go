@@ -269,13 +269,23 @@ func readExportComponent(
 	}
 	defer func() { _ = in.Close() }()
 
-	var plain bytes.Buffer
+	// An unencrypted export is refused rather than read.
+	//
+	// Nothing produces one -- the component has existed only since backups
+	// began encrypting everything but their manifest -- so this costs
+	// nothing today and closes the one shape where an attacker with write
+	// access to a backup store could hand back an identity the recovery key
+	// never had to open. The key is what anchors this whole path; a
+	// component that does not need it is not on it.
 	if record.Encryption == ports.EncryptionNone {
-		if _, err := plain.ReadFrom(in); err != nil {
-			return domain.InstallationExport{}, domain.BackupError(err,
-				"cannot read the installation export in backup %s", m.ID)
-		}
-	} else if err := agecrypt.Decrypt(&plain, in, identityFile); err != nil {
+		return domain.InstallationExport{}, domain.BackupError(domain.ErrValidation,
+			"the installation export in backup %s is not encrypted", m.ID).
+			WithHint("an export component is always encrypted to the recovery keys; " +
+				"one that is not did not come from this manager")
+	}
+
+	var plain bytes.Buffer
+	if err := agecrypt.Decrypt(&plain, in, identityFile); err != nil {
 		return domain.InstallationExport{}, domain.BackupError(err,
 			"cannot decrypt the installation export in backup %s", m.ID).
 			WithHint("the export is encrypted to this installation's recovery keys " +
@@ -403,6 +413,14 @@ func ExportFromRemoteBackup(
 
 	// Re-read from what was fetched rather than trusting the listing: the
 	// manifest that binds the component is the one that travelled with it.
+	//
+	// The identity half of this check cannot currently fire, and it is kept
+	// deliberately. `List` derives each RemoteRef from the manifest's own ID
+	// field, so a manifest whose ID disagrees with its key makes the *fetch*
+	// address a key that does not exist and fail first. What the check
+	// guards is a future FetchFile that resolves keys some other way -- and
+	// the count half, which catches one writing somewhere other than where
+	// it was told.
 	fetched, err := readBackupManifests(staging)
 	if err != nil {
 		return BackupExport{}, err

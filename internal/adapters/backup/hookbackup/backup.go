@@ -1008,6 +1008,21 @@ func (e *Engine) stage(
 			!componentSelected(opts.Components, ports.ComponentVolumes) {
 			continue
 		}
+		// The export is never staged, and this is the one component
+		// where that is a correctness requirement rather than a saving.
+		// It is encrypted to the recovery keys alone, so the machine
+		// running the restore *cannot* decrypt it -- and a restore that
+		// tried would fail at the point of putting the data back, on a
+		// backup that is perfectly good.
+		//
+		// Nor should it be staged if it could be: a restore puts back
+		// data, identity comes from `import`, and the two have
+		// different preconditions. Handing a restore hook the
+		// installation's identity would be handing it something it has
+		// no business reading.
+		if c.Component == ports.ComponentExport {
+			continue
+		}
 		encrypted = append(encrypted, c)
 	}
 	if len(encrypted) == 0 {

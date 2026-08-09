@@ -134,6 +134,19 @@ func (t *BackupTarget) Objects() []string {
 	return out
 }
 
+// SetObject writes an object directly, bypassing Push.
+//
+// It arranges the one state a well-behaved client cannot produce and a target
+// can still be in: an object sitting under a backup's prefix that the backup's
+// own manifest does not name. That is a botched sync, or an attacker with
+// write access to the bucket — and it is the state that makes "fetch this
+// named file" different from "fetch a file belonging to this backup".
+func (t *BackupTarget) SetObject(key string, data []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.objects[key] = data
+}
+
 // Object returns one stored object, so a test can measure a specific one
 // rather than inferring its size.
 func (t *BackupTarget) Object(key string) ([]byte, bool) {
