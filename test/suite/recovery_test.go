@@ -142,6 +142,14 @@ func (m *machine) wireBackupEngine(ctx context.Context) {
 		Paths:          m.Paths,
 		ManagerVersion: "1.0.0",
 
+		// The identity document, built the way the CLI builds it. A
+		// backup that carried no export would make every recovery test
+		// below a test of the export *file* path, which is the path
+		// RFC 0017 exists to stop being the only one.
+		Export: func(ctx context.Context) (domain.InstallationExport, bool, error) {
+			return ops.ExportForBackup(ctx, m.Deps)
+		},
+
 		// The real recipient list, so the backups these tests take are
 		// encrypted to the same keys as the secret state -- which is
 		// the whole point of the arrangement and what makes the

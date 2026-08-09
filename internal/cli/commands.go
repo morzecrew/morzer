@@ -805,8 +805,11 @@ func parseComponents(names []string) ([]ports.Component, error) {
 		return nil, nil
 	}
 
+	// Every name the manager understands, not every name it writes: a
+	// restore of an older backup may legitimately name a retired component,
+	// and refusing the word would make the retirement a refusal to restore.
 	valid := map[string]ports.Component{}
-	for _, c := range ports.AllComponents {
+	for _, c := range ports.KnownComponents {
 		valid[string(c)] = c
 	}
 

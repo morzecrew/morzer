@@ -797,6 +797,15 @@ func (a *App) attachBackupEngine(ctx context.Context, opts ...backupEngineOption
 		// `morzer backup --no-downtime` for the other choice.
 		AllowDowntime: true,
 
+		// The identity document the backup carries, built by the same
+		// function `installation export` uses. One producer, which is
+		// the whole point: the backup used to copy the operator-facing
+		// installation.yaml, and `doctor` ships a check for that file
+		// disagreeing with the authoritative state.
+		Export: func(ctx context.Context) (domain.InstallationExport, bool, error) {
+			return ops.ExportForBackup(ctx, d)
+		},
+
 		// A backup is encrypted to whoever can already read this
 		// deployment's secrets -- this machine's key plus whatever
 		// offline and operator keys have been added. Read at backup

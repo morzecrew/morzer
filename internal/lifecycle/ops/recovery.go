@@ -40,16 +40,6 @@ func Export(ctx context.Context, d *Deps, opts ExportOptions) (Result, error) {
 			WithHint("run `morzer installation export <path>`")
 	}
 
-	inst, err := d.loadInstallation(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-
-	store, err := d.recoverableSecrets()
-	if err != nil {
-		return Result{}, err
-	}
-
 	exists, err := atomicfs.Exists(opts.Path)
 	if err != nil {
 		return Result{}, err
@@ -59,36 +49,11 @@ func Export(ctx context.Context, d *Deps, opts ExportOptions) (Result, error) {
 			WithHint("choose another path, or pass --force to overwrite it")
 	}
 
-	state, err := store.ExportState(ctx)
+	export, err := BuildExport(ctx, d)
 	if err != nil {
 		return Result{}, err
 	}
-
-	recipients, err := store.Recipients(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-
-	export := domain.InstallationExport{
-		APIVersion:     domain.APIVersionV1Alpha1,
-		Kind:           domain.KindInstallationExport,
-		ExportedAt:     domain.NewTime(d.now()),
-		ManagerVersion: d.ManagerVersion,
-		SourceHost:     hostname(),
-		Installation:   inst,
-		Secrets: domain.ExportedSecrets{
-			State:      string(state),
-			Recipients: exportRecipients(recipients),
-		},
-		Release: currentExportedRelease(ctx, d),
-	}
-
-	// Validated before it is written, not on the way in. An export that
-	// only turns out to be unusable during a recovery is worse than no
-	// export at all, because the operator stopped looking for alternatives.
-	if err := export.Validate(); err != nil {
-		return Result{}, err
-	}
+	inst := export.Installation
 
 	data, err := yaml.Marshal(export)
 	if err != nil {
@@ -135,6 +100,112 @@ func exportSummary(e domain.InstallationExport, path string) map[string]any {
 		out["release"] = e.Release
 	}
 	return out
+}
+
+// BuildExport assembles the document `installation export` writes.
+//
+// Exported because a backup carries the same document, and RFC 0017 decision 2
+// makes that the *same* document rather than a second one that resembles it.
+// Two producers of a recovery payload is the situation that RFC was written to
+// fix: the backup used to copy the operator-facing `installation.yaml`, which
+// this codebase already ships a `doctor` check for because it drifts from the
+// authoritative state.
+//
+// So there is one builder, and the equivalence is pinned by a test that
+// decrypts a backup's component and compares it against this function's output
+// on the same machine at the same moment.
+//
+// It validates before returning. An export that only turns out to be unusable
+// during a recovery is worse than no export at all, because the operator
+// stopped looking for alternatives — and a backup is the artifact least likely
+// to be checked before it is needed.
+func BuildExport(ctx context.Context, d *Deps) (domain.InstallationExport, error) {
+	inst, err := d.loadInstallation(ctx)
+	if err != nil {
+		return domain.InstallationExport{}, err
+	}
+
+	store, err := d.recoverableSecrets()
+	if err != nil {
+		return domain.InstallationExport{}, err
+	}
+
+	state, err := store.ExportState(ctx)
+	if err != nil {
+		return domain.InstallationExport{}, err
+	}
+
+	recipients, err := store.Recipients(ctx)
+	if err != nil {
+		return domain.InstallationExport{}, err
+	}
+
+	export := domain.InstallationExport{
+		APIVersion:     domain.APIVersionV1Alpha1,
+		Kind:           domain.KindInstallationExport,
+		ExportedAt:     domain.NewTime(d.now()),
+		ManagerVersion: d.ManagerVersion,
+		SourceHost:     hostname(),
+		Installation:   inst,
+		Secrets: domain.ExportedSecrets{
+			State:      string(state),
+			Recipients: exportRecipients(recipients),
+		},
+		Release: currentExportedRelease(ctx, d),
+	}
+
+	if err := export.Validate(); err != nil {
+		return domain.InstallationExport{}, err
+	}
+	return export, nil
+}
+
+// ExportForBackup builds the export a backup carries, or reports that this
+// installation has none to carry.
+//
+// The second return is not an error because it is not a failure. An
+// installation created with `--no-recovery-recipient` has no offline key to
+// encrypt an identity bundle to, and RFC 0017 decision 11 says such a backup
+// gets no export component rather than one encrypted to the machine's own key
+// -- which would be readable by exactly the key that dies with the machine,
+// the appearance of a recovery path with none of the substance.
+//
+// The check is made on the recipients, before the document is assembled,
+// because BuildExport *refuses* an export whose only recipient is the
+// exporting machine. Letting that refusal reach the backup engine would turn a
+// deliberate operator choice into a failed backup, on every backup, for ever.
+//
+// A secret provider that cannot export at all is the same shape of answer: it
+// is a property of the configuration rather than a fault, and a deployment
+// using one still takes backups.
+func ExportForBackup(ctx context.Context, d *Deps) (domain.InstallationExport, bool, error) {
+	store, err := d.recoverableSecrets()
+	if err != nil {
+		return domain.InstallationExport{}, false, nil
+	}
+
+	recipients, err := store.Recipients(ctx)
+	if err != nil {
+		return domain.InstallationExport{}, false, err
+	}
+	if !hasRecoveryRecipient(recipients) {
+		return domain.InstallationExport{}, false, nil
+	}
+
+	export, err := BuildExport(ctx, d)
+	if err != nil {
+		return domain.InstallationExport{}, false, err
+	}
+	return export, true, nil
+}
+
+func hasRecoveryRecipient(in []ports.Recipient) bool {
+	for _, r := range in {
+		if r.Kind == ports.RecipientRecovery {
+			return true
+		}
+	}
+	return false
 }
 
 // exportRecipients converts port recipients into the document's own

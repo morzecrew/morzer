@@ -48,31 +48,71 @@ func newInstallationExportCommand(app *App) *cobra.Command {
 }
 
 func newInstallationImportCommand(app *App) *cobra.Command {
-	var identity string
+	var (
+		identity   string
+		fromBackup bool
+	)
 
 	cmd := &cobra.Command{
-		Use:   "import <path>",
+		Use:   "import [<path> | --from-backup [<id>]]",
 		Short: "Rebuild this machine from an export and an offline recovery key",
 		Long: "Restores the installation with its ORIGINAL id, so backups taken by the\n" +
 			"machine that was lost remain restorable. Generates a new machine key for\n" +
 			"this host and revokes the old one.\n\n" +
+			"The identity comes from an export file, or with --from-backup out of a\n" +
+			"backup you already have — every backup carries one, encrypted to the\n" +
+			"recovery keys alone, so a recovery key and a backup are enough.\n\n" +
 			"It does not install a release and does not restore data. The sequence is:\n" +
 			"import, then `morzer update <bundle>`, then `morzer restore`.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// With --from-backup the argument is a backup id; without
+			// it, the path of an export file. One positional, two
+			// meanings, disambiguated by the flag that is already
+			// there — which is what keeps `--from-backup` usable with
+			// no id at all, the case the design treats as ordinary.
+			if !fromBackup && len(args) == 0 {
+				return domain.Usage("no export was given").
+					WithHint("pass the path to an export file, or --from-backup to " +
+						"read the identity out of a backup you already have")
+			}
+
 			if identity == "" {
 				return domain.Usage("an offline recovery identity is required").
 					WithHint("pass --identity <file>, the private key printed by " +
 						"`morzer secret recipients generate-recovery-key`")
 			}
 
-			// The export is read before the paths are built: every
+			// The export is read before the paths are rebuilt: every
 			// managed directory derives from the product name, and
-			// on a rebuilt machine this file is the only place it is
-			// written down.
-			export, err := ops.LoadExport(args[0])
-			if err != nil {
-				return err
+			// on a rebuilt machine the export is the only place it
+			// is written down.
+			var (
+				export domain.InstallationExport
+				source string
+				notes  []string
+			)
+			if fromBackup {
+				id := ""
+				if len(args) == 1 {
+					id = args[0]
+				}
+				found, err := ops.ExportFromBackup(app.Deps.Paths,
+					ops.ExportFromBackupOptions{
+						BackupID:     id,
+						IdentityFile: identity,
+					})
+				if err != nil {
+					return err
+				}
+				export, source = found.Export, "backup "+found.Backup.ID
+				notes = ops.DescribeBackupExport(found)
+			} else {
+				var err error
+				if export, err = ops.LoadExport(args[0]); err != nil {
+					return err
+				}
+				source = args[0]
 			}
 
 			app.Flags.product = export.Installation.Product
@@ -80,15 +120,22 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			err = app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+			err := app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				return ops.Import(ctx, app.Deps, ops.ImportOptions{
 					Options:      app.operationOptions(),
-					SourcePath:   args[0],
+					SourcePath:   source,
 					Export:       export,
 					IdentityFile: identity,
 				})
 			})
 			if err == nil && app.json == nil && !app.Flags.quiet {
+				// Where the identity came from, before the next
+				// steps: an operator who imported the wrong
+				// backup's identity has to learn it here rather
+				// than from a product that will not start.
+				for _, note := range notes {
+					fmt.Fprintf(app.Stream.Err, "%s\n", note)
+				}
 				printImportNextSteps(app, export)
 			}
 			return err
@@ -97,6 +144,9 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 
 	cmd.Flags().StringVar(&identity, "identity", "",
 		"private age identity that can decrypt the export")
+	cmd.Flags().BoolVar(&fromBackup, "from-backup", false,
+		"read the identity out of a backup rather than an export file; "+
+			"with no id, the newest backup that carries one")
 	return cmd
 }
 
