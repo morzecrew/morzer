@@ -198,6 +198,10 @@ func TestRepositoryPathIsCosmeticButHasToBeLegal(t *testing.T) {
 		{"library/postgres@" + appDigest, "library/postgres"},
 		// A tag is not part of the path.
 		{"postgres:17@" + appDigest, "postgres"},
+		// A daemon refuses an uppercase repository name, so the path is
+		// lowered. Without a case here, deleting strings.ToLower would
+		// leave this table green.
+		{"registry.example/Demo/App@" + appDigest, "demo/app"},
 		// Not a host with a port: a registry host needs a path after it
 		// to be one, so by Docker's own grammar this is the repository
 		// `registry.example` with the tag `5000`. Kept because the
@@ -267,5 +271,62 @@ func TestAFailedTagIsReportedRatherThanSwallowed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "locally") {
 		t.Errorf("the failure does not say naming was what went wrong: %v", err)
+	}
+}
+
+// TestARemoteDaemonIsRefusedBeforeAnythingIsServed.
+//
+// A bundle's images are served from this machine's loopback, so a daemon on
+// another host cannot fetch them however healthy everything else is. The
+// refusal has to arrive before a port is bound and before the operator has
+// waited: a connection error minutes later gives them no reason to suspect
+// their Docker context.
+func TestARemoteDaemonIsRefusedBeforeAnythingIsServed(t *testing.T) {
+	remote := map[string]bool{
+		"tcp://10.0.0.5:2376":                       true,
+		"ssh://deploy@build.example":                true,
+		"npipe:////./pipe/dockerDesktopLinuxEngine": true,
+
+		// A local socket proves nothing either way, so it must not be
+		// refused: it is what an ordinary installation has.
+		"unix:///var/run/docker.sock": false,
+		"fd://":                       false,
+		"":                            false,
+	}
+
+	for host, refuse := range remote {
+		t.Run(host, func(t *testing.T) {
+			t.Setenv("DOCKER_HOST", host)
+
+			runner := exec.NewScripted()
+			runner.OnExit("image inspect", 1, "Error: No such image")
+			r := New(runner)
+
+			// A directory that is not a layout: reaching it at all
+			// means the refusal did not come first.
+			err := r.IngestImages(context.Background(), t.TempDir(), []string{appRef})
+
+			if !refuse {
+				// It still fails -- there is no layout -- but not
+				// for this reason.
+				if err != nil && strings.Contains(err.Error(), "another host") {
+					t.Errorf("a local socket was refused as remote: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("a remote daemon was accepted")
+			}
+			if !strings.Contains(err.Error(), "another host") {
+				t.Errorf("the refusal does not name the problem: %v", err)
+			}
+			if !strings.Contains(domain.AsError(err).Hint, "DOCKER_HOST") {
+				t.Errorf("the remedy does not name the variable that set this: %q",
+					domain.AsError(err).Hint)
+			}
+			if runner.Ran("pull") {
+				t.Error("a pull was attempted against a daemon that cannot reach us")
+			}
+		})
 	}
 }

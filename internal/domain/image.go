@@ -150,13 +150,29 @@ func (s ImageSpec) LocalAlias() (string, bool) {
 	if !ok {
 		return "", false
 	}
-	repo := s.Ref[:strings.LastIndex(s.Ref, "@")]
+	// "sha256:abc" becomes "sha256-abc": a tag may not contain a colon,
+	// which is the character separating it from the repository.
+	return RepositoryOf(s.Ref) + ":" +
+		localAliasPrefix + strings.ReplaceAll(digest, ":", "-"), true
+}
 
-	// A reference may carry a tag as well as a digest --
-	// `postgres:17@sha256:...` is legal and the pinning rule permits it --
-	// and appending a second tag to it would produce `postgres:17:morzer-…`,
-	// which names nothing. The tag is whatever follows a ":" in the last
-	// path segment; a ":" earlier is a registry's port.
+// RepositoryOf is a reference with its digest and its tag removed.
+//
+// One definition, for the same reason Digest and ShortImageRef have one: the
+// alias builder needs it to append a tag, and the ingest needs it to address
+// the loopback server, and two implementations of "where does the tag end"
+// agree right up until one of them is edited.
+//
+// The subtlety both need is the same. A reference may carry a tag *and* a
+// digest -- `postgres:17@sha256:…` is legal and the pinning rule permits it --
+// while a colon may equally be a registry's port. The tag is whatever follows
+// a colon in the last path segment; a colon before the last slash is a port.
+func RepositoryOf(ref string) string {
+	repo := ref
+	if at := strings.LastIndex(repo, "@"); at > 0 {
+		repo = repo[:at]
+	}
+
 	segment := repo
 	if slash := strings.LastIndex(repo, "/"); slash >= 0 {
 		segment = repo[slash+1:]
@@ -164,10 +180,7 @@ func (s ImageSpec) LocalAlias() (string, bool) {
 	if colon := strings.LastIndex(segment, ":"); colon >= 0 {
 		repo = repo[:len(repo)-len(segment)+colon]
 	}
-
-	// "sha256:abc" becomes "sha256-abc": a tag may not contain a colon,
-	// which is the character separating it from the repository.
-	return repo + ":" + localAliasPrefix + strings.ReplaceAll(digest, ":", "-"), true
+	return repo
 }
 
 // RuntimeRef is the reference the runtime is handed for this image.

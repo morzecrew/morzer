@@ -2,6 +2,7 @@ package compose
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
@@ -53,6 +54,14 @@ func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []str
 	}
 	if len(pending) == 0 {
 		return nil
+	}
+
+	// Refused before a port is bound, when the daemon is demonstrably
+	// somewhere else. The images are served on *this* machine's loopback,
+	// so a daemon that does not share it cannot fetch them however well
+	// everything else works.
+	if err := requireLocalDaemon(); err != nil {
+		return err
 	}
 
 	srv, err := ociserve.Start(layoutDir)
@@ -121,9 +130,12 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, ref strin
 			return serveErr
 		}
 		return wrapExit(err, "cannot load "+domain.ShortImageRef(ref)+" out of the bundle",
-			"the image is served from this machine, so this is the local daemon "+
-				"refusing it rather than a network failure; `morzer release verify` "+
-				"checks whether the bundle's layout is intact")
+			"the image is served from this machine's loopback, so nothing was "+
+				"fetched over a network: either the layout is damaged, which "+
+				"`morzer release verify` checks, or the container runtime cannot "+
+				"reach this machine -- a daemon in a VM or behind a socket that "+
+				"fronts one has its own loopback, and this needs the daemon to "+
+				"share ours")
 	}
 
 	// The alias is what the deployment resolves through, so a failure here
@@ -157,18 +169,10 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, ref strin
 // reason `postgres@sha256:...` keeps `postgres` while
 // `registry.example/demo/app@sha256:...` keeps `demo/app`.
 func repositoryPath(ref string) string {
-	repo := ref
-	if at := strings.LastIndex(repo, "@"); at > 0 {
-		repo = repo[:at]
-	}
-	// A tag is not part of the path either.
-	if slash := strings.LastIndex(repo, "/"); slash >= 0 {
-		if colon := strings.LastIndex(repo[slash+1:], ":"); colon >= 0 {
-			repo = repo[:slash+1+colon]
-		}
-	} else if colon := strings.LastIndex(repo, ":"); colon >= 0 {
-		repo = repo[:colon]
-	}
+	// The digest and the tag come off in domain, which is where the alias
+	// builder takes the same two apart. Two copies of that arithmetic
+	// agree until one is edited.
+	repo := domain.RepositoryOf(ref)
 
 	first, rest, ok := strings.Cut(repo, "/")
 	if ok && (strings.ContainsAny(first, ".:") || first == "localhost") {
@@ -181,6 +185,38 @@ func repositoryPath(ref string) string {
 		return "bundled"
 	}
 	return strings.ToLower(repo)
+}
+
+// requireLocalDaemon refuses a daemon that provably cannot reach this machine.
+//
+// Provably is the whole of the claim, and it is a one-way test. DOCKER_HOST
+// with a `tcp://` or `ssh://` scheme names a daemon on another host, which
+// cannot fetch from a server bound to this one -- so that is refused here,
+// clearly, rather than a few minutes later as a connection error the operator
+// has no reason to attribute to their Docker context.
+//
+// The absence of that variable proves nothing in return. A unix socket can
+// front a daemon inside a VM with its own loopback, and a `docker context` can
+// point anywhere without touching the environment. Those cases still fail, and
+// they fail at the pull, where the message says so instead of blaming the
+// bundle. Refusing everything that cannot be *proved* local would refuse the
+// ordinary installation, which is the one this has to keep working.
+func requireLocalDaemon() error {
+	host := strings.TrimSpace(os.Getenv("DOCKER_HOST"))
+	scheme, _, ok := strings.Cut(host, "://")
+	if !ok || host == "" {
+		return nil
+	}
+	switch scheme {
+	case "unix", "fd":
+		return nil
+	}
+	return domain.RuntimeError(domain.ErrUnsupported,
+		"the images this release carries cannot be loaded into a daemon on another host").
+		WithHint("DOCKER_HOST is %q, and a bundle's images are served from this "+
+			"machine's loopback -- a remote daemon cannot fetch them. Load the "+
+			"release on the machine running the daemon, or point DOCKER_HOST at "+
+			"a local socket", host)
 }
 
 func unpinned(ref string) error {

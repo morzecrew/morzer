@@ -16,6 +16,33 @@ const bundledSHA = "sha256:00000000000000000000000000000000000000000000000000000
 // that only run when something is already wrong, which is exactly the code
 // that must not be dead.
 
+// TestBundledImagesRefusesAnImageThatIsNotLoaded.
+//
+// The path the check exists for. The error paths below it are the interesting
+// ones to get right, but this is the one an operator actually meets, and a
+// suite that only covered the errors would not notice the ordinary answer
+// changing.
+func TestBundledImagesRefusesAnImageThatIsNotLoaded(t *testing.T) {
+	check := BundledImages([]string{"registry.example/demo/app@" + bundledSHA},
+		func(context.Context, string) (bool, error) { return false, nil })
+
+	got := check.Run(context.Background())
+	if got.Status != events.CheckFail {
+		t.Fatalf("status = %s, want fail", got.Status)
+	}
+	if !strings.Contains(got.Message, "registry.example/demo/app") {
+		t.Errorf("the message does not name the image: %s", got.Message)
+	}
+	// The digest is 71 characters an operator has to read past to find the
+	// name that identifies anything.
+	if strings.Contains(got.Message, bundledSHA) {
+		t.Errorf("the message carries the whole digest: %s", got.Message)
+	}
+	if !strings.Contains(got.Remedy, "morzer release ingest") {
+		t.Errorf("the remedy does not name the command that fixes it: %q", got.Remedy)
+	}
+}
+
 func TestBundledImagesRefusesWhenTheStoreCannotBeAsked(t *testing.T) {
 	check := BundledImages([]string{"registry.example/demo/app@" + bundledSHA},
 		func(context.Context, string) (bool, error) {

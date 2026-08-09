@@ -93,7 +93,7 @@ func IngestImages(ctx context.Context, d *Deps, opts Options) (Result, error) {
 // where an operator is watching. `apply` then finds the images present, as it
 // would after a pull.
 //
-// **Not compensable, deliberately.** RFC 0011 §5.4 originally said
+// **Nothing of its own to undo, deliberately.** RFC 0011 §5.4 originally said
 // compensating meant removing what it loaded; it cannot. An ingested image is
 // addressed by digest, so the alias a failed update would remove is the same
 // alias any other release carrying that image resolves through -- including
@@ -111,10 +111,21 @@ func stepIngestImages(d *Deps, of releaseOf) engine.Step {
 		ID:          "ingest-images",
 		Description: "load images from the bundle",
 		Idempotent:  true,
-		// Abort rather than Compensate: there is nothing to undo, and
-		// continuing past a failure here would converge a deployment
-		// whose images are not on the machine.
-		OnFailure: engine.Abort,
+		// Compensate, with no Compensate function of its own -- and the
+		// two are different questions that are easy to run together.
+		// This step has nothing to undo (see above). What OnFailure
+		// governs is whether the *earlier* steps are undone, and they
+		// must be: `init` adopts the release inside stepStageRelease's
+		// Execute, writing the symlink and the current-release record
+		// before this step runs. Aborting there leaves an installation
+		// naming a release whose images never loaded, which the
+		// preflight below then refuses on every apply -- a machine that
+		// cannot converge and that no operation but `release ingest`
+		// can move.
+		//
+		// `update` is unaffected either way: its pointer moves in
+		// stepRecordState, which runs after this.
+		OnFailure: engine.Compensate,
 		Timeout:   60 * time.Minute,
 		Check: func(ctx context.Context, st *engine.State) (bool, error) {
 			rel, ok := of(st)

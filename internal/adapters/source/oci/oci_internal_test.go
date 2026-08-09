@@ -135,6 +135,11 @@ func TestOnlyLoopbackRegistriesAreReachedOverPlainHTTP(t *testing.T) {
 		{"127.0.0.1", true},
 		{"127.1.2.3:5000", true}, // the whole 127/8 block is loopback
 		{"[::1]:5000", true},
+		// SplitHostPort strips the brackets when a port is present, so
+		// this is the only case the trim in isLoopbackRegistry serves.
+		{"[::1]", true},
+		{"::1", true},
+		{"[2001:db8::1]:5000", false},
 
 		// Everything else, including the near misses.
 		{"registry.example", false},

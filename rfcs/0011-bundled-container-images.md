@@ -4,7 +4,10 @@
   in-process loopback registry, the digest-derived alias, the refusal that
   replaces a pull, the `doctor` vocabulary, and an acceptance scenario that
   installs a hybrid bundle with the registry stopped and its local copy deleted.
-  What remains open is only what §8 excluded. **P1 shipped 2026-08-09**: the manifest's dual
+  What remains open is what §8 excluded, plus three paths with no test: the
+  listener failing to bind, a response failing mid-copy, and the serve-error
+  report. Each needs the process to break underneath itself, and a test that
+  simulated that would assert the simulation. **P1 shipped 2026-08-09**: the manifest's dual
   image spelling, the layout's completeness refusals in both directions, and the
   extraction budget with its hard caps, its manifest-first requirement and its
   free-space preflight. A bundle carrying images is now *inspectable*; nothing
@@ -62,10 +65,16 @@
 A release manifest may mark an image as travelling in the bundle rather than
 being pulled. Such images ship as an OCI image layout under `images/` in the
 bundle, covered by the same `SHA256SUMS` and minisign signature as every other
-file. At install time the manager ingests them into the local image store and
-`apply` proceeds unchanged, because `Pull` already skips images that are
-present. The result: a customer installs a release containing private images
+file. At install time the manager ingests them into the local image store,
+where they answer to an alias it derives from the digest the manifest pins —
+`apply` renders that alias into Compose, narrows its pull to the images a
+registry actually serves, and refuses to converge while a bundled one is
+absent. The result: a customer installs a release containing private images
 without ever holding credentials for the registry those images came from.
+
+*(This paragraph originally read "`apply` proceeds unchanged, because `Pull`
+already skips images that are present". Decisions 19 and 20 made all three
+clauses false; §5.4 carries what replaced them.)*
 
 Per-image, not per-bundle. A release bundles what is private and keeps pulling
 what is public, which is what keeps bundles from growing by a gigabyte of
@@ -572,9 +581,12 @@ what is private keeps the common case to the vendor's own layers.
 - **Ingest, against real Docker**, in the container suites — the only place the
   claim can be tested, because the claim is about what the daemon believes. The
   assertion that matters: after ingest, `HasImage` returns true for the
-  *original* reference, and `Pull` performs no network operation. A test that
-  asserted only "the image is present" would pass against the `docker load`
-  implementation this RFC rejects.
+  ~~*original* reference~~ **alias** and **false for the original**, and `Pull`
+  performs no network operation. A test that asserted only "the image is
+  present" would pass against the `docker load` implementation this RFC
+  rejects — and one that asserted only the alias would pass against an
+  implementation that had quietly gone back to the original reference, which is
+  why both halves are in the same test.
 - **A blob whose bytes do not match its claimed digest is refused** rather than
   recorded — against a real daemon, since decision 21 makes the daemon's own
   pull the thing that checks it. ~~Fallback ingest with the registry helper
@@ -632,9 +644,15 @@ what is private keeps the common case to the vendor's own layers.
   amended §5.3 is verified by a cold pull rather than by the reading of a spike
   that tested the adjacent thing. What remains is environment risk with a
   narrower shape: the manager serves the layout on its own loopback, so a
-  daemon that does not share it — a remote `DOCKER_HOST`, and only that —
-  cannot reach the ingest at all. There is no fallback behind it any more, so
-  that case has to be a clear refusal rather than a quiet failure.
+  daemon that does not share that loopback cannot reach the ingest at all. A
+  remote `DOCKER_HOST` is the obvious case and the only one that can be
+  *detected* — a unix socket proves nothing, since one can front a daemon in a
+  VM with a loopback of its own, and a `docker context` can point anywhere
+  without touching the environment. So the refusal is two-part and deliberately
+  asymmetric: a `tcp://` or `ssh://` host is refused before a port is bound,
+  and everything else fails at the pull with a message that names loopback
+  reachability instead of blaming the bundle. There is no fallback behind it
+  any more, which is why the message matters as much as the check.
 - **The alias is a tag, and tags are mutable.** Decision 19 buys local
   resolution with a name a registry could also serve. Decision 20 is what keeps
   that from mattering — absent means refuse, never pull — and if that refusal
@@ -705,7 +723,7 @@ recomputation, and the wording of every refusal.
 | 18 | **The registry is in the manager's process**, not a container: `127.0.0.1:0`, read-only, serving the bundle's layout, closed when the ingest ends *(2026-08-09, replaces the container half of decision 5)* | The container form needs `registry:2` on the machine, and the only way to get an image is from a registry — so the primary path was unavailable in exactly the case this RFC exists for, and those installs would all have fallen through to the least-tested path. Verified by a cold `docker pull` against a Go HTTP server serving the layout. Consequence: [0004](0004-distribution-and-verification.md)'s "the manager does not run a registry" narrows further than decision 10 narrowed it — the manager now *contains* one, read-only, on loopback, for the length of one ingest. |
 | 19 | **A bundled image is deployed under a manager-created alias**, `<repo>:morzer-sha256-<hex>`, derived from the digest the manifest pins *(2026-08-09, refines decision 4)* | Measured: no supported command creates a digest reference for a repository the daemon did not pull from, so `ref` cannot be what Compose receives for a bundled image. `ref` stays the identity — pinned, verified, recorded, reported by `release show` — and the alias is what resolves. Derived from the digest rather than invented, so it is identical on every apply and the rendered configuration does not move; a random or timestamped alias would make `diff` and `status` report a change on every run. Consequence: an operator reading `docker images` sees a tag the vendor never published, which the docs have to explain. |
 | 20 | **A bundled image that is not present locally is a refusal, never a pull** *(2026-08-09)* | The alias is a tag and a tag is mutable, so an absent image plus a registry that serves that tag equals a digest-pinned deployment converging on unverified bytes. Refusing keeps the guarantee the digest was for. Consequence: `apply` gains a failure mode on a machine whose image store was pruned — the correct one, and `morzer release ingest` is the remedy it names. |
-| 21 | **The fallback ingest is withdrawn; there is one mechanism** *(2026-08-09)* | It existed for hosts that cannot run the registry helper, and decision 18 leaves no helper to fail. Decision 6's obligation stands and moves: the daemon's own V2 pull verifies every blob against the digest the manifest names, so a corrupted blob is refused rather than recorded — tested by corrupting one against a real daemon. Consequence: P3 keeps the `doctor` vocabulary and loses its second code path, and a daemon the manager cannot reach over loopback (a remote `DOCKER_HOST`) now has no ingest at all, which it must say plainly rather than fail obscurely. |
+| 21 | **The fallback ingest is withdrawn; there is one mechanism** *(2026-08-09)* | It existed for hosts that cannot run the registry helper, and decision 18 leaves no helper to fail. Decision 6's obligation stands and moves: the daemon's own V2 pull verifies every blob against the digest the manifest names, so a corrupted blob is refused rather than recorded — tested by corrupting one against a real daemon. Consequence: P3 keeps the `doctor` vocabulary and loses its second code path, and a daemon the manager cannot reach over loopback now has no ingest at all. A remote `DOCKER_HOST` is refused before anything is served; a socket fronting a VM cannot be distinguished from a local one, so that case fails at the pull with a message naming loopback reachability rather than the bundle. |
 
 ## 12. Phasing
 

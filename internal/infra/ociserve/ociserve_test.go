@@ -323,6 +323,15 @@ func TestABlobThatIsNotItsDigestIsReported(t *testing.T) {
 			res.status)
 	}
 
+	// Closed before the report is read, and not for tidiness. The response
+	// declares a Content-Length, so the client reaches EOF on the last byte
+	// while the handler is still between that write and recording the
+	// mismatch. Nothing orders the two. Shutdown waits for the handler to
+	// return, which is the only thing here that does.
+	if err := s.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
 	err := s.Mismatch()
 	if err == nil {
 		t.Fatal("a blob that is not its digest was served without a word")

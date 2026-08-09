@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,12 +34,27 @@ import (
 // in both directions.
 func (h *harness) bundleImage(t *testing.T) (ref, alias string) {
 	t.Helper()
+	ref, alias = bundleImageIn(t, h.Release.Root)
 
-	manifestPath := filepath.Join(h.Release.Root, release.ManifestFileName)
+	// Re-read, so the harness holds the release the operations will load.
+	reloaded, err := release.Load(h.Release.Root)
+	require.NoError(t, err, "the bundled fixture is not a valid release")
+	h.Release = reloaded
+	return ref, alias
+}
+
+// bundleImageIn marks `app` as travelling in the bundle at dir, for a bundle
+// the harness has not adopted -- an update source, above all.
+func bundleImageIn(t *testing.T, dir string) (ref, alias string) {
+	t.Helper()
+
+	manifestPath := filepath.Join(dir, release.ManifestFileName)
 	data, err := os.ReadFile(manifestPath)
 	require.NoError(t, err)
 
-	ref = h.Release.Manifest.Images["app"].Ref
+	loaded, err := release.Load(dir)
+	require.NoError(t, err)
+	ref = loaded.Manifest.Images["app"].Ref
 	digest, ok := domain.ImageSpec{Ref: ref}.Digest()
 	require.True(t, ok, "the fixture's app image is not pinned by digest")
 
@@ -48,7 +64,7 @@ func (h *harness) bundleImage(t *testing.T) (ref, alias string) {
 		[]byte(strings.Replace(string(data), old,
 			"  app:\n    ref: "+ref+"\n    from: bundle\n", 1)), 0o644))
 
-	images := filepath.Join(h.Release.Root, release.ImagesDirName)
+	images := filepath.Join(dir, release.ImagesDirName)
 	algorithm, encoded, _ := strings.Cut(digest, ":")
 	blob := filepath.Join(images, "blobs", algorithm, encoded)
 	require.NoError(t, os.MkdirAll(filepath.Dir(blob), 0o755))
@@ -69,10 +85,9 @@ func (h *harness) bundleImage(t *testing.T) (ref, alias string) {
 	require.NoError(t, os.WriteFile(
 		filepath.Join(images, release.ImageIndexFileName), index, 0o644))
 
-	// Re-read, so the harness holds the release the operations will load.
-	reloaded, err := release.Load(h.Release.Root)
+	// A valid release, or nothing below is testing what it claims.
+	_, err = release.Load(dir)
 	require.NoError(t, err, "the bundled fixture is not a valid release")
-	h.Release = reloaded
 
 	alias, ok = domain.ImageSpec{Ref: ref, From: domain.ImageFromBundle}.LocalAlias()
 	require.True(t, ok)
@@ -228,9 +243,106 @@ func TestARuntimeThatCannotIngestRefusesRatherThanSkipping(t *testing.T) {
 	_, err := ops.IngestImages(context.Background(), h.Deps, ops.Options{})
 	require.Error(t, err, "a runtime with no image store reported the images as loaded")
 	assert.Contains(t, err.Error(), "cannot load images out of a bundle")
-	assert.Contains(t, domain.AsError(err).Hint, "from: bundle",
+
+	// The remedy is on the cause, not on the error the engine returns: a
+	// step whose policy is Compensate is classified as `Compensated` once
+	// rollback succeeds, and that classification carries the exit code
+	// rather than the diagnosis. Asserting the top-level Hint here would
+	// be asserting the engine's contract, not this step's.
+	assert.Contains(t, domain.AsError(errors.Unwrap(err)).Hint, "from: bundle",
 		"the remedy must say which manifest field put the manager here")
 
 	// And nothing was ingested behind the refusal.
 	assert.Empty(t, h.Runtime.IngestedRefs)
+}
+
+// TestAFailedIngestLeavesThePreviousReleaseCurrent.
+//
+// The invariant TestUpdateFaultInjection asserts for every other step, applied
+// to this one: no partial update leaves the manager pointing at a release it
+// did not finish installing. It matters more here than elsewhere, because the
+// half-installed state is specifically a release whose images are absent --
+// and the preflight added in this branch then refuses every apply against it.
+func TestAFailedIngestLeavesThePreviousReleaseCurrent(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	before, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "1.2.0", before.Version.String())
+
+	src := stageUpgradeSource(t, h)
+	bundleImageIn(t, src)
+	h.Runtime.Fail["IngestImages"] = domain.RuntimeError(nil, "injected: the layout is unreadable")
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err, "the injected failure must fail the update")
+
+	after, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, before.Version.String(), after.Version.String(),
+		"a failed ingest must leave the release that was running current")
+	assert.Equal(t, before.Digest, after.Digest)
+
+	link, err := os.Readlink(h.Paths.CurrentLink())
+	require.NoError(t, err)
+	assert.Equal(t, before.Root, link, "the symlink must agree with the pointer")
+}
+
+// TestAFailedIngestDuringInitUnwindsTheInstallation.
+//
+// `init` is the one operation that adopts a release *before* ingest runs:
+// stepStageRelease writes the symlink and the current-release record inside its
+// own Execute. So a failure here, unlike one during `update`, has something to
+// unwind -- and leaving it would produce a machine whose installation names a
+// current release that no `apply` will converge, because the preflight this
+// branch added refuses every one of them.
+func TestAFailedIngestDuringInitUnwindsTheInstallation(t *testing.T) {
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+
+	// A release directory the init will stage from, with its images bundled.
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	bundleImageIn(t, src)
+
+	h.Runtime.Fail["IngestImages"] = domain.RuntimeError(nil, "injected: the layout is unreadable")
+
+	_, err := ops.Init(context.Background(), h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: src,
+	})
+	require.Error(t, err, "init reported success after the ingest step failed")
+
+	// The installation is unwound, so the machine does not present as
+	// installed with a release that cannot converge. This is what
+	// OnFailure: Compensate buys -- with Abort, both survived.
+	exists, err := h.Deps.State.InstallationExists(context.Background())
+	require.NoError(t, err)
+	assert.False(t, exists, "a failed init left an installation behind")
+	assert.NoDirExists(t, stagedReleaseRoot(h), "a failed init left the staged release behind")
+
+	// What is *not* asserted, because it is not true and pretending
+	// otherwise would hide it: `current-release.json` and the `current`
+	// symlink survive. stepStageRelease writes all three in one Execute and
+	// its compensator removes only the directory, which is pre-existing --
+	// every init step after it has always left the same residue. Un-adopting
+	// safely needs the compensator to know whether *this* Execute created
+	// the pointer, since `init --repair` runs over an installation that
+	// already had one. Harmless here: with the installation gone the machine
+	// reads as uninstalled and nothing consults the record.
+	stale, err := h.Deps.State.CurrentRelease(context.Background())
+	require.NoError(t, err)
+	assert.False(t, stale.IsZero(),
+		"the stale pointer is gone -- if stepStageRelease learned to un-adopt, "+
+			"delete this assertion and assert IsZero above instead")
+}
+
+// stagedReleaseRoot is where init stages the 1.2.0 fixture.
+func stagedReleaseRoot(h *harness) string {
+	return filepath.Join(h.Paths.ReleasesDir(), "1.2.0")
 }
