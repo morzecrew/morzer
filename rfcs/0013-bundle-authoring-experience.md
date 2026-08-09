@@ -330,6 +330,11 @@ vendor's first act would be deleting most of it. It stays available as
 working reference rather than a starting point — and where it costs nothing,
 since the fixture is already maintained.
 
+> **Superseded at execution.** `--from-example` is dropped; the "costs nothing"
+> claim in the paragraph above is what execution disproved. See
+> [§13](#--from-example-is-dropped-amends-decision-10) for the measurement and for
+> what would change the answer.
+
 **Put scaffolding in its own RFC.** Rejected, and this is the reason it is here:
 §5.2–§5.4 are retrofits for bundles that exist and *defaults* for bundles that
 do not. Landing them without a scaffold means the conventions are documentation
