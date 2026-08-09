@@ -262,13 +262,37 @@ func TestImageBlobsAreCoveredByTheChecksumList(t *testing.T) {
 		}
 	}
 
-	// And a tampered blob fails, which is the property the listing exists
-	// for rather than the listing itself.
+	// A tampered blob fails, which is the property the listing exists for
+	// rather than the listing itself.
 	if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(blob)),
 		[]byte("tampered"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := checksum.VerifySumsFile(dir); err == nil {
 		t.Error("a tampered image blob passed verification")
+	}
+}
+
+// TestAnUnlistedImageBlobFailsClosed.
+//
+// The other half, and the one an attacker actually reaches for: adding a file
+// rather than editing one. The signature still covers SHA256SUMS and verifies,
+// every listed file still matches -- and the added blob is the payload. The
+// completeness rule is what refuses it, and image blobs are exactly the files
+// most likely to be excused from it one day for being large.
+func TestAnUnlistedImageBlobFailsClosed(t *testing.T) {
+	dir := bundleWithLayout(t, []string{appDigest})
+
+	added := filepath.Join(dir, "images", "blobs", "sha256", strings.Repeat("e", 64))
+	if err := os.WriteFile(added, []byte("added after signing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := checksum.VerifySumsFile(dir)
+	if err == nil {
+		t.Fatal("a blob the checksum list does not cover passed verification")
+	}
+	if !strings.Contains(err.Error(), "not listed") {
+		t.Errorf("the refusal does not name the rule: %v", err)
 	}
 }

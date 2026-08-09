@@ -149,9 +149,13 @@ func negotiateLimits(
 		return limits, err
 	}
 	if rel != limits.FirstEntry {
+		// hdr.Name rather than the cleaned path: `tar -C dir .` -- the
+		// commonest way to produce a wrong archive -- opens with "./",
+		// which cleans to the empty string. Reporting that reads as
+		// though the archive has a nameless first entry.
 		return limits, domain.ValidationError(domain.ErrValidation,
 			"%s does not begin with %s (its first entry is %q)",
-			src, limits.FirstEntry, rel).
+			src, limits.FirstEntry, hdr.Name).
 			WithHint("a release archive states its size in the manifest, which has to " +
 				"arrive before the bytes it bounds. Repack it with " +
 				"`morzer release archive`")
@@ -190,7 +194,30 @@ func negotiateLimits(
 	if err := WriteFileIn(root, rel, manifest, normalizeArchiveMode(hdr.FileInfo().Mode())); err != nil {
 		return limits, err
 	}
+
+	// This entry has been extracted, so it counts against the budget like
+	// any other. Charging the rest of the archive the full ceiling would
+	// let an archive exceed its own declaration by exactly the size of the
+	// file that made the declaration.
+	limits.MaxEntries = reduce(limits.MaxEntries, 1)
+	limits.MaxTotalSize = reduceSize(limits.MaxTotalSize, int64(len(manifest)))
 	return limits, nil
+}
+
+// reduce subtracts from a limit without turning an unlimited one (0) into a
+// negative one, which the extractor reads as "no limit at all".
+func reduce(limit, used int) int {
+	if limit <= 0 {
+		return limit
+	}
+	return max(limit-used, 0)
+}
+
+func reduceSize(limit, used int64) int64 {
+	if limit <= 0 {
+		return limit
+	}
+	return max(limit-used, 0)
 }
 
 // clampToBudget applies a declared size to the limits.

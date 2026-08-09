@@ -13,6 +13,7 @@ package imagepack
 import (
 	"context"
 	"path/filepath"
+	"strings"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
@@ -118,9 +119,10 @@ func (p *Packer) copyOne(ctx context.Context, store oras.Target, name, ref strin
 		return err
 	}
 
-	_, wanted, err := splitRef(ref)
-	if err != nil {
-		return err
+	wanted, ok := domain.ImageSpec{Ref: ref}.Digest()
+	if !ok {
+		return domain.ValidationError(nil,
+			"the reference for image %s is not pinned by digest: %q", name, ref)
 	}
 
 	opts := oras.DefaultCopyOptions
@@ -154,21 +156,10 @@ func (p *Packer) copyOne(ctx context.Context, store oras.Target, name, ref strin
 	return nil
 }
 
-// splitRef separates an image reference from the digest it pins.
-func splitRef(ref string) (name, digest string, err error) {
-	for i := len(ref) - 1; i >= 0; i-- {
-		if ref[i] == '@' {
-			return ref[:i], ref[i+1:], nil
-		}
-	}
-	return "", "", domain.ValidationError(nil,
-		"the image reference %q is not pinned by digest", ref)
-}
-
 // parsePlatform reads os/arch[/variant].
 func parsePlatform(s string) (*ocispec.Platform, error) {
 	var out ocispec.Platform
-	parts := splitN(s, '/', 3)
+	parts := strings.SplitN(s, "/", 3)
 	switch len(parts) {
 	case 3:
 		out.Variant = parts[2]
@@ -184,16 +175,4 @@ func parsePlatform(s string) (*ocispec.Platform, error) {
 			WithHint("platforms look like linux/amd64 or linux/arm64/v8")
 	}
 	return &out, nil
-}
-
-func splitN(s string, sep byte, n int) []string {
-	var out []string
-	start := 0
-	for i := 0; i < len(s) && len(out) < n-1; i++ {
-		if s[i] == sep {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	return append(out, s[start:])
 }

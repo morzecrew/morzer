@@ -74,6 +74,30 @@ func (s ImageSpec) Source() ImageSource {
 // Bundled reports whether this image travels inside the bundle.
 func (s ImageSpec) Bundled() bool { return s.Source() == ImageFromBundle }
 
+// Digest is the digest this reference pins, and false when it pins none.
+//
+// One definition, because three appeared: the packer compared it against what a
+// registry served, the layout check compared it against what index.json
+// carried, and the OCI source split it to address a repository. Two of those
+// cut at the first "@" and one at the last -- indistinguishable for every legal
+// reference and not the kind of agreement worth leaving to coincidence.
+//
+// Cut at the last "@": a repository name may not contain one, so any earlier
+// occurrence is part of something malformed, and taking the last leaves the
+// digest whole for the parse that follows.
+//
+// Unobservable through a validated manifest -- `digestRef` refuses any "@"
+// before the digest, so first and last are the same for everything that reaches
+// here. This is exported on a domain type and callable from anywhere, so the
+// choice is pinned by its own test rather than by whoever happens to call it.
+func (s ImageSpec) Digest() (string, bool) {
+	at := strings.LastIndex(s.Ref, "@")
+	if at <= 0 || at == len(s.Ref)-1 {
+		return "", false
+	}
+	return s.Ref[at+1:], true
+}
+
 // UnmarshalYAML accepts the scalar and the mapping spelling.
 func (s *ImageSpec) UnmarshalYAML(unmarshal func(any) error) error {
 	var ref string

@@ -51,6 +51,8 @@ func TestAnArchiveThatDoesNotBeginWithItsManifestIsRefused(t *testing.T) {
 
 	require.Error(t, err, "an archive whose budget cannot be read must be refused")
 	assert.Contains(t, err.Error(), "does not begin with manifest.yaml")
+	assert.Contains(t, err.Error(), "hooks/migrate",
+		"the refusal should name what it found instead")
 	assert.Contains(t, domain.AsError(err).Hint, "release archive",
 		"the refusal should name the command that produces a correct one")
 }
@@ -111,6 +113,46 @@ func TestAManifestTooLargeToBeOneIsRefused(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "which is not a manifest")
+}
+
+// TestTheCommonestWrongArchiveIsRefusedReadably.
+//
+// `tar -C ./bundle .` -- the invocation the documentation used to show -- opens
+// with "./", which cleans to the empty string. Reporting the cleaned path made
+// the refusal read as though the archive had a nameless first entry, which is
+// the least useful thing to tell someone whose `tar` line is wrong.
+func TestTheCommonestWrongArchiveIsRefusedReadably(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeArchive(t, path, []tarEntry{
+		{Name: "./", Typeflag: tar.TypeDir},
+		{Name: "./manifest.yaml", Body: "api_version: selfhost/v1alpha1\n"},
+	})
+
+	err := atomicfs.ExtractTarZst(path, filepath.Join(t.TempDir(), "out"), bundleLimits())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `"./"`,
+		"the refusal must name the entry it found, not the empty string it cleans to")
+}
+
+// TestTheManifestCountsAgainstTheBudgetItDeclares.
+//
+// It is extracted like any other entry, so charging the rest of the archive the
+// full ceiling would let an archive exceed its own declaration by exactly the
+// size of the file that made it.
+func TestTheManifestCountsAgainstTheBudgetItDeclares(t *testing.T) {
+	manifest := "api_version: selfhost/v1alpha1\nbundle:\n  uncompressed_size: 200\n"
+
+	path := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeArchive(t, path, []tarEntry{
+		{Name: "manifest.yaml", Body: manifest},
+		// Under 200 on its own; over 200 once the manifest is counted.
+		{Name: "payload.bin", Body: strings.Repeat("x", 200-len(manifest)+1)},
+	})
+
+	err := atomicfs.ExtractTarZst(path, filepath.Join(t.TempDir(), "out"), bundleLimits())
+
+	require.Error(t, err, "the archive exceeded its own declared size and was accepted")
 }
 
 // bundleLimits is the posture the release transports use: manifest first, and

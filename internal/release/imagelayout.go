@@ -122,7 +122,7 @@ func checkBundledImages(rel domain.Release) error {
 	var problems []string
 	declared := make(map[string]bool, len(bundled))
 	for _, name := range bundled {
-		digest, ok := refDigest(rel.Manifest.Images[name].Ref)
+		digest, ok := rel.Manifest.Images[name].Digest()
 		if !ok {
 			// Unreachable through Load: the pinning rule refuses an
 			// unpinned reference first. Stated rather than assumed,
@@ -181,13 +181,4 @@ func hasImageLayout(root string) (bool, error) {
 	default:
 		return false, domain.ValidationError(err, "cannot read %s", marker)
 	}
-}
-
-// refDigest returns the digest an image reference pins.
-func refDigest(ref string) (string, bool) {
-	_, digest, ok := strings.Cut(ref, "@")
-	if !ok || digest == "" {
-		return "", false
-	}
-	return digest, true
 }
