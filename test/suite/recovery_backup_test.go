@@ -811,3 +811,183 @@ func plantPlaintextExport(t *testing.T, dir string) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, out, 0o600))
 }
+
+// TestClearingTheDigestDoesNotDisableTheBinding.
+//
+// `backup.json` is unsigned plaintext by design, so a check that only runs
+// when a field is populated is a check an attacker turns off by deleting the
+// field. Reproduced before it was fixed: with the digest cleared, an export
+// swapped in from another backup was accepted and its identity imported.
+func TestClearingTheDigestDoesNotDisableTheBinding(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+	origin.wireBackupEngine(ctx)
+
+	first, err := origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: ports.AllComponents, Reason: "manual",
+	}, nil)
+	require.NoError(t, err)
+	second := takeAnotherBackup(t, ctx, origin, first)
+
+	name := "export.yaml" + agecrypt.Extension
+	swapFiles(t,
+		filepath.Join(origin.Paths.BackupsDir(), first.ID, name),
+		filepath.Join(origin.Paths.BackupsDir(), second, name))
+	clearExportDigest(t, filepath.Join(origin.Paths.BackupsDir(), first.ID))
+
+	_, err = ops.ExportFromBackup(origin.Paths, ops.ExportFromBackupOptions{
+		BackupID:     first.ID,
+		IdentityFile: recoveryPath,
+	})
+	require.Error(t, err,
+		"an export swapped in from another backup was accepted once the digest was "+
+			"cleared, which is an edit to a plaintext file")
+	assert.Contains(t, err.Error(), "records no digest")
+}
+
+// TestAManifestThatNamesADifferentBackupIsSkipped.
+//
+// Every step after the read uses the manifest's id as a directory name, so an
+// id that disagrees with the directory it was read from makes the reader open
+// a component from somewhere else. Reproduced before the fix with an id of
+// `../../../../tmp`, which reached outside the backup store entirely.
+func TestAManifestThatNamesADifferentBackupIsSkipped(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+	origin.wireBackupEngine(ctx)
+
+	ref, err := origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: ports.AllComponents, Reason: "manual",
+	}, nil)
+	require.NoError(t, err)
+
+	plantManifestWithID(t, filepath.Join(origin.Paths.BackupsDir(), "evil"),
+		filepath.Join(origin.Paths.BackupsDir(), ref.ID), "../../../../tmp")
+
+	_, err = ops.ExportFromBackup(origin.Paths, ops.ExportFromBackupOptions{
+		BackupID:     "../../../../tmp",
+		IdentityFile: recoveryPath,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no backup",
+		"a manifest whose id is not its directory was still selectable")
+
+	// The genuine backup beside it stays readable: skipping a bad neighbour
+	// must not make the rest unreachable during a recovery.
+	found, err := ops.ExportFromBackup(origin.Paths, ops.ExportFromBackupOptions{
+		IdentityFile: recoveryPath,
+	})
+	require.NoError(t, err, "one forged directory made the real backups unreachable")
+	assert.Equal(t, ref.ID, found.Backup.ID)
+}
+
+// clearExportDigest removes the export component's digest from a manifest.
+func clearExportDigest(t *testing.T, dir string) {
+	t.Helper()
+
+	path := filepath.Join(dir, ports.BackupManifestFileName)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var m ports.BackupManifest
+	require.NoError(t, json.Unmarshal(data, &m))
+	for i := range m.Components {
+		if m.Components[i].Component == ports.ComponentExport {
+			m.Components[i].SHA256 = ""
+		}
+	}
+	out, err := json.MarshalIndent(m, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, out, 0o600))
+}
+
+// plantManifestWithID copies a real manifest into a directory under a forged
+// id, which is what an attacker with write access to a backup store can do.
+func plantManifestWithID(t *testing.T, dir, from, id string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+
+	data, err := os.ReadFile(filepath.Join(from, ports.BackupManifestFileName))
+	require.NoError(t, err)
+
+	var m ports.BackupManifest
+	require.NoError(t, json.Unmarshal(data, &m))
+	m.ID = id
+
+	out, err := json.MarshalIndent(m, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ports.BackupManifestFileName), out, 0o600))
+}
+
+// TestAnIntactReplicaIsUsedWhenTheFirstIsDamaged.
+//
+// The same backup on two targets is normally the same bytes, and "normally" is
+// doing the work: bit rot, a half-restored bucket or a tampered replica all
+// list fine and fail to read. Taking the first copy and stopping would mean a
+// recovery that fails while an intact copy sits on the next target.
+func TestAnIntactReplicaIsUsedWhenTheFirstIsDamaged(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+	origin.wireBackupEngine(ctx)
+
+	ref, err := origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: ports.AllComponents, Reason: "manual",
+	}, nil)
+	require.NoError(t, err)
+
+	fake := fakes.NewBackupTarget()
+	origin.Deps.Targets = fake
+
+	damaged := ports.TargetRef{Scheme: "memory", Path: "/one"}
+	intact := ports.TargetRef{Scheme: "memory", Path: "/two"}
+	for _, target := range []ports.TargetRef{damaged, intact} {
+		_, pushErr := fake.Push(ctx, target, ref.Path, ref.ID)
+		require.NoError(t, pushErr)
+	}
+
+	// One replica's identity document is corrupted, the way storage
+	// corrupts things: same length, different bytes, manifest untouched.
+	key := "one/" + ref.ID + "/export.yaml" + agecrypt.Extension
+	original, ok := fake.Object(key)
+	require.True(t, ok, "the export is not on the target under %s", key)
+	rotted := make([]byte, len(original))
+	copy(rotted, original)
+	for i := range rotted {
+		rotted[i] ^= 0xff
+	}
+	fake.SetObject(key, rotted)
+
+	// Named individually first, so the damage is real rather than assumed.
+	_, err = ops.ExportFromRemoteBackup(ctx, origin.Deps,
+		ops.TargetOptions{URL: "memory:///one"}, "", recoveryPath)
+	require.Error(t, err, "the damaged replica must not read as intact")
+
+	// Then both in one invocation, damaged first, which is the case the
+	// fallback exists for. Naming them one at a time never puts two
+	// replicas in scope and would pass with the fallback deleted.
+	inst, err := origin.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Backup.Targets = []domain.BackupTargetConfig{
+		{URL: "memory:///one"},
+		{URL: "memory:///two"},
+	}
+	require.NoError(t, origin.Deps.State.SaveInstallation(ctx, inst))
+
+	found, err := ops.ExportFromRemoteBackup(ctx, origin.Deps,
+		ops.TargetOptions{}, "", recoveryPath)
+	require.NoError(t, err,
+		"recovery failed on the damaged replica while an intact copy sat on the "+
+			"next target")
+	assert.Equal(t, "demo", found.Export.Installation.Product)
+	assert.Equal(t, ref.ID, found.Backup.ID)
+}

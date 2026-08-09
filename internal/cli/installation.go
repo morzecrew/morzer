@@ -78,6 +78,26 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 					WithHint("pass the path to an export file, or --from-backup to " +
 						"read the identity out of a backup you already have")
 			}
+			// Refused rather than ignored. An operator who mistyped
+			// this during a recovery has to learn it from the
+			// command, not from an import that quietly read a
+			// different artifact than the one they named.
+			if !fromBackup && (targetURL != "" || credentialsFile != "") {
+				return domain.Usage(
+					"--target and --credentials-file need --from-backup").
+					WithHint("they say which *backup* to read the identity out of; " +
+						"an export file is read from the path you gave")
+			}
+			if credentialsFile != "" && targetURL == "" {
+				// An empty URL means "every target the installation
+				// configures", and a machine being rebuilt has no
+				// installation to read them from -- so this would
+				// fail with a message about targets rather than
+				// about the flag that is missing.
+				return domain.Usage("--credentials-file needs --target").
+					WithHint("name the target the credentials are for, e.g. " +
+						"--target s3://backups.example/demo")
+			}
 
 			if identity == "" {
 				return domain.Usage("an offline recovery identity is required").
@@ -127,17 +147,26 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 					IdentityFile: identity,
 				})
 			})
-			if err == nil && app.json == nil && !app.Flags.quiet {
-				// Where the identity came from, before the next
-				// steps: an operator who imported the wrong
-				// backup's identity has to learn it here rather
-				// than from a product that will not start.
+			if err != nil {
+				return err
+			}
+
+			// Where the identity came from, on stderr in every mode.
+			//
+			// Not gated on plain output: the staleness note is a
+			// warning, `--json` puts the result on stdout, and a
+			// warning an operator loses by asking for machine-
+			// readable output is a warning that disappears exactly
+			// where a script cannot notice it either.
+			if !app.Flags.quiet {
 				for _, note := range notes {
 					fmt.Fprintf(app.Stream.Err, "%s\n", note)
 				}
+			}
+			if app.json == nil && !app.Flags.quiet {
 				printImportNextSteps(app, export)
 			}
-			return err
+			return nil
 		},
 	}
 

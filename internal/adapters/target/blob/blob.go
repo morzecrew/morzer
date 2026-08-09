@@ -296,12 +296,11 @@ func FetchFile(ctx context.Context, s Store, ref ports.RemoteRef, name, destDir 
 		return err
 	}
 
-	localManifest := filepath.Join(destDir, ports.BackupManifestFileName)
-	if err := getFile(ctx, s,
-		path.Join(ref.ID, ports.BackupManifestFileName), localManifest); err != nil {
-		return err
-	}
-	manifest, err := readLocalManifest(localManifest)
+	// Read into memory under the same bound readManifest applies, then
+	// written down. Fetching it to disk first would leave the size of a
+	// hostile target's answer deciding how much of this machine's disk it
+	// gets -- and the parse that follows would read all of it back.
+	manifest, err := readManifest(ctx, s, path.Join(ref.ID, ports.BackupManifestFileName))
 	if err != nil {
 		return err
 	}
@@ -326,7 +325,19 @@ func FetchFile(ctx context.Context, s Store, ref ports.RemoteRef, name, destDir 
 	if err != nil {
 		return err
 	}
-	return getFile(ctx, s, path.Join(ref.ID, name), local)
+	if err := getFile(ctx, s, path.Join(ref.ID, name), local); err != nil {
+		return err
+	}
+
+	// The manifest is written from the bytes already validated as a
+	// manifest, so the caller reads the same document this function
+	// checked the component name against.
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return domain.Internal(err, "cannot serialise the backup manifest")
+	}
+	return atomicfs.WriteFile(
+		filepath.Join(destDir, ports.BackupManifestFileName), encoded, 0o600)
 }
 
 // Verify reads a backup back off the target and checks its checksums.

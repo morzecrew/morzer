@@ -3,11 +3,15 @@ package ops
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -77,10 +81,18 @@ func ExportFromBackup(
 		return BackupExport{}, err
 	}
 	if len(manifests) == 0 {
+		// The product is named in the remedy because it decides the
+		// directory that was just searched. On a rebuilt host nothing
+		// knows what the product is yet -- the identity that says so is
+		// what this is trying to read -- so an operator who omitted
+		// --product gets a path that looks plausible and is empty.
 		return BackupExport{}, domain.BackupError(domain.ErrNotFound,
 			"no backups were found in %s", paths.BackupsDir()).
-			WithHint("fetch one first with `morzer backup fetch --target <url>`, or " +
-				"recover identity from a file with `morzer installation import <export>`")
+			WithHint("if this machine is being rebuilt, pass --product <name>: that " +
+				"directory is derived from it, and nothing here knows the product " +
+				"until an identity has been read. Otherwise fetch a backup with " +
+				"`morzer backup fetch --target <url>`, or recover identity from a " +
+				"file with `morzer installation import <export>`")
 	}
 
 	chosen, newest, err := selectBackup(manifests, opts.BackupID)
@@ -129,6 +141,21 @@ func readBackupManifests(dir string) ([]ports.BackupManifest, error) {
 		}
 		var m ports.BackupManifest
 		if err := json.Unmarshal(data, &m); err != nil {
+			continue
+		}
+		// The id has to be the directory it was read from.
+		//
+		// `backup.json` is unsigned plaintext -- deliberately, so a
+		// machine with no key can still enumerate what it has -- and
+		// every step after this uses m.ID as a directory name. Without
+		// this, a manifest can name a different backup: the reader then
+		// opens a component from somewhere else while reporting the
+		// metadata of the one it was asked for.
+		//
+		// Skipped rather than refused, like an unreadable neighbour:
+		// one bad directory must not make the rest unreachable during
+		// a recovery.
+		if m.ID != entry.Name() {
 			continue
 		}
 		out = append(out, m)
@@ -238,22 +265,54 @@ func readExportComponent(
 		return domain.InstallationExport{}, noExportIn(m)
 	}
 
-	path := filepath.Join(backupsDir, m.ID, record.Path)
-
-	// The digest first, against the backup's own manifest.
+	// A digest is required, not merely compared when present.
 	//
-	// A named file is not a bound file: nothing in "read export.yaml.age
-	// out of backup X" establishes that the bytes belong to backup X, and
-	// an attacker with write access to a backup store — or a botched sync —
-	// can put another installation's identity there. `backup.json` records
-	// each component's digest over the *stored* bytes, so this needs no
-	// key and runs before anything is decrypted.
-	sum, err := atomicfs.DigestFile(path)
+	// `backup.json` is unsigned plaintext, so a guard that only runs when
+	// a field is populated is a guard an attacker switches off by deleting
+	// the field. Every export this manager writes carries a digest, so
+	// refusing one without costs nothing and makes the binding below
+	// mandatory rather than advisory.
+	if record.SHA256 == "" {
+		return domain.InstallationExport{}, domain.BackupError(domain.ErrValidation,
+			"the installation export in backup %s records no digest", m.ID).
+			WithHint("every export this manager writes is recorded with one, so a " +
+				"component without a digest did not come from here and nothing " +
+				"binds it to this backup")
+	}
+
+	// Opened through a root at the backup store, so neither the id nor the
+	// component path can leave it. Both are attacker-influenced strings out
+	// of that same unsigned manifest -- an id of `../..` with a matching
+	// path escapes a plain filepath.Join -- and the remote side already
+	// refuses exactly this through safeDestination.
+	root, err := os.OpenRoot(backupsDir)
+	if err != nil {
+		return domain.InstallationExport{}, domain.BackupError(err,
+			"cannot open the backup store at %s", backupsDir)
+	}
+	defer func() { _ = root.Close() }()
+
+	in, err := root.Open(path.Join(m.ID, record.Path))
 	if err != nil {
 		return domain.InstallationExport{}, domain.BackupError(err,
 			"cannot read the installation export in backup %s", m.ID)
 	}
-	if record.SHA256 != "" && !atomicfs.SameDigest(sum, record.SHA256) {
+	defer func() { _ = in.Close() }()
+
+	// The digest, against the backup's own manifest.
+	//
+	// A named file is not a bound file: nothing in "read export.yaml.age
+	// out of backup X" establishes that the bytes belong to backup X, and
+	// an attacker with write access to a backup store -- or a botched sync
+	// -- can put another installation's identity there. The digest is over
+	// the *stored* bytes, so this needs no key and runs before anything is
+	// decrypted.
+	sum, err := digestReader(in)
+	if err != nil {
+		return domain.InstallationExport{}, domain.BackupError(err,
+			"cannot read the installation export in backup %s", m.ID)
+	}
+	if !atomicfs.SameDigest(sum, record.SHA256) {
 		return domain.InstallationExport{}, domain.BackupError(domain.ErrDigestMismatch,
 			"the installation export in backup %s is not the one its manifest records",
 			m.ID).
@@ -261,13 +320,10 @@ func readExportComponent(
 				"been altered or assembled from parts of others; do not import "+
 				"identity from it", record.SHA256, sum)
 	}
-
-	in, err := os.Open(path)
-	if err != nil {
+	if _, err := in.Seek(0, io.SeekStart); err != nil {
 		return domain.InstallationExport{}, domain.BackupError(err,
-			"cannot read the installation export in backup %s", m.ID)
+			"cannot re-read the installation export in backup %s", m.ID)
 	}
-	defer func() { _ = in.Close() }()
 
 	// An unencrypted export is refused rather than read.
 	//
@@ -302,6 +358,16 @@ func readExportComponent(
 		return domain.InstallationExport{}, err
 	}
 	return export, nil
+}
+
+// digestReader hashes a stream, so the containment check and the digest check
+// share one opened file rather than agreeing about a path.
+func digestReader(r io.Reader) (string, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // DescribeBackupExport says which backup the identity came from, and what that
@@ -355,9 +421,18 @@ func ExportFromRemoteBackup(
 	// Only the manifests cross the network here, which is what `backup list
 	// --remote` already costs: they are the one plaintext file in a backup,
 	// so this works from a machine that has lost every key it ever had.
+	// Every replica of a backup is kept, not the first one seen.
+	//
+	// The same id on two targets is normally the same bytes -- a push is
+	// idempotent and a backup is immutable -- but "normally" is doing work
+	// there. Bit rot, a half-restored bucket or a tampered replica all
+	// produce a copy that lists fine and fails to read, and taking the
+	// first and stopping would mean a recovery that fails while an intact
+	// copy sits on the next target. This is the one code path where that
+	// trade is obviously wrong.
 	var (
 		manifests []ports.BackupManifest
-		refs      = map[string]ports.RemoteRef{}
+		replicas  = map[string][]ports.RemoteRef{}
 	)
 	for _, target := range targets {
 		found, listErr := d.Targets.List(ctx, target)
@@ -365,15 +440,10 @@ func ExportFromRemoteBackup(
 			return BackupExport{}, listErr
 		}
 		for _, m := range found {
-			if _, seen := refs[m.ID]; seen {
-				// The same backup pushed to two targets. The
-				// first wins: they are the same bytes by
-				// construction, and choosing between them would
-				// be inventing a preference.
-				continue
+			if _, seen := replicas[m.ID]; !seen {
+				manifests = append(manifests, m)
 			}
-			refs[m.ID] = ports.RemoteRef{Target: target, ID: m.ID}
-			manifests = append(manifests, m)
+			replicas[m.ID] = append(replicas[m.ID], ports.RemoteRef{Target: target, ID: m.ID})
 		}
 	}
 	if len(manifests) == 0 {
@@ -400,37 +470,8 @@ func ExportFromRemoteBackup(
 	// optional here: a named remote key returns whatever sits at it, and an
 	// attacker with write access to the bucket can put another
 	// installation's identity under that name.
-	staging, err := os.MkdirTemp("", "morzer-export-")
-	if err != nil {
-		return BackupExport{}, domain.Internal(err, "cannot create a staging directory")
-	}
-	defer func() { _ = atomicfs.RemoveAll(staging) }()
-
-	if err := d.Targets.FetchFile(ctx, refs[chosen.ID], record.Path,
-		filepath.Join(staging, chosen.ID)); err != nil {
-		return BackupExport{}, err
-	}
-
-	// Re-read from what was fetched rather than trusting the listing: the
-	// manifest that binds the component is the one that travelled with it.
-	//
-	// The identity half of this check cannot currently fire, and it is kept
-	// deliberately. `List` derives each RemoteRef from the manifest's own ID
-	// field, so a manifest whose ID disagrees with its key makes the *fetch*
-	// address a key that does not exist and fail first. What the check
-	// guards is a future FetchFile that resolves keys some other way -- and
-	// the count half, which catches one writing somewhere other than where
-	// it was told.
-	fetched, err := readBackupManifests(staging)
-	if err != nil {
-		return BackupExport{}, err
-	}
-	if len(fetched) != 1 || fetched[0].ID != chosen.ID {
-		return BackupExport{}, domain.BackupError(domain.ErrValidation,
-			"the target returned a manifest for a different backup than %s", chosen.ID)
-	}
-
-	export, err := readExportComponent(staging, fetched[0], identityFile)
+	export, err := readExportFromReplicas(
+		ctx, d, replicas[chosen.ID], chosen, record.Path, identityFile)
 	if err != nil {
 		return BackupExport{}, err
 	}
@@ -440,6 +481,81 @@ func ExportFromRemoteBackup(
 		out.Newest = newest
 	}
 	return out, nil
+}
+
+// readExportFromReplicas tries each copy of a backup until one yields an
+// export, and reports every failure if none does.
+//
+// A recovery is the wrong moment to be told about one bad copy and left to
+// discover that another target holds a good one.
+func readExportFromReplicas(
+	ctx context.Context,
+	d *Deps,
+	refs []ports.RemoteRef,
+	chosen ports.BackupManifest,
+	componentPath string,
+	identityFile string,
+) (domain.InstallationExport, error) {
+	var failures []string
+
+	for _, ref := range refs {
+		export, err := readExportFromReplica(ctx, d, ref, chosen, componentPath, identityFile)
+		if err == nil {
+			return export, nil
+		}
+		failures = append(failures,
+			ref.Target.String()+": "+domain.AsError(err).Message)
+	}
+
+	if len(failures) == 1 {
+		return domain.InstallationExport{}, domain.BackupError(domain.ErrValidation,
+			"cannot read the installation export in backup %s -- %s",
+			chosen.ID, failures[0])
+	}
+	return domain.InstallationExport{}, domain.BackupError(domain.ErrValidation,
+		"no copy of backup %s yielded a usable installation export:\n  - %s",
+		chosen.ID, strings.Join(failures, "\n  - ")).
+		WithHint("every target holding this backup was tried")
+}
+
+// readExportFromReplica fetches and reads one copy.
+func readExportFromReplica(
+	ctx context.Context,
+	d *Deps,
+	ref ports.RemoteRef,
+	chosen ports.BackupManifest,
+	componentPath string,
+	identityFile string,
+) (domain.InstallationExport, error) {
+	// A directory shaped like the local backup store, so the same reader
+	// checks the same things -- the digest binding above all, which is not
+	// optional here: a named remote key returns whatever sits at it, and an
+	// attacker with write access to the bucket can put another
+	// installation's identity under that name.
+	staging, err := os.MkdirTemp("", "morzer-export-")
+	if err != nil {
+		return domain.InstallationExport{}, domain.Internal(err,
+			"cannot create a staging directory")
+	}
+	defer func() { _ = atomicfs.RemoveAll(staging) }()
+
+	if err := d.Targets.FetchFile(ctx, ref, componentPath,
+		filepath.Join(staging, chosen.ID)); err != nil {
+		return domain.InstallationExport{}, err
+	}
+
+	// Re-read from what was fetched rather than trusting the listing: the
+	// manifest that binds the component is the one that travelled with it.
+	fetched, err := readBackupManifests(staging)
+	if err != nil {
+		return domain.InstallationExport{}, err
+	}
+	if len(fetched) != 1 || fetched[0].ID != chosen.ID {
+		return domain.InstallationExport{}, domain.BackupError(domain.ErrValidation,
+			"the target returned a manifest for a different backup than %s", chosen.ID)
+	}
+
+	return readExportComponent(staging, fetched[0], identityFile)
 }
 
 // exportRecord finds the export component in a manifest.
