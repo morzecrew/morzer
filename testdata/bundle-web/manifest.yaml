@@ -79,14 +79,14 @@ images:
   db: registry.example/web/db@sha256:0000000000000000000000000000000000000000000000000000000000000003
 
 configuration:
-  - template: templates/application.yaml
+  - template: templates/application.yaml.tmpl
     target: /etc/web/application.yaml
     mode: "0640"
 
 secrets:
   source: /etc/web/secrets.sops.yaml
   render_to: /run/web/secrets
-  schema: templates/secrets.yaml
+  schema: secrets.schema.yaml
 
 operations:
   migrate:

@@ -101,15 +101,23 @@ Declaring `ports` is what lets the manager tell an operator their port is taken
 
 ```yaml
 configuration:
-  - template: templates/application.yaml
+  - template: templates/application.yaml.tmpl
     target: /etc/demo/application.yaml
     mode: "0640"
 ```
 
+The `.tmpl` suffix is a convention, not a requirement — the manifest names the
+path, so morzer has no business dictating filenames it was handed the location
+of. It is worth following: a Go template named `.yaml` makes every editor's YAML
+language server parse `{{- range .Domains }}` and report errors that are not
+errors. The double extension keeps the output language inferable, and it is what
+Helm, Hugo and `envsubst` users already recognise. Associate `*.yaml.tmpl` with
+Go templates in your editor and the noise stops.
+
 Rendered with the installation's own facts. **Secrets appear as paths, never as
 values** — there is a `secretFile` helper for exactly this:
 
-```yaml title="templates/application.yaml"
+```yaml title="templates/application.yaml.tmpl"
 secrets:
   db_password_file: {{ secretFile .Secrets "db_password" }}
   session_key_file: {{ secretFile .Secrets "session_key" }}
@@ -143,9 +151,13 @@ answer and the one your users need.
 
 ## The secret schema
 
-```yaml title="templates/secrets.yaml"
---8<-- "testdata/bundle/templates/secrets.yaml"
+```yaml title="secrets.schema.yaml"
+--8<-- "testdata/bundle/secrets.schema.yaml"
 ```
+
+It sits at the bundle root rather than under `templates/`, because it is not a
+template: the manager reads it, nothing renders it. Like the suffix above this
+is a convention — `secrets.schema` in the manifest names wherever you put it.
 
 Declaring a `generator` means the manager can create the value itself at `init`
 and rotate it on request. Declaring `services` means a rotation restarts only

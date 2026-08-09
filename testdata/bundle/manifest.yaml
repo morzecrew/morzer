@@ -63,14 +63,14 @@ images:
   db: registry.example/demo/db@sha256:0000000000000000000000000000000000000000000000000000000000000002
 
 configuration:
-  - template: templates/application.yaml
+  - template: templates/application.yaml.tmpl
     target: /etc/demo/application.yaml
     mode: "0640"
 
 secrets:
   source: /etc/demo/secrets.sops.yaml
   render_to: /run/demo/secrets
-  schema: templates/secrets.yaml
+  schema: secrets.schema.yaml
 
 operations:
   migrate:

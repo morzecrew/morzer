@@ -291,9 +291,9 @@ inside a vendor block.
 
 ## The secret schema
 
-`templates/secrets.yaml` declares what secrets exist, so `init` can provision
-them and `doctor` can audit them without the manager knowing anything about the
-product.
+The document `secrets.schema` names — `secrets.schema.yaml` at the bundle root
+by convention — declares what secrets exist, so `init` can provision them and
+`doctor` can audit them without the manager knowing anything about the product.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -358,6 +358,6 @@ all run against it, so it cannot drift from what the manager actually accepts.
 
 And its secret schema:
 
-```yaml title="testdata/bundle/templates/secrets.yaml"
---8<-- "testdata/bundle/templates/secrets.yaml"
+```yaml title="testdata/bundle/secrets.schema.yaml"
+--8<-- "testdata/bundle/secrets.schema.yaml"
 ```

@@ -106,7 +106,7 @@ func (s SecretSet) RedactionList() []string {
 	return out
 }
 
-// SecretSchema is `templates/secrets.yaml`: the release's declaration of what
+// SecretSchema is the release's declaration of what
 // secrets exist. It is what lets `init` provision and `doctor` audit secrets
 // without the manager knowing anything about the product.
 type SecretSchema struct {

@@ -153,7 +153,7 @@ func ParseManifest(data []byte, source string) (domain.Manifest, error) {
 	return m, nil
 }
 
-// LoadSecretSchema reads templates/secrets.yaml from a release.
+// LoadSecretSchema reads the secret schema a manifest declares.
 //
 // A release without a secret schema is valid -- not every product has
 // secrets -- and yields an empty schema rather than an error.

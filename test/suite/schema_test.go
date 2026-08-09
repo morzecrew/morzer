@@ -71,7 +71,7 @@ func TestTheExampleBundleSatisfiesItsSchema(t *testing.T) {
 		{"manifest", schema.ManifestSchemaFile,
 			filepath.Join(testBundlePath(t), "manifest.yaml")},
 		{"secret schema", schema.SecretSchemaFile,
-			filepath.Join(testBundlePath(t), "templates", "secrets.yaml")},
+			filepath.Join(testBundlePath(t), "secrets.schema.yaml")},
 	}
 
 	for _, tc := range cases {

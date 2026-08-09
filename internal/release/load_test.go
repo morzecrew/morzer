@@ -143,10 +143,10 @@ func TestABundleIsRefusedForEveryWayItCanBeWrong(t *testing.T) {
 		},
 		"a template the manifest names but the bundle lacks": {
 			func(t *testing.T, dir string) {
-				if err := os.Remove(filepath.Join(dir, "templates", "application.yaml")); err != nil {
+				if err := os.Remove(filepath.Join(dir, "templates", "application.yaml.tmpl")); err != nil {
 					t.Fatal(err)
 				}
-			}, "application.yaml",
+			}, "application.yaml.tmpl",
 		},
 		"a hook that is not executable": {
 			func(t *testing.T, dir string) {
@@ -267,7 +267,7 @@ func TestRetentionDistinguishesAbsentFromZero(t *testing.T) {
 
 func TestLoadSecretSchemaRefusesWhatItCannotRead(t *testing.T) {
 	dir := bundle(t, func(d string) {
-		edit(t, filepath.Join(d, "templates", "secrets.yaml"),
+		edit(t, filepath.Join(d, "secrets.schema.yaml"),
 			func(string) string { return "\tnot: [valid" })
 	})
 
@@ -285,7 +285,7 @@ func TestLoadSecretSchemaRefusesWhatItCannotRead(t *testing.T) {
 func TestLoadSecretSchemaOnABundleThatDeclaresNone(t *testing.T) {
 	dir := bundle(t, func(d string) {
 		edit(t, filepath.Join(d, "manifest.yaml"), func(s string) string {
-			return strings.Replace(s, "  schema: templates/secrets.yaml\n", "", 1)
+			return strings.Replace(s, "  schema: secrets.schema.yaml\n", "", 1)
 		})
 	})
 
