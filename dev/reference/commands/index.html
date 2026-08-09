@@ -2607,13 +2607,28 @@ the secret state, service and health status, disk headroom, and the journal.</p>
 </tr>
 <tr>
 <td><code>runtime.images-local</code></td>
-<td>Some of the release's images are not present locally, so this machine would not come up without network access. See <a href="../../operating/installing-offline/">Installing without a network</a>.</td>
+<td>Some of the release's <strong>pulled</strong> images are not present locally, so this machine would not come up without network access. Images that travel in the bundle are not counted here — they are either loaded or the deployment is refused, which is <code>images.bundled</code> below. See <a href="../../operating/installing-offline/">Installing without a network</a>.</td>
 </tr>
 </tbody>
 </table>
 <p>The rotation remedy names the command that will actually work: <code>secret rotate</code>
 for a secret the release declares a generator for, and <code>secret set</code> for one it
 does not — pointing at <code>rotate</code> there would point at a command that fails.</p>
+<p>One check about images does <strong>fail</strong> rather than warn:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>images.bundled</code></td>
+<td>An image the release marks <code>from: bundle</code> is not in the local image store. Fatal, and <code>apply</code> refuses on it: a bundled image is deployed under a tag the manager creates, and letting a converge proceed without it would send the deployment to the vendor's registry for whatever that tag pointed at. <code>morzer release ingest</code> loads it out of the bundle, with no network.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>Coordinates the release's backup hook, wraps the result in a self-describing
 manifest, and verifies the checksums by re-reading what was written.</p>

@@ -1148,6 +1148,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-the-customers-machine-does-with-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What the customer's machine does with it
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What the customer&#x27;s machine does with it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-image-is-deployed-under-a-name-you-did-not-publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The image is deployed under a name you did not publish
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#size" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1865,6 +1893,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-the-customers-machine-does-with-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What the customer's machine does with it
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What the customer&#x27;s machine does with it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-image-is-deployed-under-a-name-you-did-not-publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The image is deployed under a name you did not publish
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#size" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2053,6 +2109,39 @@ the archive's first entry. <code>release archive</code> does this for you; a han
 <code>tar</code> that does not is refused. See
 <a href="../publishing/#if-you-roll-your-own-tar">publishing</a>.</p>
 </div>
+<h2 id="what-the-customers-machine-does-with-it">What the customer's machine does with it<a class="headerlink" href="#what-the-customers-machine-does-with-it" title="Permanent link">&para;</a></h2>
+<p>Nothing they have to think about: <code>init</code> and <code>update</code> load the bundle's images
+as part of staging the release, before the converge that needs them. There is no
+preload step and no flag.</p>
+<p>Underneath, the manager serves the <code>images/</code> layout to the container runtime
+over <code>127.0.0.1</code>, read-only, for the length of the operation, and the runtime
+performs an ordinary registry pull out of it. Ordinary is the point: the runtime
+verifies every blob it fetches against the digest the manifest names, so a
+bundle whose bytes are not what its index claims is refused there rather than
+discovered later.</p>
+<h3 id="the-image-is-deployed-under-a-name-you-did-not-publish">The image is deployed under a name you did not publish<a class="headerlink" href="#the-image-is-deployed-under-a-name-you-did-not-publish" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>registry.example/demo/app:morzer-sha256-0000000000000000…
+</code></pre></div>
+<p>A container runtime records the repository it <em>pulled</em> an image from, and
+nothing can add a digest reference for a repository it never contacted —
+<code>docker tag</code> refuses outright, with <code>refusing to create a tag with a digest
+reference</code>. So a bundled image cannot answer to <code>registry.example/demo/app@sha256:…</code>
+on the customer's machine, however the bytes arrived, and Compose has to receive
+a name that resolves.</p>
+<p><code>ref</code> is unaffected as the identity: it is what your signature covers, what
+<code>release show</code> reports, and what the tag above is derived from — which is also
+why the tag is identical on every machine and every run, and why a rendered
+Compose file does not change between deployments.</p>
+<p>Two consequences worth knowing before a customer asks:</p>
+<ul>
+<li><strong><code>docker images</code> on their machine shows a tag you never published.</strong> It is
+  the manager's, and the <code>morzer-</code> prefix is there so that is obvious.</li>
+<li><strong>A missing bundled image is a refusal, not a pull.</strong> If the image store is
+  pruned, <code>apply</code> stops with <code>1 of 1 bundled image(s) are not in the local image
+  store</code> and names <code>morzer release ingest</code>. It does not fall back to your
+  registry: the deployed name is a tag, and a tag your registry happened to
+  serve would let a digest-pinned deployment converge on bytes nobody verified.</li>
+</ul>
 <h2 id="size">Size<a class="headerlink" href="#size" title="Permanent link">&para;</a></h2>
 <p>Measured from real layouts, because the numbers are not what estimating
 suggests:</p>
@@ -2111,6 +2200,11 @@ and arguably a stronger one: the chain is signature → <code>SHA256SUMS</code> 
 bytes → computed digest, all of it checkable on a machine with no network.</p>
 <p>It also means an unsigned bundle carrying images asks the customer to trust
 the transport alone. Sign your releases.</p>
+<p>The chain is checked twice over, at different granularities: <code>SHA256SUMS</code>
+covers every file under <code>images/</code> before anything is installed, and the
+container runtime independently verifies each blob it fetches during the
+load. The second is not redundant — it is what catches a layout that is
+internally inconsistent while being perfectly signed.</p>
 </div>
 
 

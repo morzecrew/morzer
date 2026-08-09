@@ -1505,6 +1505,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release ingest
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release ingest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-leaves-behind" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it leaves behind
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-prune" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2186,6 +2225,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release ingest
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release ingest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-leaves-behind" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it leaves behind
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-prune" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2819,6 +2897,75 @@ an OIDC identity a self-hosted vendor may not have, while a minisign key is one
 base64 line an operator can paste into a config. The manager only ever verifies
 — there is no <code>morzer sign</code>, because the signing key belongs in a vendor's
 release pipeline rather than on a deployment host.</p>
+<h2 id="release-ingest">release ingest<a class="headerlink" href="#release-ingest" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>ingest
+</code></pre></div>
+<p>Loads the images the installed release carries into the local image store. No
+arguments: it acts on the release that is current, because that is the one a
+deployment is about to run.</p>
+<p>Nothing here touches the network. The manager serves the release's
+<code>images/</code> layout to the container runtime over <code>127.0.0.1</code>, read-only, for the
+length of the command, and the runtime pulls each image out of it — a real
+registry pull, so the runtime verifies every blob it fetches against the digest
+the manifest names.</p>
+<p><strong>You rarely run this.</strong> <code>init</code> and <code>update</code> run the same step, so a release
+installed the ordinary way arrives with its images already loaded. It exists for
+the case where they are not: a machine whose image store was pruned, a runtime
+that was reinstalled, a converge that refuses with</p>
+<div class="highlight"><pre><span></span><code>images the bundle carries are loaded
+  1 of 1 bundled image(s) are not in the local image store: registry.example/demo/app
+  → run `morzer release ingest` to load them out of the bundle
+</code></pre></div>
+<p><strong>Idempotent.</strong> An image already present is not read again, so re-running after
+a partial failure costs nothing for the images that succeeded.</p>
+<h3 id="what-it-refuses_2">What it refuses<a class="headerlink" href="#what-it-refuses_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The release bundles no images</td>
+<td>Not an error. It says so and does nothing.</td>
+</tr>
+<tr>
+<td>A blob whose bytes are not what the layout's index claims</td>
+<td>Refused, naming the blob and the digest it actually hashes to. The runtime is what rejects the bytes; the manager is what tells you which ones.</td>
+</tr>
+<tr>
+<td>The runtime has no local image store</td>
+<td>Refused. A release marking images <code>from: bundle</code> will not find them anywhere else.</td>
+</tr>
+<tr>
+<td>The runtime cannot reach this machine's loopback</td>
+<td>Refused. A daemon on another host — a remote <code>DOCKER_HOST</code> — cannot pull from a server bound to this one, and there is no fallback behind it.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-it-leaves-behind">What it leaves behind<a class="headerlink" href="#what-it-leaves-behind" title="Permanent link">&para;</a></h3>
+<p>An image that travelled in the bundle ends up named
+<code>&lt;repository&gt;:morzer-sha256-&lt;digest&gt;</code> rather than the <code>name@sha256:…</code> the
+manifest pins:</p>
+<div class="highlight"><pre><span></span><code>$ docker images
+REPOSITORY                  TAG                          IMAGE ID
+registry.example/demo/app   morzer-sha256-0000000000…    a1b2c3d4e5f6
+</code></pre></div>
+<p>That tag is the manager's, and it is not a cosmetic choice. A container runtime
+records the repository it <em>pulled</em> an image from, and nothing can add a digest
+reference for a repository it never contacted — <code>docker tag</code> refuses outright:
+<code>refusing to create a tag with a digest reference</code>. So a bundled image cannot
+answer to the reference its manifest pins, and Compose has to be given a name
+that resolves.</p>
+<p>The digest stays the identity. It is what the signature covers, what
+<code>release show</code> reports, and what the tag is derived from — which is also why the
+tag is the same on every machine and every run.</p>
+<p>Because the tag is derived rather than invented, <code>apply</code> <strong>refuses</strong> rather than
+pulls when a bundled image is missing. A tag is mutable; if a registry happened
+to serve that name, a missing image would let a digest-pinned deployment
+converge on bytes nobody verified.</p>
 <h2 id="release-prune">release prune<a class="headerlink" href="#release-prune" title="Permanent link">&para;</a></h2>
 <p>Removes old releases beyond the retention policy. The running release and the
 one before it are never pruned.</p>
