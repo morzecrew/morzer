@@ -22,6 +22,11 @@ type Status struct {
 	Profile        string `json:"profile,omitempty"`
 	PublicURL      string `json:"public_url,omitempty"`
 
+	// SupportURL is the release's own "where do I get help". Shown here
+	// and on a failing doctor check, and nowhere else: appending it to
+	// every error hint would put a vendor URL in every log line.
+	SupportURL string `json:"support_url,omitempty"`
+
 	// Pointers, not values: encoding/json ignores omitempty on a struct, so
 	// a value here emitted a zero-filled object for "no previous release".
 	// null says it unambiguously.
@@ -128,6 +133,7 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		if relErr != nil {
 			out.Problems = append(out.Problems, domain.AsError(relErr).Message)
 		} else {
+			out.SupportURL = rel.Manifest.Metadata.SupportURL
 			d.fillRuntimeStatus(ctx, &out, inst, rel)
 		}
 	}

@@ -57,6 +57,19 @@ published version stays readable until it is explicitly deprecated.
 | `version` | semver | ✅ | Release version. |
 | `description` | string | | One line, shown by `release show`. |
 | `vendor` | string | | Who publishes this. |
+| `release_notes` | path | | Bundle-relative path to what changed in this release, conventionally `RELEASE.md`. |
+| `support_url` | https URL | | Where an operator goes when something is wrong. |
+
+`release_notes` is **declared, not discovered**. Every other path a bundle
+ships is declared and existence-checked, and a declared-but-missing file fails
+`release verify`; there is deliberately no fallback to looking for a
+`RELEASE.md` that nothing points at, because a convention layered under a
+declaration reintroduces the ambiguity the declaration removes.
+
+`support_url` must be `https`. It is shown by `status` and by `doctor` **when a
+check fails** — not appended to every error hint, which would put a vendor URL
+in every log line. The operator of a self-hosted product is usually not its
+vendor, and "where do I get help" otherwise has no home.
 
 ## providers
 
@@ -93,6 +106,7 @@ Checked in preflight and reported by `doctor`.
 | `tools` | map | Version constraints for external tools, e.g. `docker: ">=24"`. |
 | `memory` | size | Minimum RAM, e.g. `2GiB`. |
 | `disk` | size | Minimum free disk, e.g. `5GiB`. |
+| `cpus` | int | Logical CPUs the release wants. A cgroup quota is honoured where one is in force, so a containerised manager sees what it may actually use rather than what the host has. |
 | `ports` | list | TCP ports the release binds, checked for conflicts. A literal number, or `"{{ .Parameters.<name> }}"` so the check follows the port the deployment actually publishes. |
 
 ## parameters
@@ -118,6 +132,7 @@ parameters:
 | --- | --- | :---: | --- |
 | `type` | string | ✅ | One of `port`, `int`, `bool`, `string`, `enum`, `duration`, `bytes`. |
 | `default` | string | | Used when the operator sets nothing. Validated against `type` at `release verify`. |
+| `required` | bool | | The operator must supply a value. Declaring it alongside a `default` is a validation error. |
 | `description` | string | | Shown when a value is refused, so the operator learns what is accepted. |
 | `values` | list | | The permitted set. Required for `enum`, an error for anything else. |
 | `services` | list | | Services to restart when the value changes. Empty means the change needs a full `apply`. |
@@ -140,6 +155,28 @@ rather than the actual source of the value.
     the journal, and in `installation.yaml` in the clear. Anything that must
     not be is a [secret](../authoring/index.md), which has its own declared,
     audited path and is rendered to tmpfs as a file.
+
+### required
+
+Without it, a parameter with no default resolves silently to the empty string —
+so a vendor could declare a knob that exists to be an operator choice and had
+no way to say the choice was not optional, while a *secret* could be required
+all along.
+
+`required: true` **and** a `default` is refused. It is a vendor saying two
+contradictory things, and picking a winner silently would leave them believing
+they had made the choice mandatory.
+
+An unset required parameter fails preflight, so it is refused by `init`, by
+`config unset`, and by `apply`. That last one is deliberate: a release that
+introduces a required parameter fails to deploy rather than deploying with an
+empty value the product then misreads, and the currently running release keeps
+serving. Set the value first:
+
+```sh
+morzer config set admin_email=ops@example
+morzer update ./demo-1.4.0.tar.zst
+```
 
 See [Parameters](parameters.md) for the operator's side.
 
@@ -242,14 +279,39 @@ commits a vendor to. Bind mounts are never captured and have no declaration.
 
 ## health
 
-`checks` is a list; each entry has a unique `name`, a `type`, and a `timeout`
-(default `120s`).
+`checks` is a list; each entry has a unique `name`, a `type`, a `timeout`
+(default `120s`) and an optional `start_period`.
 
 | `type` | Additional field | Meaning |
 | --- | --- | --- |
 | `http` | `url` | Considered healthy on a 2xx response. |
 | `tcp` | `address` | Considered healthy when the connection is accepted. |
 | `command` | `command` | Considered healthy on exit 0. Release-relative argv. |
+
+`timeout` bounds a **single attempt**. `start_period` is different: it is how
+long the check may keep failing before the failure means anything.
+
+```yaml
+health:
+  checks:
+    - name: api
+      type: http
+      url: http://127.0.0.1:18080/health
+      timeout: 5s
+      start_period: 90s
+```
+
+Without it, a product with a ninety-second first boot and a product that is
+dead are the same observation, and the only lever is a timeout long enough to
+delay noticing the second. With it, `apply` stops waiting once every
+still-failing check has outlived its own declared period, and says so in
+different words from a plain timeout — "the vendor said how long this takes and
+it took longer" is acted on differently from "we ran out of time".
+
+Omitted means the waiter keeps trying for as long as the operation allows,
+which is what it has always done. A check that declares none also holds the
+wait open for the checks beside it, so adding `start_period` to one check never
+shortens the wait for another.
 
 ## compatibility
 

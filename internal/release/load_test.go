@@ -265,6 +265,28 @@ func TestRetentionDistinguishesAbsentFromZero(t *testing.T) {
 	}
 }
 
+// TestDeclaredReleaseNotesMustExist.
+//
+// Every other path a bundle ships is declared and existence-checked; release
+// notes must not be the one exception, or a bundle can promise notes and ship
+// none -- showing an operator nothing at the moment they were told to read
+// something.
+func TestDeclaredReleaseNotesMustExist(t *testing.T) {
+	dir := bundle(t, func(dir string) {
+		if err := os.Remove(filepath.Join(dir, "RELEASE.md")); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	_, err := release.Load(dir)
+	if err == nil {
+		t.Fatal("a declared-but-missing release_notes must fail verification")
+	}
+	if !strings.Contains(err.Error(), "metadata.release_notes") {
+		t.Errorf("the refusal should name the field: %v", err)
+	}
+}
+
 func TestLoadSecretSchemaRefusesWhatItCannotRead(t *testing.T) {
 	dir := bundle(t, func(d string) {
 		edit(t, filepath.Join(d, "secrets.schema.yaml"),

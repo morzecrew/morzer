@@ -42,6 +42,9 @@ func statusBody(t *theme.Theme, s ops.Status) string {
 	if s.PublicURL != "" {
 		field("url", s.PublicURL)
 	}
+	if s.SupportURL != "" {
+		field("support", s.SupportURL)
+	}
 
 	if len(s.Services) > 0 {
 		f("")

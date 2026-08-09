@@ -30,6 +30,16 @@ type DoctorReport struct {
 		Warn int `json:"warn"`
 		Fail int `json:"fail"`
 	} `json:"summary"`
+
+	// SupportURL is the release's own "where do I get help", present only
+	// when something actually failed.
+	//
+	// Conditional on purpose. An operator whose system is fine does not
+	// need a support link, and a link printed on every clean run is a link
+	// nobody reads on the one run that mattered. It is also why this is
+	// not appended to every error hint: that would be a vendor URL in
+	// every log line.
+	SupportURL string `json:"support_url,omitempty"`
 }
 
 // ExitCode maps the worst result onto the process exit status.
@@ -61,6 +71,9 @@ func Doctor(ctx context.Context, d *Deps) (DoctorReport, error) {
 	report := runner.Run(ctx, checks)
 
 	out := DoctorReport{Results: report.Results, Worst: report.Worst}
+	if report.Worst == events.CheckFail {
+		out.SupportURL = d.supportURL(ctx)
+	}
 	for _, res := range report.Results {
 		switch res.Status {
 		case events.CheckOK:
@@ -72,6 +85,23 @@ func Doctor(ctx context.Context, d *Deps) (DoctorReport, error) {
 		}
 	}
 	return out, nil
+}
+
+// supportURL is what the installed release says about getting help, or "".
+//
+// Quiet about every failure: this runs when something is already wrong, and a
+// diagnostic that fails to produce a support link because it could not read a
+// manifest has made a bad moment worse for no gain.
+func (d *Deps) supportURL(ctx context.Context) string {
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil || current.IsZero() {
+		return ""
+	}
+	rel, err := d.resolveCurrentRelease(ctx, current)
+	if err != nil {
+		return ""
+	}
+	return rel.Manifest.Metadata.SupportURL
 }
 
 // doctorChecks assembles the check list, adapting to how much of the
@@ -113,6 +143,8 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		checks = append(checks, preflight.Architecture(rel.Manifest.Requirements))
 		checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
 		checks = append(checks,
+			preflight.CPUs(rel.Manifest.Requirements.CPUs),
+			preflight.RequiredParameters(rel.Manifest.Parameters, inst.Parameters),
 			d.checkRequiredSecrets(rel),
 			d.checkSecretRotation(rel),
 			d.checkRegistryReachable(rel),

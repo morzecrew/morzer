@@ -53,6 +53,11 @@ func (c CheckSpec) Timeout() time.Duration {
 	return c.Check.Timeout.Or(domain.DefaultHealthTimeout)
 }
 
+// StartPeriod is how long this check may keep failing before the failure means
+// anything. Zero means the vendor declared none, and the waiter keeps trying
+// for as long as the operation allows.
+func (c CheckSpec) StartPeriod() time.Duration { return c.Check.StartPeriod.Duration() }
+
 // HealthResult is the outcome of one probe.
 type HealthResult struct {
 	Name     string        `json:"name"`

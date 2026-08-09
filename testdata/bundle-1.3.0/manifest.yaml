@@ -13,6 +13,8 @@ metadata:
   version: 1.3.0
   description: Demo self-hosted bundle, successor release
   vendor: example
+  release_notes: RELEASE.md
+  support_url: https://support.example/demo
 
 providers:
   runtime: {name: compose, version: ">=2.30"}
@@ -38,6 +40,7 @@ requirements:
     compose: ">=2.30"
   memory: 2GiB
   disk: 5GiB
+  cpus: 1
   # Follows the parameter rather than restating it: preflight has to check the
   # port this deployment will actually publish, not the one the vendor chose.
   ports: ["{{ .Parameters.http_port }}"]

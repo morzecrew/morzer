@@ -14,6 +14,8 @@ metadata:
   version: 1.0.0
   description: Three-tier example -- frontend, backend and database
   vendor: example
+  release_notes: RELEASE.md
+  support_url: https://support.example/demo
 
 providers:
   runtime: {name: compose, version: ">=2.30"}
@@ -39,6 +41,7 @@ requirements:
     compose: ">=2.30"
   memory: 1GiB
   disk: 2GiB
+  cpus: 1
   # Both published ports follow their parameters. A literal here would mean
   # preflight checking a port the deployment is not going to use.
   ports:

@@ -10,6 +10,7 @@ package preflight
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"runtime"
@@ -442,6 +443,104 @@ func Memory(required domain.ByteSize) Check {
 					domain.ByteSize(total), required)
 			}
 			return OK("%s", domain.ByteSize(total))
+		},
+	}
+}
+
+// CPUs checks the machine's available parallelism against the release.
+//
+// A warning rather than a failure, matching Memory: a machine with fewer cores
+// than the vendor recommends is slow, not broken, and refusing to start on it
+// would be the manager overruling an operator who may know their workload
+// better than the vendor's default guess.
+//
+// "Available" means logical CPUs, narrowed by a cgroup quota where one is in
+// force. Those are the three things a machine can mean by "how many CPUs" --
+// physical cores, logical CPUs, a quota -- and the one that decides how much
+// parallelism the product gets is the last that applies.
+func CPUs(required int) Check {
+	return Check{
+		ID:          "system.cpus",
+		Category:    CategorySystem,
+		Description: "available CPUs meet the release requirement",
+		Fatal:       false,
+		Run: func(context.Context) events.CheckResult {
+			if required <= 0 {
+				return OK("the release states no CPU requirement")
+			}
+			available := availableCPUs()
+			if available < required {
+				return Warn(
+					"the product may be slow under load",
+					"this machine offers %d CPU(s), the release recommends %d",
+					available, required)
+			}
+			return OK("%d CPU(s)", available)
+		},
+	}
+}
+
+// cgroupCPUMax is where cgroup v2 records a CPU quota. A manager running inside
+// a container sees every host CPU through runtime.NumCPU and is allowed to use
+// far fewer.
+const cgroupCPUMax = "/sys/fs/cgroup/cpu.max"
+
+func availableCPUs() int {
+	logical := runtime.NumCPU()
+
+	data, err := os.ReadFile(cgroupCPUMax)
+	if err != nil {
+		return logical
+	}
+	// "<quota> <period>", or "max <period>" for no quota at all.
+	fields := strings.Fields(string(data))
+	if len(fields) != 2 || fields[0] == "max" {
+		return logical
+	}
+	quota, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return logical
+	}
+	period, err := strconv.ParseFloat(fields[1], 64)
+	if err != nil || period <= 0 {
+		return logical
+	}
+
+	// Rounded up, and never below one: a 0.5-CPU quota is not zero CPUs,
+	// and reporting it as zero would fail every requirement including
+	// `cpus: 1`.
+	allowed := int(math.Ceil(quota / period))
+	if allowed < 1 {
+		allowed = 1
+	}
+	if allowed < logical {
+		return allowed
+	}
+	return logical
+}
+
+// RequiredParameters refuses to deploy with a required parameter unset.
+//
+// Fatal, and checked on every apply rather than only where a value can be
+// supplied. An unset parameter that merely has no default is the operator's
+// business; an unset *required* one is the vendor stating the product will not
+// work -- so a release that introduces one fails to deploy rather than
+// deploying with an empty value the product then misreads. The current release
+// keeps running, which is the safe side of that trade.
+func RequiredParameters(declared map[string]domain.ParameterSpec, set map[string]string) Check {
+	return Check{
+		ID:          "config.required-parameters",
+		Category:    CategoryConfig,
+		Description: "every required parameter has a value",
+		Fatal:       true,
+		Run: func(context.Context) events.CheckResult {
+			missing := domain.MissingRequired(declared, set)
+			if len(missing) == 0 {
+				return OK("all required parameters are set")
+			}
+			return Fail(
+				fmt.Sprintf("set them with `morzer config set %s=<value>`", missing[0]),
+				"the release requires a value for %s", strings.Join(missing, ", "))
 		},
 	}
 }

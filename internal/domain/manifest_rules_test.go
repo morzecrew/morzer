@@ -46,6 +46,44 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			"metadata.version",
 		},
 
+		"release notes outside the bundle": {
+			func(m *Manifest) { m.Metadata.ReleaseNotes = "../../etc/passwd" },
+			"metadata.release_notes",
+		},
+		// A support link is shown to an operator who is already in
+		// trouble, which is the worst moment to send them somewhere
+		// over plaintext.
+		"a plaintext support url": {
+			func(m *Manifest) { m.Metadata.SupportURL = "http://support.example" },
+			"metadata.support_url",
+		},
+
+		// requirements
+		"a negative cpu requirement": {
+			func(m *Manifest) { m.Requirements.CPUs = -1 }, "requirements.cpus",
+		},
+
+		// parameters -- two contradictory statements
+		"a parameter that is required and has a default": {
+			func(m *Manifest) {
+				m.Parameters = map[string]ParameterSpec{
+					"http_port": {Type: ParamPort, Required: true, Default: "8080"},
+				}
+			},
+			"parameters.http_port",
+		},
+
+		// health
+		"a negative start period": {
+			func(m *Manifest) {
+				m.Health.Checks = []HealthCheck{{
+					Name: "api", Type: HealthHTTP, URL: "http://127.0.0.1/health",
+					StartPeriod: Duration(-1),
+				}}
+			},
+			"health.checks[0].start_period",
+		},
+
 		// providers and runtime
 		"no runtime provider": {
 			func(m *Manifest) { m.Providers.Runtime.Name = "" }, "providers.runtime.name",
