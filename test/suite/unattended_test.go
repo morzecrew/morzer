@@ -608,3 +608,39 @@ func TestAnUpdateCheckOffersPrereleasesOnlyToASandbox(t *testing.T) {
 	assert.Equal(t, "1.4.0-dev.1", sandbox.Latest.String(),
 		"a sandbox was not offered the build it exists to test")
 }
+
+// TestTheTickSaysWhatItDid.
+//
+// The summary is what a systemd journal carries, and a journal read at 09:00 is
+// the only account of a night nobody watched. The three outcomes have to be
+// distinguishable in one line: nothing happened, something is waiting and why,
+// or something was installed.
+func TestTheTickSaysWhatItDid(t *testing.T) {
+	unchanged := ops.UnattendedResult{
+		Follow: ops.FollowChannelResult{Ref: "oci://registry.example/demo/bundle:stable"},
+	}
+	assert.Contains(t, unchanged.Summary(), "unchanged")
+
+	waiting := ops.UnattendedResult{
+		Follow: ops.FollowChannelResult{
+			Moved: true,
+			Candidate: domain.UpdateCandidate{
+				Name: "demo", Version: domain.MustParseVersion("1.4.0"),
+				Root: "/opt/demo/releases/1.4.0",
+			},
+		},
+		Assessment: domain.UnattendedAssessment{
+			Reasons: []string{"update.auto_apply is off, so installing is your decision"},
+		},
+	}
+	// The version *and* the reason: "1.4.0 is staged" without why is a line
+	// that sends somebody to the source to find out.
+	assert.Contains(t, waiting.Summary(), "1.4.0")
+	assert.Contains(t, waiting.Summary(), "auto_apply")
+
+	applied := ops.UnattendedResult{
+		Applied: true,
+		Update:  &ops.Result{Summary: "updated demo from 1.3.0 to 1.4.0"},
+	}
+	assert.Contains(t, applied.Summary(), "updated demo")
+}
