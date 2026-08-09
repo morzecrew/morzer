@@ -65,7 +65,13 @@ func newReleaseArchiveCommand(app *App) *cobra.Command {
 
 			if app.Flags.dryRun {
 				app.finish(ops.Result{
-					Summary: fmt.Sprintf("would write %s", dest)})
+					Data: map[string]any{
+						"archive": dest,
+						"version": rel.Version(),
+						"digest":  rel.Digest,
+					},
+					Summary: fmt.Sprintf("would write %s", dest),
+				})
 				return nil
 			}
 			if err := release.WriteArchive(rel.Root, dest, modTime); err != nil {

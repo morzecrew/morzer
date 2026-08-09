@@ -76,6 +76,14 @@ func Load(dir string) (domain.Release, error) {
 		return domain.Release{}, err
 	}
 
+	// After the declared paths, because a bundle missing its templates is a
+	// more basic problem than one whose image layout disagrees with its
+	// manifest, and reporting the smaller problem first sends an author down
+	// the wrong road.
+	if err := checkBundledImages(rel); err != nil {
+		return domain.Release{}, err
+	}
+
 	return rel, nil
 }
 
@@ -193,6 +201,53 @@ func LoadSecretSchema(rel domain.Release) (domain.SecretSchema, error) {
 		return domain.SecretSchema{}, domain.ValidationError(err, "%s: %s", path, e.Message)
 	}
 	return schema, nil
+}
+
+// DeclaredBundleSize reads `bundle.uncompressed_size` out of manifest bytes.
+//
+// Lenient about the *document*, strict about the *field*, and the split matters.
+//
+// This runs on the first entry of an archive that has not been verified, and it
+// must succeed against a manifest written for a newer manager -- so YAML it
+// cannot parse at all is left to the strict decode, which reports it properly,
+// with a position, once the archive is on disk.
+//
+// But a `bundle.uncompressed_size` that is present and unreadable is refused
+// rather than treated as absent. Absent means the default ceiling; unreadable
+// would mean extracting under that ceiling on the strength of a declaration
+// nobody could parse, which is the permissive reading of the one field that
+// gates untrusted bytes.
+func DeclaredBundleSize(manifest []byte) (int64, error) {
+	var p struct {
+		Bundle struct {
+			UncompressedSize string `yaml:"uncompressed_size"`
+		} `yaml:"bundle"`
+	}
+	if err := yaml.Unmarshal(manifest, &p); err != nil {
+		return 0, nil
+	}
+	raw := strings.TrimSpace(p.Bundle.UncompressedSize)
+	if raw == "" {
+		return 0, nil
+	}
+
+	var size domain.ByteSize
+	if err := size.UnmarshalText([]byte(raw)); err != nil {
+		// A value that is there and unreadable is not the same as one
+		// that is absent. Reading it as absent would extract under the
+		// default ceiling on the strength of a declaration nobody could
+		// parse, which is the permissive reading of a field that gates
+		// untrusted bytes.
+		return 0, domain.ValidationError(err,
+			"the bundle declares an uncompressed size of %q, which is not a size", raw).
+			WithHint("bundle.uncompressed_size looks like 12GiB or 512MiB")
+	}
+	if size < 0 {
+		return 0, domain.ValidationError(domain.ErrValidation,
+			"the bundle declares an uncompressed size of %s", size).
+			WithHint("bundle.uncompressed_size is a size such as 12GiB")
+	}
+	return size.Bytes(), nil
 }
 
 // manifestPreamble is the little of a manifest that must be readable before

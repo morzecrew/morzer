@@ -30,15 +30,15 @@ func TestRuntimeConfigExportsEveryManifestImage(t *testing.T) {
 	// Named exactly as the example bundle's Compose file interpolates them.
 	// A rename here silently returns every service to its placeholder image,
 	// which is why the assertion is on the literal variable names.
-	assert.Equal(t, h.Release.Manifest.Images["app"], cfg.Env["DEMO_IMAGE_APP"],
+	assert.Equal(t, h.Release.Manifest.Images["app"].Ref, cfg.Env["DEMO_IMAGE_APP"],
 		"the Compose file interpolates DEMO_IMAGE_APP; without it the release "+
 			"runs whatever default that file carries")
-	assert.Equal(t, h.Release.Manifest.Images["db"], cfg.Env["DEMO_IMAGE_DB"])
+	assert.Equal(t, h.Release.Manifest.Images["db"].Ref, cfg.Env["DEMO_IMAGE_DB"])
 
-	for name, ref := range h.Release.Manifest.Images {
+	for name, spec := range h.Release.Manifest.Images {
 		assert.Contains(t, cfg.Env, "DEMO_IMAGE_"+upper(name),
 			"every declared image must be reachable from the topology file")
-		assert.Contains(t, ref, "@sha256:",
+		assert.Contains(t, spec.Ref, "@sha256:",
 			"the exported reference must be the pinned one, not a tag")
 	}
 }

@@ -1,7 +1,12 @@
 # RFC 0012 — Packing images into a bundle
 
-- **Status:** 📝 Draft — **design locked** 2026-08-08, gated on
-  [0011](0011-bundled-container-images.md) P1. Every question in §10 is resolved
+- **Status:** ✅ Complete — **shipped 2026-08-09**, immediately after
+  [0011](0011-bundled-container-images.md) P1 defined the layout. One divergence
+  from §6: the container-suite test against a real registry is deferred to
+  0011 P2, which builds the plaintext-loopback harness it needs — the copy
+  mechanism is covered against a real in-memory OCI store, and the registry
+  transport is the OCI source adapter's own tested surface. **Design locked**
+  2026-08-08, gated on [0011](0011-bundled-container-images.md) P1. Every question in §10 is resolved
   into §11; the copy mechanism (§5.2) is verified by spike. **Amended
   2026-08-08** (decision 10): archiving moves from "excluded" to "delegated to
   [0014](0014-building-a-release-bundle.md)", which also takes the

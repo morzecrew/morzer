@@ -57,7 +57,7 @@ type Manifest struct {
 	Runtime       RuntimeSpec              `yaml:"runtime" json:"runtime"`
 	Requirements  Requirements             `yaml:"requirements" json:"requirements"`
 	Parameters    map[string]ParameterSpec `yaml:"parameters" json:"parameters,omitempty"`
-	Images        map[string]string        `yaml:"images" json:"images"`
+	Images        map[string]ImageSpec     `yaml:"images" json:"images"`
 	Configuration []ConfigurationFile      `yaml:"configuration" json:"configuration"`
 	Secrets       SecretsSpec              `yaml:"secrets" json:"secrets"`
 	Operations    map[string]OperationSpec `yaml:"operations" json:"operations"`
@@ -70,6 +70,19 @@ type Manifest struct {
 	// `m.Backup.Volumes` a nil dereference for every caller) and omits it
 	// when the vendor declared nothing.
 	Backup BackupSpec `yaml:"backup" json:"backup,omitzero"`
+
+	// Bundle describes the *artefact*, not the host it installs on.
+	//
+	// A separate block from `requirements` deliberately: everything in that
+	// one -- architectures, OS, tools, memory, disk -- says what the machine
+	// must provide. This says what the bundle itself is, and a reader
+	// looking for "how big is this thing" should not have to find it among
+	// the host's obligations.
+	//
+	// omitzero for the same reason Backup carries it: an empty struct is not
+	// omitted by omitempty, so every release without one would announce a
+	// `"bundle": {}` in `release show --json`.
+	Bundle BundleSpec `yaml:"bundle" json:"bundle,omitzero"`
 
 	Health        HealthSpec                `yaml:"health" json:"health"`
 	Compatibility Compatibility             `yaml:"compatibility" json:"compatibility"`
@@ -331,6 +344,25 @@ func (b BackupSpec) Consistency(volume string) VolumeConsistency {
 	return spec.Consistency
 }
 
+// BundleSpec is what a release says about its own packaging.
+type BundleSpec struct {
+	// UncompressedSize is what the archive expands to, and it exists to
+	// raise the extraction ceiling for a bundle carrying container images.
+	//
+	// It is read out of the tar stream *before the signature is checked*, so
+	// it is attacker-controlled input in the strictest sense: it may only
+	// ever **lower** the effective limit, never raise it above the hard cap.
+	// A declaration is a request for a smaller budget than the manager
+	// allows, not permission to exceed it, and an absent one means the
+	// default ceiling rather than "unbounded" -- a missing field must never
+	// be the permissive reading of anything that gates untrusted bytes.
+	//
+	// The clamp lives in the extractor, not in this validation. By the time
+	// a manifest validates, the value has already been read from the stream
+	// and used.
+	UncompressedSize ByteSize `yaml:"uncompressed_size" json:"uncompressed_size,omitempty"`
+}
+
 type HealthSpec struct {
 	Checks []HealthCheck `yaml:"checks" json:"checks,omitempty"`
 }
@@ -546,6 +578,11 @@ func (m *Manifest) Validate() error {
 	// parameters
 	ValidateParameters(m.Parameters, &v)
 
+	if m.Bundle.UncompressedSize < 0 {
+		v.add("bundle.uncompressed_size", "must not be negative, got %s",
+			m.Bundle.UncompressedSize)
+	}
+
 	if m.Requirements.CPUs < 0 {
 		v.add("requirements.cpus", "must not be negative, got %d", m.Requirements.CPUs)
 	}
@@ -574,13 +611,31 @@ func (m *Manifest) Validate() error {
 		}
 	}
 
-	// images -- the pinning rule
+	// images -- the pinning rule, and where the bytes come from
 	if len(m.Images) == 0 {
 		v.add("images", "must declare at least one image")
 	}
-	for name, ref := range m.Images {
-		if !digestRef.MatchString(ref) {
-			v.add("images."+name, "must be pinned by digest (name@sha256:...), got %q", ref)
+	for _, name := range sortedImageNames(m.Images) {
+		spec := m.Images[name]
+		field := "images." + name
+		if !imageName.MatchString(name) {
+			v.add(field, "must be lowercase letters, digits and hyphens, "+
+				"starting and ending with a letter or digit")
+			continue
+		}
+		if !digestRef.MatchString(spec.Ref) {
+			v.add(field, "must be pinned by digest (name@sha256:...), got %q", spec.Ref)
+		}
+		// A misspelled source is refused rather than defaulted. Both
+		// plausible typos -- `bundled`, and `from` under the wrong image
+		// -- fail towards a release the vendor believes ships its own
+		// bytes and does not, which surfaces as a credential failure on
+		// a customer's machine.
+		switch spec.From {
+		case ImageFromRegistry, ImageFromBundle, "":
+		default:
+			v.add(field+".from", "must be %s, got %q",
+				joinImageSources(ImageSources), spec.From)
 		}
 	}
 
@@ -744,17 +799,17 @@ func (m *Manifest) Operation(name string) (OperationSpec, bool) {
 	return op, ok
 }
 
-// ImageRefs returns image references in a stable order, so pull plans and
+// ImageRefs returns every image reference in a stable order, so pull plans and
 // dry-run output do not shuffle between runs.
+//
+// Every image, bundled or not: this answers "what does this release consist
+// of". For "what will be fetched from a registry", which is a different
+// question with a different answer, see PulledImageRefs.
 func (m *Manifest) ImageRefs() []string {
-	names := make([]string, 0, len(m.Images))
-	for name := range m.Images {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := sortedImageNames(m.Images)
 	refs := make([]string, 0, len(names))
 	for _, n := range names {
-		refs = append(refs, m.Images[n])
+		refs = append(refs, m.Images[n].Ref)
 	}
 	return refs
 }

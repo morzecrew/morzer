@@ -44,6 +44,7 @@ published version stays readable until it is explicitly deprecated.
 | `secrets` | table | | Where the encrypted state lives and where it renders. |
 | `operations` | map | | Named lifecycle operations: migrate, smoke test, backup, restore. |
 | `backup` | table | | What the manager may do about the project's volumes. |
+| `bundle` | table | | What the release says about its own packaging, as distinct from what it needs of the host. |
 | `health` | table | | How to tell whether the product is working. |
 | `compatibility` | table | | What this release can be installed over, and rolled back from. |
 | `retention` | table | | How many releases and backups to keep. |
@@ -108,6 +109,31 @@ Checked in preflight and reported by `doctor`.
 | `disk` | size | Minimum free disk, e.g. `5GiB`. |
 | `cpus` | int | Logical CPUs the release wants. A cgroup quota is honoured where one is in force, so a containerised manager sees what it may actually use rather than what the host has. |
 | `ports` | list | TCP ports the release binds, checked for conflicts. A literal number, or `"{{ .Parameters.<name> }}"` so the check follows the port the deployment actually publishes. |
+
+## bundle
+
+What the release says about its own packaging, as distinct from what it needs
+of the host.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `uncompressed_size` | size | What the archive expands to, e.g. `12GiB`. Raises the extraction ceiling for a bundle carrying container images. |
+
+A separate block from `requirements` on purpose: everything there describes the
+*host*, and this describes the *artefact*.
+
+!!! warning "It can only ever lower the limit"
+
+    This value is read out of the tar stream **before the signature is
+    checked**, so it is attacker-controlled input in the strictest sense. The
+    effective limit is `min(declared, hard cap)` — a declaration is a request
+    for a smaller budget than the manager allows, never permission to exceed
+    it. A bundle needing more than the cap is refused, and raising the cap is a
+    change to morzer rather than something a bundle can ask for.
+
+    Omitting it means the **default** ceiling, not "unbounded". A missing field
+    must never be the permissive reading of anything that gates untrusted
+    bytes.
 
 ## parameters
 
@@ -193,6 +219,52 @@ images:
 A bare tag is rejected. An unpinned image makes a release mutable, and a mutable
 release makes rollback meaningless — the same version could produce a different
 system on a different day.
+
+**The key** is lowercase letters, digits and hyphens, starting and ending with a
+letter or digit — the same rule parameters carry, and for the same reason: it
+becomes the tail of `<PRODUCT>_IMAGE_<NAME>`, which your Compose file
+interpolates. Dots and underscores are refused because the variable name folds
+both to `_`, so `web-ui` and `web.ui` would name the same variable and one
+pinned reference would silently overwrite the other.
+
+### Where the bytes come from
+
+An entry may instead be a mapping, which adds one field:
+
+```yaml
+images:
+  db: postgres@sha256:0000…0002              # pulled, as above
+  app:
+    ref: registry.example/demo/app@sha256:0000…0001
+    from: bundle                             # travels inside the bundle
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `ref` | string | The image reference, pinned by digest. Same rule as the scalar spelling. |
+| `from` | string | `registry` (default) or `bundle`. |
+
+Both spellings exist because most images are never bundled, and making every one
+of them carry a `from:` to say so is noise in the file you read most.
+
+`from: bundle` means the image travels in the bundle as an OCI layout under
+`images/`, covered by the same `SHA256SUMS` and signature as every other file —
+so a customer installs a release containing your private images without ever
+holding credentials for the registry they came from. **Per-image**, so a release
+bundles what is private and keeps pulling `postgres` from Docker Hub.
+
+`ref` stays a real image reference in both spellings. It is interpolated into
+Compose as `<PRODUCT>_IMAGE_<NAME>`, so it must remain something the daemon can
+resolve — which is why the source is a separate field rather than a scheme on
+the reference the way `update` references are spelled.
+
+An unrecognised `from` is refused rather than defaulted. The two plausible
+typos — `bundled`, and `from` under the wrong image — both fail towards a
+release you believe ships its own bytes and does not, which surfaces as a
+credential failure on your customer's machine.
+
+See [bundled images](../authoring/bundled-images.md) for the layout, what
+`release verify` checks, and how to produce one.
 
 ## configuration
 

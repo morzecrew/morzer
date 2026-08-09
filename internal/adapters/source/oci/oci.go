@@ -430,6 +430,17 @@ func defaultRepository(reference string) (Registry, error) {
 	return repo, nil
 }
 
+// OpenRepository opens a registry repository with the ambient credentials.
+//
+// Exported for `release pack`, which copies images out of the vendor's registry
+// into a bundle. That is a different job from resolving a release, and it lives
+// in a different place -- but it is the *same* registry, reached with the same
+// credential resolution, and two constructions of that would be two places for
+// a proxy setting or a credential helper to be honoured in only one.
+func OpenRepository(reference string) (*remote.Repository, error) {
+	return remoteRepository(reference)
+}
+
 func remoteRepository(reference string) (*remote.Repository, error) {
 	repoRef, _, err := splitReference(reference)
 	if err != nil {

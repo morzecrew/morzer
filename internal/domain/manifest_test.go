@@ -26,8 +26,8 @@ func validManifest() Manifest {
 			Project: "demo",
 			Files:   []string{"compose/compose.yaml"},
 		},
-		Images: map[string]string{
-			"app": "registry.example/demo/app@sha256:" + strings.Repeat("a", 64),
+		Images: map[string]ImageSpec{
+			"app": {Ref: "registry.example/demo/app@sha256:" + strings.Repeat("a", 64)},
 		},
 	}
 	m.ApplyDefaults()
@@ -53,7 +53,7 @@ func TestImagesMustBePinnedByDigest(t *testing.T) {
 	for name, ref := range cases {
 		t.Run(name, func(t *testing.T) {
 			m := validManifest()
-			m.Images["app"] = ref
+			m.Images["app"] = ImageSpec{Ref: ref}
 
 			err := m.Validate()
 			require.Error(t, err, "%s must be rejected", name)
@@ -134,7 +134,7 @@ func TestValidationReportsEveryProblemAtOnce(t *testing.T) {
 	m := validManifest()
 	m.Metadata.Name = ""
 	m.Runtime.Files = nil
-	m.Images["app"] = "unpinned:latest"
+	m.Images["app"] = ImageSpec{Ref: "unpinned:latest"}
 
 	err := m.Validate()
 	require.Error(t, err)
@@ -255,7 +255,7 @@ func TestApplyDefaults(t *testing.T) {
 		Kind:       KindApplicationRelease,
 		Metadata:   Metadata{Name: "demo", Version: MustParseVersion("1.0.0")},
 		Runtime:    RuntimeSpec{Files: []string{"compose/compose.yaml"}},
-		Images:     map[string]string{"app": "r/a@sha256:" + strings.Repeat("a", 64)},
+		Images:     map[string]ImageSpec{"app": {Ref: "r/a@sha256:" + strings.Repeat("a", 64)}},
 		Configuration: []ConfigurationFile{
 			{Template: "templates/a.yaml", Target: "/etc/demo/a.yaml"},
 		},
@@ -282,10 +282,10 @@ func TestApplyDefaults(t *testing.T) {
 
 func TestImageRefsAreStablyOrdered(t *testing.T) {
 	m := validManifest()
-	m.Images = map[string]string{
-		"zebra": "r/z@sha256:" + strings.Repeat("1", 64),
-		"alpha": "r/a@sha256:" + strings.Repeat("2", 64),
-		"mid":   "r/m@sha256:" + strings.Repeat("3", 64),
+	m.Images = map[string]ImageSpec{
+		"zebra": {Ref: "r/z@sha256:" + strings.Repeat("1", 64)},
+		"alpha": {Ref: "r/a@sha256:" + strings.Repeat("2", 64)},
+		"mid":   {Ref: "r/m@sha256:" + strings.Repeat("3", 64)},
 	}
 
 	// Map iteration is random; plans and dry-run output must not be.

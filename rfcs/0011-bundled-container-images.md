@@ -1,6 +1,14 @@
 # RFC 0011 — Bundled container images
 
-- **Status:** 📝 Draft — **design locked** 2026-08-08, not yet scheduled. Every
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-09**: the manifest's dual
+  image spelling, the layout's completeness refusals in both directions, and the
+  extraction budget with its hard caps, its manifest-first requirement and its
+  free-space preflight. A bundle carrying images is now *inspectable*; nothing
+  installs one yet. **P2 (ingest via the ephemeral registry) is the phase that
+  either works or sends the design back**, and nothing after it is worth
+  scheduling until it lands. §5.4's `doctor` vocabulary rides with P3, since a
+  check distinguishing "present in the bundle, not yet loaded" needs the loading
+  to exist. **Design locked** 2026-08-08. Every
   question in §10 is resolved into §11; the ingest mechanism (§5.3) is verified
   by spike. Ready to execute from P1. **Amended 2026-08-08** (decision 15):
   decision 11's archive-ordering requirement is owned by

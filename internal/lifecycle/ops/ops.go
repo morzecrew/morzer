@@ -481,8 +481,11 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 	// back to whatever default it carries, and the manifest's pinning -- the
 	// rule that makes a release immutable and rollback meaningful -- decides
 	// nothing at all.
-	for name, ref := range rel.Manifest.Images {
-		env[envName(inst.Product, "IMAGE_"+imageVarName(name))] = ref
+	// The reference, whichever source the bytes came from: `from` is
+	// metadata about the image, never part of its name, and Compose has to
+	// receive something the daemon can resolve.
+	for name, spec := range rel.Manifest.Images {
+		env[envName(inst.Product, "IMAGE_"+imageVarName(name))] = spec.Ref
 	}
 
 	return ports.RuntimeConfig{

@@ -19,12 +19,6 @@ import (
 // reads. One container format, deliberately -- see atomicfs.TarZstExtensions.
 const ArchiveExtension = ".tar.zst"
 
-// ImagesDirName is where a bundle carries container images it ships itself.
-//
-// Named here because the archive's entry order puts it last, which is a rule
-// this package enforces today for a consumer that arrives with RFC 0011.
-const ImagesDirName = "images"
-
 // SourceDateEpochEnv is the reproducible-builds convention for pinning the
 // timestamps an artifact records.
 const SourceDateEpochEnv = "SOURCE_DATE_EPOCH"
@@ -55,6 +49,10 @@ func entryRank(rel string) int {
 		return rankVersion
 	case rel == ports.SumsFileName, rel == ports.SignatureFileName:
 		return rankIntegrity
+	// Last, and the reason is now real rather than anticipated: this is
+	// where a bundle's container images live, and they are extracted under
+	// a budget the manifest declares -- which is only readable because the
+	// manifest arrives first.
 	case rel == ImagesDirName || strings.HasPrefix(rel, ImagesDirName+"/"):
 		return rankImages
 	default:

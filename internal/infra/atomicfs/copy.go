@@ -40,10 +40,32 @@ type ExtractLimits struct {
 	MaxEntries   int
 	MaxTotalSize int64
 	MaxFileSize  int64
+
+	// FirstEntry, when set, is the archive entry that must come first, and
+	// Budget reads a declared uncompressed size out of its bytes.
+	//
+	// Together they turn ExtractTarZst from an extractor of arbitrary
+	// archives into an extractor of *release bundles*, which is the only
+	// thing it is used for -- but the knowledge of what a release bundle's
+	// manifest is called and how to parse it belongs to the release
+	// package, which depends on this one. Passing it in is what keeps the
+	// dependency pointing the one way it can.
+	//
+	// Budget returns the declared size, or 0 for a manifest that declares
+	// none. An error refuses the archive: a manifest this cannot read is
+	// not one whose budget can be trusted.
+	FirstEntry string
+	Budget     func(manifest []byte) (int64, error)
 }
 
 // DefaultExtractLimits are generous for a real product bundle and still far
 // below what it takes to fill a disk.
+//
+// They are also what a bundle carrying container images cannot live within: a
+// single `postgres` layout is 115 M with a 110 M dominant blob, and a
+// self-contained stack lands in the low gigabytes. Such a bundle raises its own
+// ceiling by declaring `bundle.uncompressed_size`, bounded by the hard caps
+// below -- see negotiateLimits.
 func DefaultExtractLimits() ExtractLimits {
 	return ExtractLimits{
 		MaxEntries:   20_000,
@@ -51,6 +73,23 @@ func DefaultExtractLimits() ExtractLimits {
 		MaxFileSize:  1 << 30, // 1 GiB
 	}
 }
+
+// Hard caps on what a declared budget may ask for.
+//
+// Extraction happens *before* the signature is verified, so these limits are
+// the only thing standing between a hostile archive and the disk, and the
+// signature cannot be the mitigation because it is checked afterwards. A
+// declaration read out of those same unverified bytes may therefore only ever
+// *lower* the ceiling: an attacker who could raise it would simply declare
+// whatever they needed.
+//
+// A bundle above these is refused and says so, which is the correct answer for
+// a limit that exists to bound unverified input. Raising them is a change to
+// the manager, made once, in the open -- not something a bundle can request.
+const (
+	HardMaxTotalSize = 50 << 30 // 50 GiB
+	HardMaxFileSize  = 5 << 30  // 5 GiB
+)
 
 // CopyTree copies src into dst, refusing anything that is not a regular file
 // or a directory.

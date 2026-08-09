@@ -543,13 +543,13 @@ Recorded rather than silently absorbed, because each is a place where the
 implementation answered a question this document had left to it — or declined
 to answer one it had assigned.
 
-**Decision 3's consuming-side guard did not ship here.** The refusal is about
-[0011](0011-bundled-container-images.md)'s budget read, and without that read
-there is nothing to fail closed. Enforcing manifest-first at extraction today
-would refuse *every* hand-rolled archive, including the ones carrying no images
-at all — far wider than the decision authorises, and it would break the manual
-path §5.5 deliberately keeps documented. It lands with 0011 P1, which is where
-the read it guards lives.
+**Decision 3's consuming-side guard did not ship here** — it shipped with
+[0011](0011-bundled-container-images.md) P1 on 2026-08-09, which is where the
+read it guards lives. The refusal is about that budget read, and until it
+existed there was nothing to fail closed. It is now unconditional: an archive
+whose first entry is not `manifest.yaml` is refused whatever it contains, which
+is wider than this RFC's phrasing implied and is what decision 15 asks for —
+a fallback for the no-images case would make the ordering advisory.
 
 **The pack step is not invoked.** §5.1 has `build` call
 [0012](0012-packing-images-into-a-bundle.md)'s pack for images marked

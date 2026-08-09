@@ -72,6 +72,12 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			"metadata.support_url",
 		},
 
+		// bundle -- the artefact's own description
+		"a negative uncompressed size": {
+			func(m *Manifest) { m.Bundle.UncompressedSize = ByteSize(-1) },
+			"bundle.uncompressed_size",
+		},
+
 		// requirements
 		"a negative cpu requirement": {
 			func(m *Manifest) { m.Requirements.CPUs = -1 }, "requirements.cpus",
@@ -144,6 +150,35 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 		// images
 		"no images at all": {
 			func(m *Manifest) { m.Images = nil }, "images",
+		},
+		// The key becomes the tail of <PRODUCT>_IMAGE_<NAME>, which is
+		// upper-cased with "-" and "." folded to "_". Unconstrained,
+		// `web-ui` and `web.ui` produced the same variable and one
+		// pinned reference silently overwrote the other -- with Go's
+		// randomised map iteration deciding which.
+		"an image name with a dot": {
+			func(m *Manifest) {
+				m.Images = map[string]ImageSpec{
+					"web.ui": {Ref: "r/a@sha256:" + strings.Repeat("a", 64)},
+				}
+			},
+			"images.web.ui",
+		},
+		"an image name with an underscore": {
+			func(m *Manifest) {
+				m.Images = map[string]ImageSpec{
+					"web_ui": {Ref: "r/a@sha256:" + strings.Repeat("a", 64)},
+				}
+			},
+			"images.web_ui",
+		},
+		"an image name in capitals": {
+			func(m *Manifest) {
+				m.Images = map[string]ImageSpec{
+					"App": {Ref: "r/a@sha256:" + strings.Repeat("a", 64)},
+				}
+			},
+			"images.App",
 		},
 
 		// configuration
@@ -388,8 +423,8 @@ func TestDefaultsAreAppliedBeforeValidation(t *testing.T) {
 		Metadata:   Metadata{Name: "demo", Version: MustParseVersion("1.0.0")},
 		Providers:  Providers{Runtime: Provider{Name: "compose"}},
 		Runtime:    RuntimeSpec{Files: []string{"compose/compose.yaml"}},
-		Images: map[string]string{
-			"app": "registry.example/demo/app@sha256:" + strings.Repeat("a", 64),
+		Images: map[string]ImageSpec{
+			"app": {Ref: "registry.example/demo/app@sha256:" + strings.Repeat("a", 64)},
 		},
 		Operations: map[string]OperationSpec{
 			"migrate": {Kind: OperationKindHook, Command: []string{"hooks/migrate"}},

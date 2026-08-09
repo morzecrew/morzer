@@ -67,9 +67,12 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 			}
 
 			if app.Flags.dryRun {
+				version := stampedVersion(stamp, loaded)
 				app.finish(ops.Result{
+					Data: map[string]any{"root": dir, "version": version},
 					Summary: fmt.Sprintf("would build %s at %s",
-						dir, stampedVersion(stamp, loaded))})
+						dir, version),
+				})
 				return nil
 			}
 			if !stamp.IsZero() {

@@ -1,7 +1,7 @@
 ---
 title: release
 icon: lucide/package
-summary: The release command group — list, show, new, verify, build, archive, fetch, prune
+summary: The release command group — list, show, new, verify, pack, build, archive, fetch, prune
 ---
 
 # `morzer release`
@@ -97,6 +97,59 @@ bundle author fixing one problem should not discover the next one on the retry.
 needs no installation on the machine, because there is no policy to read there.
 On a deployment host, `policy.signing_keys` in `installation.yaml` decides
 instead. See [Verification](#verification).
+
+## release pack
+
+```sh
+morzer release pack <bundle-dir> [--platform linux/amd64] [--force]
+```
+
+Copies every image the manifest marks `from: bundle` out of its registry into
+an OCI layout under `<bundle-dir>/images/`, then regenerates `SHA256SUMS`.
+
+| Flag | Meaning |
+| --- | --- |
+| `--platform` | Which platform to select from a multi-platform image, e.g. `linux/amd64`. Defaults to whatever the registry resolves. |
+| `--force` | Discard an existing `SHA256SUMS.minisig`, which repacking invalidates. |
+
+Credentials come from the ambient Docker configuration, exactly as a
+`docker pull` on this machine would — so this runs on your build machine, and
+your customers never need them. That is the whole point:
+[bundled images](../authoring/bundled-images.md) exist so a customer can install
+a release containing your private images without holding a credential for the
+registry they came from.
+
+**Idempotent.** The layout is content-addressed, so running it twice copies
+nothing the second time, and re-running after adding an image adds only that
+image's blobs.
+
+### What it refuses
+
+| Situation | Behaviour |
+| --- | --- |
+| No image is marked `from: bundle` | Refused. There is nothing to pack, and silently succeeding would suggest there was. |
+| An image cannot be resolved or copied | Refused, and **`SHA256SUMS` is not regenerated** — so the half-populated tree fails `release verify` until a later pack completes. |
+| The registry serves a different digest than the manifest pins | Refused, naming both. This is the check that makes a bundle's provenance mean anything. |
+| An existing `SHA256SUMS.minisig` | Refused unless `--force`, which **deletes** it. A signature over a list that packing is about to invalidate is the exact failure the chain exists to prevent. |
+
+On a partial write: `pack` writes in place, so a failure on the fourth image
+leaves the first three copied. Blobs are content-addressed, so what that leaves
+is *orphans* rather than corruption — and because the checksum list is
+regenerated only after every image succeeds, the tree fails `release verify`
+until a later pack finishes. Staging the whole layout to make a stronger promise
+would double the disk for a multi-gigabyte bundle.
+
+### Platform selection
+
+A registry reference may resolve to a multi-platform index. `--platform` picks
+one; the default is whatever the registry resolves for this machine, which is
+least surprising for a vendor building on the architecture they ship and wrong
+for one cross-building on arm64 for amd64 customers.
+
+If you pin a multi-platform *index* digest and then select a platform, the copy
+resolves to a per-platform manifest whose digest is not the one you pinned, and
+`pack` refuses rather than quietly bundling an image the manifest does not
+describe. Pin the digest you actually want to ship.
 
 ## release build
 
@@ -317,6 +370,44 @@ its archive produce the same content digest, so a digest recorded from one
 verifies the other. That is asserted by a test comparing every source against
 the same bundle, because pinning a release would otherwise mean pinning a
 transport too.
+
+### The extraction budget
+
+Extraction happens **before** the signature is checked — a bundle is written to
+disk, then verified — so the extraction limits are the only thing standing
+between a hostile archive and the disk, and the signature cannot be the
+mitigation because it comes afterwards.
+
+The default ceiling is 2 GiB in total and 1 GiB per file, which a bundle
+carrying container images cannot live within. Such a bundle raises its own by
+declaring what it expands to:
+
+```yaml title="manifest.yaml"
+bundle:
+  uncompressed_size: 12GiB
+```
+
+Three rules, and each is the answer to a way of getting this wrong:
+
+- **The archive must begin with `manifest.yaml`.** That is where the
+  declaration lives, and it has to be readable before the bytes it bounds.
+  `release archive` guarantees the order; an archive that does not honour it is
+  **refused**, not quietly given the default ceiling — a fallback would make the
+  ordering advisory, and an advisory guarantee decays.
+- **A declaration may only ever lower the ceiling.** The effective limit is
+  `min(declared, hard cap)`, where the hard caps are **50 GiB total and 5 GiB
+  per file**. The declaration is made by the same unverified bytes the guard
+  bounds, so a budget that could raise the ceiling is one an attacker sets. A
+  bundle needing more than the cap is refused; raising the cap is a change to
+  morzer, made once, in the open.
+- **Absent means the default, not unbounded.** A missing field must never be the
+  permissive reading of anything that gates untrusted bytes.
+
+A declaration smaller than the default is honoured as the stricter bound you
+asked for: an archive that exceeds its own declared size is refused. And before
+anything is written, the declared ceiling is checked against free disk space, so
+a bundle too large for the machine is a clean refusal rather than a full
+filesystem.
 
 ### What extraction refuses
 

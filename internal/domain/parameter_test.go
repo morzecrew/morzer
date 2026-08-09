@@ -226,8 +226,8 @@ func validManifestWithParameters(params map[string]domain.ParameterSpec) *domain
 		Providers:  domain.Providers{Runtime: domain.Provider{Name: "compose"}},
 		Runtime:    domain.RuntimeSpec{Project: "demo", Files: []string{"compose/compose.yaml"}},
 		Parameters: params,
-		Images: map[string]string{
-			"app": "registry.example/demo/app@sha256:" + strings.Repeat("0", 63) + "1",
+		Images: map[string]domain.ImageSpec{
+			"app": {Ref: "registry.example/demo/app@sha256:" + strings.Repeat("0", 63) + "1"},
 		},
 	}
 }
