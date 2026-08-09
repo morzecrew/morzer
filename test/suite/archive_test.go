@@ -3,11 +3,11 @@ package suite
 import (
 	"archive/tar"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // Archive extraction is the largest attack surface in the manager: it parses a
@@ -26,6 +27,100 @@ import (
 // eventually open, and one whose contents nobody can review by reading them.
 // Building each one in the test that uses it means the attack is written out in
 // Go, next to the assertion about what must happen to it.
+
+// The extraction ceiling is the only guard that runs on unverified bytes:
+// extraction happens before the signature is checked, so the signature cannot
+// back it up. These assert the three rules that make a declared budget a bound
+// rather than a request.
+
+// TestAnArchiveThatDoesNotBeginWithItsManifestIsRefused.
+//
+// A release archive states its size in the manifest, and the size has to be
+// readable before the bytes it bounds. RFC 0014 makes manifest-first a property
+// of the format for exactly this reason; this is the consuming half, and it
+// refuses rather than falling back to the default ceiling -- a fallback would
+// make the ordering advisory, and an advisory guarantee decays.
+func TestAnArchiveThatDoesNotBeginWithItsManifestIsRefused(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeArchive(t, path, []tarEntry{
+		{Name: "hooks/migrate", Body: "#!/bin/sh\n"},
+		{Name: "manifest.yaml", Body: "api_version: selfhost/v1alpha1\n"},
+	})
+
+	err := atomicfs.ExtractTarZst(path, filepath.Join(t.TempDir(), "out"), bundleLimits())
+
+	require.Error(t, err, "an archive whose budget cannot be read must be refused")
+	assert.Contains(t, err.Error(), "does not begin with manifest.yaml")
+	assert.Contains(t, domain.AsError(err).Hint, "release archive",
+		"the refusal should name the command that produces a correct one")
+}
+
+// TestADeclaredBudgetBoundsTheExtraction.
+//
+// Asserted downwards, at a size a test can actually ship. The upward direction
+// -- a 12 GiB bundle extracting where the 2 GiB default would refuse it -- is
+// the same arithmetic and is covered by the clamp's own table; what cannot be
+// covered by arithmetic alone is that the declaration reaches the extractor at
+// all, which is what a bundle refused by its own declared size proves.
+func TestADeclaredBudgetBoundsTheExtraction(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeArchive(t, path, []tarEntry{
+		{Name: "manifest.yaml", Body: "api_version: selfhost/v1alpha1\nbundle:\n  uncompressed_size: 64\n"},
+		{Name: "big.bin", Body: strings.Repeat("x", 4096)},
+	})
+
+	err := atomicfs.ExtractTarZst(path, filepath.Join(t.TempDir(), "out"), bundleLimits())
+
+	require.Error(t, err, "an archive exceeding its own declared size must be refused")
+	// The per-file bound, because it tracks the total: a single file cannot
+	// exceed the whole archive, and an image layout is usually one dominant
+	// blob rather than an even spread.
+	assert.Contains(t, err.Error(), "per-file limit of 64")
+}
+
+// TestAnUndeclaredArchiveKeepsTheDefaultCeiling, rather than becoming
+// unbounded. A missing field must never be the permissive reading of anything
+// that gates untrusted bytes.
+func TestAnUndeclaredArchiveKeepsTheDefaultCeiling(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeArchive(t, path, []tarEntry{
+		{Name: "manifest.yaml", Body: "api_version: selfhost/v1alpha1\n"},
+		{Name: "big.bin", Body: strings.Repeat("x", 4096)},
+	})
+
+	limits := bundleLimits()
+	limits.MaxTotalSize = 1024
+
+	err := atomicfs.ExtractTarZst(path, filepath.Join(t.TempDir(), "out"), limits)
+
+	require.Error(t, err, "an undeclared archive must stay under the caller's ceiling")
+	assert.Contains(t, err.Error(), "limit")
+}
+
+// TestAManifestTooLargeToBeOneIsRefused.
+//
+// This entry is read *before* the ceiling is settled, so without a bound of its
+// own the file that declares the budget could be the attack.
+func TestAManifestTooLargeToBeOneIsRefused(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeArchive(t, path, []tarEntry{
+		{Name: "manifest.yaml", Body: strings.Repeat("#", (1<<20)+1)},
+	})
+
+	err := atomicfs.ExtractTarZst(path, filepath.Join(t.TempDir(), "out"), bundleLimits())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "which is not a manifest")
+}
+
+// bundleLimits is the posture the release transports use: manifest first, and
+// the budget read from it.
+func bundleLimits() atomicfs.ExtractLimits {
+	limits := atomicfs.DefaultExtractLimits()
+	limits.FirstEntry = release.ManifestFileName
+	limits.Budget = release.DeclaredBundleSize
+	return limits
+}
 
 // tarEntry is one archive member, as hostile as it needs to be.
 type tarEntry struct {
@@ -79,53 +174,17 @@ func writeArchive(t *testing.T, path string, entries []tarEntry) {
 }
 
 // writeTarZst packs a directory into a tar.zst, the way a vendor's release
-// pipeline would. Used by the release-source contract suite.
+// pipeline would.
+//
+// Through the real writer rather than a hand-rolled walk, and the difference is
+// not stylistic: a release archive must open with its manifest, because the
+// extraction budget is read from the stream before the bytes it bounds. A
+// fixture built by walking the directory produced whatever order readdir gave
+// -- which is exactly the archive the extractor now refuses, and which every
+// hand-rolled fixture in this file was quietly producing.
 func writeTarZst(t *testing.T, srcDir, dest string) {
 	t.Helper()
-
-	f, err := os.Create(dest)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, f.Close()) }()
-
-	zw, err := zstd.NewWriter(f)
-	require.NoError(t, err)
-	tw := tar.NewWriter(zw)
-
-	require.NoError(t, filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(srcDir, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-
-		hdr, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-		hdr.Name = filepath.ToSlash(rel)
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-
-		src, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = src.Close() }()
-		_, err = io.Copy(tw, src)
-		return err
-	}))
-
-	require.NoError(t, tw.Close())
-	require.NoError(t, zw.Close())
+	require.NoError(t, release.WriteArchive(srcDir, dest, time.Unix(0, 0)))
 }
 
 // extractFixture builds an archive and tries to extract it, returning the

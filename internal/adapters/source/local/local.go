@@ -31,7 +31,13 @@ type Source struct {
 }
 
 func New() *Source {
-	return &Source{limits: atomicfs.DefaultExtractLimits()}
+	limits := atomicfs.DefaultExtractLimits()
+	// What makes this an extractor of release bundles rather than of
+	// arbitrary archives: the manifest must arrive first, and its declared
+	// size is what may lower the ceiling for a bundle carrying images.
+	limits.FirstEntry = release.ManifestFileName
+	limits.Budget = release.DeclaredBundleSize
+	return &Source{limits: limits}
 }
 
 // WithLimits overrides the extraction limits.

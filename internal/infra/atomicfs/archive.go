@@ -88,8 +88,163 @@ func ExtractTarZst(src, dst string, limits ExtractLimits) error {
 	}
 	defer func() { _ = root.Close() }()
 
-	return extractTar(tar.NewReader(zr), root, src, limits)
+	tr := tar.NewReader(zr)
+
+	// The budget is read from the stream before the rest of it is
+	// committed to. It cannot be read from the extracted tree, because
+	// extracting the tree is what it bounds.
+	limits, err = negotiateLimits(tr, root, dst, src, limits)
+	if err != nil {
+		return err
+	}
+
+	return extractTar(tr, root, src, limits)
 }
+
+// maxManifestSize bounds the one entry read before any limit is settled.
+//
+// A manifest is a few kilobytes; a megabyte is four hundred times generous.
+// The bound exists because this read happens *before* the negotiated ceiling
+// is known, so without it an archive could declare its budget in a file large
+// enough to be the attack.
+const maxManifestSize = 1 << 20
+
+// negotiateLimits reads the archive's first entry and settles the ceiling.
+//
+// Three rules, and each of them is the answer to a way of getting this wrong:
+//
+//   - The first entry must be the one the caller named. RFC 0014 makes
+//     `manifest.yaml` a property of the archive format precisely so this read
+//     is possible, and an archive that does not honour it is **refused** rather
+//     than quietly given the default ceiling. A fallback would make the
+//     ordering advisory, and an advisory guarantee is one that decays.
+//   - A declared budget may only *lower* the ceiling, never raise it past the
+//     hard caps. The declaration is made by the same unverified bytes the
+//     guard bounds.
+//   - No declaration means the default ceiling, not "unbounded". A missing
+//     field must never be the permissive reading of anything gating untrusted
+//     bytes.
+//
+// The manifest entry is written out here as well as read, because the stream
+// moves forward: rewinding a decompressor to re-read the first entry means
+// decompressing it twice, and the caller wants that file on disk regardless.
+func negotiateLimits(
+	tr *tar.Reader, root *os.Root, dst, src string, limits ExtractLimits,
+) (ExtractLimits, error) {
+	if limits.FirstEntry == "" || limits.Budget == nil {
+		return limits, nil
+	}
+
+	hdr, err := tr.Next()
+	if errors.Is(err, io.EOF) {
+		return limits, domain.ValidationError(nil, "%s contains no entries", src)
+	}
+	if err != nil {
+		return limits, domain.ValidationError(err, "cannot read %s", src).
+			WithHint("the archive is truncated or corrupt")
+	}
+
+	rel, err := archiveEntryPath(hdr.Name)
+	if err != nil {
+		return limits, err
+	}
+	if rel != limits.FirstEntry {
+		return limits, domain.ValidationError(domain.ErrValidation,
+			"%s does not begin with %s (its first entry is %q)",
+			src, limits.FirstEntry, rel).
+			WithHint("a release archive states its size in the manifest, which has to " +
+				"arrive before the bytes it bounds. Repack it with " +
+				"`morzer release archive`")
+	}
+	if hdr.Typeflag != tar.TypeReg {
+		return limits, domain.ValidationError(domain.ErrValidation,
+			"%s in %s is not a regular file", limits.FirstEntry, src)
+	}
+	if hdr.Size > maxManifestSize {
+		return limits, domain.ValidationError(domain.ErrValidation,
+			"%s in %s declares %d bytes, which is not a manifest",
+			limits.FirstEntry, src, hdr.Size)
+	}
+
+	manifest, err := io.ReadAll(io.LimitReader(tr, maxManifestSize))
+	if err != nil {
+		return limits, domain.ValidationError(err, "cannot read %s from %s",
+			limits.FirstEntry, src)
+	}
+
+	declared, err := limits.Budget(manifest)
+	if err != nil {
+		return limits, err
+	}
+
+	limits = clampToBudget(limits, declared)
+	// Against the *effective* ceiling rather than the declaration: a bundle
+	// declaring more than the hard cap can still only write up to the cap,
+	// and demanding the declared figure be free would refuse an install that
+	// would have succeeded.
+	if err := checkFreeSpace(dst, limits, declared); err != nil {
+		return limits, err
+	}
+
+	// Written last, so a refusal above leaves nothing behind.
+	if err := WriteFileIn(root, rel, manifest, normalizeArchiveMode(hdr.FileInfo().Mode())); err != nil {
+		return limits, err
+	}
+	return limits, nil
+}
+
+// clampToBudget applies a declared size to the limits.
+//
+// min in both directions: a declaration larger than the hard cap is cut down to
+// it, and one smaller than the default is honoured as the stricter bound the
+// vendor asked for -- an archive that exceeds its own declaration is refused,
+// which is the other half of the budget being meaningful.
+func clampToBudget(limits ExtractLimits, declared int64) ExtractLimits {
+	if declared <= 0 {
+		return limits
+	}
+	limits.MaxTotalSize = min(declared, int64(HardMaxTotalSize))
+	// A single file cannot exceed the whole archive, and an image layout is
+	// usually one dominant blob rather than an even spread -- 110 M of
+	// postgres's 115 M is a single layer -- so the per-file bound has to
+	// track the total rather than stay at its default.
+	limits.MaxFileSize = min(limits.MaxTotalSize, int64(HardMaxFileSize))
+	return limits
+}
+
+// checkFreeSpace refuses a bundle the disk cannot hold, before writing any of
+// it.
+//
+// Only against a declared budget: without one the default ceiling applies, and
+// demanding two gigabytes free to extract a two-megabyte bundle would refuse
+// every ordinary install on a small disk. A clean refusal beats a full
+// filesystem, but only where there is a claim to check.
+func checkFreeSpace(dst string, limits ExtractLimits, declared int64) error {
+	if declared <= 0 {
+		return nil
+	}
+	free, err := freeSpace(dst)
+	if err != nil {
+		// Not fatal: a filesystem whose free space cannot be read is not
+		// evidence of a full one, and the extraction limits still bound
+		// what gets written.
+		return nil
+	}
+	if free < limits.MaxTotalSize {
+		return domain.ValidationError(domain.ErrValidation,
+			"the bundle needs up to %s and %s is free on %s",
+			domain.ByteSize(limits.MaxTotalSize), domain.ByteSize(free), dst).
+			WithHint("free some space, or install to a filesystem that has room")
+	}
+	return nil
+}
+
+// freeSpace is FreeSpace unless a test replaced it.
+//
+// Injectable for the reason Deps.FreeSpace already records: a check whose
+// verdict depends on the host's real disk is a check whose test passes or fails
+// on which machine ran it.
+var freeSpace = FreeSpace
 
 func extractTar(tr *tar.Reader, root *os.Root, src string, limits ExtractLimits) error {
 	var entries int

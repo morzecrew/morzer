@@ -318,6 +318,44 @@ verifies the other. That is asserted by a test comparing every source against
 the same bundle, because pinning a release would otherwise mean pinning a
 transport too.
 
+### The extraction budget
+
+Extraction happens **before** the signature is checked — a bundle is written to
+disk, then verified — so the extraction limits are the only thing standing
+between a hostile archive and the disk, and the signature cannot be the
+mitigation because it comes afterwards.
+
+The default ceiling is 2 GiB in total and 1 GiB per file, which a bundle
+carrying container images cannot live within. Such a bundle raises its own by
+declaring what it expands to:
+
+```yaml title="manifest.yaml"
+bundle:
+  uncompressed_size: 12GiB
+```
+
+Three rules, and each is the answer to a way of getting this wrong:
+
+- **The archive must begin with `manifest.yaml`.** That is where the
+  declaration lives, and it has to be readable before the bytes it bounds.
+  `release archive` guarantees the order; an archive that does not honour it is
+  **refused**, not quietly given the default ceiling — a fallback would make the
+  ordering advisory, and an advisory guarantee decays.
+- **A declaration may only ever lower the ceiling.** The effective limit is
+  `min(declared, hard cap)`, where the hard caps are **50 GiB total and 5 GiB
+  per file**. The declaration is made by the same unverified bytes the guard
+  bounds, so a budget that could raise the ceiling is one an attacker sets. A
+  bundle needing more than the cap is refused; raising the cap is a change to
+  morzer, made once, in the open.
+- **Absent means the default, not unbounded.** A missing field must never be the
+  permissive reading of anything that gates untrusted bytes.
+
+A declaration smaller than the default is honoured as the stricter bound you
+asked for: an archive that exceeds its own declared size is refused. And before
+anything is written, the declared ceiling is checked against free disk space, so
+a bundle too large for the machine is a clean refusal rather than a full
+filesystem.
+
 ### What extraction refuses
 
 An archive is the largest attack surface here: a format chosen by whoever

@@ -203,6 +203,43 @@ func LoadSecretSchema(rel domain.Release) (domain.SecretSchema, error) {
 	return schema, nil
 }
 
+// DeclaredBundleSize reads `bundle.uncompressed_size` out of manifest bytes.
+//
+// Leniently, like checkManagerVersion and for the same reason: this runs on the
+// first entry of an archive that has not been verified, and it must succeed
+// against a manifest written for a newer manager. A field it cannot read is a
+// field it declines to use -- the caller then applies the default ceiling,
+// which is the safe direction.
+//
+// The one thing it refuses is a *negative* declaration, because that is not a
+// smaller budget but a nonsensical one, and silently treating it as absent
+// would let a manifest say something the manager pretends not to have heard.
+func DeclaredBundleSize(manifest []byte) (int64, error) {
+	var p struct {
+		Bundle struct {
+			UncompressedSize string `yaml:"uncompressed_size"`
+		} `yaml:"bundle"`
+	}
+	if err := yaml.Unmarshal(manifest, &p); err != nil {
+		return 0, nil
+	}
+	raw := strings.TrimSpace(p.Bundle.UncompressedSize)
+	if raw == "" {
+		return 0, nil
+	}
+
+	var size domain.ByteSize
+	if err := size.UnmarshalText([]byte(raw)); err != nil {
+		return 0, nil
+	}
+	if size < 0 {
+		return 0, domain.ValidationError(domain.ErrValidation,
+			"the bundle declares an uncompressed size of %s", size).
+			WithHint("bundle.uncompressed_size is a size such as 12GiB")
+	}
+	return size.Bytes(), nil
+}
+
 // manifestPreamble is the little of a manifest that must be readable before
 // the rest is judged.
 //

@@ -101,10 +101,12 @@ minisign -Sm SHA256SUMS
 tar --zstd -cf ../demo-1.3.0.tar.zst --no-recursion -T ../entries.txt
 ```
 
-**`manifest.yaml` must be the first entry** if your bundle carries images: the
-extraction budget is read from the manifest before anything large is extracted,
-which only works while it arrives first. `tar -C ./my-product .` emits entries
-in directory order, which no `tar` implementation specifies.
+**`manifest.yaml` must be the first entry.** The extraction budget is read from
+the manifest before anything large is extracted, which only works while it
+arrives first — so an archive that begins with anything else is **refused**,
+whatever it contains. `tar -C ./my-product .` emits entries in directory order,
+which no `tar` implementation specifies, and is the usual way to get this
+wrong.
 
 **The checksum list must be complete.** If your pipeline writes one by hand,
 verify it with `sha256sum -c SHA256SUMS` *and* by comparing its line count
