@@ -332,7 +332,7 @@ func newSecretRecipientsCommand(app *App) *cobra.Command {
 
 	keygen := &cobra.Command{
 		Use:   "generate-recovery-key <path>",
-		Short: "Create an offline recovery identity and print its key",
+		Short: "Create an offline recovery identity; show its public key",
 		Long: "Writes a new age identity to <path> with 0400 permissions and prints its\n" +
 			"public key. Move the file off this machine: a recovery key stored on the\n" +
 			"machine it is meant to recover protects nothing.",

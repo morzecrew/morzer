@@ -1,12 +1,18 @@
 # RFC 0020 — Several installations on one machine
 
 - **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: discovery returns the
-  inventory it always computed, `Deps.MachineProducts` carries it, and a lookup
-  that finds no installation *here* now gives one of two answers — `init` on a
-  bare machine, the installations by name on an ambiguous one. The refusal lives
-  at the failed lookup rather than in path resolution, so `version` and
-  `release verify` still work on a machine with three installations. P2–P4
-  (`ls`, `--status`, the machine-scope `doctor` checks) is unstarted.
+  inventory it always computed, `Deps.MachineProducts` carries it, and a machine
+  whose installations nobody chose between is refused by name instead of being
+  reported as bare. Both flags record the inventory, including `--config`, which
+  is the one the systemd units pass. The refusal lives in the lookup rather than
+  in path resolution, so `version`, `release verify` and `init` still work on a
+  machine with three installations — but it is asked *before* the state is read,
+  not after the read fails: the placeholder product is `morzer`, the manager's
+  own name and so the likeliest name for a real installation, and where one
+  existed the fallback silently selected it. `doctor` asks the same question
+  first, since degrading to a reduced check list is what made it the one command
+  that swallowed the refusal. P2–P4 (`ls`, `--status`, the machine-scope
+  `doctor` checks) is unstarted.
 - **Scope:** Making the multi-installation case — which the path layout has
   always supported and no command has ever acknowledged — visible and safe:
   `morzer ls`, a refusal that names the installations it found instead of
@@ -262,6 +268,15 @@ The fallback to the placeholder `morzer` product stays for the zero-installation
 case, because `init`, `version` and `doctor` must work on a bare machine. What
 changes is that "more than one" stops taking the same branch as "none": today
 they are indistinguishable to `resolvePaths`, and that is the whole defect.
+
+**The placeholder is a real name, which is why the count is asked before the
+path is used.** `morzer` is the manager's own name and so the likeliest name for
+an installation somebody creates; on a machine holding `morzer` and `demo` the
+fallback stopped being a placeholder and became a silent choice, with `status`
+loading whichever installation happened to be called `morzer` and reporting on
+it. A refusal that fires only when the read *fails* cannot catch that, because
+the read succeeds — so the question "did anybody choose?" is asked at the top of
+the lookup, and the questions that need a failed read stay below it.
 
 Commands that do not act on an installation — `version`, `release verify`,
 `release new`, `release pack`, `completion` — must not be refused by this. They
