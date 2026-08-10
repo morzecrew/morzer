@@ -43,7 +43,10 @@ var nonArchiveAssets = map[string]bool{
 // The `binary` format is the one ending not listed, because it has none -- a
 // bare name with no extension is indistinguishable from prose, so an archives
 // block using it is checked through the release URLs only.
-var archiveExtensions = regexp.MustCompile(`\.(?:tar(?:\.[a-z0-9]+)?|t[gbx]z|zip|gz)\b`)
+//
+// A fragment rather than an expression: it is composed into the mention pattern
+// below and never matches on its own.
+const archiveExtensions = `\.(?:tar(?:\.[a-z0-9]+)?|t[gbx]z|zip|gz)\b`
 
 // A release URL that names an asset, in either of GitHub's two forms:
 // `/releases/download/<tag>/<asset>` and `/releases/latest/download/<asset>`.
@@ -200,7 +203,7 @@ func archivePattern(root string) (archiveNames, error) {
 	// deliberately unconstrained, because a name this fails to recognise is
 	// a name it fails to check.
 	mention, err := regexp.Compile(
-		`\b` + regexp.QuoteMeta(config.ProjectName) + `[_-][^\s'"()\x60]*` + archiveExtensions.String())
+		`\b` + regexp.QuoteMeta(config.ProjectName) + `[_-][^\s'"()\x60]*` + archiveExtensions)
 	if err != nil {
 		return archiveNames{}, fmt.Errorf("%s: %w", goreleaserConfig, err)
 	}

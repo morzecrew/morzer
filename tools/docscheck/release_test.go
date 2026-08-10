@@ -175,6 +175,10 @@ archives:
 		"morzer_linux_amd64.tar.gz",
 		"morzer-1.0.0.tgz",
 		"morzer_1.0.0_linux_amd64.tar.bz2",
+		// A markdown link, where the name is followed immediately by
+		// the target it links to. The greedy middle must stop at the
+		// name rather than swallowing the URL and reporting the pair.
+		"[morzer_linux_amd64.tar.zst](https://example.invalid/morzer_1.0.0_linux_amd64.tar.zst)",
 	} {
 		if got := problems(t, root, name); len(got) != 1 {
 			t.Errorf("%s is not a name this pipeline produces and was not reported: %v", name, got)
