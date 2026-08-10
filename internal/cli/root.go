@@ -454,22 +454,76 @@ func newRootCommand(app *App) *cobra.Command {
 	// this, `-v -q` meant quiet and nothing said so.
 	root.MarkFlagsMutuallyExclusive("verbose", "quiet")
 
+	// Registration order is the display order, here and in every subcommand
+	// list. Cobra sorts alphabetically by default, which in a group of three
+	// puts `apply` before `init` -- converge before create, on the screen
+	// whose whole job is telling a new operator what to run first. The
+	// subcommand lists this also unsorts are already written in a deliberate
+	// order (`release`: inspect, author, distribute), and alphabetical was
+	// never a decision anyone made there either.
+	cobra.EnableCommandSorting = false
+
+	// Ordered by when an operator meets them, not alphabetically. The first
+	// screen of `--help` is the only documentation many operators read, and
+	// an alphabetical list puts `release` between `init` and `restore` while
+	// saying nothing about which three commands are needed on day one.
+	//
+	// Cobra places a command with no GroupID in an "Additional Commands"
+	// section at the bottom, which is where its generated `help` and
+	// `completion` belong. TestEveryCommandIsGrouped keeps anything else
+	// from landing there quietly.
+	for _, g := range []struct{ id, title string }{
+		{groupStart, "Getting started:"},
+		{groupOperate, "Operating:"},
+		{groupData, "Data:"},
+		{groupBundles, "Bundles:"},
+		{groupMachine, "Machine:"},
+	} {
+		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})
+	}
+
 	root.AddCommand(
-		newInitCommand(app),
-		newApplyCommand(app),
-		newUpdateCommand(app),
-		newRollbackCommand(app),
-		newStatusCommand(app),
-		newDoctorCommand(app),
-		newBackupCommand(app),
-		newRestoreCommand(app),
-		newSecretCommand(app),
-		newConfigCommand(app),
-		newReleaseCommand(app),
-		newInstallationCommand(app),
-		newVersionCommand(app),
+		grouped(groupStart, newInitCommand(app)),
+		grouped(groupStart, newApplyCommand(app)),
+		grouped(groupStart, newStatusCommand(app)),
+
+		grouped(groupOperate, newUpdateCommand(app)),
+		grouped(groupOperate, newRollbackCommand(app)),
+		grouped(groupOperate, newConfigCommand(app)),
+		grouped(groupOperate, newSecretCommand(app)),
+		grouped(groupOperate, newDoctorCommand(app)),
+
+		grouped(groupData, newBackupCommand(app)),
+		grouped(groupData, newRestoreCommand(app)),
+
+		grouped(groupBundles, newReleaseCommand(app)),
+
+		grouped(groupMachine, newInstallationCommand(app)),
+		grouped(groupMachine, newVersionCommand(app)),
 	)
 	return root
+}
+
+// The groups of the top-level help, as identifiers rather than repeated
+// strings: a typo'd GroupID is a command cobra silently drops to the bottom of
+// the list.
+const (
+	groupStart   = "start"
+	groupOperate = "operate"
+	groupData    = "data"
+	groupBundles = "bundles"
+	groupMachine = "machine"
+)
+
+// grouped assigns a command to a section of `--help`.
+//
+// A helper rather than a field set at each constructor, because the grouping is
+// a property of the *listing*, decided here where the whole list is visible --
+// and a constructor that carried its own GroupID would put the ordering
+// decision in thirteen files.
+func grouped(id string, cmd *cobra.Command) *cobra.Command {
+	cmd.GroupID = id
+	return cmd
 }
 
 // setup resolves the output mode, builds the logger, and wires every adapter.
