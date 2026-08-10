@@ -1228,6 +1228,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Global flags">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-installation-a-command-acts-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Which installation a command acts on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1963,6 +1980,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Global flags">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-installation-a-command-acts-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Which installation a command acts on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2316,6 +2350,44 @@ maps its failure onto a stable <a href="../exit-codes/">exit code</a>.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="which-installation-a-command-acts-on">Which installation a command acts on<a class="headerlink" href="#which-installation-a-command-acts-on" title="Permanent link">&para;</a></h3>
+<p>A machine may hold several installations: every path is keyed by the product
+name, so <code>/etc/demo</code> and <code>/etc/other</code> are separate deployments with separate
+locks, separate secret state and separate systemd units.</p>
+<p>Selection, in order:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--config &lt;path&gt;</code></td>
+<td>Selects the layout the file sits in. This is what the generated systemd units pass.</td>
+</tr>
+<tr>
+<td><code>--product &lt;name&gt;</code></td>
+<td>With <code>--root</code> when the layout is relocated.</td>
+</tr>
+<tr>
+<td>Discovery</td>
+<td>Used only when the machine holds <strong>exactly one</strong> installation.</td>
+</tr>
+</tbody>
+</table>
+<p><code>--config</code> and <code>--product</code> are alternatives, not a precedence: naming both is
+refused when they disagree, and accepted when they name the same installation.</p>
+<p>On a machine with more than one installation, a command that needs one and was
+given no selector is refused, and the refusal names what it found:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>status
+<span class="go">error: this machine has 2 installations, so --product is required</span>
+<span class="go">hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`</span>
+</code></pre></div>
+<p>Commands that touch no installation — <code>version</code>, <code>release verify</code>, <code>release new</code>
+and the rest of the bundle-authoring commands — are unaffected, and so is <code>init</code>,
+which is given the product name it is creating.</p>
 <h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

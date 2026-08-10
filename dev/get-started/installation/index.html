@@ -1901,20 +1901,40 @@
 <p>morzer is a single static binary with no runtime dependency on the machine's
 libc. Getting it is a download and a checksum.</p>
 <h2 id="from-a-release">From a release<a class="headerlink" href="#from-a-release" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://github.com/morzecrew/morzer/releases/latest/download/morzer_linux_amd64.tar.zst
-curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://github.com/morzecrew/morzer/releases/latest/download/SHA256SUMS
-curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://github.com/morzecrew/morzer/releases/latest/download/SHA256SUMS.minisig
+<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">1</span>.0.0<span class="w">                            </span><span class="c1"># the release you mean, not &quot;whatever is newest&quot;</span>
+<span class="nv">ARCHIVE</span><span class="o">=</span>morzer_<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>_linux_amd64.tar.zst
+<span class="nv">BASE</span><span class="o">=</span>https://github.com/morzecrew/morzer/releases/download/v<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>
+
+curl<span class="w"> </span>-fsSLO<span class="w"> </span><span class="si">${</span><span class="nv">BASE</span><span class="si">}</span>/<span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span>
+curl<span class="w"> </span>-fsSLO<span class="w"> </span><span class="si">${</span><span class="nv">BASE</span><span class="si">}</span>/SHA256SUMS
+curl<span class="w"> </span>-fsSLO<span class="w"> </span><span class="si">${</span><span class="nv">BASE</span><span class="si">}</span>/SHA256SUMS.minisig
 curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/morzecrew/morzer/main/morzer.pub
 
 minisign<span class="w"> </span>-Vm<span class="w"> </span>SHA256SUMS<span class="w"> </span>-p<span class="w"> </span>morzer.pub<span class="w">    </span><span class="c1"># who published it</span>
-sha256sum<span class="w"> </span>-c<span class="w"> </span>SHA256SUMS<span class="w"> </span>--ignore-missing<span class="w"> </span><span class="c1"># that this is what they published</span>
+grep<span class="w"> </span><span class="s2">&quot; </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span><span class="s2">\$&quot;</span><span class="w"> </span>SHA256SUMS<span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c<span class="w"> </span>-<span class="w">  </span><span class="c1"># that this is what they published</span>
 
-tar<span class="w"> </span>--zstd<span class="w"> </span>-xf<span class="w"> </span>morzer_linux_amd64.tar.zst
+tar<span class="w"> </span>--zstd<span class="w"> </span>-xf<span class="w"> </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span>
 sudo<span class="w"> </span>install<span class="w"> </span>-m<span class="w"> </span><span class="m">0755</span><span class="w"> </span>morzer<span class="w"> </span>/usr/local/bin/morzer
 </code></pre></div>
 <p>Both checks matter and they answer different questions. The signature says a key
 you trust produced the checksum file; the checksum says the archive you have is
 the one that file describes.</p>
+<div class="admonition warning">
+<p class="admonition-title">Not <code>sha256sum -c --ignore-missing</code></p>
+<p><code>SHA256SUMS</code> covers every architecture's archive, so a plain
+<code>sha256sum -c SHA256SUMS</code> fails on the ones you did not download and
+<code>--ignore-missing</code> is the usual way around that. It is also the way to make
+the check meaningless: with <strong>no</strong> archive present — a download that failed,
+a typo in the name — <code>--ignore-missing</code> skips every line and reports <code>OK</code>.</p>
+<p>Pulling this archive's own line out of the file first is one more pipe and
+fails when there is nothing to check.</p>
+</div>
+<p>The version is written out rather than using <code>/releases/latest/download/…</code>.
+<code>latest</code> is a moving target: a runbook written today installs something else
+tomorrow, which is the same reason <code>update.channel</code> exists and is a decision an
+operator makes rather than a default. If you do want the newest release, take
+the version from the <a href="https://github.com/morzecrew/morzer/releases">releases page</a>
+and put it in the runbook.</p>
 <div class="admonition tip">
 <p class="admonition-title">Keep your copy of the public key</p>
 <p>The key is published in the same repository as the releases it signs, so on
