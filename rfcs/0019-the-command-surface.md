@@ -1,6 +1,11 @@
 # RFC 0019 — The command surface
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: five command groups in
+  the order an operator meets them, `cobra.EnableCommandSorting` off so
+  registration order is display order, and the three tests that keep it that way
+  — one of which found two `Short` strings that already wrapped past eighty
+  columns. P2 onwards (the rendering boundary, the components, the density rule,
+  the generated index, `completion install`) is unstarted.
 - **Scope:** The surface an operator meets before they meet any capability: how
   `morzer --help` is organised, how output is rendered in each mode, how the
   command reference is found, and how shell completion gets installed. Covers

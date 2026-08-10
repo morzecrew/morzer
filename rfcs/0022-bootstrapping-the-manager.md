@@ -1,6 +1,13 @@
 # RFC 0022 — Bootstrapping the manager
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: the documented download
+  URL named an asset the pipeline does not produce, and the checksum step passed
+  when the archive was absent. Both corrected in the docs and in the release
+  notes footer, the example pins a version, and `docs-check` now builds a pattern
+  from goreleaser's own template and fails on an asset name it cannot produce —
+  verified red against the defect it exists for. P2 onwards (the script, PATH,
+  completions, publication) is unstarted and has no consumer until a release is
+  tagged.
 - **Scope:** Getting the `morzer` binary onto a machine: an sh-compatible
   `install.sh` that takes a version and verifies what it downloaded, published
   from this repository and from every release, plus the corrections the current

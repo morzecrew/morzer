@@ -1,6 +1,12 @@
 # RFC 0020 — Several installations on one machine
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: discovery returns the
+  inventory it always computed, `Deps.MachineProducts` carries it, and a lookup
+  that finds no installation *here* now gives one of two answers — `init` on a
+  bare machine, the installations by name on an ambiguous one. The refusal lives
+  at the failed lookup rather than in path resolution, so `version` and
+  `release verify` still work on a machine with three installations. P2–P4
+  (`ls`, `--status`, the machine-scope `doctor` checks) is unstarted.
 - **Scope:** Making the multi-installation case — which the path layout has
   always supported and no command has ever acknowledged — visible and safe:
   `morzer ls`, a refusal that names the installations it found instead of
