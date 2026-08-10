@@ -62,7 +62,8 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 		return UpdateCheckResult{}, domain.ValidationError(domain.ErrUnsupported,
 			"update checking is not enabled on this installation").
 			WithHint("a check contacts the vendor's registry; enable it with " +
-				"`morzer config`, or ask for one now with `morzer update --check`")
+				"`morzer config set update.check=true`, or ask for one now with " +
+				"`morzer update --check`")
 	}
 
 	current, err := d.State.CurrentRelease(ctx)
@@ -118,6 +119,14 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 	// cannot be upgraded from is telling them about work they cannot do.
 	for _, v := range versions {
 		if !v.GreaterThan(current.Version) {
+			continue
+		}
+		// Prereleases are for the sandbox that asked for them. RFC 0014
+		// gives every development build a prerelease version, so a
+		// production machine offered them would be told about its
+		// vendor's commits -- and a check whose answer is "1.4.1-dev.7 is
+		// available" trains an operator to ignore the check.
+		if v.Prerelease() != "" && !inst.IsDev() {
 			continue
 		}
 		rep := domain.CheckUpgrade(current.Version, v, releaseCompatibility(d, v),

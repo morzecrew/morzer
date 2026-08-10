@@ -1,13 +1,14 @@
 # RFC 0016 — Update checking and unattended updates
 
-- **Status:** 🚧 In progress — P1 shipped 2026-08-08: `update --check`, the
+- **Status:** ✅ Complete — P1 shipped 2026-08-08: `update --check`, the
   `update.check` setting, and the refusals that make a check say "I could not
-  ask" rather than "up to date". P2 (channel following and staging, carrying
-  [0002](0002-rich-terminal-renderer.md) P5) and P3 (unattended apply and dev
-  mode) remain. **Design locked** 2026-08-08. Every question in §10 is
-  resolved into §11; P3 is gated on [0015](0015-notifications.md) shipping, and
-  decision 16 adds the first new manifest field since strict decoding's cost was
-  measured (§5.3).
+  ask" rather than "up to date". **P2 and P3 shipped 2026-08-10**: channel
+  following with `ChannelPeeker`, staging, the release-notes rendering that
+  carries [0002](0002-rich-terminal-renderer.md) P5, the auto-apply gate,
+  `database_schema_produces`, dev mode at schema 5, and the update timer.
+  **Design locked** 2026-08-08. Every question in §10 is
+  resolved into §11; §5.2's cost model was wrong and is amended in §13 with the
+  measurement that replaced it.
 - **Scope:** Three separable capabilities, in increasing order of risk.
   `update --check` tells an operator a release exists, consuming
   `ReleaseSource.List` — a port method that is implemented, commented as
@@ -731,3 +732,102 @@ disk, and whether `--check`'s "cannot enumerate" is a distinct exit code.
 
 P1 is worth shipping alone. P3 is the only phase carrying the risk in §9, and it
 should stay behind an explicit opt-in even after it ships.
+
+## 13. Amendments
+
+Recorded on completion, 2026-08-10. The decision table is append-only; this
+section records where execution diverged and why.
+
+### §5.2 priced a tick at "one `Resolve`", and a Resolve is a download
+
+The whole affordability argument for channel following was one sentence: "The
+cost is one `Resolve` per tick." That is wrong, and it is wrong by the size of
+the release.
+
+`ports.ReleaseSource.Resolve` returns a `ResolvedRelease` carrying the bundle's
+**content digest**, and a content digest is a property of the bytes. The OCI
+source therefore pulls the layer to compute one
+([`oci.go`](../internal/adapters/source/oci/oci.go)). A poll built on Resolve
+downloads the entire release on every tick to discover that nothing has changed
+— at the five-minute cadence §5.2 discusses, 288 times a day. The port's own doc
+comment said "without downloading the payload", which is true of a directory and
+false of a registry; it now says otherwise.
+
+**What ships instead** is `ports.ChannelPeeker`, an optional capability: one
+manifest request, no blob. It is optional rather than a method on
+`ReleaseSource` because only a transport with a server-side identity for its
+content can answer — a registry has a manifest digest, a directory has nothing
+that changes when a file does not. A source that cannot peek is **refused by
+name** rather than falling back to Resolve, which is the tempting move and the
+one that reintroduces the bug silently.
+
+The assertion is a byte count, not a digest
+([`TestPeekReadsAManifestAndResolveReadsTheBundle`](../test/suite/oci_test.go)).
+A Peek that downloaded the bundle to find the right answer would pass any test
+written about its answer, which is precisely the failure.
+
+Two consequences worth stating:
+
+- **`ReleaseRecord` gains `UpstreamDigest`** — the registry's identity for what
+  a release came from, distinct from the content digest and never compared with
+  it. Without it, every tick after an install would re-fetch to discover it
+  already had the release. It carries no schema bump, for decision 21's reason:
+  losing it costs one fetch.
+- **The peek returns the reference pinned by digest**, and staging fetches that
+  rather than the tag. This is decision 22 implemented at the transport
+  boundary, where reference syntax belongs.
+
+### `update.check` shipped in P1 with no way to turn it on
+
+The setting had a name, a default, a documented meaning, a `doctor` check and a
+refusal whose hint told operators to "enable it with `morzer config`" — which
+read and wrote *release parameters* exclusively. There was no surface for
+installation-level settings at all, so P1's own opt-in could not be exercised
+without hand-editing the state file.
+
+P2 adds one, dispatched on the single thing that cannot collide: a parameter
+name is `[a-z][a-z0-9_]*`, so a dotted name is never one. `update.check`,
+`update.channel` and `update.auto_apply` are set with `morzer config set
+update.check=true` and listed by `morzer config settings`.
+
+The general shape is worth keeping: a decision that names a setting is not
+shipped until something can write it, and "the operator edits the state file" is
+not a surface — the manager rewrites that file on every operation.
+
+### The update timer is generated from the setting, not from `init`
+
+§5.5 described the timer beside the backup timer, which `init` installs. But the
+channel is configured *later*, by an operator who has decided to follow one — so
+units are reconciled when the setting changes: a channel installs the pair, and
+clearing it removes them.
+
+That made `ManagedUnitNames` load-bearing in a way it was not before. It is
+deliberately the **superset** — every unit the supervisor may own, whether or
+not this installation generates it — because it is what removal walks, and a
+list narrowed to the current configuration would leave an orphaned timer polling
+a channel nobody configures any more.
+
+The port also gains `InstalledUnits`, which answers a question nothing else
+could: whether this installation manages units at all. `init
+--install-units=false` is a supported choice, and reconciliation that installed
+units into a machine that deliberately has none would be the manager overruling
+a decision somebody already made.
+
+### `status` names the staged release; it does not print the notes
+
+§5.7 said "`update --check` and the staged-release line in `status` render the
+incoming release's notes". `--check` does. `status` shows the line and stops.
+
+A `status` reading is a compact report of what is deployed and whether it works,
+and a vendor's changelog inside it would push the service list and the health
+results off a terminal — every time it is run, until somebody installs the
+update. The notes are one command away, and the page says which one. The
+divergence is recorded rather than quietly taken because the difference is
+visible to anyone reading §5.7 beside the output.
+
+### `release prune` moved into the lifecycle layer
+
+Dev mode prunes after every update (§5.4), and the retention pass lived in
+`internal/cli`. Two implementations of "what is unprunable" would drift, and the
+staged-candidate exemption is exactly the kind of rule that would be added to one
+of them. There is one `ReleaseEntry.Exempt()` now, and both callers ask it.

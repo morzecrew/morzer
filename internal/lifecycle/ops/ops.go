@@ -248,6 +248,11 @@ var forwardedKinds = map[events.Kind]bool{
 	events.KindOperationFinished: true,
 	events.KindCheck:             true,
 
+	// A staged release is the one event here that is not an outcome, and it
+	// is forwarded for that reason: it is a decision waiting for a person,
+	// and the person is not at the terminal where the timer ran.
+	events.KindUpdateStaged: true,
+
 	events.KindOperationStarted: false, // the outcome is the news, not the start
 	events.KindStepStarted:      false, // narration
 	events.KindStepProgress:     false, // narration

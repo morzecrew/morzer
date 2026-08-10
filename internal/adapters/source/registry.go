@@ -99,6 +99,29 @@ func (r *Registry) Fetch(ctx context.Context, ref ports.Ref, destDir string) (po
 	return s.Fetch(ctx, ref, destDir)
 }
 
+// Peek forwards to the source for the reference when it can watch a channel.
+//
+// A transport that cannot is refused by name rather than falling back to
+// Resolve. The fallback is the tempting one and it is wrong: Resolve downloads
+// the bundle for anything but a local path, so a poll that silently degraded to
+// it would turn "check whether anything changed" into "fetch the whole release,
+// every tick, forever".
+func (r *Registry) Peek(ctx context.Context, ref ports.Ref) (ports.ChannelState, error) {
+	s, err := r.For(ref)
+	if err != nil {
+		return ports.ChannelState{}, err
+	}
+	peeker, ok := s.(ports.ChannelPeeker)
+	if !ok {
+		return ports.ChannelState{}, domain.ValidationError(domain.ErrUnsupported,
+			"%s references cannot be followed as a channel", ref.Scheme).
+			WithHint("a channel is a mutable tag whose target can be read without " +
+				"downloading it, which only a registry offers; update from a " +
+				"reference instead")
+	}
+	return peeker.Peek(ctx, ref)
+}
+
 func (r *Registry) List(ctx context.Context, ref ports.Ref) ([]domain.Version, error) {
 	s, err := r.For(ref)
 	if err != nil {

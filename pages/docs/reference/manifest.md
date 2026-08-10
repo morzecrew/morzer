@@ -394,12 +394,38 @@ anything.
 | --- | --- | --- |
 | `database_schema_min` | int | Oldest schema this release can read. |
 | `database_schema_max` | int | Newest schema this release can read. |
+| `database_schema_produces` | int | What this release's migrations leave the database at. Optional; see below. |
 | `rollback_safe` | bool | Whether this release's migrations can be undone by returning to the previous one. |
 | `min_manager_version` | semver | Oldest manager that may install this release. |
 | `upgrade_from` | constraint | Which currently-installed versions this may be installed over, e.g. `">=1.0.0 <2.0.0"`. |
 
 `rollback_safe: false` is how a vendor says "going back needs a restore". The
 manager takes it literally and refuses the rollback, naming the backup instead.
+
+### `database_schema_produces` is what opts a release into unattended updates
+
+```yaml
+compatibility:
+  rollback_safe: true
+  database_schema_min: 12
+  database_schema_max: 14
+  database_schema_produces: 14   # what my migrations leave the database at
+```
+
+The other three fields describe what a release can *read*. This one states what
+it *writes*, and it exists so the manager can answer a question before an update
+rather than after one: if this release is installed and then has to be rolled
+back, would the previous release still understand the database?
+
+**Omitting it is a valid and conservative choice.** A release that does not
+declare it is never installed unattended — the manager will fetch it, verify it,
+stage it and notify the operator, and stop there. If you do not want customers
+running your releases without a human present, declare nothing and nothing
+changes for you.
+
+Declaring it is not sufficient on its own. See
+[unattended updates](../operating/unattended-updates.md) for the whole gate,
+and for what the promise is and is not.
 
 ## retention
 

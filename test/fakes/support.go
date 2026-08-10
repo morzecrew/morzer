@@ -605,6 +605,14 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 	names := s.ManagedUnitNames(params.Product)
 	out := make([]ports.Unit, 0, len(names))
 	for _, name := range names {
+		// The update pair is conditional, exactly as a real supervisor
+		// makes it. A fake that returned every managed unit whatever it
+		// was asked for would make any test about UpdateTimer vacuous --
+		// it would pass whether the lifecycle layer set the field or
+		// not, which is the only thing such a test is checking.
+		if strings.Contains(name, "-update.") && !params.UpdateTimer {
+			continue
+		}
 		out = append(out, ports.Unit{
 			Name:     name,
 			Contents: []byte("# fake unit for " + params.Product + "\n"),
@@ -615,5 +623,32 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 }
 
 func (s *Supervisor) ManagedUnitNames(product string) []string {
-	return []string{product + ".service", product + "-backup.service", product + "-backup.timer"}
+	return []string{
+		product + ".service",
+		product + "-backup.service",
+		product + "-backup.timer",
+		product + "-update.service",
+		product + "-update.timer",
+	}
+}
+
+// InstalledUnits reports which managed units this fake has been given.
+//
+// It answers from what InstallUnits recorded rather than from ManagedUnitNames,
+// because the distinction is the whole point of the method: a machine that ran
+// `init --install-units=false` manages no units, and anything reconciling them
+// later must be able to tell that from a machine that has them.
+func (s *Supervisor) InstalledUnits(ctx context.Context, product string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.Fail["InstalledUnits"]; err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, name := range s.ManagedUnitNames(product) {
+		if _, ok := s.Installed[name]; ok {
+			out = append(out, name)
+		}
+	}
+	return out, nil
 }

@@ -46,6 +46,10 @@ act on.
 
 `doctor` and `status` can report the same thing, and they are off by default:
 
+```sh
+morzer config set update.check=true
+```
+
 ```yaml title="installation.yaml"
 update:
   check: true
@@ -57,6 +61,74 @@ turning that on by default would be a phone-home nobody agreed to — so
 unprompted paths honour this setting, and it is absent-means-off.
 
 `morzer update --check` ignores it. Typing the command is the consent.
+
+`update.check` and `update.channel` are **installation settings**, not release
+parameters: they are your arrangement with the manager rather than a knob the
+vendor declared, and they change nothing that is running.
+`morzer config settings` lists them.
+
+## Following a channel
+
+A channel is one reference that moves — the pattern a container registry's own
+`latest` follows:
+
+```sh
+morzer config set update.channel=oci://registry.example/demo/bundle:stable
+morzer update --stage
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--stage` | Fetch and verify what the channel points at, without installing it. |
+
+This is a **different operation** from `--check`, not a spelling of it.
+`--check` enumerates version tags and picks the highest one you could move to,
+which needs tags that are versions. A channel is a tag that is not a version and
+that changes what it points at, so enumeration cannot follow one.
+
+The tag moves; the bundles behind it each carry a distinct version. So nothing
+about immutable releases is weakened — the never-republish rule keeps working on
+the versions while the channel does its work on the pointer.
+
+### What a tick costs
+
+A poll asks the registry what the tag points at — one manifest request. Only
+when the answer differs from what this machine has already seen is anything
+downloaded. An unchanged channel therefore costs a few hundred bytes, whatever
+the size of the release.
+
+There is **no interval floor**. The cost belongs to your vendor's registry
+rather than to the manager, and a rate-limited registry counts manifest
+requests: a cadence chosen without regard to that will exhaust a budget other
+things need.
+
+### Staged, not installed
+
+What `--stage` leaves behind is a release fetched, verified against your
+signature policy, and sitting in the store — with nothing about the running
+deployment changed:
+
+```sh
+morzer status              # shows: staged 1.4.0 (not installed)
+morzer update --check      # prints the incoming release's notes
+morzer update --to 1.4.0   # installs it, when you choose
+```
+
+That middle state is where most of the value is and almost none of the risk:
+the network, the credentials and the verification happen ahead of time, and the
+decision that costs downtime stays yours. A staged release is exempt from
+retention until it is installed or superseded, so `release prune` cannot remove
+the candidate a poll just fetched.
+
+The bundle is fetched **by digest**, not by tag. A channel is a tag built to
+move, so between the moment the manager reads it and the moment it downloads,
+the tag may point somewhere else — pinning to what was actually read closes
+that window.
+
+If the channel offers something unusable — a version older than the one
+installed, or a version already installed republished with different content —
+it is refused and the refusal is *recorded*, so the next tick does not download
+the same bundle again to reach the same answer. `status` reports it.
 
 ## What happens, in order
 

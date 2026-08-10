@@ -37,6 +37,16 @@ type Supervisor interface {
 	// so they can be queried or removed without the caller knowing their
 	// naming scheme.
 	ManagedUnitNames(product string) []string
+
+	// InstalledUnits lists which of those are actually present.
+	//
+	// It answers a question nothing else can: whether this installation
+	// manages units at all. `init --install-units=false` is a supported
+	// choice, and a later reconciliation that installed units into a
+	// machine that deliberately has none would be the manager overruling a
+	// decision the operator already made -- on a host where it may not even
+	// be root.
+	InstalledUnits(ctx context.Context, product string) ([]string, error)
 }
 
 // UnitParams is what a supervisor needs to render its units.
@@ -56,6 +66,17 @@ type UnitParams struct {
 
 	// BackupSchedule is a supervisor-specific schedule expression.
 	BackupSchedule string
+
+	// UpdateSchedule is the schedule expression for the update timer, and
+	// is also the maintenance window: an operator who wants updates only on
+	// Sunday mornings says so here, rather than through a second mechanism
+	// that would express it worse.
+	UpdateSchedule string
+
+	// UpdateTimer asks for the update pair at all. False on a machine that
+	// follows no channel: a timer that polls nothing would still appear in
+	// the supervisor's own listing as though it did.
+	UpdateTimer bool
 }
 
 // Unit is a supervisor unit to install.

@@ -350,7 +350,19 @@ func updateSteps(
 	convergeOpts := opts.Options
 	convergeOpts.SourceRef = ports.RedactRefCredentials(opts.Ref)
 	steps = append(steps, applySteps(d, inst, converge, convergeOpts)...)
-	return append(steps, stepRetireParameters(d, staged, retired))
+	steps = append(steps, stepRetireParameters(d, staged, retired))
+
+	// A sandbox prunes after every update; a production machine does not,
+	// and that asymmetry is deliberate rather than an oversight. On a
+	// production host retention is an operator's decision about disk they
+	// own, and removing a release behind their back is removing something
+	// `rollback --to` might have wanted. A dev loop builds a release per
+	// commit, each with its own images/ layout, and nothing else in the
+	// system ever reclaims them.
+	if inst.IsDev() {
+		steps = append(steps, stepPruneReleases(d))
+	}
+	return steps
 }
 
 // withoutParameters copies an installation with the named parameters removed.
@@ -749,4 +761,33 @@ func shortDigest(d string) string {
 		return d[:len(prefix)+16] + "…"
 	}
 	return d
+}
+
+// stepPruneReleases reclaims what a fast rebuild loop accumulates.
+//
+// Last, and non-fatal. It runs after the release is current and after the
+// parameters are retired, so what it prunes is decided against final state --
+// and a failure to reclaim disk must never fail an update that has already
+// converged. The engine's Continue is exactly that: the operation carries on and
+// the journal keeps the reason.
+func stepPruneReleases(d *Deps) engine.Step {
+	return engine.Step{
+		ID:          "prune-releases",
+		Description: "prune old releases",
+		Idempotent:  true,
+		OnFailure:   engine.Continue,
+		Timeout:     5 * time.Minute,
+		Execute: func(ctx context.Context, st *engine.State) error {
+			res, err := PruneReleases(ctx, d, 0, false)
+			if err != nil {
+				return err
+			}
+			if len(res.Removed) == 0 {
+				st.Detail("nothing to prune")
+				return nil
+			}
+			st.Detail("removed %v", res.Removed)
+			return nil
+		},
+	}
 }

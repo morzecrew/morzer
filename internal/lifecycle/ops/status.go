@@ -19,8 +19,17 @@ import (
 type Status struct {
 	Product        string `json:"product"`
 	InstallationID string `json:"installation_id"`
-	Profile        string `json:"profile,omitempty"`
-	PublicURL      string `json:"public_url,omitempty"`
+
+	// Mode is empty on a production machine.
+	//
+	// Shown permanently and prominently rather than as a first-run notice,
+	// because the failure mode is a machine nobody remembers the provenance
+	// of -- and the moment that matters is months later, when somebody is
+	// deciding whether the data on it is real.
+	Mode string `json:"mode,omitempty"`
+
+	Profile   string `json:"profile,omitempty"`
+	PublicURL string `json:"public_url,omitempty"`
 
 	// SupportURL is the release's own "where do I get help". Shown here
 	// and on a failing doctor check, and nowhere else: appending it to
@@ -32,6 +41,13 @@ type Status struct {
 	// null says it unambiguously.
 	CurrentRelease  *domain.ReleaseRecord `json:"current_release"`
 	PreviousRelease *domain.ReleaseRecord `json:"previous_release"`
+
+	// StagedRelease is a release fetched and verified but not installed --
+	// a decision waiting for a person, which is exactly the kind of thing
+	// that is forgotten if it is not in front of them.
+	//
+	// A pointer for the same reason the two above are.
+	StagedRelease *domain.UpdateCandidate `json:"staged_release,omitempty"`
 
 	Services []ports.ServiceState `json:"services"`
 	Health   []ports.HealthResult `json:"health,omitempty"`
@@ -92,6 +108,7 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 	out := Status{
 		Product:        inst.Product,
 		InstallationID: inst.ID,
+		Mode:           string(inst.Mode),
 		Profile:        inst.Profile,
 		PublicURL:      inst.PublicURL(),
 	}
@@ -110,6 +127,27 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		out.Problems = append(out.Problems, "cannot read the previous release: "+domain.AsError(err).Message)
 	case !previous.IsZero():
 		out.PreviousRelease = &previous
+	}
+
+	candidate, err := d.State.UpdateCandidate(ctx)
+	switch {
+	case err != nil:
+		// Reported like the two release pointers above rather than
+		// dropped. This record is what `release prune` consults before
+		// removing a staged release, so a corrupt one that `status` did
+		// not mention would leave an operator with a refusing prune and
+		// no diagnosis.
+		out.Problems = append(out.Problems,
+			"cannot read the update candidate: "+domain.AsError(err).Message)
+	case candidate.IsStaged():
+		out.StagedRelease = &candidate
+	case !candidate.IsZero():
+		// A refused candidate is a problem rather than a section: the
+		// operator needs to know their channel produced something
+		// unusable, and giving it the same line as a staged release
+		// would read as "there is an update waiting" when there is not.
+		out.Problems = append(out.Problems,
+			"the update channel offered something that was refused: "+candidate.Refused)
 	}
 
 	if owner, held, err := d.Locker.Owner(ctx, "deployment"); err == nil && held {

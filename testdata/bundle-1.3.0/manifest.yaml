@@ -113,6 +113,12 @@ compatibility:
   # to 1.2.0 and a deployment at 10 gets a "migrations will run" warning.
   database_schema_min: 12
   database_schema_max: 14
+  # What this release's migrations leave behind, which is what lets the
+  # unattended gate run the rollback assessment *before* the update. 14 is
+  # beyond what 1.2.0 can read (max 12), so this release is deliberately not
+  # auto-applicable over 1.2.0 -- rolling back would need a restore, and that is
+  # exactly the failure the gate exists to refuse.
+  database_schema_produces: 14
   rollback_safe: true
   min_manager_version: "0.0.0"
   # Narrower than 1.2.0's: this release refuses to install over anything older

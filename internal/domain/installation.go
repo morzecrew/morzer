@@ -26,7 +26,94 @@ import (
 // shape and no other -- a second field set under one version would let a
 // manager implementing only one of them rewrite the state and silently drop
 // the other's fields.
-const InstallationSchemaVersion = 4
+//
+// Bumped to 5 when `mode` arrived, and this one is about the *write* path
+// rather than the read. Reading is the safe direction: an older binary that
+// sees no mode treats the machine as production, which is stricter. Writing is
+// not -- `config set` rewrites the state, unknown fields are dropped on the way
+// through, and a dev sandbox touched once by an older binary would silently
+// present as production ever after. Refusing a state file from the future is
+// what prevents that, and it needs a version of its own: two field sets both
+// called schema 4 would let a manager implementing only one of them rewrite a
+// file written by the other, dropping fields it had never heard of.
+const InstallationSchemaVersion = 5
+
+// Mode declares what a machine is for.
+//
+// Absent means production. That is the rule SkipBackupBeforeUpdate learned the
+// hard way, quoted in Policy below: the one place a missing value decides
+// something is the one place it must not decide the dangerous thing.
+type Mode string
+
+// ModeDev marks a sandbox: a machine whose data is disposable and whose whole
+// purpose is rehearsing what will happen to a real one.
+const ModeDev Mode = "dev"
+
+// Modes is every value `mode` may take, for validation and for error messages.
+//
+// Production is spelled by absence rather than by a value, so it is not in this
+// list -- a machine that says nothing about what it is gets the strict
+// treatment.
+var Modes = []Mode{ModeDev}
+
+// ParseMode reads a mode an operator typed.
+//
+// "production" is accepted and means the absent value. Absence is how production
+// is *stored* -- that is what makes a hand-edited file default to the strict
+// reading -- but refusing the word at a flag would be a manager insisting an
+// operator spell the safe choice by saying nothing, and `import --mode
+// production` from a dev export is a request that has to be understood before it
+// can be refused for the right reason.
+func ParseMode(s string) (Mode, error) {
+	switch trimmed := Mode(strings.TrimSpace(s)); trimmed {
+	case "", "production":
+		return "", nil
+	default:
+		if trimmed.Valid() {
+			return trimmed, nil
+		}
+		return "", Usage("unknown mode %q", s).
+			WithHint("modes: %s, or production (the default)", joinModes())
+	}
+}
+
+// Valid reports whether a non-empty mode is one this manager knows.
+func (m Mode) Valid() bool {
+	for _, known := range Modes {
+		if m == known {
+			return true
+		}
+	}
+	return false
+}
+
+func joinModes() string {
+	out := make([]string, len(Modes))
+	for i, m := range Modes {
+		out[i] = string(m)
+	}
+	return strings.Join(out, ", ")
+}
+
+// Describe renders a mode for an operator, including the one spelled by
+// absence.
+//
+// One implementation, because two of them is how a refusal comes to say
+// "mode is fixed: this one is " with nothing after the colon.
+func (m Mode) Describe() string {
+	if m == "" {
+		return "production"
+	}
+	return string(m)
+}
+
+// IsDev reports whether this installation is a sandbox.
+//
+// Asked as a question about the installation rather than by comparing the field
+// at each call site, so "absent means production" is stated once. A call site
+// spelling it `inst.Mode != "production"` would read as correct and invert the
+// default for every value nobody thought of.
+func (i Installation) IsDev() bool { return i.Mode == ModeDev }
 
 // Installation is the machine-specific state of one deployment. It is the
 // only place operator intent is recorded; everything else is derived from it
@@ -41,6 +128,23 @@ type Installation struct {
 
 	Product   string `yaml:"product" json:"product"`
 	CreatedAt Time   `yaml:"created_at" json:"created_at"`
+
+	// Mode declares this machine a sandbox. Absent means production.
+	//
+	// On the installation rather than in Policy, and deliberately: Policy is
+	// what `morzer config` may change, and this may not be. It is fixed when
+	// the installation is created and never transitions -- not one-way, *no*
+	// way. Both directions are dangerous in different shapes: production →
+	// dev puts real data under relaxed rules immediately, and dev →
+	// production presents untrusted history as trustworthy and surfaces
+	// during an incident, when someone discovers that `previous` was pruned
+	// and no pre-update backup was ever taken.
+	//
+	// The claim is about the manager's own surfaces. `mode` is a field in a
+	// JSON file and root can edit it; defending one boolean against an
+	// operator who can equally edit the recipient list, the backup targets
+	// or the installation id would be defending the wrong thing.
+	Mode Mode `yaml:"mode" json:"mode,omitempty"`
 
 	// Profile selects the deployment topology from runtime.profiles.
 	Profile string `yaml:"profile" json:"profile,omitempty"`
@@ -98,7 +202,35 @@ type UpdateConfig struct {
 	// persisted flag is false would be the manager arguing with the person
 	// running it. See CheckAllowed.
 	Check bool `yaml:"check" json:"check,omitempty"`
+
+	// Channel is a mutable reference this deployment follows.
+	//
+	// A different operation from checking, not a spelling of it: a check
+	// enumerates version tags and picks the highest admissible one, which is
+	// what an operator wants from a stable repository. A channel is one
+	// reference that moves -- `oci://registry.example/demo/bundle:dev` --
+	// and enumeration structurally cannot follow one, because the tag is not
+	// a version and the versions behind it are not tags anybody lists.
+	//
+	// Empty means no channel, which is the default and the only state a
+	// machine reaches without someone saying otherwise.
+	Channel string `yaml:"channel" json:"channel,omitempty"`
+
+	// AutoApply installs what the channel offers, without a human.
+	//
+	// Only what passes the gate: the release must declare that a failure
+	// cannot end needing a database restore, and the installation must
+	// require signatures. Everything else is fetched, staged and notified
+	// rather than silently skipped -- see domain.AssessUnattended.
+	//
+	// Absent means off, and the refusal that enforces the signature
+	// requirement lives in Installation.Validate, so it fires wherever the
+	// state is written rather than at the tick that would have acted.
+	AutoApply bool `yaml:"auto_apply" json:"auto_apply,omitempty"`
 }
+
+// FollowsChannel reports whether a channel is configured.
+func (u UpdateConfig) FollowsChannel() bool { return strings.TrimSpace(u.Channel) != "" }
 
 // CheckAllowed reports whether an update check may contact the registry.
 //
@@ -359,6 +491,26 @@ func (i Installation) Validate() error {
 			v.add(fmt.Sprintf("notify.targets[%d]", idx), "%s", AsError(err).Message)
 		}
 	}
+	// An unknown mode is refused rather than read as production. A typo --
+	// `mode: development` -- would otherwise produce a machine that looks
+	// like a sandbox in its own state file and behaves like a production
+	// host, which is the one misreading with no visible symptom.
+	if i.Mode != "" && !i.Mode.Valid() {
+		v.add("mode", "unknown mode %q (%s, or absent for production)",
+			i.Mode, joinModes())
+	}
+
+	// Unattended apply hands the vendor unattended root: hooks run as root,
+	// and an update runs the target bundle's migrate hook. Refused where it
+	// is written, in the same shape as require_signature above -- a machine
+	// that accepts the setting and then refuses to act on every tick is
+	// worse than one that refuses the setting.
+	if i.Update.AutoApply && !i.Policy.RequireSignature {
+		v.add("update.auto_apply",
+			"needs policy.require_signature, because it hands the vendor "+
+				"unattended root on this machine")
+	}
+
 	if i.Policy.RetainReleases < 0 {
 		v.add("policy.retain_releases", "must not be negative")
 	}

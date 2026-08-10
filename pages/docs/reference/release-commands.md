@@ -15,10 +15,14 @@ warning. That is what makes a rollback target unambiguous.
 
 ## release list
 
-Lists installed releases, newest first, marking the one currently pointed at.
+Lists installed releases, newest first, marking the roles that keep a release in
+the store: `*` current, `-` previous, `+` staged by a channel poll and not yet
+installed.
 
 The release store keeps more than the running release so that `rollback --to`
-has somewhere to go. How many is the manifest's `retention.releases`.
+has somewhere to go. How many is the manifest's `retention.releases`, which
+counts the releases holding *none* of those roles — the three marked ones are
+kept regardless.
 
 ## release show
 
@@ -89,9 +93,42 @@ did not write it.
 | --- | --- |
 | `--digest` | Expected content digest. A mismatch is an error. |
 | `--signing-key` | minisign public key the bundle's signature must verify against. Repeat for several. |
+| `--render-check` | Also render each template against a synthetic context. A smoke test — see below. |
 
 It reports **every** violation in one pass rather than the first, because a
 bundle author fixing one problem should not discover the next one on the retry.
+
+### What `--render-check` checks, and what it does not
+
+```sh
+morzer release verify ./my-product --render-check
+```
+
+It builds a plausible render context — an installation id, a domain, the
+production path layout, your declared parameters resolved, your declared
+secrets — and renders every template against it.
+
+**The values are invented.** A template that branches on them
+(`{{- if .Domains }}`) exercises only the branch they choose, so a clean render
+check does not mean the template will render on a customer's machine. That is
+structural rather than a maturity gap: there is no real context here, which is
+exactly what lets you run this in CI. It will never become the default, and
+there will never be a `--no-render-check`.
+
+What it does catch is the class parsing cannot: a reference to a field the
+render context does not define, and a `secretFile` call naming a secret your
+schema does not declare. Those fail on every machine, so catching them on yours
+is free.
+
+Two things are *not* invented, and they are why the check has teeth: secret
+names come from the schema your manifest declares, and parameters from your own
+`parameters:` block. A typo in either fails here.
+
+A parameter you declared without a default gets an invented value that satisfies
+its type, rather than the empty string an unset parameter really resolves to.
+Otherwise `{{ required "choose a port" .Parameters.http_port }}` would fail the
+check on a bundle that is entirely correct — the operator simply has not chosen
+yet.
 
 `--signing-key` is how a vendor checks their own signing pipeline in CI: it
 needs no installation on the machine, because there is no policy to read there.

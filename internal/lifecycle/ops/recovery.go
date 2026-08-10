@@ -285,6 +285,27 @@ type ImportOptions struct {
 	// no default: the whole point is that this key was not on the machine
 	// that was lost, so it cannot be somewhere the manager already looks.
 	IdentityFile string
+
+	// Mode declares the rebuilt machine a sandbox.
+	//
+	// Import is a creation, and mode is fixed at creation -- so this is one
+	// of exactly two places it can be chosen. It exists because the export
+	// is reproduced wholesale, so a production export would otherwise
+	// rebuild as a production machine and block the workflow that most
+	// wants a sandbox: RFC 0003's import → update → restore is how a vendor
+	// tests a customer's backup.
+	//
+	// You may demote at creation and never promote at all. See
+	// modeForImport.
+	Mode domain.Mode
+
+	// ModeSet distinguishes "--mode production" from no flag at all, which
+	// Mode alone cannot: production is stored as the absent value, so the
+	// two would otherwise be the same request. They are not -- an operator
+	// rebuilding a lost sandbox from its own export gets a sandbox, and one
+	// who types --mode production is asking for a promotion and is refused
+	// by name.
+	ModeSet bool
 }
 
 // Import rebuilds a machine from an export and an offline recovery key.
@@ -305,6 +326,14 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	if err := export.Validate(); err != nil {
 		return Result{}, err
 	}
+
+	// Before the directories, the key check and the lock: a refusal about
+	// what this machine is for should arrive with nothing created.
+	imported, dropped, err := modeForImport(export.Installation, opts.Mode, opts.ModeSet)
+	if err != nil {
+		return Result{}, err
+	}
+	export.Installation = imported
 
 	store, err := d.recoverableSecrets()
 	if err != nil {
@@ -340,11 +369,16 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	}
 
 	if opts.DryRun {
-		return Result{
-			Summary: fmt.Sprintf("would import installation %s (%s) from %s",
-				export.Installation.ID, export.Installation.Product, opts.SourcePath),
-			Data: importSummary(export, recoveryKey, ""),
-		}, nil
+		summary := fmt.Sprintf("would import installation %s (%s) from %s",
+			export.Installation.ID, export.Installation.Product, opts.SourcePath)
+		if dropped > 0 {
+			// A plan that omitted this would be planning a different
+			// import from the one it would perform, and the omitted
+			// part is the one an operator would want to know before
+			// agreeing.
+			summary += fmt.Sprintf(", dropping %d backup target(s)", dropped)
+		}
+		return Result{Summary: summary, Data: importSummary(export, recoveryKey, "")}, nil
 	}
 
 	opID := d.newOpID()
@@ -371,8 +405,56 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	machineKey, _ := d.Secrets.IdentityPublicKey(ctx)
 	out.Summary = fmt.Sprintf("imported installation %s for %s",
 		export.Installation.ID, export.Installation.Product)
+	if dropped > 0 {
+		// Reported, never silent. An operator who believes their sandbox
+		// is still backing up is an operator who finds out during a
+		// recovery that it was not.
+		out.Summary += fmt.Sprintf("; dropped %d backup target(s) -- a sandbox "+
+			"must not write into production's bucket", dropped)
+	}
 	out.Data = importSummary(export, recoveryKey, machineKey)
 	return out, nil
+}
+
+// modeForImport decides what the rebuilt machine is, and refuses a promotion.
+//
+// Demotion at creation is allowed and promotion never is, which is the same
+// asymmetry the whole design rests on: a sandbox's history is untrusted --
+// releases pruned aggressively, pre-update backups skipped -- and presenting it
+// as a production machine's history means somebody discovers the difference at
+// rollback time.
+//
+// **Demoting drops the backup targets, and that is not optional.** An import
+// keeps the original installation id, deliberately, so a lost machine's backups
+// stay restorable; RFC 0009 puts the targets *and their credentials* in the
+// export, because a rebuilt machine has to reach them. A sandbox rebuilt from a
+// production export would therefore hold the customer's bucket, the customer's
+// credentials, and a matching installation id -- and would push throwaway
+// backups straight into them. A sandbox that can write to production's backup
+// target is worse than no sandbox.
+func modeForImport(
+	inst domain.Installation, requested domain.Mode, requestedSet bool,
+) (domain.Installation, int, error) {
+	// No flag reproduces the export, which is what import does with
+	// everything else. A sandbox rebuilt from its own export is still a
+	// sandbox; silently making it production would be the deferred-risk
+	// transition arriving by omission.
+	if !requestedSet || requested == inst.Mode {
+		return inst, 0, nil
+	}
+	if requested != domain.ModeDev {
+		return domain.Installation{}, 0, domain.ValidationError(nil,
+			"this export is from a %s installation and cannot be imported as production",
+			inst.Mode.Describe()).
+			WithHint("a sandbox's history is not trustworthy -- releases pruned, " +
+				"pre-update backups skipped -- and you would find that out at " +
+				"rollback time. Build the production machine with `morzer init`")
+	}
+
+	inst.Mode = domain.ModeDev
+	dropped := len(inst.Backup.Targets)
+	inst.Backup.Targets = nil
+	return inst, dropped, nil
 }
 
 func importFlags(opts ImportOptions) map[string]string {

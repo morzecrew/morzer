@@ -28,7 +28,12 @@ const ManifestFileName = "manifest.yaml"
 // nobody can reason about.
 const VersionFileName = "VERSION"
 
-// ReleaseNotesFileName is rendered by `release show` when present.
+// ReleaseNotesFileName is what `release new` writes and declares as
+// `metadata.release_notes`.
+//
+// A convention for the author, not a fallback for the reader: Notes reads the
+// declaration and nothing else, so this name has no meaning to a bundle that
+// does not point at it.
 const ReleaseNotesFileName = "RELEASE.md"
 
 // Load reads and validates a release from an unpacked bundle directory.

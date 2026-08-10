@@ -694,3 +694,39 @@ func TestUpdateRefusesWhenTheCurrentReleaseTreeIsUnreadable(t *testing.T) {
 		"the refusal must name the real problem, not generic staging debris")
 	assert.DirExists(t, live, "the live tree must not be moved or deleted")
 }
+
+// TestAnUnreadableCandidateDoesNotStopAnUpdateHalfWayThrough.
+//
+// Retiring the staged candidate runs after the release has been recorded as
+// current and before the symlink swap that makes `current` true for anything
+// reading the filesystem. It used to return its error, so a failure to forget
+// one bookkeeping file left the deployment naming 1.3.0 while `current` still
+// pointed at 1.2.0 -- a machine whose state and filesystem disagree about what
+// is installed, over a record whose entire cost of loss is one fetch.
+//
+// An advisory write must not outrank the outcome it trails. The corrupt file is
+// the reachable way to make that write fail: it is written by a poll and read
+// back by an apply, and nothing about an update depends on it being readable.
+func TestAnUnreadableCandidateDoesNotStopAnUpdateHalfWayThrough(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageUpgradeSource(t, h)
+	require.NoError(t, os.WriteFile(h.Paths.UpdateCandidateFile(),
+		[]byte("{\"version\": \n"), 0o640))
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "1.3.0", current.Version.String())
+
+	target, err := os.Readlink(h.Paths.CurrentLink())
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(h.Paths.ReleasesDir(), "1.3.0"), target,
+		"state says 1.3.0 is installed and the current symlink says otherwise")
+}

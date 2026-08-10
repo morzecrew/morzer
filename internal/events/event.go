@@ -39,6 +39,14 @@ const (
 
 	// KindCheck is one diagnostic result from doctor.
 	KindCheck Kind = "check"
+
+	// KindUpdateStaged says a release was fetched and verified and is
+	// waiting for someone to decide about downtime.
+	//
+	// Not an operation event: nothing was deployed and nothing changed
+	// about what is running. It is news precisely because it is not an
+	// outcome -- it is a decision waiting for a person.
+	KindUpdateStaged Kind = "update.staged"
 )
 
 // AllKinds is every event kind, so a consumer that must classify all of them
@@ -57,6 +65,7 @@ var AllKinds = []Kind{
 	KindPlan,
 	KindMessage,
 	KindCheck,
+	KindUpdateStaged,
 }
 
 // Level classifies a message for presenters that style by severity.
@@ -242,6 +251,22 @@ func Plan(opID string, opType domain.OperationType, steps []PlanStep) Event {
 
 func Message(level Level, format string, args ...any) Event {
 	return Event{Kind: KindMessage, At: time.Now(), Level: level, Message: sprintf(format, args...)}
+}
+
+// UpdateStaged announces a release waiting to be installed.
+//
+// The summary rides in Detail rather than being appended to Message, so a
+// notifier can put "what changed" where its medium wants it and a terminal can
+// leave it out. It is one line of vendor-written Markdown: enough to decide
+// whether tonight is the night, and not a changelog pasted into a chat channel.
+func UpdateStaged(name, version, ref, summary string) Event {
+	return Event{
+		Kind: KindUpdateStaged, At: time.Now(), Level: LevelInfo,
+		Description: name + " " + version,
+		Message: sprintf("%s %s is staged from %s and is waiting to be installed",
+			name, version, ref),
+		Detail: summary,
+	}
 }
 
 func Check(r CheckResult) Event {

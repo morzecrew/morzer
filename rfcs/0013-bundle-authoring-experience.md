@@ -1,13 +1,12 @@
 # RFC 0013 — Bundle authoring experience
 
-- **Status:** 🚧 In progress — P1 shipped 2026-08-08 (`verify` parses every
+- **Status:** ✅ Complete — P1 shipped 2026-08-08 (`verify` parses every
   declared template); P2, P3 and P5 shipped 2026-08-09 (the schema modeline, the
-  `.yaml.tmpl` and `secrets.schema.yaml` moves, and `release new`). **P4
-  (`--render-check`) remains**, and P5 therefore ships with the weaker gate §12
-  allows for: its scaffold is asserted against plain `verify`. `--from-example`
-  (decision 10) is also unshipped — copying `testdata/bundle` needs it inside
-  the module's embed root, and a second copy would drift from the fixture, which
-  is that option's whole justification. **Design locked** 2026-08-08. Both questions in §10 are
+  `.yaml.tmpl` and `secrets.schema.yaml` moves, and `release new`); **P4
+  (`--render-check`) shipped 2026-08-10**, which also upgrades P5's scaffold
+  gate from plain `verify` to the one §12 wanted. **Decision 10's
+  `--from-example` is dropped**, with the reasoning recorded in §13 rather than
+  left as an unshipped item. **Design locked** 2026-08-08. Both questions in §10 are
   resolved into decisions 12 and 13; the motivating failure (§2) is demonstrated
   against a real bundle.
 - **Scope:** Makes a vendor's own CI able to catch the bundle errors that
@@ -331,6 +330,11 @@ vendor's first act would be deleting most of it. It stays available as
 working reference rather than a starting point — and where it costs nothing,
 since the fixture is already maintained.
 
+> **Superseded at execution.** `--from-example` is dropped; the "costs nothing"
+> claim in the paragraph above is what execution disproved. See
+> [§13](#--from-example-is-dropped-amends-decision-10) for the measurement and for
+> what would change the answer.
+
 **Put scaffolding in its own RFC.** Rejected, and this is the reason it is here:
 §5.2–§5.4 are retrofits for bundles that exist and *defaults* for bundles that
 do not. Landing them without a scaffold means the conventions are documentation
@@ -478,3 +482,55 @@ and how the walk over `TemplateData`'s fields (§9) is spelled.
 P1 alone is worth shipping. P4 is the only phase that could be dropped without
 losing the point — and if it is, P5 keeps its weaker gate rather than losing
 one.
+
+## 13. Amendments
+
+Recorded on completion, 2026-08-10. The decision table is append-only; this
+section records where execution diverged and why.
+
+### `--from-example` is dropped (amends decision 10)
+
+Decision 10 kept `--from-example` as the escape hatch for a vendor who wants a
+working reference rather than a skeleton, on the grounds that it "costs nothing,
+since the fixture is already maintained". Executing it showed the cost is not
+zero and not where the decision looked.
+
+A shipped binary has no `testdata/`. Copying the example means embedding it, and
+`go:embed` cannot reach outside its own package directory — so the choice is
+between two things the decision's own justification rules out:
+
+- **A second copy inside the module's embed root.** The whole argument for
+  `--from-example` is that `testdata/bundle` is the most-tested bundle in
+  existence; a copy is only that bundle until the next time someone edits one of
+  them. A byte-for-byte equality test would close the drift, at the price of a
+  duplicated tree that has to be re-synced by hand on every fixture change.
+- **Relocating the fixture** so the embed can see it. It is referenced by the
+  acceptance script, four documentation snippet includes, the CLI test fixtures
+  and the wizard tests — a wide blast radius for an optional convenience.
+
+There is also a defect neither option avoids: `go:embed` does not preserve the
+executable bit, and the fixture ships hooks that must be executable. A
+`--from-example` bundle would need the manager to reconstruct file modes from
+the manifest's hook declarations — new machinery whose failure mode is a
+scaffold that verifies clean and fails at `apply`.
+
+**What would change the answer:** a second example bundle authored to be
+embedded — smaller, hookless, and maintained as documentation rather than as the
+suite's fixture. That is a different feature from "copy the fixture", and it
+would be proposed on its own terms.
+
+The gap it leaves is small and named: `release new` writes a skeleton, and
+[`testdata/bundle/`](../testdata/bundle) remains the worked example, which the
+authoring pages already quote fragment by fragment.
+
+### `--render-check`'s synthetic parameters are not what an installation resolves
+
+§10 left "the synthetic values themselves" to implementation. One of them turned
+out to be a decision rather than a value: a *declared-but-undefaulted* parameter
+resolves to the empty string in a real installation
+([`ResolveParameters`](../internal/domain/parameter.go)), and using that here
+fails `{{ required "choose a port" .Parameters.http_port }}` on a bundle that is
+entirely correct — the operator simply has not chosen yet. The synthetic context
+invents a value satisfying the declaration instead. A smoke test that cries wolf
+about the operator's job is one a vendor turns off, which costs more than the
+narrow case it would have caught.

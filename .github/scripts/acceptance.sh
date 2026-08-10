@@ -389,6 +389,34 @@ grep -q '^profile: embedded' "${ROOT}/etc/demo/installation.yaml" ||
 info "the drift is reported and the next config set corrects the file"
 
 
+# Installation settings, which are not release parameters
+#
+# RFC 0016 P1 shipped `update.check` with a documented name, a default, a doctor
+# check and no way at all to turn it on: its own refusal pointed at `morzer
+# config`, which read and wrote release parameters exclusively. This proves the
+# surface that closed it, on a real machine, against the real state file.
+step "installation settings are settable and are not release parameters"
+"${MORZER}" --root "${ROOT}" config settings | grep -q 'update.check' ||
+	fail "config settings does not list update.check"
+
+"${MORZER}" --root "${ROOT}" config set update.check=true >/dev/null ||
+	fail "update.check cannot be turned on"
+[ "$("${MORZER}" --root "${ROOT}" config get update.check)" = "true" ] ||
+	fail "update.check did not persist"
+grep -q 'check: true' "${ROOT}/etc/demo/installation.yaml" ||
+	fail "the setting did not reach installation.yaml"
+
+# A setting and a parameter run on different machinery -- one writes a flag, the
+# other re-creates containers -- so a mixed command is refused rather than
+# half-applied.
+if "${MORZER}" --root "${ROOT}" config set update.check=false log_level=warn >/dev/null 2>&1; then
+	fail "a setting and a parameter were set in one command"
+fi
+"${MORZER}" --root "${ROOT}" config unset update.check >/dev/null ||
+	fail "update.check cannot be turned off again"
+info "update.check toggles, and mixing a setting with a parameter is refused"
+
+
 step "the rendered configuration holds paths, never values"
 config="${ROOT}/etc/demo/application.yaml"
 [ -f "${config}" ] || fail "no rendered configuration at ${config}"

@@ -129,6 +129,25 @@ func (s *Supervisor) RemoveUnits(ctx context.Context, names []string) error {
 	return s.daemonReload(ctx)
 }
 
+// InstalledUnits reports which managed units are present on disk.
+//
+// The filesystem rather than `systemctl list-units`: this must answer on a host
+// where the daemon is not running, and the question is what this manager has
+// written rather than what systemd currently knows about.
+func (s *Supervisor) InstalledUnits(ctx context.Context, product string) ([]string, error) {
+	var out []string
+	for _, name := range UnitNames(product) {
+		switch _, err := os.Stat(filepath.Join(s.unitDir, name)); {
+		case err == nil:
+			out = append(out, name)
+		case os.IsNotExist(err):
+		default:
+			return nil, domain.Internal(err, "cannot read unit %s", name)
+		}
+	}
+	return out, nil
+}
+
 func (s *Supervisor) Enable(ctx context.Context, unit string) error {
 	return s.run(ctx, "enable", unit)
 }
@@ -246,12 +265,28 @@ type UnitParams struct {
 
 	// BackupSchedule is an OnCalendar expression for the backup timer.
 	BackupSchedule string
+
+	// UpdateSchedule is an OnCalendar expression for the update timer.
+	//
+	// It *is* the maintenance window, which is worth stating because "add a
+	// maintenance window" is the obvious next feature request: an operator
+	// who wants updates only on Sunday mornings writes that expression, and
+	// systemd expresses it better than a config field would.
+	UpdateSchedule string
+
+	// UpdateTimer generates the update pair at all. A machine that follows
+	// no channel gets no timer -- an installed unit that has nothing to poll
+	// would contact nothing on a schedule and read, in `systemctl
+	// list-timers`, as though it did.
+	UpdateTimer bool
 }
 
 // ServiceUnitName and friends derive unit names from the product.
 func ServiceUnitName(product string) string       { return product + ".service" }
 func BackupServiceUnitName(product string) string { return product + "-backup.service" }
 func BackupTimerUnitName(product string) string   { return product + "-backup.timer" }
+func UpdateServiceUnitName(product string) string { return product + "-update.service" }
+func UpdateTimerUnitName(product string) string   { return product + "-update.timer" }
 
 // serviceTemplate is the main unit.
 //
@@ -321,6 +356,56 @@ RandomizedDelaySec=900
 WantedBy=timers.target
 `
 
+// updateServiceTemplate runs one scheduled update tick.
+//
+// `--unattended` is the whole difference from what an operator types: it
+// follows the channel, stages what it finds, and installs it only if the release
+// declares that a failure cannot end needing a database restore.
+//
+// No Restart= at all, unlike the main unit. A tick that failed is a tick; the
+// timer brings the next one, and restarting a oneshot that just refused an
+// update would retry the refusal every thirty seconds until the journal is the
+// only thing on the disk.
+const updateServiceTemplate = `[Unit]
+Description={{.Description}}
+After=network-online.target {{.Product}}.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{.ManagerPath}} update --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+TimeoutStartSec=3600
+StandardOutput=journal
+StandardError=journal
+`
+
+// updateTimerTemplate schedules the poll.
+//
+// RandomizedDelaySec is not decoration here: without it every installation of a
+// product asks the vendor's registry at the same second of the same minute, and
+// the vendor discovers their customer base by watching their own rate limiter.
+//
+// Persistent catches up a tick missed while the machine was off, which is the
+// case a laptop-shaped deployment hits daily.
+const updateTimerTemplate = `[Unit]
+Description={{.Description}}
+
+[Timer]
+OnCalendar={{.UpdateSchedule}}
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target
+`
+
+// DefaultUpdateSchedule is a daily check at an hour when nobody is deploying.
+//
+// Daily rather than every few minutes: the cost of a tick belongs to the
+// vendor's registry, and a default that polled aggressively would be this
+// manager spending somebody else's budget by nobody's decision.
+const DefaultUpdateSchedule = "*-*-* 03:30:00"
+
 // DefaultBackupSchedule is a nightly backup at a quiet hour.
 const DefaultBackupSchedule = "*-*-* 02:30:00"
 
@@ -328,6 +413,9 @@ const DefaultBackupSchedule = "*-*-* 02:30:00"
 func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	if p.BackupSchedule == "" {
 		p.BackupSchedule = DefaultBackupSchedule
+	}
+	if p.UpdateSchedule == "" {
+		p.UpdateSchedule = DefaultUpdateSchedule
 	}
 	if p.Description == "" {
 		p.Description = p.Product + " (managed by morzer)"
@@ -344,6 +432,28 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 		// The timer is enabled, not the backup service: enabling a
 		// oneshot service would run it at every boot.
 		{BackupTimerUnitName(p.Product), backupTimerTemplate, p.Product + " scheduled backup", true},
+	}
+
+	if p.UpdateTimer {
+		specs = append(specs,
+			struct {
+				name   string
+				tmpl   string
+				desc   string
+				enable bool
+			}{UpdateServiceUnitName(p.Product), updateServiceTemplate,
+				p.Product + " update check", false},
+			// The timer is enabled, not the service, for the same
+			// reason the backup pair is: enabling a oneshot would
+			// run it at every boot.
+			struct {
+				name   string
+				tmpl   string
+				desc   string
+				enable bool
+			}{UpdateTimerUnitName(p.Product), updateTimerTemplate,
+				p.Product + " scheduled update check", true},
+		)
 	}
 
 	units := make([]ports.Unit, 0, len(specs))
@@ -373,11 +483,20 @@ func renderUnit(name, tmpl string, p UnitParams) ([]byte, error) {
 }
 
 // UnitNames lists the units this supervisor manages for a product.
+// UnitNames lists every unit this supervisor may own for a product, whether or
+// not this installation generates it.
+//
+// Deliberately the superset. It is what removal walks, and a machine that once
+// followed a channel and then stopped must still have its update timer taken
+// away -- a list narrowed to what the *current* configuration generates would
+// leave the orphan running.
 func UnitNames(product string) []string {
 	return []string{
 		ServiceUnitName(product),
 		BackupServiceUnitName(product),
 		BackupTimerUnitName(product),
+		UpdateServiceUnitName(product),
+		UpdateTimerUnitName(product),
 	}
 }
 
@@ -403,6 +522,8 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		ConfigPath:     params.ConfigPath,
 		Description:    params.Description,
 		BackupSchedule: params.BackupSchedule,
+		UpdateSchedule: params.UpdateSchedule,
+		UpdateTimer:    params.UpdateTimer,
 	})
 }
 

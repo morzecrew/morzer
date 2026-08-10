@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -34,6 +35,7 @@ func newInitCommand(app *App) *cobra.Command {
 		requireSig     bool
 		signingKeys    []string
 		set            []string
+		mode           string
 	)
 
 	cmd := &cobra.Command{
@@ -93,8 +95,14 @@ func newInitCommand(app *App) *cobra.Command {
 				}
 			}
 
+			parsedMode, err := domain.ParseMode(mode)
+			if err != nil {
+				return err
+			}
+
 			opts := ops.InitOptions{
 				Options:           app.operationOptions(),
+				Mode:              parsedMode,
 				Product:           product,
 				ReleasePath:       releasePath,
 				Profile:           profile,
@@ -171,6 +179,9 @@ func newInitCommand(app *App) *cobra.Command {
 	f.BoolVar(&requireSig, "require-signature", false,
 		"refuse any release that is not signed by a configured signing key")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
+	f.StringVar(&mode, "mode", "",
+		"what this machine is for: `dev` for a sandbox, or production (the default). "+
+			"Fixed at creation and never changeable afterwards")
 
 	return cmd
 }
@@ -208,7 +219,11 @@ func newApplyCommand(app *App) *cobra.Command {
 }
 
 func newUpdateCommand(app *App) *cobra.Command {
-	var check bool
+	var (
+		check      bool
+		stage      bool
+		unattended bool
+	)
 
 	var (
 		skipBackup bool
@@ -234,6 +249,15 @@ func newUpdateCommand(app *App) *cobra.Command {
 			opts.Profile = profile
 			opts.SkipBackup = skipBackup
 
+			// Three flags turn `update` into a different operation, and
+			// each stops short of installing in a different way.
+			// Refused together rather than resolved by precedence: an
+			// operator who typed two of them meant one, and silently
+			// picking would tell them the machine did what they asked.
+			if err := oneUpdateMode(check, stage, unattended, to); err != nil {
+				return err
+			}
+
 			// Before everything else an update needs and a check does
 			// not: the --skip-backup/--force rule below, the backup
 			// engine, the lock and every confirmation. Asking what
@@ -241,11 +265,6 @@ func newUpdateCommand(app *App) *cobra.Command {
 			// --skip-backup` must not fail for a backup option the
 			// check never uses.
 			if check {
-				if to != "" {
-					return domain.Usage("--check and --to are alternatives").
-						WithHint("--to names a release already in the store; " +
-							"--check asks the source what it offers")
-				}
 				checkRef := ""
 				if len(args) == 1 {
 					checkRef = args[0]
@@ -262,13 +281,60 @@ func newUpdateCommand(app *App) *cobra.Command {
 					return nil
 				}
 				app.finish(ops.Result{Summary: res.Summary()})
+				// After the summary, because the notes are what an
+				// operator reads to decide and the summary is what
+				// they read to know there is a decision.
+				printStagedNotes(cmd.Context(), app)
+				return nil
+			}
+			if unattended {
+				// Refused rather than ignored. `--check` and
+				// `--stage` both take a reference, so an operator
+				// has every reason to expect this one does --
+				// and a tick that silently polled the configured
+				// channel instead would report success for an
+				// operation nobody asked for.
+				if len(args) == 1 {
+					return domain.Usage(
+						"--unattended follows the configured channel and takes no bundle").
+						WithHint("`morzer update %s` installs that bundle; "+
+							"`--stage %s` fetches it without installing",
+							args[0], args[0])
+				}
+				return runUnattendedTick(cmd, app, opts)
+			}
+			if stage {
+				stageRef := ""
+				if len(args) == 1 {
+					stageRef = args[0]
+				}
+				res, err := ops.FollowChannel(cmd.Context(), app.Deps,
+					ops.FollowChannelOptions{
+						Options: opts, Ref: stageRef, Explicit: true,
+					})
+				if err != nil {
+					return err
+				}
+				if app.json != nil {
+					app.jsonData = res
+					return nil
+				}
+				app.finish(ops.Result{Summary: res.Summary()})
+				if notes := ui.RenderNotes(app.Mode, res.Notes); notes != "" {
+					fmt.Fprintf(app.Stream.Err, "\n%s\n", notes)
+				}
 				return nil
 			}
 
 			// Skipping the backup is the one choice here that removes
 			// a safety net rather than adding a risk, so it needs the
 			// same explicit authorisation a destructive action does.
-			if skipBackup && !opts.Force {
+			//
+			// A sandbox is the exception, and the only one: its data is
+			// disposable, which is what it is for, and requiring --force
+			// on every iteration of a rebuild loop is ceremony that
+			// teaches an operator to type --force without reading.
+			if skipBackup && !opts.Force && !app.installationIsDev(cmd.Context()) {
 				return domain.Usage("--skip-backup also requires --force").
 					WithHint("the pre-update backup is what a failed update is recovered from")
 			}
@@ -304,8 +370,126 @@ func newUpdateCommand(app *App) *cobra.Command {
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
 	f.BoolVar(&check, "check", false,
 		"report whether a newer release exists, without installing anything")
+	f.BoolVar(&stage, "stage", false,
+		"follow the configured channel: fetch and verify what it points at, "+
+			"without installing it")
+	f.BoolVar(&unattended, "unattended", false,
+		"one scheduled tick: follow the channel, stage, and install only what "+
+			"declares a failure cannot need a database restore")
 
 	return cmd
+}
+
+// oneUpdateMode refuses a command that asks for two different operations.
+//
+// `--to` is included because it is the one that installs: pairing it with a flag
+// whose whole promise is "this does not install anything" is a contradiction,
+// and picking a winner would resolve it in silence.
+func oneUpdateMode(check, stage, unattended bool, to string) error {
+	named := []string{}
+	for _, mode := range []struct {
+		on   bool
+		flag string
+	}{{check, "--check"}, {stage, "--stage"}, {unattended, "--unattended"}} {
+		if mode.on {
+			named = append(named, mode.flag)
+		}
+	}
+	if to != "" && len(named) > 0 {
+		return domain.Usage("%s and --to are alternatives", named[0]).
+			WithHint("--to installs a release already in the store; %s stops "+
+				"short of installing anything", named[0])
+	}
+	if len(named) > 1 {
+		return domain.Usage("%s are alternatives", strings.Join(named, " and ")).
+			WithHint("--check asks what exists, --stage fetches it, and " +
+				"--unattended does both and may install; each is one command")
+	}
+	return nil
+}
+
+// runUnattendedTick is what the update timer runs.
+//
+// Two things make it different from every other command here, and both are
+// about being a unit rather than a person.
+//
+// **A tick that cannot take the lock exits 0.** An operator's backup or apply is
+// in the way; the next tick is soon, and queueing would make the start time
+// unpredictable. A non-zero exit would also fight `Restart=on-failure` on any
+// unit that grew one.
+//
+// **A staged-but-not-installed release is a success.** That is the configured
+// behaviour when the gate refuses or auto-apply is off, and a unit that failed
+// every night because a release is waiting would train an operator to ignore it
+// -- which is the one outcome worse than not having the timer.
+func runUnattendedTick(cmd *cobra.Command, app *App, opts ops.Options) error {
+	res, err := ops.RunUnattended(cmd.Context(), app.Deps, ops.UnattendedOptions{Options: opts})
+
+	if errors.Is(err, domain.ErrLocked) {
+		// Journalled, because "nothing happened tonight" and "something
+		// else was running" are different facts to find at 09:00 --
+		// which is equally true of whatever is reading `--json`. An
+		// empty payload cannot tell a skipped tick from a tick that
+		// found nothing, so the skip is reported in the result's own
+		// shape rather than by omission.
+		res.Skipped = "another operation holds the lock"
+		if app.json != nil {
+			app.jsonData = res
+			return nil
+		}
+		fmt.Fprintf(app.Stream.Err,
+			"another operation holds the lock; skipping this tick\n")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if app.json != nil {
+		app.jsonData = res
+		return nil
+	}
+	app.finish(ops.Result{Summary: res.Summary()})
+	return nil
+}
+
+// installationIsDev reports whether this machine declared itself a sandbox.
+//
+// Read here rather than passed down because it gates a *flag check*, before any
+// operation is built. An unreadable installation answers false, which is the
+// strict reading: a machine whose state cannot be read is not one to relax a
+// safety rule for.
+func (a *App) installationIsDev(ctx context.Context) bool {
+	inst, err := a.Deps.State.LoadInstallation(ctx)
+	return err == nil && inst.IsDev()
+}
+
+// printStagedNotes shows what a waiting release changes.
+//
+// Printed by `update --check` because that is where an operator asks whether
+// there is anything to do, and the answer "yes, and it is already downloaded"
+// is incomplete without the part they are deciding on. Silent when nothing is
+// staged, and silent when the bundle ships no notes -- neither is a fault.
+//
+// Failures here are dropped. A release waiting to be installed is a fact worth
+// reporting even if the file describing it cannot be read.
+func printStagedNotes(ctx context.Context, app *App) {
+	candidate, err := app.Deps.State.UpdateCandidate(ctx)
+	if err != nil || !candidate.IsStaged() {
+		return
+	}
+
+	fmt.Fprintf(app.Stream.Err, "\n%s %s is staged and not installed; "+
+		"`morzer update --to %s` applies it\n",
+		candidate.Name, candidate.Version, candidate.Version)
+
+	rel, err := release.Load(candidate.Root)
+	if err != nil {
+		return
+	}
+	if notes := ui.RenderNotes(app.Mode, release.Notes(rel)); notes != "" {
+		fmt.Fprintf(app.Stream.Err, "\n%s\n", notes)
+	}
 }
 
 func newRollbackCommand(app *App) *cobra.Command {

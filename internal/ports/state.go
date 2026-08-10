@@ -29,6 +29,19 @@ type StateStore interface {
 	// crash leaves one of the two consistent states, never a third.
 	SetCurrentRelease(ctx context.Context, r domain.ReleaseRecord) error
 
+	// UpdateCandidate reads what a followed channel last pointed at, or the
+	// zero value when nothing is being followed. A missing record is a
+	// normal state, not an error.
+	UpdateCandidate(ctx context.Context) (domain.UpdateCandidate, error)
+
+	// SetUpdateCandidate records a poll's outcome -- staged or refused.
+	// Refusals are recorded too, so the next poll does not re-fetch a
+	// bundle it has already decided against.
+	SetUpdateCandidate(ctx context.Context, c domain.UpdateCandidate) error
+
+	// ClearUpdateCandidate forgets it, which is what installing it means.
+	ClearUpdateCandidate(ctx context.Context) error
+
 	// AppendOperation writes one journal record. Records are appended, not
 	// updated: a running operation is written once at start and once at
 	// each transition, and the last record for an ID wins.

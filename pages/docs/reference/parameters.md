@@ -156,6 +156,32 @@ http_port            port       9000             installation
 log_level            enum       info             release
 ```
 
+### Installation settings are not parameters
+
+A parameter is declared by the vendor and reaches the deployment. An
+**installation setting** is your arrangement with the manager — whether it may
+contact a registry, which reference it follows — and changes nothing that is
+running.
+
+They share `morzer config` because that is where you look to change a value, and
+they cannot collide: a parameter name is lowercase letters, digits and
+underscores, so a dotted name is always a setting.
+
+```sh
+morzer config settings                       # every setting, its value and what it means
+morzer config set update.check=true          # a setting: a flag, no services touched
+morzer config unset update.channel           # back to absent, which is always the safe state
+```
+
+| Setting | Meaning |
+| --- | --- |
+| `update.check` | Contact the vendor's registry unprompted, for `doctor` and `status`. Absent means off. |
+| `update.channel` | A mutable reference to follow. See [following a channel](../operating/updating.md#following-a-channel). |
+
+Settings and parameters are set in separate commands. They run on different
+machinery — one converges a deployment, the other writes a flag — so a mixed
+command is refused rather than half-applied.
+
 ### It re-creates, it does not restart
 
 A published port is fixed when a container is created. `docker compose restart`

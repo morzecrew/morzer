@@ -316,8 +316,25 @@ func (c *Constraint) UnmarshalText(b []byte) error {
 // over and what it can be rolled back from. All checks live here rather than
 // in the update operation, so they are unit-testable without any I/O.
 type Compatibility struct {
-	DatabaseSchemaMin int        `yaml:"database_schema_min" json:"database_schema_min"`
-	DatabaseSchemaMax int        `yaml:"database_schema_max" json:"database_schema_max"`
+	DatabaseSchemaMin int `yaml:"database_schema_min" json:"database_schema_min"`
+	DatabaseSchemaMax int `yaml:"database_schema_max" json:"database_schema_max"`
+
+	// DatabaseSchemaProduces is what this release's migrations leave the
+	// database at.
+	//
+	// It exists so the rollback assessment can be run *predictively*, before
+	// an update rather than after one, which is what unattended apply is
+	// gated on. The obvious stand-in -- database_schema_min, the lowest
+	// schema the release supports and therefore one its migrations must
+	// reach -- lets a release whose migrations go beyond its own declared
+	// minimum slip straight through, and a gate whose whole argument is
+	// "declaration, not proxy" cannot use a proxy for half of itself.
+	//
+	// **Absent means not auto-applicable.** No burden on a vendor who does
+	// not want unattended updates, no guessing, and it degrades in the one
+	// direction that is safe.
+	DatabaseSchemaProduces int `yaml:"database_schema_produces" json:"database_schema_produces,omitempty"`
+
 	RollbackSafe      bool       `yaml:"rollback_safe" json:"rollback_safe"`
 	MinManagerVersion Version    `yaml:"min_manager_version" json:"min_manager_version"`
 	UpgradeFrom       Constraint `yaml:"upgrade_from" json:"upgrade_from"`
@@ -431,5 +448,95 @@ func AssessRollback(current, previous Compatibility, currentSchema int) Rollback
 	}
 
 	a.Reason = strings.Join(reasons, "; ")
+	return a
+}
+
+// UnattendedAssessment answers whether an update may install without a human.
+//
+// The name of the promise has to be exact, because the obvious phrasing claims
+// more than the gate delivers. It is **not** "no human will be required": an
+// update can still reach requires-manual-intervention through a migration hook
+// that exits non-zero, a health check that never passes, or a converge the
+// engine cannot compensate, and nothing here inspects any of those.
+//
+// What it promises is narrower and is the one that matters at three in the
+// morning: **the failure will not be the unrecoverable kind.** A failed
+// unattended update that compensates back to the previous release is an
+// incident report; one that needs a restore decision is the thing RFC 0001
+// refuses to make automatically. This bounds the second, not the first.
+type UnattendedAssessment struct {
+	OK bool `json:"ok"`
+
+	// Reasons is why not, all of them. An operator who fixes one blocker
+	// should not discover the next on the following tick -- which, for
+	// something running on a timer, could be a day later.
+	Reasons []string `json:"reasons,omitempty"`
+}
+
+func (a *UnattendedAssessment) refuse(format string, args ...any) {
+	a.Reasons = append(a.Reasons, fmt.Sprintf(format, args...))
+	a.OK = false
+}
+
+// Why renders the refusal for a human.
+func (a UnattendedAssessment) Why() string { return strings.Join(a.Reasons, "; ") }
+
+// AssessUnattended runs the rollback assessment predictively, over declared
+// values only.
+//
+// `current` is what is installed, `target` what would be installed. The
+// prediction is the whole trick: after the update the machine would be running
+// `target` at schema target.DatabaseSchemaProduces, and the release it could
+// roll back to would be `current` -- which is exactly the shape AssessRollback
+// already answers. Reusing it rather than writing a second compatibility
+// judgement means the two cannot come to disagree about what "recoverable"
+// means.
+//
+// Policy is checked here rather than at the call site because the two halves are
+// one decision: a machine that has not required signatures is a machine where
+// unattended apply hands the vendor unattended root with no control in the path.
+func AssessUnattended(current, target Compatibility, inst Installation) UnattendedAssessment {
+	a := UnattendedAssessment{OK: true}
+
+	// The verification chain is never relaxed, in either mode. A sandbox's
+	// entire value is fidelity: every relaxation reduces what a successful
+	// rehearsal proves, and the thing being rehearsed is the customer's
+	// install. Sign dev builds with a dev key the sandbox pins.
+	if !inst.Policy.RequireSignature || len(inst.Policy.SigningKeys) == 0 {
+		a.refuse("policy.require_signature is not set with a pinned key, so an " +
+			"unattended install would trust whatever the registry served")
+	}
+
+	// Everything below is about recovering from a failure, and a sandbox
+	// has nothing to recover: its data is disposable, which is what it is
+	// for. Relaxed here rather than at the call site so the one place that
+	// decides what dev mode means is the one place that states it.
+	if inst.IsDev() {
+		return a
+	}
+
+	if target.DatabaseSchemaProduces <= 0 {
+		// Absent *or* nonsensical, and they get the same answer. Schema
+		// numbering starts at 1 wherever it is used here, so a release
+		// that declares nothing has said nothing about what its
+		// migrations do -- and one declaring -1 has said something that
+		// cannot be true. Testing only for zero let that second release
+		// through the schema half of the gate entirely: every downstream
+		// comparison is guarded by `> 0`, so a negative prediction is
+		// silently no prediction at all.
+		a.refuse("the release declares no usable compatibility.database_schema_produces, " +
+			"so what its migrations leave behind is unknown")
+	} else {
+		predicted := AssessRollback(target, current, target.DatabaseSchemaProduces)
+		if predicted.RestoreRequired {
+			a.refuse("%s", predicted.Reason)
+		}
+	}
+
+	if inst.Policy.SkipBackupBeforeUpdate {
+		a.refuse("policy.skip_backup_before_update is set, so a failure would have " +
+			"no backup to recover from")
+	}
+
 	return a
 }

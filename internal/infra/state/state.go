@@ -92,12 +92,72 @@ func (s *Store) SaveInstallation(ctx context.Context, i domain.Installation) err
 	if err := i.Validate(); err != nil {
 		return err
 	}
+	if err := s.checkModeUnchanged(ctx, i); err != nil {
+		return err
+	}
 	env := installationEnvelope{SchemaVersion: i.SchemaVersion, Installation: i}
 	data, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
 		return domain.Internal(err, "cannot serialise installation state")
 	}
 	return atomicfs.WriteFile(s.paths.InstallationState(), append(data, '\n'), 0o640)
+}
+
+// checkModeUnchanged enforces that `mode` is fixed when an installation is
+// created.
+//
+// Here rather than in a command, because the claim is about *every* surface: not
+// `config set`, not `import`, not any command that writes installation state.
+// One chokepoint is also the only version of this rule that a command added
+// later cannot forget to honour.
+//
+// Both directions are refused, which took a correction to get right. The first
+// draft allowed dev → production on the reasoning that only the reverse was
+// dangerous. It is not: production → dev puts real data under relaxed rules
+// immediately, and dev → production presents untrusted history as trustworthy --
+// you find out at rollback time that `previous` was pruned and no pre-update
+// backup was ever taken. The second is quieter and lands when it costs most.
+//
+// A machine with no installation yet is *creating* one, which is when the choice
+// is made. That is why `init --mode dev` and `import --mode dev` work and
+// nothing else does.
+func (s *Store) checkModeUnchanged(ctx context.Context, next domain.Installation) error {
+	// Absence is creation, and absence is asked about on its own terms
+	// rather than inferred from a load failing. A state file that exists and
+	// will not parse still says something about what this machine is, and
+	// the caller is about to replace it with valid content -- so "it fails
+	// at the next read" is not true of it: the next read succeeds and
+	// reports whatever mode was written over it.
+	exists, err := s.InstallationExists(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	current, err := s.LoadInstallation(ctx)
+	if err != nil {
+		return domain.InstallationError(err,
+			"cannot confirm this installation's mode before writing").
+			WithHint("mode is fixed when an installation is created, so the existing "+
+				"state must be readable to know this is not a transition; repair %s, "+
+				"or move it aside if you are rebuilding this machine from an export",
+				s.paths.InstallationState())
+	}
+	if current.Mode == next.Mode {
+		return nil
+	}
+
+	refusal := domain.ValidationError(nil,
+		"mode is fixed when an installation is created: this one is %s",
+		current.Mode.Describe())
+	if next.Mode == domain.ModeDev {
+		return refusal.WithHint("a production machine cannot be demoted to a sandbox; " +
+			"its data would immediately be under relaxed rules")
+	}
+	return refusal.WithHint("a sandbox cannot be promoted to production -- its history is " +
+		"not trustworthy, and you would find that out at rollback time. " +
+		"Promotion is backup, fresh `init`, restore")
 }
 
 // migrateInstallation runs forward-only state migrations.
@@ -134,6 +194,20 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// installation on disk. TestASchemaThreeInstallationStillLoads
 			// pins it.
 			i.SchemaVersion = 4
+		case 4:
+			// 4 -> 5 added `mode`. Nothing to convert: an installation
+			// written before modes existed is a production machine, and
+			// the absent value reads that correctly.
+			//
+			// The bump is for the write path rather than the read one,
+			// which is what distinguishes it from the two above. An
+			// older manager reading a dev sandbox would treat it as
+			// production -- stricter, and therefore safe -- but `config
+			// set` rewrites the whole state, unknown fields are dropped
+			// on the way through, and the sandbox would silently stop
+			// being one. Refusing a state file from the future is the
+			// only thing that prevents it.
+			i.SchemaVersion = 5
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:
@@ -198,6 +272,54 @@ func (s *Store) SetCurrentRelease(ctx context.Context, r domain.ReleaseRecord) e
 		}
 	}
 	return s.writeRelease(s.paths.CurrentReleaseFile(), r)
+}
+
+// UpdateCandidate reads what the channel last pointed at.
+//
+// A missing file is the ordinary state -- most machines follow no channel --
+// and it is the only one read as "nothing is staged". A file that exists and
+// cannot be read is not disposable in the way it first looks: `release prune`
+// consults this record to decide that a release in the store is exempt, so
+// answering "no candidate" for a corrupt one removes the bundle a poll fetched
+// and then re-downloads it. Callers report the failure; they do not paper over
+// it.
+func (s *Store) UpdateCandidate(ctx context.Context) (domain.UpdateCandidate, error) {
+	data, err := os.ReadFile(s.paths.UpdateCandidateFile())
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return domain.UpdateCandidate{}, nil
+		}
+		return domain.UpdateCandidate{}, domain.InstallationError(err,
+			"cannot read %s", s.paths.UpdateCandidateFile())
+	}
+
+	var rec domain.UpdateCandidate
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return domain.UpdateCandidate{}, domain.InstallationError(err,
+			"the update candidate at %s is not valid JSON",
+			s.paths.UpdateCandidateFile())
+	}
+	return rec, nil
+}
+
+func (s *Store) SetUpdateCandidate(ctx context.Context, c domain.UpdateCandidate) error {
+	if c.SchemaVersion == 0 {
+		c.SchemaVersion = domain.UpdateCandidateSchemaVersion
+	}
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return domain.Internal(err, "cannot serialise the update candidate")
+	}
+	return atomicfs.WriteFile(s.paths.UpdateCandidateFile(), append(data, '\n'), 0o640)
+}
+
+// ClearUpdateCandidate forgets the candidate, which is what applying it means.
+func (s *Store) ClearUpdateCandidate(ctx context.Context) error {
+	if err := os.Remove(s.paths.UpdateCandidateFile()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return domain.InstallationError(err, "cannot remove %s",
+			s.paths.UpdateCandidateFile())
+	}
+	return nil
 }
 
 func (s *Store) writeRelease(path string, r domain.ReleaseRecord) error {

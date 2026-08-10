@@ -90,6 +90,21 @@ type ReleaseRecord struct {
 	// report on a release nobody is using. Empty for anything installed
 	// before this was recorded, and for a source that cannot enumerate.
 	SourceRef string `json:"source_ref,omitempty"`
+
+	// UpstreamDigest is what the source said its artefact was when this
+	// release was fetched -- the registry's manifest digest, not the
+	// bundle's content digest.
+	//
+	// It exists so a channel poll can tell "the tag still points at what is
+	// installed" from "the tag moved" without downloading anything. Without
+	// it, every tick would re-fetch the bundle to compute a content digest
+	// and discover it already had it.
+	//
+	// Empty for a release installed from a path, from a source that cannot
+	// peek, or before this was recorded. Empty means "unknown", and a poll
+	// treats unknown as changed exactly once, which costs one fetch and then
+	// records the answer.
+	UpstreamDigest string `json:"upstream_digest,omitempty"`
 }
 
 func (r ReleaseRecord) IsZero() bool { return r.Name == "" && r.Version.IsZero() }
@@ -99,4 +114,68 @@ func (r ReleaseRecord) String() string {
 		return "none"
 	}
 	return r.Name + " " + r.Version.String()
+}
+
+// UpdateCandidateSchemaVersion versions the candidate pointer.
+//
+// Its own version rather than the installation's: this file is written by a
+// poll and read by `status`, and an older manager that has never heard of it
+// simply does not read it. Nothing derived from it changes what is deployed.
+const UpdateCandidateSchemaVersion = 1
+
+// UpdateCandidate is what a followed channel last pointed at, and what became
+// of it.
+//
+// One record for both outcomes -- staged, or refused -- because the poll needs
+// to remember the refusals too. A tag republished with a version that is already
+// installed is refused by the never-republish rule, and a poll that recorded
+// only successes would re-download that bundle on every tick, forever, to reach
+// the same refusal.
+//
+// Not part of the installation state: this is derived, disposable, and rebuilt
+// by the next poll. Losing it costs one fetch.
+type UpdateCandidate struct {
+	SchemaVersion int `json:"schema_version"`
+
+	// SourceRef is the channel this came from, redacted of credentials.
+	SourceRef string `json:"source_ref"`
+
+	// UpstreamDigest is what the channel pointed at. This is the field the
+	// poll compares; everything else is for the operator.
+	UpstreamDigest string `json:"upstream_digest"`
+
+	SeenAt Time `json:"seen_at"`
+
+	// Name, Version, Digest and Root describe the bundle, and are set only
+	// when it was actually staged.
+	Name    string  `json:"name,omitempty"`
+	Version Version `json:"version,omitempty"`
+	Digest  string  `json:"digest,omitempty"`
+	Root    string  `json:"root,omitempty"`
+
+	// Refused says why this candidate was not staged, in the operator's
+	// words. Empty when it was.
+	Refused string `json:"refused,omitempty"`
+}
+
+func (c UpdateCandidate) IsZero() bool { return c.UpstreamDigest == "" }
+
+// IsStaged reports whether the bundle is on this machine, verified and ready to
+// install.
+//
+// Both halves are required. A root without the refusal cleared would be a
+// half-written record, and a refusal with a root is a bundle that was fetched
+// and then found unacceptable -- neither is something to offer an operator as
+// installable.
+func (c UpdateCandidate) IsStaged() bool { return c.Root != "" && c.Refused == "" }
+
+func (c UpdateCandidate) String() string {
+	switch {
+	case c.IsZero():
+		return "none"
+	case c.IsStaged():
+		return c.Name + " " + c.Version.String()
+	default:
+		return "refused: " + c.Refused
+	}
 }
