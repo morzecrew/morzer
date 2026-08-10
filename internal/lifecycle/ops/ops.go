@@ -99,6 +99,19 @@ type Deps struct {
 	// write its configuration to the real /etc, and --root would be a flag
 	// that only half works. Empty in production.
 	TargetPrefix string
+
+	// MachineProducts is every product with installation state on this
+	// machine, as the caller found it. Sorted, and empty when the caller did
+	// not look -- an embedder, a test -- which reads as "no information"
+	// rather than "no installations".
+	//
+	// It exists for one refusal. A lookup that finds no installation *here*
+	// means one of two different things, and only the machine's inventory
+	// separates them: a bare machine, where `init` is the answer, or a
+	// machine with several where none was named, where `init` would create a
+	// fourth. The caller knows the inventory; this layer knows when the
+	// lookup failed. Neither can answer alone.
+	MachineProducts []string
 }
 
 // configTarget resolves a manifest configuration target, honouring the
@@ -341,11 +354,34 @@ func (d *Deps) loadInstallation(ctx context.Context) (domain.Installation, error
 		return domain.Installation{}, err
 	}
 	if !exists {
-		return domain.Installation{}, domain.InstallationError(domain.ErrInstallation,
-			"no installation found at %s", d.Paths.EtcDir).
-			WithHint("run `morzer init` to create one")
+		return domain.Installation{}, d.noInstallation()
 	}
 	return d.State.LoadInstallation(ctx)
+}
+
+// noInstallation explains a lookup that found nothing here.
+//
+// Two answers, because there are two situations and they need opposite advice.
+// A machine with no installations is a machine to run `init` on. A machine with
+// several, where none was named, is a machine where `init` would create one
+// more -- and the operator is not missing an installation, they are missing a
+// flag. Reporting the second as the first is advice that makes the problem
+// worse, which is what this manager did until now.
+//
+// The refusal is a usage error rather than an installation one: nothing about
+// the machine is wrong, and the fix is on the command line.
+func (d *Deps) noInstallation() error {
+	if len(d.MachineProducts) > 1 {
+		return domain.Usage("this machine has %d installations, so --product is required",
+			len(d.MachineProducts)).
+			WithHint("%s — pass `--product %s`, or `--config %s`",
+				strings.Join(d.MachineProducts, ", "),
+				d.MachineProducts[0],
+				domain.DefaultPaths(d.MachineProducts[0]).InstallationFile())
+	}
+	return domain.InstallationError(domain.ErrInstallation,
+		"no installation found at %s", d.Paths.EtcDir).
+		WithHint("run `morzer init` to create one")
 }
 
 // hookEnv builds the hook ABI environment for an operation.

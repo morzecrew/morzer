@@ -226,3 +226,69 @@ func TestConfigAcceptsTheRootThatMeansTheSameLayout(t *testing.T) {
 		t.Errorf("EtcDir = %q", paths.EtcDir)
 	}
 }
+
+// TestAmbiguityIsRecordedRatherThanCollapsed.
+//
+// Discovery used to answer "exactly one, or nothing", and `resolvePaths` fell
+// back to the placeholder product for both. A machine with two installations
+// therefore reported "no installation found at /etc/morzer" and advised `morzer
+// init` — which would have created a third.
+//
+// The refusal itself lives in the lifecycle layer, where the failed lookup
+// happens; what is asserted here is the half the CLI owns, which is that the
+// inventory survives the resolution instead of being reduced to a boolean.
+func TestAmbiguityIsRecordedRatherThanCollapsed(t *testing.T) {
+	root := t.TempDir()
+	for _, product := range []string{"other", "demo"} {
+		dir := filepath.Join(root, "etc", product)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "installation.yaml"), []byte("product: x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	app := &App{}
+	app.Flags.root = root
+
+	paths, err := app.resolvePaths(t.Context())
+	if err != nil {
+		t.Fatalf("resolving paths on an ambiguous machine failed: %v", err)
+	}
+
+	// Sorted, so a refusal naming them is stable rather than dependent on
+	// readdir order.
+	if got := app.machineProducts; len(got) != 2 || got[0] != "demo" || got[1] != "other" {
+		t.Errorf("machineProducts = %v, want [demo other]", got)
+	}
+	// And no installation was picked: guessing between two is how a command
+	// acts on the wrong deployment.
+	if paths.Product != "morzer" {
+		t.Errorf("product = %q; one of two installations was chosen", paths.Product)
+	}
+}
+
+// TestOneInstallationIsStillFound. The regression that would matter most: every
+// other test in this repository runs on a machine with exactly one.
+func TestOneInstallationIsStillFound(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "etc", "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "installation.yaml"), []byte("product: demo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{}
+	app.Flags.root = root
+
+	paths, err := app.resolvePaths(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths.Product != "demo" {
+		t.Errorf("product = %q, want demo", paths.Product)
+	}
+}

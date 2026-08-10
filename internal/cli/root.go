@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -100,6 +101,13 @@ type App struct {
 
 	// command is the invoked path, recorded in the JSON envelope.
 	command string
+
+	// machineProducts is every product with installation state under the
+	// resolved root, as discovery found it. Held because "this machine has
+	// no installation" and "this machine has three and you named none" are
+	// different answers to the same failed lookup, and only the count tells
+	// them apart.
+	machineProducts []string
 
 	// cancelOperation cancels the context every command runs under. It is
 	// what the live view's Ctrl-C invokes: raw mode suppresses the SIGINT
@@ -651,6 +659,10 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		ManagerVersion: parseBuildVersion(a.Build.Version),
 		Redactor:       redactor,
 		TargetPrefix:   a.Flags.root,
+		// What the CLI found on the machine, so a lookup that comes back
+		// empty can say whether the machine is bare or merely
+		// unspecified.
+		MachineProducts: a.machineProducts,
 	}
 
 	// Notification targets live in the installation, which does not exist
@@ -844,16 +856,25 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 
 	product := a.Flags.product
 
-	if product == "" {
-		// Look for exactly one installation under the default roots.
-		if found, ok := discoverProduct(a.Flags.root); ok {
-			product = found
-		}
+	// Recorded whether or not it is used, because the *number* of
+	// installations is what makes an unfound one ambiguous rather than
+	// absent, and the lifecycle layer is where that difference is reported
+	// (ops.Deps.MachineProducts).
+	a.machineProducts = discoverProducts(a.Flags.root)
+
+	if product == "" && len(a.machineProducts) == 1 {
+		// Exactly one, or the operator must say which: guessing between
+		// two installations is how a command acts on the wrong
+		// deployment.
+		product = a.machineProducts[0]
 	}
 	if product == "" {
-		// No installation and no flag. A placeholder keeps `init`,
-		// `version` and `doctor` working; `init` overrides it with the
-		// name it was given.
+		// No installation to name, or more than one and no flag. A
+		// placeholder keeps `init`, `version` and `release verify`
+		// working -- they touch no installation, and refusing them here
+		// would make an ambiguous machine unable to run the commands
+		// that would resolve the ambiguity. A command that does need one
+		// fails when it reads it, with the alternatives named.
 		product = "morzer"
 	}
 	if err := domain.ValidateProductName(product); err != nil {
@@ -961,14 +982,18 @@ func (a *App) confirmProductMatchesConfig(product string) error {
 }
 
 // discoverProduct finds an installed product by looking for its state file.
-func discoverProduct(root string) (string, bool) {
+// The list is returned whole rather than reduced to "exactly one, or nothing".
+// Both callers need it: one to select an installation, the other to refuse
+// naming the alternatives. Reducing it here is what made a machine with two
+// installations report that it had none.
+func discoverProducts(root string) []string {
 	base := "/etc"
 	if root != "" {
 		base = root + "/etc"
 	}
 	entries, err := os.ReadDir(base)
 	if err != nil {
-		return "", false
+		return nil
 	}
 
 	var found []string
@@ -980,12 +1005,8 @@ func discoverProduct(root string) (string, bool) {
 			found = append(found, e.Name())
 		}
 	}
-	// Exactly one, or the operator must say which: guessing between two
-	// installations is how a command acts on the wrong deployment.
-	if len(found) == 1 {
-		return found[0], true
-	}
-	return "", false
+	sort.Strings(found)
+	return found
 }
 
 func parseBuildVersion(s string) domain.Version {

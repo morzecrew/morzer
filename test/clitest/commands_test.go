@@ -2,8 +2,11 @@ package clitest_test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/test/clitest"
@@ -316,4 +319,51 @@ func TestRestoreRefusesWithoutTheTypedConfirmation(t *testing.T) {
 	// which is how this test can tell the guard from the next refusal.
 	r.Run("restore", "--force", "--confirm", id).
 		StderrContains("no backups exist")
+}
+
+// TestTwoInstallationsAreNamedRatherThanInvented.
+//
+// The reproduction from RFC 0020 §2. With two installations and no `--product`,
+// path resolution fell through to the placeholder product `morzer`, so the
+// machine reported "no installation found at /etc/morzer" and advised `morzer
+// init` — advice that would have created a third installation on a machine whose
+// problem was already having two.
+//
+// Both halves are asserted, because either alone still passes on the old
+// behaviour: the refusal must name the installations it found, and it must not
+// send the operator to `init`.
+func TestTwoInstallationsAreNamedRatherThanInvented(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	// A second installation beside the first. Only the state file matters:
+	// discovery looks for `<root>/etc/<product>/installation.yaml`, which is
+	// also all an operator's half-removed installation leaves behind.
+	other := filepath.Join(r.Root, "etc", "other")
+	require.NoError(t, os.MkdirAll(other, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(other, "installation.yaml"), []byte("product: other\n"), 0o640))
+
+	res := r.Run("status").Failed()
+	res.OutputContains("2 installations", "--product", "demo", "other")
+	res.NoOutputContains("morzer init")
+
+	res.ExitCode(domain.ExitUsage)
+
+	// And naming one gets on with it.
+	r.Run("--product", "demo", "status").ExitCode(0).OutputContains("demo")
+}
+
+// TestOneInstallationNeedsNoFlag. The shape every other test in this repository
+// runs in, asserted on its own so the refusal above cannot start firing for it.
+func TestOneInstallationNeedsNoFlag(t *testing.T) {
+	clitest.NewInstalled(t).Run("status").ExitCode(0).OutputContains("demo")
+}
+
+// TestABareMachineIsStillToldToInit. The other half of the two-answer refusal:
+// a machine with no installations is a machine to run `init` on, and that advice
+// must survive the change that stopped giving it to everyone.
+func TestABareMachineIsStillToldToInit(t *testing.T) {
+	res := clitest.New(t).Run("status").Failed()
+	res.OutputContains("no installation found", "morzer init")
+	res.ExitCode(domain.ExitInstallation)
 }
