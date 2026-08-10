@@ -353,6 +353,50 @@ func TestTwoInstallationsAreNamedRatherThanInvented(t *testing.T) {
 	r.Run("--product", "demo", "status").ExitCode(0).OutputContains("demo")
 }
 
+// TestAnInstallationWithNoRecordedStateIsNotAnAmbiguousMachine.
+//
+// The branch between the two answers: discovery finds `/etc/demo/installation.yaml`
+// and the state store finds no `installation.json` beside it, which is a
+// half-created or half-removed installation rather than an absent one or an
+// unnamed one. It must keep the message it has always had.
+//
+// Reachable, and this is the shape it takes: a restore that got as far as the
+// configuration, an `init` interrupted between its steps, an operator who
+// cleared /var/lib by hand. Without this test the branch is dead code — a
+// sabotage that removed it was killed by nothing.
+func TestAnInstallationWithNoRecordedStateIsNotAnAmbiguousMachine(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	require.NoError(t, os.Remove(filepath.Join(
+		r.Root, "var", "lib", "demo", "manager", "installation.json")))
+
+	res := r.Run("status").Failed()
+	res.OutputContains("no installation found")
+	res.NoOutputContains("--product is required", "no installation named")
+	res.ExitCode(domain.ExitInstallation)
+}
+
+// TestAProductNobodyHasIsNotAMissingFlag.
+//
+// The first version of the refusal keyed on the *count* alone, so an operator
+// who typed `--product typo` on a two-installation machine was told that
+// `--product` is required — advice they had just followed. The machine's
+// inventory and whether the operator named something are two different facts,
+// and the refusal needs both.
+func TestAProductNobodyHasIsNotAMissingFlag(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	other := filepath.Join(r.Root, "etc", "other")
+	require.NoError(t, os.MkdirAll(other, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(other, "installation.yaml"), []byte("product: other\n"), 0o640))
+
+	res := r.Run("--product", "typo", "status").Failed()
+	res.OutputContains("no installation named", "typo", "demo", "other")
+	res.NoOutputContains("--product is required")
+	res.ExitCode(domain.ExitUsage)
+}
+
 // TestOneInstallationNeedsNoFlag. The shape every other test in this repository
 // runs in, asserted on its own so the refusal above cannot start firing for it.
 func TestOneInstallationNeedsNoFlag(t *testing.T) {

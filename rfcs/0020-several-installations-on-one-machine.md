@@ -381,6 +381,22 @@ ignore it.
   found" (exit 5) on an ambiguous machine gets a usage error instead. This is a
   script that was acting on the wrong installation or none; the change is the
   point, and it is called out in the changelog.
+- **It covers exactly the commands that already refused, which is not all of
+  them.** The refusal fires where the installation is read, so `status`,
+  `doctor`, `update`, `backup` and the rest are covered. `release list` and
+  `secret list` read the store and the secret state without loading the
+  installation, so on an ambiguous machine they answer about the placeholder
+  layout — `no releases are installed` — exactly as they do on a bare machine.
+  Measured rather than assumed: that is what
+  `morzer --root <two-installation-root> release list` prints today.
+
+  Pre-existing behaviour rather than a regression, and P1 deliberately did not
+  widen it: the alternatives are a maintained list of commands that need an
+  installation, or refusing during path resolution, which would refuse
+  `morzer version` on a machine with two installations. **P2 is where this
+  should be settled**, because `ls` is what makes the inventory visible and the
+  natural place to decide what every other listing does when the machine is
+  ambiguous.
 - **`MORZER_PRODUCT` in a systemd unit.** The generated units pass `--config`,
   which outranks it. Stated in the docs because an operator who sets the variable
   globally will otherwise expect it to reach their timers.

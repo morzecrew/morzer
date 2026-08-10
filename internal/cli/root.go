@@ -103,10 +103,11 @@ type App struct {
 	command string
 
 	// machineProducts is every product with installation state under the
-	// resolved root, as discovery found it. Held because "this machine has
-	// no installation" and "this machine has three and you named none" are
-	// different answers to the same failed lookup, and only the count tells
-	// them apart.
+	// resolved root, as discovery found it, sorted. Held because "this
+	// machine has no installation", "it has three and you named none" and
+	// "it has three and none is called that" are different answers to the
+	// same failed lookup, and nothing at the point of failure can tell them
+	// apart without the inventory.
 	machineProducts []string
 
 	// cancelOperation cancels the context every command runs under. It is
@@ -461,6 +462,12 @@ func newRootCommand(app *App) *cobra.Command {
 	// subcommand lists this also unsorts are already written in a deliberate
 	// order (`release`: inspect, author, distribute), and alphabetical was
 	// never a decision anyone made there either.
+	//
+	// It is a package-level switch in cobra, so it applies to every command
+	// tree in the process, including an embedder's own. Cobra offers no
+	// per-command equivalent; setting it here rather than in main keeps the
+	// binary and CommandTree() -- which the documentation checker walks --
+	// rendering the same help.
 	cobra.EnableCommandSorting = false
 
 	// Ordered by when an operator meets them, not alphabetically. The first
@@ -713,10 +720,11 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		ManagerVersion: parseBuildVersion(a.Build.Version),
 		Redactor:       redactor,
 		TargetPrefix:   a.Flags.root,
-		// What the CLI found on the machine, so a lookup that comes back
-		// empty can say whether the machine is bare or merely
-		// unspecified.
+		// What the CLI found on the machine and whether the operator
+		// named one, so a lookup that comes back empty can say which of
+		// several situations it is in.
 		MachineProducts: a.machineProducts,
+		ProductNamed:    a.Flags.product != "" || a.Flags.configDir != "",
 	}
 
 	// Notification targets live in the installation, which does not exist

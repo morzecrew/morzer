@@ -607,6 +607,12 @@ they are what the best-written commands here already do:
 3. **Examples where the invocation is not obvious**, using cobra's `Example`
    field so they render in one place rather than inside prose.
 
+*(P1 shipped rules 1 and 2's enforcement and rule 1's fixes: every listing line
+is asserted to fit eighty columns, which found two `Short` strings that already
+wrapped. The `Long` sweep and the `Example` fields are not done — they are prose
+for thirteen commands and their subcommands, and they belong with P3's pass over
+the same files rather than in a phase whose subject is the listing.)*
+
 ## 6. Tests
 
 - **Every command is grouped.** Walk the tree; a non-generated command with an

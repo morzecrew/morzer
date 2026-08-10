@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -101,17 +102,22 @@ type Deps struct {
 	TargetPrefix string
 
 	// MachineProducts is every product with installation state on this
-	// machine, as the caller found it. Sorted, and empty when the caller did
-	// not look -- an embedder, a test -- which reads as "no information"
-	// rather than "no installations".
+	// machine, as the caller found it, sorted. Empty means either a bare
+	// machine or a caller that did not look -- an embedder, a test -- and
+	// both take the same branch below, because "run init" is the right
+	// answer to the first and a harmless one to the second.
 	//
-	// It exists for one refusal. A lookup that finds no installation *here*
-	// means one of two different things, and only the machine's inventory
-	// separates them: a bare machine, where `init` is the answer, or a
-	// machine with several where none was named, where `init` would create a
-	// fourth. The caller knows the inventory; this layer knows when the
-	// lookup failed. Neither can answer alone.
+	// ProductNamed says whether the installation this Deps points at was
+	// chosen by the operator (`--product`, `--config`) or inferred.
+	//
+	// The pair exists for one refusal. A lookup that finds no installation
+	// *here* means several different things, and neither layer can tell them
+	// apart alone: the caller knows what the machine holds and what the
+	// operator asked for, this layer knows the lookup failed. Without
+	// ProductNamed the refusal told an operator who had just typed
+	// `--product` that `--product` was required.
 	MachineProducts []string
+	ProductNamed    bool
 }
 
 // configTarget resolves a manifest configuration target, honouring the
@@ -371,7 +377,28 @@ func (d *Deps) loadInstallation(ctx context.Context) (domain.Installation, error
 // The refusal is a usage error rather than an installation one: nothing about
 // the machine is wrong, and the fix is on the command line.
 func (d *Deps) noInstallation() error {
-	if len(d.MachineProducts) > 1 {
+	missing := domain.InstallationError(domain.ErrInstallation,
+		"no installation found at %s", d.Paths.EtcDir).
+		WithHint("run `morzer init` to create one")
+
+	switch {
+	case len(d.MachineProducts) == 0:
+		// Nothing on the machine, or nobody looked. `init` either way.
+		return missing
+
+	case slices.Contains(d.MachineProducts, d.Paths.Product):
+		// This installation is the one being asked for and discovery
+		// saw its configuration, so what is missing is its recorded
+		// state -- a half-created or half-removed installation rather
+		// than an absent one. The message is unchanged from before this
+		// pair existed; diagnosing the difference is a separate job.
+		return missing
+
+	case d.ProductNamed:
+		return domain.Usage("this machine has no installation named %q", d.Paths.Product).
+			WithHint("it has %s", strings.Join(d.MachineProducts, ", "))
+
+	default:
 		return domain.Usage("this machine has %d installations, so --product is required",
 			len(d.MachineProducts)).
 			WithHint("%s — pass `--product %s`, or `--config %s`",
@@ -379,9 +406,6 @@ func (d *Deps) noInstallation() error {
 				d.MachineProducts[0],
 				domain.DefaultPaths(d.MachineProducts[0]).InstallationFile())
 	}
-	return domain.InstallationError(domain.ErrInstallation,
-		"no installation found at %s", d.Paths.EtcDir).
-		WithHint("run `morzer init` to create one")
 }
 
 // hookEnv builds the hook ABI environment for an operation.

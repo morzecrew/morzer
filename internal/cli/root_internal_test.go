@@ -249,6 +249,13 @@ func TestAmbiguityIsRecordedRatherThanCollapsed(t *testing.T) {
 		}
 	}
 
+	// A file beside them, because /etc holds plenty of those and one read as
+	// a product would put a made-up name in a refusal that lists what the
+	// machine has.
+	if err := os.WriteFile(filepath.Join(root, "etc", "hostname"), []byte("host\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	app := &App{}
 	app.Flags.root = root
 

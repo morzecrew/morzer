@@ -69,6 +69,37 @@ func TestEveryGroupIsUsed(t *testing.T) {
 	}
 }
 
+// TestTheFirstSectionIsInTheOrderYouWouldRunIt.
+//
+// The order is the entire reason `cobra.EnableCommandSorting` is off, and
+// nothing else notices when it comes back: cobra sorts, the help still renders,
+// every other test still passes, and "Getting started" reads apply, init,
+// status — converge before create.
+//
+// Asserted on the first group only. It is the one whose order carries a claim;
+// pinning all five would turn every deliberate reordering into a test edit for
+// no additional guarantee.
+func TestTheFirstSectionIsInTheOrderYouWouldRunIt(t *testing.T) {
+	want := []string{"init", "apply", "status"}
+
+	var got []string
+	for _, cmd := range CommandTree().Commands() {
+		if cmd.GroupID == groupStart {
+			got = append(got, strings.Fields(cmd.Use)[0])
+		}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("the first section holds %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("the first section reads %v; it must read %v — "+
+				"cobra.EnableCommandSorting is probably back on", got, want)
+		}
+	}
+}
+
 // TestHelpLinesFitEightyColumns.
 //
 // The listing is `  <name padded> <short>`, and a Short long enough to wrap
