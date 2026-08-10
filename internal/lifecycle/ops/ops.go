@@ -355,6 +355,9 @@ func (d *Deps) notify(ctx context.Context, ev events.Event) {
 // loadInstallation reads the installation, producing an actionable error when
 // there is none.
 func (d *Deps) loadInstallation(ctx context.Context) (domain.Installation, error) {
+	if err := d.noSelection(); err != nil {
+		return domain.Installation{}, err
+	}
 	exists, err := d.State.InstallationExists(ctx)
 	if err != nil {
 		return domain.Installation{}, err
@@ -365,14 +368,43 @@ func (d *Deps) loadInstallation(ctx context.Context) (domain.Installation, error
 	return d.State.LoadInstallation(ctx)
 }
 
+// noSelection refuses to act on a machine whose installations nobody chose
+// between.
+//
+// Asked before the state is read rather than after the read fails, because the
+// product path resolution falls back to when nothing selected one is `morzer` --
+// the manager's own name, and so the likeliest name for a real installation. Two
+// installations where one is called `morzer` made the placeholder a silent
+// choice: `status` loaded it and reported on it, having asked nobody. Refusing
+// only when the read *fails* cannot catch that, because the read succeeds.
+//
+// It stays inside the lookup rather than moving to path resolution: `version`,
+// `release verify` and `init` never reach here, and they are the commands an
+// operator needs on exactly this machine.
+func (d *Deps) noSelection() error {
+	if len(d.MachineProducts) < 2 || d.ProductNamed {
+		return nil
+	}
+	return domain.Usage("this machine has %d installations, so --product is required",
+		len(d.MachineProducts)).
+		WithHint("%s — pass `--product %s`, or `--config %s`",
+			strings.Join(d.MachineProducts, ", "),
+			d.MachineProducts[0],
+			domain.DefaultPaths(d.MachineProducts[0]).InstallationFile())
+}
+
 // noInstallation explains a lookup that found nothing here.
 //
 // Two answers, because there are two situations and they need opposite advice.
-// A machine with no installations is a machine to run `init` on. A machine with
-// several, where none was named, is a machine where `init` would create one
-// more -- and the operator is not missing an installation, they are missing a
-// flag. Reporting the second as the first is advice that makes the problem
-// worse, which is what this manager did until now.
+// A machine with no installation is a machine to run `init` on. A machine that
+// has installations, none of them the one that was named, is a machine where
+// `init` would create one more -- and the operator is not missing an
+// installation, they are missing the right name. Reporting the second as the
+// first is advice that makes the problem worse, which is what this manager did
+// until now.
+//
+// Nothing here answers the unnamed ambiguous machine: noSelection has already
+// refused it, before the read that got us here.
 //
 // The refusal is a usage error rather than an installation one: nothing about
 // the machine is wrong, and the fix is on the command line.
@@ -394,17 +426,13 @@ func (d *Deps) noInstallation() error {
 		// pair existed; diagnosing the difference is a separate job.
 		return missing
 
-	case d.ProductNamed:
+	default:
+		// Named, and nobody has it. Only a name reaches here: an
+		// unnamed product is either the machine's single installation,
+		// which the case above matched, or an ambiguity noSelection
+		// refused before the state was read.
 		return domain.Usage("this machine has no installation named %q", d.Paths.Product).
 			WithHint("it has %s", strings.Join(d.MachineProducts, ", "))
-
-	default:
-		return domain.Usage("this machine has %d installations, so --product is required",
-			len(d.MachineProducts)).
-			WithHint("%s — pass `--product %s`, or `--config %s`",
-				strings.Join(d.MachineProducts, ", "),
-				d.MachineProducts[0],
-				domain.DefaultPaths(d.MachineProducts[0]).InstallationFile())
 	}
 }
 

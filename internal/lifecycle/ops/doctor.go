@@ -199,6 +199,16 @@ func (d *Deps) checkInstallationReadable() preflight.Check {
 		Description: "installation configuration is valid",
 		Fatal:       true,
 		Run: func(ctx context.Context) events.CheckResult {
+			// Asked first, because on a machine with several
+			// installations every path below this line belongs to
+			// the placeholder product. Without it `doctor` -- the
+			// command an operator runs precisely when they cannot
+			// tell what is wrong -- reported that /etc/morzer holds
+			// no installation and advised creating one.
+			if err := d.noSelection(); err != nil {
+				e := domain.AsError(err)
+				return preflight.Fail(e.Hint, "%s", e.Message)
+			}
 			exists, err := d.State.InstallationExists(ctx)
 			if err != nil {
 				return preflight.Fail("check the permissions on "+d.Paths.ManagerDir(),

@@ -397,6 +397,99 @@ func TestAProductNobodyHasIsNotAMissingFlag(t *testing.T) {
 	res.ExitCode(domain.ExitUsage)
 }
 
+// TestAConfigPathNobodyHasIsNotABareMachine.
+//
+// `--config` and `--product` name an installation the same way, so they must
+// refuse the same way when nobody has it. They did not: path resolution answers
+// `--config` from the path alone and returned before discovery ran, so the
+// inventory was empty and a mistyped path on a two-installation machine was
+// answered as a bare machine — `morzer init`, on the machine whose problem was
+// already having two.
+func TestAConfigPathNobodyHasIsNotABareMachine(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	other := filepath.Join(r.Root, "etc", "other")
+	require.NoError(t, os.MkdirAll(other, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(other, "installation.yaml"), []byte("product: other\n"), 0o640))
+
+	// The path shape is valid and no such installation exists, which is what
+	// a systemd unit for a removed installation passes.
+	config := filepath.Join(r.Root, "etc", "typo", "installation.yaml")
+
+	res := r.Run("--config", config, "status").Failed()
+	res.OutputContains("no installation named", "typo", "demo", "other")
+	res.NoOutputContains("morzer init")
+	res.ExitCode(domain.ExitUsage)
+}
+
+// TestAnInstallationNamedLikeThePlaceholderIsStillAmbiguous.
+//
+// `morzer` is the product name path resolution falls back to when nothing
+// selected one — and it is also the most likely name for a real installation,
+// being the manager's own. When both were true the fallback stopped being a
+// placeholder and became a silent choice: a bare `status` on a machine with two
+// installations loaded whichever one happened to be called `morzer` and reported
+// on it, which is the wrong-deployment failure the ambiguity refusal exists to
+// prevent.
+//
+// Asserted in both directions, because the refusal must not depend on what is at
+// the placeholder path: with the state present the old code succeeded, and with
+// it absent the old code advised `init`.
+func TestAnInstallationNamedLikeThePlaceholderIsStillAmbiguous(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	// A second real installation, created the way an operator would.
+	r.Run("init",
+		"--product", "morzer",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+	).ExitCode(0)
+
+	res := r.Run("status").Failed()
+	res.OutputContains("2 installations", "--product", "demo", "morzer")
+	res.NoOutputContains("morzer init")
+	res.ExitCode(domain.ExitUsage)
+
+	// And again with its state removed, which is the branch that reported a
+	// half-created installation rather than an ambiguous machine.
+	require.NoError(t, os.Remove(filepath.Join(
+		r.Root, "var", "lib", "morzer", "manager", "installation.json")))
+
+	res = r.Run("status").Failed()
+	res.OutputContains("2 installations", "--product")
+	res.NoOutputContains("morzer init")
+	res.ExitCode(domain.ExitUsage)
+
+	// Naming one still gets on with it, including the one named like the
+	// placeholder: the refusal is about nobody having chosen, not about the
+	// name.
+	r.Run("--product", "demo", "status").ExitCode(0).OutputContains("demo")
+}
+
+// TestDoctorOnAnAmbiguousMachineSaysWhichMachineItIs.
+//
+// `doctor` degrades on purpose: with no installation it drops to the checks that
+// still mean something. That made it the one command where the refusal was
+// swallowed — an operator who ran it because they could not tell what was wrong
+// was told that /etc/morzer holds no installation and advised to create one,
+// which is the placeholder answering for the machine.
+func TestDoctorOnAnAmbiguousMachineSaysWhichMachineItIs(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	other := filepath.Join(r.Root, "etc", "other")
+	require.NoError(t, os.MkdirAll(other, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(other, "installation.yaml"), []byte("product: other\n"), 0o640))
+
+	res := r.Run("doctor").Failed()
+	res.OutputContains("2 installations", "--product", "demo", "other")
+	res.NoOutputContains("morzer init")
+}
+
 // TestOneInstallationNeedsNoFlag. The shape every other test in this repository
 // runs in, asserted on its own so the refusal above cannot start firing for it.
 func TestOneInstallationNeedsNoFlag(t *testing.T) {

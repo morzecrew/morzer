@@ -921,7 +921,10 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 	// Recorded whether or not it is used, because the *number* of
 	// installations is what makes an unfound one ambiguous rather than
 	// absent, and the lifecycle layer is where that difference is reported
-	// (ops.Deps.MachineProducts).
+	// (ops.Deps.MachineProducts). The --config branch above records it too,
+	// against the root it derives: both flags name an installation, so both
+	// must be able to say what the machine has when it does not have that
+	// one.
 	a.machineProducts = discoverProducts(a.Flags.root)
 
 	if product == "" && len(a.machineProducts) == 1 {
@@ -1012,6 +1015,14 @@ func (a *App) pathsFromConfig() (domain.Paths, error) {
 				WithHint("pass one or the other")
 		}
 	}
+
+	// The same inventory the discovery branch records, against the root this
+	// path sits in. Without it a --config naming an installation the machine
+	// does not have was answered as a bare machine -- `morzer init` -- while
+	// the identical --product was answered with the names it does have. The
+	// systemd units pass --config, so the wrong half of that pair is the one
+	// an operator reads after a unit fails.
+	a.machineProducts = discoverProducts(root)
 
 	if root == "" {
 		return domain.DefaultPaths(product), nil
