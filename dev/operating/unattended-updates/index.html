@@ -12,13 +12,13 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/operating/recovering-a-lost-machine/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/operating/unattended-updates/">
       
       
-        <link rel="prev" href="../notifications/">
+        <link rel="prev" href="../updating/">
       
       
-        <link rel="next" href="../../authoring/">
+        <link rel="next" href="../rolling-back/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Recovering a lost machine - morzer</title>
+        <title>Unattended updates - morzer</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#recovering-a-lost-machine" class="md-skip">
+        <a href="#unattended-updates" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Recovering a lost machine
+              Unattended updates
             
           </span>
         </div>
@@ -605,10 +605,38 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../unattended-updates/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -625,6 +653,138 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-gate-promises" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What the gate promises
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The gate
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#turning-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Turning it on
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Turning it on">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-maintenance-window-is-an-oncalendar-expression" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The maintenance window is an <code>OnCalendar</code> expression
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-tick-that-cannot-take-the-lock-exits-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A tick that cannot take the lock exits 0
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dev-mode-a-machine-that-is-a-sandbox-from-birth" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Dev mode: a machine that is a sandbox from birth
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dev mode: a machine that is a sandbox from birth">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mode-is-fixed-when-the-installation-is-created" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Mode is fixed when the installation is created
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-claimed" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What is not claimed
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#for-vendors" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        For vendors
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -808,38 +968,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Recovering a lost machine
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../recovering-a-lost-machine/" class="md-nav__link">
         
   
   
@@ -856,188 +988,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#before-anything-goes-wrong" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Before anything goes wrong
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Before anything goes wrong">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#keep-the-recovery-key-off-the-machine" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Keep the recovery key off the machine
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#take-exports-and-store-them-apart-from-the-key" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Take exports, and store them apart from the key
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#when-the-machine-is-gone" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        When the machine is gone
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="When the machine is gone">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1-prepare-the-replacement" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        1. Prepare the replacement
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-import-the-identity" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        2. Import the identity
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-reinstall-the-release" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        3. Reinstall the release
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#4-get-the-backup-back" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        4. Get the backup back
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#5-restore-the-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        5. Restore the data
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#6-check-then-decommission" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        6. Check, then decommission
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#if-your-backups-carry-no-identity" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        If your backups carry no identity
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="If your backups carry no identity">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#without-a-recovery-key-nothing-is-recoverable" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Without a recovery key, nothing is recoverable
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-is-not-covered" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What is not covered
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1900,22 +1850,44 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#before-anything-goes-wrong" class="md-nav__link">
+  <a href="#what-the-gate-promises" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Before anything goes wrong
+        What the gate promises
       </span>
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Before anything goes wrong">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The gate
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#turning-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Turning it on
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Turning it on">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#keep-the-recovery-key-off-the-machine" class="md-nav__link">
+  <a href="#the-maintenance-window-is-an-oncalendar-expression" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Keep the recovery key off the machine
+        The maintenance window is an <code>OnCalendar</code> expression
       </span>
     </span>
   </a>
@@ -1923,10 +1895,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#take-exports-and-store-them-apart-from-the-key" class="md-nav__link">
+  <a href="#a-tick-that-cannot-take-the-lock-exits-0" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Take exports, and store them apart from the key
+        A tick that cannot take the lock exits 0
       </span>
     </span>
   </a>
@@ -1939,22 +1911,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#when-the-machine-is-gone" class="md-nav__link">
+  <a href="#dev-mode-a-machine-that-is-a-sandbox-from-birth" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        When the machine is gone
+        Dev mode: a machine that is a sandbox from birth
       </span>
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="When the machine is gone">
+    <nav class="md-nav" aria-label="Dev mode: a machine that is a sandbox from birth">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-prepare-the-replacement" class="md-nav__link">
+  <a href="#mode-is-fixed-when-the-installation-is-created" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        1. Prepare the replacement
+        Mode is fixed when the installation is created
       </span>
     </span>
   </a>
@@ -1962,54 +1934,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-import-the-identity" class="md-nav__link">
+  <a href="#what-is-not-claimed" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        2. Import the identity
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-reinstall-the-release" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        3. Reinstall the release
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#4-get-the-backup-back" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        4. Get the backup back
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#5-restore-the-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        5. Restore the data
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#6-check-then-decommission" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        6. Check, then decommission
+        What is not claimed
       </span>
     </span>
   </a>
@@ -2022,38 +1950,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#if-your-backups-carry-no-identity" class="md-nav__link">
+  <a href="#for-vendors" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        If your backups carry no identity
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="If your backups carry no identity">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#without-a-recovery-key-nothing-is-recoverable" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Without a recovery key, nothing is recoverable
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-is-not-covered" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What is not covered
+        For vendors
       </span>
     </span>
   </a>
@@ -2131,217 +2031,176 @@
   
 
 
-<h1 id="recovering-a-lost-machine">Recovering a lost machine<a class="headerlink" href="#recovering-a-lost-machine" title="Permanent link">&para;</a></h1>
-<p>The machine is gone — a failed disk, a deleted VM, a host you no longer trust.
-You need <strong>two</strong> things:</p>
-<ol>
-<li>An <strong>offline recovery key</strong>, created at <code>init</code> and kept somewhere the machine
-   could not reach.</li>
-<li>A <strong>backup</strong>, stored offsite.</li>
-</ol>
-<p>Every backup carries the deployment's identity — the installation record, the
-encrypted secret state, and who can decrypt it — encrypted to the recovery keys
-alone. So the artifact a timer produces every night is the one that rebuilds the
-machine, and the recovery key is the only thing you have to keep by hand.</p>
-<div class="admonition warning">
-<p class="admonition-title">This changed, and older backups did not get the benefit</p>
-<p>A backup taken before this manager version carries no identity, and neither
-does one from an installation with <strong>no recovery recipient</strong> — there is no
-offline key to encrypt it to, so the component is skipped rather than
-written in a form only the dead machine could read. <code>morzer doctor</code> reports
-that as <code>secrets.recovery-recipient</code>.</p>
-<p>For those, recovery still needs an <a href="#if-your-backups-carry-no-identity">installation
-export</a> — which is also the answer for a
-product that can never take a backup at all.</p>
-</div>
-<p>An <strong>installation export</strong> is still supported and still the fastest path. What
-changed is its status: from a prerequisite you had to remember to take, to an
-optimisation and a fallback.</p>
-<div class="admonition info">
-<p class="admonition-title">This procedure is tested, not described</p>
-<p><code>TestRecoveryRebuildsAMachineFromABackupAlone</code> runs the two-artifact
-procedure end to end against real age keys on every CI run: create an
-installation, take one backup, delete the machine's entire root, and rebuild
-identity and every secret from that backup plus the offline key. No export
-file exists at any point in it.</p>
-<p><code>TestRecoveryRebuildsAMachineFromAnOfflineKey</code> does the same for the export
-path, so both remain proven rather than one being described.</p>
-<p><code>TestRecoveryFetchesTheBackupFromATarget</code> runs the whole of it, including
-step 4: the backup is pushed to a target, the machine is destroyed, and the
-rebuilt one lists and fetches it back with nothing copied by hand. That test
-used to copy a directory and call it "offsite"; it does not have to pretend
-any more.</p>
-<p>A recovery procedure nobody has executed is a procedure you find out about
-during an incident.</p>
-</div>
-<h2 id="before-anything-goes-wrong">Before anything goes wrong<a class="headerlink" href="#before-anything-goes-wrong" title="Permanent link">&para;</a></h2>
-<h3 id="keep-the-recovery-key-off-the-machine">Keep the recovery key off the machine<a class="headerlink" href="#keep-the-recovery-key-off-the-machine" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>generate-recovery-key<span class="w"> </span>~/recovery.key
+<h1 id="unattended-updates">Unattended updates<a class="headerlink" href="#unattended-updates" title="Permanent link">&para;</a></h1>
+<p><strong>Start with what this costs.</strong> Turning it on hands your vendor unattended root
+on this machine: hooks run as root, and an update runs the incoming release's
+migration hook. A compromise of the vendor's registry or signing key becomes
+root here with no human in the path. Today, the operator pasting a command is a
+control — a weak one, but a real one — and this removes it.</p>
+<p>That is the trade. What you get back is that the fetch, the verification and the
+downtime happen without anyone being awake for them, on a machine where the
+release has declared that a failure cannot leave the database somewhere the
+previous release cannot read.</p>
+<h2 id="what-the-gate-promises">What the gate promises<a class="headerlink" href="#what-the-gate-promises" title="Permanent link">&para;</a></h2>
+<p>Not "no human will be required". An update can still stop and page someone: a
+migration hook that exits non-zero, a health check that never passes, a converge
+the engine cannot compensate. None of that is inspected here, and all of it
+already ends in <a href="../../reference/exit-codes/">requires-manual-intervention</a>.</p>
+<p>What it promises is narrower and is the one that matters at 03:00: <strong>the failure
+will not be the unrecoverable kind.</strong> A failed unattended update that
+compensates back to the previous release is an incident report. One that needs a
+restore decision is the thing morzer refuses to make automatically, awake or
+not.</p>
+<h2 id="the-gate">The gate<a class="headerlink" href="#the-gate" title="Permanent link">&para;</a></h2>
+<p>An update installs itself only if <strong>all</strong> of these hold:</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Where it comes from</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The compatibility check passes</td>
+<td>The same gate your own <code>update</code> runs</td>
+</tr>
+<tr>
+<td>The release declares <code>rollback_safe: true</code></td>
+<td>The incoming manifest</td>
+</tr>
+<tr>
+<td>The release declares <code>database_schema_produces</code></td>
+<td>The incoming manifest; <strong>absent means never</strong></td>
+</tr>
+<tr>
+<td>The installed release can read that schema</td>
+<td>Its <code>database_schema_max</code></td>
+</tr>
+<tr>
+<td><code>policy.require_signature</code> is set, with a key</td>
+<td>This installation</td>
+</tr>
+<tr>
+<td>The pre-update backup is not disabled</td>
+<td>This installation</td>
+</tr>
+</tbody>
+</table>
+<p>The middle three are one idea: <em>could this update end needing a database
+restore?</em> They are the <a href="../rolling-back/">rollback assessment</a> run <strong>before</strong> the
+update instead of after one, over what the manifest declares rather than over
+anything measured.</p>
+<p>Anything that fails the gate is still fetched, verified, staged and notified.
+Nothing is silently skipped, and the operator's remaining decision is only the
+one that costs downtime.</p>
+<h2 id="turning-it-on">Turning it on<a class="headerlink" href="#turning-it-on" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.check<span class="o">=</span><span class="nb">true</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.channel<span class="o">=</span>oci://registry.example/demo/bundle:stable
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.auto_apply<span class="o">=</span><span class="nb">true</span>
 </code></pre></div>
-<p>It prints a public key and writes the private half at mode <code>0400</code>. <strong>Move the
-private half somewhere else</strong> — a password manager, an offline drive, a safe. A
-recovery key stored on the machine it is meant to recover protects nothing.</p>
-<p>The public key is what <code>init --recovery-recipient</code> takes.</p>
-<h3 id="take-exports-and-store-them-apart-from-the-key">Take exports, and store them apart from the key<a class="headerlink" href="#take-exports-and-store-them-apart-from-the-key" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span><span class="nb">export</span><span class="w"> </span>/media/backup/demo.export.yaml
+<p><code>update.auto_apply</code> is <strong>refused</strong> on an installation that does not require
+signatures — at the moment you set it, not at the tick that would have acted on
+it. A machine that accepts the setting and then refuses to act every night is
+worse than one that refuses the setting: you would believe it was armed.</p>
+<p>Setting a channel installs a <code>&lt;product&gt;-update.timer</code>; clearing it removes the
+timer again.</p>
+<h3 id="the-maintenance-window-is-an-oncalendar-expression">The maintenance window is an <code>OnCalendar</code> expression<a class="headerlink" href="#the-maintenance-window-is-an-oncalendar-expression" title="Permanent link">&para;</a></h3>
+<p>The timer is an ordinary systemd timer, so a window is one line:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[Timer]</span>
+<span class="na">OnCalendar</span><span class="o">=</span><span class="s">Sun *-*-* 04:00:00</span>
 </code></pre></div>
-<p>Read-only, takes no lock, safe at any time. Take one after every change to
-secrets or recipients, and keep it with your backups — but <strong>not</strong> next to the
-recovery key. An attacker with both has the secrets; with either alone, nothing.</p>
-<p>Check what you have before you need it:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>list
+<p>There is no separate maintenance-window setting, deliberately: systemd already
+expresses this better than a configuration field would, including "the first
+Sunday of the month" and "weekdays only".</p>
+<p><code>RandomizedDelaySec</code> spreads installations across a window so a vendor's
+registry does not see every customer at the same second, and <code>Persistent=true</code>
+catches up a tick missed while the machine was off.</p>
+<h3 id="a-tick-that-cannot-take-the-lock-exits-0">A tick that cannot take the lock exits 0<a class="headerlink" href="#a-tick-that-cannot-take-the-lock-exits-0" title="Permanent link">&para;</a></h3>
+<p>Your interactive <code>backup</code> or <code>apply</code> is in the way; the next tick is soon.
+Queueing would make the start time unpredictable, and a failing unit every time
+somebody deploys by hand is a unit whose alerts get muted.</p>
+<p>A release left staged is also a <strong>successful</strong> tick. It is the configured
+behaviour when the gate refuses, and a unit that failed every night because a
+release is waiting would train you to ignore it.</p>
+<h2 id="dev-mode-a-machine-that-is-a-sandbox-from-birth">Dev mode: a machine that is a sandbox from birth<a class="headerlink" href="#dev-mode-a-machine-that-is-a-sandbox-from-birth" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--mode<span class="w"> </span>dev<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>--release<span class="w"> </span>./bundle
 </code></pre></div>
-<p>If nothing is listed with kind <code>recovery</code>, this procedure will not work and
-<code>installation export</code> will tell you so rather than writing a file that cannot be
-opened.</p>
-<h2 id="when-the-machine-is-gone">When the machine is gone<a class="headerlink" href="#when-the-machine-is-gone" title="Permanent link">&para;</a></h2>
-<h3 id="1-prepare-the-replacement">1. Prepare the replacement<a class="headerlink" href="#1-prepare-the-replacement" title="Permanent link">&para;</a></h3>
-<p>Install <code>morzer</code>, <code>docker</code>, <code>docker compose</code> and <code>sops</code> on the new host. Put the
-recovery key where you can reach it.</p>
-<h3 id="2-import-the-identity">2. Import the identity<a class="headerlink" href="#2-import-the-identity" title="Permanent link">&para;</a></h3>
-<p>From the backup target directly, which transfers a few kilobytes rather than
-the archive:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>--from-backup<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--target<span class="w"> </span>s3://backups.example/demo<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--credentials-file<span class="w"> </span>./bucket.yaml<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--identity<span class="w"> </span>~/recovery.key
-</code></pre></div>
-<p><code>--product</code> is needed because nothing on this host knows what it is yet: every
-managed directory derives from the product name, and on a rebuilt machine the
-identity you are about to read is the only place it is written down.</p>
-<p><code>--credentials-file</code> breaks a circle: the bucket credentials live in the secret
-state, the secret state is in the backup, and the backup is in the bucket. An
-operator with an access key can start from outside it.</p>
-<p>From a backup already on this machine — one you fetched, or copied off a disk:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>--from-backup<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key
-</code></pre></div>
-<p>With no id it uses the <strong>newest</strong> backup that carries an identity, which is
-almost always what you want: staleness here only ever loses information, so the
-newest export is the most complete one. Naming an id is honoured and warns when
-it is not the newest, because a backup chosen for the <em>data</em> it holds is not
-necessarily the one whose <em>secrets</em> you want.</p>
-<p>From an export file, if you have one:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>demo.export.yaml<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key
-</code></pre></div>
-<p>All three restore the installation with its <strong>original id</strong>, generate a new age
-identity for this host, re-encrypt the secret state for it, and revoke the old
-machine's key.</p>
-<p>It prints what it assumed and what to do next. If the identity you passed cannot
-open the export, it says so before creating anything, and names the keys that
-would work.</p>
-<h3 id="3-reinstall-the-release">3. Reinstall the release<a class="headerlink" href="#3-reinstall-the-release" title="Permanent link">&para;</a></h3>
-<p>The export records which version was running:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./demo-1.2.0<span class="w">     </span><span class="c1"># confirm the digest matches the export</span>
-morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.2.0
-</code></pre></div>
-<h3 id="4-get-the-backup-back">4. Get the backup back<a class="headerlink" href="#4-get-the-backup-back" title="Permanent link">&para;</a></h3>
-<p>If your backups go to a <a href="../backups/">target</a>, the import already brought its
-address with it — the target lives in the installation, and the installation was
-in the export. You do not have to remember where they went, which is the thing
-nobody remembers during an incident.</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>list<span class="w"> </span>--remote
-morzer<span class="w"> </span>backup<span class="w"> </span>fetch<span class="w"> </span>&lt;id&gt;
-</code></pre></div>
-<p>Listing needs no key at all: it reads each backup's manifest, and the manifest is
-the one file in a backup that is not encrypted.</p>
-<details class="note">
-<summary>If the target needs credentials the machine cannot read yet</summary>
-<p>The circle to break: the bucket's keys are secrets, the secrets are in the
-encrypted state, and on a machine where import has not run there is nothing
-to decrypt them with. Three ways through, in the order to try them.</p>
-<p><strong>From the export.</strong> <code>installation import</code> restored the secret state, so the
-credentials are already there. This is the ordinary path and it needs
-nothing extra.</p>
-<p><strong>From a file.</strong> When the export is gone or the credentials in it are stale:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>list<span class="w"> </span>--remote<span class="w"> </span>--target<span class="w"> </span>s3://acme-backups/demo<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--credentials-file<span class="w"> </span>./creds.yaml
-morzer<span class="w"> </span>backup<span class="w"> </span>fetch<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--target<span class="w"> </span>s3://acme-backups/demo<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--credentials-file<span class="w"> </span>./creds.yaml
-</code></pre></div>
-<p>A file rather than a flag, because a flag is visible in <code>ps</code> to everyone on
-the machine.</p>
-<p><strong>From nothing.</strong> A <code>file://</code> target on removable media needs no credential.
-That is why it is worth having one even if your real backups go to a bucket.</p>
-</details>
-<p>If you copied backups off by hand instead, put them under
-<code>/var/lib/&lt;product&gt;/backups</code> now.</p>
-<h3 id="5-restore-the-data">5. Restore the data<a class="headerlink" href="#5-restore-the-data" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key
-</code></pre></div>
-<p>The id is the original one, which is exactly why this works: backups are stamped
-with the installation they came from, and a machine rebuilt with a fresh id
-would have its own backups refused.</p>
-<p><code>--identity</code> for the second reason the recovery key exists. Import generated a
-<strong>new</strong> age identity for this host, and that key was never a recipient of the
-backups the lost machine took — the offline key was. So the same key opens both
-the export and the backups, which is why keeping one off the machine is not
-optional.</p>
-<h3 id="6-check-then-decommission">6. Check, then decommission<a class="headerlink" href="#6-check-then-decommission" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>doctor
-</code></pre></div>
-<p>Then <strong>decommission the old machine</strong> if any part of it still exists. Two live
-hosts sharing an installation id will confuse every backup either takes, and the
-old host's key was revoked precisely so it cannot follow along.</p>
-<h2 id="if-your-backups-carry-no-identity">If your backups carry no identity<a class="headerlink" href="#if-your-backups-carry-no-identity" title="Permanent link">&para;</a></h2>
-<p>Two kinds of backup have none: those taken before this manager version, and
-those from an installation with no recovery recipient. <code>--from-backup</code> says
-which case you are in and what to do about it — they need different answers,
-and telling the second kind to "take a new backup" would prescribe the action
-that reproduces the problem.</p>
-<p>If you have an export file, use it: the procedure above works unchanged.</p>
-<p>If you have neither, you can still recover data, but not identity. Create a new
-installation, install the release, and restore across installations explicitly:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--release<span class="w"> </span>./demo-1.2.0<span class="w"> </span>--recovery-recipient<span class="w"> </span>&lt;a<span class="w"> </span>new<span class="w"> </span>key&gt;
-morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.2.0
-morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;the<span class="w"> </span>NEW<span class="w"> </span>id&gt;<span class="w"> </span>--allow-cross-installation
-</code></pre></div>
-<p><code>--allow-cross-installation</code> is a separate flag from <code>--force</code> because <code>--force</code>
-is already required for every restore. Restoring another deployment's data is a
-distinct decision and needs its own answer.</p>
-<p>What you do not get back automatically: the old installation id, and the
-secrets. <code>restore</code> brings back the database and the volumes; it does not
-reinstate the secret state.</p>
-<p><strong>The secrets are not necessarily lost, though — that depends on the recovery
-key, not on the export.</strong> A backup from before this change carries
-<code>secrets.sops.yaml</code> and <code>secrets.recipients.yaml</code>, encrypted to the same
-recipients as everything else in it. If the recovery key was one of them, you
-can get the values back by hand and set them again with <code>morzer secret set</code>.</p>
-<p>Backups taken since carry <code>export.yaml</code> instead, which holds the same encrypted
-state and the recipient roles beside it — and <code>--from-backup</code> reads it for you,
-so the recipe below is only for the older shape.</p>
-<p>There are two layers, because the <abbr title="Secrets OPerationS">SOPS</abbr> document is itself stored as an
-encrypted backup component:</p>
-<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/var/lib/demo/backups/&lt;id&gt;
-
-<span class="c1"># 1. the backup component</span>
-age<span class="w"> </span>--decrypt<span class="w"> </span>-i<span class="w"> </span>~/recovery.key<span class="w"> </span>secrets.sops.yaml.age<span class="w"> </span>&gt;<span class="w"> </span>secrets.sops.yaml
-
-<span class="c1"># 2. the SOPS document inside it</span>
-<span class="nv">SOPS_AGE_KEY_FILE</span><span class="o">=</span>~/recovery.key<span class="w"> </span>sops<span class="w"> </span>--decrypt<span class="w"> </span>secrets.sops.yaml
-</code></pre></div>
-<p>The same key opens both, because it was a recipient of both. Tedious, and much
-worse than having an export, but not the same as gone — and delete the
-intermediate file when you are done with it.</p>
-<h3 id="without-a-recovery-key-nothing-is-recoverable">Without a recovery key, nothing is recoverable<a class="headerlink" href="#without-a-recovery-key-nothing-is-recoverable" title="Permanent link">&para;</a></h3>
-<p>This is the case worth understanding before it happens. Backups are encrypted to
-the secret store's recipient list. With no recovery recipient, that list is the
-machine's own age key and nothing else — and that key was on the machine you no
-longer have.</p>
-<p>So it is not merely the secrets that are unreadable. <strong>The database dump and the
-volumes are too.</strong> Every backup you took is ciphertext nobody holds a key for.</p>
-<p>That is the outcome the recovery key exists to prevent, and the reason <code>init</code>
-refuses to proceed without one unless you say <code>--no-recovery-recipient</code> out
-loud. <code>morzer doctor</code> reports it as <code>secrets.recovery-recipient</code>; if that check
-is not passing on a machine you care about, it is the most urgent thing on this
-page.</p>
-<h2 id="what-is-not-covered">What is not covered<a class="headerlink" href="#what-is-not-covered" title="Permanent link">&para;</a></h2>
+<p>A sandbox is a machine whose data is disposable and whose purpose is rehearsing
+what will happen to a real one. It relaxes:</p>
 <ul>
-<li><strong>Restoring the machine's original age key.</strong> There is deliberately no way to
-  do this. Recovery replaces the key rather than resurrecting it, so a
-  compromised host does not keep access to a deployment that has moved on.</li>
-<li><strong>Migrating between products or renaming one.</strong> An export is the same
-  installation on a different host, not a different installation.</li>
+<li><strong>The recovery gate.</strong> Auto-apply installs whatever the channel offers: there
+  is nothing here to be unable to recover.</li>
+<li><strong>Retention.</strong> It prunes old releases after every update, which a fast rebuild
+  loop needs — one release directory per build, each with its own images.</li>
+<li><strong><code>--skip-backup</code></strong>, without <code>--force</code>.</li>
+<li><strong>Prereleases.</strong> They are admissible update candidates. On a production
+  machine they are not: every development build carries a prerelease version,
+  and a check answering "1.4.1-dev.7 is available" is a check nobody reads.</li>
 </ul>
+<p>It relaxes <strong>nothing about verification</strong>. Signature checking, digest pinning
+and <code>SHA256SUMS</code> completeness are unchanged, because the sandbox's entire value
+is fidelity: every relaxation there reduces what a successful rehearsal proves,
+and what you are rehearsing is a customer's install. Sign dev builds with a dev
+key the sandbox pins — one <code>minisign -Sm</code> in CI, and it rehearses key handling
+too.</p>
+<h3 id="mode-is-fixed-when-the-installation-is-created">Mode is fixed when the installation is created<a class="headerlink" href="#mode-is-fixed-when-the-installation-is-created" title="Permanent link">&para;</a></h3>
+<p>Not one-way. <strong>No</strong> way, through any of the manager's surfaces: not
+<code>config set</code>, not <code>import</code>, not any command that writes installation state.</p>
+<table>
+<thead>
+<tr>
+<th>Transition</th>
+<th>What breaks</th>
+<th>When you find out</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>production → dev</td>
+<td>Real data is immediately under relaxed rules</td>
+<td>At once</td>
+</tr>
+<tr>
+<td>dev → production</td>
+<td>Untrusted history presented as trustworthy: <code>previous</code> was pruned and no pre-update backup was ever taken</td>
+<td>During an incident</td>
+</tr>
+</tbody>
+</table>
+<p>The second is the quieter one and it lands when it costs most, which is why
+neither direction is allowed.</p>
+<p><strong>Promotion is backup → fresh <code>init</code> → restore.</strong> That already works, and it is
+the right amount of ceremony for a machine about to hold real data.</p>
+<p><code>installation import</code> is the other moment a mode is chosen, because import
+reproduces an export wholesale:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>./demo.export.yaml<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key<span class="w"> </span>--mode<span class="w"> </span>dev
+</code></pre></div>
+<p>That is how you test a customer's backup on a sandbox. <strong>It drops the export's
+backup targets</strong>, and this is not optional: an import keeps the original
+installation id so a lost machine's backups stay restorable, and an export
+carries the backup targets <em>with their credentials</em> so a rebuilt machine can
+reach them. A sandbox that kept them would push throwaway backups into the
+customer's bucket under a matching id. The drop is reported, not silent.</p>
+<p>Importing a dev export <strong>as production is refused</strong>. With no <code>--mode</code> at all, an
+import reproduces whatever the export was — a lost sandbox comes back a sandbox.</p>
+<h3 id="what-is-not-claimed">What is not claimed<a class="headerlink" href="#what-is-not-claimed" title="Permanent link">&para;</a></h3>
+<p><code>mode</code> is a field in a <abbr title="JavaScript Object Notation">JSON</abbr> file, and root can edit it. Nothing here is
+tamper-evident, and the immutability above is a statement about the manager's
+own surfaces. Defending one boolean against an operator who can equally edit the
+recipient list, the backup targets or the installation id would be defending the
+wrong thing; root on the machine is outside every threat model in this
+documentation.</p>
+<p><code>status</code> and <code>doctor</code> mark a sandbox permanently and prominently — not as a
+first-run notice, because the failure mode is a machine nobody remembers the
+provenance of.</p>
+<h2 id="for-vendors">For vendors<a class="headerlink" href="#for-vendors" title="Permanent link">&para;</a></h2>
+<p>Declaring <code>database_schema_produces</code> is what opts your releases into this. See
+<a href="../../reference/manifest/#database_schema_produces-is-what-opts-a-release-into-unattended-updates">the manifest reference</a>
+and <a href="../../authoring/publishing/">publishing</a>.</p>
+<p>Omitting it is a valid choice, and it costs your customers nothing: their
+machines still fetch, verify and stage your releases, and still tell them one is
+waiting.</p>
 
 
 
@@ -2382,7 +2241,7 @@ page.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../notifications/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Notifications">
+          <a href="../updating/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Updating">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2392,20 +2251,20 @@ page.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Notifications
+                Updating
               </div>
             </div>
           </a>
         
         
           
-          <a href="../../authoring/" class="md-footer__link md-footer__link--next" aria-label="Next: What a bundle is">
+          <a href="../rolling-back/" class="md-footer__link md-footer__link--next" aria-label="Next: Rolling back">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                What a bundle is
+                Rolling back
               </div>
             </div>
             <div class="md-footer__button md-icon">

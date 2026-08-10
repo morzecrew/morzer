@@ -603,6 +603,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/rolling-back/" class="md-nav__link">
         
   
@@ -1461,6 +1490,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#installation-settings-are-not-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Installation settings are not parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#it-re-creates-it-does-not-restart" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1871,6 +1911,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#installation-settings-are-not-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Installation settings are not parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#it-re-creates-it-does-not-restart" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2138,6 +2189,39 @@ against the bundle:</p>
 http_port            port       9000             installation
 log_level            enum       info             release
 </code></pre></div>
+<h3 id="installation-settings-are-not-parameters">Installation settings are not parameters<a class="headerlink" href="#installation-settings-are-not-parameters" title="Permanent link">&para;</a></h3>
+<p>A parameter is declared by the vendor and reaches the deployment. An
+<strong>installation setting</strong> is your arrangement with the manager — whether it may
+contact a registry, which reference it follows — and changes nothing that is
+running.</p>
+<p>They share <code>morzer config</code> because that is where you look to change a value, and
+they cannot collide: a parameter name is lowercase letters, digits and
+underscores, so a dotted name is always a setting.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>settings<span class="w">                       </span><span class="c1"># every setting, its value and what it means</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.check<span class="o">=</span><span class="nb">true</span><span class="w">          </span><span class="c1"># a setting: a flag, no services touched</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>update.channel<span class="w">           </span><span class="c1"># back to absent, which is always the safe state</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>update.check</code></td>
+<td>Contact the vendor's registry unprompted, for <code>doctor</code> and <code>status</code>. Absent means off.</td>
+</tr>
+<tr>
+<td><code>update.channel</code></td>
+<td>A mutable reference to follow. See <a href="../../operating/updating/#following-a-channel">following a channel</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>Settings and parameters are set in separate commands. They run on different
+machinery — one converges a deployment, the other writes a flag — so a mixed
+command is refused rather than half-applied.</p>
 <h3 id="it-re-creates-it-does-not-restart">It re-creates, it does not restart<a class="headerlink" href="#it-re-creates-it-does-not-restart" title="Permanent link">&para;</a></h3>
 <p>A published port is fixed when a container is created. <code>docker compose restart</code>
 restarts the <em>existing</em> containers, so a restart after a port change would

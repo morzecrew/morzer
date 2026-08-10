@@ -603,6 +603,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/rolling-back/" class="md-nav__link">
         
   
@@ -1608,6 +1637,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="compatibility">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#database_schema_produces-is-what-opts-a-release-into-unattended-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>database_schema_produces</code> is what opts a release into unattended updates
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2137,6 +2183,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="compatibility">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#database_schema_produces-is-what-opts-a-release-into-unattended-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>database_schema_produces</code> is what opts a release into unattended updates
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3031,6 +3094,11 @@ anything.</p>
 <td>Newest schema this release can read.</td>
 </tr>
 <tr>
+<td><code>database_schema_produces</code></td>
+<td>int</td>
+<td>What this release's migrations leave the database at. Optional; see below.</td>
+</tr>
+<tr>
 <td><code>rollback_safe</code></td>
 <td>bool</td>
 <td>Whether this release's migrations can be undone by returning to the previous one.</td>
@@ -3049,6 +3117,25 @@ anything.</p>
 </table>
 <p><code>rollback_safe: false</code> is how a vendor says "going back needs a restore". The
 manager takes it literally and refuses the rollback, naming the backup instead.</p>
+<h3 id="database_schema_produces-is-what-opts-a-release-into-unattended-updates"><code>database_schema_produces</code> is what opts a release into unattended updates<a class="headerlink" href="#database_schema_produces-is-what-opts-a-release-into-unattended-updates" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">rollback_safe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">database_schema_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+<span class="w">  </span><span class="nt">database_schema_max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">14</span>
+<span class="w">  </span><span class="nt">database_schema_produces</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">14</span><span class="w">   </span><span class="c1"># what my migrations leave the database at</span>
+</code></pre></div>
+<p>The other three fields describe what a release can <em>read</em>. This one states what
+it <em>writes</em>, and it exists so the manager can answer a question before an update
+rather than after one: if this release is installed and then has to be rolled
+back, would the previous release still understand the database?</p>
+<p><strong>Omitting it is a valid and conservative choice.</strong> A release that does not
+declare it is never installed unattended — the manager will fetch it, verify it,
+stage it and notify the operator, and stop there. If you do not want customers
+running your releases without a human present, declare nothing and nothing
+changes for you.</p>
+<p>Declaring it is not sufficient on its own. See
+<a href="../../operating/unattended-updates/">unattended updates</a> for the whole gate,
+and for what the promise is and is not.</p>
 <h2 id="retention">retention<a class="headerlink" href="#retention" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

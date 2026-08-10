@@ -603,6 +603,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/rolling-back/" class="md-nav__link">
         
   
@@ -2264,6 +2293,25 @@ build.</p>
 <p><strong>Bump <code>database_schema_max</code> when a release can read a newer schema</strong>, and set
 <code>rollback_safe: false</code> when its migrations are one-way. These are what let the
 manager refuse an unsafe rollback instead of corrupting a database quietly.</p>
+<p><code>rollback_safe: true</code> now decides more than it used to, and this is the most
+important thing on this page to re-read. It has always gated <code>rollback</code>. It also
+decides whether a release may install itself on a customer's machine with nobody
+present — so declaring it carelessly no longer costs a refused rollback, it
+costs an unattended update that ends somewhere the previous release cannot read.</p>
+<p>Unattended installs are opt-in from <strong>both</strong> sides, and yours is
+<code>database_schema_produces</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">rollback_safe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">database_schema_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+<span class="w">  </span><span class="nt">database_schema_max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">14</span>
+<span class="w">  </span><span class="nt">database_schema_produces</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">14</span><span class="w">   </span><span class="c1"># what my migrations leave the database at</span>
+</code></pre></div>
+<p>Declaring it says what your migrations do, which is what lets the manager run
+the rollback assessment <em>before</em> installing rather than after. Omitting it is a
+valid and conservative choice: your releases are still fetched, verified and
+staged on your customers' machines, and they are still told one is waiting —
+they just install it themselves. See
+<a href="../../operating/unattended-updates/">unattended updates</a>.</p>
 
 
 

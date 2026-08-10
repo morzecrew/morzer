@@ -603,6 +603,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/rolling-back/" class="md-nav__link">
         
   
@@ -2129,7 +2158,17 @@ reminds an operator — advisory, and never a failure.</p>
 </code></pre></div>
 <p>Reports <strong>every</strong> violation in one pass rather than the first, with the line and
 column from your <abbr title="YAML Ain't Markup Language">YAML</abbr>. Run it in your own CI; it needs no installation on the
-machine.</p>
+machine. It parses every template you declare, so an unterminated action fails
+here rather than during someone else's <code>apply</code>.</p>
+<p>Once your templates reference secrets and parameters, add the render pass:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product<span class="w"> </span>--render-check
+</code></pre></div>
+<p>It renders each template against invented values, which catches the mistake
+parsing cannot see — <code>{{ secretFile .Secrets "db_passwrod" }}</code> is valid syntax
+and a broken deployment. It is a smoke test rather than a promise about a
+customer's machine; <a href="../../reference/release-commands/#what-render-check-checks-and-what-it-does-not">what it does and does not
+check</a>
+is worth reading once before you rely on it.</p>
 <p>There is also a <abbr title="JavaScript Object Notation">JSON</abbr> Schema for editor completion — see
 <a href="../../reference/manifest/#validating-a-manifest">Validating a manifest</a>.</p>
 <h2 id="the-complete-manifest">The complete manifest<a class="headerlink" href="#the-complete-manifest" title="Permanent link">&para;</a></h2>

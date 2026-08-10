@@ -603,6 +603,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/rolling-back/" class="md-nav__link">
         
   
@@ -2419,6 +2448,10 @@ run <code>apply</code> afterwards.</p>
 <td><code>--repair</code></td>
 <td>Restore missing directories on an existing installation.</td>
 </tr>
+<tr>
+<td><code>--mode</code></td>
+<td>What this machine is for: <code>dev</code> for a sandbox, or production (the default). Fixed at creation and never changeable — see <a href="../../operating/unattended-updates/#dev-mode-a-machine-that-is-a-sandbox-from-birth">unattended updates</a>.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="the-interactive-first-run">The interactive first run<a class="headerlink" href="#the-interactive-first-run" title="Permanent link">&para;</a></h3>
@@ -2507,8 +2540,23 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 <td><code>--skip-backup</code></td>
 <td>Skip the pre-update backup. Requires <code>--force</code> and is recorded in the journal.</td>
 </tr>
+<tr>
+<td><code>--check</code></td>
+<td>Report whether a newer release exists, without installing anything.</td>
+</tr>
+<tr>
+<td><code>--stage</code></td>
+<td>Follow the configured channel: fetch and verify what it points at, without installing it.</td>
+</tr>
+<tr>
+<td><code>--unattended</code></td>
+<td>One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see <a href="../../operating/unattended-updates/">unattended updates</a>.</td>
+</tr>
 </tbody>
 </table>
+<p><code>--check</code> and <code>--stage</code> are alternatives, and both stop short of installing.
+See <a href="../../operating/updating/#following-a-channel">following a channel</a> for what
+staging leaves behind and what a poll costs.</p>
 <p>A failed update rolls back to the release that was running. <strong>The database is
 never rolled back automatically</strong>: when a migration cannot be undone, the
 release says so through <code>compatibility.rollback_safe</code>, and the answer is a

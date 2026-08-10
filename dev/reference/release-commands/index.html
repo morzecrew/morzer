@@ -603,6 +603,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/rolling-back/" class="md-nav__link">
         
   
@@ -1318,6 +1347,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="release verify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-render-check-checks-and-what-it-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What <code>--render-check</code> checks, and what it does not
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2039,6 +2085,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="release verify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-render-check-checks-and-what-it-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What <code>--render-check</code> checks, and what it does not
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2363,9 +2426,13 @@ digest is computed over every file's path, executable bit and contents, sorted �
 so the same version appearing with a different digest is an error, not a
 warning. That is what makes a rollback target unambiguous.</p>
 <h2 id="release-list">release list<a class="headerlink" href="#release-list" title="Permanent link">&para;</a></h2>
-<p>Lists installed releases, newest first, marking the one currently pointed at.</p>
+<p>Lists installed releases, newest first, marking the roles that keep a release in
+the store: <code>*</code> current, <code>-</code> previous, <code>+</code> staged by a channel poll and not yet
+installed.</p>
 <p>The release store keeps more than the running release so that <code>rollback --to</code>
-has somewhere to go. How many is the manifest's <code>retention.releases</code>.</p>
+has somewhere to go. How many is the manifest's <code>retention.releases</code>, which
+counts the releases holding <em>none</em> of those roles — the three marked ones are
+kept regardless.</p>
 <h2 id="release-show">release show<a class="headerlink" href="#release-show" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>show<span class="w"> </span><span class="o">[</span>version<span class="o">]</span>
 </code></pre></div>
@@ -2441,10 +2508,38 @@ did not write it.</p>
 <td><code>--signing-key</code></td>
 <td>minisign public key the bundle's signature must verify against. Repeat for several.</td>
 </tr>
+<tr>
+<td><code>--render-check</code></td>
+<td>Also render each template against a synthetic context. A smoke test — see below.</td>
+</tr>
 </tbody>
 </table>
 <p>It reports <strong>every</strong> violation in one pass rather than the first, because a
 bundle author fixing one problem should not discover the next one on the retry.</p>
+<h3 id="what-render-check-checks-and-what-it-does-not">What <code>--render-check</code> checks, and what it does not<a class="headerlink" href="#what-render-check-checks-and-what-it-does-not" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product<span class="w"> </span>--render-check
+</code></pre></div>
+<p>It builds a plausible render context — an installation id, a domain, the
+production path layout, your declared parameters resolved, your declared
+secrets — and renders every template against it.</p>
+<p><strong>The values are invented.</strong> A template that branches on them
+(<code>{{- if .Domains }}</code>) exercises only the branch they choose, so a clean render
+check does not mean the template will render on a customer's machine. That is
+structural rather than a maturity gap: there is no real context here, which is
+exactly what lets you run this in CI. It will never become the default, and
+there will never be a <code>--no-render-check</code>.</p>
+<p>What it does catch is the class parsing cannot: a reference to a field the
+render context does not define, and a <code>secretFile</code> call naming a secret your
+schema does not declare. Those fail on every machine, so catching them on yours
+is free.</p>
+<p>Two things are <em>not</em> invented, and they are why the check has teeth: secret
+names come from the schema your manifest declares, and parameters from your own
+<code>parameters:</code> block. A typo in either fails here.</p>
+<p>A parameter you declared without a default gets an invented value that satisfies
+its type, rather than the empty string an unset parameter really resolves to.
+Otherwise <code>{{ required "choose a port" .Parameters.http_port }}</code> would fail the
+check on a bundle that is entirely correct — the operator simply has not chosen
+yet.</p>
 <p><code>--signing-key</code> is how a vendor checks their own signing pipeline in CI: it
 needs no installation on the machine, because there is no policy to read there.
 On a deployment host, <code>policy.signing_keys</code> in <code>installation.yaml</code> decides

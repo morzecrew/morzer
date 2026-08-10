@@ -603,6 +603,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/rolling-back/" class="md-nav__link">
         
   
@@ -2032,6 +2061,10 @@ carries one.</p>
 <tr>
 <td><code>--credentials-file</code></td>
 <td>Credentials for <code>--target</code>, for when the secret store that held them is on the machine that died.</td>
+</tr>
+<tr>
+<td><code>--mode</code></td>
+<td>Rebuild as a sandbox with <code>dev</code>, which also <strong>drops the export's backup targets</strong>. Omitted keeps whatever the export was; a sandbox can never be imported as production. See <a href="../../operating/unattended-updates/#dev-mode-a-machine-that-is-a-sandbox-from-birth">dev mode</a>.</td>
 </tr>
 </tbody>
 </table>
