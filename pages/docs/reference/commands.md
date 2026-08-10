@@ -35,6 +35,36 @@ These are accepted by every command.
 | `--config` | Path to an installation's `installation.yaml`, which selects that installation: `/etc/demo/installation.yaml` means the `demo` layout, and a path with a prefix means that prefix. Equivalent to `--product` (and `--root`); naming both is refused when they disagree. |
 | `--product` | Product name. Inferred from the installation when omitted, and required on a host with more than one. |
 
+### Which installation a command acts on
+
+A machine may hold several installations: every path is keyed by the product
+name, so `/etc/demo` and `/etc/other` are separate deployments with separate
+locks, separate secret state and separate systemd units.
+
+Selection, in order:
+
+| Source | Notes |
+| --- | --- |
+| `--config <path>` | Selects the layout the file sits in. This is what the generated systemd units pass. |
+| `--product <name>` | With `--root` when the layout is relocated. |
+| Discovery | Used only when the machine holds **exactly one** installation. |
+
+`--config` and `--product` are alternatives, not a precedence: naming both is
+refused when they disagree, and accepted when they name the same installation.
+
+On a machine with more than one installation, a command that needs one and was
+given no selector is refused, and the refusal names what it found:
+
+```console
+$ morzer status
+error: this machine has 2 installations, so --product is required
+hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`
+```
+
+Commands that touch no installation — `version`, `release verify`, `release new`
+and the rest of the bundle-authoring commands — are unaffected, and so is `init`,
+which is given the product name it is creating.
+
 ## Index
 
 | Command | What it does |

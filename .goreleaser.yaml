@@ -113,10 +113,17 @@ release:
     ## Verifying this release
 
     ```sh
+    ARCHIVE=morzer_{{ .Version }}_linux_amd64.tar.zst   # the one you downloaded
+
     curl -fsSLO https://raw.githubusercontent.com/morzecrew/morzer/main/morzer.pub
     minisign -Vm SHA256SUMS -p morzer.pub
-    sha256sum -c SHA256SUMS
+    grep " ${ARCHIVE}$" SHA256SUMS | sha256sum -c -
     ```
+
+    `SHA256SUMS` covers every architecture, so checking it whole fails on the
+    archives you did not download — and `--ignore-missing`, the usual way
+    around that, reports `OK` when *no* archive is present at all. Pulling out
+    the line for the file you have fails when there is nothing to check.
 
     The signing key is the same for every release. If you have verified a
     morzer release before, use the copy you already have rather than fetching

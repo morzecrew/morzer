@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -100,6 +101,14 @@ type App struct {
 
 	// command is the invoked path, recorded in the JSON envelope.
 	command string
+
+	// machineProducts is every product with installation state under the
+	// resolved root, as discovery found it, sorted. Held because "this
+	// machine has no installation", "it has three and you named none" and
+	// "it has three and none is called that" are different answers to the
+	// same failed lookup, and nothing at the point of failure can tell them
+	// apart without the inventory.
+	machineProducts []string
 
 	// cancelOperation cancels the context every command runs under. It is
 	// what the live view's Ctrl-C invokes: raw mode suppresses the SIGINT
@@ -446,22 +455,82 @@ func newRootCommand(app *App) *cobra.Command {
 	// this, `-v -q` meant quiet and nothing said so.
 	root.MarkFlagsMutuallyExclusive("verbose", "quiet")
 
+	// Registration order is the display order, here and in every subcommand
+	// list. Cobra sorts alphabetically by default, which in a group of three
+	// puts `apply` before `init` -- converge before create, on the screen
+	// whose whole job is telling a new operator what to run first. The
+	// subcommand lists this also unsorts are already written in a deliberate
+	// order (`release`: inspect, author, distribute), and alphabetical was
+	// never a decision anyone made there either.
+	//
+	// It is a package-level switch in cobra, so it applies to every command
+	// tree in the process, including an embedder's own. Cobra offers no
+	// per-command equivalent; setting it here rather than in main keeps the
+	// binary and CommandTree() -- which the documentation checker walks --
+	// rendering the same help.
+	cobra.EnableCommandSorting = false
+
+	// Ordered by when an operator meets them, not alphabetically. The first
+	// screen of `--help` is the only documentation many operators read, and
+	// an alphabetical list puts `release` between `init` and `restore` while
+	// saying nothing about which three commands are needed on day one.
+	//
+	// Cobra places a command with no GroupID in an "Additional Commands"
+	// section at the bottom, which is where its generated `help` and
+	// `completion` belong. TestEveryCommandIsGrouped keeps anything else
+	// from landing there quietly.
+	for _, g := range []struct{ id, title string }{
+		{groupStart, "Getting started:"},
+		{groupOperate, "Operating:"},
+		{groupData, "Data:"},
+		{groupBundles, "Bundles:"},
+		{groupMachine, "Machine:"},
+	} {
+		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})
+	}
+
 	root.AddCommand(
-		newInitCommand(app),
-		newApplyCommand(app),
-		newUpdateCommand(app),
-		newRollbackCommand(app),
-		newStatusCommand(app),
-		newDoctorCommand(app),
-		newBackupCommand(app),
-		newRestoreCommand(app),
-		newSecretCommand(app),
-		newConfigCommand(app),
-		newReleaseCommand(app),
-		newInstallationCommand(app),
-		newVersionCommand(app),
+		grouped(groupStart, newInitCommand(app)),
+		grouped(groupStart, newApplyCommand(app)),
+		grouped(groupStart, newStatusCommand(app)),
+
+		grouped(groupOperate, newUpdateCommand(app)),
+		grouped(groupOperate, newRollbackCommand(app)),
+		grouped(groupOperate, newConfigCommand(app)),
+		grouped(groupOperate, newSecretCommand(app)),
+		grouped(groupOperate, newDoctorCommand(app)),
+
+		grouped(groupData, newBackupCommand(app)),
+		grouped(groupData, newRestoreCommand(app)),
+
+		grouped(groupBundles, newReleaseCommand(app)),
+
+		grouped(groupMachine, newInstallationCommand(app)),
+		grouped(groupMachine, newVersionCommand(app)),
 	)
 	return root
+}
+
+// The groups of the top-level help, as identifiers rather than repeated
+// strings: a typo'd GroupID is a command cobra silently drops to the bottom of
+// the list.
+const (
+	groupStart   = "start"
+	groupOperate = "operate"
+	groupData    = "data"
+	groupBundles = "bundles"
+	groupMachine = "machine"
+)
+
+// grouped assigns a command to a section of `--help`.
+//
+// A helper rather than a field set at each constructor, because the grouping is
+// a property of the *listing*, decided here where the whole list is visible --
+// and a constructor that carried its own GroupID would put the ordering
+// decision in thirteen files.
+func grouped(id string, cmd *cobra.Command) *cobra.Command {
+	cmd.GroupID = id
+	return cmd
 }
 
 // setup resolves the output mode, builds the logger, and wires every adapter.
@@ -651,6 +720,11 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		ManagerVersion: parseBuildVersion(a.Build.Version),
 		Redactor:       redactor,
 		TargetPrefix:   a.Flags.root,
+		// What the CLI found on the machine and whether the operator
+		// named one, so a lookup that comes back empty can say which of
+		// several situations it is in.
+		MachineProducts: a.machineProducts,
+		ProductNamed:    a.Flags.product != "" || a.Flags.configDir != "",
 	}
 
 	// Notification targets live in the installation, which does not exist
@@ -844,16 +918,28 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 
 	product := a.Flags.product
 
-	if product == "" {
-		// Look for exactly one installation under the default roots.
-		if found, ok := discoverProduct(a.Flags.root); ok {
-			product = found
-		}
+	// Recorded whether or not it is used, because the *number* of
+	// installations is what makes an unfound one ambiguous rather than
+	// absent, and the lifecycle layer is where that difference is reported
+	// (ops.Deps.MachineProducts). The --config branch above records it too,
+	// against the root it derives: both flags name an installation, so both
+	// must be able to say what the machine has when it does not have that
+	// one.
+	a.machineProducts = discoverProducts(a.Flags.root)
+
+	if product == "" && len(a.machineProducts) == 1 {
+		// Exactly one, or the operator must say which: guessing between
+		// two installations is how a command acts on the wrong
+		// deployment.
+		product = a.machineProducts[0]
 	}
 	if product == "" {
-		// No installation and no flag. A placeholder keeps `init`,
-		// `version` and `doctor` working; `init` overrides it with the
-		// name it was given.
+		// No installation to name, or more than one and no flag. A
+		// placeholder keeps `init`, `version` and `release verify`
+		// working -- they touch no installation, and refusing them here
+		// would make an ambiguous machine unable to run the commands
+		// that would resolve the ambiguity. A command that does need one
+		// fails when it reads it, with the alternatives named.
 		product = "morzer"
 	}
 	if err := domain.ValidateProductName(product); err != nil {
@@ -930,6 +1016,14 @@ func (a *App) pathsFromConfig() (domain.Paths, error) {
 		}
 	}
 
+	// The same inventory the discovery branch records, against the root this
+	// path sits in. Without it a --config naming an installation the machine
+	// does not have was answered as a bare machine -- `morzer init` -- while
+	// the identical --product was answered with the names it does have. The
+	// systemd units pass --config, so the wrong half of that pair is the one
+	// an operator reads after a unit fails.
+	a.machineProducts = discoverProducts(root)
+
 	if root == "" {
 		return domain.DefaultPaths(product), nil
 	}
@@ -961,14 +1055,18 @@ func (a *App) confirmProductMatchesConfig(product string) error {
 }
 
 // discoverProduct finds an installed product by looking for its state file.
-func discoverProduct(root string) (string, bool) {
+// The list is returned whole rather than reduced to "exactly one, or nothing".
+// Both callers need it: one to select an installation, the other to refuse
+// naming the alternatives. Reducing it here is what made a machine with two
+// installations report that it had none.
+func discoverProducts(root string) []string {
 	base := "/etc"
 	if root != "" {
 		base = root + "/etc"
 	}
 	entries, err := os.ReadDir(base)
 	if err != nil {
-		return "", false
+		return nil
 	}
 
 	var found []string
@@ -980,12 +1078,8 @@ func discoverProduct(root string) (string, bool) {
 			found = append(found, e.Name())
 		}
 	}
-	// Exactly one, or the operator must say which: guessing between two
-	// installations is how a command acts on the wrong deployment.
-	if len(found) == 1 {
-		return found[0], true
-	}
-	return "", false
+	sort.Strings(found)
+	return found
 }
 
 func parseBuildVersion(s string) domain.Version {

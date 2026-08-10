@@ -1,6 +1,18 @@
 # RFC 0020 — Several installations on one machine
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: discovery returns the
+  inventory it always computed, `Deps.MachineProducts` carries it, and a machine
+  whose installations nobody chose between is refused by name instead of being
+  reported as bare. Both flags record the inventory, including `--config`, which
+  is the one the systemd units pass. The refusal lives in the lookup rather than
+  in path resolution, so `version`, `release verify` and `init` still work on a
+  machine with three installations — but it is asked *before* the state is read,
+  not after the read fails: the placeholder product is `morzer`, the manager's
+  own name and so the likeliest name for a real installation, and where one
+  existed the fallback silently selected it. `doctor` asks the same question
+  first, since degrading to a reduced check list is what made it the one command
+  that swallowed the refusal. P2–P4 (`ls`, `--status`, the machine-scope
+  `doctor` checks) is unstarted.
 - **Scope:** Making the multi-installation case — which the path layout has
   always supported and no command has ever acknowledged — visible and safe:
   `morzer ls`, a refusal that names the installations it found instead of
@@ -257,6 +269,15 @@ case, because `init`, `version` and `doctor` must work on a bare machine. What
 changes is that "more than one" stops taking the same branch as "none": today
 they are indistinguishable to `resolvePaths`, and that is the whole defect.
 
+**The placeholder is a real name, which is why the count is asked before the
+path is used.** `morzer` is the manager's own name and so the likeliest name for
+an installation somebody creates; on a machine holding `morzer` and `demo` the
+fallback stopped being a placeholder and became a silent choice, with `status`
+loading whichever installation happened to be called `morzer` and reporting on
+it. A refusal that fires only when the read *fails* cannot catch that, because
+the read succeeds — so the question "did anybody choose?" is asked at the top of
+the lookup, and the questions that need a failed read stay below it.
+
 Commands that do not act on an installation — `version`, `release verify`,
 `release new`, `release pack`, `completion` — must not be refused by this. They
 are already the commands that work on a bare machine, so the rule is: the refusal
@@ -375,6 +396,22 @@ ignore it.
   found" (exit 5) on an ambiguous machine gets a usage error instead. This is a
   script that was acting on the wrong installation or none; the change is the
   point, and it is called out in the changelog.
+- **It covers exactly the commands that already refused, which is not all of
+  them.** The refusal fires where the installation is read, so `status`,
+  `doctor`, `update`, `backup` and the rest are covered. `release list` and
+  `secret list` read the store and the secret state without loading the
+  installation, so on an ambiguous machine they answer about the placeholder
+  layout — `no releases are installed` — exactly as they do on a bare machine.
+  Measured rather than assumed: that is what
+  `morzer --root <two-installation-root> release list` prints today.
+
+  Pre-existing behaviour rather than a regression, and P1 deliberately did not
+  widen it: the alternatives are a maintained list of commands that need an
+  installation, or refusing during path resolution, which would refuse
+  `morzer version` on a machine with two installations. **P2 is where this
+  should be settled**, because `ls` is what makes the inventory visible and the
+  natural place to decide what every other listing does when the machine is
+  ambiguous.
 - **`MORZER_PRODUCT` in a systemd unit.** The generated units pass `--config`,
   which outranks it. Stated in the docs because an operator who sets the variable
   globally will otherwise expect it to reach their timers.

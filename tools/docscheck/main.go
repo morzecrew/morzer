@@ -24,6 +24,11 @@
 //  4. Command coverage. Every command and every non-hidden flag, read out of the
 //     cobra tree rather than out of a list someone maintains.
 //
+//  5. Release-asset names. Every archive the documentation tells an operator to
+//     download is a name goreleaser's own template can produce. Link checking
+//     cannot cover these: they are external URLs, and resolving them would make
+//     the build depend on GitHub being up and on a release existing.
+//
 // The contracts are read from the source -- consts by AST, schema fields by
 // reflection, the CLI surface by walking the real command tree -- so this cannot
 // drift the way a hand-maintained checklist would.
@@ -85,6 +90,7 @@ func main() {
 	checkNav(&rep, root, pages)
 	checkContracts(&rep, root, pages)
 	checkCommands(&rep, pages)
+	checkReleaseAssets(&rep, root, pages)
 
 	if rep.failed() {
 		rep.print(os.Stderr)
@@ -155,6 +161,11 @@ type page struct {
 	// `rollback_safe` as an identifier is a meaningfully higher bar than
 	// requiring the letters to appear somewhere.
 	Code map[string]bool
+	// Raw is the file as written, fences and all. Exactly one check reads
+	// it -- the release-asset one -- because a URL an operator copy-pastes
+	// lives inside a code block by definition, and the fence stripping that
+	// keeps an example from counting as documentation would hide it.
+	Raw string
 }
 
 var (
@@ -197,6 +208,7 @@ func loadPages(dir string) ([]page, error) {
 			Abs:   filepath.Join(dir, filepath.FromSlash(rel)),
 			Prose: prose,
 			Code:  code,
+			Raw:   string(data),
 		})
 		return nil
 	})

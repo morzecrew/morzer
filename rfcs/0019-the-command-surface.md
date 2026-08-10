@@ -1,6 +1,11 @@
 # RFC 0019 — The command surface
 
-- **Status:** 📝 Draft
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: five command groups in
+  the order an operator meets them, `cobra.EnableCommandSorting` off so
+  registration order is display order, and the four tests that keep it that way
+  — one of which found two `Short` strings that already wrapped past eighty
+  columns. P2 onwards (the rendering boundary, the components, the density rule,
+  the generated index, `completion install`) is unstarted.
 - **Scope:** The surface an operator meets before they meet any capability: how
   `morzer --help` is organised, how output is rendered in each mode, how the
   command reference is found, and how shell completion gets installed. Covers
@@ -601,6 +606,14 @@ they are what the best-written commands here already do:
    most commands.
 3. **Examples where the invocation is not obvious**, using cobra's `Example`
    field so they render in one place rather than inside prose.
+
+*(P1 shipped rule 1 and nothing else: every listing line is asserted to fit
+eighty columns, which found two `Short` strings that already wrapped, and a
+third that said a recovery command prints "its key" when what it prints is the
+public half. Rules 2 and 3 are unenforced and undone — the `Long` sweep and the
+`Example` fields are prose for thirteen commands and their subcommands, and they
+belong with P3's pass over the same files rather than in a phase whose subject
+is the listing. Nothing in `internal/cli/groups_internal_test.go` reads `Long`.)*
 
 ## 6. Tests
 

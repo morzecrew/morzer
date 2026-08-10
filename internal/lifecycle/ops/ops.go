@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -99,6 +100,24 @@ type Deps struct {
 	// write its configuration to the real /etc, and --root would be a flag
 	// that only half works. Empty in production.
 	TargetPrefix string
+
+	// MachineProducts is every product with installation state on this
+	// machine, as the caller found it, sorted. Empty means either a bare
+	// machine or a caller that did not look -- an embedder, a test -- and
+	// both take the same branch below, because "run init" is the right
+	// answer to the first and a harmless one to the second.
+	//
+	// ProductNamed says whether the installation this Deps points at was
+	// chosen by the operator (`--product`, `--config`) or inferred.
+	//
+	// The pair exists for one refusal. A lookup that finds no installation
+	// *here* means several different things, and neither layer can tell them
+	// apart alone: the caller knows what the machine holds and what the
+	// operator asked for, this layer knows the lookup failed. Without
+	// ProductNamed the refusal told an operator who had just typed
+	// `--product` that `--product` was required.
+	MachineProducts []string
+	ProductNamed    bool
 }
 
 // configTarget resolves a manifest configuration target, honouring the
@@ -336,16 +355,85 @@ func (d *Deps) notify(ctx context.Context, ev events.Event) {
 // loadInstallation reads the installation, producing an actionable error when
 // there is none.
 func (d *Deps) loadInstallation(ctx context.Context) (domain.Installation, error) {
+	if err := d.noSelection(); err != nil {
+		return domain.Installation{}, err
+	}
 	exists, err := d.State.InstallationExists(ctx)
 	if err != nil {
 		return domain.Installation{}, err
 	}
 	if !exists {
-		return domain.Installation{}, domain.InstallationError(domain.ErrInstallation,
-			"no installation found at %s", d.Paths.EtcDir).
-			WithHint("run `morzer init` to create one")
+		return domain.Installation{}, d.noInstallation()
 	}
 	return d.State.LoadInstallation(ctx)
+}
+
+// noSelection refuses to act on a machine whose installations nobody chose
+// between.
+//
+// Asked before the state is read rather than after the read fails, because the
+// product path resolution falls back to when nothing selected one is `morzer` --
+// the manager's own name, and so the likeliest name for a real installation. Two
+// installations where one is called `morzer` made the placeholder a silent
+// choice: `status` loaded it and reported on it, having asked nobody. Refusing
+// only when the read *fails* cannot catch that, because the read succeeds.
+//
+// It stays inside the lookup rather than moving to path resolution: `version`,
+// `release verify` and `init` never reach here, and they are the commands an
+// operator needs on exactly this machine.
+func (d *Deps) noSelection() error {
+	if len(d.MachineProducts) < 2 || d.ProductNamed {
+		return nil
+	}
+	return domain.Usage("this machine has %d installations, so --product is required",
+		len(d.MachineProducts)).
+		WithHint("%s — pass `--product %s`, or `--config %s`",
+			strings.Join(d.MachineProducts, ", "),
+			d.MachineProducts[0],
+			domain.DefaultPaths(d.MachineProducts[0]).InstallationFile())
+}
+
+// noInstallation explains a lookup that found nothing here.
+//
+// Two answers, because there are two situations and they need opposite advice.
+// A machine with no installation is a machine to run `init` on. A machine that
+// has installations, none of them the one that was named, is a machine where
+// `init` would create one more -- and the operator is not missing an
+// installation, they are missing the right name. Reporting the second as the
+// first is advice that makes the problem worse, which is what this manager did
+// until now.
+//
+// Nothing here answers the unnamed ambiguous machine: noSelection has already
+// refused it, before the read that got us here.
+//
+// The refusal is a usage error rather than an installation one: nothing about
+// the machine is wrong, and the fix is on the command line.
+func (d *Deps) noInstallation() error {
+	missing := domain.InstallationError(domain.ErrInstallation,
+		"no installation found at %s", d.Paths.EtcDir).
+		WithHint("run `morzer init` to create one")
+
+	switch {
+	case len(d.MachineProducts) == 0:
+		// Nothing on the machine, or nobody looked. `init` either way.
+		return missing
+
+	case slices.Contains(d.MachineProducts, d.Paths.Product):
+		// This installation is the one being asked for and discovery
+		// saw its configuration, so what is missing is its recorded
+		// state -- a half-created or half-removed installation rather
+		// than an absent one. The message is unchanged from before this
+		// pair existed; diagnosing the difference is a separate job.
+		return missing
+
+	default:
+		// Named, and nobody has it. Only a name reaches here: an
+		// unnamed product is either the machine's single installation,
+		// which the case above matched, or an ambiguity noSelection
+		// refused before the state was read.
+		return domain.Usage("this machine has no installation named %q", d.Paths.Product).
+			WithHint("it has %s", strings.Join(d.MachineProducts, ", "))
+	}
 }
 
 // hookEnv builds the hook ABI environment for an operation.

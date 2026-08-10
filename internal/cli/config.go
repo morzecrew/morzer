@@ -153,7 +153,7 @@ func newConfigSetCommand(app *App) *cobra.Command {
 func newConfigUnsetCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "unset <name> [name ...]",
-		Short: "Return parameters to the release's defaults, or a setting to its default",
+		Short: "Return parameters or a setting to their defaults",
 		Long: "Removes the recorded values, so the release's own defaults apply again,\n" +
 			"and re-creates the dependent services.\n\n" +
 			"This is also how a value left behind by an older release is cleared:\n" +
