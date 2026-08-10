@@ -29,7 +29,7 @@ The documented installation is four `curl` commands, a `minisign` invocation, a
 pipeline does not produce. This RFC replaces it with:
 
 ```sh
-curl -fsSL https://morze.dev/install.sh | sh -s -- --version 1.4.0
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 1.4.0
 ```
 
 and keeps the long form documented underneath, because the long form is what the
@@ -41,6 +41,13 @@ they have one. It refuses to write outside a prefix it names, it never runs
 `sudo` on its own initiative, and it is the same script the release artefacts
 carry — so a machine that can reach the release can bootstrap without reaching
 anything else.
+
+It also does the two things that separate "a binary is on the disk" from "the
+tool works": it puts the install prefix on `PATH` when it is not already there,
+in one marked block in one startup file that it prints before writing; and it
+installs shell completions by running `morzer completion install`, because where
+a shell reads completions from is knowledge that belongs in the binary rather
+than in a copy of it written in `sh`.
 
 ## 2. Motivation
 
@@ -119,6 +126,8 @@ single line to pin.
 - POSIX sh, no bashisms, no dependency beyond `curl` (or `wget`), `tar`, `sha256sum`
   (or `shasum`), and `zstd` where `tar` cannot do it.
 - Works unprivileged, into a user prefix, and says what it did.
+- A working tool afterwards, not just a file: on `PATH`, with completions, or an
+  exact instruction when the script declines to do it for you.
 - Verifiable by hand: every step the script takes is a step the docs still show.
 
 **Non-goals**
@@ -137,6 +146,14 @@ single line to pin.
   verify itself and points at `morzer doctor` for the rest. A bootstrap script
   that installed a container runtime would be making decisions about the
   machine's package manager that nobody asked it to make.
+- **Auditing the machine.** `doctor` exists, it is thorough, and it runs after the
+  binary is installed. The script's environment detection stops at what decides
+  *which archive to fetch and whether the result will be usable* — os, arch,
+  shell, `PATH` — and hands the rest over by name.
+- **Managing dotfiles.** One marked block in one file, or a printed block. A
+  script that reordered a `PATH`, rewrote a profile, or "fixed" a shell's
+  configuration would be doing something nobody asked for on the file an operator
+  is most attached to.
 
 ## 5. Design
 
@@ -144,7 +161,9 @@ single line to pin.
 
 ```text
 install.sh [--version X.Y.Z] [--dir PATH] [--digest sha256:…]
-           [--require-signature] [--no-verify-signature] [--print-only]
+           [--require-signature] [--no-verify-signature]
+           [--no-modify-path] [--completions|--no-completions]
+           [--shell bash|zsh|fish] [--print-only]
 
   --version              Release to install. Default: the latest published
                          release, resolved once and then printed.
@@ -155,15 +174,40 @@ install.sh [--version X.Y.Z] [--dir PATH] [--digest sha256:…]
   --require-signature    Refuse to install when minisign is absent or the
                          signature does not verify.
   --no-verify-signature  Skip the signature check. Prints what it is skipping.
-  --print-only           Print the resolved version, URL and target path; do not
-                         download.
+  --no-modify-path       Never edit a shell startup file; print what to add.
+  --completions          Install shell completions even when not interactive.
+  --no-completions       Do not install completions.
+  --shell                Override the detected shell for PATH and completions.
+  --print-only           Print everything it detected and would do; change
+                         nothing.
 ```
 
 Environment equivalents (`MORZER_VERSION`, `MORZER_INSTALL_DIR`) for the
 `curl | sh` form, where passing flags means `sh -s --` and half of the readers
 will get it wrong.
 
-### 5.2 What it verifies, and in what order
+### 5.2 What it detects, and what it refuses
+
+The script's whole job is to land a working binary, so it checks what bears on
+*that* and hands everything else to `doctor`. The division is worth stating
+because a bootstrap script that grows into a system audit is a second `doctor`
+that nobody maintains.
+
+| Detected | How | What it does with it |
+| --- | --- | --- |
+| Operating system | `uname -s` | `Linux` proceeds. Anything else is a refusal naming what was found — `Darwin` gets its own sentence, because the goreleaser matrix is `goos: [linux]` and no macOS build exists to point at. WSL reports `Linux` and is a supported target. |
+| Architecture | `uname -m` | `x86_64`/`amd64` → `amd64`; `aarch64`/`arm64` → `arm64`. Anything else — `armv7l`, `riscv64`, `i686` — is refused by name rather than guessed. Guessing here downloads an archive that extracts to a binary the kernel will not exec, which fails several steps later with a worse message. |
+| Kernel | `uname -r` | Recorded in the summary; warned below the floor a Go 1.25 static binary needs. Not otherwise acted on: Docker's kernel requirements are `doctor`'s business, not the installer's. |
+| libc | not checked | `CGO_ENABLED=0`, so there is no dynamic dependency to check. Stated because its absence otherwise looks like an oversight. |
+| Shell | `$SHELL`, overridable with `--shell` | Chooses the startup file for PATH (§5.4) and the argument for completions (§5.5). An unrecognised shell is not fatal: the binary still installs, and the script prints what to add by hand. |
+| `$PATH` | string match against the resolved prefix | Decides whether §5.4 has anything to do at all. |
+| An existing `morzer` | `command -v morzer` | Warns when the binary that will answer to `morzer` is **not** the one just installed — the ordinary trap of installing to `~/.local/bin` while `/usr/local/bin/morzer` exists and wins. Names both paths and their versions. |
+| Interactivity | stdout is a terminal | Decides the completions default (§5.5) and nothing else. |
+
+Everything it detected is printed by `--print-only`, which makes the detection
+itself testable without installing anything.
+
+### 5.3 What it verifies, and in what order
 
 1. **The digest, when the caller pinned one.** First, because a caller who names
    a digest is asserting something about specific bytes and must not be told
@@ -188,7 +232,82 @@ would mean the recommended path fails on a machine that has curl and tar and
 nothing else, and the operator's workaround would be to skip verification
 entirely.
 
-### 5.3 Where it writes, and what it never does
+### 5.4 PATH, when the prefix is not on it
+
+Only the unprivileged case needs this. `/usr/local/bin` is on every distribution's
+default `PATH`; `$HOME/.local/bin` is on some and not others, and an installer
+that leaves a binary somewhere the shell cannot find it has not installed
+anything.
+
+The rule is: **the smallest edit that survives a new shell, in a marked block, in
+one file, printed before it is made.**
+
+```sh
+# >>> morzer >>>
+# Added by morzer's install.sh. Remove this block to undo it.
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
+export PATH
+# <<< morzer <<<
+```
+
+Where it goes, by shell:
+
+| Shell | File | Why that one |
+| --- | --- | --- |
+| `fish` | `~/.config/fish/conf.d/morzer.fish` | A drop-in directory: no existing file is edited, and removing the file is a complete uninstall. Where a shell offers this, it is strictly better than appending. |
+| `bash` | `~/.bashrc` | The file a distribution's `~/.profile` sources and the one an interactive shell reads. `~/.bash_profile` is the login-shell file and editing whichever exists is how rustup ends up touching four files. |
+| `zsh` | `~/.zshrc` | Same reasoning; `~/.zshenv` is read by non-interactive shells too and is the wrong place for an interactive convenience. |
+| anything else | nothing | Prints the block and the sentence "add this to your shell's startup file". |
+
+And the rules around it:
+
+- **Idempotent by marker.** Re-running the script finds the block and leaves it
+  alone. Without the markers, an operator who runs the installer three times gets
+  three copies, which is the failure everyone has seen.
+- **`--no-modify-path` prints the block instead of writing it**, for an operator
+  whose dotfiles are managed elsewhere. So does an unwritable or symlinked
+  startup file — a symlink into a dotfiles repository is a signal that the file
+  is generated, and appending to it silently loses the edit at the next sync.
+- **Never a system-wide file.** No `/etc/profile.d` without `--system`, and even
+  then only alongside a `--system` install.
+- **It says what it did and what to do now**: the file it touched and
+  `exec $SHELL` (or "open a new terminal"), because a `PATH` edit that does not
+  affect the shell you are standing in is the other thing everyone has seen.
+
+### 5.5 Completions, which this script does not implement
+
+The script installs shell completions by **running the binary it just
+installed**:
+
+```sh
+"$dir/morzer" completion install --shell "$shell"
+```
+
+That is [0019](0019-the-command-surface.md) §5.8, and the split is the point:
+*where a shell reads completions from* is knowledge that belongs in one place,
+and that place is the Go code, where it is versioned with the binary, tested
+against a fake `HOME`, and updated when cobra grows a shell. A shell script that
+learned the same paths would be a second implementation that drifts — and it
+would drift silently, because a completion that is installed to the wrong
+directory produces no error at all, just a Tab key that does nothing.
+
+Defaults, which are about consent rather than capability:
+
+- **On when the install is interactive and the shell is recognised.** Somebody at
+  a terminal running an installer wants the tool to work properly.
+- **Off when it is not** — in a Dockerfile, a CI job, an Ansible task — because
+  writing into a home directory that belongs to a build is noise at best.
+  `--completions` forces it on; `--no-completions` forces it off.
+- **A failure here never fails the install.** The binary is on the machine and
+  works; a completion script that could not be written is a warning naming the
+  path and the command to retry.
+
+This creates the one ordering dependency between these RFCs: 0022's completion
+step needs 0019 P5. Until then the script prints the `completion install`
+invocation instead of running it, which is also exactly what it does today for an
+unrecognised shell.
+
+### 5.6 Where it writes, and what it never does
 
 - Writes exactly one file: `<dir>/morzer`. The schemas and licence in the archive
   are not installed anywhere; they exist for a vendor who wants them.
@@ -203,22 +322,40 @@ entirely.
 - Prints, on success, the version, the digest it verified, and the path — so the
   output is what goes into a runbook or a build log.
 
-### 5.4 Publication and the URL that is stable
+### 5.7 Publication and the URL that is stable
 
-The script is published in two places, and both matter:
+The site is `https://morzecrew.github.io/morzer/`, and it is **versioned**: `mike`
+deploys each minor into its own subdirectory on the `gh-pages` branch and owns
+the root, where it writes an `index.html` redirect and `versions.json`
+([`justfile`](../justfile), `deploy-docs` / `default-docs`). A URL under a
+version directory is the wrong home for an installer — `…/morzer/1.4/install.sh`
+pins the script to a docs version that has nothing to do with the release being
+installed, and `…/latest/install.sh` moves when the docs move.
 
-- **`https://morze.dev/install.sh`** — served from the documentation site, which
-  is already built and deployed from this repository. This is the URL that goes
-  in the README and stays constant.
-- **As a release asset** — so a machine that has the release tarball can
-  bootstrap without reaching the site, and so the script that installed a version
-  is archived beside it.
+So the script is published in three places, with one of them canonical:
 
-`goreleaser`'s `extra_files` carries it, which also means the script is covered
-by `SHA256SUMS` — the script that verifies the archive is itself verifiable
-against the same file, for anyone who wants to close that loop.
+- **`https://morzecrew.github.io/morzer/install.sh`** — canonical, and placed at
+  the `gh-pages` root *beside* the version directories rather than inside one, by
+  a step in the docs release workflow. `mike` touches only the version directory,
+  `index.html` and `versions.json`, so a sibling file at the root survives a
+  deploy — but that is a property of `mike`'s behaviour rather than a promise it
+  makes, so the workflow re-publishes the file on every docs release and a test
+  fetches it after deploying. This is the URL the README carries.
+- **`https://raw.githubusercontent.com/morzecrew/morzer/main/install.sh`** — the
+  same file, always current, no site machinery in the path. Already the shape
+  this project uses for `morzer.pub`, and it is what the docs show for an
+  operator who wants to read the script before running it. Swapping `main` for a
+  tag pins the script itself, which a cautious runbook will want.
+- **As a release asset**, carried by `goreleaser`'s `extra_files` — so a machine
+  that has the release tarball can bootstrap without reaching either of the
+  above, and so the script that installed a version is archived beside it.
+  `extra_files` also puts it under `SHA256SUMS`: the script that verifies the
+  archive becomes verifiable against the same file, for anyone who wants to close
+  that loop.
 
-### 5.5 The corrections that ship with it
+All three are the same bytes, which is a test (§6), not an assumption.
+
+### 5.8 The corrections that ship with it
 
 - `installation.md`'s asset name becomes the real one, and the manual sequence
   drops `--ignore-missing` in favour of matching the archive's own line.
@@ -247,6 +384,31 @@ running it.
   removed (the `--ignore-missing` trap), a signature made by a different key with
   `--require-signature`, a `--digest` that does not match, and an unwritable
   `--dir`.
+- **Detection, through `--print-only`.** `uname` stubbed on `PATH` to report
+  `Darwin`, `armv7l`, `riscv64` and `aarch64` in turn: the first three refuse by
+  name, the fourth resolves the arm64 archive. This is the whole of §5.2 tested
+  without a download, which is why `--print-only` prints what it detected rather
+  than only what it would fetch.
+- **PATH, three ways.** A prefix already on `PATH` writes nothing; a prefix that
+  is not gets exactly one marked block; running the script again adds nothing.
+  The third is the assertion that matters: an installer that appends on every
+  run is the classic defect of this shape, and it is invisible until the second
+  run.
+- **A symlinked startup file is not written to**, and the block is printed
+  instead. Reachable, and the failure is silent otherwise: a dotfiles repository
+  reclaims the file at the next sync and the operator never learns why `morzer`
+  stopped being found.
+- **Completions are delegated, not reimplemented.** With a stub `morzer` on
+  `PATH`, the script's completion step must invoke `completion install` with the
+  detected shell — asserted by the stub recording its argv. A test that checked
+  for a completion *file* would pass on a script that wrote one itself, which is
+  the thing this design forbids.
+- **A failing completion step does not fail the install.** The stub exits
+  non-zero; the binary is still installed and the exit code is still 0.
+- **The three published copies are byte-identical.** A checksum comparison
+  between the repository file, the release asset and the deployed site file, run
+  in the nightly job. `mike` owning the `gh-pages` root is the reason this is a
+  test rather than an assumption.
 - **`--print-only` against the real GitHub API**, in a nightly job rather than
   per-PR: it is the only test that can catch the asset name drifting, and it is
   the exact class of failure this RFC exists to fix. Nightly, because a
@@ -317,6 +479,13 @@ running it.
 | 8 | Published at a stable site URL *and* as a release asset covered by `SHA256SUMS` | The site URL is what a README can carry for years; the asset is what an air-gapped-ish machine already has, and it closes the "who verifies the verifier" loop. |
 | 9 | No `self-update`, no packages, no mirrors | Each adds a trust root or a running-unit hazard, and none of them is the path a new operator takes. |
 | 10 | A nightly `--print-only` job against the real release API | The broken asset name in today's docs is exactly the drift no offline check can catch. Nightly rather than per-PR, so a GitHub outage is not a red build. |
+| 11 | The canonical URL is `https://morzecrew.github.io/morzer/install.sh`, at the `gh-pages` root beside the version directories | The site is versioned by `mike`, so any URL inside a version directory pins the installer to a docs release it has nothing to do with. The root is the only place with the right lifetime, and `raw.githubusercontent.com` is the documented equivalent — already how `morzer.pub` is fetched. |
+| 12 | Detection covers os, arch, kernel, shell and `PATH`, and stops there | Those decide which archive to fetch and whether the result is usable. Everything else about the machine is `doctor`'s, which runs a minute later and is thorough. A second auditor is one nobody maintains. |
+| 13 | An unrecognised architecture is refused by name, never guessed | Guessing downloads an archive whose binary the kernel will not exec, and the failure surfaces several steps later with a much worse message. |
+| 14 | `PATH` is edited in one marked block, in one file per shell, printed before it is written, and `--no-modify-path` opts out | The marker makes re-running idempotent, which is the defect every installer of this shape eventually has. One file avoids rustup's four. Printing first is what makes a piped-into-`sh` script auditable after the fact. |
+| 15 | A symlinked or unwritable startup file is printed to, not written to | A symlink into a dotfiles repository means the file is generated; appending to it loses the edit at the next sync, silently. |
+| 16 | Completions are installed by running `morzer completion install`, never by the script itself | Where a shell reads completions from belongs in one implementation, versioned with the binary and tested. A completion written to the wrong directory produces no error — just a Tab key that does nothing — so a drifting second copy would never announce itself. |
+| 17 | Completions default on for an interactive install, off otherwise; failure warns and never fails the install | Somebody at a terminal wants the tool to work; a Dockerfile does not want writes into a build's home directory. And the binary being installed is the thing that was asked for. |
 
 ## 12. Phasing
 
@@ -324,10 +493,19 @@ running it.
   removal, the versioned URL, and the `docs-check` assertion that a documented
   release URL matches the goreleaser template. This is a bug fix and needs
   nothing else in this RFC.
-- **P2 — The script.** `install.sh`, `shellcheck` in CI, the container-lane test
-  with its failure cases, publication as a release asset.
-- **P3 — The site URL and the docs rewrite.** Gated on P2 and on the
-  documentation site serving a non-page file, which is a build question rather
-  than a design one.
-- **P4 — The nightly drift job.** Independent; last because it is the only piece
+- **P2 — The script: fetch, verify, install.** `install.sh` with detection
+  (§5.2), verification (§5.3) and the write (§5.6); `shellcheck` in CI; the
+  container-lane test with its failure cases; publication as a release asset.
+  Stops at "the binary is on the disk and `--print-only` explains everything".
+- **P3 — PATH.** The marked block, the per-shell file, `--no-modify-path`, the
+  symlink refusal, and the second-run test. Separable from P2 and the piece most
+  likely to want a round of opinions before it edits anyone's dotfiles.
+- **P4 — Completions.** One call to `morzer completion install`, its defaults and
+  its non-fatal failure. **Gated on [0019](0019-the-command-surface.md) P5**;
+  until that ships the script prints the invocation, which is already its
+  behaviour for an unrecognised shell.
+- **P5 — The site URL and the docs rewrite.** Publishing the script at the
+  `gh-pages` root beside `mike`'s version directories, re-published on every docs
+  release, plus the identical-copies check.
+- **P6 — The nightly drift job.** Independent; last because it is the only piece
   that depends on a release existing.
