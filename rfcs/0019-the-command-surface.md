@@ -298,7 +298,7 @@ fifty-nine skip. It dispatches on the value's type through a view registry in
 `internal/ui`:
 
 ```go
-// internal/ui: one view per report type, three renderings each.
+// internal/ui: one view per report type, two renderings each.
 type View[T any] struct {
     Rich  func(w io.Writer, t *theme.Theme, v T)
     Plain func(w io.Writer, v T)
@@ -306,7 +306,42 @@ type View[T any] struct {
     // envelope. A view that wanted to reshape it for JSON would be
     // declaring a second contract for the same data.
 }
+
+// Register binds a view to its report type. Called from each view file's
+// init, so a view that exists is a view that is registered -- there is no
+// list of registrations to forget to append to.
+func Register[T any](v View[T])
+
+// Lookup answers for a concrete type. The registry is keyed by
+// reflect.Type and written only during package initialisation, so it is
+// read-only by the time any command runs and needs no lock.
+func Lookup(reflect.Type) (any, bool)
 ```
+
+`app.render` looks the value's concrete type up and returns
+`domain.Internal(nil, "no view is registered for %T")` when there is none — a
+loud internal error rather than a silent fall-through to `%v`. That error is
+unreachable in a shipped binary because §6's registry test enumerates the report
+types and fails the build first; it exists because "unreachable" and "does
+nothing on the operator's terminal" must not be the same code path.
+
+**Dispatch is by type, and that settles §10's question.** The alternative — each
+command naming its view — puts the same string in two places and makes a
+mismatched pair compile. Type dispatch cannot be typo'd, and the cost it was
+suspected of (two report types sharing a shape) is answered by them being
+different named types, which they already are.
+
+**Two paths deliberately do not go through the boundary**, and naming them is
+what stops the rule being quietly broken later:
+
+- **`morzer completion <shell>`** writes cobra's generated script to stdout, raw.
+  It is not a report; it is a file being emitted through a pipe, and an envelope
+  or a style around it would produce a completion script that no shell can
+  source. Cobra owns that command and it lives outside `internal/cli`'s view
+  layer, which is also why `docs-check` already excludes it.
+- **`completion install --print-path`** prints one absolute path and a newline,
+  because its whole purpose is `$(morzer completion install --print-path)`. In
+  `--json` it is `{"path": "…"}` like any other single-value report.
 
 Three consequences worth stating because they are the point:
 
@@ -332,7 +367,8 @@ const MaxContentWidth = 100
 func ContentWidth() int { return min(TerminalWidth(), MaxContentWidth) }
 ```
 
-Every view lays out inside `ContentWidth()`. A 380-column terminal gets
+Wrapped text runs to `ContentWidth()` and no further, and nothing on a line is
+pushed further apart than the gutter allows. A 380-column terminal gets
 whitespace to the right of the content, not 207 spaces inside a row.
 
 This is not a new opinion; it is the one `RenderNotes` already holds, applied
@@ -343,12 +379,26 @@ dependency here, defaults to 80. [clig.dev](https://clig.dev/) says to check
 `COLUMNS` "for output that's dependent on screen size (e.g. tables)"; checking it
 and then *filling* it is the failure mode this fixes.
 
-Three refinements, because a flat cap is not enough on its own:
+**Measure and viewport are different numbers, and conflating them is what made
+the first draft of this section contradict itself.** The *viewport* is the
+terminal, whatever it is. The *measure* is 100 and governs two things: how far
+wrapped text runs before it breaks, and how far apart two pieces of content on
+one line may be. A table whose columns genuinely need 130 characters may use
+them — it is packed left, with a fixed two-space gutter, and simply ends where
+its content ends. What it may never do is *justify* to the viewport, which is
+precisely what `doctor` does today and where the 207 spaces come from.
+
+So the rule a test can check is not "no line exceeds 100" but the pair in §6: no
+*wrapped text* exceeds the measure, and no line contains a gap wider than the
+gutter allows. A 130-character table row at 380 columns is fine; the same row
+with its last column at column 370 is not.
+
+Two refinements on top of that:
 
 - **Wide terminals buy columns, not padding.** Above ~160 columns a table may add
   a column it would otherwise drop (a `LAST CHANGED` beside `LENGTH`), or a
-  listing may go two-up. The measure caps a *line*; it does not forbid using the
-  space for content.
+  listing may go two-up. Extra viewport becomes content or stays empty; it never
+  becomes distance between things that belong together.
 - **Narrow terminals degrade by dropping columns, in a declared order**, rather
   than wrapping mid-cell. Each table declares which columns are essential; below
   the width that fits them, the rest are dropped and a footer says so.
@@ -410,6 +460,13 @@ finding. Default output collapses a passing group to its heading:
   21 ok, 8 warning, 0 failed
 ```
 
+Group order is **first-seen**, which is what `ui.GroupChecks` already produces and
+what `internal/ui/tty/report_test.go` already asserts: categories appear in the
+order their first check ran, and a category's checks stay adjacent. The sample
+above is one report's order, not a fixed list — stating that is the difference
+between a normative contract and an example a later renderer can quietly
+contradict.
+
 A group with nothing to report is one line. A group with something shows only
 the checks that have something — failures and warnings always, in full, with
 their messages beneath them rather than beside them. `--verbose` expands
@@ -466,6 +523,16 @@ Generated from the cobra tree — the same walk `docs-check` already performs �
 a command cannot be added without appearing here, and a `Short` that drifts from
 the page it links to is a diff in a generated file rather than a discovery.
 
+"Every command" means exactly what `docs-check`'s walk already means, so the two
+cannot validate different sets: **every command in the tree at every depth**,
+excluding the cobra-generated `help` and `completion` (which this project does not
+document) and anything `Hidden` (`--root` is hidden for a reason and a generated
+page would undo that). Aliases are named on their command's own row rather than
+given rows of their own — `installation list` appears as an alias of `ls`, not as
+a second command. Every included row must resolve to a real anchor on a real
+page, which is the half that makes the table worth generating: a command with no
+reference target fails the build.
+
 `docs-check` gains one check: the generated index matches what the tree produces
 right now. This is the `just schemas` pattern the repository already uses for the
 JSON Schemas — generate, commit, fail the build on drift — rather than a second
@@ -484,11 +551,26 @@ morzer completion install [bash|zsh|fish]   # default: $SHELL
 morzer completion install --print-path      # where it would write, and nothing else
 ```
 
-Writes the generated script to the per-user location for the shell — the
-XDG-correct one where the shell defines it, the conventional one where it does
-not — creating the directory when it is missing, and prints the one line the
-operator must add to their rc file when the shell requires it. Idempotent:
-running it twice rewrites the same file.
+The resolver is a table, not a heuristic, because [0022](0022-bootstrapping-the-manager.md)'s
+installer depends on it landing where it says and a completion in the wrong
+directory fails silently:
+
+| Shell | Path | Extra step |
+| --- | --- | --- |
+| `bash` | `${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/morzer` | none, when `bash-completion` ≥ 2.8 is installed; the command says so when it is not, because bash without it sources nothing from that directory |
+| `zsh` | `${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions/_morzer` | prints the `fpath` line to add when that directory is not already on `fpath` |
+| `fish` | `${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions/morzer.fish` | none; fish reads it on the next start |
+
+Directories are created when missing. Writing is idempotent — the same path, the
+same bytes, every run — and `--print-path` prints exactly the path for a shell
+without writing anything, which is what makes the table testable against a fake
+`HOME` and what the installer uses to report where completions went.
+
+**A shell it does not know is not a failure.** No `$SHELL`, an unrecognised
+`$SHELL`, or a `$SHELL` that is a path to something exotic: the command prints
+the generated script to stdout with a one-line note naming the shells it can
+place, and exits 0. That keeps `morzer completion install > somewhere` useful and
+keeps the installer's optional step from failing an install.
 
 Never writes outside the user's home without `--system`, which writes the
 distribution's system-wide completion directory and needs the privileges to do
@@ -537,10 +619,19 @@ they are what the best-written commands here already do:
   view that quietly drops a column.
 - **Golden renders at four widths — 60, 80, 100 and 400 columns.** `COLUMNS` is
   already honoured, so this needs no pty. Two assertions no golden file makes on
-  its own: **no rendered line exceeds `ContentWidth()`**, and **no line contains a
-  run of more than N spaces** between content. The second is the test that would
-  have caught `doctor`'s 207-space gap, and it is the kind of defect a golden
-  file happily records forever.
+  its own:
+    - **No wrapped text exceeds the measure.** Measured on the visible width
+      after ANSI sequences are stripped and East Asian wide runes are counted as
+      two, which is what `lipgloss.Width` already does. Table rows are exempt by
+      construction: they are checked by the gutter rule instead.
+    - **No line contains an interior run of more than 8 spaces.** Eight because
+      the widest deliberate gutter in the components is 4 and doubling it leaves
+      room for alignment padding inside a cell; leading indentation is excluded
+      (it is structure, not distance), as is trailing space, and ANSI is stripped
+      first. `doctor` today produces runs of 20, 87 and 207 at 100, 200 and 380
+      columns, so the bound fails on the current renderer at every width — which
+      is how a regression test earns its place rather than freezing whatever the
+      code happens to emit.
 - **60 columns degrades by dropping declared-inessential columns**, never by
   wrapping a cell mid-word. Asserted per table.
 - **`doctor` collapses.** A report with everything passing renders one line per
@@ -611,10 +702,13 @@ they are what the best-written commands here already do:
   dispatch is invisible at the call site, which is either elegant or a trap
   depending on how many report types share a shape. Implementation may settle
   this; the constraint that must hold is that a report with no view cannot ship.
-- **Where does `--quiet` sit?** Today it collapses into plain plus suppression at
-  `App.finish`. If a view can be asked for "the one line", quiet becomes a mode
-  rather than a filter — better, but it is a fourth rendering per type and may
-  not earn it.
+- **Nothing about `--quiet`, which the first draft left open here.** It stays what
+  it is: plain plus suppression at `App.finish`, applied *after* a view has
+  rendered, never a fourth rendering per type. A quiet mode that asked each view
+  for "the one line" would be a third contract for every report and a second
+  place for each to disagree with itself, to buy an output that
+  `2>/dev/null` already produces. §6's mode-fidelity tests gain the quiet case so
+  the current semantics are pinned before the commands move.
 
 ## 11. Decisions
 
@@ -637,6 +731,15 @@ they are what the best-written commands here already do:
 | 15 | `doctor` collapses passing groups by default; `--verbose` expands | Twenty-nine rows, twenty-one of them "fine", buries the eight that are not. clig.dev: keep success output brief, put the rest behind verbose. |
 | 16 | Colour has roles and views may not invent one, and no state is carried by colour alone | The theme already defines the roles. Symbol plus colour plus a word in the summary is what makes a monochrome terminal, a colour-blind reader and a piped log all get the same information. |
 | 17 | Box-drawing and common symbols only — no Nerd Font or powerline glyphs | They render as tofu on a stock machine, and stock Linux hosts are exactly what this program runs on. |
+| 18 | Measure (100) and viewport (the terminal) are separate numbers | The cap governs wrapped text and the gap between things on one line, not the total width of a table that legitimately needs more. Conflating them made the first draft of §5.3 contradict its own wide-terminal rule. |
+| 19 | The gap bound is 8 visible spaces, interior only, ANSI stripped | A number a test can apply. It fails on `doctor` at every width today, which is what makes it a regression test rather than a snapshot of current behaviour. |
+| 20 | `app.render` dispatches on the value's concrete type; views register themselves in `init` | A command naming its view puts the same string in two places and lets a mismatched pair compile. There is no registration list to forget to append to. |
+| 21 | An unregistered report type is a loud internal error, and a build-time test makes it unreachable | "Unreachable" and "prints nothing on the operator's terminal" must not be the same code path. |
+| 22 | `--quiet` stays a post-render suppression, never a fourth rendering | A third contract per report, and a second place for each to disagree with itself, to buy what `2>/dev/null` already does. |
+| 23 | `completion <shell>` and `completion install --print-path` are named non-report paths | A completion script wrapped in an envelope is one no shell can source, and `--print-path` exists to be substituted into a command line. Naming the exceptions is what stops the boundary being broken by a later reading of it. |
+| 24 | Completion paths are a documented table, and an unknown shell prints the script rather than failing | 0022's installer depends on the placement, and a completion written to the wrong directory raises no error at all. Failing on an unknown shell would fail an install over an optional convenience. |
+| 25 | `doctor`'s group order is first-seen, stated as normative | It is already what `ui.GroupChecks` produces and what `report_test.go` asserts; leaving the sample to imply a fixed list invites a renderer that quietly contradicts it. |
+| 26 | The generated index covers every command at every depth except cobra's `help`/`completion` and anything hidden; aliases ride their command's row; every row must resolve to a real anchor | It must validate the same set `docs-check` walks, or the two gates disagree about what "documented" means. |
 
 ## 12. Phasing
 
