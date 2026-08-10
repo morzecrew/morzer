@@ -251,6 +251,11 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		changed = append(changed, name)
 	}
 
+	// This pass exists to refuse an unknown name, to reject a value before
+	// anything is locked, and to answer a plan. It is *not* the authority on
+	// what changed: a plan is the only caller that can be, because it takes
+	// no lock and so has nothing fresher to compare against. The real run
+	// recomputes the list under the lock.
 	sort.Strings(changed)
 
 	if opts.DryRun {
@@ -279,14 +284,35 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		if err != nil {
 			return err
 		}
+		// Recomputed against the reloaded state, and it is this answer
+		// that decides both the write and the summary. The pre-lock list
+		// was computed from a copy another operation may have changed
+		// since: `update.check=false` that read false, was set to true
+		// by somebody else, and is being set back to false here would
+		// look like "no change", skip the write, and leave the operator
+		// told their value was already in place while the file says
+		// otherwise.
+		changed = changed[:0]
 		for _, name := range opts.Unset {
-			settings[name].Clear(&fresh)
-		}
-		for _, name := range sortedSettingNames(opts.Set) {
-			if err := settings[name].Apply(ctx, d, &fresh, opts.Set[name]); err != nil {
-				return err
+			s := settings[name]
+			before := s.Read(fresh)
+			s.Clear(&fresh)
+			if s.Read(fresh) != before {
+				changed = append(changed, name)
 			}
 		}
+		for _, name := range sortedSettingNames(opts.Set) {
+			s := settings[name]
+			before := s.Read(fresh)
+			if err := s.Apply(ctx, d, &fresh, opts.Set[name]); err != nil {
+				return err
+			}
+			if s.Read(fresh) != before {
+				changed = append(changed, name)
+			}
+		}
+		sort.Strings(changed)
+
 		if len(changed) > 0 {
 			if err := d.saveInstallation(ctx, fresh); err != nil {
 				return err

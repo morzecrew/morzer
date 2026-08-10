@@ -364,12 +364,16 @@ func TestAPlanStagesNothing(t *testing.T) {
 // The fetch loaded the installation for its signature policy and ignored the
 // error, so a state file that could not be parsed left `Expectation` zeroed:
 // signatures not required, no pinned keys, and a bundle admitted on its content
-// digest alone -- which any registry that served those bytes can satisfy. The
-// bundle then sits in the release store, one `update --to` away from being
-// installed by an operator who never saw the error.
+// digest alone -- which any registry that served those bytes can satisfy.
 //
 // Absence is the one policy-free case, and it is asked about separately. This
 // machine has a policy; what it does not have is a readable copy of it.
+//
+// What is asserted here is the refusal and that nothing was written, not that a
+// signature was checked: the suite wires the checksum verifier, which answers
+// only "is this the artifact I was told to expect". That the policy reaches the
+// verifier at all is asserted separately, against an expectation this one cannot
+// see.
 func TestAnUnreadableInstallationCannotSoftenTheSignaturePolicy(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -388,7 +392,8 @@ func TestAnUnreadableInstallationCannotSoftenTheSignaturePolicy(t *testing.T) {
 		[]byte("{\"schema_version\": 5, \"product\":\n"), 0o640))
 
 	_, _, err = ops.FetchIntoStore(ctx, h.Deps, ref, resolved)
-	require.Error(t, err, "an unsigned bundle was accepted by a machine that requires signatures")
+	require.Error(t, err,
+		"a machine that cannot read its own policy verified the bundle anyway")
 
 	// The refusal is about the state rather than about the signature: the
 	// manager cannot say the bundle failed a policy it was unable to read.
@@ -397,4 +402,93 @@ func TestAnUnreadableInstallationCannotSoftenTheSignaturePolicy(t *testing.T) {
 	// And nothing was left behind for `update --to` to find.
 	_, err = os.Stat(h.Paths.ReleaseDir(resolved.Version.String()))
 	assert.True(t, os.IsNotExist(err), "the unverified bundle stayed in the release store")
+}
+
+// checkingVerifier records the expectation it was handed and can refuse.
+//
+// The suite wires the checksum verifier, which answers "is this the artifact I
+// was told to expect" and deliberately says nothing about signatures -- the
+// chain verifier answers that. So a test about *policy reaching the verifier*
+// has to observe the expectation rather than the outcome, or it would pass on an
+// adapter that never looks at the field.
+type checkingVerifier struct {
+	inner ports.Verifier
+	seen  []ports.Expectation
+	err   error
+}
+
+func (v *checkingVerifier) Name() string { return "checking" }
+
+func (v *checkingVerifier) Verify(
+	ctx context.Context, bundle ports.BundlePath, expect ports.Expectation,
+) error {
+	v.seen = append(v.seen, expect)
+	if v.err != nil {
+		return v.err
+	}
+	return v.inner.Verify(ctx, bundle, expect)
+}
+
+// TestAStoredBundleIsCheckedAgainstTodaysPolicy.
+//
+// The store is not a decision that was made once. A bundle can arrive before an
+// installation exists, or before `policy.require_signature` is turned on, and
+// the early return for "this version is already here" compared digests and
+// nothing else -- so the machine reported it as present and usable under a
+// policy it would not pass.
+//
+// `update` would still refuse it at verify-bundle, which is what keeps this out
+// of the "an unsigned release gets installed" class. What it produces instead is
+// a machine that stages the release, offers it in `status`, prints its notes for
+// `update --check`, and then aborts the update the operator was told to run.
+//
+// The release stays in the store. It predates the rule that now rejects it, and
+// removing an operator's bundle because a policy tightened is their call.
+func TestAStoredBundleIsCheckedAgainstTodaysPolicy(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	h.install()
+
+	verifier := &checkingVerifier{inner: h.Deps.Verifier}
+	h.Deps.Verifier = verifier
+
+	ref, err := ports.ParseRef(filepath.Join(testBundlePath(t), "..", "bundle-1.3.0"))
+	require.NoError(t, err)
+	resolved, err := h.Deps.Source.Resolve(ctx, ref)
+	require.NoError(t, err)
+
+	// Fetched under no signature policy, which is this machine's state
+	// today.
+	_, present, err := ops.FetchIntoStore(ctx, h.Deps, ref, resolved)
+	require.NoError(t, err)
+	require.False(t, present)
+	require.Len(t, verifier.seen, 1)
+	require.False(t, verifier.seen[0].Required)
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Policy.RequireSignature = true
+	inst.Policy.SigningKeys = []string{"RWQfakekey"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	// The second fetch finds it present. It must still be put to the
+	// verifier, and with the policy in force now rather than the one that
+	// was in force when it arrived.
+	_, present, err = ops.FetchIntoStore(ctx, h.Deps, ref, resolved)
+	require.NoError(t, err)
+	assert.True(t, present)
+	require.Len(t, verifier.seen, 2,
+		"a bundle already in the store was returned without being verified at all")
+	assert.True(t, verifier.seen[1].Required,
+		"the stored bundle was checked against a policy this machine no longer has")
+	assert.Equal(t, inst.Policy.SigningKeys, verifier.seen[1].PublicKeys)
+
+	// And a refusal is a refusal: the release is reported as unusable and
+	// left where it is.
+	verifier.err = domain.ValidationError(nil, "no acceptable signature")
+	_, _, err = ops.FetchIntoStore(ctx, h.Deps, ref, resolved)
+	require.Error(t, err)
+	assert.DirExists(t, h.Paths.ReleaseDir(resolved.Version.String()),
+		"the refusal deleted a release the operator fetched under the old policy")
 }

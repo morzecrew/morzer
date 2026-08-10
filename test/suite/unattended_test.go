@@ -750,3 +750,74 @@ func TestTheTickSaysWhatItDid(t *testing.T) {
 	}
 	assert.Contains(t, applied.Summary(), "updated demo")
 }
+
+// hookedLocker runs one function at the moment the lock is taken.
+//
+// It stands in for the other operation: something that finished writing
+// installation state after this command read it and before this command locked.
+// A test that arranged the race with goroutines would be asserting the same
+// thing intermittently.
+type hookedLocker struct {
+	inner  ports.Locker
+	before func()
+}
+
+func (l *hookedLocker) Acquire(
+	ctx context.Context, name string, opts ports.LockOptions,
+) (func() error, error) {
+	if l.before != nil {
+		f := l.before
+		l.before = nil
+		f()
+	}
+	return l.inner.Acquire(ctx, name, opts)
+}
+
+func (l *hookedLocker) Owner(ctx context.Context, name string) (ports.LockOwner, bool, error) {
+	return l.inner.Owner(ctx, name)
+}
+
+// TestWhatChangedIsDecidedUnderTheLock.
+//
+// The pre-lock pass exists to refuse an unknown name and to answer a plan. It
+// cannot decide what changed, because it read a copy: another operation writing
+// between that read and the lock makes its answer stale, and a run that skipped
+// the write on the strength of it would report "every value already matches"
+// while the file said otherwise -- the silent lost update the lock exists to
+// prevent, arriving through the code that takes it.
+//
+// Reachable because a settings run that changes nothing now still enters the
+// lock to reconcile units, which is the fix for a failed reconciliation being
+// unretryable. That fix is what made the stale list load-bearing.
+func TestWhatChangedIsDecidedUnderTheLock(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	ctx := context.Background()
+
+	_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+		Set: map[string]string{"update.check": "true"},
+	})
+	require.NoError(t, err)
+
+	// Somebody else turns it off between this command's read and its lock.
+	h.Deps.Locker = &hookedLocker{inner: h.Deps.Locker, before: func() {
+		inst, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		inst.Update.Check = false
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	}}
+
+	// The same value the machine already had when this command started, so
+	// the pre-lock pass sees nothing to do.
+	res, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+		Set: map[string]string{"update.check": "true"},
+	})
+	require.NoError(t, err)
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.True(t, inst.Update.Check,
+		"the value the operator asked for was applied in memory and never written")
+	assert.Contains(t, res.Summary, "update.check",
+		"the summary reported no change for a change it made")
+}

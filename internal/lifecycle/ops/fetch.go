@@ -28,6 +28,28 @@ func FetchIntoStore(
 ) (rel domain.Release, alreadyPresent bool, err error) {
 	dest := d.Paths.ReleaseDir(resolved.Version.String())
 
+	// The policy is read before anything is downloaded *or* accepted from
+	// the store, and absence is the only policy-free case -- asked about on
+	// its own terms rather than inferred from a load that failed. A state
+	// file that exists and cannot be parsed says nothing about whether
+	// signatures are required, and treating "cannot tell" as "not required"
+	// is how a machine with a pinned key ends up admitting a bundle on its
+	// content digest alone, which any registry that served those bytes can
+	// satisfy.
+	expect := ports.Expectation{Digest: resolved.Digest}
+	exists, err := d.State.InstallationExists(ctx)
+	if err != nil {
+		return domain.Release{}, false, err
+	}
+	if exists {
+		inst, err := d.State.LoadInstallation(ctx)
+		if err != nil {
+			return domain.Release{}, false, err
+		}
+		expect.Required = inst.Policy.RequireSignature
+		expect.PublicKeys = inst.Policy.SigningKeys
+	}
+
 	// A version already present with a different digest is a conflict, not
 	// something to overwrite: two different bundles claiming one version is
 	// exactly what content-addressed identity exists to catch.
@@ -41,31 +63,22 @@ func FetchIntoStore(
 					"than republishing one",
 					shortDigest(existing.Digest), shortDigest(resolved.Digest))
 		}
-		return existing, true, nil
-	}
-
-	// The policy is read before anything is downloaded, and absence is the
-	// only policy-free case -- asked about on its own terms rather than
-	// inferred from a load that failed. A state file that exists and cannot
-	// be parsed says nothing about whether signatures are required, and
-	// treating "cannot tell" as "not required" is how a machine with a
-	// pinned key ends up admitting a bundle on its content digest alone,
-	// which any registry that served those bytes can satisfy.
-	//
-	// Before rather than after the fetch, so a machine that cannot tell what
-	// it requires does not first write the thing it could not have checked.
-	expect := ports.Expectation{Digest: resolved.Digest}
-	exists, err := d.State.InstallationExists(ctx)
-	if err != nil {
-		return domain.Release{}, false, err
-	}
-	if exists {
-		inst, err := d.State.LoadInstallation(ctx)
-		if err != nil {
+		// Checked against *today's* policy, not against whatever was in
+		// force when it arrived. A bundle fetched before an installation
+		// existed, or before `require_signature` was turned on, is
+		// otherwise reported as present and usable by a machine that
+		// would now refuse it -- which is how a poll comes to stage a
+		// release, `status` to offer it, and `update --check` to print
+		// its notes for something the update itself aborts on.
+		//
+		// Not removed on failure, unlike a bundle this call fetched. The
+		// store entry predates the policy that now rejects it; deleting
+		// an operator's release because a rule tightened is a decision
+		// they get to make.
+		if err := d.Verifier.Verify(ctx, ports.BundlePath(dest), expect); err != nil {
 			return domain.Release{}, false, err
 		}
-		expect.Required = inst.Policy.RequireSignature
-		expect.PublicKeys = inst.Policy.SigningKeys
+		return existing, true, nil
 	}
 
 	if _, err := d.Source.Fetch(ctx, ref, dest); err != nil {
