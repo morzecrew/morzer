@@ -38,8 +38,9 @@ Four commands, all read-mostly, all over machinery that already exists:
 - **`morzer stats`** — CPU, memory, and I/O per container, once or `--watch`.
   The one place a new port method is needed.
 - **`morzer exec <service> -- <argv>`** — a command inside a running service,
-  with a shell as the obvious special case, journalled like every other thing an
-  operator does to a machine.
+  journalled with a redacted argv like every other thing an operator does to a
+  machine. Not an interactive shell: the port returns a buffered result with no
+  TTY, and §5.4 says what that costs and where it would be fixed.
 
 ## 2. Motivation
 
@@ -155,10 +156,24 @@ Resolves the current release, builds the runtime config the same way `apply`
 does, and streams `Runtime.Logs` to stdout. Defaults: `--tail 100` when not
 following, everything when following, all services when none are named.
 
+**Scope is the Compose project, not the manifest's service list.** A vendor's own
+Compose file may start a sidecar the manifest never names, and an operator
+debugging wants what is *there*. The consequence is stated rather than avoided:
+shell completion for the service argument offers the project's containers, which
+is a superset of what the manifest declares.
+
+**Option parsing, so it is not decided three times:** `--since` takes either a
+duration (`10m`, `2h`, Go's `ParseDuration`) anchored at the moment the command
+starts, or an RFC 3339 timestamp; a timestamp without a zone is refused rather
+than assumed local, because "which midnight" is exactly the question a log query
+must not guess. `--tail` with `--follow` is valid and means the backlog to print
+before following. An unparseable value is a usage error naming both accepted
+forms.
+
 Three things this must get right, because they are where a log command is
 usually wrong:
 
-**Redaction is on by default.** Container logs are vendor-controlled output that
+**Redaction is on by default, and it is stateful across reads.** Container logs are vendor-controlled output that
 may contain what the vendor logged — including a connection string the manager
 itself wrote into a config file. The redactor already exists and already knows
 this installation's secret values; the stream passes through it line by line.
@@ -173,6 +188,15 @@ destination is a chat channel; here it must reach the operator's own terminal,
 which is the machine's console. The redactor is the compromise both directions
 share.
 
+A line-by-line filter over a stream is not enough, because a secret can straddle
+a read boundary and neither half matches. The filter therefore buffers to a line
+boundary before matching, with a bound (64 KiB) on how much it will hold for a
+line that never ends — and when the bound is hit it **fails closed**: the
+oversized fragment is dropped with a marker rather than emitted unmatched. A
+redactor that gave up and passed the bytes through would be one that leaks
+exactly when a service prints something enormous, which is not a coincidence
+worth risking.
+
 **Following is a pipe, and a pipe ends.** SIGINT closes the reader and exits 0 —
 an operator pressing Ctrl-C has finished reading, not failed. A runtime that
 dies mid-stream is a non-zero exit with the runtime's own message.
@@ -182,8 +206,19 @@ dies mid-stream is a non-zero exit with the runtime's own message.
 
 `--json` streams one JSON object per line rather than the single-envelope
 contract every other command uses, because a stream has no end at which to write
-an envelope. This is stated as an explicit exception in the output-modes
-reference, and it is the only one.
+an envelope. This is the only exception, and it is a contract of its own:
+
+```json
+{"ts":"2026-08-10T09:12:33Z","service":"app","container":"demo-app-1","line":"…"}
+```
+
+Redaction applies exactly as it does to the human stream — a `--json` consumer is
+not more trusted than a terminal. A diagnostic the manager itself needs to emit
+(the runtime died, the stream ended early) goes to **stderr** as an ordinary
+error, never as a record in the stream: a consumer parsing lines must not have to
+distinguish the vendor's output from the manager's opinion about it. The exit
+code is the contract for "did this end cleanly"; `0` on SIGINT, non-zero when the
+runtime failed.
 
 ### 5.2 `morzer ps`
 
@@ -215,7 +250,15 @@ The one genuinely new capability, and therefore the one new port method:
 Stats(ctx context.Context, cfg RuntimeConfig) ([]ServiceStats, error)
 
 type ServiceStats struct {
-    Name        string  `json:"name"`
+    // Service is the Compose service. Container and Replica identify which
+    // one, because `docker stats` reports containers and a scaled service
+    // has several -- a row keyed by service alone would silently show one
+    // replica's numbers under the service's name, or three rows that look
+    // like duplicates.
+    Service   string `json:"service"`
+    Container string `json:"container"`
+    Replica   int    `json:"replica,omitempty"`
+
     CPUPercent  float64 `json:"cpu_percent"`
     MemoryBytes int64   `json:"memory_bytes"`
     MemoryLimit int64   `json:"memory_limit,omitempty"`
@@ -226,13 +269,28 @@ type ServiceStats struct {
 }
 ```
 
+**One row per container, never an aggregate.** Summing is the caller's decision
+and the sums are not all meaningful: memory adds, CPU percentages add, and a
+memory *limit* does not. `morzer stats` prints one row per container and a
+`total` line for the two that add; `--json` emits the rows and no total, because
+a machine reader can add and cannot un-add.
+
 The Compose adapter implements it with `docker stats --no-stream --format json`
 scoped to the project's containers. `--no-stream` matters: the streaming form
 emits a first sample of zeros before its first interval, and a `stats` that
 printed zeros for CPU would be reporting an idle machine that is on fire.
 
-`--watch` re-samples on an interval and redraws. In plain mode it appends a block
-per sample instead of redrawing, because a log that rewrites itself is not a log.
+`--watch[=DURATION]` re-samples on an interval and redraws: default 2s, floor 1s
+(a lower one measures the sampler), no ceiling beyond the command's own timeout.
+In plain mode it appends a block per sample instead of redrawing, because a log
+that rewrites itself is not a log. A failed sample prints the error and keeps
+watching — a daemon hiccup must not end a watch an operator is staring at — and
+two consecutive failures exit non-zero. SIGINT exits 0, as with `logs --follow`.
+
+`--watch` with `--json` is refused: the single-envelope contract cannot describe
+a stream, and `logs` is the one exception this design is willing to carry. The
+scripted form is a loop around single-shot `stats --json`, which is also the form
+that composes with `sleep`.
 
 A runtime that cannot report statistics returns `domain.ErrUnsupported` and the
 command says so by name — the same shape `ChannelPeeker` uses in
@@ -243,24 +301,42 @@ table that looks like an idle deployment.
 
 ```text
 morzer exec <service> -- <command> [args…]
-morzer exec <service>                    # the service's shell, when it has one
 ```
 
 Wraps `Runtime.Exec`, with the release's runtime config, and:
 
+- **One form, and it names a command.** There is no bare
+  `morzer exec <service>` opening a shell, because the port cannot deliver one:
+  the Compose adapter runs `exec --no-TTY <service>` and returns a buffered
+  `ExitResult` ([`compose.go:346`](../internal/adapters/runtime/compose/compose.go)),
+  so there is no stdin, no TTY and no streaming. A command that printed a
+  prompt nobody could answer would be worse than not having it. An interactive
+  session needs `Exec` to grow a TTY and stdin lifecycle, which is P4 below and
+  a port change this RFC does not smuggle in.
+- **Everything after `--` is the argv inside the container, and nothing else.**
+  The adapter appends it *after* the service name, so a `--user` written there
+  reaches the process rather than `docker compose exec`. Runtime-level options
+  therefore need typed fields on `RunOptions`-style options that the adapter
+  places before the service name; none is added here, which is the same answer
+  as before by a correct route.
 - **The exit code is the command's.** An operator's `psql -c 'select 1'` that
   fails must fail the invocation, so `ExitResult.ExitCode` becomes the process's
   exit status rather than being flattened into "the manager succeeded".
-- **It is journalled.** Not because it mutates — it might not — but because it is
-  the one command that runs arbitrary code inside the deployment, and the journal
-  is what tells a later reader that a human was in there at 03:14. The argv is
-  recorded; the output is not.
+- **It is journalled, and the argv is redacted before it is written.** The
+  journal is what tells a later reader that a human was in there at 03:14. What
+  it must not become is a store of the credentials they typed:
+  `morzer exec db -- psql 'postgresql://u:p@host/db'` puts a password in an argv,
+  and `/proc` exposure is a separate problem from a file this manager writes and
+  keeps. The existing `logging.Redactor` — which already holds this
+  installation's secret values — runs over the argv, and a token that is not a
+  known secret is beyond what any redactor can do, which the docs say rather
+  than implying the journal is safe to publish. Output is never recorded.
 - **It refuses a service that is not running**, naming the state, rather than
   letting the runtime produce its own error about a container that does not
   exist.
-- **No `--user root` convenience.** The runtime's own flags can be passed after
-  `--`; a manager flag that made privilege escalation a keystroke would be a
-  manager opinion about something it cannot audit.
+- **No `--user root` convenience.** A manager flag that made privilege
+  escalation a keystroke would be a manager opinion about something it cannot
+  audit.
 
 **Alternatives considered.** *Leave `exec` out entirely and document `docker
 compose exec`.* Rejected: it is the same knowledge problem as logs — project
@@ -296,6 +372,13 @@ break.
   a hung `morzer logs` in someone's terminal.
 - **A runtime with no `Stats`** produces the named refusal, not an empty table.
 - **`exec` propagates the exit code**, including 0, 1 and 127.
+- **A secret split across two reads is still redacted.** The fake runtime emits
+  the value in two writes with the boundary inside it; stdout must not contain
+  it. This is the test the line-by-line implementation passes only by accident.
+- **An unterminated line past the bound is dropped, not emitted.** Fail-closed,
+  asserted rather than assumed.
+- **`exec`'s journal entry contains no known secret value**, with one registered
+  and passed in the argv.
 - **`exec` on a stopped service refuses**, naming the state.
 - **`exec` is journalled with its argv** and without its output.
 - **Container lane:** `logs` against a real Compose project returns lines the
@@ -346,16 +429,18 @@ break.
 
 ## 10. Unresolved questions
 
-- **Does `logs` follow the release's declared services or every container in the
-  project?** The manifest names services; a sidecar started by the vendor's own
-  Compose file is in the project but not in the manifest. Probably everything in
-  the project, because an operator debugging wants what is there — but that makes
-  service-name completion a superset of what the manifest declares.
-- **Does redaction survive a partial line?** The stream is line-oriented, but a
-  secret split across a buffer boundary would slip through a naive
-  line-by-line filter. The implementation must buffer to a line boundary before
-  matching; whether that needs a bound (a service printing one enormous line) is
-  a question for the implementation, and the answer is probably yes.
+Both of the questions this section opened with — the service scope for `logs` and
+whether redaction survives a partial line — are now decided in §5.1 (the project,
+not the manifest) and §5.6 (buffered to a line boundary, bounded at 64 KiB, fails
+closed). What remains:
+
+- **Does `stats` need a `--service` filter?** One row per container is right for a
+  small deployment and noisy for a scaled one. A filter is trivial to add and
+  trivial to add *later*; nothing in the design depends on the answer.
+- **Should `exec`'s TTY support (P4) reuse `RunOneShot`'s options or grow its
+  own?** Both carry "run something in a container"; only one needs a stdin
+  lifecycle. This is a port-shape question that P4 must answer before it starts,
+  not before this RFC is accepted.
 
 ## 11. Decisions
 
@@ -369,7 +454,14 @@ break.
 | 6 | `exec` is journalled with its argv, never its output | The journal's job is that a human was in there and what they asked for. Recording output would put arbitrary vendor data — and whatever the operator's command printed — into the manager's own record. |
 | 7 | `exec` propagates the command's exit code | A manager that returned 0 for a failed command inside the container would make `morzer exec` unusable in a script. |
 | 8 | No `restart`, no `port-forward`, no log storage | Each is either `apply`'s job, a different security posture, or the daemon's. Named so the additions are decisions rather than drift. |
-| 9 | `logs --json` streams one object per line; the single-envelope rule gains exactly one documented exception | A stream has no end at which to write an envelope. One exception written down beats every future streaming command inventing its own. |
+| 9 | `logs --json` streams one object per line; the single-envelope rule gains exactly one documented exception | A stream has no end at which to write an envelope. One exception written down beats every future streaming command inventing its own. Manager diagnostics go to stderr, never into the stream, so a consumer never has to tell the vendor's output from the manager's opinion of it. |
+| 10 | `stats --watch` is refused with `--json`; the scripted form is a loop around single-shot `--json` | The exception in decision 9 is one this design will carry once. A second streaming contract for a table that redraws buys nothing `sleep` does not. |
+| 11 | `stats` reports one row per container with service, container and replica; never an aggregate | `docker stats` is per-container, so a scaled service is several rows. Keying on the service alone would print one replica's numbers under the service's name. Summing is the caller's decision and not all the sums mean anything — memory adds, a memory limit does not. |
+| 12 | `exec` has one form and it names a command; no bare `morzer exec <service>` shell | The port cannot deliver one: the adapter runs `exec --no-TTY` and returns a buffered result. A prompt nobody can answer is worse than no prompt, and a TTY is a port change (P4) rather than something to smuggle into a command's help text. |
+| 13 | Everything after `--` is the container argv; runtime options need typed fields, and none is added | Verified against the adapter: argv is appended *after* the service name, so a `--user` written there reaches the process, not `docker compose exec`. The first draft of this RFC claimed otherwise. |
+| 14 | `exec`'s argv is redacted before it reaches the journal | A password in an argv is the ordinary case (`psql 'postgresql://u:p@host/db'`), and the journal is a file this manager writes and keeps. The redactor already holds the installation's secrets; what it cannot catch is said plainly rather than implied away. |
+| 15 | Stream redaction buffers to a line boundary, bounded at 64 KiB, and fails closed | A secret straddling a read boundary matches neither half. A filter that gave up and passed the bytes through would leak precisely when a service prints something enormous. |
+| 16 | `--since` takes a duration or an RFC 3339 timestamp; a timestamp with no zone is refused | "Which midnight" is exactly what a log query must not guess. |
 
 ## 12. Phasing
 
@@ -380,4 +472,10 @@ break.
   refusal. Separable and the one with the security discussion, so it lands on its
   own.
 - **P3 — `stats`.** Port method, Compose implementation, `--watch`, the
-  unsupported refusal, and the container-lane test that proves the flags are real.
+  unsupported refusal, and the container-lane test that proves the flags are
+  real.
+- **P4 — An interactive `exec`, if it earns it.** `Runtime.Exec` grows a TTY and
+  a stdin lifecycle, the adapter stops hardcoding `--no-TTY`, and
+  `morzer exec <service>` gains its shell form. Deliberately last and
+  deliberately conditional: it is the only piece here that changes a port, and
+  three phases of use will say whether anyone wants it.
