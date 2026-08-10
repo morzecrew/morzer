@@ -174,6 +174,10 @@ install.sh [--version X.Y.Z] [--dir PATH] [--digest sha256:…]
   --require-signature    Refuse to install when minisign is absent or the
                          signature does not verify.
   --no-verify-signature  Skip the signature check. Prints what it is skipping.
+                         Refused together with --require-signature, before
+                         anything is downloaded: letting argument order decide
+                         whether verification happens is how a runbook that
+                         inherited both silently stops verifying.
   --no-modify-path       Never edit a shell startup file; print what to add.
   --completions          Install shell completions even when not interactive.
   --no-completions       Do not install completions.
@@ -199,7 +203,7 @@ that nobody maintains.
 | Architecture | `uname -m` | `x86_64`/`amd64` → `amd64`; `aarch64`/`arm64` → `arm64`. Anything else — `armv7l`, `riscv64`, `i686` — is refused by name rather than guessed. Guessing here downloads an archive that extracts to a binary the kernel will not exec, which fails several steps later with a worse message. |
 | Kernel | `uname -r` | Recorded in the summary; warned below the floor a Go 1.25 static binary needs. Not otherwise acted on: Docker's kernel requirements are `doctor`'s business, not the installer's. |
 | libc | not checked | `CGO_ENABLED=0`, so there is no dynamic dependency to check. Stated because its absence otherwise looks like an oversight. |
-| Shell | `$SHELL`, overridable with `--shell` | Chooses the startup file for PATH (§5.4) and the argument for completions (§5.5). An unrecognised shell is not fatal: the binary still installs, and the script prints what to add by hand. |
+| Shell | `basename "$SHELL"`, overridable with `--shell` | `$SHELL` holds a path (`/bin/bash`, `/usr/bin/fish`), and every consumer of this wants the name: the startup file for PATH (§5.4) and the `--shell` argument for completions (§5.5), which accepts `bash\|zsh\|fish` and nothing else. Normalised once, here. An unrecognised shell is not fatal: the binary still installs, and the script prints what to add by hand. |
 | `$PATH` | string match against the resolved prefix | Decides whether §5.4 has anything to do at all. |
 | An existing `morzer` | `command -v morzer` | Warns when the binary that will answer to `morzer` is **not** the one just installed — the ordinary trap of installing to `~/.local/bin` while `/usr/local/bin/morzer` exists and wins. Names both paths and their versions. |
 | Interactivity | stdout is a terminal | Decides the completions default (§5.5) and nothing else. |
@@ -242,11 +246,24 @@ anything.
 The rule is: **the smallest edit that survives a new shell, in a marked block, in
 one file, printed before it is made.**
 
+The block is generated from the **resolved prefix**, not from a constant, and in
+the syntax of the shell whose file it is going into. POSIX shells get:
+
 ```sh
 # >>> morzer >>>
 # Added by morzer's install.sh. Remove this block to undo it.
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
+case ":$PATH:" in *":<prefix>:"*) ;; *) PATH="<prefix>:$PATH" ;; esac
 export PATH
+# <<< morzer <<<
+```
+
+and fish gets fish, because a `case … esac` in a `.fish` file is a syntax error
+at every subsequent shell start:
+
+```fish
+# >>> morzer >>>
+# Added by morzer's install.sh. Remove this file to undo it.
+fish_add_path <prefix>
 # <<< morzer <<<
 ```
 
@@ -254,10 +271,17 @@ Where it goes, by shell:
 
 | Shell | File | Why that one |
 | --- | --- | --- |
-| `fish` | `~/.config/fish/conf.d/morzer.fish` | A drop-in directory: no existing file is edited, and removing the file is a complete uninstall. Where a shell offers this, it is strictly better than appending. |
-| `bash` | `~/.bashrc` | The file a distribution's `~/.profile` sources and the one an interactive shell reads. `~/.bash_profile` is the login-shell file and editing whichever exists is how rustup ends up touching four files. |
-| `zsh` | `~/.zshrc` | Same reasoning; `~/.zshenv` is read by non-interactive shells too and is the wrong place for an interactive convenience. |
+| `fish` | `~/.config/fish/conf.d/morzer.fish` | A drop-in directory: no existing file is edited, and removing the file is a complete uninstall. Where a shell offers this it is strictly better than appending, and `fish_add_path` is idempotent on its own. |
+| `bash` | `~/.profile`, and `~/.bashrc` when it exists | Both, and this is the one place the script writes twice. `~/.profile` is read by a **login** shell — the ssh session, the `su -`, the desktop session that exports the environment — and `~/.bashrc` by an interactive non-login one. Neither covers the other: bash reads `~/.bash_profile` *or* `~/.bash_login` *or* `~/.profile` and stops at the first, and Debian's stock `~/.profile` is what sources `~/.bashrc`. A single file therefore leaves one of the two cases without the prefix on `PATH`, which is the failure that looks like "the installer didn't work". Where `~/.bash_profile` or `~/.bash_login` already exists, it takes `~/.profile`'s place, because bash will not read `~/.profile` at all. |
+| `zsh` | `~/.zshrc`, and `~/.zprofile` when it exists | Same asymmetry: `~/.zprofile` is the login file and `~/.zshrc` the interactive one. `~/.zshenv` is read by *every* zsh including non-interactive ones and is deliberately not used — a `PATH` prepend there affects scripts that never asked for it. |
 | anything else | nothing | Prints the block and the sentence "add this to your shell's startup file". |
+
+The guarantee, stated at the width it actually holds: **a new login shell and a
+new interactive shell both find the binary.** A non-interactive non-login shell —
+`ssh host morzer status`, a cron job — reads none of these files on any shell, so
+it needs an absolute path or a prefix that is already on the system `PATH`. That
+is a property of shells, not of this script, and saying so is better than a
+guarantee that quietly excludes the automation case.
 
 And the rules around it:
 
@@ -268,8 +292,13 @@ And the rules around it:
   whose dotfiles are managed elsewhere. So does an unwritable or symlinked
   startup file — a symlink into a dotfiles repository is a signal that the file
   is generated, and appending to it silently loses the edit at the next sync.
-- **Never a system-wide file.** No `/etc/profile.d` without `--system`, and even
-  then only alongside a `--system` install.
+- **Never a system-wide file, and there is no flag that makes it one.**
+  `/etc/profile.d` is untouched: it is on every user's `PATH` already for the
+  system prefix, so the only reason to write there would be to put a *user's*
+  prefix on everyone's `PATH`, which is not a thing an installer gets to decide.
+  An earlier draft referenced a `--system` escape hatch that the interface never
+  defined; leaving an undefined, security-sensitive flag in a document is how it
+  gets implemented by guess.
 - **It says what it did and what to do now**: the file it touched and
   `exec $SHELL` (or "open a new terminal"), because a `PATH` edit that does not
   affect the shell you are standing in is the other thing everyone has seen.
@@ -309,8 +338,13 @@ unrecognised shell.
 
 ### 5.6 Where it writes, and what it never does
 
-- Writes exactly one file: `<dir>/morzer`. The schemas and licence in the archive
-  are not installed anywhere; they exist for a vendor who wants them.
+- **Installs exactly one file: `<dir>/morzer`.** The schemas and licence in the
+  archive are not installed anywhere; they exist for a vendor who wants them.
+  Three other writes are possible and each is opt-out and announced: the shell
+  startup file or fish drop-in (§5.4), the completion script (§5.5, written by
+  the binary rather than by the script), and a temporary directory that is
+  removed on every exit path including failure. Nothing else on the filesystem
+  is touched, which is the claim the tests assert.
 - **Never invokes `sudo`.** If the prefix is not writable, it prints the one
   command to re-run with elevation and exits non-zero. A script fetched over the
   network that escalates on its own is the thing operators are right to distrust.
@@ -389,8 +423,15 @@ running it.
   name, the fourth resolves the arm64 archive. This is the whole of §5.2 tested
   without a download, which is why `--print-only` prints what it detected rather
   than only what it would fetch.
-- **PATH, three ways.** A prefix already on `PATH` writes nothing; a prefix that
-  is not gets exactly one marked block; running the script again adds nothing.
+- **PATH, four ways.** A prefix already on `PATH` writes nothing; a prefix that is
+  not gets exactly one marked block *per file the shell needs* — two for bash and
+  zsh, one drop-in for fish; running the script again adds nothing; and the
+  generated block names the resolved prefix rather than a hardcoded
+  `~/.local/bin`, asserted with a `--dir` somewhere else entirely.
+- **The fish block is fish.** Sourcing the generated file with `fish -c` must
+  succeed and must leave the prefix on `PATH`. A POSIX `case` in a `.fish` file
+  is a syntax error on every subsequent shell start, and nothing but running it
+  catches that.
   The third is the assertion that matters: an installer that appends on every
   run is the classic defect of this shape, and it is invisible until the second
   run.
@@ -398,11 +439,17 @@ running it.
   instead. Reachable, and the failure is silent otherwise: a dotfiles repository
   reclaims the file at the next sync and the operator never learns why `morzer`
   stopped being found.
-- **Completions are delegated, not reimplemented.** With a stub `morzer` on
-  `PATH`, the script's completion step must invoke `completion install` with the
-  detected shell — asserted by the stub recording its argv. A test that checked
-  for a completion *file* would pass on a script that wrote one itself, which is
-  the thing this design forbids.
+- **Completions are delegated, not reimplemented.** The stub goes at
+  `<dir>/morzer` — the path the script actually invokes — not on `PATH`, where it
+  would never be reached and the test would pass by never running. It records its
+  argv, and the assertion is that `completion install --shell <detected>` was
+  called. A test that checked for a completion *file* would pass on a script that
+  wrote one itself, which is the thing this design forbids.
+- **The install target is refused when it is not a regular file.** A symlink at
+  `<dir>/morzer` (into a package manager's tree) and a directory at
+  `<dir>/morzer`, each asserting a refusal that names what it found and that the
+  symlink's target is unchanged. The startup-file symlink case above is a
+  different file and does not cover this one.
 - **A failing completion step does not fail the install.** The stub exits
   non-zero; the binary is still installed and the exit code is still 0.
 - **The three published copies are byte-identical.** A checksum comparison
@@ -484,6 +531,11 @@ running it.
 | 13 | An unrecognised architecture is refused by name, never guessed | Guessing downloads an archive whose binary the kernel will not exec, and the failure surfaces several steps later with a much worse message. |
 | 14 | `PATH` is edited in one marked block, in one file per shell, printed before it is written, and `--no-modify-path` opts out | The marker makes re-running idempotent, which is the defect every installer of this shape eventually has. One file avoids rustup's four. Printing first is what makes a piped-into-`sh` script auditable after the fact. |
 | 15 | A symlinked or unwritable startup file is printed to, not written to | A symlink into a dotfiles repository means the file is generated; appending to it loses the edit at the next sync, silently. |
+| 15a | Both the login file and the interactive file are written for bash and zsh; `~/.zshenv` never is | Neither covers the other — bash reads the first of `~/.bash_profile`/`~/.bash_login`/`~/.profile` and stops, and `~/.bashrc` is the interactive one — so a single file leaves half the sessions without the prefix. `~/.zshenv` would put a prepend in front of every non-interactive script that never asked for it. |
+| 15b | The guarantee is "a new login shell and a new interactive shell find it"; non-interactive non-login is out | `ssh host morzer status` reads no startup file on any shell. That is a property of shells, and a guarantee written wider than it holds is worse than a narrow one. |
+| 15c | The block is generated from the resolved prefix, in the target shell's syntax | It is written for whatever `--dir` resolved to, and a POSIX `case` in a `.fish` file is a syntax error at every subsequent shell start. |
+| 15d | No `--system`, and `/etc/profile.d` is never touched | The system prefix is already on everyone's `PATH`; the only use for writing there is to put one user's prefix on everyone's, which is not an installer's decision. An undefined security-sensitive flag left in a document gets implemented by guess. |
+| 15e | `--require-signature` and `--no-verify-signature` together are refused before anything is downloaded | Letting argument order decide whether verification happens is how a runbook that inherited both silently stops verifying. |
 | 16 | Completions are installed by running `morzer completion install`, never by the script itself | Where a shell reads completions from belongs in one implementation, versioned with the binary and tested. A completion written to the wrong directory produces no error — just a Tab key that does nothing — so a drifting second copy would never announce itself. |
 | 17 | Completions default on for an interactive install, off otherwise; failure warns and never fails the install | Somebody at a terminal wants the tool to work; a Dockerfile does not want writes into a build's home directory. And the binary being installed is the thing that was asked for. |
 
