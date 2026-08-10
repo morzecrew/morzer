@@ -177,12 +177,43 @@ type InstallationEntry struct {
 
     // Problem is why this row is incomplete, when it is. An installation
     // whose state will not parse is still an installation, and the one
-    // thing an operator must not be told is that it is absent.
+    // thing an operator must not be told is that it is absent. A
+    // schema_version this manager is too old to read is one of these:
+    // refusing to interpret it is the same rule LoadInstallation already
+    // applies, and a partially-read future installation reported as fact
+    // would be worse than a row that says "I cannot read this".
     Problem string `json:"problem,omitempty"`
+
+    // Services is what --status found, and nil when it was not asked for.
+    // ServicesProblem is per row rather than per command: one wedged
+    // daemon must not blank the column for every other installation.
+    Services        *ServiceCounts `json:"services,omitempty"`
+    ServicesProblem string         `json:"services_problem,omitempty"`
 }
 
-func ListInstallations(ctx context.Context, d *Deps) ([]InstallationEntry, error)
+// ServiceCounts is the summary --status adds, not the full service list:
+// `morzer status --product X` is where the detail lives, and a listing that
+// reprinted it would be a worse version of that command.
+type ServiceCounts struct {
+    Running int `json:"running"`
+    Total   int `json:"total"`
+}
+
+// ListOptions is one flag today and a struct anyway: `--status` is the
+// difference between a listing that reads files and one that talks to a
+// daemon, and a bool parameter at the call site would not say which.
+type ListOptions struct {
+    Status        bool
+    StatusTimeout time.Duration // per installation; 5s when zero
+}
+
+func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]InstallationEntry, error)
 ```
+
+`SchemaVersion` is JSON-only: it is what a support engineer reads out of
+`--json`, and a `SCHEMA` column in the human table would spend width on a number
+that matters on one day in a hundred. The example above is the human contract and
+has no such column, deliberately.
 
 Failure semantics, which are most of the design:
 
@@ -198,6 +229,12 @@ Failure semantics, which are most of the design:
 `--status` adds a `SERVICES` column by asking the runtime per installation.
 Separate flag rather than default because it costs a Docker call per row and can
 hang on a wedged daemon — the cheap answer must stay cheap.
+
+Each query is bounded: **5 seconds per installation**, and the whole command by
+`--timeout` as every other command already is. A row whose query times out prints
+the timeout in its services column and the rest of the row is unaffected — one
+wedged daemon must not turn a machine listing into a hang, which is the failure
+mode that makes people stop using a listing command.
 
 **Naming.** `ls` at the top level, with `installation list` as an alias. The
 short name is what an operator types when they have just logged into an unfamiliar
@@ -226,19 +263,35 @@ are already the commands that work on a bare machine, so the rule is: the refusa
 fires when a command resolves paths in order to *use* them, which is the same
 point at which "no installation found" fires today.
 
+**`doctor` is the interesting case, because it is both.** Its machine-scope
+checks (§5.4) are about the machine and need no selection; every other check is
+about one installation and needs one. So `morzer doctor` on an ambiguous machine
+runs the machine-scope checks, reports them, and then refuses the rest by name —
+rather than refusing wholesale, which would take away the diagnostic exactly when
+the diagnosis is "you have two installations". `morzer doctor --product demo`
+runs everything.
+
 ### 5.3 Selection, with a precedence nobody has to guess
 
 | Source | Precedence | Notes |
 | --- | --- | --- |
-| `--config <path>` | 1 | Selects the layout the file sits in; what generated systemd units pass |
-| `--product <name>` | 2 | With `--root` when relocating the layout |
-| `MORZER_PRODUCT` | 3 | New. For a shell session pinned to one installation |
-| Discovery | 4 | Only when exactly one installation exists |
+| `--config <path>` | 1 — **mutually exclusive with `--product`** | Selects the layout the file sits in; what generated systemd units pass |
+| `--product <name>` | 1 — **mutually exclusive with `--config`** | With `--root` when relocating the layout |
+| `MORZER_PRODUCT` | 2 | New. For a shell session pinned to one installation |
+| Discovery | 3 | Only when exactly one installation exists |
 
-Conflicts between the first two are refused, not resolved — which is already the
-behaviour and is written down for the first time. `MORZER_PRODUCT` is refused
-against neither: an environment variable that a flag overrides is the ordinary
-shape, and refusing it would make the variable useless in the case it exists for.
+The two flags share a rank because there is no rank between them: **passing both
+is refused**, never resolved by precedence. That is already the behaviour
+(`pathsFromConfig` and `confirmProductMatchesConfig`) and is written down here for
+the first time — with the exception the code also already makes, which a table
+reading "`--config` wins" would lose: when both are given and they name the *same*
+product, the command proceeds. An operator who spelled one deployment two ways
+has said one thing twice.
+
+`MORZER_PRODUCT` is not in the exclusion. An environment variable a flag
+overrides is the ordinary shape, and refusing it would make the variable useless
+in exactly the case it exists for: a shell session pinned to one installation
+where a single command needs another.
 
 **Alternatives considered.** *A `morzer use <product>` that writes a current
 selection somewhere.* Rejected: it is `kubectl`'s context, and its failure mode is
@@ -256,8 +309,13 @@ prevent:
   product name under two roots, an installation whose units are installed but
   whose state will not load).
 - **`machine.ports`** — a warning when two installations publish the same host
-  port. They cannot both be running, and today the second one's `apply` fails
-  inside Compose with a message about the port, not about the neighbour.
+  endpoint. They cannot both be running, and today the second one's `apply` fails
+  inside Compose with a message about the port, not about the neighbour. The
+  collision key is the **full binding — host IP, published port, protocol** — not
+  the port number: `127.0.0.1:8080` and `192.168.1.5:8080` coexist, TCP and UDP
+  on one port coexist, and a check that warned about either would be one an
+  operator learns to ignore. An unspecified host IP collides with every specific
+  one, which is the case that actually bites.
 
 Warnings, never failures: a machine with two installations is not broken, and
 `doctor` refusing to pass on a supported configuration would train operators to
@@ -272,8 +330,15 @@ ignore it.
 - **Zero installations** — `ls` prints the empty line and exits 0; `init` still
   works; `status` still says no installation found.
 - **A corrupt state file** — `ls` reports the row with its `Problem` and the
-  other rows are complete. Verified-red by writing invalid JSON, because
-  "skipped" and "reported" look identical in a one-installation fixture.
+  other rows are complete. Verified-red, because "skipped" and "reported" look
+  identical in a one-installation fixture. The file to corrupt is
+  `<var>/<product>/manager/installation.json`, the state store — *not*
+  `/etc/<product>/installation.yaml`, which is a report nothing reads back
+  (`root.go`, `doctor.go` and `ops.go` each say so) and whose only role here is
+  making the installation discoverable. A test that corrupted the yaml would
+  assert nothing.
+- **A schema version from the future** — one row, `Problem` naming the version,
+  and no interpreted fields beside it.
 - **`--status` on a machine with no runtime** — rows still render, services
   column reports the failure per row rather than failing the command.
 - **Precedence table, as a table test** — every pair of sources, asserting which
@@ -335,7 +400,12 @@ ignore it.
 | 2 | `ls` reads state files only; `--status` opts into the runtime | The cheap answer must work when the daemon is down, which is when an operator most needs to know what is on the box. |
 | 3 | An installation whose state will not parse is a row with a problem, never a skipped row | Dropping it reports the installation as absent at the exact moment its state is broken. Same rule [0010](0010-compose-volume-capture.md) reached with `OccupiesVolume`: a predicate that decides what is safe enumerates the negative. |
 | 4 | Ambiguous discovery is a distinct refusal from no-installation | Today they take one branch, which is why two installations produce "run `morzer init`" — advice to create a third. |
-| 5 | Selection precedence: `--config` > `--product` > `MORZER_PRODUCT` > discovery; flag conflicts refused | The refusals already exist and are undocumented; the variable is added below both flags so it can never surprise a script that passes one. |
+| 5 | `--config` and `--product` are mutually exclusive and refused together unless they name the same product; `MORZER_PRODUCT` sits below both; discovery last | The refusals already exist and are undocumented. Ranking the two flags against each other would license "`--config` wins", which is the one reading the code does not implement. |
+| 5a | `--status` is bounded at 5s per installation, with the timeout reported in that row | One wedged daemon must not hang a machine listing. A per-row failure keeps the other rows, which is the whole reason the column is opt-in. |
+| 5b | `SchemaVersion` is JSON-only; the human table has no `SCHEMA` column | It matters on one day in a hundred, and the human table's width is the scarce thing. |
+| 5c | A `schema_version` this manager cannot read is a `Problem` row, never partially interpreted fields | The same rule `LoadInstallation` already applies. Reporting a future installation's fields as fact is worse than saying it cannot be read. |
+| 5d | `doctor` on an ambiguous machine runs its machine-scope checks and refuses the rest by name | Refusing wholesale removes the diagnostic exactly when the diagnosis is "you have two installations". |
+| 5e | The port-collision key is host IP, published port and protocol — not the port number | `127.0.0.1:8080` and `192.168.1.5:8080` coexist, as do TCP and UDP on one port. A check that warned about those is one operators learn to ignore. |
 | 6 | No `morzer use` / no persisted current context | A mutable global that decides which machine a destructive command hits. The variable dies with the shell that set it; a context file does not. |
 | 7 | No cross-installation operations | Each installation has its own release, gate and downtime. A loop with one exit code cannot report which of three failed, and the operator's shell does this better. |
 | 8 | Port collisions between installations are a `doctor` warning, not a refusal | Two installations on one machine is supported. Failing `doctor` on a supported configuration teaches operators to ignore `doctor`. |
