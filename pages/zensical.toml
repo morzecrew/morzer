@@ -48,6 +48,7 @@ nav = [
         "operating/changing-configuration.md",
         "operating/installing-offline.md",
         "operating/notifications.md",
+        "operating/several-installations.md",
         "operating/recovering-a-lost-machine.md",
     ] },
     { "Authoring" = [

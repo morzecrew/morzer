@@ -143,6 +143,15 @@ const (
 	CategorySecrets = "secrets"
 	CategoryRuntime = "runtime"
 	CategoryBackup  = "backup"
+
+	// CategoryMachine is what the host holds besides this installation.
+	//
+	// Its own category because it is the only one whose subject is not the
+	// installation being diagnosed: a machine with two deployments on it is
+	// a supported arrangement, and the checks that describe the sharing
+	// belong beside each other rather than scattered through the ones about
+	// this deployment's own storage and network.
+	CategoryMachine = "machine"
 )
 
 // Architecture checks that the release supports this CPU architecture.

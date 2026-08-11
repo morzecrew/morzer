@@ -286,3 +286,79 @@ func doctorFixtures() []fixture {
 		},
 	}
 }
+
+// machineFixtures are the listing RFC 0020 adds.
+//
+// The three shapes it has to survive, in one machine: an installation running
+// normally, a sandbox that has never had a release installed, and one whose
+// state will not load -- which is the row that must be present rather than
+// tidied away, because the moment it breaks is the moment somebody is looking
+// for it.
+func machineFixtures() []fixture {
+	five, none := 5, 0
+
+	entries := []ops.InstallationEntry{
+		{
+			Product: "demo", Path: "/etc/demo", SchemaVersion: 5,
+			Release: version("1.4.0"), Units: &five,
+		},
+		{
+			Product: "sandbox", Path: "/etc/sandbox", SchemaVersion: 5,
+			Mode: domain.ModeDev, Units: &none,
+		},
+		{
+			// A unit count nobody could read, beside a state that
+			// loaded fine: the two failures are independent, and
+			// the table has to be able to say so on one row.
+			Product: "staging", Path: "/etc/staging", SchemaVersion: 5,
+			Release: version("1.3.0"),
+		},
+		{
+			Product: "legacy", Path: "/etc/legacy", Units: &five,
+			Problem: "installation state at /var/lib/legacy/manager/installation.json " +
+				"is invalid: installation was written by a newer manager " +
+				"(schema 9, this manager reads 5)",
+		},
+		{
+			// A directory discovery could not open. On a real host
+			// most of these belong to somebody else, so it is a
+			// warning rather than a failure and is not counted.
+			Product: "credstore", Path: "/etc/credstore", Skipped: true,
+			Problem: "cannot be read by this process, so it is not counted as an " +
+				"installation; re-run as root if it is one",
+		},
+	}
+
+	// The same machine with --status. The timeout is on a *readable*
+	// installation, because that is the only kind that gets as far as asking
+	// the runtime: a row with a Problem returns before the query, so a
+	// fixture carrying both would pin an output the code cannot produce.
+	withServices := views.WithServices{
+		entries[0], entries[1], entries[2], entries[3], entries[4],
+	}
+	withServices[0].Services = &ops.ServiceCounts{Running: 3, Total: 3}
+	withServices[1].Services = &ops.ServiceCounts{Running: 1, Total: 4}
+	withServices[2].ServicesProblem = "timed out after 5s"
+
+	return []fixture{
+		{
+			name:  "installations",
+			value: entries,
+			fields: []string{
+				"demo", "1.4.0", "sandbox", "dev", "staging", "unknown",
+				"legacy", "unreadable", "newer manager",
+				"credstore", "not counted",
+			},
+		},
+		{
+			name:   "installations-status",
+			value:  withServices,
+			fields: []string{"3/3", "1/4", "unknown", "timed out after 5s", "without the deployment lock"},
+		},
+		{
+			name:   "installations-empty",
+			value:  []ops.InstallationEntry{},
+			fields: []string{"no installations"},
+		},
+	}
+}

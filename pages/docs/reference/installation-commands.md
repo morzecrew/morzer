@@ -1,10 +1,68 @@
 ---
 title: installation
 icon: lucide/hard-drive-download
-summary: The installation command group — export and import an installation's identity and secret state
+summary: Listing the installations on a machine, and exporting or importing one installation's identity and secret state
 ---
 
 # `morzer installation`
+
+## installation list
+
+```sh
+morzer installation list [--status]
+morzer ls [--status]
+```
+
+Lists the installations on this machine. The two spellings are one command:
+`morzer ls` is what somebody types on a host they have just logged into, and
+`installation list` is where the noun hierarchy puts it.
+
+```text
+PRODUCT  RELEASE     MODE  UNITS  PATH
+demo     1.4.0                 5  /etc/demo
+sandbox  1.5.0-rc1   dev       0  /etc/sandbox
+```
+
+Read from the state files alone — no Docker call, no lock, no network — so it
+answers on a machine whose daemon is down. It exits 0 on a machine with no
+installations and says so.
+
+`--status` adds a `SERVICES` column by asking each installation's runtime what
+is running. One query per row, each bounded at five seconds on its own, so an
+unresponsive daemon costs that row and no other. The counts are read without
+taking the deployment lock, so a row may be a moment stale; the output says so.
+
+An installation whose state will not load is listed as `unreadable` with the
+reason beneath the table, never dropped — and its row carries no field this
+manager could not read. A directory in `/etc` this process cannot open is listed
+as `not counted` and marked `"skipped": true` in `--json`: on a real host most of
+those belong to somebody else, so it is neither a deployment nor a fault — but a
+listing that omitted it silently would be reporting a smaller machine than the
+one that is there. An `/etc` that cannot be read at all is an error.
+
+`--json` emits an array, one object per installation, with the same rows either
+way:
+
+```json
+{
+  "product": "demo",
+  "path": "/etc/demo",
+  "schema_version": 5,
+  "release": "1.4.0",
+  "units": 5,
+  "services": {"running": 3, "total": 3}
+}
+```
+
+`schema_version` is JSON-only; `mode`, `release`, `problem`, `services` and
+`services_problem` are present only when they apply. `units` is always present
+and is `null` when the supervisor could not be read — `0` is a real answer,
+produced by `init --install-units=false`.
+
+Selecting *which* installation every other command means is described in
+[Several installations](../operating/several-installations.md).
+
+## Exporting and importing an identity
 
 An **installation export** carries the identity of a deployment and its
 encrypted secret state, so a machine that is gone can be rebuilt. It carries no
@@ -19,7 +77,7 @@ The procedure that uses these commands is
 [Recovering a lost machine](../operating/recovering-a-lost-machine.md). This page
 is the surface.
 
-## installation export
+### installation export
 
 ```sh
 morzer installation export <path>
@@ -51,7 +109,7 @@ deployment.
 `--force` overwrites an existing file. `--dry-run` reports what would be written
 without writing it.
 
-### What makes an export usable
+#### What makes an export usable
 
 The export is only ever as readable as the state already was. If the
 installation was created with `--no-recovery-recipient`, the only recipient is
@@ -65,7 +123,7 @@ morzer secret recipients generate-recovery-key ~/recovery.key
 morzer secret recipients add <the printed public key> --kind recovery
 ```
 
-## installation import
+### installation import
 
 ```sh
 morzer installation import <path> --identity <recovery-key-file>
@@ -130,7 +188,7 @@ its key would make the rebuild ceremonial.
     The consequence: **decommission the source machine.** Two live hosts sharing
     an installation id will confuse every backup either of them takes.
 
-### Refusals
+#### Refusals
 
 - An existing installation is not replaced without `--force`.
 - An identity that is not one of the export's recipients is refused **before**
@@ -139,7 +197,7 @@ its key would make the rebuild ceremonial.
 - A secret provider that cannot be re-opened under another identity is refused
   by name. Recovery needs one that can; `sops-age` is it.
 
-### What it does not do
+#### What it does not do
 
 It restores identity, not software, and not data. After importing:
 

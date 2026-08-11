@@ -79,8 +79,15 @@ func (s *Store) LoadInstallation(ctx context.Context) (domain.Installation, erro
 		return domain.Installation{}, err
 	}
 	if err := migrated.Validate(); err != nil {
+		// What was wrong with it, and the remedy the inner error
+		// carried. Without both, an installation written by a newer
+		// manager reported "installation state at /var/lib/demo/... is
+		// invalid" -- which reads as corruption, sends an operator to
+		// look for a backup, and loses the one sentence that says the
+		// file is fine and the binary is old.
 		return domain.Installation{}, domain.InstallationError(err,
-			"installation state at %s is invalid", path)
+			"installation state at %s is invalid: %s", path, domain.AsError(err).Message).
+			WithHintFrom(err)
 	}
 	return migrated, nil
 }

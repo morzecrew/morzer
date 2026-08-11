@@ -361,7 +361,12 @@ func newSecretRecipientsCommand(app *App) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(list, add, remove, keygen)
+	// `generate-recovery-key` writes a keypair to a path you name and reads
+	// no installation at all -- it is what you run *before* `init`, so
+	// inheriting `secret`'s installation scope refused it on exactly the
+	// machine where a recovery key is being prepared. The other three
+	// re-encrypt or read this installation's secret state.
+	cmd.AddCommand(list, add, remove, machineScope(keygen))
 	return cmd
 }
 

@@ -1,0 +1,21 @@
+PRODUCT    RELEASE      MODE    UNITS  SERVICES
+demo       1.4.0                    5  3/3
+sandbox    none         dev         0  1/4
+staging    1.3.0              unknown  unknown
+legacy     unreadable               5  unknown
+credstore  not counted        unknown  unknown
+(path hidden: the terminal is too narrow)
+
+! staging
+  services: timed out after 5s
+✗ legacy
+  installation state at
+  /var/lib/legacy/manager/installation.json is invalid:
+  installation was written by a newer manager (schema 9,
+  this manager reads 5)
+! credstore
+  cannot be read by this process, so it is not counted as an
+  installation; re-run as root if it is one
+
+services are sampled without the deployment lock, so a row
+may be a moment out of date

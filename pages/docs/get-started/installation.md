@@ -91,6 +91,11 @@ morzer doctor
 On a machine with no installation yet, `doctor` still reports whether the tools
 are present — which is the question you have before running `init`, not after.
 
+One machine may hold more than one installation: every path, unit and lock is
+keyed by the product name. `morzer ls` says what a host is already running,
+which is worth asking on a machine somebody else set up — see
+[Several installations](../operating/several-installations.md).
+
 ## Running as root
 
 The manager writes to `/etc`, `/var/lib`, `/run` and `/opt`, installs systemd

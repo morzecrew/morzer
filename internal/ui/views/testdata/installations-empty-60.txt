@@ -1,0 +1,2 @@
+this machine has no installations — `morzer init` creates
+one

@@ -3,6 +3,7 @@ package domain
 import (
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // productNamePattern constrains what may appear in a filesystem path derived
@@ -75,6 +76,21 @@ func PathsUnder(root, product string) Paths {
 	p.RunDir = filepath.Join(root, p.RunDir)
 	p.OptDir = filepath.Join(root, p.OptDir)
 	return p
+}
+
+// Root is the prefix PathsUnder was given, and "" for the production layout.
+//
+// The inverse of the constructor above, and derived rather than stored so it
+// cannot disagree with the directories it describes -- a Paths built by either
+// constructor answers this correctly, including one that arrived through
+// --config, where the root was never a flag at all.
+//
+// It exists because a layout knows which *product* it belongs to and one
+// question needs the other half: what else this machine holds. Every other
+// caller wants the four directories, which is why this is the only accessor
+// that looks upwards.
+func (p Paths) Root() string {
+	return strings.TrimSuffix(p.EtcDir, filepath.Join("/etc", p.Product))
 }
 
 // Configuration and secret state.

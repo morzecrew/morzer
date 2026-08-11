@@ -9,20 +9,82 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
+
+// newListCommand builds the machine listing, which is registered twice.
+//
+// `morzer ls` is what somebody types after logging into a machine they do not
+// know; `morzer installation list` is where the noun hierarchy puts it. Both,
+// because the cost is this parameter -- and one constructor rather than a cobra
+// alias because an alias is a second name at the *same* level, and the whole
+// point of the short one is that it is at the top.
+func newListCommand(app *App, use string) *cobra.Command {
+	var status bool
+
+	cmd := machineScope(&cobra.Command{
+		Use:   use,
+		Short: "List the installations on this machine",
+		Long: "A machine may hold several installations: every path, every systemd\n" +
+			"unit and every lock is keyed by product name, so two of them never\n" +
+			"share anything the manager owns.\n\n" +
+			"Read from the state files alone — no Docker call, no lock, no network —\n" +
+			"so it answers on a machine whose daemon is down, which is when somebody\n" +
+			"is usually asking what is on the box. --status adds what is running, at\n" +
+			"the cost of one runtime query per installation.\n\n" +
+			"An installation whose state will not load is listed with the reason\n" +
+			"rather than left out: the moment its state breaks is the moment it must\n" +
+			"not look absent. Each installation is then operated on its own terms —\n" +
+			"there is no --all, because three deployments have three releases,\n" +
+			"three gates and three windows of downtime.",
+		Example: "  morzer ls\n" +
+			"  morzer ls --status\n" +
+			"  morzer ls --json | jq -r '.data[] | select(.problem) | .product'",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			entries, err := ops.ListInstallations(cmd.Context(), app.Deps,
+				ops.ListOptions{Status: status})
+			if err != nil {
+				return err
+			}
+			// --status selects a second view of the same listing,
+			// the way `doctor --verbose` does: the extra column is a
+			// presentation of what was asked for, and `--json`
+			// carries the same array either way -- with a `services`
+			// key on each row when it was asked for, absent when it
+			// was not.
+			if status {
+				return app.render(views.WithServices(entries))
+			}
+			return app.render(entries)
+		},
+	})
+
+	cmd.Flags().BoolVar(&status, "status", false,
+		"ask each installation's runtime what is running (one Docker call per row)")
+
+	return cmd
+}
 
 func newInstallationCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "installation",
-		Short: "Export and rebuild an installation's identity",
-		Long: "An installation export carries the identity of a deployment and its\n" +
+		Short: "List, export and rebuild the installations on this machine",
+		Long: "A machine may hold several installations, keyed by product name. `list`\n" +
+			"says which — `morzer ls` is the same command, at the top level where\n" +
+			"somebody on an unfamiliar host will look for it.\n\n" +
+			"An installation export carries the identity of a deployment and its\n" +
 			"encrypted secret state, so a lost machine can be rebuilt from an offline\n" +
 			"recovery key. It carries no application data: `morzer backup` owns that.",
 	}
 
 	cmd.AddCommand(
-		newInstallationExportCommand(app),
-		newInstallationImportCommand(app),
+		newListCommand(app, "list"),
+		// `export` reads this installation and so needs one chosen.
+		// `import` chooses its own: the product comes out of the export
+		// file, and the graph is rebuilt around it mid-run.
+		installationScope(newInstallationExportCommand(app)),
+		machineScope(newInstallationImportCommand(app)),
 	)
 	return cmd
 }

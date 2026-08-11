@@ -28,17 +28,33 @@ func newReleaseCommand(app *App) *cobra.Command {
 			"ones, and build bundles for publication.\n\n" +
 			"None of them changes what is deployed. `morzer update` does that.",
 	}
+	// The one subtree that is split down the middle. `list`, `fetch`,
+	// `ingest` and `prune` read or write *this* installation's release
+	// store, so they need to know which installation that is; the five
+	// authoring commands act on a directory or an archive named on the
+	// command line and would work on a laptop with no installation at all.
+	//
+	// `release list` is why the split is declared rather than inherited: it
+	// read the store without loading the installation, so on a machine with
+	// three of them it answered about the placeholder layout -- "no releases
+	// are installed" -- and looked like a bare machine.
+	//
+	// `show` is both, which is why it is machine-scoped here and refuses
+	// inside releaseRoot instead: `release show ./bundle` inspects a
+	// directory and needs no installation, while `release show` and `release
+	// show 1.4.0` read the store and do. A scope asked before the argument
+	// is parsed cannot tell those apart.
 	cmd.AddCommand(
-		newReleaseListCommand(app),
-		newReleaseShowCommand(app),
-		newReleaseNewCommand(app),
-		newReleaseVerifyCommand(app),
-		newReleasePackCommand(app),
-		newReleaseBuildCommand(app),
-		newReleaseArchiveCommand(app),
-		newReleaseFetchCommand(app),
-		newReleaseIngestCommand(app),
-		newReleasePruneCommand(app),
+		installationScope(newReleaseListCommand(app)),
+		machineScope(newReleaseShowCommand(app)),
+		machineScope(newReleaseNewCommand(app)),
+		machineScope(newReleaseVerifyCommand(app)),
+		machineScope(newReleasePackCommand(app)),
+		machineScope(newReleaseBuildCommand(app)),
+		machineScope(newReleaseArchiveCommand(app)),
+		installationScope(newReleaseFetchCommand(app)),
+		installationScope(newReleaseIngestCommand(app)),
+		installationScope(newReleasePruneCommand(app)),
 	)
 	return cmd
 }
@@ -433,6 +449,19 @@ func (a *App) releaseRoot(ctx context.Context, args []string) (string, error) {
 		if info, err := os.Stat(args[0]); err == nil && info.IsDir() {
 			return args[0], nil
 		}
+	}
+
+	// Everything below reads this installation's release store -- the
+	// version branch resolves against Paths.ReleaseDir, the bare form reads
+	// the current-release record -- so this is where a machine holding
+	// several installations has to be told which. Asked here rather than by
+	// the command's declared scope, because the scope is resolved before the
+	// argument is parsed and the argument is what decides.
+	if err := a.Deps.RequireInstallationChosen(); err != nil {
+		return "", err
+	}
+
+	if len(args) == 1 {
 		version, err := domain.ParseVersion(args[0])
 		if err != nil {
 			return "", domain.Usage("%q is neither a directory nor a version", args[0])
