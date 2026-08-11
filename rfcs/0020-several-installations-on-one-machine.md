@@ -1,6 +1,16 @@
 # RFC 0020 — Several installations on one machine
 
-- **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: discovery returns the
+- **Status:** ✅ Complete — **P2–P4 shipped 2026-08-11**: `morzer ls` (and
+  `installation list`) reads every installation's state through one layout per
+  product, `--status` adds a bounded runtime query per row, and `doctor` gained
+  `machine.installations` and `machine.ports`. §9's open question is settled the
+  third way: every command declares its scope where it is registered, and two
+  tests over the real command tree carry it — one refuses a command that declares
+  nothing, the other runs the refusal against every command there is. That closed
+  the hole the risk named, where `release list` on a machine with three
+  installations answered `no releases are installed` about a layout nobody has.
+  `MORZER_PRODUCT` ships with the precedence recorded below. Divergences from
+  this document are recorded in §13. **P1 shipped 2026-08-10**: discovery returns the
   inventory it always computed, `Deps.MachineProducts` carries it, and a machine
   whose installations nobody chose between is refused by name instead of being
   reported as bare. Both flags record the inventory, including `--config`, which
@@ -11,8 +21,7 @@
   own name and so the likeliest name for a real installation, and where one
   existed the fallback silently selected it. `doctor` asks the same question
   first, since degrading to a reduced check list is what made it the one command
-  that swallowed the refusal. P2–P4 (`ls`, `--status`, the machine-scope
-  `doctor` checks) is unstarted.
+  that swallowed the refusal.
 - **Scope:** Making the multi-installation case — which the path layout has
   always supported and no command has ever acknowledged — visible and safe:
   `morzer ls`, a refusal that names the installations it found instead of
@@ -412,6 +421,20 @@ ignore it.
   should be settled**, because `ls` is what makes the inventory visible and the
   natural place to decide what every other listing does when the machine is
   ambiguous.
+
+  **Settled in P2, by a third way.** Both alternatives above were rejected for
+  the reasons given; what shipped is a *declared* scope per command
+  (`machineScope` / `installationScope`, applied where the command is
+  registered), asked once in the persistent pre-run. What makes that a rule
+  rather than another maintained list is the pair of tests over the real cobra
+  tree: `TestEveryCommandDeclaresItsScope` fails a runnable command that declares
+  nothing, so a new command cannot inherit the safe default silently, and
+  `TestAnAmbiguousMachineRefusesEveryInstallationCommand` runs the actual refusal
+  against every command in the tree. Undeclared still *resolves* to installation
+  scope — the refusal is the safe direction — but nothing reaches production
+  undeclared. Cobra returns before the pre-run for a non-runnable parent and for
+  `--help`, so `morzer secret` and `morzer status --help` still print their help
+  on an ambiguous machine.
 - **`MORZER_PRODUCT` in a systemd unit.** The generated units pass `--config`,
   which outranks it. Stated in the docs because an operator who sets the variable
   globally will otherwise expect it to reach their timers.
@@ -423,11 +446,22 @@ ignore it.
   manifest is the truth if the record is stale. Probably the record, with the
   disagreement reported as a `Problem` — but that is a second read per row, and
   whether it is worth it is an implementation call.
+
+  **Settled: the record alone.** A listing is a map of the machine, and reading
+  every installation's manifest to check the map against the territory is
+  `doctor`'s job — it already has `runtime.release`, which reports a release root
+  that disagrees with what was recorded, for the one installation being
+  diagnosed. Doing it per row here would make the cheap answer expensive to buy
+  a check that exists.
 - **Should `--status` take the lock?** It must not — a read that blocked behind a
   running update would make `ls` useless exactly when an operator is watching one
   — but "not taking the lock" means the services column can be a moment stale.
   That is acceptable and should be said in the output's own legend, not just in
   the docs.
+
+  **Settled: it does not, and the legend says so.** A line under the table, drawn
+  only when `--status` was asked for: "services are sampled without the
+  deployment lock, so a row may be a moment out of date".
 
 ## 11. Decisions
 
@@ -453,9 +487,57 @@ ignore it.
 - **P1 — The refusal.** Return the candidate list from discovery, refuse with it,
   document the precedence. Small, self-contained, and it is the actual bug: an
   operator today is given advice that would make their machine worse.
-- **P2 — `ls`.** The lifecycle operation, the command, the JSON shape, the docs
-  page. Gated on P1 only because the refusal's hint points at it.
-- **P3 — `--status`.** Runtime query per row, with per-row failure. Separable and
-  the most likely to be deferred.
-- **P4 — `doctor` checks.** `machine.installations` and `machine.ports`. Gated on
-  P2 for the enumeration it reuses.
+- **P2 — `ls`.** ✅ Shipped 2026-08-11. The lifecycle operation, the command, the
+  JSON shape, the docs page — and §9's open question, which is what made this the
+  substantial half.
+- **P3 — `--status`.** ✅ Shipped 2026-08-11. Runtime query per row, with per-row
+  failure and the per-row bound.
+- **P4 — `doctor` checks.** ✅ Shipped 2026-08-11. `machine.installations` and
+  `machine.ports`, in a new `machine` category — the only category whose subject
+  is not the installation being diagnosed.
+
+## 13. Divergences recorded during P2–P4
+
+- **The collision key is the declared port number, not the full binding.**
+  Decision 5e names host IP, published port and protocol. The manager cannot
+  observe that: `requirements.ports` is a list of port numbers resolved from
+  parameters, and there is no interface or protocol anywhere in what an
+  installation declares. Reading the real bindings would mean a Compose render
+  per installation — a subprocess per row, in a check that must work when the
+  daemon is down and when a neighbour's release directory is unreadable. What
+  ships compares declared numbers, which is strictly narrower and cannot produce
+  the false positives 5e exists to prevent: two installations declaring 8080 do
+  collide, because a declared port is a wildcard TCP binding. The full key
+  becomes reachable if `requirements.ports` ever grows an address, and 5e is the
+  decision to implement then.
+- **A cell holds a state; a note holds the sentence.** §5.1 says a row whose
+  query times out "prints the timeout in its services column". It prints
+  `unknown` there and the reason under the table, with the failed rows. The
+  reason is a sentence — a Docker error, a path, a schema mismatch — and a
+  sentence in a column makes every row as tall as the worst line on the machine,
+  which is the alignment a table exists for spent on its least useful row. The
+  claim §5.1 is actually making — that the rest of the row is unaffected and one
+  wedged daemon costs one row — is what the tests pin.
+- **`schema_version` is `omitempty`.** §5.1's struct has it unconditional.
+  Decision 5c requires a row that could not be read to carry no interpreted
+  field, and `"schema_version": 0` is a claim about the schema. Absent is the
+  only honest encoding, so the tag carries `omitempty` and the JSON test asserts
+  the unreadable row's whole object.
+- **`Deps` grew a `StateFor` seam rather than reading state directly.** The
+  lifecycle layer may import `internal/infra`, so `ls` could have constructed a
+  store per product itself. It takes an injected constructor instead, so the
+  adapter is still named in exactly one place and a test can answer for an
+  installation with no files at all. A `Deps` pointed at another installation
+  drops the lock, the secret store, the backup engine, the targets and the
+  notifier rather than carrying them: any of those, held for one installation and
+  used against another, would act on the wrong deployment with every path in the
+  log saying otherwise.
+- **`--status` has no timeout flag.** Decision 5a's five seconds is a constant;
+  `ListOptions.StatusTimeout` exists for the test that would otherwise take five
+  seconds to prove the bound. A flag would be one more documented surface for a
+  number nobody has asked to change.
+- **One state-reader message was corrected on the way past.** A state file from
+  a newer manager reported "installation state at … is invalid" and dropped both
+  the version and the hint the inner error carried — so it read as corruption and
+  sent an operator looking for a backup. Decision 5c asks the row to name the
+  version, and this is where the version was being lost.

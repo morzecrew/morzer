@@ -149,6 +149,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A volume the manager cannot measure is refused the same way, naming the volume and what to do about it — a helper image that cannot walk the volume, or a `du` whose output is not a size. Starting a copy onto a disk nobody could check means discovering it does not fit once the services are already stopped. A measurement that simply did not run leaves that one volume unbudgeted instead, so a helper that exits non-zero on one awkward volume does not stop the deployment being backed up at all.
 
+- `morzer ls` lists the installations on this machine — product, release, mode, how many systemd units it manages, and where its configuration lives. It reads the state files alone: no Docker call, no lock and no network, so it answers on a machine whose daemon is down, which is usually when somebody is asking what a host runs. `morzer installation list` is the same command under its long name.
+
+- `morzer ls --status` adds what is running, by asking each installation's runtime. Each query is bounded at five seconds on its own, so one unresponsive daemon costs that row and no other. The counts are read without taking the deployment lock — a listing that blocked behind a running update would be useless exactly when somebody is watching one — and the output says so.
+
+- An installation whose state will not load is listed with the reason rather than left out, and its row carries no field the manager could not read. The moment an installation's state breaks is the moment it must not look absent, and a mode or a release reported out of a state file this manager does not understand would be a guess presented as a fact.
+
+- `MORZER_PRODUCT` selects an installation for a shell session. Both `--product` and `--config` override it, which is what makes it usable in the case it exists for: a session pinned to one installation where a single command needs another. The generated systemd units pass `--config`, which outranks it, so exporting it globally does not redirect anybody's timers. There is deliberately no command that writes a current selection to disk.
+
+- Two diagnostics about the machine rather than the installation: how many installations it holds, warning when one has systemd units installed and state that will not load; and a warning when two installations declare the same host port, naming both. They cannot both run, and today the second one's converge fails inside Compose with a message about the port and nothing about the neighbour holding it. Both are warnings and never failures — several installations on one machine is a supported arrangement, and a diagnostic that failed on one would teach operators to ignore diagnostics.
+
 ### Changed
 
 - The installation state format moved to schema 3 for backup targets. An older manager refuses a newer state rather than reading it, seeing no targets, and quietly leaving every backup on the machine a target was configured to survive.
@@ -160,6 +170,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The header of the operator-facing installation file no longer claims that editing it overrides release defaults. It never did: the manager reads its own state. The file is now described as a report, and names the command that changes a parameter.
 
 - The free-form `settings` block on an installation is replaced by declared parameters. It reached configuration templates but nothing could set it, so no deployment can depend on it.
+
+- On a machine holding more than one installation, a command that acts on one is refused unless the operator says which — naming the installations it found. Previously the manager fell back to a placeholder product, found nothing at `/etc/morzer`, and advised running `init`: advice to create a third installation. **This changes an exit code.** A script that relied on "no installation found" (5) on such a machine now receives a usage error (2). That script was acting on the wrong installation or on none.
+
+- The refusal now covers the commands that read a store without loading an installation. `release list`, `secret list`, `config list` and `backup list` previously answered about the placeholder layout, so a machine holding three installations was told `no releases are installed`, which is an answer an operator acts on rather than an error they investigate.
 
 ### Removed
 
@@ -175,6 +189,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Secret generation no longer hangs when a release declares an alphabet whose length divides 256 evenly, such as the common 64-character case. Rejection sampling computed a cutoff that overflowed to zero, so every random draw was discarded and generation never terminated.
 
 - A registry pull refused for credentials now says to run `docker login` whatever the bundle's digest happens to be. The failure was classified by searching the error's text for `404` and `not found` before `401` and `unauthorized`, and that text carries the request URL: a digest is 64 hex characters, so roughly one release in seventy contains `404` somewhere inside it. Those releases reported an expired login as a missing artifact and sent the operator to check a reference that was correct. The status the registry returned is now read from the response itself.
+
+- An installation state file written by a newer manager reported only that the state was invalid, dropping both the schema version and the remedy. It read as corruption and sent an operator looking for a backup, when the file was fine and the binary was old. Both are now reported.
 
 ### Security
 
