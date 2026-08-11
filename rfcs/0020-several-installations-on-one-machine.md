@@ -536,6 +536,43 @@ ignore it.
   `ListOptions.StatusTimeout` exists for the test that would otherwise take five
   seconds to prove the bound. A flag would be one more documented surface for a
   number nobody has asked to change.
+- **`Units` is `*int`, not `int`.** §5.1 has a plain count. A count cannot spell
+  "I could not look", and zero is a real answer — `init --install-units=false`
+  is a supported choice — so a supervisor that errored, reported as zero, made a
+  machine somebody has to go and look at indistinguishable from a deliberate
+  one. Worse, it disarmed `machine.installations`, whose whole subject is units
+  running beside state nobody can read: the check now treats an unread count as
+  "may have them", because deciding the reassuring way from a failed read is how
+  a warning switches itself off on exactly the machine that needed it. `--json`
+  carries `units: null`; the table says `unknown`.
+- **`release show` is machine-scoped and refuses inside `releaseRoot`.** It is
+  the one command that is both: `release show ./bundle` inspects a directory and
+  needs no installation, while `release show` and `release show 1.4.0` read this
+  installation's store. A scope resolved before the argument is parsed cannot
+  tell those apart, so the declaration says "machine" and the resolver asks
+  `RequireInstallationChosen` on the two branches that read the store — the same
+  shape as the refusal living inside `loadInstallation` rather than above it.
+- **A directory discovery cannot open is a third answer, not absence and not an
+  installation.** Discovery skipped a marker on *any* stat failure, so a
+  `/etc/<product>` this process may not open vanished from the listing. Both
+  obvious remedies are wrong at `/etc`'s scale: refusing makes every unprivileged
+  invocation fail on a real host — measured, `morzer secret recipients
+  generate-recovery-key` died on `/etc/credstore`, which is `0700 root` on any
+  systemd machine — and counting them tells an operator with one deployment that
+  they have four, since `/etc/<product>` is itself `0750 root` and an
+  unprivileged process cannot tell one from the other. So `DiscoverProducts`
+  returns an `Inventory` of products *and* undecidable directories: the second
+  are listed by `ls` as `not counted`, warned about by
+  `machine.installations`, marked `"skipped": true` in `--json`, and never
+  counted. An `/etc` that cannot be read at all stays an error — that is the
+  manager's own root — and because path resolution cannot refuse on it (it runs
+  for `morzer version` too) the error is held on the App and asked at
+  `confirmInstallationChosen`, where the command's scope is already known.
+- **`secret recipients generate-recovery-key` is machine-scoped.** It writes a
+  keypair to a path you name and reads no installation: it is what an operator
+  runs *before* `init`, so inheriting `secret`'s installation scope refused it on
+  exactly the machine where a recovery key is being prepared. Found by the
+  acceptance lane, which runs it against the real `/etc` as an unprivileged user.
 - **Discovery skips a directory whose name could not be a product.** The old
   scan counted any `<root>/etc/*/installation.yaml`. Every path the manager owns
   derives from a name `ValidateProductName` accepted, so `/etc/Some

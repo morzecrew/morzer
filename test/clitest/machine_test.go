@@ -1,6 +1,7 @@
 package clitest_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -165,4 +166,146 @@ func TestVersionAnswersOnAnAmbiguousMachine(t *testing.T) {
 	r.Run("version").ExitCode(0)
 	r.Run("release", "verify", r.Bundle).ExitCode(0)
 	r.Run("doctor").Failed().SaysAll("this machine has 2 installations")
+}
+
+// TestInspectingABundleNeedsNoInstallation.
+//
+// `release show ./bundle` reads a directory named on the command line and works
+// on a machine with no installation at all — which the scope declaration nearly
+// took away, because a scope is resolved before the argument is parsed and the
+// argument is what decides. The other two forms read this installation's store
+// and are refused, from inside the resolver rather than from the pre-run.
+func TestInspectingABundleNeedsNoInstallation(t *testing.T) {
+	r := withTwoInstallations(t)
+
+	r.Run("release", "show", r.Bundle).ExitCode(0).StdoutContains("demo", "1.2.0")
+
+	r.Run("release", "show").ExitCode(2).SaysAll("this machine has 2 installations")
+	r.Run("release", "show", "1.2.0").ExitCode(2).SaysAll("this machine has 2 installations")
+
+	// And naming one answers, which is the half that would make a refusal
+	// everywhere look like the same behaviour.
+	r.Run("--product", "demo", "release", "show").ExitCode(0).StdoutContains("1.2.0")
+}
+
+// TestADirectoryNobodyCouldOpenIsListedAndNotCounted.
+//
+// `/etc` is a shared namespace: a `/etc/<product>` is 0750 root-only by
+// construction, and so are several of the host's own directories, so an
+// unprivileged process cannot tell one from the other. Failing would make the
+// manager unusable for any non-root invocation on a real machine; counting them
+// would tell an operator with one deployment that they have four.
+//
+// So it is listed, marked, and left out of the count — and `morzer ls` is what
+// says an empty-looking machine may not be empty.
+func TestADirectoryNobodyCouldOpenIsListedAndNotCounted(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root traverses a 0000 directory, so this arrangement proves nothing")
+	}
+	r := withTwoInstallations(t)
+
+	sealed := r.Path("etc", "sandbox")
+	if err := os.Chmod(sealed, 0o000); err != nil {
+		t.Fatalf("cannot seal %s: %v", sealed, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
+
+	listing := r.Run("ls").ExitCode(0)
+	listing.StdoutContains("demo", "sandbox")
+	listing.SaysAll("not counted as an installation")
+
+	// Not counted: the machine now has one installation this process can
+	// see, so nothing is ambiguous and the command answers about it.
+	r.Run("status").ExitCode(0).StdoutContains("demo")
+
+	// And the row says so in the machine contract, so a script can tell a
+	// deployment from a directory nobody could open.
+	rows, _ := r.Run("ls", "--json").ExitCode(0).JSON()["data"].([]any)
+	skipped, _ := rows[1].(map[string]any)
+	if skipped["skipped"] != true {
+		t.Errorf("the unreadable directory is not marked in --json: %v", skipped)
+	}
+}
+
+// TestAnEtcNobodyCouldReadIsNotABareMachine is the whole root, rather than one
+// directory inside it: there the distinction between "nothing here" and "I
+// cannot look" is the manager's own, and a command that acts on an installation
+// must not answer from the placeholder layout.
+func TestAnEtcNobodyCouldReadIsNotABareMachine(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a 0000 directory, so this arrangement proves nothing")
+	}
+	r := withTwoInstallations(t)
+
+	etc := r.Path("etc")
+	if err := os.Chmod(etc, 0o000); err != nil {
+		t.Fatalf("cannot seal %s: %v", etc, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(etc, 0o755) })
+
+	refused := r.Run("status").Failed()
+	refused.SaysAll("cannot read")
+	refused.NoOutputContains("run `morzer init`")
+
+	// A command about the machine still answers: refusing those would leave
+	// nobody able to run the commands that diagnose the machine.
+	r.Run("version").ExitCode(0)
+}
+
+// TestGeneratingARecoveryKeyNeedsNoInstallation.
+//
+// It writes a keypair to a path you name and reads no installation at all — it
+// is what you run *before* `init`, so inheriting `secret`'s installation scope
+// refused it on exactly the machine where a recovery key is being prepared.
+func TestGeneratingARecoveryKeyNeedsNoInstallation(t *testing.T) {
+	r := withTwoInstallations(t)
+
+	out := r.Run("secret", "recipients", "generate-recovery-key",
+		r.Path("recovery.key")).ExitCode(0)
+	out.StdoutContains("age1")
+
+	// Its neighbours read this installation's secret state and are refused.
+	r.Run("secret", "recipients", "list").ExitCode(2).
+		SaysAll("this machine has 2 installations")
+}
+
+// TestDoctorDiagnosesTheMachineItCannotChooseOn is decision 5d.
+//
+// `checkInstallationReadable` is fatal and fails first on an ambiguous machine.
+// The runner continues, and the two machine-scope checks are the reason it must:
+// refusing wholesale would take the diagnostic away at the exact moment the
+// diagnosis is "you have two installations".
+func TestDoctorDiagnosesTheMachineItCannotChooseOn(t *testing.T) {
+	r := withTwoInstallations(t)
+
+	out := r.Run("doctor", "--verbose", "--json").Failed()
+
+	data, ok := out.JSON()["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("`doctor --json` carries no report:\n%s", out.Stdout)
+	}
+	results, ok := data["results"].([]any)
+	if !ok {
+		t.Fatalf("the report carries no results:\n%s", out.Stdout)
+	}
+
+	ids := map[string]string{}
+	for _, raw := range results {
+		result, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := result["id"].(string)
+		ids[id], _ = result["status"].(string)
+	}
+
+	for _, id := range []string{"machine.installations", "machine.ports"} {
+		if _, ran := ids[id]; !ran {
+			t.Errorf("%s did not run on a machine nobody chose an installation on, "+
+				"so `doctor` reported only that it could not choose:\n%s", id, out.Stdout)
+		}
+	}
+	if ids["config.installation"] != "fail" {
+		t.Errorf("the ambiguity was not reported as a failed check: %q", ids["config.installation"])
+	}
 }

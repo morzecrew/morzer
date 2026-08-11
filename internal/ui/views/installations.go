@@ -81,11 +81,19 @@ func installationsDoc(d *ui.Doc, entries []ops.InstallationEntry, status bool) *
 		// its path, and says `unreadable` in place of what it could not
 		// interpret. Dropping it would report the installation as absent
 		// at the one moment it must not: when its state has just broken.
-		if e.Problem != "" {
+		//
+		// A skipped directory says `not counted` instead, because it is
+		// not a broken installation -- it is a directory this process
+		// could not open, and on a real host most of those belong to
+		// somebody else.
+		switch {
+		case e.Skipped:
+			release, mode = t.Dim("not counted"), ""
+		case e.Problem != "":
 			release, mode = t.Fail("unreadable"), ""
 		}
 
-		row := []string{e.Product, release, mode, fmt.Sprint(e.Units)}
+		row := []string{e.Product, release, mode, unitsCell(t, e)}
 		if status {
 			row = append(row, serviceCell(t, e))
 		}
@@ -99,8 +107,15 @@ func installationsDoc(d *ui.Doc, entries []ops.InstallationEntry, status bool) *
 		// machine -- which is the alignment a table exists for, spent on
 		// the one row that has prose.
 		if e.Problem != "" {
+			// A skipped directory is a warning and a broken
+			// installation is a failure: one is something the
+			// reader may not own, the other is theirs and is wrong.
+			state := ui.CheckFailed
+			if e.Skipped {
+				state = ui.CheckWarned
+			}
 			notes = append(notes, ui.CheckRow{
-				State: ui.CheckFailed, Description: e.Product, Message: e.Problem,
+				State: state, Description: e.Product, Message: e.Problem,
 			})
 		}
 		if e.ServicesProblem != "" {
@@ -134,6 +149,19 @@ func installationsDoc(d *ui.Doc, entries []ops.InstallationEntry, status bool) *
 			"so a row may be a moment out of date"))
 	}
 	return d
+}
+
+// unitsCell is how many supervisor units this installation manages.
+//
+// `unknown` rather than `0` when the supervisor could not be asked: zero is a
+// real and supported answer — `init --install-units=false` produces it — so a
+// failed read printed as zero would be the one number in this table that is
+// wrong without saying so.
+func unitsCell(t *theme.Theme, e ops.InstallationEntry) string {
+	if e.Units == nil {
+		return t.Dim("unknown")
+	}
+	return fmt.Sprint(*e.Units)
 }
 
 // serviceCell is one installation's runtime answer as a state, never as a

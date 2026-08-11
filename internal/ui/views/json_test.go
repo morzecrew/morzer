@@ -127,8 +127,9 @@ func TestVerboseIsInvisibleToJSON(t *testing.T) {
 // way -- with a `services` key per row when it was asked for and none when it
 // was not.
 func TestTheListingIsOneArrayWhicheverViewDrewIt(t *testing.T) {
+	five := 5
 	entries := []ops.InstallationEntry{
-		{Product: "demo", Path: "/etc/demo", SchemaVersion: 5, Units: 5},
+		{Product: "demo", Path: "/etc/demo", SchemaVersion: 5, Units: &five},
 	}
 
 	plain, err := json.Marshal(entries)
@@ -148,8 +149,9 @@ func TestTheListingIsOneArrayWhicheverViewDrewIt(t *testing.T) {
 // whose whole point is that it could not, every interpreted key has to be
 // absent -- not zero, absent, because `"mode": ""` is a claim about the mode.
 func TestAnUnreadableRowCarriesNothingItCouldNotRead(t *testing.T) {
+	five := 5
 	got := marshal(t, ops.InstallationEntry{
-		Product: "legacy", Path: "/etc/legacy", Units: 5,
+		Product: "legacy", Path: "/etc/legacy", Units: &five,
 		Problem: "installation was written by a newer manager",
 	})
 
@@ -159,6 +161,28 @@ func TestAnUnreadableRowCarriesNothingItCouldNotRead(t *testing.T) {
 		"units":   float64(5),
 		"problem": "installation was written by a newer manager",
 	}, got)
+}
+
+// TestAUnitCountNobodyReadIsNullRatherThanZero.
+//
+// Zero units is a real and supported answer -- `init --install-units=false`
+// produces it -- so a supervisor that could not be read must not encode as one.
+// `null` is the only spelling a consumer cannot mistake for a count, and the
+// key stays present so `jq -e .units` still distinguishes it from a field that
+// was dropped.
+func TestAUnitCountNobodyReadIsNullRatherThanZero(t *testing.T) {
+	got := marshal(t, ops.InstallationEntry{Product: "demo", Path: "/etc/demo"})
+
+	require.Contains(t, got, "units")
+	require.Nil(t, got["units"])
+
+	none := 0
+	deliberate := marshal(t, ops.InstallationEntry{
+		Product: "demo", Path: "/etc/demo", Units: &none,
+	})
+	require.Equal(t, float64(0), deliberate["units"],
+		"an installation that manages no units stopped being distinguishable "+
+			"from one whose supervisor could not be read")
 }
 
 func marshal(t *testing.T, v any) map[string]any {

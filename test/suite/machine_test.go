@@ -242,8 +242,15 @@ func TestTheUnitsColumnCountsWhatIsActuallyInstalled(t *testing.T) {
 	require.NoError(t, m.Supervisor.InstallUnits(context.Background(), units))
 
 	entries := m.list(t, ops.ListOptions{})
-	assert.Positive(t, entryFor(t, entries, "demo").Units)
-	assert.Equal(t, 0, entryFor(t, entries, "sandbox").Units,
+
+	installed := entryFor(t, entries, "demo").Units
+	require.NotNil(t, installed)
+	assert.Positive(t, *installed)
+
+	deliberate := entryFor(t, entries, "sandbox").Units
+	require.NotNil(t, deliberate,
+		"an installation that manages no units was reported as unreadable")
+	assert.Equal(t, 0, *deliberate,
 		"an installation that manages no units was reported as managing some")
 }
 
@@ -502,9 +509,11 @@ func TestADirectoryThatCannotBeAnInstallationIsNotOne(t *testing.T) {
 	require.NoError(t, os.WriteFile(
 		filepath.Join(imposter, "installation.yaml"), []byte("# not ours\n"), 0o644))
 
-	products, err := ops.DiscoverProducts(m.Root)
+	inv, err := ops.DiscoverProducts(m.Root)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"demo"}, products)
+	assert.Equal(t, []string{"demo"}, inv.Products)
+	assert.Empty(t, inv.Undecidable,
+		"a name no installation could have was reported as one this process could not read")
 
 	entries := m.list(t, ops.ListOptions{})
 	require.Len(t, entries, 1)
@@ -577,7 +586,12 @@ func TestASupervisorThatWillNotAnswerDoesNotStopTheListing(t *testing.T) {
 	entries := m.list(t, ops.ListOptions{})
 	require.Len(t, entries, 2)
 	assert.Empty(t, entries[0].Problem, "a supervisor that would not answer marked the row broken")
-	assert.Equal(t, 0, entries[0].Units)
+
+	// Unknown, never zero. Zero is what `init --install-units=false`
+	// produces, and reporting it here would make a machine somebody has to
+	// go and look at indistinguishable from a supported choice -- and would
+	// disarm the doctor warning below.
+	assert.Nil(t, entries[0].Units)
 }
 
 // TestThePortCheckSaysWhatItCouldNotRead.
@@ -629,4 +643,88 @@ func TestDoctorDoesNotClaimACleanMachineItCouldNotRead(t *testing.T) {
 	assert.Equal(t, "warn", ports.Status)
 	assert.Contains(t, ports.Message, "could not read",
 		"a check that read nothing reported that nothing collides")
+}
+
+// TestAUnitCountNobodyReadKeepsTheDoctorWarningArmed.
+//
+// The half that makes the pointer worth its weight. `machine.installations`
+// exists to catch units running beside state nobody can read; a supervisor this
+// process cannot read is not evidence that there are no units, and deciding the
+// reassuring way from a failed read disarms the warning on exactly the machine
+// that needed it.
+func TestAUnitCountNobodyReadKeepsTheDoctorWarningArmed(t *testing.T) {
+	m := newHost(t, "demo", "sandbox")
+	m.Supervisor.Fail["InstalledUnits"] = domain.Internal(nil, "cannot read /etc/systemd/system")
+
+	paths := domain.PathsUnder(m.Root, "sandbox")
+	require.NoError(t, os.WriteFile(paths.InstallationState(), []byte("{not json"), 0o640))
+
+	report, err := ops.Doctor(context.Background(), m.Deps)
+	require.NoError(t, err)
+
+	found := findResult(t, report, "machine.installations")
+	assert.Equal(t, "warn", found.Status)
+	assert.Contains(t, found.Message, "sandbox")
+}
+
+// TestAMarkerNobodyMayStatIsNotAnAbsentInstallation.
+//
+// The rule this project applies to `/etc` itself, one level down, where it was
+// wrong: every stat error on `<etc>/<product>/installation.yaml` read as "no
+// installation", so a directory this process may not open removed a live
+// deployment from the listing, from both machine checks, and from the count
+// that decides whether the machine is ambiguous.
+func TestAMarkerNobodyMayStatIsNotAnAbsentInstallation(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root traverses a 0000 directory, so this arrangement proves nothing")
+	}
+	m := newHost(t, "demo", "sandbox")
+
+	sealed := filepath.Join(m.Root, "etc", "sandbox")
+	require.NoError(t, os.Chmod(sealed, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
+
+	inv, err := ops.DiscoverProducts(m.Root)
+	require.NoError(t, err, "one unreadable directory must not fail the whole enumeration: "+
+		"/etc holds several root-only directories on any real host")
+	assert.Equal(t, []string{"demo"}, inv.Products,
+		"a directory nobody could open was counted as an installation")
+	assert.Equal(t, []string{"sandbox"}, inv.Undecidable,
+		"a directory nobody could open was reported as absent")
+
+	// Listed, so an empty machine can be told from an unreadable one, and
+	// marked so nothing downstream mistakes it for a deployment.
+	entries, err := ops.ListInstallations(context.Background(), m.Deps, ops.ListOptions{})
+	require.NoError(t, err)
+
+	skipped := entryFor(t, entries, "sandbox")
+	assert.True(t, skipped.Skipped)
+	assert.Contains(t, skipped.Problem, "not counted")
+	assert.False(t, entryFor(t, entries, "demo").Skipped)
+}
+
+// TestASkippedDirectoryIsNotDiagnosedAsABrokenInstallation.
+//
+// `machine.installations` warns about state that will not load beside units that
+// might be there. A root-only directory of the host's own -- `/etc/credstore` on
+// any systemd machine -- is neither, and warning about it would make the check
+// fire on every unprivileged run.
+func TestASkippedDirectoryIsNotDiagnosedAsABrokenInstallation(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root traverses a 0000 directory, so this arrangement proves nothing")
+	}
+	m := newHost(t, "demo", "sandbox")
+
+	sealed := filepath.Join(m.Root, "etc", "sandbox")
+	require.NoError(t, os.Chmod(sealed, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
+
+	report, err := ops.Doctor(context.Background(), m.Deps)
+	require.NoError(t, err)
+
+	found := findResult(t, report, "machine.installations")
+	assert.Equal(t, "warn", found.Status)
+	assert.Contains(t, found.Message, "could not be read")
+	assert.NotContains(t, found.Message, "units may be installed",
+		"a directory of the host's own was diagnosed as a broken installation")
 }

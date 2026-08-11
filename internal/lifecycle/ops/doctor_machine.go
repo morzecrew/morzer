@@ -39,21 +39,28 @@ func (d *Deps) checkMachineInstallations() preflight.Check {
 					"cannot enumerate this machine's installations: %s",
 					domain.AsError(err).Message)
 			}
-			if len(entries) == 0 {
-				// Not a warning. `doctor` runs on a bare machine --
-				// it is half of what makes `init` diagnosable --
-				// and "there is nothing here" is the truth about
-				// one, not a fault in it.
-				return preflight.OK("no installations")
-			}
-
 			// An installation whose units are installed and whose
 			// state will not load is the arrangement that confuses
 			// everyone: systemd starts it on every boot, the manager
 			// cannot tell it what to do, and nothing else says so.
-			var broken []string
+			//
+			// A unit count nobody could read counts as "may have
+			// them". The check exists to catch units running beside
+			// unreadable state, and a supervisor this process cannot
+			// read is not evidence that there are none -- deciding
+			// the reassuring way from a failed read is how a warning
+			// disarms itself exactly on the machine that needed it.
+			var broken, skipped []string
 			for _, e := range entries {
-				if e.Problem != "" && e.Units > 0 {
+				switch {
+				case e.Skipped:
+					// Not an installation as far as this
+					// process can tell, so not something to
+					// diagnose -- but worth naming, because
+					// the count below would otherwise be the
+					// whole answer.
+					skipped = append(skipped, e.Product)
+				case e.Problem != "" && (e.Units == nil || *e.Units > 0):
 					broken = append(broken, e.Product)
 				}
 			}
@@ -61,15 +68,30 @@ func (d *Deps) checkMachineInstallations() preflight.Check {
 				return preflight.Warn(
 					"run `morzer ls` for the reason, and `morzer --product <name> doctor` "+
 						"to diagnose one of them",
-					"%s: units are installed and the state will not load",
+					"%s: the state will not load and units may be installed",
 					strings.Join(broken, ", "))
 			}
 
 			names := make([]string, 0, len(entries))
 			for _, e := range entries {
-				names = append(names, e.Product)
+				if !e.Skipped {
+					names = append(names, e.Product)
+				}
 			}
-			if len(entries) == 1 {
+			if len(skipped) > 0 {
+				return preflight.Warn(
+					"re-run as root if any of them is an installation",
+					"%d installation(s): %s — and %s could not be read by this process",
+					len(names), strings.Join(names, ", "), strings.Join(skipped, ", "))
+			}
+			if len(names) == 0 {
+				// Not a warning. `doctor` runs on a bare machine
+				// -- it is half of what makes `init` diagnosable
+				// -- and "there is nothing here" is the truth
+				// about one, not a fault in it.
+				return preflight.OK("no installations")
+			}
+			if len(names) == 1 {
 				return preflight.OK("one installation: %s", names[0])
 			}
 			// Informational rather than a warning: several
@@ -149,13 +171,15 @@ func (d *Deps) declaredPorts(ctx context.Context) (map[int][]string, []string) {
 		// read nothing" must never be the same code path.
 		return claims, []string{"this machine's installations"}
 	}
-	products, err := DiscoverProducts(d.Paths.Root())
+	inv, err := DiscoverProducts(d.Paths.Root())
 	if err != nil {
 		return claims, []string{"this machine's installations"}
 	}
 
-	var problems []string
-	for _, product := range products {
+	// A directory nobody could open declares nothing this check can read,
+	// and saying so is the honest version of "none twice".
+	problems := append([]string(nil), inv.Undecidable...)
+	for _, product := range inv.Products {
 		scoped := d.forInstallation(product)
 
 		inst, err := scoped.State.LoadInstallation(ctx)

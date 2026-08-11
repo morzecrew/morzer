@@ -20,7 +20,18 @@ type InstallationEntry struct {
 	SchemaVersion int            `json:"schema_version,omitempty"`
 	Mode          domain.Mode    `json:"mode,omitempty"`
 	Release       domain.Version `json:"release,omitzero"`
-	Units         int            `json:"units"`
+
+	// Units is how many of this product's supervisor units are installed,
+	// and nil when the supervisor could not be asked.
+	//
+	// A pointer because the column is a count and a count has no way to
+	// spell "I could not look": zero is a real answer -- `init
+	// --install-units=false` is a supported choice -- so reporting it for a
+	// supervisor that errored would make an unreadable unit directory
+	// indistinguishable from a deliberate one, and would quietly disarm the
+	// `machine.installations` warning that exists for units running beside
+	// state nobody can read.
+	Units *int `json:"units"`
 
 	// Problem is why this row is incomplete, when it is. An installation
 	// whose state will not parse is still an installation, and the one
@@ -30,6 +41,14 @@ type InstallationEntry struct {
 	// applies, and a partially-read future installation reported as fact
 	// would be worse than a row that says it cannot be read.
 	Problem string `json:"problem,omitempty"`
+
+	// Skipped marks a directory discovery could not look inside: neither an
+	// installation nor evidence that there is none. Listed so an empty
+	// machine can be told apart from an unreadable one, and never counted --
+	// `/etc` holds several root-only directories on any real host, and an
+	// unprivileged operator being told their machine has four deployments
+	// would be worse than being told nothing.
+	Skipped bool `json:"skipped,omitempty"`
 
 	// Services is what --status found, and nil when it was not asked for.
 	// ServicesProblem is per row rather than per command: one wedged
@@ -80,14 +99,28 @@ func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]Instal
 		return nil, domain.Internal(nil, "this build cannot read installation state")
 	}
 
-	products, err := DiscoverProducts(d.Paths.Root())
+	inv, err := DiscoverProducts(d.Paths.Root())
 	if err != nil {
 		return nil, err
 	}
 
-	out := make([]InstallationEntry, 0, len(products))
-	for _, product := range products {
+	out := make([]InstallationEntry, 0, len(inv.Products)+len(inv.Undecidable))
+	for _, product := range inv.Products {
 		out = append(out, d.installationEntry(ctx, product, opts))
+	}
+	// The directories discovery could not open, reported and not counted.
+	// An operator looking at a listing that came back empty needs to know
+	// whether the machine is bare or whether this process could not see it
+	// -- and that is the only question these rows answer, so they carry
+	// nothing else.
+	for _, product := range inv.Undecidable {
+		out = append(out, InstallationEntry{
+			Product: product,
+			Path:    domain.PathsUnder(d.Paths.Root(), product).EtcDir,
+			Skipped: true,
+			Problem: "cannot be read by this process, so it is not counted as an " +
+				"installation; re-run as root if it is one",
+		})
 	}
 	return out, nil
 }
@@ -111,15 +144,16 @@ func (d *Deps) installationEntry(ctx context.Context, product string, opts ListO
 	if d.Supervisor != nil {
 		units, err := d.Supervisor.InstalledUnits(ctx, product)
 		if err != nil {
-			// Logged rather than swallowed. The column has no way to
-			// spell "I could not look" -- it is a count -- so the
-			// zero it reports is the one number here that could be
-			// wrong without saying so, and the log line is what
-			// makes it diagnosable.
+			// Left nil, and logged. A supervisor that could not be
+			// read is not an installation with no units: the second
+			// is a supported choice and the first is a machine to go
+			// and look at.
 			logging.FromContext(ctx).Warn("cannot read a product's units",
 				"product", product, "error", err)
+		} else {
+			count := len(units)
+			entry.Units = &count
 		}
-		entry.Units = len(units)
 	}
 
 	inst, err := scoped.State.LoadInstallation(ctx)
@@ -261,6 +295,25 @@ func (d *Deps) forInstallation(product string) *Deps {
 	return &scoped
 }
 
+// Inventory is what discovery could see under one root.
+//
+// Two lists rather than one, because there are three answers and not two.
+// Products is what is certainly there. Undecidable is a directory this process
+// could not look inside -- neither an installation nor evidence that there is
+// none -- and it is deliberately *not* counted: `/etc` is a shared namespace,
+// a normal user cannot traverse `/etc/credstore` any more than they can
+// traverse a real `/etc/demo` (both are root-only by construction), and a
+// manager that refused to run, or that counted six of the host's own
+// directories as deployments, would be unusable on every real machine.
+//
+// What it is used for instead is saying so: an empty listing that does not
+// mention the three directories it could not open is the misleading answer,
+// and it is the only one an operator can act on.
+type Inventory struct {
+	Products    []string
+	Undecidable []string
+}
+
 // DiscoverProducts lists the products that have an installation under root.
 //
 // The filesystem is the registry: `<root>/etc/*/installation.yaml` is the
@@ -273,42 +326,62 @@ func (d *Deps) forInstallation(product string) *Deps {
 // with two installations report that it had none.
 //
 // A missing `etc` is an empty machine and not an error -- that is a bare host,
-// or a --root that has never been written to. Anything else is refused: "I
-// cannot look" and "there is nothing there" are different answers, and a
-// listing that conflated them would report an unreadable /etc as a machine
-// with nothing on it.
-func DiscoverProducts(root string) ([]string, error) {
+// or a --root that has never been written to. An `etc` that exists and cannot be
+// read is refused: "I cannot look" and "there is nothing there" are different
+// answers, and a listing that conflated them would report an unreadable root as
+// a machine with nothing on it. One directory *inside* it that cannot be opened
+// is neither -- see Inventory.
+func DiscoverProducts(root string) (Inventory, error) {
 	base := filepath.Join(root, "/etc")
 
 	entries, err := os.ReadDir(base)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
+			return Inventory{}, nil
 		}
-		return nil, domain.InstallationError(err, "cannot read %s", base).
+		return Inventory{}, domain.InstallationError(err, "cannot read %s", base).
 			WithHint("installations are discovered from %s/*/%s; check its permissions",
 				base, domain.InstallationFileName)
 	}
 
-	var found []string
+	var inv Inventory
 	for _, e := range entries {
 		if !e.IsDir() {
-			continue
-		}
-		marker := filepath.Join(base, e.Name(), domain.InstallationFileName)
-		if _, err := os.Stat(marker); err != nil {
 			continue
 		}
 		// A directory whose name is not a legal product name cannot be
 		// one of ours: every path the manager owns is derived from a
 		// validated name, so a `/etc/Foo Bar/installation.yaml` someone
 		// left there is not an installation this manager could have
-		// made.
+		// made. Asked before the stat, so a name that could never be
+		// ours is not reported as one we could not read.
 		if domain.ValidateProductName(e.Name()) != nil {
 			continue
 		}
-		found = append(found, e.Name())
+
+		// The distinction one level down, where it was wrong: every
+		// stat error read as "no installation", so a directory this
+		// process may not open vanished from the listing rather than
+		// being reported as one it could not decide about.
+		//
+		// Undecidable rather than an error, and not counted as an
+		// installation either. `/etc/<product>` is 0750 root-only by
+		// construction, so an unprivileged process cannot traverse a
+		// real installation any more than it can traverse the host's
+		// own `/etc/credstore` -- and both failing the command and
+		// counting six of the host's directories as deployments would
+		// be wrong on every real machine.
+		marker := filepath.Join(base, e.Name(), domain.InstallationFileName)
+		if _, err := os.Stat(marker); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				inv.Undecidable = append(inv.Undecidable, e.Name())
+			}
+			continue
+		}
+		inv.Products = append(inv.Products, e.Name())
 	}
-	sort.Strings(found)
-	return found, nil
+
+	sort.Strings(inv.Products)
+	sort.Strings(inv.Undecidable)
+	return inv, nil
 }

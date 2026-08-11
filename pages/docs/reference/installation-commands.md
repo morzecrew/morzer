@@ -34,7 +34,11 @@ taking the deployment lock, so a row may be a moment stale; the output says so.
 
 An installation whose state will not load is listed as `unreadable` with the
 reason beneath the table, never dropped — and its row carries no field this
-manager could not read.
+manager could not read. A directory in `/etc` this process cannot open is listed
+as `not counted` and marked `"skipped": true` in `--json`: on a real host most of
+those belong to somebody else, so it is neither a deployment nor a fault — but a
+listing that omitted it silently would be reporting a smaller machine than the
+one that is there. An `/etc` that cannot be read at all is an error.
 
 `--json` emits an array, one object per installation, with the same rows either
 way:
@@ -51,7 +55,9 @@ way:
 ```
 
 `schema_version` is JSON-only; `mode`, `release`, `problem`, `services` and
-`services_problem` are present only when they apply.
+`services_problem` are present only when they apply. `units` is always present
+and is `null` when the supervisor could not be read — `0` is a real answer,
+produced by `init --install-units=false`.
 
 Selecting *which* installation every other command means is described in
 [Several installations](../operating/several-installations.md).

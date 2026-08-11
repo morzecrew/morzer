@@ -110,6 +110,18 @@ type App struct {
 	// apart without the inventory.
 	machineProducts []string
 
+	// machineInventory is why that list is empty, when it is empty because
+	// nobody could read it.
+	//
+	// Path resolution cannot refuse on it: it runs for every command, and
+	// `morzer version` on a machine whose /etc this process may not read is
+	// still a question with an answer. But a command that is about to act on
+	// *one* installation, chosen from an inventory nobody could take, would
+	// otherwise proceed against the placeholder layout and report that no
+	// installation exists — which is the same wrong answer the ambiguity
+	// refusal was written to stop, arriving by the other road.
+	machineInventory error
+
 	// cancelOperation cancels the context every command runs under. It is
 	// what the live view's Ctrl-C invokes: raw mode suppresses the SIGINT
 	// main's handler listens for, so the keystroke has to reach the same
@@ -609,6 +621,15 @@ func (a *App) confirmInstallationChosen(cmd *cobra.Command) error {
 	if scopeOf(cmd) == scopeMachine {
 		return nil
 	}
+	// The inventory first, because a lookup that could not be taken is not
+	// the same as one that came back empty. Without this the placeholder
+	// layout answered on behalf of a machine nobody could read: `status` on
+	// a /etc this process may not open reported "no installation found at
+	// /etc/morzer" and advised `morzer init`, which is advice to create one
+	// beside however many are already there.
+	if a.machineInventory != nil {
+		return a.machineInventory
+	}
 	return a.Deps.RequireInstallationChosen()
 }
 
@@ -1054,7 +1075,7 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 	// against the root it derives: both flags name an installation, so both
 	// must be able to say what the machine has when it does not have that
 	// one.
-	a.machineProducts = discoverProducts(a.Flags.root)
+	a.discoverProducts(a.Flags.root)
 
 	if product == "" && len(a.machineProducts) == 1 {
 		// Exactly one, or the operator must say which: guessing between
@@ -1160,7 +1181,7 @@ func (a *App) pathsFromConfig() (domain.Paths, error) {
 	// the identical --product was answered with the names it does have. The
 	// systemd units pass --config, so the wrong half of that pair is the one
 	// an operator reads after a unit fails.
-	a.machineProducts = discoverProducts(root)
+	a.discoverProducts(root)
 
 	if root == "" {
 		return domain.DefaultPaths(product), nil
@@ -1192,18 +1213,27 @@ func (a *App) confirmProductMatchesConfig(product string) error {
 	return nil
 }
 
-// discoverProducts is the machine's inventory, for the two callers that resolve
-// paths with it.
+// discoverProducts records the machine's inventory, and why it is empty when
+// nobody could take it.
 //
 // The enumeration itself belongs to the lifecycle layer, where `ls` reports it
 // and where an unreadable /etc is an error rather than an empty machine. Path
-// resolution cannot use that half: it runs for every command, including the ones
-// that touch no installation, so a /etc this process may not read must not stop
-// `morzer version` from answering. The error is dropped here and nowhere else --
-// `morzer ls` is the command that says what it could not look at.
-func discoverProducts(root string) []string {
-	found, _ := ops.DiscoverProducts(root)
-	return found
+// resolution cannot refuse on that half: it runs for every command, including
+// the ones that touch no installation, so a /etc this process may not read must
+// not stop `morzer version` from answering.
+//
+// So it is *held* rather than dropped, and confirmInstallationChosen is where it
+// is asked -- at the one point that already knows whether this command is about
+// an installation.
+func (a *App) discoverProducts(root string) {
+	inv, err := ops.DiscoverProducts(root)
+
+	// Products only. A directory discovery could not open is not an
+	// installation this command could act on either, and counting it would
+	// tell an unprivileged operator that a machine with one deployment has
+	// four -- `/etc` holds several root-only directories on any real host.
+	// `morzer ls` is where they are reported.
+	a.machineProducts, a.machineInventory = inv.Products, err
 }
 
 func parseBuildVersion(s string) domain.Version {

@@ -40,11 +40,13 @@ unavailable exactly then.
 | `PRODUCT` | The name every path, unit and Compose project derives from |
 | `RELEASE` | The version the state records as current, or `none` |
 | `MODE` | `dev` for a sandbox; blank for a production installation |
-| `UNITS` | How many systemd units this installation manages; `0` after `init --install-units=false` |
+| `UNITS` | How many systemd units this installation manages; `0` after `init --install-units=false`, and `unknown` when the supervisor could not be read |
 | `PATH` | Where its configuration lives |
 
 `morzer ls --json` adds `schema_version` per row. It is absent from the table on
 purpose: it matters on one day in a hundred, and a terminal's width is scarcer.
+`units` is `null` there when the count could not be read — zero is a real answer
+and a supervisor nobody could ask is not one.
 
 ### An installation it cannot read
 
@@ -61,10 +63,34 @@ legacy   unreadable            5  /etc/legacy
   installation was written by a newer manager (schema 9, this manager reads 5)
 ```
 
-It is listed rather than skipped. The moment an installation's state breaks is
-the moment it must not look absent — and the row carries nothing this manager
-could not read, because a `mode` or a `release` reported out of a state file it
-does not understand would be a guess presented as a fact.
+A directory in `/etc` that this process cannot open at all is a different case
+again. It is listed as `not counted`, with a warning rather than a failure:
+
+```text
+credstore  not counted        unknown  /etc/credstore
+
+! credstore
+  cannot be read by this process, so it is not counted as an installation;
+  re-run as root if it is one
+```
+
+`/etc/<product>` is `0750` and owned by root, and so are several of the host's
+own directories — `/etc/credstore`, `/etc/wireguard`. An unprivileged process
+cannot tell one from the other, so morzer does neither of the two obvious wrong
+things: it does not refuse to run (which would make every non-root invocation
+fail on a real machine), and it does not count them (which would tell an
+operator with one deployment that they have four). It says what it could not
+look at, and `morzer ls` is where that belongs — an empty-looking listing that
+does not mention them is the misleading answer.
+
+An `/etc` that cannot be read **at all** is an error, because that is the
+manager's own root rather than one directory inside it.
+
+An installation whose *state* will not load is listed rather than skipped. The
+moment an installation's state breaks is the moment it must not look absent — and
+the row carries nothing this manager could not read, because a `mode` or a
+`release` reported out of a state file it does not understand would be a guess
+presented as a fact.
 
 ### What is running
 
@@ -156,6 +182,11 @@ they name themselves:
 `morzer installation import` · `morzer release new` · `morzer release verify` ·
 `morzer release pack` · `morzer release build` · `morzer release archive`
 
+`morzer release show ./bundle` joins them, because the argument decides: a
+directory is inspected without an installation, while `release show` and
+`release show 1.4.0` read this installation's store and are refused like
+anything else.
+
 `doctor` is the interesting one: it runs its machine-scope checks, reports them,
 and refuses the rest by name. Taking the diagnostic away at the moment the
 diagnosis is "you have two installations" would be exactly the wrong time.
@@ -167,9 +198,10 @@ several installations is a supported arrangement, and a `doctor` that failed on 
 supported arrangement would teach everyone to ignore `doctor`.
 
 **`machine.installations`** counts them, and warns about the one arrangement
-nothing else reports: an installation whose units are installed and whose state
-will not load. systemd starts it on every boot and the manager cannot tell it
-anything.
+nothing else reports: an installation whose state will not load while units may
+be installed. systemd starts it on every boot and the manager cannot tell it
+anything. A unit count that could not be read counts as "may have them" — a
+failed read is not evidence that there are none.
 
 **`machine.ports`** warns when two installations declare the same host port:
 
