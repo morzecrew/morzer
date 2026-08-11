@@ -806,6 +806,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/looking-inside/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Looking inside
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/several-installations/" class="md-nav__link">
         
   
@@ -1381,6 +1410,50 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         doctor
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        logs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ps
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        stats
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exec" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        exec
       </span>
     </span>
   </a>
@@ -2140,6 +2213,50 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        logs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ps
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        stats
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exec" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        exec
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2461,6 +2578,22 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <tr>
 <td><a href="#doctor"><code>doctor</code></a></td>
 <td>Run read-only diagnostics.</td>
+</tr>
+<tr>
+<td><a href="#logs"><code>logs</code></a></td>
+<td>Read the deployment's logs.</td>
+</tr>
+<tr>
+<td><a href="#ps"><code>ps</code></a></td>
+<td>List the deployment's containers.</td>
+</tr>
+<tr>
+<td><a href="#stats"><code>stats</code></a></td>
+<td>Show CPU, memory and I/O per container.</td>
+</tr>
+<tr>
+<td><a href="#exec"><code>exec</code></a></td>
+<td>Run a command inside a running service.</td>
 </tr>
 <tr>
 <td><a href="#backup"><code>backup</code></a></td>
@@ -2794,6 +2927,103 @@ does not — pointing at <code>rotate</code> there would point at a command that
 </tr>
 </tbody>
 </table>
+<h2 id="logs">logs<a class="headerlink" href="#logs" title="Permanent link">&para;</a></h2>
+<p>Streams the deployment's logs, resolving the Compose project, its files and its
+environment. Scoped to the project rather than to the manifest's service list,
+so a sidecar the vendor's Compose file starts is included.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--follow</code>, <code>-f</code></td>
+<td>Keep the stream open. Ctrl-C exits 0.</td>
+</tr>
+<tr>
+<td><code>--tail</code></td>
+<td>Lines of history before following. Default <code>100</code>; <code>0</code> is the whole retained backlog, which is also the default with <code>--follow</code>.</td>
+</tr>
+<tr>
+<td><code>--since</code></td>
+<td>A duration back from now (<code>10m</code>, <code>2h</code>) or an RFC 3339 instant <strong>with a zone</strong>. A timestamp with no zone is refused rather than assumed local.</td>
+</tr>
+<tr>
+<td><code>--no-redact</code></td>
+<td>Do not scrub this installation's secret values. Prints a warning to stderr.</td>
+</tr>
+</tbody>
+</table>
+<p>Takes no lock: reading logs must never queue behind an update, since during one
+is when they are most wanted. Nothing is stored, rotated or shipped.</p>
+<p>Secret values are scrubbed by default, holding bytes to a line boundary so a
+value split across two reads is still caught, and dropping any line over 64 KiB
+rather than passing it through unmatched. It is best effort — a value the
+service <em>derived</em> from a secret is beyond any redactor. See
+<a href="../../operating/looking-inside/#redaction-and-what-it-cannot-do">Looking inside</a>.</p>
+<p><code>--json</code> is the one exception to the <a href="../output-modes/#the-one-streaming-exception">single-envelope
+contract</a>: one object per line, no
+envelope, and the exit code is what says whether the stream ended cleanly.</p>
+<h2 id="ps">ps<a class="headerlink" href="#ps" title="Permanent link">&para;</a></h2>
+<p>The service table <code>status</code> draws, on its own: what is running, whether it is
+healthy, which image, and the runtime's own sentence about it. No flags, no
+lock, and nothing changed.</p>
+<p>The container column is never dropped on a narrow terminal — it is the only
+thing that tells two replicas of one service apart.</p>
+<h2 id="stats">stats<a class="headerlink" href="#stats" title="Permanent link">&para;</a></h2>
+<p>One sample of CPU, memory and I/O, one row per container.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--watch</code></td>
+<td>Re-sample until interrupted. Refused with <code>--json</code>.</td>
+</tr>
+<tr>
+<td><code>--interval</code></td>
+<td>How often <code>--watch</code> re-samples. Default <code>2s</code>, floor <code>1s</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Never an aggregate per service: a scaled service is several containers, and one
+row under the service's name would be one replica's numbers wearing the whole
+service's label. The total line covers CPU and memory, which add, and not the
+memory limit, which does not; <code>--json</code> emits the rows and no total.</p>
+<p>A <code>-</code> in a column — <code>null</code> under <code>--json</code> — is a figure this host does not
+account for, which is what a rootless daemon reports for block I/O. It is not a
+zero, because a container that has written nothing reports one of those.</p>
+<p>At a terminal <code>--watch</code> redraws; elsewhere it appends a block per sample, unlike
+<a href="#watching"><code>status --watch</code></a>, which is refused without a terminal. A sequence
+of samples is a time series worth keeping; a redrawn status table is not.</p>
+<p>A runtime that cannot report statistics refuses by name with
+<a href="../exit-codes/">exit 7</a> rather than returning an empty table, which would be
+indistinguishable from an idle deployment.</p>
+<h2 id="exec">exec<a class="headerlink" href="#exec" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;service&gt;<span class="w"> </span>--<span class="w"> </span>&lt;command&gt;<span class="w"> </span><span class="o">[</span>args...<span class="o">]</span>
+</code></pre></div>
+<p>Runs one command inside a running container of the named service and propagates
+its exit code, so a failed command fails the invocation. Everything after <code>--</code>
+is the container's command line and nothing else; the terminator is required.</p>
+<p>Not an interactive shell: there is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin, so a command that
+prompts waits for an answer nobody can give. There is no <code>--user</code> and no
+shortcut for running as root.</p>
+<p>A service that is not running is refused by name, with the state it is in.</p>
+<p>Journaled with its type, service, argv and exit code — and never its output. The
+argv is redacted with this installation's known secret values first, because a
+password in an argv is the ordinary case; when those values cannot be loaded at
+all the record keeps everything else and carries <code>argv_omitted</code> saying why,
+rather than writing down a command line it could not scrub. A credential the
+manager has never
+been told about is beyond that; see
+<a href="../../operating/looking-inside/#it-is-written-down">Looking inside</a>.</p>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>Coordinates the release's backup hook, wraps the result in a self-describing
 manifest, and verifies the checksums by re-reading what was written.</p>

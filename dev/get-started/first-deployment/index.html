@@ -959,6 +959,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/looking-inside/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Looking inside
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/several-installations/" class="md-nav__link">
         
   
@@ -2109,6 +2138,16 @@ it usable from a monitoring system.</p>
 <p>Some results are warnings by design, including the one you will see here: your
 <code>--root</code> directory is not tmpfs, so decrypted secrets are on disk. That is
 correct and expected when trying things out.</p>
+<p>For the questions those two do not answer — <em>what did it say</em>, <em>what is it
+using</em>, <em>what does it think is in the database</em> — there are four more:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--root<span class="w"> </span>./demo<span class="w"> </span>ps
+morzer<span class="w"> </span>--root<span class="w"> </span>./demo<span class="w"> </span>logs<span class="w"> </span>--tail<span class="w"> </span><span class="m">20</span>
+morzer<span class="w"> </span>--root<span class="w"> </span>./demo<span class="w"> </span>stats
+morzer<span class="w"> </span>--root<span class="w"> </span>./demo<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>ls<span class="w"> </span>/var/lib/demo
+</code></pre></div>
+<p>None of them needs to know the Compose project name, which files the profile
+selected, or the environment they interpolate. That is the point of them, and
+<a href="../../operating/looking-inside/">Looking inside</a> is the rest of it.</p>
 <h2 id="6-take-a-backup">6. Take a backup<a class="headerlink" href="#6-take-a-backup" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--root<span class="w"> </span>./demo<span class="w"> </span>backup<span class="w"> </span>--reason<span class="w"> </span><span class="s2">&quot;before I break something&quot;</span>
 morzer<span class="w"> </span>--root<span class="w"> </span>./demo<span class="w"> </span>backup<span class="w"> </span>list
@@ -2119,6 +2158,11 @@ manifest, and the checksums are verified by re-reading what was written.</p>
 <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>compose<span class="w"> </span>-p<span class="w"> </span>demo<span class="w"> </span>down
 rm<span class="w"> </span>-rf<span class="w"> </span>./demo<span class="w"> </span>~/demo-recovery.key
 </code></pre></div>
+<p>This is the one place these pages reach for <code>docker</code> directly, and it works here
+only because the example's Compose project name happens to equal its product
+name. In general it does not — <code>manifest.runtime.project</code> is the vendor's to set
+— which is why everything <em>read-only</em> about a running deployment has a command
+of its own rather than an instruction to reconstruct the project by hand.</p>
 <p>That is all of it. The whole installation was under one directory, which is what
 <code>--root</code> is for.</p>
 <p>For a real machine, without <code>--root</code>, there is no teardown command on purpose:
