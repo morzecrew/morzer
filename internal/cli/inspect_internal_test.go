@@ -1,0 +1,350 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ui"
+	"github.com/morzecrew/morzer/internal/ui/jsonout"
+)
+
+// `--since` is the one flag here with a parse worth testing on its own: it
+// takes two forms, refuses a third, and the refusal is the interesting one.
+
+func TestSinceTakesADurationBackFromNow(t *testing.T) {
+	now := time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC)
+
+	got, err := parseSince("15m", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := now.Add(-15 * time.Minute); !got.Equal(want) {
+		t.Errorf("--since 15m resolved to %s, want %s", got, want)
+	}
+}
+
+func TestSinceTakesAnAbsoluteInstant(t *testing.T) {
+	got, err := parseSince("2026-08-10T09:12:33Z", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2026, 8, 10, 9, 12, 33, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("got %s, want %s", got, want)
+	}
+}
+
+func TestSinceRefusesATimestampWithNoZone(t *testing.T) {
+	// Not assumed local, and not assumed UTC. "Which midnight" is exactly
+	// the question a log query must not guess, and the machine's zone is
+	// rarely the operator's -- so the refusal names the missing part rather
+	// than saying the value is invalid, which would send them looking at
+	// the date.
+	_, err := parseSince("2026-08-10T09:12:33", time.Now())
+	if err == nil {
+		t.Fatal("a timestamp with no zone was accepted")
+	}
+	if code := domain.ExitCode(err); code != domain.ExitUsage {
+		t.Errorf("exit %d, want %d", code, domain.ExitUsage)
+	}
+	if hint := domain.AsError(err).Hint; hint == "" {
+		t.Error("the refusal offers no remedy")
+	}
+	if msg := domain.AsError(err).Message; msg == "" || !strings.Contains(msg, "time zone") {
+		t.Errorf("the refusal does not name the missing zone: %q", msg)
+	}
+}
+
+func TestSinceRefusesSomethingThatIsNeither(t *testing.T) {
+	_, err := parseSince("yesterday", time.Now())
+	if err == nil {
+		t.Fatal("`yesterday` was accepted")
+	}
+	// Both accepted forms are named. A usage error that says only "invalid"
+	// is a second guess an operator has to make.
+	hint := domain.AsError(err).Hint
+	if !strings.Contains(hint, "duration") || !strings.Contains(hint, "RFC 3339") {
+		t.Errorf("the hint names neither form: %q", hint)
+	}
+}
+
+func TestSinceUnsetIsZero(t *testing.T) {
+	got, err := parseSince("", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsZero() {
+		t.Errorf("an unset --since resolved to %s, so the runtime would be given a "+
+			"cutoff nobody asked for", got)
+	}
+}
+
+func TestSinceRefusesANegativeDuration(t *testing.T) {
+	// `--since -10m` parses as a duration and would ask for lines from ten
+	// minutes in the future, which is a silently empty stream.
+	if _, err := parseSince("-10m", time.Now()); err == nil {
+		t.Fatal("a negative duration was accepted")
+	}
+}
+
+// TestAContainersExitCodeOutranksTheMappingTable is the other half of
+// `exec`'s contract: the codes inside a container are not this program's.
+func TestAContainersExitCodeOutranksTheMappingTable(t *testing.T) {
+	err := exitStatus{
+		code:  3,
+		cause: domain.RuntimeError(domain.ErrRuntime, "the command in db exited 3"),
+	}
+
+	if got := exitCodeFor(err); got != 3 {
+		t.Errorf("exit %d, want the container's own 3", got)
+	}
+	// And the envelope still sees an ordinary runtime error underneath, so
+	// a --json consumer gets what it gets for every other failure.
+	if !errors.Is(err, domain.ErrRuntime) {
+		t.Error("the envelope cannot classify this failure")
+	}
+	if domain.AsError(err).Message == "" {
+		t.Error("the envelope would carry no message")
+	}
+	// Legible on its own, for the one reader that meets it as a plain
+	// error: a `%v` in a log line somewhere downstream.
+	if !strings.Contains(err.Error(), "db") || !strings.Contains(err.Error(), "3") {
+		t.Errorf("the error names neither the service nor the code: %q", err.Error())
+	}
+	// Nothing is printed for it: the command already said whatever it had
+	// to say on its own streams.
+	if !silentFailure(err) {
+		t.Error("a container's own failure would be reported twice")
+	}
+}
+
+// TestCtrlCDuringAFollowIsNotAFailure is the difference between an operator who
+// finished reading and a runtime that died.
+func TestCtrlCDuringAFollowIsNotAFailure(t *testing.T) {
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := endOfStream(cancelled, errors.New("signal: terminated")); err != nil {
+		t.Errorf("an interrupted follow reported %v; ctrl-C means the operator "+
+			"has finished reading", err)
+	}
+
+	// EOF is the ordinary end of a stream that was not following.
+	if err := endOfStream(context.Background(), io.EOF); err != nil {
+		t.Errorf("a stream that ended reported %v", err)
+	}
+
+	// Anything else is the runtime's own failure, and it must not be
+	// swallowed: a `logs` that exited 0 having printed nothing would be
+	// read as a deployment that said nothing.
+	err := endOfStream(context.Background(), errors.New("the daemon went away"))
+	if err == nil {
+		t.Fatal("a runtime that died mid-stream reported success")
+	}
+	if code := domain.ExitCode(err); code != domain.ExitRuntime {
+		t.Errorf("exit %d, want %d", code, domain.ExitRuntime)
+	}
+}
+
+// TestAWatchGivesUpAfterTwoConsecutiveFailures drives the plain `--watch` loop,
+// which is the form a pipe and a journal get.
+func TestAWatchGivesUpAfterTwoConsecutiveFailures(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{
+		Stream: ui.Streams{Out: &out, Err: &errOut},
+		// No runtime wired, so every sample fails the same way a daemon
+		// that has gone would. What is under test is the counting, not
+		// the reason.
+		Deps: &ops.Deps{},
+	}
+
+	start := time.Now()
+	err := app.appendStats(context.Background(), 10*time.Millisecond)
+	if err == nil {
+		t.Fatal("a watch against a runtime that never answers ran forever and exited 0")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("the watch took %s to give up", elapsed)
+	}
+
+	// The first failure is reported and the watch carries on: a daemon
+	// hiccup must not end something an operator set running and walked
+	// away from.
+	if !strings.Contains(errOut.String(), "cannot read statistics") {
+		t.Errorf("the first failure was not reported:\n%s", errOut.String())
+	}
+	if n := strings.Count(errOut.String(), "cannot read statistics"); n != 1 {
+		t.Errorf("reported %d failures before giving up, want 1 then the error", n)
+	}
+}
+
+// TestAWatchThatIsInterruptedEndsCleanly: ctrl-C during a watch is how one ends.
+func TestAWatchThatIsInterruptedEndsCleanly(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{Stream: ui.Streams{Out: &out, Err: &errOut}, Deps: &ops.Deps{}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := app.appendStats(ctx, time.Hour); err != nil {
+		t.Errorf("an interrupted watch reported %v", err)
+	}
+	// And says nothing about it. The in-flight sample fails because the
+	// operator's ctrl-C reached the runtime, and "cannot read statistics"
+	// under it would be the manager blaming the daemon for a keystroke.
+	if errOut.Len() != 0 {
+		t.Errorf("an interrupted watch complained on the way out:\n%s", errOut.String())
+	}
+}
+
+func TestExecOutputGoesThroughUnframed(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{Stream: ui.Streams{Out: &out, Err: &errOut}}
+
+	// Byte for byte. An operator piping `morzer exec db -- pg_dump` into a
+	// file must get the dump, so nothing wraps, pads or colours it.
+	const dump = "COPY users (id, name) FROM stdin;\n1\tada\n\\.\n"
+	app.passThrough(dump)
+	if out.String() != dump {
+		t.Errorf("the command's output was changed:\n got %q\nwant %q", out.String(), dump)
+	}
+}
+
+func TestAnOrdinaryFailureIsStillMappedAndStillPrinted(t *testing.T) {
+	err := domain.Usage("no")
+	if got := exitCodeFor(err); got != domain.ExitUsage {
+		t.Errorf("exit %d, want %d", got, domain.ExitUsage)
+	}
+	if silentFailure(err) {
+		t.Error("an ordinary failure would be swallowed")
+	}
+}
+
+// TestOnlyTheSamplerGivesUpOnItsOwn pins the one field the two live views
+// differ in.
+//
+// They are otherwise the same program, which is why the option struct is
+// shared — and why the difference has to be asserted rather than left to a
+// comment. A `stats --watch` pointed at a daemon that has gone should end
+// non-zero; a `status --watch` should stay up through the reboot somebody is
+// watching for.
+func TestOnlyTheSamplerGivesUpOnItsOwn(t *testing.T) {
+	app := &App{Stream: ui.Streams{Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}}
+
+	if got := app.statsWatch(time.Second).StopAfterFailures; got != 2 {
+		t.Errorf("stats --watch gives up after %d failures, want 2", got)
+	}
+	if got := app.statusWatch(time.Second).StopAfterFailures; got != 0 {
+		t.Errorf("status --watch gives up after %d failures, and must not give up", got)
+	}
+
+	// And both actually draw something: a nil Body is a panic on the first
+	// frame, which no test of the field above would notice.
+	if app.statsWatch(time.Second).Body == nil || app.statusWatch(time.Second).Body == nil {
+		t.Error("a watch was wired with nothing to draw")
+	}
+}
+
+// deadStream is a stream that opens and then dies on the first read, which
+// is what a runtime whose process exits between `Start` and the first byte
+// looks like.
+type deadStream struct{ err error }
+
+func (f deadStream) Read([]byte) (int, error) { return 0, f.err }
+func (f deadStream) Close() error             { return nil }
+
+// TestAStreamThatDiesBeforeItsFirstRecordStillGetsAnEnvelope.
+//
+// `logs --json` writes no envelope, which is the documented exception: a stream
+// has no end at which to write one. That exception may only start where the
+// stream does. A command whose stream failed before it emitted anything has
+// produced no records to corrupt, and a consumer that got empty stdout and a
+// non-zero exit has to infer the failure from the status alone -- which is the
+// contract this suppression was written not to break.
+func TestAStreamThatDiesBeforeItsFirstRecordStillGetsAnEnvelope(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{
+		Stream: ui.Streams{Out: &out, Err: &errOut},
+		json:   jsonout.New(jsonout.Options{Out: &out}),
+	}
+
+	stream := &ops.LogStream{
+		ReadCloser: deadStream{err: errors.New("the daemon went away")},
+	}
+	err := app.copyLogs(context.Background(), stream)
+	if err == nil {
+		t.Fatal("a stream that died reported success")
+	}
+	if app.jsonStreamed {
+		t.Error("nothing was encoded, and the envelope was suppressed anyway")
+	}
+}
+
+// TestAStreamThatFailsPartWayThroughKeepsItsRecords is the other side: once a
+// record has gone out, an envelope after it would corrupt what a consumer is
+// parsing line by line, so the exit code is what carries the failure.
+func TestAStreamThatFailsPartWayThroughKeepsItsRecords(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{
+		Stream: ui.Streams{Out: &out, Err: &errOut},
+		json:   jsonout.New(jsonout.Options{Out: &out}),
+	}
+
+	// One good line, then a line past the bound the structured reader
+	// frames -- which is the failure that can arrive after a record.
+	body := "demo-app-1  | first\n" + strings.Repeat("x", 80<<10) + "\n"
+	stream := &ops.LogStream{ReadCloser: io.NopCloser(strings.NewReader(body))}
+
+	if err := app.copyLogs(context.Background(), stream); err == nil {
+		t.Fatal("an oversized line was accepted")
+	}
+	if !app.jsonStreamed {
+		t.Error("a record was written and the envelope was not suppressed")
+	}
+	if !strings.Contains(out.String(), `"line":"first"`) {
+		t.Errorf("the record before the failure was lost:\n%s", out.String())
+	}
+}
+
+// TestFollowingTakesTheWholeBacklogUnlessToldOtherwise.
+//
+// The default is a screen or two of history; a follow takes all of it, because
+// a subscription's history is the part that already happened. Both are
+// documented, and neither was asserted -- a regression would silently change
+// how much backlog every `morzer logs --follow` prints.
+func TestFollowingTakesTheWholeBacklogUnlessToldOtherwise(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		tail          int
+		given, follow bool
+		want          int
+	}{
+		{"nobody said", defaultLogTail, false, false, defaultLogTail},
+		{"following, nobody said", defaultLogTail, false, true, 0},
+		{"following, and they said", 5, true, true, 5},
+		{"not following, and they said", 5, true, false, 5},
+		// `--tail 0` is how the whole backlog is asked for without
+		// following, and it must survive being the same value the
+		// follow default resolves to.
+		{"explicitly all", 0, true, false, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := backlogFor(c.tail, c.given, c.follow); got != c.want {
+				t.Errorf("backlog %d, want %d", got, c.want)
+			}
+		})
+	}
+
+	// And the flag's own default is the one the constant names, so the
+	// table above is about the same number the operator gets.
+	cmd := newLogsCommand(&App{})
+	if got := cmd.Flags().Lookup("tail").DefValue; got != "100" {
+		t.Errorf("--tail defaults to %s, want 100", got)
+	}
+}

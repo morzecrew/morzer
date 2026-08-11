@@ -1,0 +1,6 @@
+SERVICE   CONTAINER      STATE    HEALTH     IMAGE                STATUS
+✓ app     demo-app-1     running  healthy    ghcr.io/demo/app     Up 3 hours
+✓ app     demo-app-2     running  starting   ghcr.io/demo/app     Up 12 seconds (health: starting)
+✓ db      demo-db-1      running  -          postgres             Up 3 hours
+✗ cache   demo-cache-1   running  unhealthy  redis                Up 20 minutes (unhealthy)
+✗ worker  demo-worker-1  exited   -          ghcr.io/demo/worker  Exited (1) 2 minutes ago

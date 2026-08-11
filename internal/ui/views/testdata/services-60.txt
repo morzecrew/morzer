@@ -1,0 +1,7 @@
+SERVICE   CONTAINER      STATE    HEALTH
+✓ app     demo-app-1     running  healthy
+✓ app     demo-app-2     running  starting
+✓ db      demo-db-1      running  -
+✗ cache   demo-cache-1   running  unhealthy
+✗ worker  demo-worker-1  exited   -
+(status, image hidden: the terminal is too narrow)

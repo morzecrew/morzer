@@ -1,6 +1,9 @@
 # RFC 0021 — Into the running deployment
 
-- **Status:** 📝 Draft
+- **Status:** ✅ Complete — P1–P3 shipped 2026-08-11. P4 (an interactive `exec`)
+  stays conditional by design: it is the only piece here that changes a port,
+  and it was gated on three phases of use saying whether anyone wants it.
+  Divergences in §13.
 - **Scope:** The commands an operator needs when the deployment is running and
   something is wrong: `morzer logs`, `morzer ps`, `morzer stats` and
   `morzer exec`. Consumes `ports.Runtime.Logs` and `ports.Runtime.Exec` — both
@@ -479,3 +482,122 @@ closed). What remains:
   `morzer exec <service>` gains its shell form. Deliberately last and
   deliberately conditional: it is the only piece here that changes a port, and
   three phases of use will say whether anyone wants it.
+
+## 13. Divergences recorded during P1–P3
+
+- **The stream's framing is part of the port contract now, and it had to be.**
+  §5.1 pins a `--json` record carrying `ts`, `service` and `container`, and
+  `Runtime.Logs` returns an `io.ReadCloser` with no stated shape — so there was
+  no source for any of the three. Two answers were possible: parse the runtime's
+  prefix in the adapter (Compose knowledge leaking through a port that hides it)
+  or state the framing on the port. The second ships: `Logs` documents
+  `<container><spaces>| [<RFC 3339 instant> ]<text>`, `LogOptions` grows
+  `Timestamps`, and the runtime contract suite asserts the framing against the
+  fake **and** against real Compose. A runtime that framed its lines otherwise
+  would produce a structured stream where every record was attributed to
+  nothing, and no test written against a fake would have noticed — the fake
+  would have been emitting whatever shape the parser expected.
+- **The human stream does not ask for timestamps.** They are the structured
+  form's, because a record's `ts` has to come from the container and the moment
+  the manager read the line is a different fact wearing the same name. The
+  terminal keeps the runtime's own layout, which is what every
+  `docker compose logs` example shows.
+- **`ServiceState` grew `Container`.** Needed twice over: to attribute a log
+  line to a service, and because §5.2's example table has no container column —
+  so a scaled service would have printed as two identical rows, which is the
+  defect decision 11 forbids for `stats` and would have shipped in `ps`. It is
+  essential in that table for the same reason: dropping it on a narrow terminal
+  leaves rows nothing distinguishes.
+- **The four IO counters are pointers.** §5.3 types them `int64`. `docker stats`
+  reports `-- / --` for block IO on any host without blkio accounting — a
+  rootless daemon, cgroup v2 without the io controller delegated — and that is
+  an ordinary configuration rather than a fault. Zero is a real reading, so a
+  failed one encoded as zero would make a host that cannot say indistinguishable
+  from a container that has written nothing. The same rule
+  [0020](0020-several-installations-on-one-machine.md) settled for the unit
+  count, arrived at from the other direction. Memory and CPU stay plain values
+  and a cell that will not parse is an error: there is no honest zero for
+  either, since 0% is what an idle container reports.
+- **`Stats` is a method on `Runtime`, not an optional capability.** Decision 4
+  points at `ChannelPeeker` for the shape of the *refusal*, and that is what it
+  got — `domain.ErrUnsupported`, named. The method itself is mandatory, unlike
+  `VolumeCapturer` and the rest: every runtime this port targets is a container
+  runtime and every container runtime accounts for a container's memory. What
+  varies is whether the adapter can reach the accounting, which is a refusal
+  with a reason rather than an interface it declines to implement.
+- **`stats` lists the project's containers before it samples them.**
+  `docker stats` names containers and knows nothing about projects, and with no
+  names it samples every container on the host — which on a machine holding two
+  installations reports the neighbour's load as this deployment's. Two calls,
+  and the first one is also what maps a container back to its service. A project
+  with nothing running makes neither call: nothing running is a complete answer
+  and it costs no subprocess.
+- **`--tail 0` is the whole backlog, not none of it.** The port's zero value
+  means "everything", so a flag where 0 meant "no history" would make
+  `ports.LogOptions{}` mean something surprising. The default is 100 lines, and
+  `--follow` without an explicit `--tail` is the whole backlog, since a follow's
+  history is the part that already happened.
+- **Redaction is armed best-effort, and the command says when it is not.** §5.1
+  says the redactor "already knows this installation's secret values". Nothing
+  armed it outside `apply`, so `logs` loads them — and loading can fail, on a
+  machine whose age key is elsewhere, which is a machine somebody is already
+  debugging. Refusing would take the tool away exactly then; streaming silently
+  would be worse than either. So the stream carries whether it was armed and the
+  command prints a warning when it was not.
+- **`tty.Watch` became generic over its report.** `status --watch` and
+  `stats --watch` differ in nothing but what is read and how it is drawn, and a
+  second copy of the timer, the in-flight guard, the keys and the alt-screen is
+  where the two would start disagreeing about what `r` does. `StopAfterFailures`
+  is opt-in: `stats` gives up after two consecutive failed samples, `status`
+  never does — a status watch is what an operator leaves running while a machine
+  comes back, and one that exited during the reboot would go dark at the moment
+  it was being watched for.
+- **`stats --watch` appends in plain mode; `status --watch` still refuses
+  without a terminal.** §5.3 asks for the first and §5.1 of
+  [0019](0019-the-command-surface.md) established the second, and they are
+  different commands: a redrawn status table has nothing worth keeping, while a
+  sequence of samples is a time series and `morzer stats --watch > samples.txt`
+  is a real way to catch a leak. Both are documented, together, because the
+  inconsistency is the kind an operator meets rather than reads about.
+- **A container's exit code needed a way past the mapping table.** Decision 7
+  requires the command's own status to reach `$?`, and those codes are not this
+  program's — `psql` exits 3 for a script error while 3 is morzer's preflight
+  failure. `exec` returns an error wrapping an ordinary `domain.Error`, so
+  `--json` gets the envelope it gets for every other failure, and the process
+  status is taken from the wrapper. Nothing is printed for it in human mode: the
+  command already said whatever it had to say on its own streams.
+- **The boundary test names its two exceptions.** RFC 0019's rule is that no
+  command writes a report to stdout, enforced by a source-level test. `logs` and
+  `exec` both relay bytes this program did not compose, so the test now also
+  catches `io.Copy` and `json.NewEncoder` against the result stream and exempts
+  exactly two functions by name. The exception being *checked* is the point: the
+  forms it now catches were forms the rule never noticed, so the exception was
+  available to anyone without an argument.
+- **The acceptance fixture logs its requests.** The `app` stub ran
+  `httpd -f`, which logs nothing, so the acceptance run's `logs` stage would have
+  asserted against an empty stream and passed whether or not the manager can
+  reach the runtime's logs at all. `-vv` makes it log every request to stderr,
+  and the health check already generates the traffic.
+- **A journal entry has three answers about the argv, not two.** §5.4 says the
+  argv is redacted before it is written, and assumes the redactor knows this
+  installation's secrets. A `morzer exec` is its own process, so nothing before
+  it has loaded them — and when the load fails the redactor knows nothing and
+  writes the operator's command line down verbatim, password and all, into a
+  file this manager keeps. Refusing to journal would lose the fact that a human
+  was inside the deployment, which is the record's whole job; refusing the
+  command would take `exec` away on a machine somebody is already debugging. So
+  the record keeps the service, the exit code and the time, and carries
+  `argv_omitted` in place of the command line it could not scrub.
+- **The `--json` stream's envelope suppression starts at the first record, not
+  at the first attempt.** Decision 9 says a stream has no end at which to write
+  an envelope. It has a beginning: a command whose stream died before emitting
+  anything has produced nothing to corrupt, and suppressing its `ok:false` left
+  a consumer with empty stdout and only an exit code to read.
+- **§10 refers to a §5.6 that does not exist.** The buffering decision it points
+  at — line-boundary, bounded at 64 KiB, fail-closed — is in §5.1, where it was
+  written. Recorded rather than silently corrected, since the decision itself is
+  unchanged.
+
+Both of §10's open questions are left where they were. `stats` still has no
+`--service` filter: nothing in the design depends on the answer, and it is as
+trivial to add later as it was to add now. P4's port-shape question is P4's.

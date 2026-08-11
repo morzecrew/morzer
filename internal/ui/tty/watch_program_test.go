@@ -13,6 +13,7 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui/theme"
 	"github.com/morzecrew/morzer/internal/ui/tty"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 // `status --watch` owns a Bubble Tea program with an alt screen, and tearing
@@ -38,7 +39,8 @@ func TestWatchEndsWhenItsContextDoes(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- tty.Watch(ctx, tty.WatchOptions{
+		done <- tty.Watch(ctx, tty.WatchOptions[ops.Status]{
+			Body:     views.StatusDoc,
 			Output:   &bytes.Buffer{},
 			Input:    pipeInput(t),
 			Theme:    theme.New(false, false),
@@ -68,7 +70,8 @@ func TestWatchReportsARefreshThatFails(t *testing.T) {
 	defer cancel()
 
 	var out bytes.Buffer
-	err := tty.Watch(ctx, tty.WatchOptions{
+	err := tty.Watch(ctx, tty.WatchOptions[ops.Status]{
+		Body:     views.StatusDoc,
 		Output:   &out,
 		Input:    pipeInput(t),
 		Theme:    theme.New(false, false),

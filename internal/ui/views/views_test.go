@@ -207,6 +207,46 @@ func TestANarrowTerminalDropsColumnsRatherThanWrappingCells(t *testing.T) {
 	require.Contains(t, narrow, "site_name", "an essential column was dropped:\n%s", narrow)
 }
 
+// TestASquashedTableStillTellsTwoReplicasApart is the one column `ps` and
+// `stats` may not drop.
+//
+// Both draw one row per container, so a scaled service is several rows under
+// one name — and without the instance the table degrades into identical rows,
+// which is worse than the overflow it was avoiding, because nothing says two of
+// them are two. Every other column goes first, and the footer names them.
+func TestASquashedTableStillTellsTwoReplicasApart(t *testing.T) {
+	image := "ghcr.io/demo/app@sha256:" + strings.Repeat("8a", 32)
+	services := []ports.ServiceState{
+		{Name: "app", Container: "demo-app-1", State: "running", Health: ports.HealthHealthy,
+			Image: image, Status: "Up 3 hours"},
+		{Name: "app", Container: "demo-app-2", State: "running", Health: ports.HealthHealthy,
+			Image: image, Status: "Up 3 hours"},
+	}
+	rx := int64(1024)
+	stats := []ports.ServiceStats{
+		{Service: "app", Container: "demo-app-1", Replica: 1, CPUPercent: 12.3,
+			MemoryBytes: 64 << 20, NetRxBytes: &rx, NetTxBytes: &rx},
+		{Service: "app", Container: "demo-app-2", Replica: 2, CPUPercent: 0.4,
+			MemoryBytes: 32 << 20, NetRxBytes: &rx, NetTxBytes: &rx},
+	}
+
+	// Narrow enough that the container is the *next* column a table
+	// dropping from the right would take. Wider, the other columns have
+	// already made room and it survives whether or not it is essential, so
+	// a test there would assert nothing about the rule.
+	for name, narrow := range map[string]string{
+		"ps":    render(t, 24, services),
+		"stats": render(t, 30, stats),
+	} {
+		require.NotContains(t, narrow, "I/O",
+			"%s dropped nothing, so this proves nothing:\n%s", name, narrow)
+		require.Contains(t, narrow, "demo-app-1",
+			"%s dropped the container column:\n%s", name, narrow)
+		require.Contains(t, narrow, "demo-app-2",
+			"%s dropped the container column:\n%s", name, narrow)
+	}
+}
+
 // TestPlainIsLineOrientedNotRichWithoutColour.
 //
 // Decision 5. A journal and a CI log read plain, so a box drawn in one is noise

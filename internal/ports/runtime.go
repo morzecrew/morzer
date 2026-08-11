@@ -72,7 +72,39 @@ type Runtime interface {
 	Status(ctx context.Context, cfg RuntimeConfig) ([]ServiceState, error)
 
 	// Logs streams service logs. The caller closes the reader.
+	//
+	// The stream is line-oriented and each line is framed:
+	//
+	//	<container><spaces>| [<RFC 3339 instant> ]<text>
+	//
+	// The container prefix is not decoration -- it is the only thing that
+	// says which of a scaled service's replicas wrote a line, and the
+	// manager parses it to build the structured form of `morzer logs`. The
+	// instant is present exactly when LogOptions.Timestamps was set. A
+	// runtime that framed its lines some other way would produce a
+	// structured stream whose every record was attributed to nothing, so
+	// the framing is part of this contract and the runtime contract suite
+	// asserts it.
 	Logs(ctx context.Context, cfg RuntimeConfig, opts LogOptions) (io.ReadCloser, error)
+
+	// Stats reports resource use per container, sampled once.
+	//
+	// A sample, not a stream: the caller decides the cadence, and a port
+	// that returned a channel would put the refresh policy in the adapter,
+	// where a second implementation would choose differently.
+	//
+	// A runtime with no notion of resource accounting wraps
+	// domain.ErrUnsupported rather than returning an empty slice. The two
+	// look identical in a table and mean opposite things -- "this cannot be
+	// answered here" and "nothing is running" -- and the second is the wrong
+	// thing to show somebody diagnosing load.
+	//
+	// Mandatory rather than an optional capability like VolumeCapturer,
+	// because every runtime this port targets is a container runtime and
+	// every container runtime accounts for a container's memory. What varies
+	// is whether the adapter can reach the accounting, which is a refusal
+	// with a reason and not an interface it declines to implement.
+	Stats(ctx context.Context, cfg RuntimeConfig) ([]ServiceStats, error)
 }
 
 // RuntimeConfig identifies which project the operation acts on. It is passed
@@ -150,6 +182,77 @@ type LogOptions struct {
 	Follow   bool
 	Tail     int
 	Since    time.Time
+
+	// Timestamps asks the runtime to prefix each line with the instant the
+	// container emitted it.
+	//
+	// Off for the human stream, where the runtime's own layout is what an
+	// operator is used to reading, and on for the structured one: a record
+	// carrying a `ts` field has to get that instant from the container, and
+	// the moment the manager happened to read the line is a different fact
+	// wearing the same name.
+	Timestamps bool
+}
+
+// LogLine is one framed line of a log stream, taken apart.
+//
+// The text is what the container wrote; everything else is the frame around it,
+// which the manager reads so that a machine consumer does not have to.
+type LogLine struct {
+	// At is when the container emitted the line, and zero when the stream
+	// was not asked for timestamps -- never the moment the manager read it,
+	// which is a different fact wearing the same name.
+	At time.Time `json:"ts,omitzero"`
+
+	// Container is the instance that wrote the line. Service is which
+	// service it belongs to, and empty when the line's container is not one
+	// the project reported -- a container renamed by `container_name:`, or
+	// a line the runtime itself wrote about the stream.
+	Container string `json:"container,omitempty"`
+	Service   string `json:"service,omitempty"`
+
+	Text string `json:"line"`
+}
+
+// ServiceStats is one container's resource use at one instant.
+//
+// One row per container and never an aggregate. `docker stats` reports
+// containers, so a scaled service is several rows -- and a row keyed by service
+// alone would silently print one replica's numbers under the service's name.
+// Summing is the caller's decision, and not every sum means anything: memory
+// adds, a memory limit does not.
+type ServiceStats struct {
+	// Service is the Compose service; Container and Replica say which
+	// instance of it this row is.
+	Service   string `json:"service"`
+	Container string `json:"container"`
+
+	// Replica is the instance number a runtime that scales a service
+	// assigns, and zero when the runtime does not name one. Omitted rather
+	// than printed as 0, which would read as a replica index.
+	Replica int `json:"replica,omitempty"`
+
+	CPUPercent float64 `json:"cpu_percent"`
+
+	// MemoryBytes is the working set. MemoryLimit is the ceiling the
+	// runtime reports, which for a container with no limit of its own is
+	// the host's memory rather than zero -- that is what the runtime
+	// answers, and inventing "unlimited" from it would be this layer
+	// guessing.
+	MemoryBytes int64 `json:"memory_bytes"`
+	MemoryLimit int64 `json:"memory_limit,omitempty"`
+
+	// The four IO counters, and nil where the host does not account for
+	// them -- block IO under a rootless daemon, above all, which is an
+	// ordinary configuration and not a fault.
+	//
+	// Pointers because zero is a real reading: a container that has written
+	// nothing reports 0, and a host that cannot say must not be reported as
+	// one that can.
+	NetRxBytes *int64 `json:"net_rx_bytes"`
+	NetTxBytes *int64 `json:"net_tx_bytes"`
+	BlockRead  *int64 `json:"block_read_bytes"`
+	BlockWrite *int64 `json:"block_write_bytes"`
 }
 
 // ExitResult is the outcome of a process the runtime ran on the caller's
@@ -176,7 +279,17 @@ const (
 )
 
 type ServiceState struct {
-	Name     string        `json:"name"`
+	Name string `json:"name"`
+
+	// Container is the instance this state describes, and empty when the
+	// runtime does not name one.
+	//
+	// A service is not one container: a scaled service is several, and
+	// every one of them appears here under the same Name. Without the
+	// instance there is nothing to tell two rows apart, and nothing to
+	// attribute a log line to.
+	Container string `json:"container,omitempty"`
+
 	Image    string        `json:"image,omitempty"`
 	State    string        `json:"state"` // running, exited, created, ...
 	Health   ServiceHealth `json:"health"`

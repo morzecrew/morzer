@@ -12,6 +12,7 @@ import (
 	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/theme"
 	"github.com/morzecrew/morzer/internal/ui/tty"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 // rich reports whether this run draws the styled views.
@@ -213,13 +214,28 @@ func (a *App) watchStatus(ctx context.Context, interval time.Duration) error {
 	a.plain.Mute()
 	defer a.plain.Unmute()
 
-	return tty.Watch(ctx, tty.WatchOptions{
+	return tty.Watch(ctx, a.statusWatch(interval))
+}
+
+// statusWatch is the live status view's configuration.
+//
+// Beside `statsWatch` and for the same reason: the two differ in exactly one
+// field, and it is the one that decides whether a watch can end by itself.
+func (a *App) statusWatch(interval time.Duration) tty.WatchOptions[ops.Status] {
+	return tty.WatchOptions[ops.Status]{
 		Output:   a.Stream.Err,
 		Input:    a.terminalInput(),
 		Theme:    a.theme(),
 		Interval: interval,
+		Subject:  "status",
 		Refresh: func(ctx context.Context) (ops.Status, error) {
 			return ops.GetStatus(ctx, a.Deps)
 		},
-	})
+		Body: views.StatusDoc,
+		// No give-up count, deliberately. A status watch is what an
+		// operator leaves running while a machine comes back, and one
+		// that exited after two failed reads would go dark exactly
+		// during the reboot they were watching for.
+		StopAfterFailures: 0,
+	}
 }

@@ -434,6 +434,78 @@ step "status and doctor"
 "${MORZER}" --root "${ROOT}" status
 "${MORZER}" --root "${ROOT}" doctor
 
+step "into the running deployment: ps, logs, stats, exec"
+# The four read-only commands, against the deployment that is up. What this
+# proves and no fake can: that the flags are flags Docker accepts, that the log
+# framing the manager parses is the framing Compose produces, and that a
+# container's exit code survives all the way out to $?.
+"${MORZER}" --root "${ROOT}" ps
+
+# Every container the project runs, named. `ps` keyed on the service alone
+# could not tell two replicas apart.
+"${MORZER}" --root "${ROOT}" --json ps |
+	jq -e '.data | length == 2 and all(.[]; .container != "")' >/dev/null ||
+	fail "ps did not report both containers with their instances"
+
+# The health check has been polling the app stub, which logs each request, so
+# there are real lines to read.
+"${MORZER}" --root "${ROOT}" logs --tail 20 | grep -q "|" ||
+	fail "logs produced no framed line"
+
+# The one exception to the single-envelope contract: one JSON object per line,
+# and no envelope at the end. A consumer parsing lines must never meet one.
+LOG_JSON=$("${MORZER}" --root "${ROOT}" --json logs --tail 20)
+[ -n "${LOG_JSON}" ] || fail "logs --json produced nothing"
+printf '%s\n' "${LOG_JSON}" | jq -e -s 'all(.[]; has("line") and (has("ok") | not))' >/dev/null ||
+	fail "logs --json did not emit exactly one record per line"
+printf '%s\n' "${LOG_JSON}" | jq -e -s 'any(.[]; .service != "" and .ts != null)' >/dev/null ||
+	fail "no log record carried the service and the instant its container wrote it"
+
+# A running container uses memory. Zero would mean the adapter read the
+# daemon's answer wrongly rather than that the service is frugal.
+"${MORZER}" --root "${ROOT}" --json stats |
+	jq -e '.data | length >= 1 and all(.[]; .memory_bytes > 0)' >/dev/null ||
+	fail "stats reported no memory for a running container"
+
+# The command's own stdout, unframed: an operator piping this into a file must
+# get what the command printed and not a report about it.
+EXEC_OUT=$("${MORZER}" --root "${ROOT}" exec app -- printf 'hello-from-the-container')
+[ "${EXEC_OUT}" = "hello-from-the-container" ] ||
+	fail "exec did not pass the command's output through: '${EXEC_OUT}'"
+
+# And its exit code. A manager that returned 0 here would make `morzer exec`
+# unusable in a script, which is most of what it is for.
+expect_exit 42 "${MORZER}" --root "${ROOT}" exec app -- sh -c 'exit 42'
+
+# The refusal, against a service that is really stopped.
+docker compose -p demo stop db >/dev/null
+expect_exit 7 "${MORZER}" --root "${ROOT}" exec db -- true
+docker compose -p demo start db >/dev/null
+
+# Journalled with the argv, and never with the output. The journal is where a
+# later reader learns that a human was inside the deployment at 03:14 and what
+# they asked it to do.
+#
+# Asserted on the record's *shape* rather than by grepping for the output: the
+# argv legitimately contains whatever the operator typed, including the string
+# the command was told to print, so a grep would fail on a correct journal. The
+# three flags are the whole record, so anything else -- an output field somebody
+# added for convenience -- fails here. The text assertion belongs where argv and
+# output can be arranged to differ, which is the fake-backed suite.
+grep '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl" |
+	jq -e -s 'length >= 2 and all(.[]; .flags | keys == ["argv", "exit_code", "service"])' >/dev/null ||
+	fail "the exec journal records are not the three flags and nothing else"
+
+# And the argv is redacted before it is written, which is what a password in a
+# connection string depends on. The value is this installation's real generated
+# secret, read off the tmpfs the manager rendered it to.
+db_password=$(cat "${ROOT}/run/demo/secrets/db_password")
+[ -n "${db_password}" ] || fail "no rendered db_password to test the redaction with"
+"${MORZER}" --root "${ROOT}" exec app -- echo "postgres://demo:${db_password}@db/demo" >/dev/null
+if grep -qF "${db_password}" "${ROOT}/var/lib/demo/manager/operations.jsonl"; then
+	fail "a known secret value reached the journal in an argv"
+fi
+
 step "a reboot: services stopped, then apply --startup"
 # Restarting the Docker daemon is what a reboot does to a deployment, but doing
 # it on a shared runner would disrupt everything else. Stopping the project's

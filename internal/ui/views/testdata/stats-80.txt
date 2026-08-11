@@ -1,0 +1,5 @@
+SERVICE  CONTAINER      CPU          MEMORY          NET I/O  BLOCK I/O
+app      demo-app-1  12.34%  67MiB / 512MiB  1.2KiB / 3.3KiB   8KiB / 0
+app      demo-app-2   0.50%  32MiB / 512MiB            0 / 0      0 / 0
+db       demo-db-1    3.10%          128MiB  1.2KiB / 3.3KiB          -
+total                15.94%          227MiB

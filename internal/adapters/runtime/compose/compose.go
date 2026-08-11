@@ -390,48 +390,73 @@ func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.
 	return parsePS(res.Stdout)
 }
 
-// parsePS handles both shapes Compose has emitted across versions: a JSON
-// array, and newline-delimited objects. Supporting both is cheaper than
-// pinning a Compose version.
-func parsePS(raw string) ([]ports.ServiceState, error) {
+// decodeJSONLines reads both shapes the docker CLI has emitted across
+// versions: a JSON array, and newline-delimited objects.
+//
+// One reader for every `--format json` this adapter parses. Which shape arrives
+// is a property of the tool and not of the command, so two copies of the rule
+// would be two places to notice the day a Compose release changes it -- and the
+// second copy is how one of them stops being noticed.
+func decodeJSONLines[T any](raw, what string) ([]T, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
 
-	var entries []psEntry
+	var out []T
 	if strings.HasPrefix(raw, "[") {
-		if err := json.Unmarshal([]byte(raw), &entries); err != nil {
-			return nil, domain.RuntimeError(err, "cannot parse compose ps output")
+		if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			return nil, domain.RuntimeError(err, "cannot parse %s output", what)
 		}
-	} else {
-		for _, line := range strings.Split(raw, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			var e psEntry
-			if err := json.Unmarshal([]byte(line), &e); err != nil {
-				return nil, domain.RuntimeError(err, "cannot parse compose ps output")
-			}
-			entries = append(entries, e)
+		return out, nil
+	}
+	for line := range strings.SplitSeq(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
+		var entry T
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, domain.RuntimeError(err, "cannot parse %s output", what)
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func parsePSEntries(raw string) ([]psEntry, error) {
+	return decodeJSONLines[psEntry](raw, "compose ps")
+}
+
+// parsePS reduces the listing to the port's vocabulary.
+func parsePS(raw string) ([]ports.ServiceState, error) {
+	entries, err := parsePSEntries(raw)
+	if err != nil {
+		return nil, err
 	}
 
 	out := make([]ports.ServiceState, 0, len(entries))
 	for _, e := range entries {
 		name := e.Service
 		if name == "" {
+			// A listing that named no service: the container is the
+			// only handle there is, so it becomes the name and the
+			// Container field stays empty rather than repeating it
+			// as an instance the listing never reported.
 			name = e.Name
 		}
-		out = append(out, ports.ServiceState{
+		state := ports.ServiceState{
 			Name:     name,
 			Image:    e.Image,
 			State:    strings.ToLower(e.State),
 			Health:   normaliseHealth(e.Health),
 			ExitCode: e.ExitCode,
 			Status:   e.Status,
-		})
+		}
+		if e.Service != "" {
+			state.Container = e.Name
+		}
+		out = append(out, state)
 	}
 	return out, nil
 }
@@ -461,6 +486,9 @@ func normaliseHealth(s string) ports.ServiceHealth {
 // run-to-completion.
 func (r *Runtime) Logs(ctx context.Context, cfg ports.RuntimeConfig, opts ports.LogOptions) (io.ReadCloser, error) {
 	argv := r.args(cfg, "logs", "--no-color")
+	if opts.Timestamps {
+		argv = append(argv, "--timestamps")
+	}
 	if opts.Follow {
 		argv = append(argv, "--follow")
 	}
