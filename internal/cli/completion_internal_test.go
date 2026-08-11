@@ -198,6 +198,33 @@ func TestTheShellIsTheBaseNameOfItsPath(t *testing.T) {
 	}
 }
 
+// TestEveryPlaceableShellHasAScriptToWrite.
+//
+// The table says where a shell's completion goes; the switch in
+// completionScript says how to generate one. They are two lists that must
+// agree, and adding a row to the first without a case in the second produces a
+// command that resolves a path, creates the directory, and then refuses -- with
+// "not a shell this command can place a completion for", about a shell it just
+// finished placing.
+func TestEveryPlaceableShellHasAScriptToWrite(t *testing.T) {
+	root := CommandTree()
+
+	for shell := range completionTargets {
+		script, err := completionScript(root, shell)
+		if err != nil {
+			t.Errorf("%s is in the path table and has no script: %v", shell, err)
+			continue
+		}
+		if len(script) == 0 {
+			t.Errorf("%s generated an empty script", shell)
+		}
+	}
+
+	if _, err := completionScript(root, "nushell"); err == nil {
+		t.Error("a shell with no case generated a script")
+	}
+}
+
 func TestEveryPlaceableShellHasASystemPathToo(t *testing.T) {
 	// The table is one map, and a row with a home path and no system path
 	// would make `--system` write to `/morzer` — under root, silently.

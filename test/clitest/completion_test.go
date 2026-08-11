@@ -107,6 +107,57 @@ func TestCompletionInstallCreatesTheDirectory(t *testing.T) {
 	}
 }
 
+// TestAnUnwritableDestinationIsReportedRatherThanReportedAsWritten.
+//
+// The two ways the write fails, both of which end with an operator believing a
+// completion was installed. The second is the ordinary one: `--system` without
+// root, which is why its refusal carries the hint that names the alternative.
+func TestAnUnwritableDestinationIsReportedRatherThanReportedAsWritten(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes anywhere, so neither failure can be staged")
+	}
+
+	t.Run("a file where the directory belongs", func(t *testing.T) {
+		home := fakeHome(t)
+		r := clitest.New(t)
+
+		// `~/.local/share/zsh` as a regular file: MkdirAll cannot make
+		// the site-functions directory under it.
+		blocked := filepath.Join(home, ".local", "share", "zsh")
+		if err := os.MkdirAll(filepath.Dir(blocked), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(blocked, []byte("not a directory\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		r.Run("completion", "install", "zsh").Failed().StderrContains(blocked)
+	})
+
+	t.Run("a directory nothing may write to", func(t *testing.T) {
+		home := fakeHome(t)
+		r := clitest.New(t)
+
+		dir := filepath.Join(home, ".config", "fish", "completions")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// Read and traverse but not write: MkdirAll is satisfied by the
+		// directory already existing, and the write is what fails.
+		if err := os.Chmod(dir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+		out := r.Run("completion", "install", "fish").Failed()
+		out.StderrContains("--system")
+
+		if _, err := os.Stat(filepath.Join(dir, "morzer.fish")); err == nil {
+			t.Error("the command failed and the file is there anyway")
+		}
+	})
+}
+
 func TestAShellItCannotPlaceStillGetsAScript(t *testing.T) {
 	fakeHome(t)
 	r := clitest.New(t)
