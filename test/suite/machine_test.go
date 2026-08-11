@@ -599,3 +599,34 @@ func TestThePortCheckSaysWhatItCouldNotRead(t *testing.T) {
 	assert.Contains(t, found.Message, "sandbox",
 		"the installation it could not read is not named, so `none twice` reads as the whole machine")
 }
+
+// TestDoctorDoesNotClaimACleanMachineItCouldNotRead.
+//
+// Both machine checks read the same directory, and both have to degrade the
+// same way. A check that could not enumerate anything and reported "one
+// installation" or "none twice" would be the most misleading answer `doctor`
+// can give: it is run precisely when somebody cannot tell what is wrong, and it
+// would be telling them nothing is.
+func TestDoctorDoesNotClaimACleanMachineItCouldNotRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a 0000 directory, so this arrangement proves nothing")
+	}
+	m := newHost(t, "demo", "sandbox")
+	m.install("demo", 18080)
+
+	etc := filepath.Join(m.Root, "etc")
+	require.NoError(t, os.Chmod(etc, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(etc, 0o755) })
+
+	report, err := ops.Doctor(context.Background(), m.Deps)
+	require.NoError(t, err)
+
+	installations := findResult(t, report, "machine.installations")
+	assert.Equal(t, "warn", installations.Status)
+	assert.Contains(t, installations.Message, "cannot enumerate")
+
+	ports := findResult(t, report, "machine.ports")
+	assert.Equal(t, "warn", ports.Status)
+	assert.Contains(t, ports.Message, "could not read",
+		"a check that read nothing reported that nothing collides")
+}
