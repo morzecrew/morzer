@@ -143,7 +143,11 @@ func (d *Deps) declaredPorts(ctx context.Context) (map[int][]string, []string) {
 	claims := map[int][]string{}
 
 	if d.StateFor == nil {
-		return claims, nil
+		// Unreachable: the check is only registered when the reader is
+		// wired. Written as a problem rather than as an empty machine
+		// anyway, because "unreachable" and "reports all clear having
+		// read nothing" must never be the same code path.
+		return claims, []string{"this machine's installations"}
 	}
 	products, err := DiscoverProducts(d.Paths.Root())
 	if err != nil {

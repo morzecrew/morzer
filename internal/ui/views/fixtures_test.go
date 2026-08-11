@@ -319,7 +319,7 @@ func machineFixtures() []fixture {
 		entries[0], entries[1], entries[2],
 	}
 	withServices[0].Services = &ops.ServiceCounts{Running: 3, Total: 3}
-	withServices[1].ServicesProblem = "no release is installed"
+	withServices[1].Services = &ops.ServiceCounts{Running: 1, Total: 4}
 	withServices[2].ServicesProblem = "timed out after 5s"
 
 	return []fixture{
@@ -331,7 +331,7 @@ func machineFixtures() []fixture {
 		{
 			name:   "installations-status",
 			value:  withServices,
-			fields: []string{"3/3", "unknown", "timed out after 5s", "without the deployment lock"},
+			fields: []string{"3/3", "1/4", "unknown", "timed out after 5s", "without the deployment lock"},
 		},
 		{
 			name:   "installations-empty",

@@ -138,11 +138,17 @@ func TestTheCommandsThatReadTheStoreRefuseAnAmbiguousMachine(t *testing.T) {
 func TestNamingAnInstallationAnswersOnTheSameMachine(t *testing.T) {
 	r := withTwoInstallations(t)
 
-	r.Run("--product", "sandbox", "release", "list").ExitCode(0)
-	r.Run("--config", r.Path("etc", "demo", "installation.yaml"), "release", "list").ExitCode(0)
+	// Asserted on `status`, which names the installation it read. `release
+	// list` would exit 0 on the placeholder layout too — it has no releases
+	// either — so a selector that silently selected nothing would pass a
+	// test that only checked the exit code, which is the exact shape of the
+	// defect §9 was about.
+	r.Run("--product", "sandbox", "status").ExitCode(0).StdoutContains("sandbox")
+	r.Run("--config", r.Path("etc", "demo", "installation.yaml"), "status").
+		ExitCode(0).StdoutContains("demo")
 
 	t.Setenv("MORZER_PRODUCT", "sandbox")
-	r.Run("release", "list").ExitCode(0)
+	r.Run("status").ExitCode(0).StdoutContains("sandbox")
 
 	// And the flag outranks it, which is what makes the variable usable in
 	// a session pinned to one installation.

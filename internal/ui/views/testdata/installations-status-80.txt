@@ -1,10 +1,8 @@
 PRODUCT  RELEASE     MODE  UNITS  SERVICES  PATH
 demo     1.4.0                 5  3/3       /etc/demo
-sandbox  none        dev       0  unknown   /etc/sandbox
+sandbox  none        dev       0  1/4       /etc/sandbox
 legacy   unreadable            5  unknown   /etc/legacy
 
-! sandbox
-  services: no release is installed
 ✗ legacy
   installation state at /var/lib/legacy/manager/installation.json is invalid:
   installation was written by a newer manager (schema 9, this manager reads 5)

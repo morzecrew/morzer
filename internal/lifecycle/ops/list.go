@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 )
 
 // InstallationEntry is one installation as `ls` reports it.
@@ -108,9 +109,17 @@ func (d *Deps) installationEntry(ctx context.Context, product string, opts ListO
 	// listing is where an operator sees it first. The units are named from
 	// the product, so this answers whether or not the state does.
 	if d.Supervisor != nil {
-		if units, err := d.Supervisor.InstalledUnits(ctx, product); err == nil {
-			entry.Units = len(units)
+		units, err := d.Supervisor.InstalledUnits(ctx, product)
+		if err != nil {
+			// Logged rather than swallowed. The column has no way to
+			// spell "I could not look" -- it is a count -- so the
+			// zero it reports is the one number here that could be
+			// wrong without saying so, and the log line is what
+			// makes it diagnosable.
+			logging.FromContext(ctx).Warn("cannot read a product's units",
+				"product", product, "error", err)
 		}
+		entry.Units = len(units)
 	}
 
 	inst, err := scoped.State.LoadInstallation(ctx)
@@ -192,7 +201,12 @@ func (d *Deps) fillServiceCounts(
 		// the adapter said about a killed subprocess: "timed out" is
 		// the answer an operator can act on, and it is the one this
 		// bound exists to produce.
-		if errors.Is(queryCtx.Err(), context.DeadlineExceeded) {
+		//
+		// Only when the caller's own context is still alive, though: a
+		// `--timeout` that expired, or a ^C, cancels this one too, and
+		// blaming the per-row bound for the command's would send an
+		// operator looking at a daemon that was answering fine.
+		if ctx.Err() == nil && errors.Is(queryCtx.Err(), context.DeadlineExceeded) {
 			entry.ServicesProblem = "timed out after " + timeout.String()
 			return
 		}
@@ -232,6 +246,13 @@ func (d *Deps) forInstallation(product string) *Deps {
 	scoped.Backup = nil
 	scoped.Targets = nil
 	scoped.Notifier = nil
+
+	// The engine holds the state store it was built with, so a step run
+	// through this copy would journal into the installation the command was
+	// pointed at while operating on another. Nothing here runs steps --
+	// nothing here mutates at all -- and that is exactly why it must be nil
+	// rather than merely unused.
+	scoped.Engine = nil
 
 	// The inventory travels with it: an entry read this way was selected
 	// by name, so a refusal about an unchosen machine must not fire

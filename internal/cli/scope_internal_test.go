@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
@@ -84,6 +86,37 @@ func TestEveryCommandDeclaresItsScope(t *testing.T) {
 				path, scope, scopeMachine, scopeInstallation)
 		}
 	})
+}
+
+// TestAnUndeclaredCommandIsRefusedRatherThanAllowed.
+//
+// The direction of the default, on its own. Every command in the tree declares
+// one, so nothing above reaches this branch — which is exactly why it needs a
+// test of its own: it is the behaviour a command that slipped through the test
+// above would get, and "refused with the installations named" is a bug report
+// somebody can act on where "acted on whichever installation was guessed" is
+// not.
+func TestAnUndeclaredCommandIsRefusedRatherThanAllowed(t *testing.T) {
+	parent := &cobra.Command{Use: "parent"}
+	child := &cobra.Command{Use: "child", Run: func(*cobra.Command, []string) {}}
+	parent.AddCommand(child)
+
+	require.Equal(t, scopeInstallation, scopeOf(child))
+	require.Error(t, ambiguousApp().confirmInstallationChosen(child))
+}
+
+// TestAnAncestorsScopeIsInherited is the other half of the resolution: `secret`
+// declares once for eight subcommands, and `release` declares per command
+// because its two halves differ.
+func TestAnAncestorsScopeIsInherited(t *testing.T) {
+	parent := machineScope(&cobra.Command{Use: "parent"})
+	child := &cobra.Command{Use: "child", Run: func(*cobra.Command, []string) {}}
+	own := installationScope(&cobra.Command{Use: "own", Run: func(*cobra.Command, []string) {}})
+	parent.AddCommand(child, own)
+
+	assert.Equal(t, scopeMachine, scopeOf(child))
+	assert.Equal(t, scopeInstallation, scopeOf(own),
+		"a command that declares its own scope was overruled by its parent's")
 }
 
 // ambiguousApp is an App pointed at a machine holding two installations, with

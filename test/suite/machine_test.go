@@ -459,3 +459,143 @@ func TestUnitsWithoutReadableStateIsWorthSaying(t *testing.T) {
 	assert.Contains(t, found.Message, "sandbox")
 	assert.Contains(t, found.Remedy, "morzer ls")
 }
+
+// TestACancelledCommandIsNotBlamedOnTheRowBound.
+//
+// The per-row deadline and the command's own `--timeout` both surface as a
+// cancelled query, and only one of them is the row's fault. Reporting "timed
+// out after 5s" for a run the operator interrupted, or for a `--timeout` that
+// expired, sends somebody to look at a daemon that was answering fine.
+func TestACancelledCommandIsNotBlamedOnTheRowBound(t *testing.T) {
+	m := newHost(t, "demo")
+	m.install("demo", 18080)
+	m.Runtime.BlockProject = "demo"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	entries, err := ops.ListInstallations(ctx, m.Deps,
+		ops.ListOptions{Status: true, StatusTimeout: time.Minute})
+	require.NoError(t, err)
+
+	problem := entryFor(t, entries, "demo").ServicesProblem
+	assert.NotEmpty(t, problem, "a query that never answered reported nothing at all")
+	assert.NotContains(t, problem, "timed out after",
+		"the command was cancelled and the row blamed its own bound")
+}
+
+// TestADirectoryThatCannotBeAnInstallationIsNotOne.
+//
+// Every path the manager owns derives from a validated product name, so
+// `/etc/Some Vendor/installation.yaml` is somebody else's file in a directory
+// this manager could not have created. Counting it would make a
+// single-installation machine ambiguous, and the operator would be asked to
+// choose between their deployment and a name `--product` refuses to accept.
+func TestADirectoryThatCannotBeAnInstallationIsNotOne(t *testing.T) {
+	m := newHost(t, "demo")
+
+	imposter := filepath.Join(m.Root, "etc", "Some Vendor")
+	require.NoError(t, os.MkdirAll(imposter, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(imposter, "installation.yaml"), []byte("# not ours\n"), 0o644))
+
+	products, err := ops.DiscoverProducts(m.Root)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"demo"}, products)
+
+	entries := m.list(t, ops.ListOptions{})
+	require.Len(t, entries, 1)
+}
+
+// TestARowKeepsWhatItKnowsWhenTheReleasePointerBreaks.
+//
+// A narrower fault than an unreadable installation: the manager knows the
+// product, its mode and its units, and cannot say which release is current. The
+// row keeps the first three rather than collapsing to "unreadable", because
+// "which of these two is the sandbox" still has an answer.
+func TestARowKeepsWhatItKnowsWhenTheReleasePointerBreaks(t *testing.T) {
+	m := newHost(t, "demo", "sandbox")
+	m.install("sandbox", 18081)
+
+	paths := domain.PathsUnder(m.Root, "sandbox")
+	require.NoError(t, os.WriteFile(paths.CurrentReleaseFile(), []byte("{half a file"), 0o640))
+
+	broken := entryFor(t, m.list(t, ops.ListOptions{}), "sandbox")
+	assert.Contains(t, broken.Problem, "current release")
+	assert.Equal(t, domain.InstallationSchemaVersion, broken.SchemaVersion,
+		"a release pointer nobody could read cost the row what it did know")
+	assert.True(t, broken.Release.IsZero())
+}
+
+// TestTheServicesColumnSaysWhyItIsEmpty.
+//
+// Three reasons a count is missing, all of them ordinary, none of them a
+// failure of the command: nothing installed yet, a release directory that is
+// gone, and a build with no runtime wired. An empty cell with no reason is the
+// one answer an operator cannot act on.
+func TestTheServicesColumnSaysWhyItIsEmpty(t *testing.T) {
+	t.Run("no release is installed", func(t *testing.T) {
+		m := newHost(t, "demo")
+
+		entry := entryFor(t, m.list(t, ops.ListOptions{Status: true}), "demo")
+		assert.Nil(t, entry.Services)
+		assert.Equal(t, "no release is installed", entry.ServicesProblem)
+	})
+
+	t.Run("the release directory is gone", func(t *testing.T) {
+		m := newHost(t, "demo")
+		m.install("demo", 18080)
+		require.NoError(t, os.RemoveAll(domain.PathsUnder(m.Root, "demo").ReleasesDir()))
+
+		entry := entryFor(t, m.list(t, ops.ListOptions{Status: true}), "demo")
+		assert.Nil(t, entry.Services)
+		assert.NotEmpty(t, entry.ServicesProblem)
+	})
+
+	t.Run("nothing was wired to ask", func(t *testing.T) {
+		m := newHost(t, "demo")
+		m.install("demo", 18080)
+		m.Deps.Runtime = nil
+
+		entry := entryFor(t, m.list(t, ops.ListOptions{Status: true}), "demo")
+		assert.Equal(t, "no container runtime is configured", entry.ServicesProblem)
+	})
+}
+
+// TestASupervisorThatWillNotAnswerDoesNotStopTheListing.
+//
+// The units column is a count and has no way to spell "I could not look", so
+// the zero it reports is the one number here that can be wrong. What must not
+// happen is the rest of the machine going with it.
+func TestASupervisorThatWillNotAnswerDoesNotStopTheListing(t *testing.T) {
+	m := newHost(t, "demo", "sandbox")
+	m.Supervisor.Fail["InstalledUnits"] = domain.Internal(nil, "cannot read /etc/systemd/system")
+
+	entries := m.list(t, ops.ListOptions{})
+	require.Len(t, entries, 2)
+	assert.Empty(t, entries[0].Problem, "a supervisor that would not answer marked the row broken")
+	assert.Equal(t, 0, entries[0].Units)
+}
+
+// TestThePortCheckSaysWhatItCouldNotRead.
+//
+// The half that makes the answer honest: a check that read one installation of
+// three and reported "none twice" is answering a question it did not ask.
+func TestThePortCheckSaysWhatItCouldNotRead(t *testing.T) {
+	m := newHost(t, "demo", "sandbox")
+	m.install("demo", 18080)
+
+	paths := domain.PathsUnder(m.Root, "sandbox")
+	require.NoError(t, os.WriteFile(paths.InstallationState(), []byte("{not json"), 0o640))
+
+	report, err := ops.Doctor(context.Background(), m.Deps)
+	require.NoError(t, err)
+
+	found := findResult(t, report, "machine.ports")
+	assert.Equal(t, "warn", found.Status)
+	assert.Contains(t, found.Message, "sandbox",
+		"the installation it could not read is not named, so `none twice` reads as the whole machine")
+}
