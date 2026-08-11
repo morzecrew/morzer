@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -66,6 +67,8 @@ type release struct {
 	url     string // the server's base
 	ca      string // a PEM file holding the server's certificate
 	hits    *hitLog
+
+	apiBroken atomic.Bool
 }
 
 // hitLog records what was fetched, so a test can assert that nothing was —
@@ -172,9 +175,14 @@ func newRelease(t *testing.T, opts fixtureOptions) *release {
 			name := filepath.Base(r.URL.Path)
 			http.ServeFile(w, r, filepath.Join(dir, name))
 		})
+	rel := &release{dir: dir, archive: archive, digest: digest, hits: hits}
 	mux.HandleFunc("/repos/morzecrew/morzer/releases/latest",
 		func(w http.ResponseWriter, r *http.Request) {
 			hits.add(r.URL.Path)
+			if rel.apiBroken.Load() {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `{"tag_name": %q, "name": "fixture"}`, fixtureTag)
 		})
@@ -191,11 +199,14 @@ func newRelease(t *testing.T, opts fixtureOptions) *release {
 		t.Fatal(err)
 	}
 
-	return &release{
-		dir: dir, archive: archive, digest: digest,
-		url: srv.URL, ca: ca, hits: hits,
-	}
+	rel.url = srv.URL
+	rel.ca = ca
+	return rel
 }
+
+// breakAPI makes the release API answer 404, which is what a proxy that allows
+// the download host and not api.github.com looks like from in here.
+func (r *release) breakAPI() { r.apiBroken.Store(true) }
 
 // argvLog is what the stub binary recorded, one invocation per line.
 func (r *release) argvLog(t *testing.T) string {
@@ -283,13 +294,26 @@ func run(t *testing.T, scriptPath string, e env, args ...string) result {
 	}
 
 	cmd := exec.Command("sh", append([]string{scriptPath}, args...)...)
+	// A scratch working directory, so a relative write goes somewhere
+	// disposable. The script writes only absolute paths, but a mutation that
+	// dropped `-O` from the wget call downloaded the archive into the package
+	// directory during a sabotage run -- and a test suite that can leave
+	// files in the repository is one that will, on the day it matters.
+	cmd.Dir = t.TempDir()
 	cmd.Env = append([]string{
 		"HOME=" + e.home,
 		"PATH=" + path,
 		"SHELL=" + e.shell,
 		"CURL_CA_BUNDLE=" + e.release.ca,
-		// wget reads this one; both downloaders are covered.
-		"SSL_CERT_FILE=" + e.release.ca,
+		// wget takes its trust store from a wgetrc: the GnuTLS build
+		// ignores SSL_CERT_FILE, which is a curl and OpenSSL variable,
+		// and silently fails certificate validation instead.
+		"WGETRC=" + wgetrc(t, e.release.ca),
+		// The environment is built rather than inherited, so no proxy
+		// variable reaches this. Named anyway: a machine whose wgetrc
+		// configures one would otherwise send a loopback request to it.
+		"no_proxy=*",
+		"NO_PROXY=*",
 	}, e.extra...)
 
 	var out, errOut strings.Builder
@@ -306,6 +330,18 @@ func run(t *testing.T, scriptPath string, e env, args ...string) result {
 		code = exitErr.ExitCode()
 	}
 	return result{stdout: out.String(), stderr: errOut.String(), code: code}
+}
+
+// wgetrc points wget at the fixture server's certificate.
+func wgetrc(t *testing.T, ca string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "wgetrc")
+	body := "ca_certificate=" + ca + "\nuse_proxy=off\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func asExitError(err error, target **exec.ExitError) bool {
@@ -382,22 +418,31 @@ var installScriptTools = []string{
 	"tar", "uname", "zstd",
 }
 
+// toolsPATH is a single directory holding links to exactly the named tools, and
+// nothing else. Used as PATH, it is a machine with that toolset and no other.
+func toolsPATH(t *testing.T, tools []string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	for _, tool := range tools {
+		found, err := exec.LookPath(tool)
+		if err != nil {
+			t.Fatalf("this machine has no %s, which the test needs: %v", tool, err)
+		}
+		if err := os.Symlink(found, filepath.Join(dir, tool)); err != nil && !os.IsExist(err) {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
 // minimalPATH is a directory holding links to exactly the tools above, so a
 // test can say "this machine does not have minisign" and mean it. A stub that
 // exits non-zero would say something else entirely.
 func minimalPATH(t *testing.T, extra ...string) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	for _, tool := range append(append([]string{}, installScriptTools...), extra...) {
-		found, err := exec.LookPath(tool)
-		if err != nil {
-			t.Fatalf("this machine has no %s, which install.sh needs: %v", tool, err)
-		}
-		if err := os.Symlink(found, filepath.Join(dir, tool)); err != nil {
-			t.Fatal(err)
-		}
-	}
+	dir := toolsPATH(t, append(append([]string{}, installScriptTools...), extra...))
 	if _, err := exec.LookPath("minisign"); err == nil {
 		// Only meaningful when the developer's machine has one to
 		// exclude; on a machine without minisign the test is the same

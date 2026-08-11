@@ -605,6 +605,10 @@ running it.
   material in this repository to sign a fixture with. The unit lane exercises
   verified / refused / absent / absent-and-required against a stub; the nightly
   job is where a real signature meets the real embedded key.
+- **`-h` / `--help` exists and §5.1 does not list it.** The interface table
+  names every option that changes what the script does; a script an operator
+  pipes into a shell also has to be able to say what those options are without
+  running.
 - **`--print-only` resolves `latest` and therefore reaches the network, unless
   `--version` was given.** §5.2 calls the detection testable without a download,
   which holds: every refusal in the table fires before any request, and the
