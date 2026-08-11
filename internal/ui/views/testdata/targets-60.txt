@@ -1,0 +1,4 @@
+TARGET                  STATE
+file:///srv/offsite     4 backup(s)
+s3://demo-backups/prod  unreachable: dial tcp 203.0.113.7:4…
+(latest hidden: the terminal is too narrow)

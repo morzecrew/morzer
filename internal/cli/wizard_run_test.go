@@ -173,9 +173,13 @@ func TestTheWizardGeneratesARecoveryKey(t *testing.T) {
 		"a private key readable by anyone but its owner is not a recovery key")
 
 	// The warning is the whole point of generating it here rather than
-	// telling the operator to run age-keygen.
+	// telling the operator to run age-keygen. Asserted on the flattened
+	// text: it is a callout now, so where the sentence breaks is the
+	// terminal's business rather than this test's.
 	out := shown.String()
-	assert.Contains(t, out, "MOVE THE PRIVATE HALF OFF THIS MACHINE")
+	flat := strings.Join(strings.Fields(out), " ")
+	assert.Contains(t, flat, "KEEP THIS")
+	assert.Contains(t, flat, "Move the private half off this machine")
 	assert.Contains(t, out, got.RecoveryRecipient,
 		"the public half is not shown, so the operator cannot record it")
 	assert.Contains(t, out, path)

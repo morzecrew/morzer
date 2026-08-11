@@ -290,8 +290,9 @@ func TestRetentionCountsOnlyTheReleasesItMayRemove(t *testing.T) {
 	list.OutputContains("1.4.0")
 	// And the reason 1.5.0 survived is visible, rather than leaving an
 	// operator arguing with the retention policy about a release they can
-	// see and cannot remove.
-	list.OutputContains("+ 1.5.0")
+	// see and cannot remove. The marker and the word, because the marker
+	// alone is a character an operator has to look up.
+	list.SaysAll("+ 1.5.0", "staged")
 }
 
 // TestRenderCheckCatchesWhatParsingCannot is the pair that keeps the two modes

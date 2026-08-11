@@ -1,0 +1,3 @@
+ID                        TARGET
+bkp_01KZP9ZZTKTQE1SS3JRZ  s3://demo-backups/prod
+(release, taken hidden: the terminal is too narrow)

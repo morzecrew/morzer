@@ -16,8 +16,7 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 	"github.com/morzecrew/morzer/internal/ui"
-	"github.com/morzecrew/morzer/internal/ui/plain"
-	"github.com/morzecrew/morzer/internal/ui/tty"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 func newInitCommand(app *App) *cobra.Command {
@@ -547,7 +546,17 @@ func newStatusCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show what is deployed and whether it is working",
-		Args:  cobra.NoArgs,
+		Long: "Reads the installation, the release pointer, the runtime and the last\n" +
+			"backup, and reports them together. Every section degrades on its own: a\n" +
+			"Docker daemon that is down costs you the service table and nothing else,\n" +
+			"because the question \"what is installed here\" still has an answer.\n\n" +
+			"Refuses nothing and changes nothing. `--watch` redraws until interrupted\n" +
+			"and needs a terminal, since a redraw in a systemd unit is a log filling\n" +
+			"up with copies of one table.",
+		Example: "  morzer status\n" +
+			"  morzer status --watch --interval 5s\n" +
+			"  morzer status --json | jq -e '.data.services[] | select(.state != \"running\")'",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("clear-intervention") {
 				// The bare form arrives as NoOptDefVal, a single
@@ -573,16 +582,7 @@ func newStatusCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-
-			switch {
-			case app.json != nil:
-				app.jsonData = status
-			case app.rich():
-				tty.RenderStatus(app.Stream.Out, app.theme(), status)
-			default:
-				plain.RenderStatus(app.Stream.Out, status)
-			}
-			return nil
+			return app.render(status)
 		},
 	}
 
@@ -599,12 +599,22 @@ func newStatusCommand(app *App) *cobra.Command {
 }
 
 func newDoctorCommand(app *App) *cobra.Command {
-	return &cobra.Command{
+	var verbose bool
+
+	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run read-only diagnostics",
 		Long: "Checks the host, the tools, the installation, secrets, the runtime and\n" +
 			"backups. Every non-ok result carries a suggested remedy.\n\n" +
-			"Exits 3 when any check fails; warnings exit 0.",
+			"Reports what is wrong: a category with nothing to say is one line, and\n" +
+			"--verbose expands every check it ran. Refuses nothing and changes\n" +
+			"nothing -- every check is read-only, which is what makes this safe to\n" +
+			"run on a machine mid-incident.\n\n" +
+			"Exits 3 when any check fails; warnings exit 0, so it works as a\n" +
+			"monitoring probe.",
+		Example: "  morzer doctor\n" +
+			"  morzer doctor --verbose            # every check, not just the interesting ones\n" +
+			"  morzer doctor --json | jq .summary",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = app.attachBackupEngine(cmd.Context())
@@ -614,15 +624,19 @@ func newDoctorCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			switch {
-			case app.json != nil:
-				app.jsonData = report
-			case app.rich():
-				// The plain presenter already streamed each
-				// check as it ran; the table is the summary.
-				tty.RenderDoctor(app.Stream.Out, app.theme(), report, ui.TerminalWidth())
-			default:
-				plain.RenderDoctor(app.Stream.Out, report)
+			// The plain presenter already streamed each check as it
+			// ran; this is the summary. --verbose selects a second
+			// view of the same report rather than a flag inside it:
+			// a presentation choice has no business travelling
+			// through the lifecycle layer and into --json.
+			var rendered error
+			if verbose {
+				rendered = app.render(views.Verbose{DoctorReport: report})
+			} else {
+				rendered = app.render(report)
+			}
+			if rendered != nil {
+				return rendered
 			}
 
 			// The exit code reflects the worst result, which is what
@@ -634,6 +648,10 @@ func newDoctorCommand(app *App) *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&verbose, "verbose", false,
+		"show every check, including the categories with nothing to report")
+	return cmd
 }
 
 func newBackupCommand(app *App) *cobra.Command {
@@ -748,19 +766,7 @@ func newBackupListCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = backups
-				return nil
-			}
-			if len(backups) == 0 {
-				_, _ = fmt.Fprintln(app.Stream.Out, "no backups")
-				return nil
-			}
-			for _, b := range backups {
-				fmt.Fprintf(app.Stream.Out, "%-24s  %s  %s\n",
-					b.ID, b.At.Format("2006-01-02 15:04:05Z"), domain.ByteSize(b.Size))
-			}
-			return nil
+			return app.render(backups)
 		},
 	}
 
@@ -802,20 +808,7 @@ func (a *App) listRemoteBackups(cmd *cobra.Command, targetURL, credentialsFile s
 		return err
 	}
 
-	if a.json != nil {
-		a.jsonData = backups
-		return nil
-	}
-	if len(backups) == 0 {
-		_, _ = fmt.Fprintln(a.Stream.Out, "no backups on the target")
-		return nil
-	}
-	for _, b := range backups {
-		fmt.Fprintf(a.Stream.Out, "%-24s  %s  %-12s  %s\n",
-			b.Manifest.ID, b.Manifest.CreatedAt.Format("2006-01-02 15:04:05Z"),
-			b.Manifest.ReleaseVersion, b.Target)
-	}
-	return nil
+	return a.render(backups)
 }
 
 func newBackupVerifyCommand(app *App) *cobra.Command {
@@ -955,30 +948,19 @@ func newVersionCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print version, commit, and supported manifest API versions",
-		Args:  cobra.NoArgs,
+		Long: "This binary's version and build, and the manifest API versions it can\n" +
+			"read. The last is the one worth checking against a bundle: a release\n" +
+			"declaring an API version not listed here needs a newer manager.\n\n" +
+			"Needs no installation, which is deliberate -- it answers on a bare\n" +
+			"machine and on one whose installation will not load.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			info := map[string]any{
-				"version":                app.Build.Version,
-				"commit":                 app.Build.Commit,
-				"built":                  app.Build.Date,
-				"supported_api_versions": apiVersionStrings(),
-			}
-
-			if app.json != nil {
-				app.jsonData = info
-				return nil
-			}
-
-			fmt.Fprintf(app.Stream.Out, "morzer %s\n", app.Build.Version)
-			if app.Build.Commit != "" {
-				fmt.Fprintf(app.Stream.Out, "commit  %s\n", app.Build.Commit)
-			}
-			if app.Build.Date != "" {
-				fmt.Fprintf(app.Stream.Out, "built   %s\n", app.Build.Date)
-			}
-			fmt.Fprintf(app.Stream.Out, "manifest api versions: %s\n",
-				strings.Join(apiVersionStrings(), ", "))
-			return nil
+			return app.render(views.Version{
+				Version:              app.Build.Version,
+				Commit:               app.Build.Commit,
+				Built:                app.Build.Date,
+				SupportedAPIVersions: apiVersionStrings(),
+			})
 		},
 	}
 }

@@ -1,0 +1,4 @@
+morzer 1.4.0
+  commit        9ac42a3
+  built         2026-08-10T17:38:58Z
+  manifest api  selfhost/v1alpha1

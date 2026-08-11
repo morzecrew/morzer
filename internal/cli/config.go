@@ -2,14 +2,12 @@ package cli
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
-	"github.com/morzecrew/morzer/internal/ui/plain"
-	"github.com/morzecrew/morzer/internal/ui/tty"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 func newConfigCommand(app *App) *cobra.Command {
@@ -38,22 +36,21 @@ func newConfigListCommand(app *App) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "Show every parameter the release declares",
-		Args:    cobra.NoArgs,
+		Long: "Every parameter, its effective value, and where that value came from --\n" +
+			"`installation` when an operator set it, `release` when it is the\n" +
+			"declared default. Values are parsed rather than echoed, so what is shown\n" +
+			"is what the deployment will actually receive.\n\n" +
+			"A value recorded for a parameter the current release no longer declares\n" +
+			"is reported as stale rather than hidden: dropping a parameter is the\n" +
+			"vendor's decision, and `config unset` is what clears the leftovers.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			report, err := ops.ConfigList(cmd.Context(), app.Deps)
 			if err != nil {
 				return err
 			}
 
-			switch {
-			case app.json != nil:
-				app.jsonData = report
-			case app.rich():
-				tty.RenderConfig(app.Stream.Out, app.theme(), report)
-			default:
-				plain.RenderConfig(app.Stream.Out, report)
-			}
-			return nil
+			return app.render(report)
 		},
 	}
 }
@@ -75,11 +72,14 @@ func newConfigGetCommand(app *App) *cobra.Command {
 					return err
 				}
 				if app.json != nil {
+					// The setting, not just its value: `config
+					// get update.channel --json` has always
+					// answered with the whole entry, and a
+					// script reading .description would break.
 					app.jsonData = setting
 					return nil
 				}
-				fmt.Fprintln(app.Stream.Out, setting.Value)
-				return nil
+				return app.render(views.Value{Value: setting.Value})
 			}
 
 			entry, err := ops.ConfigGet(cmd.Context(), app.Deps, args[0])
@@ -92,8 +92,7 @@ func newConfigGetCommand(app *App) *cobra.Command {
 			}
 			// The value alone on stdout: this is the form a script
 			// substitutes, and decoration would break every one.
-			fmt.Fprintln(app.Stream.Out, entry.Value)
-			return nil
+			return app.render(views.Value{Value: entry.Value})
 		},
 	}
 }
@@ -113,6 +112,9 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			"parameter — `update.check`, `update.channel`. Those are the operator's\n" +
 			"arrangement with the manager, change nothing that is running, and are\n" +
 			"listed by `morzer config settings`.",
+		Example: "  morzer config set http_port=8443\n" +
+			"  morzer config set site_name=\"Demo Corp\" locale=en_GB\n" +
+			"  morzer config set update.check=true            # an installation setting",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			set, err := domain.ParseAssignments(args)
@@ -212,12 +214,7 @@ func newConfigSettingsCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if app.json != nil {
-				app.jsonData = report
-				return nil
-			}
-			fmt.Fprintln(app.Stream.Out, ops.DescribeSettings(report))
-			return nil
+			return app.render(report)
 		},
 	}
 }

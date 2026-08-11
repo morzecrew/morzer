@@ -1,8 +1,11 @@
 package clitest_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/test/clitest"
 )
@@ -241,4 +244,28 @@ func extractAgeKey(t *testing.T, text string) string {
 		}
 	}
 	return ""
+}
+
+// TestTheRecoveryKeyIsTheWholeOfStdout.
+//
+// `RECOVERY=$(morzer secret recipients generate-recovery-key ./k | tail -1)` is
+// the documented invocation and the acceptance script's own first step, so
+// stdout carries the public key and nothing else. The warning about the private
+// half is narration: it is the most important thing on screen and it still
+// belongs on stderr, because a box on stdout is a box inside somebody's
+// variable.
+func TestTheRecoveryKeyIsTheWholeOfStdout(t *testing.T) {
+	r := clitest.New(t)
+	path := filepath.Join(t.TempDir(), "recovery.key")
+
+	res := r.Run("secret", "recipients", "generate-recovery-key", path).ExitCode(0)
+
+	key := strings.TrimSpace(res.Stdout)
+	require.Truef(t, strings.HasPrefix(key, "age1"),
+		"stdout is not a bare public key:\n%q", res.Stdout)
+	require.NotContains(t, key, "\n", "stdout carries more than the key")
+
+	// And the warning still reaches the operator, on the other stream.
+	res.StderrContains("KEEP THIS")
+	res.SaysAll("Move it off this machine")
 }

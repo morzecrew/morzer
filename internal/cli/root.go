@@ -1109,7 +1109,15 @@ func (a *App) operationOptions() ops.Options {
 // summary.
 func (a *App) finish(result ops.Result) {
 	if a.json != nil {
-		a.jsonData = result.Data
+		// Only when there is one. A command may have rendered its report
+		// already -- `release verify` prints what it verified and then
+		// finishes with a summary -- and an unconditional assignment
+		// here replaced that payload with the nil of a Result that
+		// carries only a sentence. The summary is narration; the report
+		// is the answer, and narration must never outrank it.
+		if result.Data != nil {
+			a.jsonData = result.Data
+		}
 		if result.Record.ID != "" {
 			rec := result.Record
 			a.jsonRecord = &rec

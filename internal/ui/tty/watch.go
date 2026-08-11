@@ -9,7 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/theme"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 // WatchOptions configure the live status view.
@@ -179,7 +181,7 @@ func (m *watchModel) View() string {
 	var b strings.Builder
 	b.WriteString("\n")
 	if m.status != nil {
-		b.WriteString(statusBody(t, *m.status))
+		b.WriteString(views.StatusDoc(ui.NewDoc(t, ui.FixedScreen(m.width)), *m.status).String())
 	}
 
 	if m.err != nil {

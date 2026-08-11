@@ -262,11 +262,18 @@ func generateRecoveryKey(ctx context.Context, app *App, opts ops.InitOptions) (o
 	}
 	opts.RecoveryRecipient = public
 
-	out := app.Stream.Err
-	fmt.Fprintf(out, "\nrecovery key written to %s (0400)\n", path)
-	fmt.Fprintf(out, "public key: %s\n", public)
-	fmt.Fprintf(out, "\n  MOVE THE PRIVATE HALF OFF THIS MACHINE.\n")
-	fmt.Fprintf(out, "  A recovery key stored on the machine it is meant to recover protects nothing.\n")
+	// A callout rather than four printed lines. This is the only copy of
+	// the key that can recover the machine being created, and it used to
+	// have less visual weight on screen than a progress step.
+	app.notice(ui.Callout{
+		Title: "keep this",
+		Body: []string{
+			fmt.Sprintf("Recovery key written to %s (0400).", path),
+			"Public key: " + public,
+			"Move the private half off this machine. A recovery key stored on " +
+				"the machine it is meant to recover protects nothing.",
+		},
+	})
 	return opts, nil
 }
 

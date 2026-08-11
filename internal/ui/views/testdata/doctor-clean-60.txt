@@ -1,0 +1,5 @@
+  configuration  ✓ 2 checks
+  storage        ✓ 2 checks
+  tools          ✓ 1 check
+
+  5 ok, 0 warning, 0 failed

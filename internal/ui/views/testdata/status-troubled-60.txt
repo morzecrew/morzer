@@ -1,0 +1,35 @@
+demo
+  installation  inst_01KZP9ZZTKTQE1SS3JRZ0000
+  mode          sandbox a sandbox: relaxed retention, no
+                pre-update backup guarantee
+  release       1.2.0
+  previous      1.1.0
+  staged        1.3.0 (not installed)
+  profile       embedded
+  url           https://demo.example
+
+  services
+    ✓ app                running, healthy
+    ✗ background-worker  exited (137)
+
+  health
+    ✗ http  FAIL  connection refused after 3 attempts
+
+  last backup     none
+  last operation  update failed (op_01KZP9ZZTK)
+  lock            held by backup operation op_01KZPA1111
+                  (pid 4242)
+
+  ╭─ attention ───────────────────────────────────────────╮
+  │ Operation op_01KZPA2222 (restore) stopped in a state  │
+  │ the manager will not resolve on its own.              │
+  │                                                       │
+  │ the database was restored but the volume copy did not │
+  │ finish                                                │
+  │                                                       │
+  │ run `morzer restore --resume bkp_01KZP9ZZTK` or       │
+  │ restore the volumes by hand                           │
+  ╰───────────────────────────────────────────────────────╯
+
+  ! the container registry could not be reached, so this
+    report cannot say whether a newer release is available

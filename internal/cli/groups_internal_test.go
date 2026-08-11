@@ -138,3 +138,37 @@ func TestHelpLinesFitEightyColumns(t *testing.T) {
 	}
 	walk(CommandTree(), "morzer ")
 }
+
+// TestEveryCommandExplainsItself is RFC 0019 §5.9 rule 2.
+//
+// `Short` fits a listing line; `Long` is where an operator finds out what the
+// command refuses before they run it. A command with no Long shows its Short
+// twice — once in the parent's listing and once as the whole of its own help —
+// which is the shape that made `installation` read like a place to install
+// something.
+//
+// The generated commands are exempt: cobra writes their help and this project
+// does not document them.
+func TestEveryCommandExplainsItself(t *testing.T) {
+	root := CommandTree()
+	if strings.TrimSpace(root.Long) == "" {
+		t.Error("`morzer` itself has no Long, so the first page an operator " +
+			"opens is a list with nothing above it")
+	}
+
+	var walk func(cmd *cobra.Command, path string)
+	walk = func(cmd *cobra.Command, path string) {
+		for _, sub := range cmd.Commands() {
+			name := strings.Fields(sub.Use)[0]
+			if sub.Hidden || name == "help" || name == "completion" {
+				continue
+			}
+			if strings.TrimSpace(sub.Long) == "" {
+				t.Errorf("`%s%s` has no Long, so its help is its Short repeated",
+					path, name)
+			}
+			walk(sub, path+name+" ")
+		}
+	}
+	walk(root, "morzer ")
+}

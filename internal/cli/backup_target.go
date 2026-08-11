@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -102,31 +101,18 @@ func newBackupTargetListCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List backup targets and whether they can be reached",
-		Args:  cobra.NoArgs,
+		Long: "Every configured target, and what answered when this command asked it.\n\n" +
+			"A target that cannot be reached is a row carrying its error rather than\n" +
+			"a missing row: \"no targets\" and \"the target is down\" are different\n" +
+			"machines to be standing in front of.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			statuses, err := ops.TargetList(cmd.Context(), app.Deps)
 			if err != nil {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = statuses
-				return nil
-			}
-			if len(statuses) == 0 {
-				fmt.Fprintln(app.Stream.Out,
-					"no backup targets: every copy of this deployment's data is on this machine")
-				return nil
-			}
-
-			for _, s := range statuses {
-				state := fmt.Sprintf("%d backup(s)", s.Backups)
-				if !s.Reachable {
-					state = "unreachable: " + s.Error
-				}
-				fmt.Fprintf(app.Stream.Out, "%-40s  %s\n", s.URL, state)
-			}
-			return nil
+			return app.render(statuses)
 		},
 	}
 }

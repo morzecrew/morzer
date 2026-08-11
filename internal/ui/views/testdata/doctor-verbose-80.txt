@@ -1,0 +1,31 @@
+  configuration
+    ✓ installation configuration is valid
+      demo (inst_01KZ)
+    ✓ every declared parameter has a value
+      9 parameters
+  storage
+    ✓ enough free disk space
+      41 GiB free
+  network
+    ! the container registry is reachable
+      cannot reach registry.example/demo/app: dial tcp 203.0.113.7:443: i/o
+      timeout
+  runtime
+    ✗ release images are available offline
+      2 of 2 images referenced by the release are not present locally
+    ✓ all services are running
+      2 running
+  tools
+    ✓ docker is available
+      28.1.1
+
+  what to do
+    the container registry is reachable
+      check the machine's outbound network, or run `morzer update --bundle` from
+      a copy
+    release images are available offline
+      run `morzer release ingest <bundle>` on this machine
+
+  5 ok, 1 warning, 1 failed
+
+  support  https://support.example/demo

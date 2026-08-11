@@ -1,0 +1,3 @@
+PUBLIC KEY                                                      KIND      COMMENT
+age1qutq8nmte0t8fwd2n7qh3lqyrcazy44z2np735cxes05yau7faasgf02hl  machine
+age14zamz0thlnq8atx3t3lanyx2hfl0tdvpphtrfyad4m6fjxcmhgpsvqu82q  recovery  offsite safe

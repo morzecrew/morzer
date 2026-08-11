@@ -65,6 +65,55 @@ The direction matters: plain is what systemd journals, what CI logs, and what
 gets pasted into a bug report. A detail visible only to whoever happened to be
 watching a terminal is a detail nobody can reproduce.
 
+## Every report goes through the mode
+
+A command produces a value; the renderer decides how it looks. There is no
+command that writes its own result to stdout, and that is enforced rather than
+reviewed: a test fails the build on a direct print from the command layer.
+
+What this guarantees, per report:
+
+- **`--json` is the value itself**, unreshaped. No view touches it, so a change
+  to how something looks is never a change to what a script reads.
+- **Plain is line-oriented and stable in a log.** It is not "rich without
+  colour": rich may draw a bordered callout where plain writes a labelled block,
+  because a box drawn in a journal is noise that outlives the terminal.
+- **Rich carries every field plain does.** Same rule as above, now per report
+  rather than per event.
+
+Two things on stdout are deliberately not reports, because they exist to be
+substituted into a shell:
+
+```sh
+port=$(morzer config get http_port)
+key=$(morzer secret recipients generate-recovery-key ./recovery.key)
+```
+
+Those print the value and a newline in every non-JSON mode. `morzer completion
+<shell>` is the third: it is a script being emitted through a pipe, and an
+envelope around it would produce something no shell can source.
+
+## The measure
+
+Text wraps at **100 columns however wide the terminal is**, and a wider terminal
+gets whitespace rather than more space between things that belong together.
+Extra width buys columns, never padding.
+
+A table is the exception that proves it: one whose columns genuinely need more
+than 100 uses them, packed left, ending where its content ends. What nothing
+does is stretch to the screen — a check and the sentence explaining it at
+opposite edges of a 380-column display is unreadable, and it is what the
+diagnostic table used to do.
+
+Narrow terminals **drop columns rather than wrapping cells**, in a declared
+order, and say which they dropped. A wrapped cell destroys the alignment that is
+the only reason to draw a table. Columns are dropped only when the terminal's
+width is actually known: in a pipe, where nothing was going to be truncated,
+every column is printed.
+
+`COLUMNS` is honoured when set, which is also how the rendering tests pin every
+width without a terminal.
+
 ## Degradation
 
 Styling degrades in two independent steps, so a terminal that supports one and

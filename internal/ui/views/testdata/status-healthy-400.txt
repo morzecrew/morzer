@@ -1,0 +1,16 @@
+demo
+  installation  inst_01KZP9ZZTKTQE1SS3JRZ0000
+  release       1.2.0
+  profile       embedded
+  url           https://demo.example
+  support       https://support.example/demo
+
+  services
+    ✓ app       running, healthy
+    ✓ postgres  running, healthy
+
+  health
+    ✓ http  ok  200 in 12ms
+
+  last backup     bkp_01KZP9ZZTK (2h ago)
+  last operation  apply succeeded (op_01KZP9ZZTK)
