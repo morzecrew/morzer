@@ -536,6 +536,14 @@ ignore it.
   `ListOptions.StatusTimeout` exists for the test that would otherwise take five
   seconds to prove the bound. A flag would be one more documented surface for a
   number nobody has asked to change.
+- **Discovery skips a directory whose name could not be a product.** The old
+  scan counted any `<root>/etc/*/installation.yaml`. Every path the manager owns
+  derives from a name `ValidateProductName` accepted, so `/etc/Some
+  Vendor/installation.yaml` is somebody else's file in a directory this manager
+  could not have created — and counting it made a single-installation machine
+  ambiguous, asking the operator to choose between their deployment and a name
+  `--product` refuses to accept. One enumeration now serves path resolution, the
+  refusal and `ls`, so this is a change to all three.
 - **One state-reader message was corrected on the way past.** A state file from
   a newer manager reported "installation state at … is invalid" and dropped both
   the version and the hint the inner error carried — so it read as corruption and

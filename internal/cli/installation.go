@@ -69,8 +69,11 @@ func newListCommand(app *App, use string) *cobra.Command {
 func newInstallationCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "installation",
-		Short: "Export and rebuild an installation's identity",
-		Long: "An installation export carries the identity of a deployment and its\n" +
+		Short: "List, export and rebuild the installations on this machine",
+		Long: "A machine may hold several installations, keyed by product name. `list`\n" +
+			"says which — `morzer ls` is the same command, at the top level where\n" +
+			"somebody on an unfamiliar host will look for it.\n\n" +
+			"An installation export carries the identity of a deployment and its\n" +
 			"encrypted secret state, so a lost machine can be rebuilt from an offline\n" +
 			"recovery key. It carries no application data: `morzer backup` owns that.",
 	}
