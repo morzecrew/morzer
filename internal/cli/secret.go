@@ -46,7 +46,12 @@ func newSecretListCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List secret names, fingerprints and metadata — never values",
-		Args:  cobra.NoArgs,
+		Long: "Names, fingerprints, lengths and when each was last changed. Never a\n" +
+			"value: the fingerprint is a truncated hash, which is what lets two\n" +
+			"installations be compared without either of them printing a secret.\n\n" +
+			"There is no flag that prints a value. `secret render` writes them to the\n" +
+			"tmpfs directory the product reads, and that is the only way out.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			metadata, err := app.Deps.Secrets.Metadata(cmd.Context())
 			if err != nil {
@@ -65,6 +70,8 @@ func newSecretSetCommand(app *App) *cobra.Command {
 		Long: "The value is read without echo from the terminal, or from stdin when it\n" +
 			"is piped. There is no flag for the value: argv is world-readable through\n" +
 			"/proc, so a credential passed that way is a credential published.",
+		Example: "  morzer secret set db_password                  # prompts, without echo\n" +
+			"  printf %s \"$PASSWORD\" | morzer secret set db_password",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -106,7 +113,14 @@ func newSecretGenerateCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "generate <name>",
 		Short: "Generate a secret using the release's declared generator",
-		Args:  cobra.ExactArgs(1),
+		Long: "Generates a value of the kind, length and alphabet the release declares\n" +
+			"for this secret, and restarts only the services that depend on it.\n\n" +
+			"The flags override the declaration for one run. Overriding the length of\n" +
+			"a secret whose consumer expects a fixed width is how a deployment starts\n" +
+			"failing on a value that looks correct.",
+		Example: "  morzer secret generate db_password\n" +
+			"  morzer secret generate api_token --kind hex --length 32",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -173,7 +187,11 @@ func newSecretRemoveCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Delete a secret",
-		Args:  cobra.ExactArgs(1),
+		Long: "Removes the value from the encrypted state.\n\n" +
+			"Refuses when the installed release declares the secret required, because\n" +
+			"the next `apply` would fail on a machine that was working a moment ago.\n" +
+			"`--force` is how you say you mean it.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -201,7 +219,13 @@ func newSecretRenderCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "render",
 		Short: "Render secrets to the tmpfs directory the product reads",
-		Args:  cobra.NoArgs,
+		Long: "Decrypts the secret state and writes each value to its own file under\n" +
+			"/run, with the mode the release declares. This is the only path by which\n" +
+			"a secret leaves the encrypted state, and /run is a tmpfs: a reboot takes\n" +
+			"the plaintext with it.\n\n" +
+			"Run by `apply` before the deployment starts. Running it by hand is for\n" +
+			"diagnosing a service that cannot read what it expects.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			schema, err := app.secretSchema(cmd.Context())
 			if err != nil {
@@ -223,12 +247,21 @@ func newSecretRecipientsCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "recipients",
 		Short: "Manage who can decrypt the secret state",
+		Long: "Every recipient is an age public key that can decrypt this installation's\n" +
+			"secrets: the machine's own key, any offline recovery key, and whichever\n" +
+			"operator keys have been added.\n\n" +
+			"Adding a recipient re-encrypts the state; removing one re-encrypts it\n" +
+			"without them. Neither reaches a copy of the state that has already been\n" +
+			"taken, so a removed recipient can still read yesterday's backup.",
 	}
 
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List recipients",
-		Args:  cobra.NoArgs,
+		Long: "The public keys that can decrypt this installation's secrets, and what\n" +
+			"each one is for. An empty list means the secret state has not been\n" +
+			"created yet, not that nobody can read it.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			recipients, err := app.Deps.Secrets.Recipients(cmd.Context())
 			if err != nil {
@@ -246,7 +279,12 @@ func newSecretRecipientsCommand(app *App) *cobra.Command {
 	add := &cobra.Command{
 		Use:   "add <age-public-key>",
 		Short: "Add a recipient and re-encrypt the state for it",
-		Args:  cobra.ExactArgs(1),
+		Long: "Re-encrypts the secret state so this key can decrypt it too.\n\n" +
+			"Takes effect from now on and not before: a backup taken yesterday was\n" +
+			"encrypted for yesterday's recipients, so adding a key does not make an\n" +
+			"older backup readable by it.",
+		Example: "  morzer secret recipients add age1... --kind operator --comment \"alice\"",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			recipientKind := ports.RecipientKind(kind)
 			switch recipientKind {
@@ -279,7 +317,11 @@ func newSecretRecipientsCommand(app *App) *cobra.Command {
 	remove := &cobra.Command{
 		Use:   "remove <age-public-key>",
 		Short: "Remove a recipient and re-encrypt without it",
-		Args:  cobra.ExactArgs(1),
+		Long: "Re-encrypts the secret state without this key.\n\n" +
+			"Not a revocation of what the holder has already seen, and not of any\n" +
+			"backup they could already read. Rotate the secrets themselves when a key\n" +
+			"is removed because it was compromised.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := app.Deps.Secrets.RemoveRecipient(cmd.Context(),
 				ports.Recipient{PublicKey: strings.TrimSpace(args[0])}); err != nil {

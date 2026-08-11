@@ -36,7 +36,14 @@ func newConfigListCommand(app *App) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "Show every parameter the release declares",
-		Args:    cobra.NoArgs,
+		Long: "Every parameter, its effective value, and where that value came from --\n" +
+			"`installation` when an operator set it, `release` when it is the\n" +
+			"declared default. Values are parsed rather than echoed, so what is shown\n" +
+			"is what the deployment will actually receive.\n\n" +
+			"A value recorded for a parameter the current release no longer declares\n" +
+			"is reported as stale rather than hidden: dropping a parameter is the\n" +
+			"vendor's decision, and `config unset` is what clears the leftovers.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			report, err := ops.ConfigList(cmd.Context(), app.Deps)
 			if err != nil {
@@ -105,6 +112,9 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			"parameter — `update.check`, `update.channel`. Those are the operator's\n" +
 			"arrangement with the manager, change nothing that is running, and are\n" +
 			"listed by `morzer config settings`.",
+		Example: "  morzer config set http_port=8443\n" +
+			"  morzer config set site_name=\"Demo Corp\" locale=en_GB\n" +
+			"  morzer config set update.check=true            # an installation setting",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			set, err := domain.ParseAssignments(args)

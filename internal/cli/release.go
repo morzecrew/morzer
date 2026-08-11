@@ -22,6 +22,11 @@ func newReleaseCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "release",
 		Short: "Inspect and manage release bundles",
+		Long: "A release is a signed, digest-pinned bundle: a manifest, the Compose\n" +
+			"files, the templates, and optionally the container images themselves.\n" +
+			"These commands inspect the ones installed on this machine, fetch new\n" +
+			"ones, and build bundles for publication.\n\n" +
+			"None of them changes what is deployed. `morzer update` does that.",
 	}
 	cmd.AddCommand(
 		newReleaseListCommand(app),
@@ -42,7 +47,13 @@ func newReleaseListCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List installed releases, newest first",
-		Args:  cobra.NoArgs,
+		Long: "What is on this machine, with the role of each: the current release, the\n" +
+			"previous one that `rollback` returns to, and any staged release fetched\n" +
+			"but not installed.\n\n" +
+			"Those three are marked because `prune` refuses to remove them. A listing\n" +
+			"that showed no reason for the refusal leaves an operator arguing with\n" +
+			"the retention policy about a release they can see and cannot delete.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entries, err := app.installedReleases(cmd.Context())
 			if err != nil {
@@ -73,7 +84,14 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show [version]",
 		Short: "Show a release manifest; the installed one when no version is given",
-		Args:  cobra.MaximumNArgs(1),
+		Long: "The manifest as the manager reads it: images, profiles, the digest and\n" +
+			"the compatibility declarations that `update` and `rollback` gate on.\n\n" +
+			"Reads what is installed. To inspect a bundle that is not installed yet,\n" +
+			"`release verify --bundle <path>` checks it and names what it is.",
+		Example: "  morzer release show\n" +
+			"  morzer release show 1.4.0\n" +
+			"  morzer release show --json | jq .manifest.compatibility",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := app.releaseRoot(cmd.Context(), args)
 			if err != nil {

@@ -101,7 +101,11 @@ func newBackupTargetListCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List backup targets and whether they can be reached",
-		Args:  cobra.NoArgs,
+		Long: "Every configured target, and what answered when this command asked it.\n\n" +
+			"A target that cannot be reached is a row carrying its error rather than\n" +
+			"a missing row: \"no targets\" and \"the target is down\" are different\n" +
+			"machines to be standing in front of.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			statuses, err := ops.TargetList(cmd.Context(), app.Deps)
 			if err != nil {

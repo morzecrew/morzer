@@ -546,7 +546,17 @@ func newStatusCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show what is deployed and whether it is working",
-		Args:  cobra.NoArgs,
+		Long: "Reads the installation, the release pointer, the runtime and the last\n" +
+			"backup, and reports them together. Every section degrades on its own: a\n" +
+			"Docker daemon that is down costs you the service table and nothing else,\n" +
+			"because the question \"what is installed here\" still has an answer.\n\n" +
+			"Refuses nothing and changes nothing. `--watch` redraws until interrupted\n" +
+			"and needs a terminal, since a redraw in a systemd unit is a log filling\n" +
+			"up with copies of one table.",
+		Example: "  morzer status\n" +
+			"  morzer status --watch --interval 5s\n" +
+			"  morzer status --json | jq -e '.data.services[] | select(.state != \"running\")'",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("clear-intervention") {
 				// The bare form arrives as NoOptDefVal, a single
@@ -938,7 +948,12 @@ func newVersionCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print version, commit, and supported manifest API versions",
-		Args:  cobra.NoArgs,
+		Long: "This binary's version and build, and the manifest API versions it can\n" +
+			"read. The last is the one worth checking against a bundle: a release\n" +
+			"declaring an API version not listed here needs a newer manager.\n\n" +
+			"Needs no installation, which is deliberate -- it answers on a bare\n" +
+			"machine and on one whose installation will not load.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.render(views.Version{
 				Version:              app.Build.Version,

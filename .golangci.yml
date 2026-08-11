@@ -88,6 +88,28 @@ linters:
                 styling belongs to internal/ui/theme, which is also what makes
                 --no-color and the ASCII fallback work everywhere at once.
 
+        # Colour has roles, and a view may not invent one. The theme defines
+        # exactly the set that is needed -- OK, Fail, Warn, Active, Dim, Bold,
+        # Detail, Added, Removed, Highlight -- and a view calls one of those or
+        # none. Reaching for lipgloss inside internal/ui is how a sixteenth
+        # colour arrives that NO_COLOR does not switch off and no symbol
+        # accompanies, which is the accessibility half of RFC 0019 §5.6 rotting
+        # in one commit.
+        #
+        # internal/ui/tty is exempt: it builds the live Bubble Tea program and
+        # its plan table, which are lipgloss layouts rather than colour choices.
+        views:
+          files:
+            - "**/internal/ui/**"
+            - "!**/internal/ui/theme/**"
+            - "!**/internal/ui/tty/**"
+          deny:
+            - pkg: github.com/charmbracelet/lipgloss
+              desc: >-
+                a view calls a theme role or none. The roles are in
+                internal/ui/theme, they carry a symbol as well as a colour, and
+                they are what --no-color switches off in one place.
+
         # Ports declare interfaces. An implementation detail leaking in here
         # would make every adapter depend on whichever tool got there first.
         ports:
