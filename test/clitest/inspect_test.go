@@ -45,6 +45,18 @@ func TestExecRequiresTheTerminator(t *testing.T) {
 	r.Run("exec", "app").Failed()
 }
 
+func TestExecRefusesToPlanACommandItCannotSee(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	// `--dry-run` is a global flag, so an operator can type it here — and
+	// the manager cannot say what somebody's command would do. Refusing
+	// beats ignoring: a `--dry-run` that ran the command anyway is how a
+	// flag typed to prevent something becomes the thing that does it.
+	r.Run("--dry-run", "exec", "app", "--", "rm", "-rf", "/tmp/nothing").
+		ExitCode(domain.ExitUsage).
+		SaysAll("cannot plan a command inside a container")
+}
+
 func TestStatsRefusesToStreamIntoTheSingleEnvelopeContract(t *testing.T) {
 	r := clitest.NewInstalled(t)
 

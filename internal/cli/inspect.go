@@ -28,9 +28,10 @@ import (
 // defaultLogTail is how much history `logs` shows when nobody said.
 //
 // A hundred lines is a screen or two: enough to see what a service said as it
-// died, and not so much that the answer scrolls past. `--follow` overrides it to
-// the whole retained backlog, because a follow is a subscription and its
-// history is the part that already happened.
+// died, and not so much that the answer scrolls past. Following without saying
+// otherwise takes the whole retained backlog instead, because a follow is a
+// subscription and its history is the part that already happened -- an explicit
+// `--tail` still wins in either case.
 const defaultLogTail = 100
 
 func newLogsCommand(app *App) *cobra.Command {
@@ -333,6 +334,13 @@ func (a *App) appendStats(ctx context.Context, interval time.Duration) error {
 	for {
 		stats, err := ops.SampleStats(ctx, a.Deps)
 		switch {
+		case ctx.Err() != nil:
+			// Interrupted mid-sample. The failure is the operator's own
+			// ctrl-C reaching the runtime, and reporting it as one the
+			// deployment had would be the manager blaming the daemon
+			// for a keystroke.
+			return nil
+
 		case err != nil:
 			failures++
 			if failures >= 2 {
@@ -342,7 +350,11 @@ func (a *App) appendStats(ctx context.Context, interval time.Duration) error {
 				domain.AsError(err).Message)
 		default:
 			failures = 0
-			if renderErr := a.render(stats); renderErr != nil {
+			// Stamped, because a file holding twenty tables with
+			// nothing between them is not a time series -- which is
+			// the whole reason this form appends rather than
+			// redraws.
+			if renderErr := a.render(views.Sample{At: time.Now(), Stats: stats}); renderErr != nil {
 				return renderErr
 			}
 		}
@@ -389,8 +401,18 @@ func newExecCommand(app *App) *cobra.Command {
 					WithHint("morzer exec %s -- %s", args[0], strings.Join(args[1:], " "))
 			}
 
+			// Refused rather than ignored. The command is the
+			// operator's own and the manager cannot say what it would
+			// do, so there is no plan to show -- and a `--dry-run`
+			// that ran it anyway is how somebody's `rm` gets executed
+			// by the flag they typed to stop it.
+			if app.Flags.dryRun {
+				return domain.Usage("--dry-run cannot plan a command inside a container").
+					WithHint("morzer exec runs what you name and nothing else; " +
+						"the argv on your command line is the whole plan")
+			}
+
 			result, err := ops.ExecInService(cmd.Context(), app.Deps, ops.ExecOptions{
-				Options: app.operationOptions(),
 				Service: args[0],
 				Argv:    args[1:],
 			})

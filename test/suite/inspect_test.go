@@ -108,6 +108,42 @@ func TestLogsWithoutRedactionStreamTheBytesTheContainerWrote(t *testing.T) {
 	assert.False(t, stream.RedactionArmed)
 }
 
+func TestLogsStillAnswerWhenTheSecretValuesCannotBeRead(t *testing.T) {
+	h := newHarness(t)
+	h.running(t)
+	h.Secrets.Fail["Load"] = domain.SecretsError(nil, "no age identity on this machine")
+	h.Runtime.LogOutput = "demo-app-1  | still here\n"
+
+	stream, err := ops.StreamLogs(context.Background(), h.Deps, ops.LogsOptions{Redact: true})
+	require.NoError(t, err,
+		"a machine whose secret state will not decrypt is a machine somebody is "+
+			"already debugging; refusing to show its logs takes the tool away "+
+			"exactly then")
+	defer func() { _ = stream.Close() }()
+
+	out, err := io.ReadAll(stream)
+	require.NoError(t, err)
+	assert.Contains(t, string(out), "still here")
+
+	// And it says so, rather than letting an operator read an unfiltered
+	// stream believing it was filtered.
+	assert.False(t, stream.RedactionArmed)
+}
+
+func TestAnOversizedLineCannotBeTurnedIntoARecord(t *testing.T) {
+	// Reachable only with redaction off -- the filter drops such a line
+	// before it gets here -- which is the one case nothing upstream has
+	// bounded. It is a named refusal rather than a truncated record,
+	// because half a log line attributed to a service is worse than none.
+	huge := "demo-app-1  | " + strings.Repeat("x", 80<<10) + "\n"
+	stream := &ops.LogStream{ReadCloser: io.NopCloser(strings.NewReader(huge))}
+
+	err := stream.Lines(func(ports.LogLine) error { return nil })
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "cannot be turned into a record")
+	assert.Contains(t, domain.AsError(err).Hint, "without --json")
+}
+
 func TestLogsRedactsASecretSplitAcrossTwoReads(t *testing.T) {
 	const secret = "a-real-database-password"
 

@@ -485,10 +485,25 @@ docker compose -p demo start db >/dev/null
 # Journalled with the argv, and never with the output. The journal is where a
 # later reader learns that a human was inside the deployment at 03:14 and what
 # they asked it to do.
-grep -q '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl" ||
-	fail "the execs were not journalled"
-if grep -q 'hello-from-the-container' "${ROOT}/var/lib/demo/manager/operations.jsonl"; then
-	fail "the journal recorded what the command printed"
+#
+# Asserted on the record's *shape* rather than by grepping for the output: the
+# argv legitimately contains whatever the operator typed, including the string
+# the command was told to print, so a grep would fail on a correct journal. The
+# three flags are the whole record, so anything else -- an output field somebody
+# added for convenience -- fails here. The text assertion belongs where argv and
+# output can be arranged to differ, which is the fake-backed suite.
+grep '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl" |
+	jq -e -s 'length >= 2 and all(.[]; .flags | keys == ["argv", "exit_code", "service"])' >/dev/null ||
+	fail "the exec journal records are not the three flags and nothing else"
+
+# And the argv is redacted before it is written, which is what a password in a
+# connection string depends on. The value is this installation's real generated
+# secret, read off the tmpfs the manager rendered it to.
+db_password=$(cat "${ROOT}/run/demo/secrets/db_password")
+[ -n "${db_password}" ] || fail "no rendered db_password to test the redaction with"
+"${MORZER}" --root "${ROOT}" exec app -- echo "postgres://demo:${db_password}@db/demo" >/dev/null
+if grep -qF "${db_password}" "${ROOT}/var/lib/demo/manager/operations.jsonl"; then
+	fail "a known secret value reached the journal in an argv"
 fi
 
 step "a reboot: services stopped, then apply --startup"

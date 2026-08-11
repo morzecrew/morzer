@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -23,6 +24,45 @@ func init() {
 		},
 		Plain: func(w io.Writer, v []ports.ServiceStats) { emit(w, StatsDoc(plainDoc(w), v)) },
 	})
+	ui.Register(ui.View[Sample]{
+		Rich: func(w io.Writer, t *theme.Theme, v Sample) {
+			emit(w, sampleDoc(doc(w, t), v))
+		},
+		Plain: func(w io.Writer, v Sample) { emit(w, sampleDoc(plainDoc(w), v)) },
+	})
+}
+
+// Sample is one reading with the instant it was taken.
+//
+// A type rather than a field on the rows, for the reason `Verbose` is a type:
+// whether a reading is one of a series is a presentation choice, and a
+// timestamp inside the report would travel through the lifecycle layer into
+// `--json` -- where a consumer looping around single-shot samples has its own
+// clock and did not ask for the manager's.
+//
+// It exists because `stats --watch` outside a terminal *appends* rather than
+// redraws, and a file holding twenty tables with nothing between them is not a
+// time series.
+type Sample struct {
+	At    time.Time
+	Stats []ports.ServiceStats
+}
+
+func sampleDoc(d *ui.Doc, s Sample) *ui.Doc {
+	t := d.Theme()
+
+	// Box drawing where the terminal has it, ASCII where it does not --
+	// the Linux virtual console renders a fixed font with no box characters
+	// in it, and this line's whole job is to be a legible separator.
+	rule := "──"
+	if t.Symbols == theme.ASCIISymbols {
+		rule = "--"
+	}
+
+	d.Text(0, "%s", t.Dim(rule+" "+s.At.Format("15:04:05")+" "+rule))
+	StatsDoc(d, s.Stats)
+	d.Blank()
+	return d
 }
 
 // servicesDoc is `morzer ps`: what this deployment is running, and nothing else.

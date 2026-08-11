@@ -207,6 +207,31 @@ func TestANarrowTerminalDropsColumnsRatherThanWrappingCells(t *testing.T) {
 	require.Contains(t, narrow, "site_name", "an essential column was dropped:\n%s", narrow)
 }
 
+// TestASquashedServiceListStillTellsTwoReplicasApart is the one column in `ps`
+// that may not be dropped.
+//
+// A scaled service is several containers under one name, so without the
+// container the table degrades into identical rows — which is worse than the
+// overflow it was avoiding, because nothing says two of them are two. The other
+// four columns go first, and the footer names them.
+func TestASquashedServiceListStillTellsTwoReplicasApart(t *testing.T) {
+	services := []ports.ServiceState{
+		{Name: "app", Container: "demo-app-1", State: "running", Health: ports.HealthHealthy,
+			Image: "ghcr.io/demo/app@sha256:" + strings.Repeat("8a", 32), Status: "Up 3 hours"},
+		{Name: "app", Container: "demo-app-2", State: "running", Health: ports.HealthHealthy,
+			Image: "ghcr.io/demo/app@sha256:" + strings.Repeat("8a", 32), Status: "Up 3 hours"},
+	}
+
+	// Narrow enough that the container is the *next* column a table
+	// dropping from the right would take. At 34 the other three have
+	// already made room and it survives whether or not it is essential, so
+	// a test there would assert nothing about the rule.
+	narrow := render(t, 24, services)
+	require.NotContains(t, narrow, "STATUS", "nothing was dropped at 24 columns:\n%s", narrow)
+	require.Contains(t, narrow, "demo-app-1", "the container column was dropped:\n%s", narrow)
+	require.Contains(t, narrow, "demo-app-2", "the container column was dropped:\n%s", narrow)
+}
+
 // TestPlainIsLineOrientedNotRichWithoutColour.
 //
 // Decision 5. A journal and a CI log read plain, so a box drawn in one is noise

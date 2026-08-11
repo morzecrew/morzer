@@ -108,6 +108,14 @@ type LogStream struct {
 	RedactionArmed bool
 }
 
+// attributionTimeout bounds the one listing a structured stream needs.
+//
+// The same five seconds `ls --status` gives a runtime query, and for the same
+// reason: what is being bought is a nicety, and paying for it with a command
+// that never starts is the wrong trade on a machine somebody is already
+// debugging.
+const attributionTimeout = 5 * time.Second
+
 // StreamLogs opens the deployment's logs.
 //
 // No lock, deliberately: reading logs must never queue behind an update, since
@@ -125,7 +133,14 @@ func StreamLogs(ctx context.Context, d *Deps, opts LogsOptions) (*LogStream, err
 		// carries the container that wrote it, which is more than the
 		// raw stream gives a machine reader -- and a daemon too wedged
 		// to list containers is one whose logs are worth reading.
-		states, err := d.Runtime.Status(ctx, dep.Config)
+		//
+		// Bounded for that reason. This call is a convenience on the way
+		// to the stream, and an unbounded one would turn "logs answer
+		// when the daemon is struggling" into "logs hang before they
+		// start", which is the promise this command exists to keep.
+		listCtx, cancel := context.WithTimeout(ctx, attributionTimeout)
+		states, err := d.Runtime.Status(listCtx, dep.Config)
+		cancel()
 		if err != nil {
 			logging.FromContext(ctx).Warn(
 				"cannot attribute log lines to services", "error", err)
@@ -290,9 +305,14 @@ func SampleStats(ctx context.Context, d *Deps) ([]ports.ServiceStats, error) {
 // exec
 
 // ExecOptions names the service and what to run in it.
+//
+// Deliberately not embedding Options. None of them applies: there is no lock to
+// wait for, nothing destructive for --force to authorise, and no plan for
+// --dry-run to produce -- the command is the operator's own and the manager
+// cannot say what it would do. Embedding the struct and reading none of it
+// would be a promise the code does not keep, which is how `--dry-run` ends up
+// silently running somebody's `rm`.
 type ExecOptions struct {
-	Options
-
 	Service string
 
 	// Argv is the command inside the container and nothing else. The

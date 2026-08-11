@@ -449,5 +449,15 @@ func inspectFixtures() []fixture {
 			value:  []ports.ServiceStats{},
 			fields: []string{"nothing is running"},
 		},
+		{
+			// One block of a `--watch` outside a terminal. The stamp
+			// is what makes a file of twenty of these a time series.
+			name: "stats-sample",
+			value: views.Sample{
+				At:    time.Date(2026, 8, 11, 9, 15, 22, 0, time.UTC),
+				Stats: stats,
+			},
+			fields: []string{"09:15:22", "demo-app-1", "total"},
+		},
 	}
 }

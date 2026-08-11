@@ -3,6 +3,7 @@ package compose
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,7 +52,7 @@ func (r *Runtime) Stats(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.S
 	for name := range running {
 		names = append(names, name)
 	}
-	sortStrings(names)
+	slices.Sort(names)
 
 	// `--no-stream` matters: the streaming form emits a first sample of
 	// zeros before its first interval has elapsed, and a `stats` that
@@ -291,25 +292,16 @@ func parseSize(s string) (*int64, error) {
 	return &n, nil
 }
 
+// sortStats orders rows by service then container.
+//
+// So that two samples of an unchanged deployment are the same table: `--watch`
+// redraws this, and rows that swapped places between frames would be
+// unreadable.
 func sortStats(rows []ports.ServiceStats) {
-	for i := 1; i < len(rows); i++ {
-		for j := i; j > 0 && lessStats(rows[j], rows[j-1]); j-- {
-			rows[j], rows[j-1] = rows[j-1], rows[j]
+	slices.SortFunc(rows, func(a, b ports.ServiceStats) int {
+		if c := strings.Compare(a.Service, b.Service); c != 0 {
+			return c
 		}
-	}
-}
-
-func lessStats(a, b ports.ServiceStats) bool {
-	if a.Service != b.Service {
-		return a.Service < b.Service
-	}
-	return a.Container < b.Container
-}
-
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
+		return strings.Compare(a.Container, b.Container)
+	})
 }
