@@ -69,6 +69,10 @@ jobs:
               - 'justfile'
               - '.golangci.yml'
               - 'testdata/**'
+              # The installer is shipped code with its own test suite, and
+              # neither lives under a Go path -- without this, the two
+              # edits that change what it does trigger nothing.
+              - 'install.sh'
               # The scripts the gates below execute, and the workflow that
               # defines them. `acceptance.sh` *is* the acceptance scenario and
               # this file decides when it runs, yet neither matched a filter
@@ -151,6 +155,11 @@ jobs:
       - run: just fmt-check
       - run: just vet
       - run: just lint
+
+      # install.sh is checked with `sh` as the dialect, so a bashism fails
+      # here rather than on the freshly provisioned box the script exists
+      # for. shellcheck is on the runner image.
+      - run: just shellcheck
 
   test:
     name: Test (go ${{ matrix.go }})

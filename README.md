@@ -26,6 +26,17 @@ That boundary is the point. Everything it does is a sequence of steps against
 tools that already exist, and every step can be planned with `--dry-run`,
 journaled, verified afterwards, and undone.
 
+## Install
+
+```sh
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 1.0.0
+```
+
+Verifies the checksum before it installs, and the signature too when `minisign`
+is there. `--print-only` shows what it would do and changes nothing;
+[the long form](https://morzecrew.github.io/morzer/get-started/installation/)
+stays documented, because it is what the script is doing.
+
 ## Try it
 
 ```sh

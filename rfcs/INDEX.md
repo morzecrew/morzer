@@ -38,7 +38,7 @@ number in the filename in sync.
 | [0019](0019-the-command-surface.md) | The command surface | ✅ Complete | The surface an operator meets before any capability: how `--help` is organised, how output is rendered, and where the command reference is found. |
 | [0020](0020-several-installations-on-one-machine.md) | Several installations on one machine | ✅ Complete | One machine holding more than one installation: saying which are there, and refusing to guess which one a command was meant for. |
 | [0021](0021-into-the-running-deployment.md) | Into the running deployment | ✅ Complete | The commands for when the deployment is running and something is wrong — logs, process state, resource use, and a command inside a container. |
-| [0022](0022-bootstrapping-the-manager.md) | Bootstrapping the manager | 🚧 In progress | Getting the manager onto a machine in the first place: an install script that verifies what it downloaded, and instructions somebody has run. |
+| [0022](0022-bootstrapping-the-manager.md) | Bootstrapping the manager | ✅ Complete | Getting the manager onto a machine in the first place: an install script that verifies what it downloaded, and instructions somebody has run. |
 
 ## Status legend
 

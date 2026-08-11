@@ -181,7 +181,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A shell `completion install` cannot place a file for is not a failure: the script goes to stdout with a note naming the ones it can, and the command exits 0. That keeps redirecting it useful, and keeps an installer's optional completion step from failing an install.
 
+- An install script, published at `https://morzecrew.github.io/morzer/install.sh`, as a release asset covered by that release's `SHA256SUMS`, and readable from the repository. It resolves the archive for the machine's architecture, verifies before it installs, installs one file, and reports the version, the digest and the path. `--version` pins a release and `--print-only` shows everything it detected without changing anything.
+
+- Verification the six documented commands could not do: the archive is matched against its own line in `SHA256SUMS` rather than with `--ignore-missing`, which reports `OK` when no archive is present at all; a `--digest` the caller pins is checked first; the checksum file's signature is verified against a key embedded in the script rather than fetched beside it; and the extracted binary has to report the version that was asked for. `--require-signature` makes a missing `minisign` fatal, which is what a production runbook sets.
+
+- The install prefix is put on `PATH` when it is not there already, in one marked block, in the files the named shell actually reads — both the login file and the interactive one for bash and zsh, a drop-in for fish, and fish syntax in the fish one. The marker makes a second run change nothing. A symlinked or unwritable startup file is printed to instead, since appending to a file a dotfiles repository generates loses the edit at the next sync.
+
+- Shell completions are installed by running `morzer completion install`, never by the script writing completion paths of its own. A failure there warns and leaves the install successful: the binary is what was asked for.
+
+- The script never runs `sudo`. A prefix it cannot write to prints the command to re-run with elevation and exits non-zero.
+
+- A nightly job that installs the newest published release with `--require-signature` and compares the published copies of the script against the one at that release's tag. It is the only check that can catch an asset name drifting, which is the defect that prompted all of this, and it reports that there is nothing to check until a release exists.
+
 ### Changed
+
+- The installation page leads with the install script and keeps the manual sequence underneath, because the manual sequence is what the script does and an operator checking its work needs to be able to read it.
 
 - The installation state format moved to schema 3 for backup targets. An older manager refuses a newer state rather than reading it, seeing no targets, and quietly leaving every backup on the machine a target was configured to survive.
 

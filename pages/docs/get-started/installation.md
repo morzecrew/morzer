@@ -9,7 +9,76 @@ summary: Getting the binary onto a machine, and what it needs from that machine
 morzer is a single static binary with no runtime dependency on the machine's
 libc. Getting it is a download and a checksum.
 
-## From a release
+## The script
+
+```sh
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 1.0.0
+```
+
+It resolves the archive for this machine's architecture, checks the checksum
+against the release's own `SHA256SUMS`, checks the signature when `minisign` is
+installed, installs one file, and puts the prefix on `PATH` if it is not there
+already. Then it tells you what it did.
+
+```sh
+# See everything it detected and would do, and change nothing.
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --print-only
+
+# A production runbook: pin the version, and refuse to install unsigned.
+curl -fsSL https://morzecrew.github.io/morzer/install.sh \
+  | sh -s -- --version 1.0.0 --require-signature
+
+# Somewhere else, without touching a startup file.
+curl -fsSL https://morzecrew.github.io/morzer/install.sh \
+  | sh -s -- --version 1.0.0 --dir /opt/morzer/bin --no-modify-path
+```
+
+`sh -s --` is how arguments reach a script that arrived on stdin. `MORZER_VERSION`
+and `MORZER_INSTALL_DIR` do the same job for a runbook that would rather set
+environment variables than get that incantation right.
+
+| Option | |
+| --- | --- |
+| `--version X.Y.Z` | The release to install. Without it, the newest published release — resolved once, then printed. A prerelease is installed when you name it and never when it is inferred. |
+| `--dir PATH` | Where to install. Default: `/usr/local/bin` when writable, otherwise `$HOME/.local/bin`. |
+| `--digest sha256:…` | Bytes you are asserting. Checked before `SHA256SUMS`, and a mismatch is fatal. |
+| `--require-signature` | Refuse to install when `minisign` is missing or the signature does not verify. |
+| `--no-verify-signature` | Skip the signature check, and say so. Refused together with `--require-signature`. |
+| `--no-modify-path` | Never edit a startup file; print the block instead. |
+| `--completions` / `--no-completions` | Force shell completions on or off. On by default at a terminal, off in a build. |
+| `--shell NAME` | Override the shell detected from `$SHELL`. |
+| `--print-only` | Print what it detected and would do. Changes nothing. |
+
+What it never does: run `sudo` on its own initiative — if the prefix needs root
+it prints the command to re-run and exits non-zero — install anything but
+`<dir>/morzer`, or leave a partial download behind.
+
+### Reading it first
+
+Piping a script into a shell means running what a server chose to send. The
+criticism is correct in general, and the answer here is that everything the
+script does is also documented below, and that you can read it before running
+it:
+
+```sh
+curl -fsSLO https://morzecrew.github.io/morzer/install.sh
+less install.sh
+sh install.sh --print-only
+sh install.sh --version 1.0.0
+```
+
+The same file is at
+[`raw.githubusercontent.com`](https://raw.githubusercontent.com/morzecrew/morzer/main/install.sh)
+— swap `main` for a tag to pin the script itself — and it ships as an asset of
+every release, covered by that release's `SHA256SUMS`. So the script that
+verifies the archive is itself verifiable against the file it teaches you to
+check.
+
+## By hand
+
+The script is doing this. It stays documented because an operator who wants to
+check its work needs to be able to, and because a machine that cannot reach the
+site can still install from a release it already has.
 
 ```sh
 VERSION=1.0.0                            # the release you mean, not "whatever is newest"
@@ -80,6 +149,11 @@ morzer completion install
 Puts the completion script where your shell reads completions from — bash, zsh
 and fish — creating the directory if it is missing, and printing anything else
 that shell needs. It defaults to `$SHELL`; name one to override.
+
+The install script above runs exactly this command when the install is
+interactive and the shell is one of the three, which is why there is no second
+copy of these paths written in `sh`: a completion in the wrong directory
+produces no error at all, just a Tab key that does nothing.
 
 A shell it cannot place a file for gets the script on stdout instead, and exits
 0. The paths are in [`completion install`](../reference/commands.md#completion-install).

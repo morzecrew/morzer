@@ -1,0 +1,57 @@
+# Nightly checks against the world outside this repository.
+#
+# Everything in `ci.yml` is offline by design: a gate that reaches GitHub before
+# it can answer has traded a clear failure for a flaky one, and a contributor
+# working on a train must be able to run what CI runs. That leaves one class of
+# defect uncovered — the published artefacts drifting from what the documents
+# and the installer claim about them — and it is the class that produced RFC
+# 0022 in the first place, when the documented download URL named an asset the
+# release pipeline does not build.
+#
+# So it is checked here instead: once a day, against the real release, where a
+# failure is triaged rather than blocking a pull request.
+name: Nightly
+
+on:
+  schedule:
+    # 04:17 UTC. Off the hour deliberately: the top of the hour is when every
+    # cron in the world fires and Actions queues accordingly.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  installer:
+    name: The installer against the real release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The comparison is anchored at the release tag, so the tags have to
+          # be here: main moves on after a release, and comparing a published
+          # asset against main would fail for the ordinary reason that
+          # somebody edited the script since.
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      # The script warns and continues without minisign; this job demands it,
+      # because a signing key that rotated without a new script shipping is
+      # exactly the failure worth waking up to.
+      - name: Install minisign
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends minisign
+
+      - name: Check the installer against the newest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/installer-drift.sh
