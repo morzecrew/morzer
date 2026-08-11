@@ -821,8 +821,10 @@ note.
   `--verbose`; the recovery key as a callout in both the wizard and
   `generate-recovery-key`; the four hand-rolled tables deleted.
 - **P4 — The generated index and `docs-check`'s drift assertion.** ✅ Shipped
-  2026-08-12. Independent of P2 and P3; gated on P1 only because the groups are
-  what the index's sections mirror. Deliberately after
+  2026-08-12. Independent of P2 and P3; gated on P1 because the rows are in
+  registration order, and P1 is what fixed that order. This line first gave the
+  gate as "the groups are what the index's sections mirror", which the shipped
+  index contradicts — §13 records why it has no sections. Deliberately after
   [0020](0020-several-installations-on-one-machine.md) P2 and
   [0021](0021-into-the-running-deployment.md): generating a command index before
   `ls`, `logs` and `stats` exist means regenerating it in the next wave — and
