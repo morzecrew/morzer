@@ -214,7 +214,15 @@ func (a *App) watchStatus(ctx context.Context, interval time.Duration) error {
 	a.plain.Mute()
 	defer a.plain.Unmute()
 
-	return tty.Watch(ctx, tty.WatchOptions[ops.Status]{
+	return tty.Watch(ctx, a.statusWatch(interval))
+}
+
+// statusWatch is the live status view's configuration.
+//
+// Beside `statsWatch` and for the same reason: the two differ in exactly one
+// field, and it is the one that decides whether a watch can end by itself.
+func (a *App) statusWatch(interval time.Duration) tty.WatchOptions[ops.Status] {
+	return tty.WatchOptions[ops.Status]{
 		Output:   a.Stream.Err,
 		Input:    a.terminalInput(),
 		Theme:    a.theme(),
@@ -228,5 +236,6 @@ func (a *App) watchStatus(ctx context.Context, interval time.Duration) error {
 		// operator leaves running while a machine comes back, and one
 		// that exited after two failed reads would go dark exactly
 		// during the reboot they were watching for.
-	})
+		StopAfterFailures: 0,
+	}
 }

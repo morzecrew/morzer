@@ -111,6 +111,11 @@ func TestAContainersExitCodeOutranksTheMappingTable(t *testing.T) {
 	if domain.AsError(err).Message == "" {
 		t.Error("the envelope would carry no message")
 	}
+	// Legible on its own, for the one reader that meets it as a plain
+	// error: a `%v` in a log line somewhere downstream.
+	if !strings.Contains(err.Error(), "db") || !strings.Contains(err.Error(), "3") {
+		t.Errorf("the error names neither the service nor the code: %q", err.Error())
+	}
 	// Nothing is printed for it: the command already said whatever it had
 	// to say on its own streams.
 	if !silentFailure(err) {
@@ -217,5 +222,30 @@ func TestAnOrdinaryFailureIsStillMappedAndStillPrinted(t *testing.T) {
 	}
 	if silentFailure(err) {
 		t.Error("an ordinary failure would be swallowed")
+	}
+}
+
+// TestOnlyTheSamplerGivesUpOnItsOwn pins the one field the two live views
+// differ in.
+//
+// They are otherwise the same program, which is why the option struct is
+// shared — and why the difference has to be asserted rather than left to a
+// comment. A `stats --watch` pointed at a daemon that has gone should end
+// non-zero; a `status --watch` should stay up through the reboot somebody is
+// watching for.
+func TestOnlyTheSamplerGivesUpOnItsOwn(t *testing.T) {
+	app := &App{Stream: ui.Streams{Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}}
+
+	if got := app.statsWatch(time.Second).StopAfterFailures; got != 2 {
+		t.Errorf("stats --watch gives up after %d failures, want 2", got)
+	}
+	if got := app.statusWatch(time.Second).StopAfterFailures; got != 0 {
+		t.Errorf("status --watch gives up after %d failures, and must not give up", got)
+	}
+
+	// And both actually draw something: a nil Body is a panic on the first
+	// frame, which no test of the field above would notice.
+	if app.statsWatch(time.Second).Body == nil || app.statusWatch(time.Second).Body == nil {
+		t.Error("a watch was wired with nothing to draw")
 	}
 }

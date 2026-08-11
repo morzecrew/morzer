@@ -108,3 +108,70 @@ func TestWatchQuitsOnQ(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(5*time.Second))
 }
+
+// TestAWatchThatGivesUpCarriesTheReasonOut is `stats --watch`'s half of the
+// contract, and the half `status --watch` deliberately does not have.
+//
+// A watch that stayed on screen redrawing an error would exit 0 whenever the
+// operator eventually pressed `q`, which is the wrong answer for a sampler
+// pointed at a daemon that has gone. `status` sets no limit for the opposite
+// reason: it is what somebody leaves running while a machine comes back, and
+// one that quit during the reboot would go dark at the moment it was being
+// watched for.
+func TestAWatchThatGivesUpCarriesTheReasonOut(t *testing.T) {
+	gone := errors.New("cannot reach the docker daemon")
+
+	model := tty.NewWatchModel(context.Background(), tty.WatchOptions[[]ports.ServiceStats]{
+		Theme:    theme.New(false, false),
+		Interval: 10 * time.Millisecond,
+		Subject:  "statistics",
+		Refresh: func(context.Context) ([]ports.ServiceStats, error) {
+			return nil, gone
+		},
+		Body:              views.StatsDoc,
+		StopAfterFailures: 2,
+	})
+
+	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(100, 40))
+
+	// It ends on its own: no key is sent, so a watch that kept redrawing
+	// would hang here rather than pass.
+	tm.WaitFinished(t, teatest.WithFinalTimeout(5*time.Second))
+
+	final := tm.FinalModel(t)
+	err, ok := final.(interface{ Fatal() error })
+	if !ok {
+		t.Fatalf("the watch model does not report why it stopped: %T", final)
+	}
+	if !errors.Is(err.Fatal(), gone) {
+		t.Errorf("the watch stopped and reported %v, want the daemon's own error", err.Fatal())
+	}
+}
+
+// TestAStatusWatchNeverGivesUp is the other side of the same switch.
+func TestAStatusWatchNeverGivesUp(t *testing.T) {
+	model := tty.NewWatchModel(context.Background(), tty.WatchOptions[ops.Status]{
+		Theme:    theme.New(false, false),
+		Interval: 10 * time.Millisecond,
+		Subject:  "status",
+		Refresh: func(context.Context) (ops.Status, error) {
+			return ops.Status{}, errors.New("cannot reach the docker daemon")
+		},
+		Body: views.StatusDoc,
+		// No StopAfterFailures, which is the decision under test.
+	})
+
+	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(100, 40))
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return strings.Contains(stripANSI(string(b)), "cannot reach the docker daemon")
+	}, teatest.WithDuration(5*time.Second))
+
+	// Still up after several failed reads. The operator ends it.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(5*time.Second))
+
+	final := tm.FinalModel(t)
+	if reporter, ok := final.(interface{ Fatal() error }); ok && reporter.Fatal() != nil {
+		t.Errorf("a status watch gave up on its own: %v", reporter.Fatal())
+	}
+}

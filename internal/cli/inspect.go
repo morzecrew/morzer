@@ -302,23 +302,32 @@ func (a *App) watchStats(ctx context.Context, interval time.Duration) error {
 		a.plain.Mute()
 		defer a.plain.Unmute()
 
-		return tty.Watch(ctx, tty.WatchOptions[[]ports.ServiceStats]{
-			Output:   a.Stream.Err,
-			Input:    a.terminalInput(),
-			Theme:    a.theme(),
-			Interval: interval,
-			Subject:  "statistics",
-			Refresh: func(ctx context.Context) ([]ports.ServiceStats, error) {
-				return ops.SampleStats(ctx, a.Deps)
-			},
-			Body: views.StatsDoc,
-			// A daemon that refuses twice running has gone rather
-			// than hiccuped, and a watch that redrew the error
-			// until somebody pressed q would exit 0 about it.
-			StopAfterFailures: 2,
-		})
+		return tty.Watch(ctx, a.statsWatch(interval))
 	}
 	return a.appendStats(ctx, interval)
+}
+
+// statsWatch is the live sampler's configuration.
+//
+// A function of its own so the one decision in it can be asserted without a
+// terminal: `stats` gives up after two consecutive failures and `status` never
+// does, and a comment is not what keeps those two apart.
+func (a *App) statsWatch(interval time.Duration) tty.WatchOptions[[]ports.ServiceStats] {
+	return tty.WatchOptions[[]ports.ServiceStats]{
+		Output:   a.Stream.Err,
+		Input:    a.terminalInput(),
+		Theme:    a.theme(),
+		Interval: interval,
+		Subject:  "statistics",
+		Refresh: func(ctx context.Context) ([]ports.ServiceStats, error) {
+			return ops.SampleStats(ctx, a.Deps)
+		},
+		Body: views.StatsDoc,
+		// A daemon that refuses twice running has gone rather than
+		// hiccuped, and a watch that redrew the error until somebody
+		// pressed q would exit 0 about it.
+		StopAfterFailures: 2,
+	}
 }
 
 // appendStats writes one block per sample.

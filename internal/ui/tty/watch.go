@@ -138,6 +138,13 @@ type watchModel[T any] struct {
 	fatal    error
 }
 
+// Fatal is why the watch stopped, or nil when the operator stopped it.
+//
+// Exported on the model rather than only returned by Watch so a test can drive
+// the program without a terminal and still see the decision -- which is the
+// half of `--watch` that decides an exit code.
+func (m *watchModel[T]) Fatal() error { return m.fatal }
+
 // readingMsg is the outcome of one refresh.
 type readingMsg[T any] struct {
 	reading T
