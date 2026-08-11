@@ -171,7 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `morzer exec <service> -- <command>` runs one command inside a running container and propagates its exit code, so a command that failed fails the invocation. Everything after `--` is the container's command line and nothing else; there is no `--user` and no shortcut for running as root. It refuses a service that is not running, naming the state. Not an interactive shell: there is no TTY and no stdin.
 
-- Every `exec` is journalled with its service, its argv and its exit code, and never with its output. The argv is redacted with this installation's known secret values first, because a password in an argv is the ordinary case. What a redactor cannot catch is said plainly rather than implied away.
+- Every `exec` is journalled with its service, its argv and its exit code, and never with its output. The argv is redacted with this installation's known secret values first, because a password in an argv is the ordinary case — and when those values cannot be loaded at all, the record keeps everything else and says the command line was omitted rather than writing down one it could not scrub. Refusing to journal would lose the fact that a human was inside the deployment, and refusing the command would take `exec` away on a machine somebody is already debugging. What a redactor cannot catch even when it is armed is said plainly rather than implied away.
 
 - None of the four takes the deployment lock. They are what an operator runs *while* something else is happening, which is exactly the case a lock would break.
 

@@ -366,12 +366,12 @@ func ExecInService(ctx context.Context, d *Deps, opts ExecOptions) (ExecResult, 
 
 	// Armed before the record is built, because the record carries the argv
 	// and an unarmed redactor would write the operator's password into the
-	// journal verbatim.
-	d.armRedaction(ctx)
+	// journal verbatim. Whether it worked decides what the record may say.
+	armed := d.armRedaction(ctx)
 
 	started := d.now()
 	res, err := d.Runtime.Exec(ctx, dep.Config, opts.Service, opts.Argv)
-	record := d.execRecord(dep, opts, started, res, err)
+	record := d.execRecord(dep, opts, started, res, err, armed)
 	if journalErr := d.State.AppendOperation(ctx, record); journalErr != nil {
 		// Logged and dropped. The command ran inside the container
 		// whether or not the manager could write it down, and failing
@@ -432,12 +432,19 @@ func confirmRunning(ctx context.Context, d *Deps, dep deployment, service string
 // is arbitrary vendor data plus whatever the operator's command printed, and a
 // journal that held it would be a second copy of the product's data in a file
 // nobody thinks of as one.
+//
+// The argv is recorded only when the redactor was armed. That is the whole of
+// `armed`: a `morzer exec` is its own process, so nothing before it has loaded
+// this installation's secrets, and if the load failed then the redactor knows
+// no values and `redactArgv` returns the operator's command line verbatim --
+// with whatever password was in it, into a file this manager keeps.
 func (d *Deps) execRecord(
 	dep deployment,
 	opts ExecOptions,
 	started time.Time,
 	res ports.ExitResult,
 	runErr error,
+	armed bool,
 ) domain.OperationRecord {
 	status := domain.StatusSucceeded
 	var failure *domain.Error
@@ -454,8 +461,21 @@ func (d *Deps) execRecord(
 
 	flags := map[string]string{
 		"service":   opts.Service,
-		"argv":      d.redactArgv(opts.Argv),
 		"exit_code": strconv.Itoa(res.ExitCode),
+	}
+
+	// Three answers rather than two, and the third is the point. Refusing
+	// to journal at all would lose the fact that a human was inside the
+	// deployment, which is the record's whole job; refusing the command
+	// would take `exec` away on a machine whose secret state is broken,
+	// which is a machine somebody is already debugging. So the record keeps
+	// everything it can promise is clean and says what it dropped -- a
+	// reader who finds no argv learns why rather than wondering.
+	if armed {
+		flags["argv"] = d.redactArgv(opts.Argv)
+	} else {
+		flags["argv_omitted"] = "this installation's secret values could not be " +
+			"loaded, so the command line could not be scrubbed before writing it down"
 	}
 
 	return domain.OperationRecord{
@@ -477,6 +497,11 @@ func (d *Deps) execRecord(
 // What it cannot catch is said plainly in the documentation rather than implied
 // away: a redactor matches the values it has been told about, and a token an
 // operator pasted from somewhere else is not one of them.
+//
+// The nil guard is unreachable from the one caller -- armRedaction answers
+// false without a redactor, and only an armed one reaches here -- and stays
+// because the failure it prevents is a panic while writing a journal entry
+// about something that has already happened inside a container.
 func (d *Deps) redactArgv(argv []string) string {
 	joined := strings.Join(argv, " ")
 	if d.Redactor == nil {

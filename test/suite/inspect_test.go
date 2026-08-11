@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -337,6 +338,55 @@ func TestExecKeepsTheOperatorsPasswordOutOfTheJournal(t *testing.T) {
 				"in an argv is the ordinary case")
 		assert.Contains(t, rec.Flags["argv"], domain.Redacted)
 	}
+}
+
+func TestExecOmitsTheArgvItCouldNotScrub(t *testing.T) {
+	const secret = "a-real-database-password"
+
+	h := newHarness(t)
+	h.running(t)
+
+	// A redactor that has never been armed, which is what every `morzer
+	// exec` invocation starts with: it is its own process, and nothing
+	// before it has loaded this installation's secrets. The harness's own
+	// apply armed the shared one a moment ago, so without this the test
+	// would pass on a value that was registered by something else entirely.
+	h.Deps.Redactor = logging.NewRedactor()
+
+	// And the secret state will not decrypt -- a missing age key, a machine
+	// mid-recovery. Arming it now is the one thing that could have taught
+	// the redactor this password, so an argv written down verbatim puts it
+	// in a file this manager keeps.
+	h.Secrets.Fail["Load"] = domain.SecretsError(nil, "no age identity on this machine")
+
+	_, err := ops.ExecInService(context.Background(), h.Deps, ops.ExecOptions{
+		Service: "app",
+		Argv:    []string{"psql", "postgresql://demo:" + secret + "@localhost/demo"},
+	})
+	require.NoError(t, err,
+		"a machine whose secret state will not decrypt is one somebody is already "+
+			"debugging; refusing to let them into a container takes the tool away "+
+			"exactly then")
+
+	records, err := h.Deps.State.Operations(context.Background(), ops.OperationFilterAll())
+	require.NoError(t, err)
+
+	var record *domain.OperationRecord
+	for i := range records {
+		if records[i].Type == domain.OpTypeExec {
+			record = &records[i]
+		}
+	}
+	require.NotNil(t, record, "the fact that a human was inside the deployment was lost")
+
+	// The record still says who was where and what it exited with. What it
+	// drops is the one field it cannot promise is clean, and it says that
+	// rather than leaving a reader to wonder where the argv went.
+	assert.NotContains(t, journalText(t, record), secret)
+	assert.Empty(t, record.Flags["argv"])
+	assert.Contains(t, record.Flags["argv_omitted"], "could not be")
+	assert.Equal(t, "app", record.Flags["service"])
+	assert.Equal(t, "0", record.Flags["exit_code"])
 }
 
 func TestExecRefusesAServiceThatIsNotRunning(t *testing.T) {

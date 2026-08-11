@@ -372,7 +372,10 @@ A service that is not running is refused by name, with the state it is in.
 
 Journaled with its type, service, argv and exit code — and never its output. The
 argv is redacted with this installation's known secret values first, because a
-password in an argv is the ordinary case. A credential the manager has never
+password in an argv is the ordinary case; when those values cannot be loaded at
+all the record keeps everything else and carries `argv_omitted` saying why,
+rather than writing down a command line it could not scrub. A credential the
+manager has never
 been told about is beyond that; see
 [Looking inside](../operating/looking-inside.md#it-is-written-down).
 

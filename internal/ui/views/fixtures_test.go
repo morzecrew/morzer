@@ -391,6 +391,17 @@ func inspectFixtures() []fixture {
 			Status: "Up 3 hours",
 		},
 		{
+			// Running and unhealthy, which is the state with the most
+			// to get wrong: the container is up, so the runtime's own
+			// word for it is `running`, and the marker beside it has
+			// to say the opposite. Nothing else in these fixtures
+			// makes the marker and the state column disagree.
+			Name: "cache", Container: "demo-cache-1", State: "running",
+			Health: ports.HealthUnhealthy,
+			Image:  "redis@sha256:" + strings.Repeat("7b", 32),
+			Status: "Up 20 minutes (unhealthy)",
+		},
+		{
 			Name: "worker", Container: "demo-worker-1", State: "exited",
 			Health: ports.HealthNone, ExitCode: 1,
 			Image:  "ghcr.io/demo/worker@sha256:" + strings.Repeat("c3", 32),
@@ -429,7 +440,7 @@ func inspectFixtures() []fixture {
 			value: services,
 			fields: []string{
 				"app", "demo-app-1", "demo-app-2", "running", "healthy",
-				"db", "worker", "exited", "Exited (1)",
+				"db", "cache", "unhealthy", "worker", "exited", "Exited (1)",
 			},
 		},
 		{

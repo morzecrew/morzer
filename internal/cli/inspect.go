@@ -68,12 +68,7 @@ func newLogsCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			// The backlog: a hundred lines when nobody said, and the
-			// whole of it when following, because a follow's history
-			// is what already happened rather than what is coming.
-			if !cmd.Flags().Changed("tail") && follow {
-				tail = 0
-			}
+			tail = backlogFor(tail, cmd.Flags().Changed("tail"), follow)
 
 			if noRedact {
 				// On stderr and every time. A flag that turns off
@@ -124,6 +119,22 @@ func newLogsCommand(app *App) *cobra.Command {
 	return cmd
 }
 
+// backlogFor decides how much history a stream starts with.
+//
+// A hundred lines when nobody said, and the whole retained backlog when
+// following, because a follow is a subscription and its history is the part
+// that already happened. An explicit `--tail` wins either way -- including
+// `--tail 0`, which is how the whole backlog is asked for without following.
+//
+// A function rather than three lines inside `RunE`, because it is a documented
+// contract with two inputs and no way to reach it from a test otherwise.
+func backlogFor(tail int, given, follow bool) int {
+	if given || !follow {
+		return tail
+	}
+	return 0
+}
+
 // copyLogs puts the stream on stdout in whatever form was asked for.
 //
 // The one place in this package that writes a result to stdout without going
@@ -132,14 +143,24 @@ func newLogsCommand(app *App) *cobra.Command {
 // object per line and the single-envelope rule gains exactly one documented
 // hole. TestNoCommandPrintsAReportItself knows about this function by name.
 func (a *App) copyLogs(ctx context.Context, stream *ops.LogStream) error {
-	// Whatever happens from here, the envelope must not be written: either
-	// records have already gone out and appending one would corrupt the
-	// stream, or nothing has and the error is the whole story on stderr.
-	// The exit code is the contract for "did this end cleanly".
 	if a.json != nil {
-		a.jsonStreamed = true
+		// One encoder, not one per line: a followed stream would
+		// otherwise allocate one per record on the hot path.
+		encoder := json.NewEncoder(a.Stream.Out)
+
 		err := stream.Lines(func(line ports.LogLine) error {
-			return json.NewEncoder(a.Stream.Out).Encode(line)
+			if err := encoder.Encode(line); err != nil {
+				return err
+			}
+			// Only now. From the first record onward an envelope
+			// would corrupt what a consumer is parsing line by
+			// line, so it is suppressed and the exit code carries
+			// the outcome. Before it there is nothing to corrupt
+			// and nothing to read: a stream that died on its first
+			// read owes its caller the same `ok:false` every other
+			// failure produces.
+			a.jsonStreamed = true
+			return nil
 		})
 		return endOfStream(ctx, err)
 	}

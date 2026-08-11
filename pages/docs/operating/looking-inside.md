@@ -211,6 +211,21 @@ scrubbed. That matters because a password in an argv is the ordinary case:
 morzer exec db -- psql 'postgresql://demo:hunter2@localhost/demo'
 ```
 
+On a machine whose secret state will not decrypt, the redactor knows no values —
+so the record keeps the service, the exit code and the time, and carries
+`argv_omitted` in place of the command line:
+
+```json
+{"type":"exec","flags":{"service":"db","exit_code":"0",
+ "argv_omitted":"this installation's secret values could not be loaded, so the command line could not be scrubbed before writing it down"}}
+```
+
+Three answers rather than two, and the third is the point. Refusing to journal
+would lose the fact that a human was inside the deployment, which is the
+record's whole job. Refusing the command would take `exec` away on a machine
+somebody is already debugging. So the record keeps what it can promise is clean
+and says what it dropped.
+
 What the redactor cannot catch is a credential the manager has never been told
 about — one you pasted from a password manager. **An argv is still not the place
 for a secret,** on this machine or any other: `/proc` exposes it to every local

@@ -2,7 +2,6 @@ package compose
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 	"strconv"
 	"strings"
@@ -104,28 +103,9 @@ func (r *Runtime) runningContainers(ctx context.Context, cfg ports.RuntimeConfig
 // parseStats turns the sample into rows, attributing each container to the
 // service that owns it.
 func parseStats(raw string, services map[string]string) ([]ports.ServiceStats, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-
-	var entries []statsEntry
-	if strings.HasPrefix(raw, "[") {
-		if err := json.Unmarshal([]byte(raw), &entries); err != nil {
-			return nil, domain.RuntimeError(err, "cannot parse docker stats output")
-		}
-	} else {
-		for _, line := range strings.Split(raw, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			var e statsEntry
-			if err := json.Unmarshal([]byte(line), &e); err != nil {
-				return nil, domain.RuntimeError(err, "cannot parse docker stats output")
-			}
-			entries = append(entries, e)
-		}
+	entries, err := decodeJSONLines[statsEntry](raw, "docker stats")
+	if err != nil {
+		return nil, err
 	}
 
 	out := make([]ports.ServiceStats, 0, len(entries))

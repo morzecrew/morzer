@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -173,5 +174,46 @@ func TestAStatusWatchNeverGivesUp(t *testing.T) {
 	final := tm.FinalModel(t)
 	if reporter, ok := final.(interface{ Fatal() error }); ok && reporter.Fatal() != nil {
 		t.Errorf("a status watch gave up on its own: %v", reporter.Fatal())
+	}
+}
+
+// TestTheFirstFetchIsGuardedLikeEveryOther.
+//
+// The in-flight guard exists so a runtime that is already struggling does not
+// receive a second query while it owes an answer to the first. `Init` starts a
+// fetch without claiming the guard, so the window between the first read and
+// the first tick is one interval wide and unprotected — which is exactly the
+// window a slow daemon sits in.
+func TestTheFirstFetchIsGuardedLikeEveryOther(t *testing.T) {
+	var inFlight, overlapped, calls atomic.Int32
+
+	model := tty.NewWatchModel(context.Background(), tty.WatchOptions[ops.Status]{
+		Theme: theme.New(false, false),
+		// Well inside the first read, so a tick lands while it is still
+		// out. This is the arrangement, not a race to be lucky in.
+		Interval: 10 * time.Millisecond,
+		Refresh: func(context.Context) (ops.Status, error) {
+			calls.Add(1)
+			if inFlight.Add(1) > 1 {
+				overlapped.Add(1)
+			}
+			defer inFlight.Add(-1)
+			time.Sleep(300 * time.Millisecond)
+			return deployment(), nil
+		},
+		Body: views.StatusDoc,
+	})
+
+	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(100, 40))
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return strings.Contains(stripANSI(string(b)), "1.3.0")
+	}, teatest.WithDuration(5*time.Second))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(5*time.Second))
+
+	if n := overlapped.Load(); n != 0 {
+		t.Errorf("%d refresh(es) started while another was in flight, out of %d: "+
+			"the guard did not cover the first one", n, calls.Load())
 	}
 }

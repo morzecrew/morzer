@@ -155,6 +155,12 @@ type readingMsg[T any] struct {
 type refreshMsg time.Time
 
 func (m *watchModel[T]) Init() tea.Cmd {
+	// Claimed here as well as on every tick. The first fetch is a fetch: a
+	// read that outlives the interval would otherwise meet a timer that
+	// sees no one in flight and starts a second one against a runtime that
+	// still owes an answer to the first -- which is the pile-up the guard
+	// exists to stop, in the one window where the daemon is slowest.
+	m.pending = true
 	return tea.Batch(m.fetch(), m.schedule())
 }
 

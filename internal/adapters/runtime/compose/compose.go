@@ -390,34 +390,42 @@ func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.
 	return parsePS(res.Stdout)
 }
 
-// parsePSEntries handles both shapes Compose has emitted across versions: a
-// JSON array, and newline-delimited objects. Supporting both is cheaper than
-// pinning a Compose version.
-func parsePSEntries(raw string) ([]psEntry, error) {
+// decodeJSONLines reads both shapes the docker CLI has emitted across
+// versions: a JSON array, and newline-delimited objects.
+//
+// One reader for every `--format json` this adapter parses. Which shape arrives
+// is a property of the tool and not of the command, so two copies of the rule
+// would be two places to notice the day a Compose release changes it -- and the
+// second copy is how one of them stops being noticed.
+func decodeJSONLines[T any](raw, what string) ([]T, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
 
-	var entries []psEntry
+	var out []T
 	if strings.HasPrefix(raw, "[") {
-		if err := json.Unmarshal([]byte(raw), &entries); err != nil {
-			return nil, domain.RuntimeError(err, "cannot parse compose ps output")
+		if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			return nil, domain.RuntimeError(err, "cannot parse %s output", what)
 		}
-		return entries, nil
+		return out, nil
 	}
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		var e psEntry
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			return nil, domain.RuntimeError(err, "cannot parse compose ps output")
+		var entry T
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, domain.RuntimeError(err, "cannot parse %s output", what)
 		}
-		entries = append(entries, e)
+		out = append(out, entry)
 	}
-	return entries, nil
+	return out, nil
+}
+
+func parsePSEntries(raw string) ([]psEntry, error) {
+	return decodeJSONLines[psEntry](raw, "compose ps")
 }
 
 // parsePS reduces the listing to the port's vocabulary.

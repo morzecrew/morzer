@@ -578,6 +578,21 @@ closed). What remains:
   asserted against an empty stream and passed whether or not the manager can
   reach the runtime's logs at all. `-vv` makes it log every request to stderr,
   and the health check already generates the traffic.
+- **A journal entry has three answers about the argv, not two.** §5.4 says the
+  argv is redacted before it is written, and assumes the redactor knows this
+  installation's secrets. A `morzer exec` is its own process, so nothing before
+  it has loaded them — and when the load fails the redactor knows nothing and
+  writes the operator's command line down verbatim, password and all, into a
+  file this manager keeps. Refusing to journal would lose the fact that a human
+  was inside the deployment, which is the record's whole job; refusing the
+  command would take `exec` away on a machine somebody is already debugging. So
+  the record keeps the service, the exit code and the time, and carries
+  `argv_omitted` in place of the command line it could not scrub.
+- **The `--json` stream's envelope suppression starts at the first record, not
+  at the first attempt.** Decision 9 says a stream has no end at which to write
+  an envelope. It has a beginning: a command whose stream died before emitting
+  anything has produced nothing to corrupt, and suppressing its `ok:false` left
+  a consumer with empty stdout and only an exit code to read.
 - **§10 refers to a §5.6 that does not exist.** The buffering decision it points
   at — line-boundary, bounded at 64 KiB, fail-closed — is in §5.1, where it was
   written. Recorded rather than silently corrected, since the decision itself is

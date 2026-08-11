@@ -170,7 +170,13 @@ func StatsDoc(d *ui.Doc, stats []ports.ServiceStats) *ui.Doc {
 	d.Table(0, ui.Table{
 		Columns: []ui.Column{
 			{Header: "service", Essential: true},
-			{Header: "container"},
+			// Essential for the reason this table has one row per
+			// container in the first place: a scaled service is
+			// several rows under one name, and dropping the instance
+			// leaves two identical rows carrying different numbers.
+			// An I/O column goes first — a figure nobody can place
+			// is worth less than the identity that places it.
+			{Header: "container", Essential: true},
 			{Header: "cpu", Right: true, Essential: true},
 			{Header: "memory", Right: true, Essential: true},
 			{Header: "net i/o", Right: true},

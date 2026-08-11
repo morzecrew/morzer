@@ -12,6 +12,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui"
+	"github.com/morzecrew/morzer/internal/ui/jsonout"
 )
 
 // `--since` is the one flag here with a parse worth testing on its own: it
@@ -247,5 +248,103 @@ func TestOnlyTheSamplerGivesUpOnItsOwn(t *testing.T) {
 	// frame, which no test of the field above would notice.
 	if app.statsWatch(time.Second).Body == nil || app.statusWatch(time.Second).Body == nil {
 		t.Error("a watch was wired with nothing to draw")
+	}
+}
+
+// deadStream is a stream that opens and then dies on the first read, which
+// is what a runtime whose process exits between `Start` and the first byte
+// looks like.
+type deadStream struct{ err error }
+
+func (f deadStream) Read([]byte) (int, error) { return 0, f.err }
+func (f deadStream) Close() error             { return nil }
+
+// TestAStreamThatDiesBeforeItsFirstRecordStillGetsAnEnvelope.
+//
+// `logs --json` writes no envelope, which is the documented exception: a stream
+// has no end at which to write one. That exception may only start where the
+// stream does. A command whose stream failed before it emitted anything has
+// produced no records to corrupt, and a consumer that got empty stdout and a
+// non-zero exit has to infer the failure from the status alone -- which is the
+// contract this suppression was written not to break.
+func TestAStreamThatDiesBeforeItsFirstRecordStillGetsAnEnvelope(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{
+		Stream: ui.Streams{Out: &out, Err: &errOut},
+		json:   jsonout.New(jsonout.Options{Out: &out}),
+	}
+
+	stream := &ops.LogStream{
+		ReadCloser: deadStream{err: errors.New("the daemon went away")},
+	}
+	err := app.copyLogs(context.Background(), stream)
+	if err == nil {
+		t.Fatal("a stream that died reported success")
+	}
+	if app.jsonStreamed {
+		t.Error("nothing was encoded, and the envelope was suppressed anyway")
+	}
+}
+
+// TestAStreamThatFailsPartWayThroughKeepsItsRecords is the other side: once a
+// record has gone out, an envelope after it would corrupt what a consumer is
+// parsing line by line, so the exit code is what carries the failure.
+func TestAStreamThatFailsPartWayThroughKeepsItsRecords(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{
+		Stream: ui.Streams{Out: &out, Err: &errOut},
+		json:   jsonout.New(jsonout.Options{Out: &out}),
+	}
+
+	// One good line, then a line past the bound the structured reader
+	// frames -- which is the failure that can arrive after a record.
+	body := "demo-app-1  | first\n" + strings.Repeat("x", 80<<10) + "\n"
+	stream := &ops.LogStream{ReadCloser: io.NopCloser(strings.NewReader(body))}
+
+	if err := app.copyLogs(context.Background(), stream); err == nil {
+		t.Fatal("an oversized line was accepted")
+	}
+	if !app.jsonStreamed {
+		t.Error("a record was written and the envelope was not suppressed")
+	}
+	if !strings.Contains(out.String(), `"line":"first"`) {
+		t.Errorf("the record before the failure was lost:\n%s", out.String())
+	}
+}
+
+// TestFollowingTakesTheWholeBacklogUnlessToldOtherwise.
+//
+// The default is a screen or two of history; a follow takes all of it, because
+// a subscription's history is the part that already happened. Both are
+// documented, and neither was asserted -- a regression would silently change
+// how much backlog every `morzer logs --follow` prints.
+func TestFollowingTakesTheWholeBacklogUnlessToldOtherwise(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		tail          int
+		given, follow bool
+		want          int
+	}{
+		{"nobody said", defaultLogTail, false, false, defaultLogTail},
+		{"following, nobody said", defaultLogTail, false, true, 0},
+		{"following, and they said", 5, true, true, 5},
+		{"not following, and they said", 5, true, false, 5},
+		// `--tail 0` is how the whole backlog is asked for without
+		// following, and it must survive being the same value the
+		// follow default resolves to.
+		{"explicitly all", 0, true, false, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := backlogFor(c.tail, c.given, c.follow); got != c.want {
+				t.Errorf("backlog %d, want %d", got, c.want)
+			}
+		})
+	}
+
+	// And the flag's own default is the one the constant names, so the
+	// table above is about the same number the operator gets.
+	cmd := newLogsCommand(&App{})
+	if got := cmd.Flags().Lookup("tail").DefValue; got != "100" {
+		t.Errorf("--tail defaults to %s, want 100", got)
 	}
 }
