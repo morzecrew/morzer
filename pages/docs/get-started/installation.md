@@ -71,6 +71,19 @@ Needs Go 1.25 or newer. `just build-all` cross-compiles both architectures with
 a `SHA256SUMS`; the flags match what the release pipeline uses, so a binary you
 build from a tag is byte-identical to the published one.
 
+## Shell completion
+
+```sh
+morzer completion install
+```
+
+Puts the completion script where your shell reads completions from — bash, zsh
+and fish — creating the directory if it is missing, and printing anything else
+that shell needs. It defaults to `$SHELL`; name one to override.
+
+A shell it cannot place a file for gets the script on stdout instead, and exits
+0. The paths are in [`completion install`](../reference/commands.md#completion-install).
+
 ## What the machine needs
 
 | Tool | Why | Checked by |

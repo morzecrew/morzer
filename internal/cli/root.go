@@ -548,12 +548,24 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupData, installationScope(newBackupCommand(app))),
 		grouped(groupData, installationScope(newRestoreCommand(app))),
 
-		grouped(groupBundles, newReleaseCommand(app)),
+		grouped(groupBundles, perCommandScope(newReleaseCommand(app))),
 
 		grouped(groupMachine, newListCommand(app, "ls")),
-		grouped(groupMachine, newInstallationCommand(app)),
+		grouped(groupMachine, perCommandScope(newInstallationCommand(app))),
 		grouped(groupMachine, machineScope(newVersionCommand(app))),
 	)
+
+	// `completion install` hangs off the command cobra generates, which
+	// cobra creates lazily on first use. Asking for it here is what makes
+	// it exist in time to be extended -- and what makes it exist for
+	// CommandTree(), which the documentation checker walks without ever
+	// running anything.
+	root.InitDefaultCompletionCmd()
+	for _, sub := range root.Commands() {
+		if strings.Fields(sub.Use)[0] == "completion" {
+			sub.AddCommand(newCompletionInstallCommand(app))
+		}
+	}
 	return root
 }
 
@@ -597,6 +609,18 @@ const (
 	// scopeInstallation is a command that acts on one installation, which
 	// therefore has to be the one the operator meant.
 	scopeInstallation = "installation"
+
+	// scopeDelegated is a parent whose children declare their own, because
+	// the subtree holds commands of both kinds: `release show ./bundle`
+	// inspects a directory while `release list` reads this installation's
+	// store.
+	//
+	// Not a scope a command runs under -- scopeOf walks past it, so a child
+	// that declares nothing still falls through to the safe default, and
+	// TestEveryCommandDeclaresItsScope still fails that child. What it
+	// declares is ownership: this command is one of ours, which is the
+	// question IsGenerated asks.
+	scopeDelegated = "per-command"
 )
 
 // machineScope marks a command that needs no installation chosen for it.
@@ -607,6 +631,11 @@ func machineScope(cmd *cobra.Command) *cobra.Command {
 // installationScope marks a command that acts on one installation.
 func installationScope(cmd *cobra.Command) *cobra.Command {
 	return withScope(cmd, scopeInstallation)
+}
+
+// perCommandScope marks a parent whose subtree declares per command.
+func perCommandScope(cmd *cobra.Command) *cobra.Command {
+	return withScope(cmd, scopeDelegated)
 }
 
 func withScope(cmd *cobra.Command, scope string) *cobra.Command {
@@ -626,11 +655,42 @@ func withScope(cmd *cobra.Command, scope string) *cobra.Command {
 // so in one word.
 func scopeOf(cmd *cobra.Command) string {
 	for c := cmd; c != nil; c = c.Parent() {
-		if scope, ok := c.Annotations[scopeAnnotation]; ok {
-			return scope
+		scope, ok := c.Annotations[scopeAnnotation]
+		if !ok || scope == scopeDelegated {
+			// A delegating parent answers nothing about its
+			// children: that is what delegating means, and reading
+			// it as a scope would give every child of `release` one
+			// nobody chose.
+			continue
 		}
+		return scope
 	}
 	return scopeInstallation
+}
+
+// IsGenerated reports whether cobra built this command rather than this
+// project.
+//
+// Asked by everything that walks the tree -- the documentation checker, the
+// generated command index, the grouping and scope tests -- so all of them
+// cover exactly the same set. It used to be a list of names, `help` and
+// `completion`, kept in three places; that list was fine until `completion`
+// grew a subcommand this project *does* own, at which point a name check would
+// have dropped `completion install` from the index and from coverage without
+// saying so.
+//
+// The declaration is the scope annotation, which every command this project
+// registers carries and cobra's own commands do not. It is not a second marker
+// to keep in step: TestEveryCommandDeclaresItsScope already fails a command of
+// ours that has no scope, so a command that reads as generated here is a
+// command that fails there.
+func IsGenerated(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if _, ok := c.Annotations[scopeAnnotation]; ok {
+			return false
+		}
+	}
+	return true
 }
 
 // confirmInstallationChosen refuses an installation-scoped command on a machine

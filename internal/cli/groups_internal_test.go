@@ -14,7 +14,6 @@ import (
 // generated are the commands cobra adds for itself. They belong in the
 // ungrouped section at the bottom and this project does not document them --
 // the same two names docs-check excludes from command coverage.
-var generated = map[string]bool{"help": true, "completion": true}
 
 // TestEveryCommandIsGrouped.
 //
@@ -36,7 +35,7 @@ func TestEveryCommandIsGrouped(t *testing.T) {
 
 	for _, cmd := range root.Commands() {
 		name := strings.Fields(cmd.Use)[0]
-		if generated[name] || cmd.Hidden {
+		if IsGenerated(cmd) || cmd.Hidden {
 			continue
 		}
 		switch {

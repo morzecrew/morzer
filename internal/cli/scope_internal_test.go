@@ -31,10 +31,12 @@ import (
 
 // walkCommands visits every command an operator can run.
 //
-// Cobra's own `help` and `completion` are excluded, as everywhere else in this
-// package, and so is anything non-runnable: a parent that only holds
-// subcommands returns before the persistent pre-run, so `morzer secret` prints
-// its help on an ambiguous machine rather than being refused.
+// Cobra's own are excluded, as everywhere else -- by IsGenerated, which reads
+// the scope annotation rather than a list of names, so `completion install` is
+// walked and `completion bash` is not. So is anything non-runnable: a parent
+// that only holds subcommands returns before the persistent pre-run, so
+// `morzer secret` prints its help on an ambiguous machine rather than being
+// refused.
 func walkCommands(t *testing.T, root *cobra.Command, visit func(t *testing.T, cmd *cobra.Command, path string)) {
 	t.Helper()
 
@@ -42,11 +44,15 @@ func walkCommands(t *testing.T, root *cobra.Command, visit func(t *testing.T, cm
 	walk = func(cmd *cobra.Command, path string) {
 		for _, sub := range cmd.Commands() {
 			name := strings.Fields(sub.Use)[0]
-			if sub.Hidden || generated[name] {
+			if sub.Hidden {
 				continue
 			}
 			full := strings.TrimSpace(path + " " + name)
-			if sub.Runnable() {
+			// Cobra's own are not visited, but they are still walked
+			// past: `completion` is generated and `completion
+			// install` is ours, and pruning the subtree here would
+			// exempt the one command this walk most needs to reach.
+			if sub.Runnable() && !IsGenerated(sub) {
 				visit(t, sub, full)
 			}
 			walk(sub, full)
@@ -59,9 +65,15 @@ func walkCommands(t *testing.T, root *cobra.Command, visit func(t *testing.T, cm
 // installation" from "declared nothing".
 func declaredScope(cmd *cobra.Command) (string, bool) {
 	for c := cmd; c != nil; c = c.Parent() {
-		if scope, ok := c.Annotations[scopeAnnotation]; ok {
-			return scope, true
+		scope, ok := c.Annotations[scopeAnnotation]
+		if !ok || scope == scopeDelegated {
+			// A parent that delegates has declared ownership, not a
+			// scope. Reading it as one here would exempt every
+			// child of `release` from the rule this test exists to
+			// enforce.
+			continue
 		}
+		return scope, true
 	}
 	return "", false
 }
@@ -86,6 +98,27 @@ func TestEveryCommandDeclaresItsScope(t *testing.T) {
 				path, scope, scopeMachine, scopeInstallation)
 		}
 	})
+}
+
+// TestTheWalkReachesOursUnderCobrasOwn.
+//
+// Both tests above are only as exhaustive as this walk, and a walk that stops
+// at a generated command stops at `completion` — taking `completion install`
+// with it, silently, while the comment above went on saying it was walked.
+// Pruning is the whole risk here: everything else in the tree is ours all the
+// way down, so this is the one command that tells the two behaviours apart.
+func TestTheWalkReachesOursUnderCobrasOwn(t *testing.T) {
+	var walked []string
+	walkCommands(t, CommandTree(), func(_ *testing.T, _ *cobra.Command, path string) {
+		walked = append(walked, path)
+	})
+
+	assert.Contains(t, walked, "completion install",
+		"the walk stopped at cobra's `completion`, so neither test above covers ours")
+	for _, generated := range []string{"completion", "completion bash", "help"} {
+		assert.NotContains(t, walked, generated,
+			"cobra's own command was visited, and it declares no scope to find")
+	}
 }
 
 // TestAnUndeclaredCommandIsRefusedRatherThanAllowed.
@@ -198,4 +231,35 @@ func TestOneInstallationRefusesNothing(t *testing.T) {
 			t.Errorf("`morzer %s` was refused on a machine with one installation: %v", path, err)
 		}
 	})
+}
+
+// TestADelegatingParentIsNotItselfAScope.
+//
+// `release` and `installation` declare `per-command` because their subtrees hold
+// commands of both kinds. That marker says who owns the command, not what it
+// acts on, and scopeOf must walk past it: a child that declares nothing has to
+// reach the installation default, which is the refusing direction. Reading the
+// marker as a scope would return a third value that is neither — harmless
+// against today's caller, which compares against `machine`, and silently
+// exempting every child of `release` against a caller that compared against
+// `installation` instead.
+func TestADelegatingParentIsNotItselfAScope(t *testing.T) {
+	parent := perCommandScope(&cobra.Command{Use: "release"})
+	child := &cobra.Command{Use: "forgot", Run: func(*cobra.Command, []string) {}}
+	parent.AddCommand(child)
+
+	if got := scopeOf(child); got != scopeInstallation {
+		t.Errorf("a child that declares nothing resolves to %q, want %q",
+			got, scopeInstallation)
+	}
+	if got := scopeOf(parent); got != scopeInstallation {
+		t.Errorf("the delegating parent itself resolves to %q, want the safe default %q",
+			got, scopeInstallation)
+	}
+
+	// And it is still this project's command, which is the other half of
+	// what the marker is for.
+	if IsGenerated(parent) || IsGenerated(child) {
+		t.Error("a delegating parent reads as one of cobra's own")
+	}
 }
