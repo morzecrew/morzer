@@ -1416,6 +1416,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#every-report-goes-through-the-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Every report goes through the mode
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-measure" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The measure
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#degradation" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1827,6 +1849,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#every-report-goes-through-the-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Every report goes through the mode
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-measure" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The measure
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#degradation" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2038,6 +2082,44 @@ fails the build.</p>
 <p>The direction matters: plain is what systemd journals, what CI logs, and what
 gets pasted into a bug report. A detail visible only to whoever happened to be
 watching a terminal is a detail nobody can reproduce.</p>
+<h2 id="every-report-goes-through-the-mode">Every report goes through the mode<a class="headerlink" href="#every-report-goes-through-the-mode" title="Permanent link">&para;</a></h2>
+<p>A command produces a value; the renderer decides how it looks. There is no
+command that writes its own result to stdout, and that is enforced rather than
+reviewed: a test fails the build on a direct print from the command layer.</p>
+<p>What this guarantees, per report:</p>
+<ul>
+<li><strong><code>--json</code> is the value itself</strong>, unreshaped. No view touches it, so a change
+  to how something looks is never a change to what a script reads.</li>
+<li><strong>Plain is line-oriented and stable in a log.</strong> It is not "rich without
+  colour": rich may draw a bordered callout where plain writes a labelled block,
+  because a box drawn in a journal is noise that outlives the terminal.</li>
+<li><strong>Rich carries every field plain does.</strong> Same rule as above, now per report
+  rather than per event.</li>
+</ul>
+<p>Two things on stdout are deliberately not reports, because they exist to be
+substituted into a shell:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">port</span><span class="o">=</span><span class="k">$(</span>morzer<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>http_port<span class="k">)</span>
+<span class="nv">key</span><span class="o">=</span><span class="k">$(</span>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>generate-recovery-key<span class="w"> </span>./recovery.key<span class="k">)</span>
+</code></pre></div>
+<p>Those print the value and a newline in every non-<abbr title="JavaScript Object Notation">JSON</abbr> mode. <code>morzer completion
+&lt;shell&gt;</code> is the third: it is a script being emitted through a pipe, and an
+envelope around it would produce something no shell can source.</p>
+<h2 id="the-measure">The measure<a class="headerlink" href="#the-measure" title="Permanent link">&para;</a></h2>
+<p>Text wraps at <strong>100 columns however wide the terminal is</strong>, and a wider terminal
+gets whitespace rather than more space between things that belong together.
+Extra width buys columns, never padding.</p>
+<p>A table is the exception that proves it: one whose columns genuinely need more
+than 100 uses them, packed left, ending where its content ends. What nothing
+does is stretch to the screen — a check and the sentence explaining it at
+opposite edges of a 380-column display is unreadable, and it is what the
+diagnostic table used to do.</p>
+<p>Narrow terminals <strong>drop columns rather than wrapping cells</strong>, in a declared
+order, and say which they dropped. A wrapped cell destroys the alignment that is
+the only reason to draw a table. Columns are dropped only when the terminal's
+width is actually known: in a pipe, where nothing was going to be truncated,
+every column is printed.</p>
+<p><code>COLUMNS</code> is honoured when set, which is also how the rendering tests pin every
+width without a terminal.</p>
 <h2 id="degradation">Degradation<a class="headerlink" href="#degradation" title="Permanent link">&para;</a></h2>
 <p>Styling degrades in two independent steps, so a terminal that supports one and
 not the other still reads.</p>
