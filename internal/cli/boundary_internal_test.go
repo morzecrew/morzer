@@ -27,14 +27,6 @@ import (
 // rendered by the presenter or by `App.notice`, and holding them to the report
 // boundary would mean an envelope around a progress message.
 func TestNoCommandPrintsAReportItself(t *testing.T) {
-	// The streams a report would go to. Both spellings, because the
-	// receiver is `app` in the command constructors and `a` on App's own
-	// methods, and a rule that only knew one of them would be half a rule.
-	forbidden := map[string]bool{
-		"app.Stream.Out": true,
-		"a.Stream.Out":   true,
-	}
-
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -54,28 +46,73 @@ func TestNoCommandPrintsAReportItself(t *testing.T) {
 
 		ast.Inspect(file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
-			if !ok || len(call.Args) == 0 {
+			if !ok {
 				return true
 			}
-			fn, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || !strings.HasPrefix(fn.Sel.Name, "Fprint") {
-				return true
+			if why := writesToStdout(call); why != "" {
+				t.Errorf("%s writes a report straight to stdout (%s).\n"+
+					"Reports go through app.render, which is what makes --plain, "+
+					"rich and --json one decision instead of fifteen.",
+					fset.Position(call.Pos()), why)
 			}
-			pkg, ok := fn.X.(*ast.Ident)
-			if !ok || pkg.Name != "fmt" {
-				return true
-			}
-			if !forbidden[render(call.Args[0])] {
-				return true
-			}
-
-			t.Errorf("%s writes a report straight to stdout:\n\t%s\n"+
-				"Reports go through app.render, which is what makes --plain, "+
-				"rich and --json one decision instead of fifteen.",
-				fset.Position(call.Pos()), render(call.Args[0]))
 			return true
 		})
 	}
+}
+
+// stdoutStreams are the ways a command can name the stream a report goes to.
+//
+// Both spellings, because the receiver is `app` in the command constructors and
+// `a` on App's own methods, and a rule that knew only one of them would be half
+// a rule.
+var stdoutStreams = map[string]bool{
+	"app.Stream.Out": true,
+	"a.Stream.Out":   true,
+}
+
+// writesToStdout names the way this call reaches stdout, or "" when it does not.
+//
+// Four ways, because a rule with one is a rule with a workaround. Writing to
+// `app.Stream.Out` through `fmt.Fprint*` is the one that existed; `fmt.Print*`
+// reaches the process's own stdout past the injected streams entirely, which is
+// worse; `io.WriteString` and a direct `.Write` are the same act spelled
+// differently; and cobra's `cmd.Print*` writes to a stream this program never
+// configured.
+//
+// Stderr stays exempt throughout: narration is not the result.
+func writesToStdout(call *ast.CallExpr) string {
+	fn, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return ""
+	}
+	receiver := render(fn.X)
+
+	switch {
+	// fmt.Fprint*(app.Stream.Out, …)
+	case receiver == "fmt" && strings.HasPrefix(fn.Sel.Name, "Fprint"):
+		if len(call.Args) > 0 && stdoutStreams[render(call.Args[0])] {
+			return "fmt." + fn.Sel.Name
+		}
+
+	// fmt.Print* — the process's own stdout, past the injected streams.
+	case receiver == "fmt" && strings.HasPrefix(fn.Sel.Name, "Print"):
+		return "fmt." + fn.Sel.Name + " ignores the injected streams entirely"
+
+	// io.WriteString(app.Stream.Out, …)
+	case receiver == "io" && fn.Sel.Name == "WriteString":
+		if len(call.Args) > 0 && stdoutStreams[render(call.Args[0])] {
+			return "io.WriteString"
+		}
+
+	// app.Stream.Out.Write(…) / .WriteString(…)
+	case stdoutStreams[receiver] && strings.HasPrefix(fn.Sel.Name, "Write"):
+		return receiver + "." + fn.Sel.Name
+
+	// cmd.Print* — cobra's own stream, which nothing here configures.
+	case receiver == "cmd" && strings.HasPrefix(fn.Sel.Name, "Print"):
+		return "cmd." + fn.Sel.Name + " writes to a stream this program does not configure"
+	}
+	return ""
 }
 
 // render spells an expression back out, for comparing against the names above.
