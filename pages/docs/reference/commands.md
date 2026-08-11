@@ -43,27 +43,32 @@ locks, separate secret state and separate systemd units.
 
 Selection, in order:
 
-| Source | Notes |
-| --- | --- |
-| `--config <path>` | Selects the layout the file sits in. This is what the generated systemd units pass. |
-| `--product <name>` | With `--root` when the layout is relocated. |
-| Discovery | Used only when the machine holds **exactly one** installation. |
+| Source | Rank | Notes |
+| --- | --- | --- |
+| `--config <path>` | 1 | Selects the layout the file sits in. This is what the generated systemd units pass. |
+| `--product <name>` | 1 | With `--root` when the layout is relocated. |
+| `MORZER_PRODUCT` | 2 | For a shell session pinned to one installation. Both flags override it. |
+| Discovery | 3 | Used only when the machine holds **exactly one** installation. |
 
-`--config` and `--product` are alternatives, not a precedence: naming both is
-refused when they disagree, and accepted when they name the same installation.
+`--config` and `--product` share a rank because they are alternatives rather than
+a precedence: naming both is refused when they disagree, and accepted when they
+name the same installation.
 
-On a machine with more than one installation, a command that needs one and was
+On a machine with more than one installation, a command that acts on one and was
 given no selector is refused, and the refusal names what it found:
 
 ```console
 $ morzer status
 error: this machine has 2 installations, so --product is required
-hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`
+hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`; `morzer ls` lists them
 ```
 
-Commands that touch no installation — `version`, `release verify`, `release new`
-and the rest of the bundle-authoring commands — are unaffected, and so is `init`,
-which is given the product name it is creating.
+Commands that touch no installation are unaffected: `version`, `ls`, `doctor`,
+`init`, `installation import`, and the bundle-authoring half of `release` —
+`new`, `verify`, `pack`, `build` and `archive`.
+
+[Several installations](../operating/several-installations.md) is the whole
+picture: what two deployments share, and what `doctor` says about it.
 
 ## Index
 
@@ -81,7 +86,8 @@ which is given the product name it is creating.
 | [`config`](parameters.md#changing-one-after-install) | Read and change the release parameters. |
 | [`secret`](secret-commands.md) | Manage the encrypted secret state. |
 | [`release`](release-commands.md) | Inspect and manage release bundles. |
-| [`installation`](installation-commands.md) | Export and rebuild an installation's identity. |
+| [`ls`](installation-commands.md#installation-list) | List the installations on this machine. |
+| [`installation`](installation-commands.md) | List, export and rebuild installations. |
 
 ---
 

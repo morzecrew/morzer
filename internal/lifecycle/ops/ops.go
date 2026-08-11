@@ -46,6 +46,19 @@ type Deps struct {
 	State  ports.StateStore
 	Locker ports.Locker
 
+	// StateFor opens the state of *another* installation on this machine.
+	//
+	// A function rather than a second store, because the set is not known
+	// until the machine is read: `ls` derives one layout per product it
+	// finds. It stays a seam rather than a direct constructor call so the
+	// adapter is still named in exactly one place -- and so a test can
+	// answer for an installation that has no files at all.
+	//
+	// Nil in a build that never lists: every use checks, and the one
+	// operation that needs it refuses by name rather than reporting an
+	// unreadable machine.
+	StateFor func(domain.Paths) ports.StateStore
+
 	Runtime ports.Runtime
 	Secrets ports.SecretStore
 	Backup  ports.BackupEngine
@@ -385,13 +398,27 @@ func (d *Deps) noSelection() error {
 	if len(d.MachineProducts) < 2 || d.ProductNamed {
 		return nil
 	}
+	// The config path is derived from the layout this command actually
+	// resolved, not from the production one: under a relocated root the
+	// hint named a file that is not there, which is advice an operator
+	// cannot follow.
+	first := domain.PathsUnder(d.Paths.Root(), d.MachineProducts[0])
 	return domain.Usage("this machine has %d installations, so --product is required",
 		len(d.MachineProducts)).
-		WithHint("%s — pass `--product %s`, or `--config %s`",
+		WithHint("%s — pass `--product %s`, or `--config %s`; `morzer ls` lists them",
 			strings.Join(d.MachineProducts, ", "),
 			d.MachineProducts[0],
-			domain.DefaultPaths(d.MachineProducts[0]).InstallationFile())
+			first.InstallationFile())
 }
+
+// RequireInstallationChosen exposes the ambiguity refusal to the CLI layer,
+// which asks it once per command rather than once per lookup.
+//
+// The lookup keeps asking too. This is the same question at two altitudes: the
+// command layer knows which commands are about one installation, and the lookup
+// knows when one is about to be read -- and an embedder that assembles Deps
+// itself only passes the second.
+func (d *Deps) RequireInstallationChosen() error { return d.noSelection() }
 
 // noInstallation explains a lookup that found nothing here.
 //

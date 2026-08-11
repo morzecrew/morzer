@@ -1,0 +1,10 @@
+PRODUCT  RELEASE     MODE  UNITS  PATH
+demo     1.4.0                 5  /etc/demo
+sandbox  none        dev       0  /etc/sandbox
+legacy   unreadable            5  /etc/legacy
+
+✗ legacy
+  installation state at
+  /var/lib/legacy/manager/installation.json is invalid:
+  installation was written by a newer manager (schema 9,
+  this manager reads 5)

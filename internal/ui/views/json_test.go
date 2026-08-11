@@ -117,6 +117,50 @@ func TestVerboseIsInvisibleToJSON(t *testing.T) {
 	require.JSONEq(t, string(plain), string(wrapped))
 }
 
+// TestTheListingIsOneArrayWhicheverViewDrewIt.
+//
+// `--status` selects a second view of the same listing, the way `--verbose`
+// does above, and for the same reason: whether an operator asked for a Docker
+// call is a presentation choice, and a flag inside the report would travel
+// through the lifecycle layer into the machine contract. A named slice type
+// encodes exactly as its slice does, so `morzer ls --json` is one array either
+// way -- with a `services` key per row when it was asked for and none when it
+// was not.
+func TestTheListingIsOneArrayWhicheverViewDrewIt(t *testing.T) {
+	entries := []ops.InstallationEntry{
+		{Product: "demo", Path: "/etc/demo", SchemaVersion: 5, Units: 5},
+	}
+
+	plain, err := json.Marshal(entries)
+	require.NoError(t, err)
+	wrapped, err := json.Marshal(views.WithServices(entries))
+	require.NoError(t, err)
+
+	require.JSONEq(t, string(plain), string(wrapped))
+	require.Equal(t, byte('['), plain[0],
+		"the listing stopped being an array, so every `jq '.data[]'` reading it breaks")
+}
+
+// TestAnUnreadableRowCarriesNothingItCouldNotRead is decision 5c in the
+// contract rather than in the table.
+//
+// A consumer that sees `schema_version` believes this manager read it. On a row
+// whose whole point is that it could not, every interpreted key has to be
+// absent -- not zero, absent, because `"mode": ""` is a claim about the mode.
+func TestAnUnreadableRowCarriesNothingItCouldNotRead(t *testing.T) {
+	got := marshal(t, ops.InstallationEntry{
+		Product: "legacy", Path: "/etc/legacy", Units: 5,
+		Problem: "installation was written by a newer manager",
+	})
+
+	require.Equal(t, map[string]any{
+		"product": "legacy",
+		"path":    "/etc/legacy",
+		"units":   float64(5),
+		"problem": "installation was written by a newer manager",
+	}, got)
+}
+
 func marshal(t *testing.T, v any) map[string]any {
 	t.Helper()
 

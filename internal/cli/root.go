@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +47,7 @@ import (
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/jsonout"
@@ -412,7 +412,10 @@ func newRootCommand(app *App) *cobra.Command {
 		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			app.command = cmd.CommandPath()
-			return app.setup(cmd.Context())
+			if err := app.setup(cmd.Context()); err != nil {
+				return err
+			}
+			return app.confirmInstallationChosen(cmd)
 		},
 	}
 
@@ -489,24 +492,30 @@ func newRootCommand(app *App) *cobra.Command {
 		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})
 	}
 
+	// The scope beside the group, for the same reason: both are properties
+	// of the whole list, and both are wrong in a way nothing else notices.
+	// A subtree that is uniform declares once here and its children inherit;
+	// `release` and `installation` hold commands of both kinds and declare
+	// per command in their own files.
 	root.AddCommand(
-		grouped(groupStart, newInitCommand(app)),
-		grouped(groupStart, newApplyCommand(app)),
-		grouped(groupStart, newStatusCommand(app)),
+		grouped(groupStart, machineScope(newInitCommand(app))),
+		grouped(groupStart, installationScope(newApplyCommand(app))),
+		grouped(groupStart, installationScope(newStatusCommand(app))),
 
-		grouped(groupOperate, newUpdateCommand(app)),
-		grouped(groupOperate, newRollbackCommand(app)),
-		grouped(groupOperate, newConfigCommand(app)),
-		grouped(groupOperate, newSecretCommand(app)),
-		grouped(groupOperate, newDoctorCommand(app)),
+		grouped(groupOperate, installationScope(newUpdateCommand(app))),
+		grouped(groupOperate, installationScope(newRollbackCommand(app))),
+		grouped(groupOperate, installationScope(newConfigCommand(app))),
+		grouped(groupOperate, installationScope(newSecretCommand(app))),
+		grouped(groupOperate, machineScope(newDoctorCommand(app))),
 
-		grouped(groupData, newBackupCommand(app)),
-		grouped(groupData, newRestoreCommand(app)),
+		grouped(groupData, installationScope(newBackupCommand(app))),
+		grouped(groupData, installationScope(newRestoreCommand(app))),
 
 		grouped(groupBundles, newReleaseCommand(app)),
 
+		grouped(groupMachine, newListCommand(app, "ls")),
 		grouped(groupMachine, newInstallationCommand(app)),
-		grouped(groupMachine, newVersionCommand(app)),
+		grouped(groupMachine, machineScope(newVersionCommand(app))),
 	)
 	return root
 }
@@ -521,6 +530,87 @@ const (
 	groupBundles = "bundles"
 	groupMachine = "machine"
 )
+
+// Scope declares what a command acts on, which decides whether it may run on a
+// machine holding several installations that nobody chose between.
+//
+// RFC 0020 §9 left this open, and the gap was real: the ambiguity refusal fired
+// where an installation was *loaded*, so `release list` and `secret list` --
+// which read the store and the secret state without loading one -- answered
+// about the placeholder layout and reported "no releases are installed" on a
+// machine holding three. The two alternatives were a maintained list of commands
+// that need an installation, and refusing during path resolution, which would
+// refuse `morzer version` on a machine with two installations.
+//
+// This is the third: the scope is declared where the command is built, and
+// TestEveryCommandDeclaresItsScope refuses a command that declares nothing. A
+// list nobody can forget to append to, because the compiler's own tree is what
+// is walked.
+//
+// Undeclared resolves to installation scope, which is the safe direction: a new
+// command is refused on an ambiguous machine until somebody says it is about the
+// machine. The test is what stops that default from being how scope is chosen.
+const (
+	scopeAnnotation = "morzer.scope"
+
+	// scopeMachine is a command that acts on the host, on a file, or on an
+	// installation it names itself. It runs whatever the machine holds.
+	scopeMachine = "machine"
+
+	// scopeInstallation is a command that acts on one installation, which
+	// therefore has to be the one the operator meant.
+	scopeInstallation = "installation"
+)
+
+// machineScope marks a command that needs no installation chosen for it.
+func machineScope(cmd *cobra.Command) *cobra.Command {
+	return withScope(cmd, scopeMachine)
+}
+
+// installationScope marks a command that acts on one installation.
+func installationScope(cmd *cobra.Command) *cobra.Command {
+	return withScope(cmd, scopeInstallation)
+}
+
+func withScope(cmd *cobra.Command, scope string) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[scopeAnnotation] = scope
+	return cmd
+}
+
+// scopeOf resolves the scope a command runs under.
+//
+// Inherited from the nearest ancestor that declares one, so `release verify` and
+// `release list` can differ while `secret` declares once for eight subcommands.
+// A command that declares nothing and inherits nothing is installation-scoped:
+// the refusal is the safe answer, and a command that should not be refused says
+// so in one word.
+func scopeOf(cmd *cobra.Command) string {
+	for c := cmd; c != nil; c = c.Parent() {
+		if scope, ok := c.Annotations[scopeAnnotation]; ok {
+			return scope
+		}
+	}
+	return scopeInstallation
+}
+
+// confirmInstallationChosen refuses an installation-scoped command on a machine
+// whose installations nobody chose between.
+//
+// Here rather than inside each operation, because the question is about the
+// *command*, and asking it once is what makes the answer uniform. The lifecycle
+// layer keeps its own copy of the refusal for the lookup path: an embedder
+// assembling ops.Deps directly never passes through here, and the two commands
+// that select their own installation mid-run -- `init`, `installation import` --
+// are past this point when they do it.
+func (a *App) confirmInstallationChosen(cmd *cobra.Command) error {
+	if scopeOf(cmd) == scopeMachine {
+		return nil
+	}
+	return a.Deps.RequireInstallationChosen()
+}
 
 // grouped assigns a command to a section of `--help`.
 //
@@ -699,13 +789,18 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	}
 
 	deps := &ops.Deps{
-		Paths:   paths,
-		State:   stateStore,
-		Locker:  locker,
-		Runtime: runtime,
-		Secrets: secrets,
-		Source:  sources,
-		Targets: targets,
+		Paths:  paths,
+		State:  stateStore,
+		Locker: locker,
+		// The same constructor, for the installations this command is
+		// not pointed at. `ls` derives one layout per product it finds
+		// on the machine, so the set is not known here -- but the
+		// adapter still is, which is the whole rule this file keeps.
+		StateFor: func(p domain.Paths) ports.StateStore { return state.New(p) },
+		Runtime:  runtime,
+		Secrets:  secrets,
+		Source:   sources,
+		Targets:  targets,
 		// Both, always. The checksum verifier answers "is this the
 		// artifact I was told to expect"; minisign answers "did a key
 		// this machine trusts publish it". A build with only the first
@@ -724,7 +819,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// named one, so a lookup that comes back empty can say which of
 		// several situations it is in.
 		MachineProducts: a.machineProducts,
-		ProductNamed:    a.Flags.product != "" || a.Flags.configDir != "",
+		ProductNamed:    a.installationChosen(),
 	}
 
 	// Notification targets live in the installation, which does not exist
@@ -757,6 +852,21 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 // mirror carries something else. Any image with a POSIX `tar`, `du` and `sh`
 // will do. Empty or unset means the default.
 const VolumeHelperImageEnv = "MORZER_VOLUME_HELPER_IMAGE"
+
+// ProductEnv selects an installation for a shell session.
+//
+// Below both flags and above discovery: `--product` and `--config` override it,
+// which is what makes it usable in the case it exists for -- a session pinned to
+// one installation where a single command needs another. It reaches nothing that
+// is not this process: the generated systemd units pass --config, which outranks
+// it, so setting it globally does not redirect anybody's timers.
+//
+// Deliberately not a `morzer use` that writes a selection to disk. That is
+// kubectl's context, and its failure mode is why operators wrap kubectl in
+// scripts that print the context in the prompt: a mutable global that decides
+// which deployment a destructive command hits. A variable dies with the shell
+// that set it.
+const ProductEnv = "MORZER_PRODUCT"
 
 // backupEngineOption adjusts how the backup adapter is wired.
 //
@@ -906,6 +1016,17 @@ func (a *App) attachBackupEngine(ctx context.Context, opts ...backupEngineOption
 	return nil
 }
 
+// installationChosen reports whether the operator said which installation this
+// command means, by any of the three documented routes.
+//
+// One reader for the three, because the question the refusal asks is "did
+// anybody choose", not "which flag was passed" -- and a route left out of this
+// answer is a session that selected an installation and is then told to select
+// one.
+func (a *App) installationChosen() bool {
+	return a.Flags.product != "" || a.Flags.configDir != "" || os.Getenv(ProductEnv) != ""
+}
+
 // resolvePaths determines the on-disk layout.
 //
 // The product name comes from the installation when one exists, from --product
@@ -916,7 +1037,15 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 		return a.pathsFromConfig()
 	}
 
-	product := a.Flags.product
+	product, fromEnv := a.Flags.product, false
+	if product == "" {
+		// An environment variable a flag overrides is the ordinary
+		// shape, and it is not in the --product/--config exclusion:
+		// refusing it there would make the variable useless in exactly
+		// the case it exists for -- a shell session pinned to one
+		// installation where a single command needs another.
+		product, fromEnv = os.Getenv(ProductEnv), os.Getenv(ProductEnv) != ""
+	}
 
 	// Recorded whether or not it is used, because the *number* of
 	// installations is what makes an unfound one ambiguous rather than
@@ -943,6 +1072,15 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 		product = "morzer"
 	}
 	if err := domain.ValidateProductName(product); err != nil {
+		if fromEnv {
+			// Where it came from, because an operator who set the
+			// variable in a profile weeks ago is otherwise told that
+			// a name they did not type on this command line is
+			// invalid.
+			return domain.Paths{}, domain.AsError(err).
+				WithHint("%s names %q; unset it, or pass --product",
+					ProductEnv, product)
+		}
 		return domain.Paths{}, err
 	}
 
@@ -1054,31 +1192,17 @@ func (a *App) confirmProductMatchesConfig(product string) error {
 	return nil
 }
 
-// discoverProduct finds an installed product by looking for its state file.
-// The list is returned whole rather than reduced to "exactly one, or nothing".
-// Both callers need it: one to select an installation, the other to refuse
-// naming the alternatives. Reducing it here is what made a machine with two
-// installations report that it had none.
+// discoverProducts is the machine's inventory, for the two callers that resolve
+// paths with it.
+//
+// The enumeration itself belongs to the lifecycle layer, where `ls` reports it
+// and where an unreadable /etc is an error rather than an empty machine. Path
+// resolution cannot use that half: it runs for every command, including the ones
+// that touch no installation, so a /etc this process may not read must not stop
+// `morzer version` from answering. The error is dropped here and nowhere else --
+// `morzer ls` is the command that says what it could not look at.
 func discoverProducts(root string) []string {
-	base := "/etc"
-	if root != "" {
-		base = root + "/etc"
-	}
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return nil
-	}
-
-	var found []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if _, err := os.Stat(base + "/" + e.Name() + "/installation.yaml"); err == nil {
-			found = append(found, e.Name())
-		}
-	}
-	sort.Strings(found)
+	found, _ := ops.DiscoverProducts(root)
 	return found
 }
 

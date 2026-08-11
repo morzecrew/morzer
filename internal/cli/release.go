@@ -28,17 +28,27 @@ func newReleaseCommand(app *App) *cobra.Command {
 			"ones, and build bundles for publication.\n\n" +
 			"None of them changes what is deployed. `morzer update` does that.",
 	}
+	// The one subtree that is split down the middle. The first four read or
+	// write *this* installation's release store, so they need to know which
+	// installation that is; the five authoring commands act on a directory
+	// or an archive named on the command line and would work on a laptop
+	// with no installation at all.
+	//
+	// `release list` is why the split is declared rather than inherited: it
+	// read the store without loading the installation, so on a machine with
+	// three of them it answered about the placeholder layout -- "no releases
+	// are installed" -- and looked like a bare machine.
 	cmd.AddCommand(
-		newReleaseListCommand(app),
-		newReleaseShowCommand(app),
-		newReleaseNewCommand(app),
-		newReleaseVerifyCommand(app),
-		newReleasePackCommand(app),
-		newReleaseBuildCommand(app),
-		newReleaseArchiveCommand(app),
-		newReleaseFetchCommand(app),
-		newReleaseIngestCommand(app),
-		newReleasePruneCommand(app),
+		installationScope(newReleaseListCommand(app)),
+		installationScope(newReleaseShowCommand(app)),
+		machineScope(newReleaseNewCommand(app)),
+		machineScope(newReleaseVerifyCommand(app)),
+		machineScope(newReleasePackCommand(app)),
+		machineScope(newReleaseBuildCommand(app)),
+		machineScope(newReleaseArchiveCommand(app)),
+		installationScope(newReleaseFetchCommand(app)),
+		installationScope(newReleaseIngestCommand(app)),
+		installationScope(newReleasePruneCommand(app)),
 	)
 	return cmd
 }

@@ -111,6 +111,15 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		d.checkInstallationReadable(),
 	}
 
+	// Before the installation is loaded, and kept whether or not it can be:
+	// these two are about the machine, and the machine is exactly what an
+	// operator is asking about when the answer above is "you have three
+	// installations and named none". Refusing wholesale would take the
+	// diagnostic away at the moment the diagnosis is available.
+	if d.StateFor != nil {
+		checks = append(checks, d.checkMachineInstallations(), d.checkMachinePorts())
+	}
+
 	inst, instErr := d.loadInstallation(ctx)
 	if instErr != nil {
 		// Without an installation there is nothing else worth checking:

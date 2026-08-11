@@ -286,3 +286,57 @@ func doctorFixtures() []fixture {
 		},
 	}
 }
+
+// machineFixtures are the listing RFC 0020 adds.
+//
+// The three shapes it has to survive, in one machine: an installation running
+// normally, a sandbox that has never had a release installed, and one whose
+// state will not load -- which is the row that must be present rather than
+// tidied away, because the moment it breaks is the moment somebody is looking
+// for it.
+func machineFixtures() []fixture {
+	entries := []ops.InstallationEntry{
+		{
+			Product: "demo", Path: "/etc/demo", SchemaVersion: 5,
+			Release: version("1.4.0"), Units: 5,
+		},
+		{
+			Product: "sandbox", Path: "/etc/sandbox", SchemaVersion: 5,
+			Mode: domain.ModeDev,
+		},
+		{
+			Product: "legacy", Path: "/etc/legacy", Units: 5,
+			Problem: "installation state at /var/lib/legacy/manager/installation.json " +
+				"is invalid: installation was written by a newer manager " +
+				"(schema 9, this manager reads 5)",
+		},
+	}
+
+	// The same machine with --status: one converged, one with a service
+	// down, one whose daemon did not answer inside the per-row bound, and
+	// the row that never got as far as asking.
+	withServices := views.WithServices{
+		entries[0], entries[1], entries[2],
+	}
+	withServices[0].Services = &ops.ServiceCounts{Running: 3, Total: 3}
+	withServices[1].ServicesProblem = "no release is installed"
+	withServices[2].ServicesProblem = "timed out after 5s"
+
+	return []fixture{
+		{
+			name:   "installations",
+			value:  entries,
+			fields: []string{"demo", "1.4.0", "sandbox", "dev", "legacy", "unreadable", "newer manager"},
+		},
+		{
+			name:   "installations-status",
+			value:  withServices,
+			fields: []string{"3/3", "unknown", "timed out after 5s", "without the deployment lock"},
+		},
+		{
+			name:   "installations-empty",
+			value:  []ops.InstallationEntry{},
+			fields: []string{"no installations"},
+		},
+	}
+}

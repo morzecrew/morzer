@@ -62,6 +62,28 @@ func (r *Runner) FetchReleases(versions ...string) *Runner {
 	return r
 }
 
+// Corrupt replaces a file under the root with bytes that will not parse.
+//
+// For the tests that assert what the manager does with state it cannot read.
+// That is a case worth driving through the real reader rather than a fake that
+// returns an error, because the reader's own answer -- which file, and why -- is
+// what the operator is given.
+func (r *Runner) Corrupt(parts ...string) *Runner {
+	r.t.Helper()
+
+	path := r.Path(parts...)
+	if _, err := os.Stat(path); err != nil {
+		// A path that does not exist would make the test pass for the
+		// wrong reason: nothing was corrupted, and the assertion below
+		// it would be about a missing file instead.
+		r.t.Fatalf("cannot corrupt %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte("{ this is not the state you left\n"), 0o600); err != nil {
+		r.t.Fatalf("cannot corrupt %s: %v", path, err)
+	}
+	return r
+}
+
 // SetSecret stores a value the way an operator does: piped, never in argv.
 func (r *Runner) SetSecret(name, value string) *Runner {
 	r.t.Helper()

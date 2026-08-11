@@ -219,6 +219,7 @@ func fixtures() []fixture {
 	all := statusFixtures()
 	all = append(all, doctorFixtures()...)
 	all = append(all, listFixtures()...)
+	all = append(all, machineFixtures()...)
 	all = append(all, calloutFixtures()...)
 	return all
 }
