@@ -806,6 +806,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/several-installations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Several installations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -2359,35 +2388,47 @@ locks, separate secret state and separate systemd units.</p>
 <thead>
 <tr>
 <th>Source</th>
+<th>Rank</th>
 <th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>--config &lt;path&gt;</code></td>
+<td>1</td>
 <td>Selects the layout the file sits in. This is what the generated systemd units pass.</td>
 </tr>
 <tr>
 <td><code>--product &lt;name&gt;</code></td>
+<td>1</td>
 <td>With <code>--root</code> when the layout is relocated.</td>
 </tr>
 <tr>
+<td><code>MORZER_PRODUCT</code></td>
+<td>2</td>
+<td>For a shell session pinned to one installation. Both flags override it.</td>
+</tr>
+<tr>
 <td>Discovery</td>
+<td>3</td>
 <td>Used only when the machine holds <strong>exactly one</strong> installation.</td>
 </tr>
 </tbody>
 </table>
-<p><code>--config</code> and <code>--product</code> are alternatives, not a precedence: naming both is
-refused when they disagree, and accepted when they name the same installation.</p>
-<p>On a machine with more than one installation, a command that needs one and was
+<p><code>--config</code> and <code>--product</code> share a rank because they are alternatives rather than
+a precedence: naming both is refused when they disagree, and accepted when they
+name the same installation.</p>
+<p>On a machine with more than one installation, a command that acts on one and was
 given no selector is refused, and the refusal names what it found:</p>
 <div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>status
 <span class="go">error: this machine has 2 installations, so --product is required</span>
-<span class="go">hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`</span>
+<span class="go">hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`; `morzer ls` lists them</span>
 </code></pre></div>
-<p>Commands that touch no installation — <code>version</code>, <code>release verify</code>, <code>release new</code>
-and the rest of the bundle-authoring commands — are unaffected, and so is <code>init</code>,
-which is given the product name it is creating.</p>
+<p>Commands that touch no installation are unaffected: <code>version</code>, <code>ls</code>, <code>doctor</code>,
+<code>init</code>, <code>installation import</code>, and the bundle-authoring half of <code>release</code> —
+<code>new</code>, <code>verify</code>, <code>pack</code>, <code>build</code> and <code>archive</code>.</p>
+<p><a href="../../operating/several-installations/">Several installations</a> is the whole
+picture: what two deployments share, and what <code>doctor</code> says about it.</p>
 <h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2446,8 +2487,12 @@ which is given the product name it is creating.</p>
 <td>Inspect and manage release bundles.</td>
 </tr>
 <tr>
+<td><a href="../installation-commands/#installation-list"><code>ls</code></a></td>
+<td>List the installations on this machine.</td>
+</tr>
+<tr>
 <td><a href="../installation-commands/"><code>installation</code></a></td>
-<td>Export and rebuild an installation's identity.</td>
+<td>List, export and rebuild installations.</td>
 </tr>
 </tbody>
 </table>

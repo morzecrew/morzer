@@ -806,6 +806,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/several-installations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Several installations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -1336,6 +1365,29 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#installation-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        installation list
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exporting-and-importing-an-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Exporting and importing an identity
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Exporting and importing an identity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#installation-export" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1362,8 +1414,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#installation-import" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1394,6 +1446,11 @@
       </span>
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -1817,6 +1874,29 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#installation-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        installation list
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exporting-and-importing-an-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Exporting and importing an identity
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Exporting and importing an identity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#installation-export" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1843,8 +1923,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#installation-import" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1875,6 +1955,11 @@
       </span>
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -1966,6 +2051,49 @@
 
 
 <h1 id="morzer-installation"><code>morzer installation</code><a class="headerlink" href="#morzer-installation" title="Permanent link">&para;</a></h1>
+<h2 id="installation-list">installation list<a class="headerlink" href="#installation-list" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>--status<span class="o">]</span>
+morzer<span class="w"> </span>ls<span class="w"> </span><span class="o">[</span>--status<span class="o">]</span>
+</code></pre></div>
+<p>Lists the installations on this machine. The two spellings are one command:
+<code>morzer ls</code> is what somebody types on a host they have just logged into, and
+<code>installation list</code> is where the noun hierarchy puts it.</p>
+<div class="highlight"><pre><span></span><code>PRODUCT  RELEASE     MODE  UNITS  PATH
+demo     1.4.0                 5  /etc/demo
+sandbox  1.5.0-rc1   dev       0  /etc/sandbox
+</code></pre></div>
+<p>Read from the state files alone — no Docker call, no lock, no network — so it
+answers on a machine whose daemon is down. It exits 0 on a machine with no
+installations and says so.</p>
+<p><code>--status</code> adds a <code>SERVICES</code> column by asking each installation's runtime what
+is running. One query per row, each bounded at five seconds on its own, so an
+unresponsive daemon costs that row and no other. The counts are read without
+taking the deployment lock, so a row may be a moment stale; the output says so.</p>
+<p>An installation whose state will not load is listed as <code>unreadable</code> with the
+reason beneath the table, never dropped — and its row carries no field this
+manager could not read. A directory in <code>/etc</code> this process cannot open is listed
+as <code>not counted</code> and marked <code>"skipped": true</code> in <code>--json</code>: on a real host most of
+those belong to somebody else, so it is neither a deployment nor a fault — but a
+listing that omitted it silently would be reporting a smaller machine than the
+one that is there. An <code>/etc</code> that cannot be read at all is an error.</p>
+<p><code>--json</code> emits an array, one object per installation, with the same rows either
+way:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;product&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;demo&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/etc/demo&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;schema_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;release&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.4.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;units&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;services&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;running&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>schema_version</code> is <abbr title="JavaScript Object Notation">JSON</abbr>-only; <code>mode</code>, <code>release</code>, <code>problem</code>, <code>services</code> and
+<code>services_problem</code> are present only when they apply. <code>units</code> is always present
+and is <code>null</code> when the supervisor could not be read — <code>0</code> is a real answer,
+produced by <code>init --install-units=false</code>.</p>
+<p>Selecting <em>which</em> installation every other command means is described in
+<a href="../../operating/several-installations/">Several installations</a>.</p>
+<h2 id="exporting-and-importing-an-identity">Exporting and importing an identity<a class="headerlink" href="#exporting-and-importing-an-identity" title="Permanent link">&para;</a></h2>
 <p>An <strong>installation export</strong> carries the identity of a deployment and its
 encrypted secret state, so a machine that is gone can be rebuilt. It carries no
 application data: <a href="../commands/#backup"><code>backup</code></a> owns that.</p>
@@ -1976,7 +2104,7 @@ no backup hook and no capturable volume is refused one.</p>
 <p>The procedure that uses these commands is
 <a href="../../operating/recovering-a-lost-machine/">Recovering a lost machine</a>. This page
 is the surface.</p>
-<h2 id="installation-export">installation export<a class="headerlink" href="#installation-export" title="Permanent link">&para;</a></h2>
+<h3 id="installation-export">installation export<a class="headerlink" href="#installation-export" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span><span class="nb">export</span><span class="w"> </span>&lt;path&gt;
 </code></pre></div>
 <p>Writes the installation record, the encrypted secret state, the list of who can
@@ -2020,7 +2148,7 @@ one kept next to the recovery key that opens it.</p>
 </div>
 <p><code>--force</code> overwrites an existing file. <code>--dry-run</code> reports what would be written
 without writing it.</p>
-<h3 id="what-makes-an-export-usable">What makes an export usable<a class="headerlink" href="#what-makes-an-export-usable" title="Permanent link">&para;</a></h3>
+<h4 id="what-makes-an-export-usable">What makes an export usable<a class="headerlink" href="#what-makes-an-export-usable" title="Permanent link">&para;</a></h4>
 <p>The export is only ever as readable as the state already was. If the
 installation was created with <code>--no-recovery-recipient</code>, the only recipient is
 the machine's own key — and an export nobody but the dead machine can open is a
@@ -2029,7 +2157,7 @@ file that looks like an insurance policy and is not one.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>generate-recovery-key<span class="w"> </span>~/recovery.key
 morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>add<span class="w"> </span>&lt;the<span class="w"> </span>printed<span class="w"> </span>public<span class="w"> </span>key&gt;<span class="w"> </span>--kind<span class="w"> </span>recovery
 </code></pre></div>
-<h2 id="installation-import">installation import<a class="headerlink" href="#installation-import" title="Permanent link">&para;</a></h2>
+<h3 id="installation-import">installation import<a class="headerlink" href="#installation-import" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>&lt;path&gt;<span class="w"> </span>--identity<span class="w"> </span>&lt;recovery-key-file&gt;
 morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>--from-backup<span class="w"> </span><span class="o">[</span>&lt;id&gt;<span class="o">]</span><span class="w"> </span>--identity<span class="w"> </span>&lt;recovery-key-file&gt;
 morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>--from-backup<span class="w"> </span>--target<span class="w"> </span>&lt;url&gt;<span class="w"> </span><span class="se">\</span>
@@ -2107,7 +2235,7 @@ which is the point of having recovered at all.</p>
 <p>The consequence: <strong>decommission the source machine.</strong> Two live hosts sharing
 an installation id will confuse every backup either of them takes.</p>
 </div>
-<h3 id="refusals">Refusals<a class="headerlink" href="#refusals" title="Permanent link">&para;</a></h3>
+<h4 id="refusals">Refusals<a class="headerlink" href="#refusals" title="Permanent link">&para;</a></h4>
 <ul>
 <li>An existing installation is not replaced without <code>--force</code>.</li>
 <li>An identity that is not one of the export's recipients is refused <strong>before</strong>
@@ -2116,7 +2244,7 @@ an installation id will confuse every backup either of them takes.</p>
 <li>A secret provider that cannot be re-opened under another identity is refused
   by name. Recovery needs one that can; <code>sops-age</code> is it.</li>
 </ul>
-<h3 id="what-it-does-not-do">What it does not do<a class="headerlink" href="#what-it-does-not-do" title="Permanent link">&para;</a></h3>
+<h4 id="what-it-does-not-do">What it does not do<a class="headerlink" href="#what-it-does-not-do" title="Permanent link">&para;</a></h4>
 <p>It restores identity, not software, and not data. After importing:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>update<span class="w"> </span>&lt;bundle&gt;<span class="w">                        </span><span class="c1"># the export records which version</span>
 morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;id&gt;<span class="w">         </span><span class="c1"># your offsite backup</span>

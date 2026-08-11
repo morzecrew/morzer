@@ -904,6 +904,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/several-installations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Several installations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -1990,6 +2019,10 @@ it:</p>
 </code></pre></div>
 <p>On a machine with no installation yet, <code>doctor</code> still reports whether the tools
 are present — which is the question you have before running <code>init</code>, not after.</p>
+<p>One machine may hold more than one installation: every path, unit and lock is
+keyed by the product name. <code>morzer ls</code> says what a host is already running,
+which is worth asking on a machine somebody else set up — see
+<a href="../../operating/several-installations/">Several installations</a>.</p>
 <h2 id="running-as-root">Running as root<a class="headerlink" href="#running-as-root" title="Permanent link">&para;</a></h2>
 <p>The manager writes to <code>/etc</code>, <code>/var/lib</code>, <code>/run</code> and <code>/opt</code>, installs systemd
 units, and runs release hooks. It expects to be root.</p>
