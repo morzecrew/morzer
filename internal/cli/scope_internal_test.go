@@ -31,10 +31,12 @@ import (
 
 // walkCommands visits every command an operator can run.
 //
-// Cobra's own `help` and `completion` are excluded, as everywhere else in this
-// package, and so is anything non-runnable: a parent that only holds
-// subcommands returns before the persistent pre-run, so `morzer secret` prints
-// its help on an ambiguous machine rather than being refused.
+// Cobra's own are excluded, as everywhere else -- by IsGenerated, which reads
+// the scope annotation rather than a list of names, so `completion install` is
+// walked and `completion bash` is not. So is anything non-runnable: a parent
+// that only holds subcommands returns before the persistent pre-run, so
+// `morzer secret` prints its help on an ambiguous machine rather than being
+// refused.
 func walkCommands(t *testing.T, root *cobra.Command, visit func(t *testing.T, cmd *cobra.Command, path string)) {
 	t.Helper()
 
@@ -42,7 +44,7 @@ func walkCommands(t *testing.T, root *cobra.Command, visit func(t *testing.T, cm
 	walk = func(cmd *cobra.Command, path string) {
 		for _, sub := range cmd.Commands() {
 			name := strings.Fields(sub.Use)[0]
-			if sub.Hidden || generated[name] {
+			if sub.Hidden || IsGenerated(sub) {
 				continue
 			}
 			full := strings.TrimSpace(path + " " + name)
@@ -59,9 +61,15 @@ func walkCommands(t *testing.T, root *cobra.Command, visit func(t *testing.T, cm
 // installation" from "declared nothing".
 func declaredScope(cmd *cobra.Command) (string, bool) {
 	for c := cmd; c != nil; c = c.Parent() {
-		if scope, ok := c.Annotations[scopeAnnotation]; ok {
-			return scope, true
+		scope, ok := c.Annotations[scopeAnnotation]
+		if !ok || scope == scopeDelegated {
+			// A parent that delegates has declared ownership, not a
+			// scope. Reading it as one here would exempt every
+			// child of `release` from the rule this test exists to
+			// enforce.
+			continue
 		}
+		return scope, true
 	}
 	return "", false
 }

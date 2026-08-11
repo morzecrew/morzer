@@ -341,6 +341,15 @@ build-docs:
 docs-check:
     go run ./tools/docscheck
 
+# Regenerate the command index page from the cobra tree.
+#
+# The same binary docs-check runs, so the page and the coverage check walk one
+# tree: two tools would be two walks, and the day they disagreed the index would
+# be missing exactly the command nothing had noticed was undocumented. Commit the
+# result; docs-check fails on drift.
+docs-index:
+    go run ./tools/docscheck -write-index
+
 # Publish the site to the gh-pages branch under `version`, optionally moving an
 # alias onto it. Pushes; intended for CI. `just build-docs` is the local one.
 [working-directory("pages")]

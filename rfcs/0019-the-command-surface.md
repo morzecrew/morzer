@@ -1,6 +1,6 @@
 # RFC 0019 — The command surface
 
-- **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: five command groups in
+- **Status:** ✅ Complete — **P1 shipped 2026-08-10**: five command groups in
   the order an operator meets them, `cobra.EnableCommandSorting` off so
   registration order is display order, and the four tests that keep it that way
   — one of which found two `Short` strings that already wrapped past eighty
@@ -9,10 +9,12 @@
   behind a view, which deleted the four hand-rolled `printf` tables; the measure
   capped at 100 with tables packing left; `doctor`'s collapse and `--verbose`;
   the recovery key as a callout; the boundary enforced by a source test and the
-  colour roles by depguard; a `Long` on every command. P4 (the generated index)
-  and P5 (`completion install`) are unstarted, and §5.9's `Example` sweep was
-  read as "where the invocation is not obvious" rather than everywhere — see
-  §12.
+  colour roles by depguard; a `Long` on every command. **P4 and P5 shipped
+  2026-08-12**, which completes the RFC: one generated index page over 57
+  commands, and `completion install` with the path table RFC 0022's installer
+  calls rather than copies. §5.9's `Example` sweep was read as "where the
+  invocation is not obvious" rather than everywhere — see §12. Divergences in
+  §13.
 - **Scope:** The surface an operator meets before they meet any capability: how
   `morzer --help` is organised, how output is rendered in each mode, how the
   command reference is found, and how shell completion gets installed. Covers
@@ -818,10 +820,61 @@ note.
   Every remaining report behind a component; `doctor`'s collapse and
   `--verbose`; the recovery key as a callout in both the wizard and
   `generate-recovery-key`; the four hand-rolled tables deleted.
-- **P4 — The generated index and `docs-check`'s drift assertion.** Independent of
-  P2 and P3; gated on P1 only because the groups are what the index's sections
-  mirror. Deliberately after [0020](0020-several-installations-on-one-machine.md)
-  P2 and [0021](0021-into-the-running-deployment.md): generating a command index
-  before `ls`, `logs` and `stats` exist means regenerating it in the next wave.
-- **P5 — `completion install`.** Independent of everything above. Small enough to
-  ride along with any of them.
+- **P4 — The generated index and `docs-check`'s drift assertion.** ✅ Shipped
+  2026-08-12. Independent of P2 and P3; gated on P1 only because the groups are
+  what the index's sections mirror. Deliberately after
+  [0020](0020-several-installations-on-one-machine.md) P2 and
+  [0021](0021-into-the-running-deployment.md): generating a command index before
+  `ls`, `logs` and `stats` exist means regenerating it in the next wave — and
+  the wait was right, since those two waves added fourteen of the fifty-seven
+  rows.
+- **P5 — `completion install`.** ✅ Shipped 2026-08-12. Independent of everything
+  above, and the thing [0022](0022-bootstrapping-the-manager.md) P4 was gated
+  on.
+
+## 13. Divergences recorded during P4–P5
+
+- **The index is a page of rows, not sections mirroring the groups.** §5.7's
+  sketch is a single table and that is what shipped; the phasing note about the
+  groups being "what the index's sections mirror" describes an index this design
+  did not need. Fifty-seven rows in registration order, which is the order
+  `--help` shows and therefore the order a reader already has in mind, beats
+  five tables of five with the same rows in them.
+- **The generator is a flag on `docscheck`, not a second tool.** §5.7 requires
+  the index and the coverage check to walk the same set; two binaries would be
+  two walks, and the day they disagreed the index would be missing exactly the
+  command nothing had noticed was undocumented. `go run ./tools/docscheck
+  -write-index` writes it and the ordinary run compares — the `just schemas`
+  pattern with one binary instead of two.
+- **The generated page is excluded from the coverage check's prose.** It names
+  every command by construction, so counting it would satisfy "is this command
+  mentioned by any page" for every command there will ever be. The check would
+  have gone on passing while the hand-written pages it exists to gate said
+  nothing at all — a generated page that disarms the gate it was added beside.
+- **"Cobra's own" is read from the scope annotation, not from a list of names.**
+  Three walkers carried `{"help", "completion"}`. That list was fine until
+  `completion` grew a subcommand this project owns, at which point it would have
+  dropped `completion install` from the index *and* from coverage in one silent
+  step. `cli.IsGenerated` asks whether any ancestor declares a scope, which
+  every command of ours carries and cobra's do not — and RFC 0020's
+  `TestEveryCommandDeclaresItsScope` is already the test that keeps it true.
+  `release` and `installation` needed a third annotation value, `per-command`,
+  because they deliberately declare no scope of their own and were otherwise
+  indistinguishable from cobra's.
+- **Anchors are derived, with one declared map of page owners.** §5.7 requires
+  every row to resolve to a real anchor on a real page. The anchor is the most
+  specific heading that exists for the command or one of its ancestors — so
+  `backup target add` points at the `backup target` section that documents it —
+  and the page comes from a map of top-level commands, because which page
+  documents `config` is a judgement (parameters, since parameters are what it
+  changes) and not something a machine can derive. A top-level command missing
+  from that map fails the build rather than being dropped from the index.
+- **`--print-path` refuses a shell it cannot place a file for.** §5.8 says an
+  unknown shell prints the script and exits 0. That is right for the write path
+  and wrong for this one: the only caller of `--print-path` is a script
+  capturing a path, and a completion script on stdout would be captured as one.
+- **The bash-completion note is printed rather than probed.** §5.8 says the
+  command "says so when it is not" installed. Probing means sourcing the
+  operator's own shell startup to see what it loaded, which is a large thing to
+  do inside a command that writes one file. The note is printed every time; an
+  operator who has bash-completion ignores one line.

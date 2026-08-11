@@ -85,11 +85,23 @@ func main() {
 		fail(fmt.Errorf("no pages found under %s", docsDir))
 	}
 
+	// `-write-index` regenerates the command index instead of checking
+	// anything: the same binary, so the page and the coverage check are
+	// produced by one walk of one tree rather than by two tools that could
+	// disagree about which commands exist.
+	if len(os.Args) > 1 && os.Args[1] == "-write-index" {
+		if err := writeCommandIndex(root, pages); err != nil {
+			fail(err)
+		}
+		return
+	}
+
 	var rep report
 	checkLinks(&rep, root, pages)
 	checkNav(&rep, root, pages)
 	checkContracts(&rep, root, pages)
 	checkCommands(&rep, pages)
+	checkCommandIndex(&rep, root, pages)
 	checkReleaseAssets(&rep, root, pages)
 
 	if rep.failed() {
@@ -767,35 +779,34 @@ func checkCommands(rep *report, pages []page) {
 	rep.checks++
 
 	root := cli.CommandTree()
-	prose := allProse(pages)
+
+	// Everything except the generated index, which names every command by
+	// construction. Counting it would satisfy this check for every command
+	// there will ever be, and the check would go on passing while the
+	// hand-written pages it exists to gate said nothing at all.
+	written := make([]page, 0, len(pages))
+	for _, p := range pages {
+		if p.Rel != indexPage {
+			written = append(written, p)
+		}
+	}
+	prose := allProse(written)
 
 	// Persistent flags are checked once, against the root, rather than
 	// re-reported for every command that inherits them.
 	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
-		checkFlag(rep, pages, "morzer", f)
+		checkFlag(rep, written, "morzer", f)
 	})
 
-	var walk func(cmd *cobra.Command, path []string)
-	walk = func(cmd *cobra.Command, path []string) {
-		for _, sub := range cmd.Commands() {
-			name := strings.Fields(sub.Use)[0]
-			// cobra generates `help` and `completion`; neither is
-			// this project's surface to document.
-			if name == "help" || name == "completion" || sub.Hidden {
-				continue
-			}
-			full := append(append([]string(nil), path...), name)
-			joined := strings.Join(full, " ")
-			if !strings.Contains(prose, joined) {
-				rep.add("commands", "`morzer %s` is not mentioned by any page", joined)
-			}
-			sub.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) {
-				checkFlag(rep, pages, joined, f)
-			})
-			walk(sub, full)
+	walkCommands(root, func(path []string, cmd *cobra.Command) {
+		joined := strings.Join(path, " ")
+		if !strings.Contains(prose, joined) {
+			rep.add("commands", "`morzer %s` is not mentioned by any page", joined)
 		}
-	}
-	walk(root, nil)
+		cmd.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) {
+			checkFlag(rep, written, joined, f)
+		})
+	})
 }
 
 // checkFlag asserts a flag is named as an identifier by some page. Hidden flags

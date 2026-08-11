@@ -175,6 +175,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None of the four takes the deployment lock. They are what an operator runs *while* something else is happening, which is exactly the case a lock would break.
 
+- A generated page listing every command with the reference section that documents it, so knowing a command exists is enough to find where it is written up. It is produced by the same walk of the same command tree that checks documentation coverage — two tools would be two walks, and the day they disagreed the index would be missing exactly the command nothing had noticed was undocumented. `just docs-index` writes it and `just docs-check` fails on drift, so a command cannot be added without a row and a `Short` cannot drift from the page it links to.
+
+- `morzer completion install` writes the completion script where a shell reads completions from — bash, zsh and fish — creating the directory when it is missing and printing whatever else that shell needs, such as the `fpath` line zsh wants. The paths are a table rather than a guess, because a completion written to the wrong directory produces no error at all: just a Tab key that does nothing. `--print-path` prints where the file would go and writes nothing, `--system` writes the distribution's own directory, and writing is idempotent.
+
+- A shell `completion install` cannot place a file for is not a failure: the script goes to stdout with a note naming the ones it can, and the command exits 0. That keeps redirecting it useful, and keeps an installer's optional completion step from failing an install.
+
 ### Changed
 
 - The installation state format moved to schema 3 for backup targets. An older manager refuses a newer state rather than reading it, seeing no targets, and quietly leaving every backup on the machine a target was configured to survive.

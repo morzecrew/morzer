@@ -62,6 +62,7 @@ nav = [
         "authoring/publishing.md",
     ] },
     { "Reference" = [
+        "reference/index.md",
         "reference/commands.md",
         "reference/backup-targets.md",
         "reference/secret-commands.md",
