@@ -87,15 +87,20 @@ var completionTargets = map[string]shellTarget{
 
 // dataHome and configHome are the XDG bases, with the defaults the
 // specification gives when the variables are unset.
+//
+// A relative value is one of those cases: the specification requires these to
+// be absolute and requires an implementation to ignore anything else. Honouring
+// one would resolve the completion against the working directory, which is a
+// file written successfully where no shell will ever read it.
 func dataHome(env func(string) string, home string) string {
-	if v := env("XDG_DATA_HOME"); v != "" {
+	if v := env("XDG_DATA_HOME"); filepath.IsAbs(v) {
 		return v
 	}
 	return filepath.Join(home, ".local", "share")
 }
 
 func configHome(env func(string) string, home string) string {
-	if v := env("XDG_CONFIG_HOME"); v != "" {
+	if v := env("XDG_CONFIG_HOME"); filepath.IsAbs(v) {
 		return v
 	}
 	return filepath.Join(home, ".config")
@@ -156,8 +161,16 @@ func sortStrings(s []string) {
 // The base name only, and no interpretation beyond it: `/usr/bin/zsh` is zsh
 // and `/bin/false` is not a shell this command knows, which is the same answer
 // as an unset variable and is handled the same way.
+//
+// Empty stays empty rather than going through filepath.Base, which answers "."
+// for it. A shell named "." reaches the wrong half of unknownShell and offers
+// `morzer completion .` as the way out.
 func shellFromEnv(env func(string) string) string {
-	return filepath.Base(strings.TrimSpace(env("SHELL")))
+	value := strings.TrimSpace(env("SHELL"))
+	if value == "" {
+		return ""
+	}
+	return filepath.Base(value)
 }
 
 func newCompletionInstallCommand(app *App) *cobra.Command {

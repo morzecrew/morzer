@@ -63,6 +63,33 @@ func TestTheXDGBasesAreHonoured(t *testing.T) {
 	}
 }
 
+// TestARelativeXDGBaseIsIgnoredRatherThanUsed.
+//
+// The specification requires these to be absolute and requires a relative value
+// to be ignored. Honouring one writes the completion under whatever directory
+// the operator happened to be in — which is the failure this whole table exists
+// to prevent, since a completion in the wrong place produces no error at all.
+func TestARelativeXDGBaseIsIgnoredRatherThanUsed(t *testing.T) {
+	vars := env(map[string]string{
+		"XDG_DATA_HOME":   "relative/data",
+		"XDG_CONFIG_HOME": "../config",
+	})
+
+	for shell, want := range map[string]string{
+		"bash": "/home/ada/.local/share/bash-completion/completions/morzer",
+		"zsh":  "/home/ada/.local/share/zsh/site-functions/_morzer",
+		"fish": "/home/ada/.config/fish/completions/morzer.fish",
+	} {
+		got, err := completionPath(shell, false, vars, "/home/ada")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("%s: got %s, want the $HOME default %s", shell, got, want)
+		}
+	}
+}
+
 func TestSystemPathsIgnoreTheHomeDirectoryEntirely(t *testing.T) {
 	// Including the XDG bases: `sudo morzer completion install --system`
 	// runs with root's environment or the operator's depending on how sudo
@@ -127,11 +154,40 @@ func TestNoHomeDirectoryIsARefusalAndNotARelativePath(t *testing.T) {
 	}
 }
 
+// TestAnUnsetShellStaysUnsetRatherThanBecomingADot.
+//
+// `filepath.Base("")` is `"."`, so an unset $SHELL used to arrive at the
+// refusal as a shell named `.` — which produced "`.` is not a shell this
+// command can place a completion for" and a hint offering `morzer completion .`,
+// a command that does not exist. The branch that says $SHELL is unset was
+// reachable only by typing an empty argument, which is nobody.
+//
+// The test above resolves the path from a shell name and so never saw this: the
+// defect lives between the two functions, in the one composition that runs when
+// an operator types `morzer completion install` with no argument at all.
+func TestAnUnsetShellStaysUnsetRatherThanBecomingADot(t *testing.T) {
+	for _, value := range []string{"", "   "} {
+		shell := shellFromEnv(env(map[string]string{"SHELL": value}))
+		if shell != "" {
+			t.Errorf("SHELL=%q resolved to shell %q", value, shell)
+		}
+
+		msg := domain.AsError(unknownShell(shell)).Message
+		if !strings.Contains(msg, "SHELL") {
+			t.Errorf("SHELL=%q produced %q, which does not say the variable is unset",
+				value, msg)
+		}
+	}
+}
+
 func TestTheShellIsTheBaseNameOfItsPath(t *testing.T) {
 	for value, want := range map[string]string{
 		"/usr/bin/zsh":  "zsh",
 		"/bin/bash":     "bash",
 		"  /bin/fish  ": "fish",
+		// Unset, empty, or whitespace: the same answer, and not `.`.
+		"":    "",
+		"   ": "",
 		// Not a shell this command knows, which is the same answer as
 		// an unset variable and is handled the same way.
 		"/bin/false": "false",
