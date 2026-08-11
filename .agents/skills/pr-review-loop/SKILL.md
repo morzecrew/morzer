@@ -34,7 +34,8 @@ For the mechanical steps, prefer the bundled tool over hand-crafted API calls �
 
 ```bash
 python3 scripts/pr_loop.py status  $PR                    # checks + reviewers + unresolved count
-python3 scripts/pr_loop.py wait    $PR --timeout-seconds 600   # step 1 (exit 0 clean / 2 attention / 3 timeout)
+# step 1 — exit 0 clean / 2 attention / 3 timeout; name every reviewer you expect
+python3 scripts/pr_loop.py wait    $PR --timeout-seconds 600 --expect-bot coderabbitai --expect-bot cubic-dev-ai
 python3 scripts/pr_loop.py collect $PR --unresolved-only       # step 2 input, one JSON doc
 python3 scripts/pr_loop.py react   --surface review --comment-id ID --reaction up   # step 5
 python3 scripts/pr_loop.py reply   $PR --comment-id ID --body "…"                   # step 5
@@ -45,7 +46,9 @@ python3 scripts/pr_loop.py resolve --thread-id THREAD_ID                        
 
 ### 1. Wait — bounded, not hopeful
 
-Discover which reviewers are actually active on this repo (check runs and past PR comments — don't assume a fixed list), then wait until their checks complete *and* their comments/reviews land. Bound the wait: reviewers stall, and some post nothing when they found nothing — a check that concluded **success or neutral** with no comments is a clean verdict, not a signal to keep waiting. A check that concluded any other way (failure, action_required, timed_out, cancelled, skipped, stale) is *not* clean: report its state instead of treating silence as approval. On timeout, proceed with what arrived and say so.
+Discover which reviewers are actually active on this repo (check runs and past PR comments — don't assume a fixed list), then wait until their checks complete *and* their comments/reviews land.
+
+**Feed that list back in as `--expect-bot`.** Without it the wait can only ask "has anything changed lately?", so it settles on silence — and silence looks identical whether a reviewer has finished or has not started. Naming them converts a guess into a condition, and the wait reports which are still missing on every poll instead of settling early and leaving you to find the late review in the next round. Bound the wait: reviewers stall, and some post nothing when they found nothing — a check that concluded **success or neutral** with no comments is a clean verdict, not a signal to keep waiting. A check that concluded any other way (failure, action_required, timed_out, cancelled, skipped, stale) is *not* clean: report its state instead of treating silence as approval. On timeout, proceed with what arrived and say so.
 
 ### 2. Dedup into findings
 

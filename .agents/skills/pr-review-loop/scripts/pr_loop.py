@@ -38,6 +38,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 
 CLEAN_CONCLUSIONS = {"SUCCESS", "NEUTRAL"}
 PER_PAGE = 100
@@ -81,6 +82,23 @@ query($id: ID!) {
   node(id: $id) {
     ... on PullRequestReviewThread {
       comments(first: 1) { nodes { author { login __typename } } }
+    }
+  }
+}
+"""
+
+CHECK_IDENTITY_QUERY = """
+query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          __typename
+          ... on CheckRun { conclusion checkSuite { app { slug } } }
+          ... on StatusContext { state creator { login } }
+        }
+      } } } } }
     }
   }
 }
@@ -337,29 +355,124 @@ def surface_digest(items: list[dict]) -> tuple:
     )
 
 
-def comment_fingerprint(owner: str, repo: str, pr: int) -> tuple:
-    """Signal that reviewers have stopped writing.
+def latest_activity(items: list[dict]) -> str:
+    """The most recent timestamp across these items, or "" if there are none."""
+    stamps = [
+        str(item.get("updated_at") or item.get("submitted_at") or item.get("created_at") or "")
+        for item in items
+    ]
+    return max((s for s in stamps if s), default="")
 
-    Every surface is paginated in full rather than sampled. A windowed query
-    (`last: 20`) cannot see a reply on an older thread: no total changes, no
-    timestamp moves, and `wait` reports settled while comments are still
-    arriving. That stays silent on small PRs and appears exactly when a review
-    has grown big enough that waiting correctly matters most.
 
-    `pulls/{pr}/comments` is the flat list of review comments across every
-    thread, so replies land in it wherever their thread sits.
+def quiet_seconds(latest: str, now_utc: datetime) -> float:
+    """How long GitHub says it has been since anyone wrote, 0 if unknown.
+
+    The settle window asks "has anything changed while I watched?", but that is
+    only one way to answer "has everyone stopped writing?" — and the expensive
+    way, since it costs real time to observe. The timestamps already say when
+    the last write happened, so arriving after the noise has stopped can be
+    credited rather than re-proved.
+
+    Clock skew moves this in both directions, so it is used to *credit* elapsed
+    quiet rather than to declare the wait over: a wrong clock costs accuracy in
+    the seeding, and the state machine still has to agree.
+    """
+    if not latest:
+        return 0.0
+    try:
+        written = datetime.fromisoformat(latest.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return max(0.0, (now_utc - written).total_seconds())
+
+
+def speakers(items: list[dict]) -> set[str]:
+    """Logins that have posted, normalized the way --expect-bot spells them."""
+    found = set()
+    for item in items:
+        login = ((item.get("user") or {}).get("login") or "").strip()
+        if login:
+            found.add(login.lower().removesuffix("[bot]"))
+    return found
+
+
+def cleanly_checked_apps(owner: str, repo: str, pr: int) -> set[str]:
+    """Apps whose checks on this PR all concluded clean, by exact identity.
+
+    A reviewer that ran and found nothing says so with a green check and no
+    comments — SKILL.md calls that a clean verdict, not a reason to keep
+    waiting. Matching a bot login to a check by name would be guesswork
+    ("cubic-dev-ai" posts "cubic · AI code reviewer"), so identity comes from
+    the API: a CheckRun carries its suite's app slug, and a StatusContext
+    carries its creator's login.
+    """
+    verdicts: dict[str, bool] = {}
+    cursor: str | None = None
+    while True:
+        str_vars = {"owner": owner, "repo": repo}
+        if cursor:
+            str_vars["after"] = cursor
+        data = graphql(CHECK_IDENTITY_QUERY, str_vars, {"pr": pr})
+        commits = data["repository"]["pullRequest"]["commits"]["nodes"]
+        if not commits:
+            return set()
+        rollup = commits[0]["commit"].get("statusCheckRollup") or {}
+        contexts = rollup.get("contexts") or {}
+        for node in contexts.get("nodes") or []:
+            if node.get("__typename") == "CheckRun":
+                who = (((node.get("checkSuite") or {}).get("app") or {}).get("slug") or "")
+                state = node.get("conclusion")
+            else:
+                who = ((node.get("creator") or {}).get("login") or "")
+                state = node.get("state")
+            if not who:
+                continue
+            name = who.lower().removesuffix("[bot]")
+            # One dirty check is enough to keep an app unsatisfied.
+            verdicts[name] = verdicts.get(name, True) and (state or "").upper() in CLEAN_CONCLUSIONS
+        # Every page, because a single unseen failing context would let a
+        # reviewer be credited as finished on the strength of its other checks —
+        # and an early return is the failure this function exists to prevent.
+        page = contexts.get("pageInfo") or {}
+        if not page.get("hasNextPage"):
+            return {name for name, clean in verdicts.items() if clean}
+        cursor = page.get("endCursor")
+
+
+def unsatisfied_bots(expect: list[str], spoke: set[str], checked_clean: set[str]) -> list[str]:
+    """Expected reviewers that have neither commented nor checked out clean.
+
+    Pure, so the rule that a green check settles a silent reviewer is testable
+    without a live PR — the wiring is where this went wrong before, not the
+    identity lookup.
+    """
+    return [
+        bot for bot in expect
+        if (name := bot.lower().removesuffix("[bot]")) not in spoke
+        and name not in checked_clean
+    ]
+
+
+def poll_comments(owner: str, repo: str, pr: int) -> dict:
+    """One read of every comment surface: fingerprint, who spoke, when last.
+
+    All three come from the same fetch. Deriving them together is what lets
+    `wait` stop calling `status` — which re-paginated every thread a second
+    time, inside the deadline, purely to list reviewer names it already had.
     """
     review_comments = rest_paginated(f"repos/{owner}/{repo}/pulls/{pr}/comments")
     issue_comments = rest_paginated(f"repos/{owner}/{repo}/issues/{pr}/comments")
     reviews = rest_paginated(f"repos/{owner}/{repo}/pulls/{pr}/reviews")
-    return (
-        len(review_comments),
-        len(issue_comments),
-        len(reviews),
-        surface_digest(review_comments),
-        surface_digest(issue_comments),
-        surface_digest(reviews),
-    )
+    every = [*review_comments, *issue_comments, *reviews]
+    return {
+        "fingerprint": (
+            len(review_comments), len(issue_comments), len(reviews),
+            surface_digest(review_comments), surface_digest(issue_comments),
+            surface_digest(reviews),
+        ),
+        "speakers": speakers(every),
+        "latest": latest_activity(every),
+    }
 
 
 def wait_verdict(
@@ -393,6 +506,7 @@ def cmd_wait(
     previous: tuple | None = None
     stable_since: float | None = None
     fingerprint: tuple = ()
+    first_poll = True
 
     last_snapshot: dict = {"pending": [], "clean": [], "attention": []}
     while True:
@@ -404,33 +518,59 @@ def cmd_wait(
             with wait_budget(deadline - time.monotonic()):
                 snapshot = check_snapshot(owner, repo, pr)
                 last_snapshot = snapshot
-                # Skip the fingerprint while checks are still running: the
-                # verdict is "pending" either way, and on a large PR each
-                # fingerprint costs a full pagination of three surfaces.
-                # Nothing is lost — a pending poll resets the settle clock.
+                # Skip the comment read while checks are still running: the
+                # verdict is "pending" either way, and on a large PR each one
+                # costs a full pagination of three surfaces. Nothing is lost —
+                # a pending poll resets the settle clock.
                 if not snapshot["pending"]:
-                    fingerprint = comment_fingerprint(owner, repo, pr)
+                    poll = poll_comments(owner, repo, pr)
+                    fingerprint = poll["fingerprint"]
+                    spoke = poll["speakers"]
+                    # A reviewer that ran and found nothing is finished, not
+                    # missing. Only pay for the identity lookup when someone
+                    # still looks absent from the comment surfaces.
+                    silent = unsatisfied_bots(expect_bots, spoke, set())
+                    missing = unsatisfied_bots(
+                        expect_bots, spoke,
+                        cleanly_checked_apps(owner, repo, pr) if silent else set(),
+                    )
+                    if first_poll:
+                        # Credit the quiet GitHub already recorded. Without
+                        # this, arriving after every reviewer has finished
+                        # still costs a full settle window to observe silence
+                        # that the timestamps had already established.
+                        quiet = quiet_seconds(poll["latest"], datetime.now(timezone.utc))
+                        credit = min(quiet, float(settle_s))
+                        if credit > 0:
+                            previous = fingerprint
+                            stable_since = time.monotonic() - credit
+                        first_poll = False
                 now = time.monotonic()
                 state, stable_since = wait_verdict(
                     snapshot, fingerprint, previous, stable_since, now, settle_s
                 )
                 previous = fingerprint
-                # Inside the budget too: this lookup paginates, and outside it
-                # a stall here would sail past the deadline unbounded.
-                if state == "done" and expect_bots:
-                    spoke = {
-                        name.lower().removesuffix("[bot]")
-                        for name in cmd_status(owner, repo, pr)["reviewers"]["bots"]
-                    }
-                    missing = [b for b in expect_bots if b.lower().removesuffix("[bot]") not in spoke]
-                    if missing:
-                        state = "settling"
+                # A named reviewer that has not spoken keeps the wait open
+                # however quiet the PR looks.
+                if state == "done" and missing:
+                    state = "settling"
         except GhUnavailable as stalled:
             # The wait's own contract wins over the individual call's failure:
-            # report what we were waiting on, in the documented shape.
-            last_snapshot["timedOutWaitingFor"] = f"github ({stalled})"
+            # report what we were waiting on, in the documented shape. Running
+            # out of budget is usually the deadline arriving, not a stall, so
+            # name the thing that held the wait open rather than the call that
+            # happened to be in flight when time ran out.
+            last_snapshot["timedOutWaitingFor"] = (
+                "reviewers: " + ", ".join(missing) if missing
+                else "checks" if last_snapshot.get("pending")
+                else f"github ({stalled})"
+            )
             print(json.dumps(last_snapshot, indent=2))
-            print(f"gave up after {timeout_s}s: {stalled}", file=sys.stderr)
+            print(
+                f"gave up after {timeout_s}s waiting on "
+                f"{last_snapshot['timedOutWaitingFor']} ({stalled})",
+                file=sys.stderr,
+            )
             return 3
 
         if state == "done":
@@ -457,9 +597,18 @@ def cmd_wait(
             waited = int(now - stable_since) if stable_since else 0
             note = f"checks done; comments settling ({waited}/{settle_s}s stable)"
         print(f"waiting: {note}", file=sys.stderr)
-        # Sleep no further than the deadline, so a long interval cannot
-        # carry the wait past the bound the caller asked for.
-        time.sleep(max(0.0, min(interval_s, deadline - time.monotonic())))
+        # Sleep no further than the next moment a verdict could change: the
+        # deadline, or the instant the settle window completes. Sleeping a full
+        # interval past that spent up to interval_s doing nothing but holding a
+        # decision that was already available.
+        until_settled = (
+            (stable_since + settle_s) - time.monotonic()
+            if stable_since is not None and not missing
+            else float(interval_s)
+        )
+        time.sleep(
+            max(0.0, min(float(interval_s), until_settled, deadline - time.monotonic()))
+        )
 
 
 def cmd_react(owner: str, repo: str, surface: str, comment_id: int, reaction: str) -> dict:
