@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/commands/">
       
       
-        <link rel="prev" href="../../authoring/publishing/">
+        <link rel="prev" href="../">
       
       
         <link rel="next" href="../backup-targets/">
@@ -296,7 +296,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="././" class="md-tabs__link">
+        <a href="../" class="md-tabs__link">
           
   
   Reference
@@ -1212,6 +1212,35 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Every command
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -1548,6 +1577,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         version
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        completion install
       </span>
     </span>
   </a>
@@ -2350,6 +2390,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#completion-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        completion install
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2397,7 +2448,7 @@
     
     
       <li class="md-path__item">
-        <a href="././" class="md-path__link">
+        <a href="../" class="md-path__link">
           
   
   <span class="md-ellipsis">
@@ -2425,6 +2476,9 @@
 <p>Every command is <code>morzer &lt;command&gt; [flags]</code>. The two command groups with their
 own subcommands live on their own pages:
 <a href="../secret-commands/"><code>secret</code></a> and <a href="../release-commands/"><code>release</code></a>.</p>
+<p><a href="../">Every command</a> is the generated list of all of them with the page
+that documents each — start there when you know a command exists and not where
+it is written up.</p>
 <p>Every mutating command takes the deployment lock, journals what it did before
 and after each step, and can be planned first with <code>--dry-run</code>. Every command
 maps its failure onto a stable <a href="../exit-codes/">exit code</a>.</p>
@@ -2606,6 +2660,10 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <tr>
 <td><a href="#version"><code>version</code></a></td>
 <td>Print version, commit, and supported manifest API versions.</td>
+</tr>
+<tr>
+<td><a href="#completion-install"><code>completion install</code></a></td>
+<td>Put the shell completion script where your shell reads it.</td>
 </tr>
 <tr>
 <td><a href="../parameters/#changing-one-after-install"><code>config</code></a></td>
@@ -3216,6 +3274,71 @@ database is a state no automatic action can repair, so a failure here exits
 versions it can read.</p>
 <p>Under <code>--json</code> the supported API versions are a list, so a bundle author can
 check compatibility programmatically rather than by trial and error.</p>
+<h2 id="completion-install">completion install<a class="headerlink" href="#completion-install" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w">            </span><span class="c1"># the shell $SHELL names</span>
+morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w"> </span>zsh
+morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w"> </span>--print-path
+sudo<span class="w"> </span>morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w"> </span>bash<span class="w"> </span>--system
+</code></pre></div>
+<p>Generates the completion script and puts it where that shell reads completions
+from, creating the directory when it is missing.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--print-path</code></td>
+<td>Print where the file would go and write nothing.</td>
+</tr>
+<tr>
+<td><code>--system</code></td>
+<td>Write the distribution's own completion directory instead of one under your home. Needs the privileges for it.</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Shell</th>
+<th>Where it goes</th>
+<th>What else</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bash</code></td>
+<td><code>${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/morzer</code></td>
+<td>bash reads that directory through the bash-completion package, 2.8 or newer. Without it, source the file from <code>~/.bashrc</code>.</td>
+</tr>
+<tr>
+<td><code>zsh</code></td>
+<td><code>${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions/_morzer</code></td>
+<td>the directory must be on <code>fpath</code> before <code>compinit</code>; the command prints the line to add.</td>
+</tr>
+<tr>
+<td><code>fish</code></td>
+<td><code>${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions/morzer.fish</code></td>
+<td>read on the next start.</td>
+</tr>
+</tbody>
+</table>
+<p>Those paths are a table in the code rather than a guess, because the failure of
+a completion is silence — no error, no warning, just a Tab key that does
+nothing. It is also the only place this project knows them: the
+<a href="../../get-started/installation/">install script</a> calls this command rather than
+learning the paths itself, so there is no second copy to drift.</p>
+<p>Writing is idempotent: the same path and the same bytes every run.</p>
+<p><strong>A shell it cannot place a file for is not a failure.</strong> No <code>$SHELL</code>, an
+unrecognised one, or something exotic: the script goes to stdout with a note
+naming the shells it can place, and the command exits 0. That keeps
+<code>morzer completion install &gt; somewhere</code> useful, and keeps an installer's
+optional completion step from failing an install.</p>
+<p>PowerShell is generated by <code>morzer completion powershell</code> and not installed by
+this: its location is a profile script this program has no business editing.</p>
 
 
 
@@ -3256,7 +3379,7 @@ check compatibility programmatically rather than by trial and error.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../../authoring/publishing/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Signing and publishing">
+          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Every command">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -3266,7 +3389,7 @@ check compatibility programmatically rather than by trial and error.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Signing and publishing
+                Every command
               </div>
             </div>
           </a>

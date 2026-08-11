@@ -12,36 +12,36 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/explanation/secrets/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/">
       
       
-        <link rel="prev" href="../the-step-engine/">
+        <link rel="prev" href="../authoring/publishing/">
       
       
-        <link rel="next" href="../what-is-tested/">
+        <link rel="next" href="./commands/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="zensical-0.0.52">
     
     
       
-        <title>The secrets model - morzer</title>
+        <title>Every command - morzer</title>
       
     
     
       
         
       
-      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.8b3b5a67.min.css">
       
         
           
         
-        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.dfe2e883.min.css">
       
       
 
@@ -60,7 +60,7 @@
       
     
     
-    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
     
       
 
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#the-secrets-model" class="md-skip">
+        <a href="#every-command" class="md-skip">
           Skip to content
         </a>
       
@@ -103,7 +103,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="morzer" class="md-header__button md-logo" aria-label="morzer" data-md-component="logo">
+    <a href="./.." title="morzer" class="md-header__button md-logo" aria-label="morzer" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              The secrets model
+              Every command
             
           </span>
         </div>
@@ -207,7 +207,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../.." class="md-tabs__link">
+      <a href="./.." class="md-tabs__link">
         
   
   Home
@@ -228,7 +228,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../get-started/installation/" class="md-tabs__link">
+        <a href="../get-started/installation/" class="md-tabs__link">
           
   
   Get started
@@ -250,7 +250,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../operating/updating/" class="md-tabs__link">
+        <a href="../operating/updating/" class="md-tabs__link">
           
   
   Operating
@@ -272,32 +272,10 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../authoring/" class="md-tabs__link">
+        <a href="../authoring/" class="md-tabs__link">
           
   
   Authoring
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-  
-    
-      
-    
-    
-    
-      <li class="md-tabs__item">
-        <a href="../../reference/" class="md-tabs__link">
-          
-  
-  Reference
 
         </a>
       </li>
@@ -318,7 +296,29 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../architecture/" class="md-tabs__link">
+        <a href="././" class="md-tabs__link">
+          
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../explanation/architecture/" class="md-tabs__link">
           
   
   Explanation
@@ -351,7 +351,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="morzer" class="md-nav__button md-logo" aria-label="morzer" data-md-component="logo">
+    <a href="./.." title="morzer" class="md-nav__button md-logo" aria-label="morzer" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
@@ -381,7 +381,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href="./.." class="md-nav__link">
         
   
   
@@ -459,7 +459,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../get-started/installation/" class="md-nav__link">
+      <a href="../get-started/installation/" class="md-nav__link">
         
   
   
@@ -488,7 +488,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../get-started/first-deployment/" class="md-nav__link">
+      <a href="../get-started/first-deployment/" class="md-nav__link">
         
   
   
@@ -574,7 +574,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/updating/" class="md-nav__link">
+      <a href="../operating/updating/" class="md-nav__link">
         
   
   
@@ -603,7 +603,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/unattended-updates/" class="md-nav__link">
+      <a href="../operating/unattended-updates/" class="md-nav__link">
         
   
   
@@ -632,7 +632,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/rolling-back/" class="md-nav__link">
+      <a href="../operating/rolling-back/" class="md-nav__link">
         
   
   
@@ -661,7 +661,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/secrets/" class="md-nav__link">
+      <a href="../operating/secrets/" class="md-nav__link">
         
   
   
@@ -690,7 +690,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/backups/" class="md-nav__link">
+      <a href="../operating/backups/" class="md-nav__link">
         
   
   
@@ -719,7 +719,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/changing-configuration/" class="md-nav__link">
+      <a href="../operating/changing-configuration/" class="md-nav__link">
         
   
   
@@ -748,7 +748,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/installing-offline/" class="md-nav__link">
+      <a href="../operating/installing-offline/" class="md-nav__link">
         
   
   
@@ -777,7 +777,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/notifications/" class="md-nav__link">
+      <a href="../operating/notifications/" class="md-nav__link">
         
   
   
@@ -806,7 +806,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/looking-inside/" class="md-nav__link">
+      <a href="../operating/looking-inside/" class="md-nav__link">
         
   
   
@@ -835,7 +835,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/several-installations/" class="md-nav__link">
+      <a href="../operating/several-installations/" class="md-nav__link">
         
   
   
@@ -864,7 +864,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
+      <a href="../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
   
@@ -950,7 +950,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../authoring/" class="md-nav__link">
+      <a href="../authoring/" class="md-nav__link">
         
   
   
@@ -979,7 +979,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../authoring/your-first-bundle/" class="md-nav__link">
+      <a href="../authoring/your-first-bundle/" class="md-nav__link">
         
   
   
@@ -1008,7 +1008,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../authoring/a-three-tier-bundle/" class="md-nav__link">
+      <a href="../authoring/a-three-tier-bundle/" class="md-nav__link">
         
   
   
@@ -1037,7 +1037,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../authoring/hooks/" class="md-nav__link">
+      <a href="../authoring/hooks/" class="md-nav__link">
         
   
   
@@ -1066,7 +1066,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+      <a href="../authoring/backing-up-volumes/" class="md-nav__link">
         
   
   
@@ -1095,7 +1095,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../authoring/bundled-images/" class="md-nav__link">
+      <a href="../authoring/bundled-images/" class="md-nav__link">
         
   
   
@@ -1124,7 +1124,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../authoring/publishing/" class="md-nav__link">
+      <a href="../authoring/publishing/" class="md-nav__link">
         
   
   
@@ -1134,411 +1134,6 @@
     
   
   Signing and publishing
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-  Reference
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-  Reference
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Every command
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/commands/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Commands
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/backup-targets/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Backup target URLs
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/secret-commands/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  secret
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/release-commands/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  release
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/installation-commands/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  installation
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/exit-codes/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Exit codes
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/output-modes/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Output modes
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/parameters/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Parameters
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/manifest/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Manifest
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/variables/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Variables
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../reference/hooks/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Hook ABI
 
     
   </span>
@@ -1583,10 +1178,425 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Every command
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Commands
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./backup-targets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backup target URLs
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./secret-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  secret
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./release-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  release
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./installation-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  installation
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./exit-codes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./output-modes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Output modes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./parameters/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Parameters
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./manifest/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Manifest
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./variables/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Variables
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Hook ABI
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   
@@ -1603,7 +1613,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1620,7 +1630,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/" class="md-nav__link">
+      <a href="../explanation/architecture/" class="md-nav__link">
         
   
   
@@ -1649,7 +1659,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../the-step-engine/" class="md-nav__link">
+      <a href="../explanation/the-step-engine/" class="md-nav__link">
         
   
   
@@ -1675,38 +1685,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  The secrets model
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../explanation/secrets/" class="md-nav__link">
         
   
   
@@ -1723,121 +1705,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#files-not-environment" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Files, not environment
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#redaction-is-structural" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Redaction is structural
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#why-sops-is-a-subprocess" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Why sops is a subprocess
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#at-least-two-recipients-always" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        At least two recipients, always
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="At least two recipients, always">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#what-the-recovery-key-actually-buys" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What the recovery key actually buys
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#where-plaintext-exists-and-for-how-long" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Where plaintext exists, and for how long
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#rotation-restarts-what-depends-on-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Rotation restarts what depends on it
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-this-does-not-defend-against" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What this does not defend against
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1850,7 +1717,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../what-is-tested/" class="md-nav__link">
+      <a href="../explanation/what-is-tested/" class="md-nav__link">
         
   
   
@@ -1896,11 +1763,6 @@
                       
                     
                     
-                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-                      <div class="md-sidebar-button__wrapper">
-                        <label class="md-sidebar-button" for="__toc"></label>
-                      </div>
-                    
                   
                   <div class="md-sidebar__inner">
                     
@@ -1912,108 +1774,6 @@
   
     
   
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#files-not-environment" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Files, not environment
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#redaction-is-structural" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Redaction is structural
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#why-sops-is-a-subprocess" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Why sops is a subprocess
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#at-least-two-recipients-always" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        At least two recipients, always
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="At least two recipients, always">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#what-the-recovery-key-actually-buys" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What the recovery key actually buys
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#where-plaintext-exists-and-for-how-long" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Where plaintext exists, and for how long
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#rotation-restarts-what-depends-on-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Rotation restarts what depends on it
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-this-does-not-defend-against" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What this does not defend against
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
   
 </nav>
                   </div>
@@ -2038,7 +1798,7 @@
   
   
     <li class="md-path__item">
-      <a href="../.." class="md-path__link">
+      <a href="./.." class="md-path__link">
         
   
   <span class="md-ellipsis">
@@ -2060,11 +1820,11 @@
     
     
       <li class="md-path__item">
-        <a href="../architecture/" class="md-path__link">
+        <a href="././" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    Explanation
+    Reference
   </span>
 
         </a>
@@ -2084,101 +1844,308 @@
   
 
 
-<h1 id="the-secrets-model">The secrets model<a class="headerlink" href="#the-secrets-model" title="Permanent link">&para;</a></h1>
-<pre class="mermaid"><code>flowchart TD
-    E["/etc/&amp;lt;product&amp;gt;/secrets.sops.yaml&lt;br/&gt;&lt;small&gt;encrypted at rest, for ≥2 recipients&lt;/small&gt;"]
-    M["machine age identity&lt;br/&gt;&lt;small&gt;/etc/&amp;lt;product&amp;gt;/age/identity, 0400&lt;/small&gt;"]
-    R["offline recovery key&lt;br/&gt;&lt;small&gt;not on this machine&lt;/small&gt;"]
-    T["/run/&amp;lt;product&amp;gt;/secrets/*&lt;br/&gt;&lt;small&gt;tmpfs, 0700 dir, 0400 files&lt;/small&gt;"]
-    C["/run/secrets/*&lt;br/&gt;&lt;small&gt;inside the container&lt;/small&gt;"]
+<!-- Generated by `just docs-index`. Edit the command's `Short` string, not this file. -->
 
-    M --&gt;|decrypts| E
-    R -.-&gt;|decrypts, after a rebuild| E
-    E --&gt;|apply| T
-    T --&gt;|compose mount| C</code></pre>
-<h2 id="files-not-environment">Files, not environment<a class="headerlink" href="#files-not-environment" title="Permanent link">&para;</a></h2>
-<p>A secret reaches a container as a mounted file. Never as an environment
-variable, because <code>docker inspect</code> prints those and so does every crash reporter
-and process listing that has ever existed.</p>
-<p>The rendered configuration in <code>/etc</code> holds <strong>paths</strong> to secrets rather than
-values, so a config file is never a credential — which matters because config
-files end up in backups, support bundles and screenshots.</p>
-<h2 id="redaction-is-structural">Redaction is structural<a class="headerlink" href="#redaction-is-structural" title="Permanent link">&para;</a></h2>
-<p><code>domain.Secret</code> renders as <code>[redacted]</code> through <code>String</code>, <code>GoString</code>,
-<code>LogValue</code> and <code>MarshalJSON</code>. You cannot print one by accident; you have to call
-<code>Reveal()</code>, which is greppable.</p>
-<p>That is the first line. The second is a redacting <code>slog</code> handler, and the third
-is the subprocess runner's output scrubber, which strips known values from
-anything a hook or <code>docker</code> writes. Three independent mechanisms, because the
-cost of one gap is unbounded.</p>
-<p>Values reach <code>sops</code> over stdin, never argv.</p>
-<h2 id="why-sops-is-a-subprocess">Why sops is a subprocess<a class="headerlink" href="#why-sops-is-a-subprocess" title="Permanent link">&para;</a></h2>
-<p>The library pulls in the AWS, GCP and Azure KMS SDKs — tens of megabytes and a
-large attack surface — for a deployment that only ever uses age.</p>
-<p>It sits behind <code>SecretStore</code>, so the decision is reversible: if removing the
-install-time dependency ever matters more than the size, the library goes behind
-the same interface and nothing above it changes. The port is what makes that a
-change to one package rather than a rewrite.</p>
-<h2 id="at-least-two-recipients-always">At least two recipients, always<a class="headerlink" href="#at-least-two-recipients-always" title="Permanent link">&para;</a></h2>
-<p>The state is encrypted for this machine <strong>and</strong> an offline recovery key.
-<code>init</code> refuses to proceed without one unless you say <code>--no-recovery-recipient</code>
-out loud.</p>
-<p>Removing the last recipient, or the machine's own, is refused — either produces
-state nothing on the machine can read, and you would not discover it until the
-next <code>apply</code>, possibly after a reboot, with the product down.</p>
-<h3 id="what-the-recovery-key-actually-buys">What the recovery key actually buys<a class="headerlink" href="#what-the-recovery-key-actually-buys" title="Permanent link">&para;</a></h3>
-<p>A machine that is gone. Not corrupted — gone. Its age identity was on it, so the
-encrypted state that survived in your backups is unreadable by anything you
-still have.</p>
-<p>Unless a second key exists somewhere else. That is the whole argument, and it is
-why the manager insists on the decision at <code>init</code> rather than offering it as an
-option to configure later: the moment to make it is before you need it.</p>
-<p>The procedure is <a href="../../operating/recovering-a-lost-machine/">Recovering a lost machine</a>,
-and it is executed end to end by the test suite on every run — a machine's
-entire root deleted and rebuilt from an export plus the offline key. A recovery
-path nobody has run is a recovery path you find out about during an incident.</p>
-<h2 id="where-plaintext-exists-and-for-how-long">Where plaintext exists, and for how long<a class="headerlink" href="#where-plaintext-exists-and-for-how-long" title="Permanent link">&para;</a></h2>
-<p>Deliberately short, and deliberately enumerated:</p>
+<h1 id="every-command">Every command<a class="headerlink" href="#every-command" title="Permanent link">&para;</a></h1>
+<p>Generated from the command tree, so a command cannot exist without a row
+here. The reference column points at the section that documents it; the
+<code>Short</code> text is the command's own, as <code>morzer --help</code> prints it.</p>
 <table>
 <thead>
 <tr>
-<th>Where</th>
-<th>When</th>
-<th>Bounded by</th>
+<th>Command</th>
+<th>What it does</th>
+<th>Reference</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Manager memory</td>
-<td>during an operation</td>
-<td>the process lifetime</td>
+<td><code>morzer init</code></td>
+<td>Create a new installation</td>
+<td><a href="commands/#init">commands</a></td>
 </tr>
 <tr>
-<td><code>/run/&lt;product&gt;/secrets/*</code></td>
-<td>while the product runs</td>
-<td>tmpfs, <code>0400</code>, cleared on reboot</td>
+<td><code>morzer apply</code></td>
+<td>Converge the system to the installed release</td>
+<td><a href="commands/#apply">commands</a></td>
 </tr>
 <tr>
-<td>A <code>secret edit</code> session</td>
-<td>while your editor is open</td>
-<td>its own <code>0700</code> directory, overwritten and removed however the editor exits</td>
+<td><code>morzer status</code></td>
+<td>Show what is deployed and whether it is working</td>
+<td><a href="commands/#status">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer update</code></td>
+<td>Install a new release over the current one</td>
+<td><a href="commands/#update">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer rollback</code></td>
+<td>Return to the previous release</td>
+<td><a href="commands/#rollback">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer config</code></td>
+<td>Read and change the release parameters</td>
+<td><a href="parameters/#changing-one-after-install">parameters</a></td>
+</tr>
+<tr>
+<td><code>morzer config list</code> (also <code>ls</code>)</td>
+<td>Show every parameter the release declares</td>
+<td><a href="parameters/#changing-one-after-install">parameters</a></td>
+</tr>
+<tr>
+<td><code>morzer config get</code></td>
+<td>Print one parameter's effective value</td>
+<td><a href="parameters/#changing-one-after-install">parameters</a></td>
+</tr>
+<tr>
+<td><code>morzer config set</code></td>
+<td>Change one or more parameters, or an installation setting</td>
+<td><a href="parameters/#changing-one-after-install">parameters</a></td>
+</tr>
+<tr>
+<td><code>morzer config unset</code></td>
+<td>Return parameters or a setting to their defaults</td>
+<td><a href="parameters/#changing-one-after-install">parameters</a></td>
+</tr>
+<tr>
+<td><code>morzer config settings</code></td>
+<td>Show the installation settings and their values</td>
+<td><a href="parameters/#changing-one-after-install">parameters</a></td>
+</tr>
+<tr>
+<td><code>morzer secret</code></td>
+<td>Manage the encrypted secret state</td>
+<td><a href="secret-commands/#morzer-secret">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret list</code></td>
+<td>List secret names, fingerprints and metadata — never values</td>
+<td><a href="secret-commands/#secret-list">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret set</code></td>
+<td>Set a secret, reading the value from the terminal or stdin</td>
+<td><a href="secret-commands/#secret-set">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret generate</code></td>
+<td>Generate a secret using the release's declared generator</td>
+<td><a href="secret-commands/#secret-generate">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret remove</code></td>
+<td>Delete a secret</td>
+<td><a href="secret-commands/#secret-remove">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret rotate</code></td>
+<td>Replace a secret with a freshly generated value</td>
+<td><a href="secret-commands/#secret-rotate">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret edit</code></td>
+<td>Edit several secrets in one editor session</td>
+<td><a href="secret-commands/#secret-edit">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret render</code></td>
+<td>Render secrets to the tmpfs directory the product reads</td>
+<td><a href="secret-commands/#secret-render">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret recipients</code></td>
+<td>Manage who can decrypt the secret state</td>
+<td><a href="secret-commands/#secret-recipients">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret recipients list</code></td>
+<td>List recipients</td>
+<td><a href="secret-commands/#secret-recipients-list">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret recipients add</code></td>
+<td>Add a recipient and re-encrypt the state for it</td>
+<td><a href="secret-commands/#secret-recipients-add">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret recipients remove</code></td>
+<td>Remove a recipient and re-encrypt without it</td>
+<td><a href="secret-commands/#secret-recipients-remove">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer secret recipients generate-recovery-key</code></td>
+<td>Create an offline recovery identity; show its public key</td>
+<td><a href="secret-commands/#secret-recipients-generate-recovery-key">secret-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer doctor</code></td>
+<td>Run read-only diagnostics</td>
+<td><a href="commands/#doctor">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer logs</code></td>
+<td>Read the deployment's logs</td>
+<td><a href="commands/#logs">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer ps</code></td>
+<td>List the deployment's containers</td>
+<td><a href="commands/#ps">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer stats</code></td>
+<td>Show CPU, memory and I/O per container</td>
+<td><a href="commands/#stats">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer exec</code></td>
+<td>Run a command inside a running service</td>
+<td><a href="commands/#exec">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup</code></td>
+<td>Back up the database, volumes, configuration and secret state</td>
+<td><a href="commands/#backup">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup list</code></td>
+<td>List backups, newest first</td>
+<td><a href="commands/#backup-list">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup verify</code></td>
+<td>Re-read a backup and check its checksums</td>
+<td><a href="commands/#backup-verify">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup target</code></td>
+<td>Manage where backups are kept besides this machine</td>
+<td><a href="commands/#backup-target">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup target add</code></td>
+<td>Add a backup target</td>
+<td><a href="commands/#backup-target">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup target remove</code></td>
+<td>Stop keeping backups at a target</td>
+<td><a href="commands/#backup-target">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup target list</code></td>
+<td>List backup targets and whether they can be reached</td>
+<td><a href="commands/#backup-target">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup push</code></td>
+<td>Copy an existing backup to every configured target</td>
+<td><a href="commands/#backup-push">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer backup fetch</code></td>
+<td>Copy a backup down from a target onto this machine</td>
+<td><a href="commands/#backup-fetch">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer restore</code></td>
+<td>Restore from a backup</td>
+<td><a href="commands/#restore">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release</code></td>
+<td>Inspect and manage release bundles</td>
+<td><a href="release-commands/#morzer-release">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release list</code></td>
+<td>List installed releases, newest first</td>
+<td><a href="release-commands/#release-list">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release show</code></td>
+<td>Show a release manifest; the installed one when no version is given</td>
+<td><a href="release-commands/#release-show">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release new</code></td>
+<td>Scaffold a bundle skeleton that already verifies</td>
+<td><a href="release-commands/#release-new">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release verify</code></td>
+<td>Validate a bundle's manifest and check its integrity</td>
+<td><a href="release-commands/#release-verify">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release pack</code></td>
+<td>Copy the images a manifest marks <code>from: bundle</code> into the bundle</td>
+<td><a href="release-commands/#release-pack">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release build</code></td>
+<td>Stamp a version, regenerate the checksum list, and check the result</td>
+<td><a href="release-commands/#release-build">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release archive</code></td>
+<td>Pack a bundle directory into a release archive</td>
+<td><a href="release-commands/#release-archive">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release fetch</code></td>
+<td>Fetch a release bundle into the release store</td>
+<td><a href="release-commands/#release-fetch">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release ingest</code></td>
+<td>Load the images the installed release carries into the local store</td>
+<td><a href="release-commands/#release-ingest">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer release prune</code></td>
+<td>Remove old releases beyond the retention policy</td>
+<td><a href="release-commands/#release-prune">release-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer ls</code></td>
+<td>List the installations on this machine</td>
+<td><a href="installation-commands/#installation-list">installation-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer installation</code></td>
+<td>List, export and rebuild the installations on this machine</td>
+<td><a href="installation-commands/#morzer-installation">installation-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer installation list</code></td>
+<td>List the installations on this machine</td>
+<td><a href="installation-commands/#installation-list">installation-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer installation export</code></td>
+<td>Write the installation identity and encrypted secrets to a file</td>
+<td><a href="installation-commands/#installation-export">installation-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer installation import</code></td>
+<td>Rebuild this machine from an export and an offline recovery key</td>
+<td><a href="installation-commands/#installation-import">installation-commands</a></td>
+</tr>
+<tr>
+<td><code>morzer version</code></td>
+<td>Print version, commit, and supported manifest API versions</td>
+<td><a href="commands/#version">commands</a></td>
+</tr>
+<tr>
+<td><code>morzer completion install</code></td>
+<td>Write the completion script where this shell will read it</td>
+<td><a href="commands/#completion-install">commands</a></td>
 </tr>
 </tbody>
 </table>
-<p>The tmpfs assumption is load-bearing. On memory-backed storage the bytes are
-pages of RAM: a reboot clears them, and overwriting them destroys them. On a
-disk-backed filesystem neither holds, which is why <code>doctor</code> reports a render
-directory that is not tmpfs rather than assuming.</p>
-<h2 id="rotation-restarts-what-depends-on-it">Rotation restarts what depends on it<a class="headerlink" href="#rotation-restarts-what-depends-on-it" title="Permanent link">&para;</a></h2>
-<p>The release declares which services consume which secret, so rotating one
-restarts exactly those. The alternative — restarting everything — turns a
-credential rotation into a full outage, which is why the declaration exists in
-the manifest at all.</p>
-<h2 id="what-this-does-not-defend-against">What this does not defend against<a class="headerlink" href="#what-this-does-not-defend-against" title="Permanent link">&para;</a></h2>
-<p>A root user on the same machine. Anyone with root can read the age identity and
-every rendered secret, and nothing here changes that. The model protects secrets
-at rest, in transit, in logs and in backups — not from someone who already owns
-the machine.</p>
 
 
 
@@ -2219,7 +2186,7 @@ the machine.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../the-step-engine/" class="md-footer__link md-footer__link--prev" aria-label="Previous: The step engine">
+          <a href="../authoring/publishing/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Signing and publishing">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2229,20 +2196,20 @@ the machine.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                The step engine
+                Signing and publishing
               </div>
             </div>
           </a>
         
         
           
-          <a href="../what-is-tested/" class="md-footer__link md-footer__link--next" aria-label="Next: What is tested">
+          <a href="./commands/" class="md-footer__link md-footer__link--next" aria-label="Next: Commands">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                What is tested
+                Commands
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -2285,10 +2252,10 @@ the machine.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["search.highlight","navigation.footer","navigation.instant","navigation.instant.progress","navigation.tabs","navigation.sections","navigation.path","navigation.top","toc.follow","content.code.copy","content.code.select","content.code.annotate","content.tooltips"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["search.highlight","navigation.footer","navigation.instant","navigation.instant.progress","navigation.tabs","navigation.sections","navigation.path","navigation.top","toc.follow","content.code.copy","content.code.select","content.code.annotate","content.tooltips"],"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      <script src="../assets/javascripts/bundle.ed145cee.min.js"></script>
       
     
   </body>
