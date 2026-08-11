@@ -44,11 +44,15 @@ func walkCommands(t *testing.T, root *cobra.Command, visit func(t *testing.T, cm
 	walk = func(cmd *cobra.Command, path string) {
 		for _, sub := range cmd.Commands() {
 			name := strings.Fields(sub.Use)[0]
-			if sub.Hidden || IsGenerated(sub) {
+			if sub.Hidden {
 				continue
 			}
 			full := strings.TrimSpace(path + " " + name)
-			if sub.Runnable() {
+			// Cobra's own are not visited, but they are still walked
+			// past: `completion` is generated and `completion
+			// install` is ours, and pruning the subtree here would
+			// exempt the one command this walk most needs to reach.
+			if sub.Runnable() && !IsGenerated(sub) {
 				visit(t, sub, full)
 			}
 			walk(sub, full)
@@ -94,6 +98,27 @@ func TestEveryCommandDeclaresItsScope(t *testing.T) {
 				path, scope, scopeMachine, scopeInstallation)
 		}
 	})
+}
+
+// TestTheWalkReachesOursUnderCobrasOwn.
+//
+// Both tests above are only as exhaustive as this walk, and a walk that stops
+// at a generated command stops at `completion` — taking `completion install`
+// with it, silently, while the comment above went on saying it was walked.
+// Pruning is the whole risk here: everything else in the tree is ours all the
+// way down, so this is the one command that tells the two behaviours apart.
+func TestTheWalkReachesOursUnderCobrasOwn(t *testing.T) {
+	var walked []string
+	walkCommands(t, CommandTree(), func(_ *testing.T, _ *cobra.Command, path string) {
+		walked = append(walked, path)
+	})
+
+	assert.Contains(t, walked, "completion install",
+		"the walk stopped at cobra's `completion`, so neither test above covers ours")
+	for _, generated := range []string{"completion", "completion bash", "help"} {
+		assert.NotContains(t, walked, generated,
+			"cobra's own command was visited, and it declares no scope to find")
+	}
 }
 
 // TestAnUndeclaredCommandIsRefusedRatherThanAllowed.
