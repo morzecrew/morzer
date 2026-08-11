@@ -206,7 +206,11 @@ type fixture struct {
 }
 
 func fixtures() []fixture {
-	return append(statusFixtures(), doctorFixtures()...)
+	all := statusFixtures()
+	all = append(all, doctorFixtures()...)
+	all = append(all, listFixtures()...)
+	all = append(all, calloutFixtures()...)
+	return all
 }
 
 var _ = views.Verbose{}

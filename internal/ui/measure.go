@@ -32,9 +32,6 @@ const MaxContentWidth = 100
 // One value, so "how far apart are these" is never a per-view decision.
 const Gutter = 2
 
-// ContentWidth is what a view may draw inside.
-func ContentWidth() int { return measureFor(TerminalWidth()) }
-
 // Screen is what a document is drawn onto.
 type Screen struct {
 	Width int

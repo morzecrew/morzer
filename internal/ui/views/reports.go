@@ -24,11 +24,33 @@ type Version struct {
 	SupportedAPIVersions []string `json:"supported_api_versions"`
 }
 
-// KeyPair is a generated identity: the public half on stdout, the private
-// half's location in a callout beside it.
+// KeyPair is a generated identity.
+//
+// Stdout carries the public key and nothing else, because
+// `key=$(morzer secret recipients generate-recovery-key ./k)` is the documented
+// invocation and the acceptance script's own first step. The warning about the
+// private half is narration and goes to stderr as a callout — putting it on
+// stdout was a regression this type's first draft shipped, and `tail -1` then
+// returned the bottom of a box.
 type KeyPair struct {
 	PublicKey string `json:"public_key"`
 	Path      string `json:"path"`
+}
+
+// RecoveryKeyCallout is the warning that travels beside a KeyPair on stderr.
+//
+// Exported so the command can hand it to App.notice: the callout is not part of
+// the report, and a view that emitted it would put it on the stream a script is
+// reading.
+func RecoveryKeyCallout(path string) ui.Callout {
+	return ui.Callout{
+		Title: "keep this",
+		Body: []string{
+			fmt.Sprintf("The private key is at %s (0400).", path),
+			"Move it off this machine. If this VM is lost, this key is how its " +
+				"secrets are recovered — and it is the only way.",
+		},
+	}
 }
 
 // Value is a single scalar a script substitutes.
@@ -77,23 +99,9 @@ func versionDoc(d *ui.Doc, v Version) *ui.Doc {
 	return d
 }
 
-// keyPairDoc prints the public key and frames where the private half went.
-//
-// The one moment in the product where losing what is on screen loses the
-// machine, and it used to be two sentences of `fmt.Fprintf` with less visual
-// weight than a progress line. The public key stays alone on stdout so
-// `key=$(morzer secret generate-recovery-key ...)` keeps working; the callout is
-// the part an operator has to act on.
+// keyPairDoc prints the public key, alone.
 func keyPairDoc(d *ui.Doc, k KeyPair) *ui.Doc {
 	d.Text(0, "%s", k.PublicKey)
-	d.Callout(2, ui.Callout{
-		Title: "keep this",
-		Body: []string{
-			fmt.Sprintf("The private key is at %s (0400).", k.Path),
-			"Move it off this machine. If this VM is lost, this key is how its " +
-				"secrets are recovered — and it is the only way.",
-		},
-	})
 	return d
 }
 

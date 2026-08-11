@@ -351,7 +351,13 @@ func newSecretRecipientsCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			return app.render(views.KeyPair{PublicKey: pub, Path: path})
+			if err := app.render(views.KeyPair{PublicKey: pub, Path: path}); err != nil {
+				return err
+			}
+			// On stderr, and after the key: stdout belongs to the
+			// value a script substitutes.
+			app.notice(views.RecoveryKeyCallout(path))
+			return nil
 		},
 	}
 

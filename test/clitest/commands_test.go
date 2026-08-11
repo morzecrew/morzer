@@ -504,3 +504,26 @@ func TestABareMachineIsStillToldToInit(t *testing.T) {
 	res.OutputContains("no installation found", "morzer init")
 	res.ExitCode(domain.ExitInstallation)
 }
+
+// TestARenderedReportSurvivesTheSummary.
+//
+// `--json` is a published contract, and the boundary that routes every report
+// through one renderer put a second writer on the same field: a command renders
+// its report and then finishes with a summary, and `finish` assigned the
+// Result's payload unconditionally. For a Result carrying only a sentence that
+// payload is nil, so `release verify --json` answered `"data": null` where it
+// had always answered with what it verified.
+//
+// Asserted on the fields rather than the whole object: the claim is that the
+// contract survived, not that its serialisation is frozen.
+func TestARenderedReportSurvivesTheSummary(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	res := r.Run("--json", "release", "verify", r.Bundle).ExitCode(0)
+	res.Field("data.valid")
+	res.Field("data.digest")
+	res.Field("data.version")
+
+	require.Equal(t, true, res.Field("data.valid"),
+		"the verdict is missing from the machine-readable answer")
+}

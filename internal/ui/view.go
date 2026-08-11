@@ -46,23 +46,15 @@ func Register[T any](v View[T]) {
 	if _, exists := registry[rt]; exists {
 		panic(fmt.Sprintf("ui: two views registered for %s", rt))
 	}
-	registry[rt] = v
-}
-
-// Lookup answers for a concrete type.
-func Lookup(rt reflect.Type) (any, bool) {
-	v, ok := registry[rt]
-	return v, ok
-}
-
-// RegisteredTypes lists every type with a view, for the test that asserts the
-// set matches what the commands actually render.
-func RegisteredTypes() []reflect.Type {
-	out := make([]reflect.Type, 0, len(registry))
-	for rt := range registry {
-		out = append(out, rt)
+	if v.Rich == nil && v.Plain == nil {
+		// A view with neither rendering satisfies every check this
+		// package makes -- it is registered, Render finds it and returns
+		// no error -- and prints nothing. Refused at startup, because
+		// the alternative is a command that exits 0 with an empty
+		// terminal and no way to tell that from a report with no rows.
+		panic(fmt.Sprintf("ui: the view for %s renders in no mode", rt))
 	}
-	return out
+	registry[rt] = v
 }
 
 // Render draws one report in one mode.
@@ -80,7 +72,7 @@ func RegisteredTypes() []reflect.Type {
 // already produces.
 func Render(w io.Writer, mode Mode, t *theme.Theme, value any) error {
 	rt := reflect.TypeOf(value)
-	entry, ok := Lookup(rt)
+	entry, ok := registry[rt]
 	if !ok {
 		return fmt.Errorf("no view is registered for %s", rt)
 	}

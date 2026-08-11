@@ -8,7 +8,9 @@ import (
 	"github.com/morzecrew/morzer/internal/ui/theme"
 )
 
-// The five components every view is built from.
+// The five components every view is built from -- heading, fields, table,
+// checks, callout -- and the three primitives that place them: a title, a
+// wrapped paragraph, and a blank line.
 //
 // The consistency the output lacked was never a style guide, it was a
 // vocabulary: `secret list`, `release list`, `backup list` and `config list`
@@ -18,7 +20,9 @@ import (
 //
 // A sixth component is a normal change to this package. What is not normal is a
 // view drawing its own layout inline, which is how the four incompatible tables
-// happened in the first place.
+// happened in the first place -- and the reason `Text` wraps to the measure
+// rather than taking a pre-padded string is that a primitive which accepted one
+// would be that same escape hatch with a shorter name.
 
 // Doc is one view's output.
 //
@@ -91,14 +95,8 @@ func (d *Doc) String() string { return d.b.String() }
 // fault must never be how a command fails.
 func (d *Doc) Emit(w io.Writer) { _, _ = io.WriteString(w, d.b.String()) }
 
-// Width is the measure this document draws inside.
-func (d *Doc) Width() int { return d.width }
-
 // Theme is the styling in force, for the few places a view needs a symbol.
 func (d *Doc) Theme() *theme.Theme { return d.t }
-
-// Plain reports whether this is the line-oriented rendering.
-func (d *Doc) Plain() bool { return d.plain }
 
 // line appends one rendered line.
 func (d *Doc) line(s string) {
@@ -193,10 +191,10 @@ func (d *Doc) FieldsPadded(indent, label int, fields []Field) {
 			value += " " + d.t.Dim(f.Note)
 		}
 
+		// Wrap always yields at least one line, including for an empty
+		// value: a field with nothing in it is still a labelled row,
+		// because "unset" and "absent" are different answers.
 		lines := Wrap(value, room)
-		if len(lines) == 0 {
-			lines = []string{""}
-		}
 		d.line(prefix + pad(d.t.Dim(f.Label), label+Gutter) + lines[0])
 		for _, l := range lines[1:] {
 			d.line(hanging + l)
@@ -250,6 +248,12 @@ func (d *Doc) Table(indent int, tbl Table) {
 	// Seeded from the headers only when they are drawn. A suppressed
 	// header still setting the column width is how `ok` ended up padded to
 	// the six columns of a RESULT nobody could see.
+	// No single column may be wider than the measure. A table may exceed
+	// the measure in total -- one carrying a digest and a path legitimately
+	// needs 130 columns -- but one cell that does is not a wide table, it is
+	// a paragraph in a column: an unreachable target's error is a sentence,
+	// and left whole it makes one row as long as the report.
+	cap := d.width
 	widths := make([]int, len(tbl.Columns))
 	if !tbl.NoHeader {
 		for i, c := range tbl.Columns {
@@ -258,8 +262,11 @@ func (d *Doc) Table(indent int, tbl Table) {
 	}
 	for _, row := range tbl.Rows {
 		for i, cell := range row {
-			if i < len(widths) && Width(cell) > widths[i] {
-				widths[i] = Width(cell)
+			if i >= len(widths) {
+				continue
+			}
+			if n := Width(cell); n > widths[i] {
+				widths[i] = min(n, cap)
 			}
 		}
 	}
@@ -284,6 +291,7 @@ func (d *Doc) Table(indent int, tbl Table) {
 			if i < len(row) {
 				cell = row[i]
 			}
+			cell = Truncate(cell, widths[i], d.ellipsis())
 			cells = append(cells, align(tbl.Columns[i], cell, widths[i]))
 		}
 		d.line(prefix + strings.Join(cells, gutter))
@@ -342,6 +350,14 @@ func (d *Doc) fit(columns []Column, widths []int, indent int) (shown, dropped []
 		shown = append(shown[:last], shown[last+1:]...)
 	}
 	return shown, dropped
+}
+
+// ellipsis marks a cell this terminal had to cut short.
+func (d *Doc) ellipsis() string {
+	if d.t.Symbols == theme.ASCIISymbols {
+		return "..."
+	}
+	return "…"
 }
 
 func align(c Column, cell string, width int) string {

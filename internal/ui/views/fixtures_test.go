@@ -101,6 +101,116 @@ func statusFixtures() []fixture {
 	}
 }
 
+// listFixtures are the four hand-rolled printf tables this wave replaced, plus
+// the three listings that grew from the same component.
+//
+// They carry the shapes those tables broke on: a secret name longer than the
+// 28 the format string reserved, a release in every role including previous,
+// an unreachable target whose error is a sentence, and a comment nobody set.
+func listFixtures() []fixture {
+	at := domain.NewTime(time.Date(2026, 8, 10, 9, 15, 0, 0, time.UTC))
+
+	return []fixture{
+		{
+			name: "secrets",
+			value: []ports.SecretMetadata{
+				{Name: "db_password", Fingerprint: "ec778838e623", Length: 32, LastChanged: at},
+				{Name: "session_signing_key_for_the_web_tier", Fingerprint: "b7d4e86ea2e5", Length: 64, LastChanged: at},
+				{Name: "smtp_password", Fingerprint: "0f1a2b3c4d5e", Length: 24},
+			},
+			fields: []string{"db_password", "session_signing_key_for_the_web_tier", "ec778838e623", "unknown"},
+		},
+		{
+			name: "releases",
+			value: []ops.ReleaseEntry{
+				{Version: version("1.5.0"), Root: "/opt/demo/releases/1.5.0", Staged: true},
+				{Version: version("1.4.0"), Root: "/opt/demo/releases/1.4.0"},
+				{Version: version("1.3.0"), Root: "/opt/demo/releases/1.3.0", Current: true},
+				{Version: version("1.2.0"), Root: "/opt/demo/releases/1.2.0", Previous: true},
+			},
+			fields: []string{"1.5.0", "staged", "1.3.0", "current", "1.2.0", "previous"},
+		},
+		{
+			name: "backups",
+			value: []ports.BackupRef{
+				{ID: "bkp_01KZP9ZZTKTQE1SS3JRZ", At: at, Size: 4_294_967_296},
+				{ID: "bkp_01KZP7YYSJSPD0RR2IQY", At: at, Size: 1_048_576},
+			},
+			fields: []string{"bkp_01KZP9ZZTKTQE1SS3JRZ", "4GiB"},
+		},
+		{
+			name: "recipients",
+			value: []ports.Recipient{
+				{PublicKey: "age1qutq8nmte0t8fwd2n7qh3lqyrcazy44z2np735cxes05yau7faasgf02hl", Kind: ports.RecipientMachine},
+				{PublicKey: "age14zamz0thlnq8atx3t3lanyx2hfl0tdvpphtrfyad4m6fjxcmhgpsvqu82q", Kind: ports.RecipientRecovery, Comment: "offsite safe"},
+			},
+			fields: []string{"age1qutq8nmte0t8fwd2n7qh3lqyrcazy44z2np735cxes05yau7faasgf02hl", "offsite safe"},
+		},
+		{
+			name:   "backups-empty",
+			value:  []ports.BackupRef{},
+			fields: []string{"no backups"},
+		},
+		{
+			name: "rendered-secrets",
+			value: []ports.RenderedFile{
+				{Name: "db_password", Path: "/run/demo/secrets/db_password", Mode: 0o400},
+				{Name: "session_key", Path: "/run/demo/secrets/session_key", Mode: 0o440},
+			},
+			fields: []string{"db_password", "/run/demo/secrets/db_password", "0400"},
+		},
+		{
+			name: "remote-backups",
+			value: []ops.RemoteBackup{
+				{
+					Target: "s3://demo-backups/prod",
+					Manifest: ports.BackupManifest{
+						ID: "bkp_01KZP9ZZTKTQE1SS3JRZ", CreatedAt: at,
+						ReleaseVersion: version("1.3.0"),
+					},
+				},
+			},
+			fields: []string{"bkp_01KZP9ZZTKTQE1SS3JRZ", "s3://demo-backups/prod", "1.3.0"},
+		},
+		{
+			name: "targets",
+			value: []ops.TargetStatus{
+				{URL: "file:///srv/offsite", Reachable: true, Backups: 4},
+				{
+					URL: "s3://demo-backups/prod", Reachable: false,
+					Error: "dial tcp 203.0.113.7:443: i/o timeout after 3 attempts",
+				},
+			},
+			fields: []string{"file:///srv/offsite", "s3://demo-backups/prod", "unreachable"},
+		},
+	}
+}
+
+// calloutFixtures cover the shapes the box arithmetic has to survive: a title
+// wider than the body it frames, and a body of one short line.
+func calloutFixtures() []fixture {
+	return []fixture{
+		{
+			name: "keypair",
+			value: views.KeyPair{
+				PublicKey: "age14zamz0thlnq8atx3t3lanyx2hfl0tdvpphtrfyad4m6fjxcmhgpsvqu82q",
+				Path:      "/root/demo-recovery.key",
+			},
+			fields: []string{"age14zamz0thlnq8atx3t3lanyx2hfl0tdvpphtrfyad4m6fjxcmhgpsvqu82q"},
+		},
+		{
+			name: "version",
+			value: views.Version{
+				Version:              "1.4.0",
+				Commit:               "9ac42a3",
+				Built:                "2026-08-10T17:38:58Z",
+				SupportedAPIVersions: []string{"selfhost/v1alpha1"},
+			},
+			fields: []string{"1.4.0", "9ac42a3", "selfhost/v1alpha1"},
+		},
+	}
+}
+
 func doctorFixtures() []fixture {
 	check := func(category, id, desc string, status events.CheckStatus, message, remedy string) events.CheckResult {
 		return events.CheckResult{

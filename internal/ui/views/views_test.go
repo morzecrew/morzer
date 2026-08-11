@@ -226,7 +226,13 @@ func TestPlainIsLineOrientedNotRichWithoutColour(t *testing.T) {
 	require.NoError(t, ui.Render(&plainOut, ui.ModePlain, nil, status))
 
 	require.Contains(t, rich.String(), "╭", "the styled callout has no border")
-	require.NotContains(t, plainOut.String(), "╭", "plain drew a box")
+	// Every border character, not just the Unicode ones: a plain document
+	// carries the ASCII theme, so a callout that took the styled path there
+	// would draw `+---+` and slip past an assertion that only knew `╭`.
+	for _, border := range []string{"╭", "╮", "╰", "╯", "│", "─", "+-", "-+", "|"} {
+		require.NotContainsf(t, plainOut.String(), border,
+			"plain drew a box: found %q", border)
+	}
 	require.Contains(t, plainOut.String(), "the volume copy did not finish",
 		"plain lost the callout's content along with its border")
 }
@@ -280,4 +286,26 @@ func TestAStoppedServiceIsMarkedWithoutColour(t *testing.T) {
 	}
 	require.Containsf(t, app, sym.OK, "the running service is not marked ok: %q", app)
 	require.Containsf(t, db, sym.Fail, "the stopped service is not marked failed: %q", db)
+}
+
+// TestACellTooWideForTheMeasureIsCutRatherThanPrinted.
+//
+// A table may be wider than the measure — one carrying a digest and a path
+// legitimately needs 130 columns. One *cell* that is wider is a different thing:
+// an unreachable target's error is a sentence, and left whole it makes a single
+// row as long as the whole report. §5.4 says cells are truncated with an
+// ellipsis; without this the helper that does it had no callers at all.
+func TestACellTooWideForTheMeasureIsCutRatherThanPrinted(t *testing.T) {
+	long := strings.Repeat("dial tcp 203.0.113.7:443: i/o timeout; ", 8)
+	statuses := []ops.TargetStatus{
+		{URL: "s3://backups/demo", Reachable: false, Error: long},
+	}
+
+	out := render(t, 100, statuses)
+	for _, line := range strings.Split(out, "\n") {
+		require.LessOrEqualf(t, ui.Width(line), ui.MaxContentWidth+ui.Gutter+len("s3://backups/demo"),
+			"a single cell ran the row past any measure:\n%q", line)
+	}
+	require.Contains(t, out, "…", "the row was cut and does not say so")
+	require.Contains(t, out, "dial tcp", "the beginning of the error was lost too")
 }
