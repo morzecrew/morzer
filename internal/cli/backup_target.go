@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -109,24 +108,7 @@ func newBackupTargetListCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = statuses
-				return nil
-			}
-			if len(statuses) == 0 {
-				fmt.Fprintln(app.Stream.Out,
-					"no backup targets: every copy of this deployment's data is on this machine")
-				return nil
-			}
-
-			for _, s := range statuses {
-				state := fmt.Sprintf("%d backup(s)", s.Backups)
-				if !s.Reachable {
-					state = "unreachable: " + s.Error
-				}
-				fmt.Fprintf(app.Stream.Out, "%-40s  %s\n", s.URL, state)
-			}
-			return nil
+			return app.render(statuses)
 		},
 	}
 }

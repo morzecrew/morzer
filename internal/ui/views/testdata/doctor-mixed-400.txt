@@ -1,0 +1,19 @@
+  configuration  ✓ 2 checks
+  storage        ✓ 1 check
+  network
+    ! the container registry is reachable
+      cannot reach registry.example/demo/app: dial tcp 203.0.113.7:443: i/o timeout
+  runtime
+    ✗ release images are available offline
+      2 of 2 images referenced by the release are not present locally
+  tools          ✓ 1 check
+
+  what to do
+    the container registry is reachable
+      check the machine's outbound network, or run `morzer update --bundle` from a copy
+    release images are available offline
+      run `morzer release ingest <bundle>` on this machine
+
+  5 ok, 1 warning, 1 failed
+
+  support  https://support.example/demo

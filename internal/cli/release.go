@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -16,6 +15,7 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 func newReleaseCommand(app *App) *cobra.Command {
@@ -49,31 +49,7 @@ func newReleaseListCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = entries
-				return nil
-			}
-			if len(entries) == 0 {
-				_, _ = fmt.Fprintln(app.Stream.Out, "no releases are installed")
-				return nil
-			}
-			for _, e := range entries {
-				// A staged release is marked because `prune` refuses
-				// to remove it: a listing that showed no reason for
-				// that would leave an operator arguing with the
-				// retention policy about a release it cannot see.
-				marker := " "
-				switch {
-				case e.Current:
-					marker = "*"
-				case e.Previous:
-					marker = "-"
-				case e.Staged:
-					marker = "+"
-				}
-				fmt.Fprintf(app.Stream.Out, "%s %-12s %s\n", marker, e.Version, e.Root)
-			}
-			return nil
+			return app.render(entries)
 		},
 	}
 }
@@ -109,63 +85,11 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = map[string]any{
-					"manifest": rel.Manifest,
-					"root":     rel.Root,
-					"digest":   rel.Digest,
-				}
-				return nil
-			}
-
-			m := rel.Manifest
-			f := func(format string, a ...any) { fmt.Fprintf(app.Stream.Out, format+"\n", a...) }
-
-			f("%s %s", m.Metadata.Name, m.Metadata.Version)
-			if m.Metadata.Description != "" {
-				f("  %s", m.Metadata.Description)
-			}
-			f("")
-			f("  api version    %s", m.APIVersion)
-			f("  digest         %s", rel.Digest)
-			f("  root           %s", rel.Root)
-			f("  runtime        %s (project %s)", m.Providers.Runtime.Name, m.Runtime.Project)
-
-			f("")
-			f("  images")
-			names := make([]string, 0, len(m.Images))
-			for name := range m.Images {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-			for _, name := range names {
-				f("    %-16s %s", name, m.Images[name])
-			}
-
-			if len(m.Runtime.Profiles) > 0 {
-				profiles := make([]string, 0, len(m.Runtime.Profiles))
-				for p := range m.Runtime.Profiles {
-					profiles = append(profiles, p)
-				}
-				sort.Strings(profiles)
-				f("")
-				f("  profiles       %v", profiles)
-			}
-
-			f("")
-			f("  compatibility")
-			f("    rollback safe    %t", m.Compatibility.RollbackSafe)
-			if !m.Compatibility.UpgradeFrom.IsZero() {
-				f("    upgrade from     %s", m.Compatibility.UpgradeFrom)
-			}
-			if m.Compatibility.DatabaseSchemaMax > 0 {
-				f("    database schema  %d–%d",
-					m.Compatibility.DatabaseSchemaMin, m.Compatibility.DatabaseSchemaMax)
-			}
-			if !m.Compatibility.MinManagerVersion.IsZero() {
-				f("    min manager      %s", m.Compatibility.MinManagerVersion)
-			}
-			return nil
+			return app.render(views.Release{
+				Manifest: rel.Manifest,
+				Root:     rel.Root,
+				Digest:   rel.Digest,
+			})
 		},
 	}
 }
@@ -242,17 +166,15 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 					WithHint("the bundle does not match the digest it was published with")
 			}
 
-			if app.json != nil {
-				app.jsonData = map[string]any{
-					"valid":        true,
-					"name":         rel.Name(),
-					"version":      rel.Version(),
-					"digest":       rel.Digest,
-					"render_check": renderCheck,
-				}
-				return nil
+			if err := app.render(views.Verified{
+				Valid:       true,
+				Name:        rel.Name(),
+				VersionInfo: rel.Version(),
+				Digest:      rel.Digest,
+				RenderCheck: renderCheck,
+			}); err != nil {
+				return err
 			}
-			fmt.Fprintf(app.Stream.Out, "%s %s\n%s\n", rel.Name(), rel.Version(), rel.Digest)
 			// The summary says which check ran. "bundle is valid" after
 			// a render check and after a parse check would be the same
 			// sentence for two different claims, and the stronger one is

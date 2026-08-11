@@ -10,8 +10,6 @@ import (
 	"io"
 	"os"
 	"strings"
-
-	"golang.org/x/term"
 )
 
 // Mode is the resolved output style. It is decided once at startup and never
@@ -194,21 +192,14 @@ func IsTerminal(s any) bool {
 // It measures rather than assuming, which is not merely tidier: a table sized
 // to a guessed 100 columns on an 80-column terminal wraps every row twice, and
 // that is what the first real-terminal run of the doctor report looked like.
-func TerminalWidth() int {
-	const fallback = 100
+func TerminalWidth() int { return CurrentScreen().Width }
 
-	if v, ok := os.LookupEnv("COLUMNS"); ok {
-		if n := atoiSafe(v); n > 20 {
-			return n
-		}
-	}
-	for _, f := range []*os.File{os.Stderr, os.Stdout} {
-		if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 20 {
-			return w
-		}
-	}
-	return fallback
-}
+// fallbackWidth is what a view assumes when nothing reported a width.
+//
+// Only the measure uses it. Nothing may *degrade* against it -- see Screen.Known
+// -- because a guessed width that drops a table column loses information in a
+// pipe, which is the one place where nothing was ever going to be truncated.
+const fallbackWidth = 100
 
 func atoiSafe(s string) int {
 	n := 0

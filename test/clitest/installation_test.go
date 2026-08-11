@@ -76,9 +76,9 @@ func TestARecoveredMachineKeepsTheOriginalIdentity(t *testing.T) {
 	// sequence from documentation, so the sequence is printed where they
 	// already are -- including the warning that two live hosts sharing an
 	// installation id will confuse every backup either of them takes.
-	out.OutputContains(
+	out.SaysAll(
 		"was assumed from",
-		"decommission that machine",
+		"Decommission that machine",
 		"morzer update",
 		"morzer restore --force --confirm "+originalID,
 		"morzer doctor",

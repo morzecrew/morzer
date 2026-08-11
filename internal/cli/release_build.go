@@ -13,6 +13,7 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 func newReleaseBuildCommand(app *App) *cobra.Command {
@@ -95,15 +96,14 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = map[string]any{
-					"root":    rel.Root,
-					"version": rel.Version(),
-					"digest":  rel.Digest,
-				}
-				return nil
+			if err := app.render(views.Built{
+				Root:        rel.Root,
+				Name:        rel.Name(),
+				VersionInfo: rel.Version(),
+				Digest:      rel.Digest,
+			}); err != nil {
+				return err
 			}
-			fmt.Fprintf(app.Stream.Out, "%s %s\n%s\n", rel.Name(), rel.Version(), rel.Digest)
 			app.finish(ops.Result{
 				Summary: fmt.Sprintf("wrote %s; sign it with `minisign -Sm %s`",
 					ports.SumsFileName, filepath.Join(rel.Root, ports.SumsFileName))})

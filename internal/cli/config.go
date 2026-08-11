@@ -2,14 +2,12 @@ package cli
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
-	"github.com/morzecrew/morzer/internal/ui/plain"
-	"github.com/morzecrew/morzer/internal/ui/tty"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 func newConfigCommand(app *App) *cobra.Command {
@@ -45,15 +43,7 @@ func newConfigListCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			switch {
-			case app.json != nil:
-				app.jsonData = report
-			case app.rich():
-				tty.RenderConfig(app.Stream.Out, app.theme(), report)
-			default:
-				plain.RenderConfig(app.Stream.Out, report)
-			}
-			return nil
+			return app.render(report)
 		},
 	}
 }
@@ -75,11 +65,14 @@ func newConfigGetCommand(app *App) *cobra.Command {
 					return err
 				}
 				if app.json != nil {
+					// The setting, not just its value: `config
+					// get update.channel --json` has always
+					// answered with the whole entry, and a
+					// script reading .description would break.
 					app.jsonData = setting
 					return nil
 				}
-				fmt.Fprintln(app.Stream.Out, setting.Value)
-				return nil
+				return app.render(views.Value{Value: setting.Value})
 			}
 
 			entry, err := ops.ConfigGet(cmd.Context(), app.Deps, args[0])
@@ -92,8 +85,7 @@ func newConfigGetCommand(app *App) *cobra.Command {
 			}
 			// The value alone on stdout: this is the form a script
 			// substitutes, and decoration would break every one.
-			fmt.Fprintln(app.Stream.Out, entry.Value)
-			return nil
+			return app.render(views.Value{Value: entry.Value})
 		},
 	}
 }
@@ -212,12 +204,7 @@ func newConfigSettingsCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if app.json != nil {
-				app.jsonData = report
-				return nil
-			}
-			fmt.Fprintln(app.Stream.Out, ops.DescribeSettings(report))
-			return nil
+			return app.render(report)
 		},
 	}
 }

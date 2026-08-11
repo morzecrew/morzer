@@ -158,6 +158,29 @@ func (r Result) OutputContains(want ...string) Result {
 	return r
 }
 
+// SaysAll asserts on prose, ignoring where the lines break.
+//
+// OutputContains is the right assertion for an identifier, a flag or a
+// single-word marker: those never wrap, and matching them literally is what
+// makes the assertion precise. A sentence is the opposite case -- since views
+// wrap to the measure, where "decommission that machine" breaks is the
+// terminal's width rather than anything the test means to pin, and a literal
+// match on it asserts the width by accident.
+func (r Result) SaysAll(want ...string) Result {
+	r.t.Helper()
+	flat := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	out, errOut := flat(r.Stdout), flat(r.Stderr)
+
+	for _, w := range want {
+		w = flat(w)
+		if !strings.Contains(out, w) && !strings.Contains(errOut, w) {
+			r.t.Errorf("neither stream says %q:\n--- stdout ---\n%s--- stderr ---\n%s",
+				w, r.Stdout, r.Stderr)
+		}
+	}
+	return r
+}
+
 // FieldLen reads a dotted path and asserts it is a list of the given length.
 func (r Result) FieldLen(path string, want int) Result {
 	r.t.Helper()

@@ -8,6 +8,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ui"
 )
 
 func newInstallationCommand(app *App) *cobra.Command {
@@ -228,22 +229,23 @@ func readBackupIdentity(
 // A recovery is the moment an operator is least able to reconstruct a sequence
 // from documentation, so the sequence is printed where they already are.
 func printImportNextSteps(app *App, export domain.InstallationExport) {
-	out := app.Stream.Err
-
-	fmt.Fprintf(out, "\nthe installation id %s was assumed from %s.\n",
-		export.Installation.ID, hostLabel(export))
-	fmt.Fprintf(out, "decommission that machine: two live hosts sharing an "+
-		"installation id will confuse every backup you take.\n")
-
-	fmt.Fprintf(out, "\nnext:\n")
+	step := "1. morzer update <bundle>   # no release was recorded"
 	if !export.Release.IsZero() {
-		fmt.Fprintf(out, "  1. morzer update <bundle>   # %s %s was running\n",
+		step = fmt.Sprintf("1. morzer update <bundle>   # %s %s was running",
 			export.Release.Name, export.Release.Version)
-	} else {
-		fmt.Fprintf(out, "  1. morzer update <bundle>   # no release was recorded\n")
 	}
-	fmt.Fprintf(out, "  2. morzer restore --force --confirm %s\n", export.Installation.ID)
-	fmt.Fprintf(out, "  3. morzer doctor\n")
+
+	app.notice(ui.Callout{
+		Title: "next",
+		Body: []string{
+			fmt.Sprintf("The installation id %s was assumed from %s. Decommission "+
+				"that machine: two live hosts sharing an installation id will "+
+				"confuse every backup you take.", export.Installation.ID, hostLabel(export)),
+			step,
+			fmt.Sprintf("2. morzer restore --force --confirm %s", export.Installation.ID),
+			"3. morzer doctor",
+		},
+	})
 }
 
 func hostLabel(export domain.InstallationExport) string {

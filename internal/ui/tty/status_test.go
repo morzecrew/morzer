@@ -1,7 +1,6 @@
 package tty_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
-	"github.com/morzecrew/morzer/internal/ui/plain"
 	"github.com/morzecrew/morzer/internal/ui/theme"
 	"github.com/morzecrew/morzer/internal/ui/tty"
 )
@@ -52,58 +50,6 @@ func deployment() ops.Status {
 				WithHint("check `docker compose logs api`"),
 		}},
 		Problems: []string{"the release store holds 6 releases"},
-	}
-}
-
-// TestTheStatusViewNeverShowsLessThanPlain is decision 3 for the command an
-// operator runs most often.
-func TestTheStatusViewNeverShowsLessThanPlain(t *testing.T) {
-	s := deployment()
-
-	var rich, plainBuf bytes.Buffer
-	tty.RenderStatus(&rich, theme.New(false, false), s)
-	plain.RenderStatus(&plainBuf, s)
-
-	richText, plainText := flatten(rich.String()), flatten(plainBuf.String())
-
-	for _, want := range []string{
-		s.Product, s.InstallationID, s.Profile, s.PublicURL,
-		"1.3.0", "1.2.0",
-		"app", "running", "db", "exited (137)",
-		"http", "connection refused",
-		"bk_01J8ZN", "op_01J8ZQ",
-		"api did not become healthy", "check `docker compose logs api`",
-		"the release store holds 6 releases",
-	} {
-		if !strings.Contains(richText, flatten(want)) {
-			t.Errorf("the styled status omits %q:\n%s", want, rich.String())
-		}
-		if !strings.Contains(plainText, flatten(want)) {
-			t.Errorf("plain omits %q:\n%s", want, plainBuf.String())
-		}
-	}
-}
-
-func TestAStoppedServiceIsMarkedWithoutColour(t *testing.T) {
-	var buf bytes.Buffer
-	tty.RenderStatus(&buf, theme.New(false, false), deployment())
-	out := buf.String()
-
-	sym := theme.ASCIISymbols
-	var app, db string
-	for _, line := range strings.Split(out, "\n") {
-		switch {
-		case strings.Contains(line, "app "):
-			app = line
-		case strings.Contains(line, "db "):
-			db = line
-		}
-	}
-	if !strings.Contains(app, sym.OK) {
-		t.Errorf("the running service is not marked ok: %q", app)
-	}
-	if !strings.Contains(db, sym.Fail) {
-		t.Errorf("the stopped service is not marked failed: %q", db)
 	}
 }
 

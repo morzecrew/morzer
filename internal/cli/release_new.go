@@ -14,6 +14,7 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 func newReleaseNewCommand(app *App) *cobra.Command {
@@ -71,7 +72,9 @@ func newReleaseNewCommand(app *App) *cobra.Command {
 				app.jsonData = map[string]any{"root": dir, "name": name}
 				return nil
 			}
-			fmt.Fprintf(app.Stream.Out, "%s\n", dir)
+			if err := app.render(views.Value{Value: dir}); err != nil {
+				return err
+			}
 			app.finish(ops.Result{
 				Summary: fmt.Sprintf(
 					"scaffolded %s; edit the TODOs, then `morzer release build %s --version 0.1.0`",

@@ -22,6 +22,63 @@ func (a *App) rich() bool {
 	return a.Mode == ui.ModeRich && !a.Flags.quiet && a.plain != nil
 }
 
+// render puts a report on stdout in whatever mode this run resolved to.
+//
+// The one boundary. A command decides *what* to say and hands over a value;
+// `internal/ui` decides how it looks. Before this existed the mode was resolved
+// carefully for every invocation and then honoured by 8% of the output -- 59
+// direct prints against 5 renderer dispatches -- so a contributor adding a
+// command had nothing to cross: `fmt.Fprintf(app.Stream.Out, …)` compiled and
+// the mode was silently ignored.
+//
+// JSON is not rendered. The value *is* the machine-readable contract, published
+// by App.finish through the envelope, exactly as before: a view that reshaped it
+// would make every presentation change a breaking one.
+//
+// A report with no registered view returns an internal error rather than
+// printing nothing. The registry test in internal/ui makes that unreachable in
+// a shipped binary; it is written out because "unreachable" and "silent on the
+// operator's terminal" must never be the same code path.
+func (a *App) render(report any) error {
+	if a.json != nil {
+		a.jsonData = report
+		return nil
+	}
+
+	mode := ui.ModePlain
+	if a.rich() {
+		mode = ui.ModeRich
+	}
+	if err := ui.Render(a.Stream.Out, mode, a.theme(), report); err != nil {
+		return domain.Internal(err, "cannot render this report")
+	}
+	return nil
+}
+
+// notice draws a callout on stderr.
+//
+// Narration rather than a report, which is why it goes to stderr and not
+// through the registry: nothing here is the answer to a command, and `--json`
+// must not gain a key for it. It uses the components anyway, because the thing
+// being narrated -- where the recovery key went, what to do after an import --
+// is the one an operator must not scroll past, and the rule that reports and
+// narration look like the same product is what makes the callout mean anything.
+//
+// Suppressed by --quiet along with every other narration, and by --json, where
+// a box on stderr would land in the middle of a script's log.
+func (a *App) notice(c ui.Callout) {
+	if a.Flags.quiet || a.Mode == ui.ModeJSON {
+		return
+	}
+
+	d := ui.NewPlainDoc(ui.CurrentScreen())
+	if a.rich() {
+		d = ui.NewDoc(a.theme(), ui.CurrentScreen())
+	}
+	d.Callout(2, c)
+	d.Emit(a.Stream.Err)
+}
+
 // terminalInput is what the live views read keys from, and nil when there is
 // nothing to read keys from.
 //

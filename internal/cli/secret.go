@@ -17,6 +17,7 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 func newSecretCommand(app *App) *cobra.Command {
@@ -52,26 +53,7 @@ func newSecretListCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = metadata
-				return nil
-			}
-			if len(metadata) == 0 {
-				fmt.Fprintln(app.Stream.Out, "no secrets are set")
-				return nil
-			}
-
-			fmt.Fprintf(app.Stream.Out, "%-28s %-14s %6s  %s\n",
-				"NAME", "FINGERPRINT", "LENGTH", "LAST CHANGED")
-			for _, m := range metadata {
-				changed := "unknown"
-				if !m.LastChanged.IsZero() {
-					changed = m.LastChanged.Format("2006-01-02 15:04:05Z")
-				}
-				fmt.Fprintf(app.Stream.Out, "%-28s %-14s %6d  %s\n",
-					m.Name, m.Fingerprint, m.Length, changed)
-			}
-			return nil
+			return app.render(metadata)
 		},
 	}
 }
@@ -232,14 +214,7 @@ func newSecretRenderCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = files
-				return nil
-			}
-			for _, f := range files {
-				fmt.Fprintf(app.Stream.Out, "%-28s %s (%04o)\n", f.Name, f.Path, f.Mode)
-			}
-			return nil
+			return app.render(files)
 		},
 	}
 }
@@ -260,22 +235,7 @@ func newSecretRecipientsCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = recipients
-				return nil
-			}
-			if len(recipients) == 0 {
-				fmt.Fprintln(app.Stream.Out, "no recipients; the secret state has not been created yet")
-				return nil
-			}
-			for _, r := range recipients {
-				line := fmt.Sprintf("%-10s %s", r.Kind, r.PublicKey)
-				if r.Comment != "" {
-					line += "  # " + r.Comment
-				}
-				fmt.Fprintln(app.Stream.Out, line)
-			}
-			return nil
+			return app.render(recipients)
 		},
 	}
 
@@ -349,15 +309,7 @@ func newSecretRecipientsCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			if app.json != nil {
-				app.jsonData = map[string]string{"public_key": pub, "path": path}
-				return nil
-			}
-			fmt.Fprintf(app.Stream.Out, "%s\n", pub)
-			fmt.Fprintf(app.Stream.Err,
-				"\nprivate key written to %s (0400)\n"+
-					"move it off this machine and store it somewhere you can reach if this VM is lost\n", path)
-			return nil
+			return app.render(views.KeyPair{PublicKey: pub, Path: path})
 		},
 	}
 
