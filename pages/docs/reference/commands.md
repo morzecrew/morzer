@@ -80,6 +80,10 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`rollback`](#rollback) | Return to the previous release. |
 | [`status`](#status) | Show what is deployed and whether it is working. |
 | [`doctor`](#doctor) | Run read-only diagnostics. |
+| [`logs`](#logs) | Read the deployment's logs. |
+| [`ps`](#ps) | List the deployment's containers. |
+| [`stats`](#stats) | Show CPU, memory and I/O per container. |
+| [`exec`](#exec) | Run a command inside a running service. |
 | [`backup`](#backup) | Back up the database, files, configuration and secret state. |
 | [`restore`](#restore) | Restore from a backup. |
 | [`version`](#version) | Print version, commit, and supported manifest API versions. |
@@ -288,6 +292,89 @@ One check about images does **fail** rather than warn:
 | Check | What it means |
 | --- | --- |
 | `images.bundled` | An image the release marks `from: bundle` is not in the local image store. Fatal, and `apply` refuses on it: a bundled image is deployed under a tag the manager creates, and letting a converge proceed without it would send the deployment to the vendor's registry for whatever that tag pointed at. `morzer release ingest` loads it out of the bundle, with no network. |
+
+## logs
+
+Streams the deployment's logs, resolving the Compose project, its files and its
+environment. Scoped to the project rather than to the manifest's service list,
+so a sidecar the vendor's Compose file starts is included.
+
+| Flag | Meaning |
+| --- | --- |
+| `--follow`, `-f` | Keep the stream open. Ctrl-C exits 0. |
+| `--tail` | Lines of history before following. Default `100`; `0` is the whole retained backlog, which is also the default with `--follow`. |
+| `--since` | A duration back from now (`10m`, `2h`) or an RFC 3339 instant **with a zone**. A timestamp with no zone is refused rather than assumed local. |
+| `--no-redact` | Do not scrub this installation's secret values. Prints a warning to stderr. |
+
+Takes no lock: reading logs must never queue behind an update, since during one
+is when they are most wanted. Nothing is stored, rotated or shipped.
+
+Secret values are scrubbed by default, holding bytes to a line boundary so a
+value split across two reads is still caught, and dropping any line over 64 KiB
+rather than passing it through unmatched. It is best effort — a value the
+service *derived* from a secret is beyond any redactor. See
+[Looking inside](../operating/looking-inside.md#redaction-and-what-it-cannot-do).
+
+`--json` is the one exception to the [single-envelope
+contract](output-modes.md#the-one-streaming-exception): one object per line, no
+envelope, and the exit code is what says whether the stream ended cleanly.
+
+## ps
+
+The service table `status` draws, on its own: what is running, whether it is
+healthy, which image, and the runtime's own sentence about it. No flags, no
+lock, and nothing changed.
+
+The container column is never dropped on a narrow terminal — it is the only
+thing that tells two replicas of one service apart.
+
+## stats
+
+One sample of CPU, memory and I/O, one row per container.
+
+| Flag | Meaning |
+| --- | --- |
+| `--watch` | Re-sample until interrupted. Refused with `--json`. |
+| `--interval` | How often `--watch` re-samples. Default `2s`, floor `1s`. |
+
+Never an aggregate per service: a scaled service is several containers, and one
+row under the service's name would be one replica's numbers wearing the whole
+service's label. The total line covers CPU and memory, which add, and not the
+memory limit, which does not; `--json` emits the rows and no total.
+
+A `-` in a column — `null` under `--json` — is a figure this host does not
+account for, which is what a rootless daemon reports for block I/O. It is not a
+zero, because a container that has written nothing reports one of those.
+
+At a terminal `--watch` redraws; elsewhere it appends a block per sample, unlike
+[`status --watch`](#watching), which is refused without a terminal. A sequence
+of samples is a time series worth keeping; a redrawn status table is not.
+
+A runtime that cannot report statistics refuses by name with
+[exit 7](exit-codes.md) rather than returning an empty table, which would be
+indistinguishable from an idle deployment.
+
+## exec
+
+```sh
+morzer exec <service> -- <command> [args...]
+```
+
+Runs one command inside a running container of the named service and propagates
+its exit code, so a failed command fails the invocation. Everything after `--`
+is the container's command line and nothing else; the terminator is required.
+
+Not an interactive shell: there is no TTY and no stdin, so a command that
+prompts waits for an answer nobody can give. There is no `--user` and no
+shortcut for running as root.
+
+A service that is not running is refused by name, with the state it is in.
+
+Journaled with its type, service, argv and exit code — and never its output. The
+argv is redacted with this installation's known secret values first, because a
+password in an argv is the ordinary case. A credential the manager has never
+been told about is beyond that; see
+[Looking inside](../operating/looking-inside.md#it-is-written-down).
 
 ## backup
 

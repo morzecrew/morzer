@@ -133,6 +133,19 @@ type App struct {
 	// RunE signature returns only an error.
 	jsonData   any
 	jsonRecord *domain.OperationRecord
+
+	// jsonStreamed marks a command that has already written its own
+	// machine-readable output, one object per line, and must not have an
+	// envelope appended to it.
+	//
+	// The single documented exception to the one-object contract, and it
+	// belongs to `morzer logs`: a stream has no end at which to write an
+	// envelope. Set once the first record is about to go out, so a command
+	// that failed before streaming anything still gets its `ok:false` --
+	// after that the exit code is what says whether the stream ended
+	// cleanly, and the diagnostic is on stderr where a consumer parsing
+	// lines will not meet it.
+	jsonStreamed bool
 }
 
 // CommandTree returns the command tree with nothing wired.
@@ -231,20 +244,24 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 		})
 	}
 
-	if app.json != nil {
+	if app.json != nil && !app.jsonStreamed {
 		// In JSON mode the envelope is the whole output, including for
 		// errors, so it is written here rather than per-command.
 		if writeErr := app.json.Write(app.command, app.jsonData, app.jsonRecord, err); writeErr != nil {
 			fmt.Fprintf(app.Stream.Err, "cannot write json output: %v\n", writeErr)
 			return domain.ExitInternal
 		}
-		return domain.ExitCode(err)
+		return exitCodeFor(err)
 	}
 
-	if err != nil {
+	// A container's own non-zero exit is not reported again: `morzer exec`
+	// has already passed the command's stderr through, and a manager
+	// sentence under it would be this program taking the credit for
+	// somebody else's error message.
+	if err != nil && !silentFailure(err) {
 		app.printError(err)
 	}
-	return domain.ExitCode(err)
+	return exitCodeFor(err)
 }
 
 // wantsJSON reports whether the caller asked for machine-readable output.
@@ -519,6 +536,14 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupOperate, installationScope(newConfigCommand(app))),
 		grouped(groupOperate, installationScope(newSecretCommand(app))),
 		grouped(groupOperate, machineScope(newDoctorCommand(app))),
+
+		// The four that reach into what is running, after the ones that
+		// change it: an operator meets `update` and `doctor` first, and
+		// these are what they run when the answer was not there.
+		grouped(groupOperate, installationScope(newLogsCommand(app))),
+		grouped(groupOperate, installationScope(newPsCommand(app))),
+		grouped(groupOperate, installationScope(newStatsCommand(app))),
+		grouped(groupOperate, installationScope(newExecCommand(app))),
 
 		grouped(groupData, installationScope(newBackupCommand(app))),
 		grouped(groupData, installationScope(newRestoreCommand(app))),

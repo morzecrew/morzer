@@ -390,10 +390,10 @@ func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.
 	return parsePS(res.Stdout)
 }
 
-// parsePS handles both shapes Compose has emitted across versions: a JSON
-// array, and newline-delimited objects. Supporting both is cheaper than
+// parsePSEntries handles both shapes Compose has emitted across versions: a
+// JSON array, and newline-delimited objects. Supporting both is cheaper than
 // pinning a Compose version.
-func parsePS(raw string) ([]ports.ServiceState, error) {
+func parsePSEntries(raw string) ([]psEntry, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
@@ -404,34 +404,51 @@ func parsePS(raw string) ([]ports.ServiceState, error) {
 		if err := json.Unmarshal([]byte(raw), &entries); err != nil {
 			return nil, domain.RuntimeError(err, "cannot parse compose ps output")
 		}
-	} else {
-		for _, line := range strings.Split(raw, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			var e psEntry
-			if err := json.Unmarshal([]byte(line), &e); err != nil {
-				return nil, domain.RuntimeError(err, "cannot parse compose ps output")
-			}
-			entries = append(entries, e)
+		return entries, nil
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
+		var e psEntry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			return nil, domain.RuntimeError(err, "cannot parse compose ps output")
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+// parsePS reduces the listing to the port's vocabulary.
+func parsePS(raw string) ([]ports.ServiceState, error) {
+	entries, err := parsePSEntries(raw)
+	if err != nil {
+		return nil, err
 	}
 
 	out := make([]ports.ServiceState, 0, len(entries))
 	for _, e := range entries {
 		name := e.Service
 		if name == "" {
+			// A listing that named no service: the container is the
+			// only handle there is, so it becomes the name and the
+			// Container field stays empty rather than repeating it
+			// as an instance the listing never reported.
 			name = e.Name
 		}
-		out = append(out, ports.ServiceState{
+		state := ports.ServiceState{
 			Name:     name,
 			Image:    e.Image,
 			State:    strings.ToLower(e.State),
 			Health:   normaliseHealth(e.Health),
 			ExitCode: e.ExitCode,
 			Status:   e.Status,
-		})
+		}
+		if e.Service != "" {
+			state.Container = e.Name
+		}
+		out = append(out, state)
 	}
 	return out, nil
 }
@@ -461,6 +478,9 @@ func normaliseHealth(s string) ports.ServiceHealth {
 // run-to-completion.
 func (r *Runtime) Logs(ctx context.Context, cfg ports.RuntimeConfig, opts ports.LogOptions) (io.ReadCloser, error) {
 	argv := r.args(cfg, "logs", "--no-color")
+	if opts.Timestamps {
+		argv = append(argv, "--timestamps")
+	}
 	if opts.Follow {
 		argv = append(argv, "--follow")
 	}

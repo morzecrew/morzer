@@ -93,6 +93,42 @@ Those print the value and a newline in every non-JSON mode. `morzer completion
 <shell>` is the third: it is a script being emitted through a pipe, and an
 envelope around it would produce something no shell can source.
 
+Two more put bytes on stdout that the manager did not compose, and for the same
+reason: `morzer logs` relays what a container wrote, and `morzer exec` relays
+what the command inside it printed. An operator piping `morzer exec db --
+pg_dump` into a file must get the dump, not a report about it — so nothing wraps,
+colours or frames either one. The rule the build enforces knows both by name;
+nothing else may join them.
+
+## The one streaming exception
+
+Every command emits exactly one JSON object under `--json` — except
+[`morzer logs`](commands.md#logs), which emits one per line and no envelope:
+
+```json
+{"ts":"2026-08-10T09:12:33.481Z","container":"demo-app-1","service":"app","line":"listening on :8080"}
+```
+
+A stream has no end at which to write an envelope, and `--follow` may have no
+end at all. One documented exception is better than every future streaming
+command inventing its own, so this is the only one there will be:
+`morzer stats --watch --json` is refused rather than given a second.
+
+Three things follow from it, and they are the contract:
+
+- **Redaction applies exactly as it does to the human stream.** A `--json`
+  consumer is not more trusted than a terminal.
+- **Anything the manager has to say goes to stderr**, never into the stream, so
+  a consumer parsing lines never has to tell the vendor's output from the
+  manager's opinion of it.
+- **The exit code says whether the stream ended cleanly.** Ctrl-C during
+  `--follow` is 0 — the operator finished reading. A runtime that died mid-stream
+  is non-zero with its own message on stderr.
+
+A command that fails *before* the first record still gets an ordinary error
+envelope: a script whose invocation was refused reads a refusal rather than
+empty input.
+
 ## The measure
 
 Text wraps at **100 columns however wide the terminal is**, and a wider terminal

@@ -44,20 +44,48 @@ func TestNoCommandPrintsAReportItself(t *testing.T) {
 			t.Fatalf("cannot parse %s: %v", name, err)
 		}
 
-		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
 			if !ok {
+				continue
+			}
+			if streamExceptions[fn.Name.Name] {
+				continue
+			}
+
+			ast.Inspect(fn, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				if why := writesToStdout(call); why != "" {
+					t.Errorf("%s: %s writes a report straight to stdout (%s).\n"+
+						"Reports go through app.render, which is what makes --plain, "+
+						"rich and --json one decision instead of fifteen.",
+						fset.Position(call.Pos()), fn.Name.Name, why)
+				}
 				return true
-			}
-			if why := writesToStdout(call); why != "" {
-				t.Errorf("%s writes a report straight to stdout (%s).\n"+
-					"Reports go through app.render, which is what makes --plain, "+
-					"rich and --json one decision instead of fifteen.",
-					fset.Position(call.Pos()), why)
-			}
-			return true
-		})
+			})
+		}
 	}
+}
+
+// streamExceptions are the two functions that put bytes on stdout without
+// composing them, named here so the exception is a decision rather than a
+// loophole.
+//
+// Both are RFC 0021: `copyLogs` relays a log stream, where `--json` is one
+// object per line because a stream has no end at which to write an envelope,
+// and `passThrough` relays what a command inside a container printed. Neither
+// output is this program's to lay out -- an operator piping `morzer exec db --
+// pg_dump` into a file must get the dump, not a report about it -- and a view
+// that wrapped or coloured either would break the pipe it was written for.
+//
+// Nothing else may join this list without the same argument: the bytes were
+// produced by something other than morzer, and a reader is going to parse them.
+var streamExceptions = map[string]bool{
+	"copyLogs":    true,
+	"passThrough": true,
 }
 
 // stdoutStreams are the ways a command can name the stream a report goes to.
@@ -98,10 +126,18 @@ func writesToStdout(call *ast.CallExpr) string {
 	case receiver == "fmt" && strings.HasPrefix(fn.Sel.Name, "Print"):
 		return "fmt." + fn.Sel.Name + " ignores the injected streams entirely"
 
-	// io.WriteString(app.Stream.Out, …)
-	case receiver == "io" && fn.Sel.Name == "WriteString":
+	// io.WriteString(app.Stream.Out, …) and io.Copy(app.Stream.Out, …)
+	case receiver == "io" && (fn.Sel.Name == "WriteString" || fn.Sel.Name == "Copy"):
 		if len(call.Args) > 0 && stdoutStreams[render(call.Args[0])] {
-			return "io.WriteString"
+			return "io." + fn.Sel.Name
+		}
+
+	// json.NewEncoder(app.Stream.Out) — a second machine-readable contract
+	// beside the envelope, which is the exception `logs` carries and
+	// nothing else may.
+	case receiver == "json" && fn.Sel.Name == "NewEncoder":
+		if len(call.Args) > 0 && stdoutStreams[render(call.Args[0])] {
+			return "json.NewEncoder"
 		}
 
 	// app.Stream.Out.Write(…) / .WriteString(…)

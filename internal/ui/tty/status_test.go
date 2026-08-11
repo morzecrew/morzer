@@ -15,6 +15,7 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/ui/theme"
 	"github.com/morzecrew/morzer/internal/ui/tty"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 // deployment is a machine with something wrong with it: a service down, a
@@ -59,7 +60,8 @@ func deployment() ops.Status {
 // information the operator is sitting there watching for.
 func TestWatchKeepsTheLastGoodStatusWhenARefreshFails(t *testing.T) {
 	n := 0
-	tm := teatest.NewTestModel(t, tty.NewWatchModel(context.Background(), tty.WatchOptions{
+	tm := teatest.NewTestModel(t, tty.NewWatchModel(context.Background(), tty.WatchOptions[ops.Status]{
+		Body:     views.StatusDoc,
 		Theme:    theme.New(false, false),
 		Interval: 20 * time.Millisecond,
 		Refresh: func(context.Context) (ops.Status, error) {
@@ -92,7 +94,8 @@ func TestWatchKeepsTheLastGoodStatusWhenARefreshFails(t *testing.T) {
 }
 
 func TestWatchQuitsOnQ(t *testing.T) {
-	tm := teatest.NewTestModel(t, tty.NewWatchModel(context.Background(), tty.WatchOptions{
+	tm := teatest.NewTestModel(t, tty.NewWatchModel(context.Background(), tty.WatchOptions[ops.Status]{
+		Body:     views.StatusDoc,
 		Theme:    theme.New(false, false),
 		Interval: time.Hour, // only the initial fetch
 		Refresh:  func(context.Context) (ops.Status, error) { return deployment(), nil },

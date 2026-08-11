@@ -17,6 +17,14 @@ const (
 	OpTypeConfig   OperationType = "config"
 	OpTypeRelease  OperationType = "release"
 
+	// OpTypeExec is a command an operator ran inside a running service.
+	//
+	// The one journalled operation that mutates nothing on its own: what it
+	// records is that a human was inside the deployment and what they asked
+	// it to do, which is the fact an incident review needs and the one
+	// nothing else in the journal would carry.
+	OpTypeExec OperationType = "exec"
+
 	// OpTypeImport rebuilds a machine from an installation export. It is
 	// its own type rather than a flavour of init because an incident review
 	// needs to see, at a glance, that this machine's identity was assumed

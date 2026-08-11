@@ -61,6 +61,32 @@ type Runtime struct {
 	// ValidateResult is what Validate returns.
 	ValidateResult ports.Rendered
 
+	// LogOutput is what Logs streams, and LogRequests records the options
+	// each call was given.
+	//
+	// The options are recorded because asserting on the output cannot tell a
+	// command that honoured `--tail 5 --since 10m` from one that ignored
+	// both and streamed everything.
+	LogOutput   string
+	LogRequests []ports.LogOptions
+
+	// LogWrites is LogOutput split into the chunks the reader hands over,
+	// so a test can put a read boundary in the middle of a secret -- the one
+	// arrangement a line-by-line filter passes only by accident. Empty means
+	// LogOutput arrives in one piece.
+	LogWrites []string
+
+	// StatsResult is what Stats returns; StatsCalls counts the samples,
+	// which is how `--watch` is asserted to be re-sampling rather than
+	// redrawing one reading.
+	StatsResult []ports.ServiceStats
+	StatsCalls  int
+
+	// ExecResults maps a service name to what a command inside it does.
+	// ExecArgv records what each call was asked to run.
+	ExecResults map[string]ports.ExitResult
+	ExecArgv    [][]string
+
 	// OneShotResults maps a service name to its exit result.
 	OneShotResults map[string]ports.ExitResult
 
@@ -103,6 +129,7 @@ func NewRuntime() *Runtime {
 		Services:       map[string]ports.ServiceState{},
 		Fail:           map[string]error{},
 		OneShotResults: map[string]ports.ExitResult{},
+		ExecResults:    map[string]ports.ExitResult{},
 		ValidateResult: ports.Rendered{Services: []string{"app", "db"}},
 		VolumeContents: map[string]string{},
 		CaptureWitness: map[string][]string{},
@@ -160,6 +187,11 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	for _, name := range r.ValidateResult.Services {
 		r.Services[name] = ports.ServiceState{
 			Name: name, State: "running", Health: ports.HealthHealthy,
+			// Named the way Compose names one, because the container
+			// is what attributes a log line to a service and a fake
+			// that left it empty would make every structured record
+			// unattributed while the real runtime attributed them.
+			Container: cfg.Project + "-" + name + "-1",
 		}
 	}
 	return nil
@@ -373,7 +405,42 @@ func (r *Runtime) Exec(ctx context.Context, cfg ports.RuntimeConfig, service str
 	if err := r.record("Exec"); err != nil {
 		return ports.ExitResult{}, err
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.ExecArgv = append(r.ExecArgv, argv)
+	if res, ok := r.ExecResults[service]; ok {
+		return res, nil
+	}
 	return ports.ExitResult{ExitCode: 0}, nil
+}
+
+// Stats reports whatever the test arranged, and counts the samples.
+//
+// Nothing is invented from the service list: a fake that made up plausible
+// numbers would let a command that never called this pass every assertion about
+// what it printed.
+func (r *Runtime) Stats(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.ServiceStats, error) {
+	if err := r.record("Stats"); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.StatsCalls++
+
+	// Nothing running is nothing sampled, as in the real adapter -- which
+	// does not even call the daemon, because `docker stats` with no
+	// container names samples the whole host. A fake that reported an
+	// arranged sample for a project that was never started would disagree
+	// with it about the answer `stats` gives mid-incident.
+	running := false
+	for _, s := range r.Services {
+		running = running || s.Running()
+	}
+	if !running {
+		return nil, nil
+	}
+	return r.StatsResult, nil
 }
 
 func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.ServiceState, error) {
@@ -439,11 +506,46 @@ func (r *Runtime) HasImage(ctx context.Context, imageRef string) (bool, error) {
 	return false, nil
 }
 
+// Logs streams what the test arranged, in the chunks it arranged.
+//
+// The chunking is the point: the port hands over a byte stream, and where a
+// read boundary falls is the kernel's business -- so a fake that always
+// delivered whole lines could never exercise a secret split across two reads.
 func (r *Runtime) Logs(ctx context.Context, cfg ports.RuntimeConfig, opts ports.LogOptions) (io.ReadCloser, error) {
 	if err := r.record("Logs"); err != nil {
 		return nil, err
 	}
-	return io.NopCloser(strings.NewReader("")), nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.LogRequests = append(r.LogRequests, opts)
+	if len(r.LogWrites) > 0 {
+		return io.NopCloser(&chunkReader{chunks: r.LogWrites}), nil
+	}
+	return io.NopCloser(strings.NewReader(r.LogOutput)), nil
+}
+
+// chunkReader hands over one arranged chunk per Read, however much room the
+// caller offered.
+type chunkReader struct {
+	chunks []string
+	at     int
+}
+
+func (c *chunkReader) Read(p []byte) (int, error) {
+	if c.at >= len(c.chunks) {
+		return 0, io.EOF
+	}
+	chunk := c.chunks[c.at]
+	if len(chunk) > len(p) {
+		// A chunk larger than the caller's buffer is split rather than
+		// dropped, and the remainder stays in place for the next read.
+		n := copy(p, chunk)
+		c.chunks[c.at] = chunk[n:]
+		return n, nil
+	}
+	c.at++
+	return copy(p, chunk), nil
 }
 
 // CallsMatching returns recorded calls whose name starts with prefix.

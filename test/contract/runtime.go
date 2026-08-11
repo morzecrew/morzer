@@ -143,6 +143,92 @@ func RunRuntimeSuite(t *testing.T, newRuntime RuntimeFactory) {
 
 	runQuiesceSuite(t, newRuntime)
 	runVolumeSuite(t, newRuntime)
+	runInspectionSuite(t, newRuntime)
+}
+
+// runInspectionSuite covers what `morzer logs`, `ps` and `stats` read.
+//
+// These three are the ones a fake cannot prove on its own, in opposite
+// directions. The log framing is a promise about a *format*: the manager parses
+// the container name out of every line to attribute a record to a service, so a
+// runtime that framed its lines differently would produce a structured stream
+// where nothing was attributed to anything -- and no unit test written against
+// the fake would notice, because the fake would be emitting whatever shape the
+// parser expects. And `docker stats` accepts flags that a scripted runner will
+// agree to whatever they are.
+func runInspectionSuite(t *testing.T, newRuntime RuntimeFactory) {
+	t.Helper()
+	ctx := context.Background()
+
+	t.Run("every log line names the container that wrote it", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+		require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 2 * time.Minute}))
+
+		reader, err := rt.Logs(ctx, cfg, ports.LogOptions{Tail: 100, Timestamps: true})
+		require.NoError(t, err)
+		defer func() { _ = reader.Close() }()
+
+		body, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		require.NotEmpty(t, strings.TrimSpace(string(body)),
+			"the fixture's services print on start-up, so an empty stream means "+
+				"the logs never arrived")
+
+		var framed int
+		for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+			prefix, rest, ok := strings.Cut(line, "| ")
+			if !ok {
+				// The runtime's own narration about the stream
+				// carries no frame, and is not what this counts.
+				continue
+			}
+			framed++
+
+			assert.NotEmpty(t, strings.TrimSpace(prefix),
+				"a framed line named no container, so nothing can attribute it")
+
+			// The instant, because it was asked for. Without it a
+			// `--json` record's `ts` would have to be the moment the
+			// manager happened to read the line, which is a
+			// different fact wearing the same name.
+			stamp, _, split := strings.Cut(rest, " ")
+			require.True(t, split, "a framed line carried no text after the prefix: %q", line)
+			_, err := time.Parse(time.RFC3339Nano, stamp)
+			assert.NoError(t, err,
+				"LogOptions.Timestamps was set and %q is not an instant", stamp)
+		}
+		assert.Positive(t, framed, "no line carried a container prefix:\n%s", body)
+	})
+
+	t.Run("stats report a running container's memory", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+		require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 2 * time.Minute}))
+
+		stats, err := rt.Stats(ctx, cfg)
+		require.NoError(t, err)
+		require.NotEmpty(t, stats, "the project is running and nothing was sampled")
+
+		for _, s := range stats {
+			assert.NotEmpty(t, s.Container,
+				"a sample with no container cannot be told from its own replica")
+			// The one figure with no honest zero: a running
+			// container uses memory, so 0 means the adapter read
+			// the daemon's answer wrongly rather than that the
+			// service is frugal.
+			assert.Positive(t, s.MemoryBytes,
+				"%s reports no memory, which no running container does", s.Container)
+		}
+	})
+
+	t.Run("stats on a project that was never started report nothing", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+
+		// And do not error: `stats` runs on a machine mid-incident,
+		// where "nothing is running" is the answer rather than a fault.
+		stats, err := rt.Stats(ctx, cfg)
+		require.NoError(t, err)
+		assert.Empty(t, stats)
+	})
 }
 
 // runQuiesceSuite covers Stop and Start -- the pair a backup uses to get

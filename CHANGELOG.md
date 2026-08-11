@@ -159,6 +159,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Two diagnostics about the machine rather than the installation: how many installations it holds, warning when one has systemd units installed and state that will not load; and a warning when two installations declare the same host port, naming both. They cannot both run, and today the second one's converge fails inside Compose with a message about the port and nothing about the neighbour holding it. Both are warnings and never failures — several installations on one machine is a supported arrangement, and a diagnostic that failed on one would teach operators to ignore diagnostics.
 
+- `morzer logs` reads the deployment's logs without anybody having to reconstruct the Compose project, the file list the profile selected, or the environment the manager interpolates into them. `--follow`, `--tail`, and `--since` taking either a duration or an RFC 3339 instant — a timestamp with no zone is refused rather than assumed local, because which midnight is meant is not something a log query should guess. Ctrl-C during a follow exits 0: the operator finished reading. Scoped to the Compose project rather than to the services the manifest names, so a sidecar the vendor's own file starts is included.
+
+- This installation's secret values are scrubbed from that stream by default. The filter holds bytes to a line boundary before matching, so a value split across two reads is still caught, and a line longer than 64 KiB is dropped with a marker rather than passed through unmatched — a filter that gave up on the hard case would leak precisely when a service prints something enormous. It is best effort and the documentation says so: a value the service *derived* from a secret is beyond any redactor. `--no-redact` turns it off and warns; a machine whose secret state cannot be read at all still gets its logs, with a warning that nothing could be scrubbed.
+
+- `morzer logs --json` emits one JSON object per line — the instant the container wrote it, the container, the service and the text — and no envelope. It is the single exception to the one-object contract, because a stream has no end at which to write one, and it is documented as the only one there will be: `morzer stats --watch --json` is refused rather than given a second. Anything the manager has to say goes to stderr, never into the stream, so a consumer parsing lines never has to tell the vendor's output from the manager's opinion of it.
+
+- `morzer ps` is the service table on its own, with the container beside each service: a scaled service is several containers, and two rows under one name with nothing to tell them apart is not a listing. `morzer status` still answers this and three other questions at once; an operator watching a crash loop wants one of them repeatedly.
+
+- `morzer stats` reports CPU, memory and I/O per container, once or with `--watch`. One row per container and never an aggregate per service, and a total line for the two figures that add — a memory limit does not. A figure the host does not account for, which is what a rootless daemon reports for block I/O, is a dash rather than a zero: a container that has written nothing reports zero, and the two must not print the same thing. A runtime that cannot report statistics at all refuses by name instead of returning an empty table that looks like an idle deployment.
+
+- `morzer exec <service> -- <command>` runs one command inside a running container and propagates its exit code, so a command that failed fails the invocation. Everything after `--` is the container's command line and nothing else; there is no `--user` and no shortcut for running as root. It refuses a service that is not running, naming the state. Not an interactive shell: there is no TTY and no stdin.
+
+- Every `exec` is journalled with its service, its argv and its exit code, and never with its output. The argv is redacted with this installation's known secret values first, because a password in an argv is the ordinary case. What a redactor cannot catch is said plainly rather than implied away.
+
+- None of the four takes the deployment lock. They are what an operator runs *while* something else is happening, which is exactly the case a lock would break.
+
 ### Changed
 
 - The installation state format moved to schema 3 for backup targets. An older manager refuses a newer state rather than reading it, seeing no targets, and quietly leaving every backup on the machine a target was configured to survive.

@@ -1,6 +1,7 @@
 package views_test
 
 import (
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -359,6 +360,94 @@ func machineFixtures() []fixture {
 			name:   "installations-empty",
 			value:  []ops.InstallationEntry{},
 			fields: []string{"no installations"},
+		},
+	}
+}
+
+// inspectFixtures are `ps` and `stats`: what the deployment is running, and
+// what it is using.
+func inspectFixtures() []fixture {
+	services := []ports.ServiceState{
+		{
+			Name: "app", Container: "demo-app-1", State: "running",
+			Health: ports.HealthHealthy,
+			Image:  "ghcr.io/demo/app@sha256:" + strings.Repeat("8a", 32),
+			Status: "Up 3 hours",
+		},
+		{
+			// A second replica of the same service. Two rows with
+			// one name is exactly why the container is a column.
+			Name: "app", Container: "demo-app-2", State: "running",
+			Health: ports.HealthStarting,
+			Image:  "ghcr.io/demo/app@sha256:" + strings.Repeat("8a", 32),
+			Status: "Up 12 seconds (health: starting)",
+		},
+		{
+			// No healthcheck declared, which is not a verdict: the
+			// column says so with a dash rather than with "none".
+			Name: "db", Container: "demo-db-1", State: "running",
+			Health: ports.HealthNone,
+			Image:  "postgres@sha256:" + strings.Repeat("1f", 32),
+			Status: "Up 3 hours",
+		},
+		{
+			Name: "worker", Container: "demo-worker-1", State: "exited",
+			Health: ports.HealthNone, ExitCode: 1,
+			Image:  "ghcr.io/demo/worker@sha256:" + strings.Repeat("c3", 32),
+			Status: "Exited (1) 2 minutes ago",
+		},
+	}
+
+	rx, tx := int64(1_200), int64(3_400)
+	blockIn, blockOut := int64(8_192), int64(0)
+	stats := []ports.ServiceStats{
+		{
+			Service: "app", Container: "demo-app-1", Replica: 1,
+			CPUPercent: 12.34, MemoryBytes: 67 << 20, MemoryLimit: 512 << 20,
+			NetRxBytes: &rx, NetTxBytes: &tx,
+			BlockRead: &blockIn, BlockWrite: &blockOut,
+		},
+		{
+			Service: "app", Container: "demo-app-2", Replica: 2,
+			CPUPercent: 0.5, MemoryBytes: 32 << 20, MemoryLimit: 512 << 20,
+			NetRxBytes: &blockOut, NetTxBytes: &blockOut,
+			BlockRead: &blockOut, BlockWrite: &blockOut,
+		},
+		{
+			// A host that does not account for block IO -- a
+			// rootless daemon, which is an ordinary configuration.
+			// The cell is a dash, never a zero.
+			Service: "db", Container: "demo-db-1", Replica: 1,
+			CPUPercent: 3.1, MemoryBytes: 128 << 20,
+			NetRxBytes: &rx, NetTxBytes: &tx,
+		},
+	}
+
+	return []fixture{
+		{
+			name:  "services",
+			value: services,
+			fields: []string{
+				"app", "demo-app-1", "demo-app-2", "running", "healthy",
+				"db", "worker", "exited", "Exited (1)",
+			},
+		},
+		{
+			name:   "services-empty",
+			value:  []ports.ServiceState{},
+			fields: []string{"nothing is running"},
+		},
+		{
+			name:  "stats",
+			value: stats,
+			fields: []string{
+				"app", "demo-app-1", "12.34%", "db", "total",
+			},
+		},
+		{
+			name:   "stats-empty",
+			value:  []ports.ServiceStats{},
+			fields: []string{"nothing is running"},
 		},
 	}
 }

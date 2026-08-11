@@ -248,6 +248,19 @@ func TestRuntimeContract_Fake(t *testing.T) {
 			"demo_uploads": "invoice-0000-4471.pdf",
 		}
 
+		// The log framing and one sample, arranged rather than
+		// synthesised. The inspection legs assert the *shape* both
+		// implementations must produce -- a container name in front of
+		// every line, a memory figure a running container really has --
+		// and a fake that invented them from its own service list would
+		// agree with the parser by construction instead of by contract.
+		rt.LogOutput = "demo-app-1  | 2026-08-11T09:12:33.123456789Z app is up\n" +
+			"demo-db-1  | 2026-08-11T09:12:34.000000000Z ready to accept connections\n"
+		rt.StatsResult = []ports.ServiceStats{
+			{Service: "app", Container: "demo-app-1", Replica: 1,
+				CPUPercent: 1.5, MemoryBytes: 64 << 20},
+		}
+
 		return rt, ports.RuntimeConfig{Project: "demo"}
 	})
 }

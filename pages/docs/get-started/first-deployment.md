@@ -115,6 +115,20 @@ Some results are warnings by design, including the one you will see here: your
 `--root` directory is not tmpfs, so decrypted secrets are on disk. That is
 correct and expected when trying things out.
 
+For the questions those two do not answer — *what did it say*, *what is it
+using*, *what does it think is in the database* — there are four more:
+
+```sh
+morzer --root ./demo ps
+morzer --root ./demo logs --tail 20
+morzer --root ./demo stats
+morzer --root ./demo exec app -- ls /var/lib/demo
+```
+
+None of them needs to know the Compose project name, which files the profile
+selected, or the environment they interpolate. That is the point of them, and
+[Looking inside](../operating/looking-inside.md) is the rest of it.
+
 ## 6. Take a backup
 
 ```sh
@@ -131,6 +145,12 @@ manifest, and the checksums are verified by re-reading what was written.
 docker compose -p demo down
 rm -rf ./demo ~/demo-recovery.key
 ```
+
+This is the one place these pages reach for `docker` directly, and it works here
+only because the example's Compose project name happens to equal its product
+name. In general it does not — `manifest.runtime.project` is the vendor's to set
+— which is why everything *read-only* about a running deployment has a command
+of its own rather than an instruction to reconstruct the project by hand.
 
 That is all of it. The whole installation was under one directory, which is what
 `--root` is for.
