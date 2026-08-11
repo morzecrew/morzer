@@ -4,8 +4,15 @@
   the order an operator meets them, `cobra.EnableCommandSorting` off so
   registration order is display order, and the four tests that keep it that way
   — one of which found two `Short` strings that already wrapped past eighty
-  columns. P2 onwards (the rendering boundary, the components, the density rule,
-  the generated index, `completion install`) is unstarted.
+  columns. **P2, P2a and P3 shipped 2026-08-11**: `app.render` and a
+  type-keyed view registry in `internal/ui`; the five components; every report
+  behind a view, which deleted the four hand-rolled `printf` tables; the measure
+  capped at 100 with tables packing left; `doctor`'s collapse and `--verbose`;
+  the recovery key as a callout; the boundary enforced by a source test and the
+  colour roles by depguard; a `Long` on every command. P4 (the generated index)
+  and P5 (`completion install`) are unstarted, and §5.9's `Example` sweep was
+  read as "where the invocation is not obvious" rather than everywhere — see
+  §12.
 - **Scope:** The surface an operator meets before they meet any capability: how
   `morzer --help` is organised, how output is rendered in each mode, how the
   command reference is found, and how shell completion gets installed. Covers
@@ -607,13 +614,18 @@ they are what the best-written commands here already do:
 3. **Examples where the invocation is not obvious**, using cobra's `Example`
    field so they render in one place rather than inside prose.
 
-*(P1 shipped rule 1 and nothing else: every listing line is asserted to fit
-eighty columns, which found two `Short` strings that already wrapped, and a
-third that said a recovery command prints "its key" when what it prints is the
-public half. Rules 2 and 3 are unenforced and undone — the `Long` sweep and the
-`Example` fields are prose for thirteen commands and their subcommands, and they
-belong with P3's pass over the same files rather than in a phase whose subject
-is the listing. Nothing in `internal/cli/groups_internal_test.go` reads `Long`.)*
+*(P1 shipped rule 1: every listing line is asserted to fit eighty columns, which
+found two `Short` strings that already wrapped and a third that said a recovery
+command prints "its key" when what it prints is the public half.*
+
+*P3 shipped rule 2 and enforces it — `TestEveryCommandExplainsItself` fails the
+build on a command with an empty `Long`, and fifteen had one. Rule 3 shipped as
+written rather than as a sweep: examples went on the seven commands whose
+invocation is not obvious from the usage line, and on none of the others. An
+example on `morzer backup list` is noise that makes the ones that matter harder
+to find, so "where the invocation is not obvious" is enforced by judgement and
+deliberately not by a test — a test for it would have to assert that some
+commands lack examples, which is a rule nobody could maintain.)*
 
 ## 6. Tests
 
@@ -754,22 +766,62 @@ is the listing. Nothing in `internal/cli/groups_internal_test.go` reads `Long`.)
 | 25 | `doctor`'s group order is first-seen, stated as normative | It is already what `ui.GroupChecks` produces and what `report_test.go` asserts; leaving the sample to imply a fixed list invites a renderer that quietly contradicts it. |
 | 26 | The generated index covers every command at every depth except cobra's `help`/`completion` and anything hidden; aliases ride their command's row; every row must resolve to a real anchor | It must validate the same set `docs-check` walks, or the two gates disagree about what "documented" means. |
 
+### Divergences recorded during P2/P2a/P3
+
+Four, each recorded rather than silently taken.
+
+**The interior-gap bound is relative, not absolute.** §6 asks for "no line
+contains an interior run of more than 8 spaces". That bound is wrong for a
+table: column widths come from the data, so one 30-character secret name beside
+a 3-character one is 27 spaces of legitimate alignment padding, and the rule as
+written would have been deleted the first time somebody added a long name. What
+shipped instead is the invariant the defect actually violated —
+`TestNothingIsJustifiedToTheViewport` renders each report at 100, 200, 400 and
+1000 columns and fails if the widest gap grows. `doctor`'s old table went 20 →
+87 → 207 across those widths and fails it at every step; a table with wide data
+passes at all of them. The absolute bound still holds for prose, where it is
+enforced by the components rather than by a whole-view assertion.
+
+**`--verbose` is a type, not a field.** §5.5 leaves the mechanism open. A flag
+on `DoctorReport` would have to travel through the lifecycle layer and be
+serialised into `--json`, which is a presentation choice recorded in a machine
+contract. `views.Verbose` wraps the report the command already has and the
+registry dispatches on the wrapper.
+
+**A table degrades only when the screen's width is known.** §5.3 says narrow
+terminals drop declared-inessential columns. Implemented against the fallback
+width, that dropped columns in a pipe — `morzer release list | grep` lost its
+path column, in the one context where nothing was ever going to be truncated.
+`ui.Screen` now carries whether anything actually reported a width, and
+degrading requires that it did. Found by the existing `clitest` suite, which is
+exactly the safety net §9 said it would be.
+
+**`Example` where the invocation is not obvious, and nowhere else** — see §5.9's
+note.
+
 ## 12. Phasing
 
 - **P1 — Groups and help conventions.** Cobra groups, the grouped-command test,
   a `Short`/`Long` pass. Self-contained, no output changes, one small PR.
-- **P2 — The rendering boundary.** `app.render`, the view registry, the
-  mode-fidelity tests, and the forbidigo rule. The commands move behind it in
-  batches; the rule lands last, when the last direct print is gone.
-- **P2a — The components, before the commands move.** `ContentWidth`, the five
-  components, the golden-width tests and the no-wide-gap assertion, with `status`
-  and `doctor` as the first two consumers. This is the phase to look at output and
-  argue about it, while two views use the components rather than fifteen.
-- **P3 — The rest of the views, and the density rule.** Every remaining report
-  behind a component; `doctor`'s collapse and `--verbose`; the recovery key as a
-  callout; the four hand-rolled tables deleted. Gated on P2a.
+- **P2 — The rendering boundary.** ✅ Shipped 2026-08-11. `app.render`, the view
+  registry, the mode-fidelity tests, and the boundary rule. The rule landed as a
+  source-level test rather than forbidigo: forbidigo matches the called function
+  and not its arguments, so it cannot tell `app.Stream.Out` from
+  `app.Stream.Err`, and a rule that forbade both would forbid narration.
+- **P2a — The components, before the commands move.** ✅ Shipped 2026-08-11.
+  `ContentWidth`, the five components, the golden-width tests and the gap
+  assertion, with `status` and `doctor` as the first two consumers. Looking at
+  the output at this point found two defects in the components themselves: a
+  callout whose top rule was two columns shorter than its bottom, and a check
+  message wrapping back under its own marker.
+- **P3 — The rest of the views, and the density rule.** ✅ Shipped 2026-08-11.
+  Every remaining report behind a component; `doctor`'s collapse and
+  `--verbose`; the recovery key as a callout in both the wizard and
+  `generate-recovery-key`; the four hand-rolled tables deleted.
 - **P4 — The generated index and `docs-check`'s drift assertion.** Independent of
   P2 and P3; gated on P1 only because the groups are what the index's sections
-  mirror.
+  mirror. Deliberately after [0020](0020-several-installations-on-one-machine.md)
+  P2 and [0021](0021-into-the-running-deployment.md): generating a command index
+  before `ls`, `logs` and `stats` exist means regenerating it in the next wave.
 - **P5 — `completion install`.** Independent of everything above. Small enough to
   ride along with any of them.
