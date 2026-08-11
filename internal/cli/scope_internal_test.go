@@ -207,3 +207,34 @@ func TestOneInstallationRefusesNothing(t *testing.T) {
 		}
 	})
 }
+
+// TestADelegatingParentIsNotItselfAScope.
+//
+// `release` and `installation` declare `per-command` because their subtrees hold
+// commands of both kinds. That marker says who owns the command, not what it
+// acts on, and scopeOf must walk past it: a child that declares nothing has to
+// reach the installation default, which is the refusing direction. Reading the
+// marker as a scope would return a third value that is neither — harmless
+// against today's caller, which compares against `machine`, and silently
+// exempting every child of `release` against a caller that compared against
+// `installation` instead.
+func TestADelegatingParentIsNotItselfAScope(t *testing.T) {
+	parent := perCommandScope(&cobra.Command{Use: "release"})
+	child := &cobra.Command{Use: "forgot", Run: func(*cobra.Command, []string) {}}
+	parent.AddCommand(child)
+
+	if got := scopeOf(child); got != scopeInstallation {
+		t.Errorf("a child that declares nothing resolves to %q, want %q",
+			got, scopeInstallation)
+	}
+	if got := scopeOf(parent); got != scopeInstallation {
+		t.Errorf("the delegating parent itself resolves to %q, want the safe default %q",
+			got, scopeInstallation)
+	}
+
+	// And it is still this project's command, which is the other half of
+	// what the marker is for.
+	if IsGenerated(parent) || IsGenerated(child) {
+		t.Error("a delegating parent reads as one of cobra's own")
+	}
+}

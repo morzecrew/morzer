@@ -141,3 +141,42 @@ func first(s string, n int) string {
 	}
 	return s[:n]
 }
+
+// TestPrintPathHonoursTheOutputMode.
+//
+// `--print-path` writes a value a script substitutes, which is the same shape
+// as `morzer config get` and takes the same route: the bare value in a human
+// mode, and the envelope under `--json`. Writing the raw path in both would put
+// a path *and* an envelope on stdout, which is the one thing `--json` promises
+// never to do.
+func TestPrintPathHonoursTheOutputMode(t *testing.T) {
+	fakeHome(t)
+	r := clitest.New(t)
+
+	plain := strings.TrimSpace(r.Run("completion", "install", "fish", "--print-path").
+		ExitCode(0).Stdout)
+
+	out := r.Run("--json", "completion", "install", "fish", "--print-path").ExitCode(0)
+	out.FieldEquals("ok", true)
+	if got := out.Field("data.value"); got != plain {
+		t.Errorf("the envelope carries %v, want the same path the plain form printed (%s)",
+			got, plain)
+	}
+}
+
+// TestAnUnplaceableShellUnderJSONRefusesRatherThanEmittingAScript.
+//
+// The human answer is the script on stdout and exit 0. Under `--json` that
+// would be a shell script followed by an envelope, and nobody sources a
+// completion out of one — so the refusal is what keeps the single-object
+// contract, at no cost.
+func TestAnUnplaceableShellUnderJSONRefusesRatherThanEmittingAScript(t *testing.T) {
+	fakeHome(t)
+	r := clitest.New(t)
+
+	out := r.Run("--json", "completion", "install", "nushell").Failed()
+	out.FieldEquals("ok", false)
+	if strings.Contains(out.Stdout, "compdef") || strings.Contains(out.Stdout, "complete -o") {
+		t.Errorf("a completion script reached stdout under --json:\n%s", first(out.Stdout, 200))
+	}
+}

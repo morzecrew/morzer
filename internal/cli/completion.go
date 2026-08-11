@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
 // Where a shell reads completions from, and how to put one there.
@@ -207,9 +208,16 @@ func newCompletionInstallCommand(app *App) *cobra.Command {
 				// Exactly the path and a newline: the whole
 				// point is `$(morzer completion install
 				// --print-path)`, and anything else in it would
-				// end up in somebody's variable.
-				app.passThrough(path + "\n")
-				return nil
+				// end up in somebody's variable. `morzer config
+				// get` is the same shape and takes the same
+				// route -- the value view in a human mode, the
+				// envelope under --json, so a script reading
+				// either gets what its mode promises.
+				if app.json != nil {
+					app.jsonData = views.Value{Value: path}
+					return nil
+				}
+				return app.render(views.Value{Value: path})
 			}
 
 			return app.installCompletion(cmd.Root(), shell, path)
@@ -268,6 +276,13 @@ func (a *App) installCompletion(root *cobra.Command, shell, path string) error {
 // here would also fail the optional completion step of an install script, which
 // is a poor reason to fail an install.
 func (a *App) completionToStdout(root *cobra.Command, why error) error {
+	if a.json != nil {
+		// A script is not one JSON object, and `--json` promises one.
+		// Nobody sources a completion out of an envelope, so the
+		// refusal costs nothing and the contract survives.
+		return why
+	}
+
 	script, err := completionScript(root, "bash")
 	if err != nil {
 		return err

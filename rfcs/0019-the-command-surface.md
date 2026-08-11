@@ -873,6 +873,14 @@ note.
   unknown shell prints the script and exits 0. That is right for the write path
   and wrong for this one: the only caller of `--print-path` is a script
   capturing a path, and a completion script on stdout would be captured as one.
+- **`--print-path` goes through the value view, not straight to stdout.** §5.8
+  says it prints one absolute path and a newline, which is right for a human
+  mode and would have put a path *and* an envelope on stdout under `--json` --
+  the one thing that contract promises never to happen. It takes the route
+  `morzer config get` already takes: the value view when a human is reading, the
+  envelope when a script is. For the same reason an unplaceable shell refuses
+  under `--json` rather than emitting a script: nobody sources a completion out
+  of an envelope.
 - **The bash-completion note is printed rather than probed.** §5.8 says the
   command "says so when it is not" installed. Probing means sourcing the
   operator's own shell startup to see what it loaded, which is a large thing to
