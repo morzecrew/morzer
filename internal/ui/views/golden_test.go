@@ -112,6 +112,9 @@ func TestNothingIsJustifiedToTheViewport(t *testing.T) {
 func TestWrappedTextFitsTheMeasure(t *testing.T) {
 	for _, f := range fixtures() {
 		for _, width := range widths {
+			if f.verbatim {
+				continue
+			}
 			t.Run(fmt.Sprintf("%s/%d", f.name, width), func(t *testing.T) {
 				measure := min(width, ui.MaxContentWidth)
 				for _, line := range strings.Split(render(t, width, f.value), "\n") {
@@ -203,6 +206,13 @@ type fixture struct {
 	name   string
 	value  any
 	fields []string
+
+	// verbatim marks a report whose whole output is a value something
+	// substitutes, so the measure does not apply to it. Declared per
+	// fixture rather than inferred, because "this line may run past the
+	// measure" is a decision about the report and not a property a test
+	// should discover.
+	verbatim bool
 }
 
 func fixtures() []fixture {

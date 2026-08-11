@@ -66,20 +66,20 @@ type Value struct {
 
 func init() {
 	ui.Register(ui.View[Version]{
-		Rich:  func(w io.Writer, t *theme.Theme, v Version) { emit(w, versionDoc(doc(t), v)) },
-		Plain: func(w io.Writer, v Version) { emit(w, versionDoc(plainDoc(), v)) },
+		Rich:  func(w io.Writer, t *theme.Theme, v Version) { emit(w, versionDoc(doc(w, t), v)) },
+		Plain: func(w io.Writer, v Version) { emit(w, versionDoc(plainDoc(w), v)) },
 	})
 	ui.Register(ui.View[KeyPair]{
-		Rich:  func(w io.Writer, t *theme.Theme, v KeyPair) { emit(w, keyPairDoc(doc(t), v)) },
-		Plain: func(w io.Writer, v KeyPair) { emit(w, keyPairDoc(plainDoc(), v)) },
+		Rich:  func(w io.Writer, t *theme.Theme, v KeyPair) { emit(w, keyPairDoc(doc(w, t), v)) },
+		Plain: func(w io.Writer, v KeyPair) { emit(w, keyPairDoc(plainDoc(w), v)) },
 	})
 	ui.Register(ui.View[Value]{
 		Rich:  func(w io.Writer, _ *theme.Theme, v Value) { fmt.Fprintln(w, v.Value) },
 		Plain: func(w io.Writer, v Value) { fmt.Fprintln(w, v.Value) },
 	})
 	ui.Register(ui.View[ops.SettingsReport]{
-		Rich:  func(w io.Writer, t *theme.Theme, r ops.SettingsReport) { emit(w, settingsDoc(doc(t), r)) },
-		Plain: func(w io.Writer, r ops.SettingsReport) { emit(w, settingsDoc(plainDoc(), r)) },
+		Rich:  func(w io.Writer, t *theme.Theme, r ops.SettingsReport) { emit(w, settingsDoc(doc(w, t), r)) },
+		Plain: func(w io.Writer, r ops.SettingsReport) { emit(w, settingsDoc(plainDoc(w), r)) },
 	})
 }
 
@@ -101,7 +101,7 @@ func versionDoc(d *ui.Doc, v Version) *ui.Doc {
 
 // keyPairDoc prints the public key, alone.
 func keyPairDoc(d *ui.Doc, k KeyPair) *ui.Doc {
-	d.Text(0, "%s", k.PublicKey)
+	d.Verbatim(k.PublicKey)
 	return d
 }
 

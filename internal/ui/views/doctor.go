@@ -13,8 +13,8 @@ import (
 
 func init() {
 	ui.Register(ui.View[ops.DoctorReport]{
-		Rich:  func(w io.Writer, t *theme.Theme, r ops.DoctorReport) { emit(w, DoctorDoc(doc(t), r)) },
-		Plain: func(w io.Writer, r ops.DoctorReport) { emit(w, DoctorDoc(plainDoc(), r)) },
+		Rich:  func(w io.Writer, t *theme.Theme, r ops.DoctorReport) { emit(w, DoctorDoc(doc(w, t), r)) },
+		Plain: func(w io.Writer, r ops.DoctorReport) { emit(w, DoctorDoc(plainDoc(w), r)) },
 	})
 }
 
@@ -30,10 +30,10 @@ type Verbose struct{ ops.DoctorReport }
 func init() {
 	ui.Register(ui.View[Verbose]{
 		Rich: func(w io.Writer, t *theme.Theme, v Verbose) {
-			emit(w, doctorDoc(doc(t), v.DoctorReport, true))
+			emit(w, doctorDoc(doc(w, t), v.DoctorReport, true))
 		},
 		Plain: func(w io.Writer, v Verbose) {
-			emit(w, doctorDoc(plainDoc(), v.DoctorReport, true))
+			emit(w, doctorDoc(plainDoc(w), v.DoctorReport, true))
 		},
 	})
 }

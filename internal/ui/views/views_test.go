@@ -309,3 +309,22 @@ func TestACellTooWideForTheMeasureIsCutRatherThanPrinted(t *testing.T) {
 	require.Contains(t, out, "…", "the row was cut and does not say so")
 	require.Contains(t, out, "dial tcp", "the beginning of the error was lost too")
 }
+
+// TestAValueAScriptSubstitutesIsNeverWrapped.
+//
+// An age public key is 62 characters and a narrow terminal is 60. Wrapped, the
+// shell substitution that the documented invocation is built on captures a
+// newline and produces a key `init --recovery-recipient` refuses — on a
+// terminal, where an operator is most likely to be running it by hand.
+//
+// The measure governs prose. A value exists to be copied, and cutting it in
+// half is not a smaller version of it.
+func TestAValueAScriptSubstitutesIsNeverWrapped(t *testing.T) {
+	const key = "age14zamz0thlnq8atx3t3lanyx2hfl0tdvpphtrfyad4m6fjxcmhgpsvqu82q"
+
+	for _, width := range []int{40, 60, 80, 100} {
+		out := render(t, width, views.KeyPair{PublicKey: key, Path: "/root/k"})
+		require.Equalf(t, key, strings.TrimRight(out, "\n"),
+			"the key was reflowed at %d columns:\n%q", width, out)
+	}
+}

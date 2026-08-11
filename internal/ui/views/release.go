@@ -36,12 +36,12 @@ type Verified struct {
 
 func init() {
 	ui.Register(ui.View[Release]{
-		Rich:  func(w io.Writer, t *theme.Theme, r Release) { emit(w, releaseDoc(doc(t), r)) },
-		Plain: func(w io.Writer, r Release) { emit(w, releaseDoc(plainDoc(), r)) },
+		Rich:  func(w io.Writer, t *theme.Theme, r Release) { emit(w, releaseDoc(doc(w, t), r)) },
+		Plain: func(w io.Writer, r Release) { emit(w, releaseDoc(plainDoc(w), r)) },
 	})
 	ui.Register(ui.View[Verified]{
-		Rich:  func(w io.Writer, t *theme.Theme, v Verified) { emit(w, verifiedDoc(doc(t), v)) },
-		Plain: func(w io.Writer, v Verified) { emit(w, verifiedDoc(plainDoc(), v)) },
+		Rich:  func(w io.Writer, t *theme.Theme, v Verified) { emit(w, verifiedDoc(doc(w, t), v)) },
+		Plain: func(w io.Writer, v Verified) { emit(w, verifiedDoc(plainDoc(w), v)) },
 	})
 }
 
@@ -123,8 +123,8 @@ type Built struct {
 
 func init() {
 	ui.Register(ui.View[Built]{
-		Rich:  func(w io.Writer, t *theme.Theme, b Built) { emit(w, builtDoc(doc(t), b)) },
-		Plain: func(w io.Writer, b Built) { emit(w, builtDoc(plainDoc(), b)) },
+		Rich:  func(w io.Writer, t *theme.Theme, b Built) { emit(w, builtDoc(doc(w, t), b)) },
+		Plain: func(w io.Writer, b Built) { emit(w, builtDoc(plainDoc(w), b)) },
 	})
 }
 

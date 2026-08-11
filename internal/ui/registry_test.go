@@ -49,3 +49,29 @@ func TestAViewThatRendersInNoModeIsRefused(t *testing.T) {
 		func() { ui.Register(ui.View[emptyReport]{}) },
 		"a view with neither rendering was accepted")
 }
+
+// TestTheMeasureHasAFloor.
+//
+// Doc is a public type and Screen is a plain struct, so a zero can arrive from
+// any caller that has not been told a width. A measure of zero wraps every line
+// to itself and leaves no room for a single column.
+func TestTheMeasureHasAFloor(t *testing.T) {
+	// Known, because that is the case with teeth: an unknown screen never
+	// drops or shrinks a column, so a zero there costs only the wrapping.
+	// A zero that claims to be measured reaches the table, where every cell
+	// is truncated to it and the row comes out empty.
+	for _, width := range []int{0, -5, 1} {
+		d := ui.NewPlainDoc(ui.Screen{Width: width, Known: true})
+		// Without a header, the column starts at zero and takes its
+		// width from the cell — capped by the measure, which is the
+		// number under test. A header would seed the width and hide it.
+		d.Table(0, ui.Table{
+			Columns:  []ui.Column{{Essential: true}},
+			Rows:     [][]string{{"1.2.0"}},
+			NoHeader: true,
+		})
+
+		require.Containsf(t, d.String(), "1.2.0",
+			"a table on a %d-column screen lost its only cell:\n%q", width, d.String())
+	}
+}

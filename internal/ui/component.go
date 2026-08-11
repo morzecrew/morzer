@@ -78,11 +78,24 @@ func NewPlainDoc(screen Screen) *Doc {
 	}
 }
 
+// minContentWidth is the narrowest measure anything is drawn at.
+//
+// A Doc is a public type and a Screen is a plain struct, so a zero can arrive
+// from a caller that has not been told a width yet -- the live view is handed
+// one by Bubble Tea and starts at nothing. A measure of zero wraps every line
+// to itself and makes every table too narrow for any column, which is a first
+// frame that looks like a bug in the report rather than in the sizing.
+const minContentWidth = 20
+
 func measureFor(viewport int) int {
-	if viewport < MaxContentWidth {
+	switch {
+	case viewport < minContentWidth:
+		return minContentWidth
+	case viewport < MaxContentWidth:
 		return viewport
+	default:
+		return MaxContentWidth
 	}
-	return MaxContentWidth
 }
 
 // String is the assembled document.
@@ -131,6 +144,15 @@ func (d *Doc) Heading(text string) {
 	d.Blank()
 	d.line("  " + d.t.Bold(text))
 }
+
+// Verbatim writes one line exactly as given, past the measure if it must.
+//
+// For a value that exists to be copied: an age public key is 62 characters and
+// a narrow terminal is 60, and `key=$(morzer secret recipients
+// generate-recovery-key ./k)` captures whatever is printed. The measure governs
+// prose, which is meant to be read; half of a key is not a narrower key, it is
+// a broken one.
+func (d *Doc) Verbatim(s string) { d.line(s) }
 
 // Text writes a paragraph, wrapped inside the measure.
 func (d *Doc) Text(indent int, format string, args ...any) {
@@ -272,6 +294,7 @@ func (d *Doc) Table(indent int, tbl Table) {
 	}
 
 	shown, dropped := d.fit(tbl.Columns, widths, indent)
+	d.shrink(shown, widths, indent)
 
 	prefix := strings.Repeat(" ", indent)
 	gutter := strings.Repeat(" ", Gutter)
@@ -360,6 +383,50 @@ func (d *Doc) ellipsis() string {
 	return "…"
 }
 
+// minColumnWidth is the narrowest a column is squeezed to before the table
+// gives up and overflows.
+//
+// Twelve, because a cell cut below that says nothing an operator can act on: a
+// truncated identifier they cannot match and a truncated sentence they cannot
+// read are both worse than a row that runs long.
+const minColumnWidth = 12
+
+// shrink takes an overflow off the widest column rather than off the row's
+// right edge.
+//
+// Dropping a column is the first answer and this is the second, for the case
+// dropping cannot reach: one cell carrying a sentence -- an unreachable
+// target's error -- makes a two-column table wider than any screen, and every
+// other column then loses its place to a paragraph. The widest column is the
+// one that stopped being a column, so it is the one that gives way.
+func (d *Doc) shrink(shown []int, widths []int, indent int) {
+	if !d.screen.Known {
+		return
+	}
+
+	room := d.screen.Width - indent - Gutter*(len(shown)-1)
+	total := func() int {
+		n := 0
+		for _, i := range shown {
+			n += widths[i]
+		}
+		return n
+	}
+
+	for total() > room {
+		widest, at := 0, -1
+		for _, i := range shown {
+			if widths[i] > widest {
+				widest, at = widths[i], i
+			}
+		}
+		if at < 0 || widths[at] <= minColumnWidth {
+			return
+		}
+		widths[at] = max(minColumnWidth, widths[at]-(total()-room))
+	}
+}
+
 func align(c Column, cell string, width int) string {
 	if c.Right {
 		return padLeft(cell, width)
@@ -412,6 +479,12 @@ func (d *Doc) Checks(indent int, rows []CheckRow) {
 				continue
 			}
 			d.line(hanging + l)
+		}
+		// Guarded rather than looped over: Wrap("") yields one empty
+		// line, so an unguarded loop puts a blank line under every check
+		// that has nothing more to say -- which is most of them.
+		if row.Message == "" {
+			continue
 		}
 		for _, l := range Wrap(row.Message, room) {
 			d.line(hanging + d.t.Dim(l))

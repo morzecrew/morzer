@@ -175,13 +175,24 @@ func listFixtures() []fixture {
 		{
 			name: "targets",
 			value: []ops.TargetStatus{
-				{URL: "file:///srv/offsite", Reachable: true, Backups: 4},
+				{URL: "file:///srv/offsite", Reachable: true, Backups: 4, Latest: "bkp_01KZP9ZZTKTQE1SS3JRZ"},
 				{
 					URL: "s3://demo-backups/prod", Reachable: false,
-					Error: "dial tcp 203.0.113.7:443: i/o timeout after 3 attempts",
+					// Short enough that the table shows every
+					// column at the measure. A pathological
+					// error is a different question, and
+					// TestACellTooWideForTheMeasureIsCut... is
+					// where it is asked.
+					Error: "dial tcp 203.0.113.7:443: timeout",
 				},
 			},
-			fields: []string{"file:///srv/offsite", "s3://demo-backups/prod", "unreachable"},
+			fields: []string{
+				"file:///srv/offsite", "s3://demo-backups/prod", "unreachable",
+				// The newest backup a target holds: TargetStatus
+				// carries it and the listing dropped it, which is
+				// operational data the report already had.
+				"bkp_01KZP9ZZTKTQE1SS3JRZ",
+			},
 		},
 	}
 }
@@ -196,7 +207,8 @@ func calloutFixtures() []fixture {
 				PublicKey: "age14zamz0thlnq8atx3t3lanyx2hfl0tdvpphtrfyad4m6fjxcmhgpsvqu82q",
 				Path:      "/root/demo-recovery.key",
 			},
-			fields: []string{"age14zamz0thlnq8atx3t3lanyx2hfl0tdvpphtrfyad4m6fjxcmhgpsvqu82q"},
+			fields:   []string{"age14zamz0thlnq8atx3t3lanyx2hfl0tdvpphtrfyad4m6fjxcmhgpsvqu82q"},
+			verbatim: true,
 		},
 		{
 			name: "version",

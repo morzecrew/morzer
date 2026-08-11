@@ -32,27 +32,27 @@ const stamp = "2006-01-02 15:04:05Z"
 func init() {
 	ui.Register(ui.View[[]ports.SecretMetadata]{
 		Rich: func(w io.Writer, t *theme.Theme, v []ports.SecretMetadata) {
-			emit(w, secretsDoc(doc(t), v))
+			emit(w, secretsDoc(doc(w, t), v))
 		},
-		Plain: func(w io.Writer, v []ports.SecretMetadata) { emit(w, secretsDoc(plainDoc(), v)) },
+		Plain: func(w io.Writer, v []ports.SecretMetadata) { emit(w, secretsDoc(plainDoc(w), v)) },
 	})
 	ui.Register(ui.View[[]ops.ReleaseEntry]{
 		Rich: func(w io.Writer, t *theme.Theme, v []ops.ReleaseEntry) {
-			emit(w, releasesDoc(doc(t), v))
+			emit(w, releasesDoc(doc(w, t), v))
 		},
-		Plain: func(w io.Writer, v []ops.ReleaseEntry) { emit(w, releasesDoc(plainDoc(), v)) },
+		Plain: func(w io.Writer, v []ops.ReleaseEntry) { emit(w, releasesDoc(plainDoc(w), v)) },
 	})
 	ui.Register(ui.View[[]ports.BackupRef]{
 		Rich: func(w io.Writer, t *theme.Theme, v []ports.BackupRef) {
-			emit(w, backupsDoc(doc(t), v))
+			emit(w, backupsDoc(doc(w, t), v))
 		},
-		Plain: func(w io.Writer, v []ports.BackupRef) { emit(w, backupsDoc(plainDoc(), v)) },
+		Plain: func(w io.Writer, v []ports.BackupRef) { emit(w, backupsDoc(plainDoc(w), v)) },
 	})
 	ui.Register(ui.View[[]ports.Recipient]{
 		Rich: func(w io.Writer, t *theme.Theme, v []ports.Recipient) {
-			emit(w, recipientsDoc(doc(t), v))
+			emit(w, recipientsDoc(doc(w, t), v))
 		},
-		Plain: func(w io.Writer, v []ports.Recipient) { emit(w, recipientsDoc(plainDoc(), v)) },
+		Plain: func(w io.Writer, v []ports.Recipient) { emit(w, recipientsDoc(plainDoc(w), v)) },
 	})
 }
 
@@ -168,21 +168,21 @@ func recipientsDoc(d *ui.Doc, recipients []ports.Recipient) *ui.Doc {
 func init() {
 	ui.Register(ui.View[[]ports.RenderedFile]{
 		Rich: func(w io.Writer, t *theme.Theme, v []ports.RenderedFile) {
-			emit(w, renderedDoc(doc(t), v))
+			emit(w, renderedDoc(doc(w, t), v))
 		},
-		Plain: func(w io.Writer, v []ports.RenderedFile) { emit(w, renderedDoc(plainDoc(), v)) },
+		Plain: func(w io.Writer, v []ports.RenderedFile) { emit(w, renderedDoc(plainDoc(w), v)) },
 	})
 	ui.Register(ui.View[[]ops.RemoteBackup]{
 		Rich: func(w io.Writer, t *theme.Theme, v []ops.RemoteBackup) {
-			emit(w, remoteBackupsDoc(doc(t), v))
+			emit(w, remoteBackupsDoc(doc(w, t), v))
 		},
-		Plain: func(w io.Writer, v []ops.RemoteBackup) { emit(w, remoteBackupsDoc(plainDoc(), v)) },
+		Plain: func(w io.Writer, v []ops.RemoteBackup) { emit(w, remoteBackupsDoc(plainDoc(w), v)) },
 	})
 	ui.Register(ui.View[[]ops.TargetStatus]{
 		Rich: func(w io.Writer, t *theme.Theme, v []ops.TargetStatus) {
-			emit(w, targetsDoc(doc(t), v))
+			emit(w, targetsDoc(doc(w, t), v))
 		},
-		Plain: func(w io.Writer, v []ops.TargetStatus) { emit(w, targetsDoc(plainDoc(), v)) },
+		Plain: func(w io.Writer, v []ops.TargetStatus) { emit(w, targetsDoc(plainDoc(w), v)) },
 	})
 }
 
@@ -247,13 +247,17 @@ func targetsDoc(d *ui.Doc, statuses []ops.TargetStatus) *ui.Doc {
 		if !s.Reachable {
 			state = t.Fail("unreachable: " + s.Error)
 		}
-		rows = append(rows, []string{s.URL, state})
+		rows = append(rows, []string{s.URL, state, s.Latest})
 	}
 
 	d.Table(0, ui.Table{
 		Columns: []ui.Column{
 			{Header: "target", Essential: true},
 			{Header: "state", Essential: true},
+			// The newest backup the target holds. Inessential because
+			// a target that cannot be reached has none to name, and
+			// "can I reach it" is the question this command answers.
+			{Header: "latest"},
 		},
 		Rows:  rows,
 		Empty: "no backup targets: every copy of this deployment's data is on this machine",

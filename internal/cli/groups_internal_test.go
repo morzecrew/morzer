@@ -150,6 +150,12 @@ func TestHelpLinesFitEightyColumns(t *testing.T) {
 // The generated commands are exempt: cobra writes their help and this project
 // does not document them.
 func TestEveryCommandExplainsItself(t *testing.T) {
+	root := CommandTree()
+	if strings.TrimSpace(root.Long) == "" {
+		t.Error("`morzer` itself has no Long, so the first page an operator " +
+			"opens is a list with nothing above it")
+	}
+
 	var walk func(cmd *cobra.Command, path string)
 	walk = func(cmd *cobra.Command, path string) {
 		for _, sub := range cmd.Commands() {
@@ -164,5 +170,5 @@ func TestEveryCommandExplainsItself(t *testing.T) {
 			walk(sub, path+name+" ")
 		}
 	}
-	walk(CommandTree(), "morzer ")
+	walk(root, "morzer ")
 }

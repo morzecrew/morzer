@@ -11,8 +11,8 @@ import (
 
 func init() {
 	ui.Register(ui.View[ops.ConfigReport]{
-		Rich:  func(w io.Writer, t *theme.Theme, r ops.ConfigReport) { emit(w, configDoc(doc(t), r)) },
-		Plain: func(w io.Writer, r ops.ConfigReport) { emit(w, configDoc(plainDoc(), r)) },
+		Rich:  func(w io.Writer, t *theme.Theme, r ops.ConfigReport) { emit(w, configDoc(doc(w, t), r)) },
+		Plain: func(w io.Writer, r ops.ConfigReport) { emit(w, configDoc(plainDoc(w), r)) },
 	})
 }
 

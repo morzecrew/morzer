@@ -33,4 +33,3 @@ demo
 
   ! the container registry could not be reached, so this
     report cannot say whether a newer release is available
-

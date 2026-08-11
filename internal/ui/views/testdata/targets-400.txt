@@ -1,3 +1,3 @@
-TARGET                  STATE
-file:///srv/offsite     4 backup(s)
-s3://demo-backups/prod  unreachable: dial tcp 203.0.113.7:443: i/o timeout after 3 attempts
+TARGET                  STATE                                           LATEST
+file:///srv/offsite     4 backup(s)                                     bkp_01KZP9ZZTKTQE1SS3JRZ
+s3://demo-backups/prod  unreachable: dial tcp 203.0.113.7:443: timeout

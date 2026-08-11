@@ -45,27 +45,59 @@ type Screen struct {
 	Known bool
 }
 
-// CurrentScreen reports what this process is drawing onto.
-func CurrentScreen() Screen {
+// ScreenFor reports what a document written to w is drawn onto.
+//
+// The destination decides, not the process. A report goes to stdout and a
+// callout to stderr, and `morzer release list | grep` is a terminal on one and
+// a pipe on the other: probing whichever stream happens to be a terminal would
+// answer with stderr's width for output nobody is looking at, and a table would
+// then drop columns to fit a screen the reader is not reading from.
+//
+// COLUMNS still wins. An operator who exports it means it for everything, and
+// it is what lets the golden tests pin every width without a pty.
+func ScreenFor(w any) Screen {
 	if v, ok := os.LookupEnv("COLUMNS"); ok {
-		if n := atoiSafe(v); n > 20 {
-			// An operator who exports COLUMNS means it, and it is
-			// what lets the golden tests pin every width without a
-			// pty.
+		if n := atoiSafe(v); n > minContentWidth {
 			return Screen{Width: n, Known: true}
 		}
 	}
-	for _, f := range []*os.File{os.Stderr, os.Stdout} {
-		if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 20 {
-			return Screen{Width: w, Known: true}
+	if f, ok := w.(*os.File); ok {
+		if n, ok := terminalSize(f); ok && n > minContentWidth {
+			return Screen{Width: n, Known: true}
 		}
 	}
 	return Screen{Width: fallbackWidth}
 }
 
+// terminalSize is how wide a file is, when it is a terminal.
+//
+// A variable so a test can answer for any file: whether a screen is taken from
+// the stream being written to or from whichever of the process's own streams
+// happens to be a terminal is the whole rule here, and a test process has no
+// terminal to tell the two apart with.
+var terminalSize = func(f *os.File) (int, bool) {
+	n, _, err := term.GetSize(int(f.Fd()))
+	return n, err == nil
+}
+
+// CurrentScreen is the screen this process's diagnostics are drawn onto.
+//
+// Stderr, because that is where narration goes. A report asks ScreenFor with
+// the stream it is being written to.
+func CurrentScreen() Screen { return ScreenFor(os.Stderr) }
+
 // FixedScreen is a screen of a stated width, for a caller that already knows it
 // -- the live view is told its size by the terminal program.
-func FixedScreen(width int) Screen { return Screen{Width: width, Known: true} }
+//
+// A width nobody has supplied yet is unknown rather than tiny: Bubble Tea sends
+// the size after the first frame, and a zero taken literally makes that frame a
+// document too narrow for any column of any table.
+func FixedScreen(width int) Screen {
+	if width < minContentWidth {
+		return Screen{Width: fallbackWidth}
+	}
+	return Screen{Width: width, Known: true}
+}
 
 // Width is the visible width of a string.
 //

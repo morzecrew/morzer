@@ -25,10 +25,10 @@ import (
 )
 
 // doc starts a document for a rich rendering.
-func doc(t *theme.Theme) *ui.Doc { return ui.NewDoc(t, ui.CurrentScreen()) }
+func doc(w io.Writer, t *theme.Theme) *ui.Doc { return ui.NewDoc(t, ui.ScreenFor(w)) }
 
 // plainDoc starts one for a line-oriented rendering.
-func plainDoc() *ui.Doc { return ui.NewPlainDoc(ui.CurrentScreen()) }
+func plainDoc(w io.Writer) *ui.Doc { return ui.NewPlainDoc(ui.ScreenFor(w)) }
 
 // emit is the tail of every view.
 func emit(w io.Writer, d *ui.Doc) { d.Emit(w) }

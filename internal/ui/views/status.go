@@ -12,8 +12,8 @@ import (
 
 func init() {
 	ui.Register(ui.View[ops.Status]{
-		Rich:  func(w io.Writer, t *theme.Theme, s ops.Status) { emit(w, StatusDoc(doc(t), s)) },
-		Plain: func(w io.Writer, s ops.Status) { emit(w, StatusDoc(plainDoc(), s)) },
+		Rich:  func(w io.Writer, t *theme.Theme, s ops.Status) { emit(w, StatusDoc(doc(w, t), s)) },
+		Plain: func(w io.Writer, s ops.Status) { emit(w, StatusDoc(plainDoc(w), s)) },
 	})
 }
 
