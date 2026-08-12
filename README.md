@@ -29,13 +29,11 @@ journaled, verified afterwards, and undone.
 ## Install
 
 ```sh
-curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 0.1.0
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 0.1.1
 ```
 
 Verifies the checksum before it installs, and the signature too when `minisign`
-is there. `--print-only` shows what it would do and changes nothing;
-[the long form](https://morzecrew.github.io/morzer/get-started/installation/)
-stays documented, because it is what the script is doing.
+is there. `--print-only` shows what it would do and changes nothing.
 
 ## Try it
 
