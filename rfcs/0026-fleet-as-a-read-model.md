@@ -3,7 +3,7 @@
 - **Status:** 📝 Draft — decision 1 is what the RFC exists to preserve; the timer
   is deliberately the last phase.
 - **Scope:** Making several machines visible without a control plane: each
-  installation publishes one small signed object at a stable key through 0009's
+  installation publishes one small object at a stable key through 0009's
   existing target registry, and a stateless command lists, verifies and renders
   them. Covers the payload, the reader, staleness, absence via a roster, and the
   dev-mode drop. Deliberately not an agent, not a listener, not a database, not a
@@ -73,13 +73,24 @@ After any operation that changes state, and on a timer (a sibling of the backup
 timer, which 0015 noted is already the one thing that runs with nobody watching),
 each installation writes **one small object at a stable key**, replacing in place:
 
-```
+```text
 fleet/<product>/<installation-id>/status.json
 ```
 
-Content: product, version, mode (0016's `dev`/`prod`), manager version, health
-summary, last operation with outcome and timestamp, drift indicator, and the
-publish timestamp. Signed with the machine identity.
+Content: a schema version, product, version, mode (0016's `dev`/`prod`), manager
+version, health summary, last operation with outcome and timestamp, drift
+indicator, and the publish timestamp. Signed — by what, decision 6a leaves open.
+
+**The schema version is in the payload, not inferred.** §3.4 already promises
+that an unknown schema version is a row carrying its problem, and a reader
+cannot say that about a document that does not state its version.
+
+**The publish timestamp is what stops an older row overwriting a newer one.**
+The key is stable and the write replaces in place, so a slow publisher that
+finishes after a fast one would otherwise silently install stale state as
+current. A publisher reads the existing object first and declines to replace a
+newer one; a reader that sees a row older than one it has already seen reports
+it rather than accepting it.
 
 Never: parameter values, hostnames unless opted in, container logs, anything
 0024's allowlist would exclude. The payload is deliberately smaller than a support
@@ -143,7 +154,8 @@ That generalisation is worth more than the feature.
 | 3 | Reuses 0009's target registry unchanged | LOCKED | Extracting `ports.ObjectStore` if and only if a fourth method is needed (0025 decision 5). |
 | 4 | Rows carry their problems | LOCKED | §3.4. A view that drops what it cannot read reports health it did not observe. |
 | 5 | Absence requires a roster, and the absence of a roster is reported | LOCKED | §3.3. A partial table presented as complete is the failure mode of every fleet view. |
-| 6 | Signed, and verification failure is a visible row, not an exclusion | LOCKED | §3.4, and it is what detects one machine overwriting another's row where prefix scoping cannot. |
+| 6 | Verification failure is a visible row, not an exclusion | LOCKED | §3.4. Whatever authenticates a row, a row that fails to authenticate is displayed carrying its problem. |
+| 6a | What signs a row | **OPEN** | The same unresolved question as 0024 §3.7 and 0025 §4.8: the machine identity is an age *encryption* key and the manager signs nothing today. It matters more here than there, because §9's shared-bucket overwrite is detected *by the signature* — without one, decision 6 has nothing to verify and prefix scoping is the only defence. |
 | 7 | Dev-mode drops fleet targets, via a single generalised drop list | LOCKED | §3.5, and §10.1 measured that no such list exists yet — so this decision creates it. |
 | 8 | No new state | LOCKED | The published object is derived entirely from what `status`/`ls` already compute. §10.2 confirms `ls` needs no Docker call, so a publisher can report the case where the runtime is the problem. If publishing needs the manager to record something new, that is a signal the payload is too big. |
 

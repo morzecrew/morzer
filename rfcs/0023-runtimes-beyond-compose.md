@@ -116,7 +116,10 @@ decision 4.
 
 ### 4.1 The manifest grows a runtime dimension
 
-`runtime:` becomes a keyed map rather than a Compose-shaped block:
+The manifest's `runtime:` block becomes `runtimes:`, a map keyed by runtime name
+rather than a Compose-shaped block. The field is called `runtimes:` everywhere
+below; decision 8 is about how it relates to `providers.runtime.name`, not about
+what it is called:
 
 ```yaml
 runtimes:
@@ -191,7 +194,8 @@ refusal, which is also the first test that the refusal path is reachable.
 | 4 | The manager never asserts that two runtime declarations in one bundle are equivalent | LOCKED | It cannot check it, and a claim it cannot check is the failure 0013 exists to fix. `release verify --render-check` renders both sets; that is the whole of the promise. |
 | 5 | An absent declared runtime is a refusal, not a fallback | LOCKED | Same reasoning as 0011 decision 20: a fallback that silently converges on a different substrate than the vendor tested is worse than a stop. |
 | 6 | `Supervisor` keeps ownership of manager-generated units; `Runtime` owns product units | ASSUMED | They both call `systemctl` and that is fine — the ports are distinguished by *whose* units, not by which binary they invoke. Graded ASSUMED because §12.3 measured the collision as one-sided today and the Quadlet case is untested. |
-| 7 | The port may grow methods; it may not grow `switch kind` | LOCKED | A conditional on runtime kind above `internal/adapters` is a build failure by the same mechanism that already forbids importing an adapter, and `.golangci.yml` gains the rule in P1 so it is enforced before there is anything to violate it. |
+| 7 | The port may grow methods; it may not grow `switch kind` | LOCKED | A conditional on runtime kind above `internal/adapters` is the abstraction failing in the one way that looks like progress. |
+| 7a | What enforces decision 7 | **OPEN** | The draft said "the same mechanism that already forbids the string `docker`" — §2 measured that no such mechanism exists: `depguard` restricts imports and cannot see a `switch`. Enforcing this needs a `go/analysis` pass or a `forbidigo`-style pattern rule, and P1 names one and lands it with a deliberately failing fixture. A decision with no enforcement is a comment. |
 | 8 | How the runtime is named in the manifest | OPEN | §4.1. `providers.runtime.name` already exists; P2 chooses and records here. |
 
 ## 6. The escape hatch, restated after measurement

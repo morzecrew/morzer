@@ -86,7 +86,7 @@ they fail** (decision 3) — the manager emits an
 
 Predicate contents, in outline:
 
-```
+```text
 operation: { id, kind, started, ended, outcome }
 installation: { id, product, mode, manager_version }
 release: { from_version, to_version, source_scheme, content_digest }
@@ -125,8 +125,8 @@ implying a standard exists behind it.
 
 ### 4.3 What the signature proves, written into the format
 
-Signed with the machine identity — the same age/minisign material 0003 and 0004
-already manage. Therefore:
+Signed — by what, §4.8 leaves open. Whatever the answer, the bound is the same
+and is stated in the document rather than around it:
 
 > This attestation proves that a process holding this installation's identity
 > asserted these facts. It does not prove the facts, and it does not prove the
@@ -194,12 +194,36 @@ swapped by hand, a container started outside the manager, a config edited in
 place. That is the check an auditor actually wants and the one an operator will
 find genuinely useful the first time somebody `docker exec`s into production.
 
+
+### 4.8 The signing model is unresolved, and it is not a detail
+
+Every statement about a signature in this RFC rests on a capability the manager
+does not have. Measured 2026-08-12:
+
+- The **machine identity is an age identity** — an X25519 *encryption* key, used
+  to decrypt this installation's secrets ([`internal/ports/secrets.go`](../internal/ports/secrets.go)).
+  It is not a signing key and age is not a signature scheme.
+- **Nothing in the manager signs anything.** `minisign` appears only as a
+  *verifier* ([`internal/adapters/verify/minisign`](../internal/adapters/verify/minisign)),
+  and [0004](0004-distribution-and-verification.md) decision 8 deliberately
+  refuses a `morzer sign` verb: signing happens in the release pipeline, where
+  the key lives.
+
+So "signed with the machine identity" is not a thing that can be implemented
+today, and the honest options are all consequential: mint a per-installation
+Ed25519 signing key at `init` (a new key with a new lifecycle, a new thing
+`installation import` must carry, and a new thing to lose), reuse the age
+identity through a construction age was not designed for (no), or drop the
+signature and say the artifact is unauthenticated (which changes what it is
+worth). **This is an OPEN decision and it blocks the phase that depends on it.**
+
 ## 5. Decisions
 
 | # | Decision | Grade | Why |
 | --- | --- | --- | --- |
 | 1 | Own predicate type, versioned by URI | LOCKED | §4.2. Reusing SLSA's build predicate would validate against a schema while asserting something it does not mean. |
 | 2 | The claim's bound is a field in the document, not documentation | LOCKED | §4.3. An artifact that travels must carry the bound on its own claim. |
+| 2a | What signs the statement | **OPEN** | §4.8. The machine identity is an age *encryption* key, nothing in the manager signs, and 0004 decision 8 refuses a signing verb. An attestation nobody can authenticate is decision 8's theatre in a different costume, so P1 does not start until this is answered. |
 | 3 | Emitted on failure and compensation, not only on success | LOCKED | §4.5. A system that attests only its successes attests nothing. |
 | 4 | Parameter names yes, values never, rendered digest salted per installation | LOCKED | §4.4. An unsalted digest over a port number is brute-forceable. |
 | 5 | Reuses 0009's target registry unchanged | LOCKED | Third consumer of that shape (release sources → backup targets → attestations); if it needs a fourth method, extract `ports.ObjectStore` rather than widening `BackupTarget`, and record it here. |

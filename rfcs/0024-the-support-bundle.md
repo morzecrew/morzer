@@ -88,9 +88,10 @@ has read the list once will not re-read it, so the list may only ever shrink
 without a version bump.
 
 **Included:** manifest as resolved, installation state (redacted), parameter
-*names* and values marked non-sensitive, journal, `doctor` output, version
-history, `ps`/health output, container logs bounded by lines and bytes, manager
-version and build, host facts `doctor` already collects.
+*names* and values marked non-sensitive, the config diff §1 names as evidence,
+journal, `doctor` output, version history, `ps`/health output, container logs
+bounded by lines and bytes, manager version and build, host facts `doctor`
+already collects.
 
 **Never included, enumerated because the enumeration is the point:** the age
 identity; secret ciphertext (it is useless to a vendor and it is the crown
@@ -140,6 +141,29 @@ and is therefore off by default; a diagnostic uploader is a considerably larger
 one, and it would put an outbound HTTP client on the path of a command an operator
 runs when things are already broken.
 
+
+### 3.7 The signing model is unresolved, and it is not a detail
+
+Every statement about a signature in this RFC rests on a capability the manager
+does not have. Measured 2026-08-12:
+
+- The **machine identity is an age identity** — an X25519 *encryption* key, used
+  to decrypt this installation's secrets ([`internal/ports/secrets.go`](../internal/ports/secrets.go)).
+  It is not a signing key and age is not a signature scheme.
+- **Nothing in the manager signs anything.** `minisign` appears only as a
+  *verifier* ([`internal/adapters/verify/minisign`](../internal/adapters/verify/minisign)),
+  and [0004](0004-distribution-and-verification.md) decision 8 deliberately
+  refuses a `morzer sign` verb: signing happens in the release pipeline, where
+  the key lives.
+
+So "signed with the machine identity" is not a thing that can be implemented
+today, and the honest options are all consequential: mint a per-installation
+Ed25519 signing key at `init` (a new key with a new lifecycle, a new thing
+`installation import` must carry, and a new thing to lose), reuse the age
+identity through a construction age was not designed for (no), or drop the
+signature and say the artifact is unauthenticated (which changes what it is
+worth). **This is an OPEN decision and it blocks the phase that depends on it.**
+
 ## 4. Decisions
 
 | # | Decision | Grade | Why |
@@ -147,7 +171,8 @@ runs when things are already broken.
 | 1 | A verb, not a flag | LOCKED | §3.1. Four new semantics on a diagnostic command make `doctor`'s contract a sentence with an exception in it. |
 | 2 | Allowlist inclusion, enumerated as an ABI, shrinking only on a version bump | LOCKED | §3.2. 0015's rule one level up: a component added later is not exported until someone classifies it. |
 | 3 | Encrypted to vendor recipients only when declared; plaintext and loud when not | LOCKED | §3.4. Refusing to produce a plaintext archive would break the forum case, which is the case §2 rests on. |
-| 4 | Signed with the machine identity, and the document states what that proves | LOCKED | It proves the archive came from a machine holding that identity. It does *not* prove the operator did not edit it beforehand, and it does not authenticate the operator. An overstated signature is worse than none — the same failure 0013 exists to fix, in a different costume. |
+| 3a | A *malformed* `support.recipients` is a refusal, never a fall back to plaintext | LOCKED | "Declared but unparseable" is not "absent". Falling back would produce a plaintext archive for the operator who most clearly asked for an encrypted one, and it would do it quietly — an intent-guard where an outcome-guard is needed. `--preview` prints the recipient fingerprints so the target is verifiable before the archive exists. |
+| 4 | What the signature is, and what it proves | **OPEN** | The bound is settled: whatever signs it proves the archive came from a machine holding that key, *not* that the operator did not edit it first, and not who the operator is. An overstated signature is worse than none — the same failure 0013 exists to fix, in a different costume. What is **not** settled is the signer: §3.7 measured that no signing key exists on the machine. P4 cannot start until this is answered. |
 | 5 | No `--raw` escape hatch | LOCKED | A flag that disables redaction will be the flag every support article tells operators to pass, and then redaction is a feature nobody uses. An operator who genuinely needs unredacted logs already has `morzer logs --no-redact` (0021) and is making that choice one file at a time. |
 | 6 | The manager never transmits | LOCKED | §3.6. |
 | 7 | `support redact --check <file>` ships alongside | LOCKED | So an operator can run the same redactor over a paste they were going to send anyway. Cheap, and the feature most likely to actually prevent a leak. |
@@ -201,8 +226,12 @@ first paragraph what the archive never contains.
   each marked include/redact/never, each with the reason. No code. The output is
   the reference page that decision 2 freezes.
 - **P2 — `support bundle` and `--preview`**, plaintext, no encryption, operator
-  audience only. Usable at the end of P2 for a forum post, which is the point of
-  §2.
+  audience only — **and no container logs**. §9 says P2 without P3 is a leak
+  generator with a progress bar, and shipping the one raw-vendor-bytes component
+  before the phase that proves redaction works would be exactly that. Everything
+  else in the allowlist is manager-produced and already structured, so P2 is
+  still usable for a forum post, which is the point of §2. `--no-logs` is the
+  default until P3 lands, and then it becomes a flag.
 - **P3 — Redaction under test.** Drive the redactor over synthetic logs seeded
   with every secret shape 0008 found it missing — a `Stringer`, a struct, an
   `error` wrapping a value — and fail the build if any survives. This phase is
