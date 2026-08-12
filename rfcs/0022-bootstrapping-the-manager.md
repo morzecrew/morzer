@@ -213,7 +213,7 @@ that nobody maintains.
 | Architecture | `uname -m` | `x86_64`/`amd64` → `amd64`; `aarch64`/`arm64` → `arm64`. Anything else — `armv7l`, `riscv64`, `i686` — is refused by name rather than guessed. Guessing here downloads an archive that extracts to a binary the kernel will not exec, which fails several steps later with a worse message. |
 | Kernel | `uname -r` | Recorded in the summary; warned below the floor a Go 1.25 static binary needs. Not otherwise acted on: Docker's kernel requirements are `doctor`'s business, not the installer's. |
 | libc | not checked | `CGO_ENABLED=0`, so there is no dynamic dependency to check. Stated because its absence otherwise looks like an oversight. |
-| Shell | `basename "$SHELL"`, overridable with `--shell` | `$SHELL` holds a path (`/bin/bash`, `/usr/bin/fish`), and every consumer of this wants the name: the startup file for PATH (§5.4) and the `--shell` argument for completions (§5.5), which accepts `bash\|zsh\|fish` and nothing else. Normalised once, here. An unrecognised shell is not fatal: the binary still installs, and the script prints what to add by hand. |
+| Shell | `basename "$SHELL"`, overridable with `--shell` | `$SHELL` holds a path (`/bin/bash`, `/usr/bin/fish`), and every consumer of this wants the name: the startup file for PATH (§5.4) and the shell argument for completions (§5.5), which accepts `bash\|zsh\|fish` and nothing else. Normalised once, here. An unrecognised shell is not fatal: the binary still installs, and the script prints what to add by hand. |
 | `$PATH` | string match against the resolved prefix | Decides whether §5.4 has anything to do at all. |
 | An existing `morzer` | `command -v morzer` | Warns when the binary that will answer to `morzer` is **not** the one just installed — the ordinary trap of installing to `~/.local/bin` while `/usr/local/bin/morzer` exists and wins. Names both paths and their versions. |
 | Interactivity | stdout is a terminal | Decides the completions default (§5.5) and nothing else. |
@@ -319,7 +319,7 @@ The script installs shell completions by **running the binary it just
 installed**:
 
 ```sh
-"$dir/morzer" completion install --shell "$shell"
+"$dir/morzer" completion install "$shell"   # positional; see §13
 ```
 
 That is [0019](0019-the-command-surface.md) §5.8, and the split is the point:
@@ -452,8 +452,8 @@ running it.
 - **Completions are delegated, not reimplemented.** The stub goes at
   `<dir>/morzer` — the path the script actually invokes — not on `PATH`, where it
   would never be reached and the test would pass by never running. It records its
-  argv, and the assertion is that `completion install --shell <detected>` was
-  called. A test that checked for a completion *file* would pass on a script that
+  argv, and the assertion is that `completion install <detected>` was called --
+  the positional form the command shipped with, recorded in §13. A test that checked for a completion *file* would pass on a script that
   wrote one itself, which is the thing this design forbids.
 - **The install target is refused when it is not a regular file.** A symlink at
   `<dir>/morzer` (into a package manager's tree) and a directory at
