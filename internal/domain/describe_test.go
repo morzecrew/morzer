@@ -165,37 +165,11 @@ func TestTheDocumentIsStableAcrossRuns(t *testing.T) {
 // value does not reach the file -- is `TestDescribeCarriesNoSecretValue` in the
 // CLI suite, where there is a secret store to hold one.
 func TestTheDocumentCannotCarryASecretValue(t *testing.T) {
-	valueBearing := map[reflect.Type]bool{
-		reflect.TypeFor[domain.Secret]():    true,
-		reflect.TypeFor[domain.SecretSet](): true,
+	if found := placesASecretCouldGo(reflect.TypeFor[domain.InstallationDocument](),
+		"InstallationDocument", map[reflect.Type]bool{}); len(found) > 0 {
+		t.Errorf("the document has somewhere to put a secret value, and a document "+
+			"that can hold one eventually does: %v", found)
 	}
-
-	var walk func(t reflect.Type, path string, seen map[reflect.Type]bool)
-	walk = func(typ reflect.Type, path string, seen map[reflect.Type]bool) {
-		if valueBearing[typ] {
-			t.Errorf("%s is a %s: the document has somewhere to put a secret value, "+
-				"and a document that can hold one eventually does", path, typ)
-			return
-		}
-		if seen[typ] {
-			return
-		}
-		seen[typ] = true
-
-		switch typ.Kind() {
-		case reflect.Struct:
-			for i := range typ.NumField() {
-				f := typ.Field(i)
-				walk(f.Type, path+"."+f.Name, seen)
-			}
-		case reflect.Slice, reflect.Array, reflect.Pointer:
-			walk(typ.Elem(), path+"[]", seen)
-		case reflect.Map:
-			walk(typ.Elem(), path+"[k]", seen)
-		}
-	}
-	walk(reflect.TypeFor[domain.InstallationDocument](), "InstallationDocument",
-		map[reflect.Type]bool{})
 
 	// And the credential-bearing fields carry the names they were given,
 	// which is the other half of decision 2: a reference is only safe if it
@@ -211,6 +185,74 @@ func TestTheDocumentCannotCarryASecretValue(t *testing.T) {
 	}
 	if len(doc.Secrets) != 1 || doc.Secrets[0] != "db_password" {
 		t.Errorf("secrets are not names: %v", doc.Secrets)
+	}
+}
+
+// placesASecretCouldGo walks a type graph and names every path reaching a type
+// that holds a secret value.
+//
+// A function returning findings rather than an assertion, for the reason
+// accountFields is one: against the real document it finds nothing -- that is
+// the point of it -- so a test that only runs it against InstallationDocument
+// can never see it work, and a detector nobody has seen work is one that may
+// have stopped. Deleting its struct-descent survived a mutation sweep for
+// exactly that reason.
+func placesASecretCouldGo(typ reflect.Type, path string, seen map[reflect.Type]bool) []string {
+	valueBearing := map[reflect.Type]bool{
+		reflect.TypeFor[domain.Secret]():    true,
+		reflect.TypeFor[domain.SecretSet](): true,
+	}
+	if valueBearing[typ] {
+		return []string{path + " is a " + typ.String()}
+	}
+	if seen[typ] {
+		return nil
+	}
+	seen[typ] = true
+
+	var found []string
+	switch typ.Kind() {
+	case reflect.Struct:
+		for i := range typ.NumField() {
+			f := typ.Field(i)
+			found = append(found, placesASecretCouldGo(f.Type, path+"."+f.Name, seen)...)
+		}
+	case reflect.Slice, reflect.Array, reflect.Pointer:
+		found = append(found, placesASecretCouldGo(typ.Elem(), path+"[]", seen)...)
+	case reflect.Map:
+		found = append(found, placesASecretCouldGo(typ.Elem(), path+"[k]", seen)...)
+	}
+	return found
+}
+
+// TestASecretHiddenAnywhereInTheGraphIsFound drives the detector against a type
+// that does hold a secret, since the real document deliberately does not.
+//
+// Nested inside a slice inside a struct, because the shallow version of this
+// check -- look at the document's own fields -- would pass the type that
+// actually worries anybody: not `InstallationDocument.Password`, which nobody
+// would write, but a value quietly added to a target config three levels down.
+func TestASecretHiddenAnywhereInTheGraphIsFound(t *testing.T) {
+	type target struct {
+		URL      string
+		Password domain.Secret
+	}
+	type config struct {
+		Targets []target
+	}
+	type document struct {
+		ID     string
+		Backup config
+	}
+
+	found := placesASecretCouldGo(reflect.TypeFor[document](), "document",
+		map[reflect.Type]bool{})
+
+	if len(found) != 1 {
+		t.Fatalf("want the one buried secret, got %v", found)
+	}
+	if found[0] != "document.Backup.Targets[].Password is a domain.Secret" {
+		t.Errorf("the finding does not say where it is: %q", found[0])
 	}
 }
 
