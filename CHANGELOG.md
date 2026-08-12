@@ -193,6 +193,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A nightly job that installs the newest published release with `--require-signature` and compares the published copies of the script against the one at that release's tag. It is the only check that can catch an asset name drifting, which is the defect that prompted all of this, and it reports that there is nothing to check until a release exists.
 
+- `morzer installation describe` writes an installation as a file: the release and its digest, the parameters, the policy, the backup and notification targets, and the names of the secrets that must exist. The answer to "what is this machine" becomes something reviewable, diffable and committable rather than four commands somebody has to remember to run. `--output` writes a file; `--json` carries the same document in the envelope.
+
+- The document holds no secret value and cannot. Every credential in an installation is already a reference to a secret by name, so carrying those fields carries names — a property of the configuration rather than a filter applied on the way out. Nothing reads the document back: there is no `apply -f`, and the header the file carries says so, because a file that looks like desired state and is not is the defect `config` was built to fix.
+
+- A field added to an installation and not accounted for — carried by the document, or excluded with a stated reason — fails the build. The alternative is a document that quietly describes less than an installation while every test still passes.
+
+- `installation describe` refuses rather than recording what it could not read. A release pointer that will not parse or a secret store that will not open produces an error, not a document asserting there is no release and there are no secrets. The file is written to be committed, so a false record in it outlives the run that produced it.
+
 ### Changed
 
 - The installation page leads with the install script and keeps the manual sequence underneath, because the manual sequence is what the script does and an operator checking its work needs to be able to read it.

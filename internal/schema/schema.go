@@ -31,6 +31,12 @@ const Dir = "schemas"
 const (
 	ManifestSchemaFile = "selfhost-v1alpha1-manifest.json"
 	SecretSchemaFile   = "selfhost-v1alpha1-secrets.json"
+
+	// The document `installation describe` writes (RFC 0027). Generated
+	// from the same types for the same reason as the others: a
+	// hand-written schema is a second description of one contract, and the
+	// two disagree quietly.
+	InstallationDocumentSchemaFile = "selfhost-v1alpha1-installation.json"
 )
 
 const schemaBase = "https://morzecrew.github.io/morzer/schemas/"
@@ -40,6 +46,22 @@ func Manifest() ([]byte, error) { return render(manifestSchema()) }
 
 // Secrets returns the generated schema for a bundle's secret schema.
 func Secrets() ([]byte, error) { return render(secretSchema()) }
+
+// InstallationDocument returns the generated schema for the document
+// `morzer installation describe` writes.
+func InstallationDocument() ([]byte, error) { return render(installationDocumentSchema()) }
+
+func installationDocumentSchema() map[string]any {
+	s := schemaFor(reflect.TypeFor[domain.InstallationDocument]())
+	s["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+	s["$id"] = schemaBase + InstallationDocumentSchemaFile
+	s["title"] = "morzer installation document"
+	s["description"] = "An installation as a file, written by " +
+		"`morzer installation describe`. Nothing reads it back: it documents " +
+		"a machine rather than configuring one. Generated from the Go types " +
+		"that produce it; do not edit by hand."
+	return s
+}
 
 func render(s map[string]any) ([]byte, error) {
 	data, err := json.MarshalIndent(s, "", "  ")

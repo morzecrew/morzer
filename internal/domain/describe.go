@@ -134,21 +134,44 @@ func (i Installation) Describe(release DescribedRelease, secretNames []string) I
 // installation is the failure that would leave RFC 0027's central claim false
 // with every test still green.
 func DescribedInstallationFields() (carried []string, excluded map[string]string, unaccounted []string) {
-	doc := reflect.TypeFor[InstallationDocument]()
-	described := make(map[string]bool, doc.NumField())
-	for i := range doc.NumField() {
-		described[doc.Field(i).Name] = true
+	return accountFields(
+		fieldNames(reflect.TypeFor[Installation]()),
+		fieldNames(reflect.TypeFor[InstallationDocument]()),
+		installationFieldsNotDescribed,
+	)
+}
+
+func fieldNames(t reflect.Type) []string {
+	out := make([]string, 0, t.NumField())
+	for i := range t.NumField() {
+		out = append(out, t.Field(i).Name)
+	}
+	return out
+}
+
+// accountFields is the sorting itself, over names rather than over types.
+//
+// Separated from the reflection so it can be tested against a field nobody
+// accounted for. With the real types there is no such field -- that is the
+// point of the check -- so a test of DescribedInstallationFields alone can
+// never see the detector work, and a detector nobody has seen work is one that
+// may have stopped. Found by a mutation that deleted the `unaccounted` branch
+// and passed every test.
+func accountFields(installation, document []string, reasons map[string]string) (
+	carried []string, excluded map[string]string, unaccounted []string,
+) {
+	described := make(map[string]bool, len(document))
+	for _, name := range document {
+		described[name] = true
 	}
 
 	excluded = map[string]string{}
-	inst := reflect.TypeFor[Installation]()
-	for i := range inst.NumField() {
-		name := inst.Field(i).Name
+	for _, name := range installation {
 		switch {
 		case described[name]:
 			carried = append(carried, name)
-		case installationFieldsNotDescribed[name] != "":
-			excluded[name] = installationFieldsNotDescribed[name]
+		case reasons[name] != "":
+			excluded[name] = reasons[name]
 		default:
 			unaccounted = append(unaccounted, name)
 		}

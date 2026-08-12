@@ -1,0 +1,168 @@
+{
+  "$id": "https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-installation.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An installation as a file, written by `morzer installation describe`. Nothing reads it back: it documents a machine rather than configuring one. Generated from the Go types that produce it; do not edit by hand.",
+  "properties": {
+    "api_version": {
+      "type": "string"
+    },
+    "backup": {
+      "additionalProperties": false,
+      "properties": {
+        "targets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "credentials": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "domains": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "notify": {
+      "additionalProperties": false,
+      "properties": {
+        "targets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "credentials": {
+                "type": "string"
+              },
+              "min_level": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "url_secret": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "policy": {
+      "additionalProperties": false,
+      "properties": {
+        "require_signature": {
+          "type": "boolean"
+        },
+        "retain_backups": {
+          "type": "integer"
+        },
+        "retain_releases": {
+          "type": "integer"
+        },
+        "signing_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "skip_backup_before_update": {
+          "type": "boolean"
+        },
+        "stale_backup_after": {
+          "description": "A duration, e.g. 30s or 10m.",
+          "examples": [
+            "30s",
+            "10m"
+          ],
+          "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "product": {
+      "type": "string"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "release": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "version": {
+          "description": "A semantic version, e.g. 1.2.0.",
+          "examples": [
+            "1.2.0"
+          ],
+          "pattern": "^v?\\d+\\.\\d+\\.\\d+(?:[-+].*)?$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "secrets": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "update": {
+      "additionalProperties": false,
+      "properties": {
+        "auto_apply": {
+          "type": "boolean"
+        },
+        "channel": {
+          "type": "string"
+        },
+        "check": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "title": "morzer installation document",
+  "type": "object"
+}

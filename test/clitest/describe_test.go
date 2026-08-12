@@ -133,3 +133,59 @@ func TestDescribeWorksBeforeAnyReleaseIsInstalled(t *testing.T) {
 	out := r.Run("installation", "describe").ExitCode(0)
 	out.OutputContains("product: demo")
 }
+
+// TestDescribeRefusesRatherThanRecordingWhatItCouldNotRead.
+//
+// The failure this closes is quiet and permanent. The document is written to be
+// committed, so it outlives the run: a file recording no release because the
+// pointer would not parse is a false record that somebody reviews next quarter
+// and believes.
+//
+// The state layer already tells absence from corruption — an absent pointer is
+// a normal fresh install, an unreadable one is an error — and the first version
+// of this command collapsed both into an empty document.
+func TestDescribeRefusesRatherThanRecordingWhatItCouldNotRead(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	// The pointer exists and is not readable as a release record.
+	pointer := filepath.Join(r.Root, "var", "lib", "demo", "manager", "current-release.json")
+	if _, err := os.Stat(pointer); err != nil {
+		t.Fatalf("the fixture has no release pointer, so this proves nothing: %v", err)
+	}
+	if err := os.WriteFile(pointer, []byte("{ not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := r.Run("installation", "describe").Failed()
+
+	if strings.Contains(out.Stdout, "kind: installation-document") {
+		t.Errorf("it produced a document from state it could not read:\n%s", out.Stdout)
+	}
+}
+
+// TestDescribeRefusesWhenTheSecretStoreWillNotAnswer.
+//
+// The other half of the same rule, and the half a mutation caught: making the
+// secret listing swallow its error survived the whole suite, because the test
+// that covers secrets checks what the document says rather than what happens
+// when the store cannot be read.
+//
+// A committed file recording `secrets:` as absent, on an installation that has
+// them, is the same false record as the release case — arguably worse, since
+// the list is what somebody rebuilding the machine would work from.
+func TestDescribeRefusesWhenTheSecretStoreWillNotAnswer(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	state := filepath.Join(r.Root, "etc", "demo", "secrets.sops.yaml")
+	if _, err := os.Stat(state); err != nil {
+		t.Fatalf("the fixture has no secret state, so this proves nothing: %v", err)
+	}
+	if err := os.WriteFile(state, []byte("not: [sops\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := r.Run("installation", "describe").Failed()
+	if strings.Contains(out.Stdout, "kind: installation-document") {
+		t.Errorf("it produced a document from a store it could not read:\n%s", out.Stdout)
+	}
+}

@@ -1,8 +1,9 @@
 # RFC 0027 — Desired state in a repository
 
-- **Status:** 📝 Draft — **P1 is the only phase this RFC proposes building.** P2
-  is specified so the boundary is written down, and gated on §6, which the project
-  cannot manufacture.
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-12** as
+  `morzer installation describe`; §12.1's question was answered first and the
+  answer was yes. P2 remains gated on §6, which the project cannot manufacture,
+  and is not scheduled.
 - **Scope:** One file that fully determines an installation, written by
   `installation export --declarative` and reviewable, diffable and committable
   because secrets are references by construction. Covers the schema, the
@@ -175,7 +176,7 @@ to extend 0016's gate to cover it — not to build a parallel one here.
 | 5 | No pull, no watch, no schedule | LOCKED | §4.5. A git-pull loop is a second scheduled network operation with none of 0016's gate. |
 | 6 | The file participates in 0020's precedence chain rather than introducing a fourth selector | LOCKED | `--config` > `--product` > `MORZER_PRODUCT` > discovery. |
 | 7 | `export --declarative` and any future `apply -f` share one schema with one producer, pinned by a round-trip test | LOCKED | 0017 established this: without a byte-for-byte equivalence test, *"one producer" decays quietly back into two.* |
-| 8 | Where the command lives | OPEN | §12.4. `installation export` already produces an encrypted identity bundle; hanging a second, differently-shaped export off the same verb may be a collision. `installation describe` is the alternative, and 0019 owns where commands land. |
+| 8 | Where the command lives | LOCKED | Resolved 2026-08-12 as `installation describe`, a verb of its own. `export` produces an artifact whose purpose is to be unreadable without a recovery key; this produces one whose purpose is to be read and committed. Two artifacts differing in exactly the property an operator cares about, behind one verb and a flag, is how somebody publishes the wrong one. |
 
 ## 6. The gate on P2
 
@@ -227,10 +228,10 @@ A reference page for the schema, generated alongside it. §10 notes the word
 
 ## 10. Phasing
 
-- **P1 — `installation export --declarative`.** Schema, JSON Schema generation
-  alongside it (0004 already generates the manifest's; a second consumer of that
-  machinery — §12.3 says the machinery looks reusable), round-trip test against
-  the acceptance deployment, and a reference page. Ships alone.
+- **P1 — `installation describe`.** ✅ Shipped 2026-08-12. The document type,
+  the command, the generated JSON Schema (`schemas/selfhost-v1alpha1-installation.json`
+  — §12.3's guess held: a second constructor, not a second generator), the
+  completeness and stability tests, and a reference page. Ships alone.
 - **P2 — `apply -f`** — *gated on §6, not scheduled.*
 - **P3 — Refusals, `status` drift reporting** — with P2.
 
@@ -248,14 +249,14 @@ A reference page for the schema, generated alongside it. §10 notes the word
 
 Taken 2026-08-12.
 
-1. **Whether a live installation is fully expressible.** **Not measured, and it
-   is still the item to answer before any code.** The whole RFC assumes it is; if
-   any field reachable through `config`, `secret`, `installation` or `init`
-   cannot round-trip, P1's central claim — that the file recreates the
-   installation — is false, and it becomes "a file that recreates *most* of the
-   installation", which is a much worse artifact and possibly not worth shipping.
-   The round-trip test in §8 is what answers it, and it must be written before
-   the exporter is called done rather than after.
+1. **Whether a live installation is fully expressible.** **Measured 2026-08-12:
+   yes.** Eleven `Installation` fields are carried by the document, three are
+   excluded with stated reasons — `schema_version` (state bookkeeping),
+   `created_at` (history, not a choice), `providers` (declared by the release) —
+   and none is unaccounted for. The accounting is read off the structs by
+   reflection rather than from a list, so a field added later and forgotten
+   fails the build. P1's central claim holds, which is what made it worth
+   shipping.
 2. **What 0016's `config` dot-dispatch actually covers.** Not measured. The split
    between parameters and installation settings determines the file's shape, and
    the index records that settings were bolted on when `update.check` shipped

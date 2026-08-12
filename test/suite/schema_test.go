@@ -32,8 +32,9 @@ func schemaPath(t *testing.T, name string) string {
 // "generated from the types" and a claim that used to be true.
 func TestCheckedInSchemasMatchTheTypes(t *testing.T) {
 	for name, generate := range map[string]func() ([]byte, error){
-		schema.ManifestSchemaFile: schema.Manifest,
-		schema.SecretSchemaFile:   schema.Secrets,
+		schema.ManifestSchemaFile:             schema.Manifest,
+		schema.SecretSchemaFile:               schema.Secrets,
+		schema.InstallationDocumentSchemaFile: schema.InstallationDocument,
 	} {
 		t.Run(name, func(t *testing.T) {
 			want, err := generate()
@@ -219,6 +220,10 @@ func TestEverySchemaIsCheckedIn(t *testing.T) {
 			found = append(found, e.Name())
 		}
 	}
-	assert.ElementsMatch(t, []string{schema.ManifestSchemaFile, schema.SecretSchemaFile}, found,
+	assert.ElementsMatch(t, []string{
+		schema.ManifestSchemaFile,
+		schema.SecretSchemaFile,
+		schema.InstallationDocumentSchemaFile,
+	}, found,
 		"schemas/ must hold exactly what the generator produces")
 }
