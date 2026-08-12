@@ -35,6 +35,10 @@ curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 0.
 Verifies the checksum before it installs, and the signature too when `minisign`
 is there. `--print-only` shows what it would do and changes nothing.
 
+Unpacking needs `zstd` on the machine — releases are `tar.zst` and GNU tar runs
+`zstd` as a filter rather than decompressing itself. Most servers have it;
+minimal images often do not.
+
 ## Try it
 
 ```sh
