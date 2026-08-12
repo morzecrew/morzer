@@ -1702,6 +1702,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="It is enforced, not encouraged">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-checkers-because-one-of-them-was-doing-less-than-it-looked-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Two checkers, because one of them was doing less than it looked like
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1917,6 +1934,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="It is enforced, not encouraged">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-checkers-because-one-of-them-was-doing-less-than-it-looked-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Two checkers, because one of them was doing less than it looked like
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2064,9 +2098,9 @@
 <p>Dependencies point downward only. <code>internal/domain</code> imports nothing from this
 repository and nothing beyond the standard library and a semver parser.</p>
 <h2 id="the-rule-that-does-the-work">The rule that does the work<a class="headerlink" href="#the-rule-that-does-the-work" title="Permanent link">&para;</a></h2>
-<p><strong>The lifecycle layer speaks only to ports.</strong> The string <code>docker</code> appears
-nowhere above <code>internal/adapters</code>, and <code>internal/cli</code> is the single place an
-adapter is named.</p>
+<p><strong>The lifecycle layer speaks only to ports</strong>, and <code>internal/cli</code> is the single
+place an adapter is named. Nothing above <code>internal/adapters</code> decides anything by
+asking which container runtime is running.</p>
 <p>This is not a style preference. It is what makes the entire test suite run
 without Docker, without root and without a network — which is what makes a
 fault-injection suite that kills an operation at each of eleven steps a loop
@@ -2080,6 +2114,29 @@ directly. The hook <abbr title="Application Binary Interface">ABI</abbr>, the ma
 sit behind <code>HookRunner</code>, <code>SecretStore</code> and <code>Supervisor</code>.</p>
 <p>A layering rule nothing checks is a paragraph in a document that the next
 refactor quietly violates.</p>
+<h3 id="two-checkers-because-one-of-them-was-doing-less-than-it-looked-like">Two checkers, because one of them was doing less than it looked like<a class="headerlink" href="#two-checkers-because-one-of-them-was-doing-less-than-it-looked-like" title="Permanent link">&para;</a></h3>
+<p><code>depguard</code> is an import linter. It answers "may this package depend on that
+one", and nothing else — so a file in <code>internal/ports</code> whose exported API is the
+Docker Compose interpolation contract passes it without complaint, because that
+file imports nothing at all.</p>
+<p>That gap was found by asking what would happen if a second runtime were added,
+and it is now covered by a second checker. <code>just runtime-check</code> fails the build
+on a name above <code>internal/adapters</code> that says which runtime is running, on a
+string whose value <em>is</em> a runtime's name, or on a comparison against one — the
+middle rule because <code>const defaultRuntime = "compose"</code> has a neutral name and a
+neutral comparison, and would otherwise walk past the other two.</p>
+<p>The mentions that exist are an inventory rather than a suppression list. Each is
+classified as <em>port-shaped</em> (the concept is general, only the name is borrowed),
+<em>Compose-shaped</em> (the concept is Compose's own and has to move), or <em>catalogue</em>
+(a runtime named as data, which a second runtime extends rather than
+contradicts). <code>just runtime-inventory</code> prints it, and an entry left behind after
+its leak is fixed fails the build too — a list checked in one direction only ever
+grows.</p>
+<p>Two checkers, two guarantees, and neither implies the other: <strong>imports say what a
+package may reach for; names say what it believes it is talking to.</strong> Both are
+narrower than "the architecture is correct", and the leak that matters most — a
+Compose concept wearing a neutral name, like the manifest's <code>project</code> — is found
+by reading rather than by either.</p>
 <h2 id="interfaces-are-declared-by-the-consumer">Interfaces are declared by the consumer<a class="headerlink" href="#interfaces-are-declared-by-the-consumer" title="Permanent link">&para;</a></h2>
 <p><code>internal/ports</code> holds the interfaces, and none of them are written by the thing
 that implements them. <code>Runtime</code> exists because the lifecycle layer needs to

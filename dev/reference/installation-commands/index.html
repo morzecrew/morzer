@@ -1518,6 +1518,73 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#describing-an-installation-as-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Describing an installation as a file
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Describing an installation as a file">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation-describe" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        installation describe
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="installation describe">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#it-holds-no-secret-value-and-cannot" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        It holds no secret value, and cannot
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nothing-reads-it-back" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Nothing reads it back
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-leaves-out-and-why" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it leaves out, and why
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2027,6 +2094,73 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#describing-an-installation-as-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Describing an installation as a file
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Describing an installation as a file">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation-describe" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        installation describe
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="installation describe">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#it-holds-no-secret-value-and-cannot" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        It holds no secret value, and cannot
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nothing-reads-it-back" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Nothing reads it back
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-leaves-out-and-why" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it leaves out, and why
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2312,6 +2446,76 @@ morzer<span class="w"> </span>doctor
 every export would make exports enormous for no gain. The export records the
 version and digest instead, which is what lets an operator confirm they got the
 same bytes.</p>
+<h2 id="describing-an-installation-as-a-file">Describing an installation as a file<a class="headerlink" href="#describing-an-installation-as-a-file" title="Permanent link">&para;</a></h2>
+<h3 id="installation-describe">installation describe<a class="headerlink" href="#installation-describe" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>describe<span class="w">                      </span><span class="c1"># to stdout</span>
+morzer<span class="w"> </span>installation<span class="w"> </span>describe<span class="w"> </span>--output<span class="w"> </span>morzer.yaml<span class="w"> </span><span class="c1"># to a file</span>
+</code></pre></div>
+<p>Writes what an operator <em>chose</em>, as a document:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Written by `morzer installation describe`. Nothing reads it back:</span>
+<span class="c1"># editing this file changes nothing. See RFC 0027.</span>
+<span class="nt">api_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">selfhost/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">installation-document</span>
+<span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">01J9Z5K3QH</span>
+<span class="nt">product</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acme</span>
+<span class="nt">release</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acme</span>
+<span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4.2.1</span>
+<span class="w">  </span><span class="nt">digest</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sha256:…</span>
+<span class="w">  </span><span class="nt">ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">oci://registry.example.com/acme/release</span>
+<span class="nt">domains</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">acme.example</span><span class="p p-Indicator">]</span>
+<span class="nt">parameters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">http_port</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;8443&quot;</span>
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db_password</span>
+<span class="nt">policy</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">require_signature</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="nt">backup</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">targets</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">s3://bucket/prefix</span>
+<span class="w">      </span><span class="nt">credentials</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">s3_creds</span>
+</code></pre></div>
+<p>The answer to "what is this machine" becomes a file rather than four commands.
+It is reviewable, diffable, and safe to commit.</p>
+<h4 id="it-holds-no-secret-value-and-cannot">It holds no secret value, and cannot<a class="headerlink" href="#it-holds-no-secret-value-and-cannot" title="Permanent link">&para;</a></h4>
+<p>Every credential in an installation is already a <em>reference</em>: a backup target
+names the secret holding its credentials, a notification target names the secret
+holding its URL. The document carries those names. <code>secrets</code> is a list of names
+too — what <code>secret set</code> would have to be run for, never what was set.</p>
+<p>That is a property of the configuration rather than a filter applied on the way
+out, which is why it can be stated flatly: there is nowhere in this document to
+put a value.</p>
+<h4 id="nothing-reads-it-back">Nothing reads it back<a class="headerlink" href="#nothing-reads-it-back" title="Permanent link">&para;</a></h4>
+<p>There is no <code>morzer apply -f</code>. Changing the file changes nothing, and the header
+the document carries says so, because a file that looks like desired state and
+is not is the defect <a href="../parameters/"><code>config</code></a> was built to fix.</p>
+<p>Its uses are the ones that need no reader: documenting a machine, diffing two
+that should match, and reviewing what changed after somebody ran <code>config set</code>.</p>
+<h4 id="what-it-leaves-out-and-why">What it leaves out, and why<a class="headerlink" href="#what-it-leaves-out-and-why" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Not in the document</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schema_version</code></td>
+<td>State bookkeeping. The document has its own <code>api_version</code>.</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>History, not a choice — a recreated installation has its own.</td>
+</tr>
+<tr>
+<td><code>providers</code></td>
+<td>Declared by the release manifest, not chosen by the operator.</td>
+</tr>
+</tbody>
+</table>
+<p>The list is not maintained by hand: a field added to an installation and not
+accounted for one way or the other fails the build.</p>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../secret-commands/#secret-recipients"><code>secret recipients</code></a> — who can decrypt</li>
