@@ -276,8 +276,14 @@ about targets rather than only here.
 
 ## 9. Phasing
 
-- **P1 — The statement.** Predicate schema, emission on success only, local
-  append, the salt from decision 10. Generated JSON Schema alongside.
+- **P1 — The statement, signed.** Predicate schema, emission on success only,
+  local append, the salt from decision 10. Generated JSON Schema alongside.
+  **And the signing, because there is no unsigned half of this to ship**:
+  [0028](0028-the-machines-signing-identity.md) P1 lands here (decision 2a), the
+  statement carries the signature and the public key that verifies it, and
+  `attest verify` — P3's command — is preceded in P1 by whatever verification the
+  emission tests need to prove the signature is real rather than recorded. An
+  unsigned statement is the theatre §2 warns about, so it is not a phase.
 - **P2 — Failure and compensation paths.** Emission from the fault-injection suite;
   each injected failure produces a statement whose step list stops where the
   injection did.

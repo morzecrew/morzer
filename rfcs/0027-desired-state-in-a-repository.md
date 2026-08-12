@@ -5,7 +5,8 @@
   answer was yes. P2 remains gated on §6, which the project cannot manufacture,
   and is not scheduled.
 - **Scope:** One file that fully determines an installation, written by
-  `installation export --declarative` and reviewable, diffable and committable
+  `installation describe` — proposed as `installation export --declarative`,
+  renamed by decision 8 — and reviewable, diffable and committable
   because secrets are references by construction. Covers the schema, the
   round-trip discipline, and — specified but not proposed — what `apply -f` would
   have to be if it were ever built. Deliberately not reconciliation, not a pull
@@ -61,10 +62,11 @@ commands were run in which order.
 That is a real gap. It is smaller than it looks, and §3 is the part worth
 building.
 
-## 3. P1: `morzer installation export --declarative`
+## 3. P1: `morzer installation describe`
 
-One command. It reads a live installation and writes the file that would recreate
-it:
+One command — proposed here as `installation export --declarative` and shipped
+under the name decision 8 settled on. It reads a live installation and writes the
+file that would recreate it:
 
 ```yaml
 morzer: v1
@@ -175,7 +177,7 @@ to extend 0016's gate to cover it — not to build a parallel one here.
 | 4 | Immutable fields are named refusals; a round-tripped export applies cleanly | LOCKED | §4.3. A file that appears to set a field and silently does not is 0007's defect exactly. |
 | 5 | No pull, no watch, no schedule | LOCKED | §4.5. A git-pull loop is a second scheduled network operation with none of 0016's gate. |
 | 6 | The file participates in 0020's precedence chain rather than introducing a fourth selector | LOCKED | `--config` > `--product` > `MORZER_PRODUCT` > discovery. |
-| 7 | `export --declarative` and any future `apply -f` share one schema with one producer, pinned by a round-trip test | LOCKED | 0017 established this: without a byte-for-byte equivalence test, *"one producer" decays quietly back into two.* |
+| 7 | `installation describe` and any future `apply -f` share one schema with one producer, pinned by a round-trip test | LOCKED | 0017 established this: without a byte-for-byte equivalence test, *"one producer" decays quietly back into two.* Written as `export --declarative` before decision 8 renamed the command; the name was the only thing that changed, and leaving the old one here would have made this RFC describe two command contracts for one document. |
 | 8 | Where the command lives | LOCKED | Resolved 2026-08-12 as `installation describe`, a verb of its own. `export` produces an artifact whose purpose is to be unreadable without a recovery key; this produces one whose purpose is to be read and committed. Two artifacts differing in exactly the property an operator cares about, behind one verb and a flag, is how somebody publishes the wrong one. |
 
 ## 6. The gate on P2

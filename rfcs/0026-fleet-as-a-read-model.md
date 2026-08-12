@@ -79,8 +79,12 @@ fleet/<product>/<installation-id>/status.json
 
 Content: a schema version, product, version, mode (0016's `dev`/`prod`), manager
 version, health summary, last operation with outcome and timestamp, drift
-indicator, and the publish timestamp, and the signing key's public half. Signed with
-[0028](0028-the-machines-signing-identity.md)'s per-installation key.
+indicator, and the publish timestamp, and the signing key's public half — the
+last of those so an operator reading one row can compare a fingerprint, *not* so
+a reader can verify with it. Signed with
+[0028](0028-the-machines-signing-identity.md)'s per-installation key, over the
+bytes as published, and verified against the roster rather than against the row:
+§3.6.
 
 **The schema version is in the payload, not inferred.** §3.4 already promises
 that an unknown schema version is a row carrying its problem, and a reader
@@ -146,6 +150,41 @@ single test**, or the second thing to drop is the thing somebody forgets.
 
 That generalisation is worth more than the feature.
 
+### 3.6 What is signed, and what verifies it
+
+Two questions the first draft of this section left to the reader, both of which
+have a wrong answer that looks right.
+
+**The signature covers the object's bytes as published**, not the payload
+re-serialised by the reader. A signature over "the JSON" is a signature over
+whichever spelling of the JSON the verifier happens to reproduce — key order,
+whitespace, number formatting, escaping — so it either needs a canonicalisation
+spec that both ends implement identically, or it needs to not have that problem.
+This does the second: the publisher signs the bytes it is about to write, the
+detached signature is published beside them at
+`fleet/<product>/<installation-id>/status.json.minisig`, and **the reader
+verifies before it parses**. Nothing about the row's meaning can then depend on
+a re-serialisation nobody agreed on.
+
+**The key that verifies a row does not come from the row.** The payload carries
+the public half, and that is a convenience for an operator reading one machine's
+output — never the anchor. A row that carries the key that verifies it verifies
+itself, which authenticates nothing against the threat §9 names: the other
+machine writing to the same bucket holds a perfectly valid signing key, and it
+would replace the row, the key and the signature together.
+
+So the roster is the anchor. Decision 5 already makes a roster necessary for the
+answer that matters — which installations are *absent* — and binding a public
+key to an installation id there costs one field in a file the reader already
+has to maintain. It is obtained the way a fingerprint always is, out of band:
+`morzer installation describe` prints it on the machine itself.
+
+The three cases a reader then distinguishes, all of them visible rows per
+decision 4: verified against the roster; **signed by a key the roster does not
+name**, which is the overwrite; and unsigned or unverifiable. A reader with no
+roster reports that it cannot authenticate anything, in the same breath as it
+reports that it cannot see absences — the two limitations have one cause.
+
 ## 4. Decisions
 
 | # | Decision | Grade | Why |
@@ -156,7 +195,8 @@ That generalisation is worth more than the feature.
 | 4 | Rows carry their problems | LOCKED | §3.4. A view that drops what it cannot read reports health it did not observe. |
 | 5 | Absence requires a roster, and the absence of a roster is reported | LOCKED | §3.3. A partial table presented as complete is the failure mode of every fleet view. |
 | 6 | Verification failure is a visible row, not an exclusion | LOCKED | §3.4. Whatever authenticates a row, a row that fails to authenticate is displayed carrying its problem. |
-| 6a | What signs a row | LOCKED | [0028](0028-the-machines-signing-identity.md)'s per-installation minisign key, and the row carries the public half so a reader needs nothing else. This one mattered most here: §9's shared-bucket overwrite is detected *by the signature*, so without it decision 6 had nothing to verify. |
+| 6a | What signs a row | LOCKED | [0028](0028-the-machines-signing-identity.md)'s per-installation minisign key, over the object's bytes as published — see §3.6. |
+| 6b | The reader's trust anchor is the roster, never the row | LOCKED | §3.6. A row carrying the key that verifies it is a row that verifies itself, and the attacker §9 names — another machine with write access to the shared bucket — holds a valid key of its own. It would replace the row *and* the key, and the signature would check out. The roster decision 5 already requires is where a public key is bound to an installation id; a row signed by anything else is displayed carrying that problem, per decision 4. |
 | 7 | Dev-mode drops fleet targets, via a single generalised drop list | LOCKED | §3.5, and §10.1 measured that no such list exists yet — so this decision creates it. |
 | 8 | No new state | LOCKED | The published object is derived entirely from what `status`/`ls` already compute. §10.2 confirms `ls` needs no Docker call, so a publisher can report the case where the runtime is the problem. If publishing needs the manager to record something new, that is a signal the payload is too big. |
 
@@ -185,14 +225,23 @@ That generalisation is worth more than the feature.
   that publishes with the daemon stopped — the case decision 8 exists for.
 - Round-trip: publish, list, verify, render, with a tampered object and an
   unparseable object each producing a row rather than an omission (decision 4).
+- **The overwrite, played out**: a second installation with its own valid key
+  rewrites the first's object, its embedded public key and its signature. The
+  row must be reported as signed by a key the roster does not name. A verifier
+  that trusts the row's own key passes this scenario, which is what makes it the
+  test decision 6b lives or dies by.
+- A reader with no roster says it cannot authenticate, rather than showing rows
+  as verified.
 - The drop list from decision 7 gets one test covering every credential-bearing
   field, so a third thing to drop cannot be added without failing it.
 
 ## 7. Docs
 
-`fleet ls` joins the command reference. The roster format is a reference page,
-and the operating guide says plainly what the absence of a roster means, because
-a reader who does not know that reads a complete-looking table as complete.
+`fleet ls` joins the command reference. The roster format is a reference page —
+including the public key per installation and how it is obtained, since a roster
+written without keys makes every row unauthenticatable — and the operating guide
+says plainly what the absence of a roster means, because a reader who does not
+know that reads a complete-looking table as complete.
 
 ## 8. Phasing
 
@@ -220,8 +269,15 @@ buckets are the one thing this design cannot recall.
   §10.3's question, and if `ssh://` cannot, that is a documented limitation rather
   than a silently weaker guarantee.
 - **A shared bucket means one machine can overwrite another's row.** Prefix
-  scoping mitigates it where the transport supports it; the signature detects it
-  where it does not, which is why decision 6 makes verification failure *visible*.
+  scoping mitigates it where the transport supports it; where it does not, the
+  signature detects it **only because §3.6 anchors verification in the roster**.
+  An earlier draft of this section claimed the signature caught this on its own,
+  and it does not: the machine doing the overwriting is a machine with a valid
+  signing key, so a row it rewrites end to end — payload, embedded public key and
+  signature — verifies perfectly against itself. That is the whole reason
+  decision 6b exists, and it is worth stating as a risk rather than only as a
+  decision, because "it's signed" is exactly the sentence that stops people
+  asking *by whom*.
 - **Scope pressure.** Every user of this will ask for decision 2 to be relaxed
   within a week. The refusal is the product.
 

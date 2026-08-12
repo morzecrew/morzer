@@ -179,6 +179,22 @@ public half and record the succession.**
   the installation it is verifying against, and can say "signed by this
   installation's key as of before the rebuild" rather than "unknown signer".
 
+**A signature that verifies against a `previous_keys` entry is its own outcome,
+never plain "valid".** The three a verifier reports are: signed by this
+installation's current key; *signed by a predecessor of this installation*; and
+unverifiable. Collapsing the middle one into the first is what would make
+rotation useless — the reason to rotate is usually that the old key may be in
+somebody else's hands, and a verifier that accepts a retired key without saying
+so accepts new forgeries from whoever holds it, forever, in exchange for keeping
+old artifacts readable.
+
+That distinction is what the retirement point is for. Rotation (P2) records
+*when* a key left service, so a predecessor signature over an artifact the
+installation dated after that point is reported as the contradiction it is. This
+is provenance rather than proof: the artifact's own timestamp is not
+authenticated by anything an attacker could not also produce, so the rule catches
+an accident and a lazy forgery, and does not pretend to catch a careful one.
+
 What this does **not** do is prove the rebuild was legitimate. Anyone holding the
 export can import it and mint a key that claims the same predecessor. The
 succession record is provenance for an operator reading their own history, not
@@ -197,10 +213,14 @@ signing:
 ```
 
 In the installation rather than only on disk, so it reaches `status --json`, the
-export, and 0026's fleet row without any of them reading a key file. An
-installation at schema 6 whose `signing.public_key` is empty is refused rather
-than repaired: a machine that can sign and does not know its own public key
-would produce artifacts nobody can attribute.
+export, and 0026's fleet row without any of them reading a key file.
+
+The refusal this needs is narrower than "schema 6 requires a public key", and
+§5.6 is why. What is refused is **disagreement**: a signing key file whose public
+half is not what state records. That is a machine which would sign with one key
+and tell everybody it signs with another, and its artifacts are attributable to
+nobody. A machine with *no* key and no record of one is a different thing
+entirely — it is every installation that existed before this RFC.
 
 ### 5.5 What a signature by this key proves
 
@@ -210,6 +230,48 @@ Written here once, and carried by every consumer per 0025 decision 2:
 > produced these bytes. It does not prove the bytes are true, it does not prove
 > the machine was uncompromised when it signed, and it does not identify the
 > operator.
+
+### 5.6 Every existing installation reaches schema 6 without a key, and that is fine
+
+`init` mints the key. Every installation that already exists does not run `init`
+again, so this needs an answer, and the obvious one — *the migration mints it* —
+does not fit the mechanism.
+
+**Measured against the code.** [`migrateInstallation`](../internal/infra/state/state.go)
+is `func(domain.Installation) (domain.Installation, error)`: a pure function
+from one value to another. Every migration in it so far — 2→3, 3→4, 4→5 — is a
+comment explaining that there is nothing to convert and one line bumping the
+number, because a new field's zero value has always been the correct reading of
+an installation written before that field existed. Minting a key is not that. It
+needs a CSPRNG, a file created at `0400` in a directory that may not exist, and a
+write that must not half-happen — none of which a function with that signature
+can do, and threading a filesystem into it would make every future migration a
+place where loading state can write to disk.
+
+So the migration does what every migration here does: **nothing but the bump.**
+A migrated installation is at schema 6 with an empty `signing` block, which
+states the truth — this machine has never had a signing key.
+
+The key is minted instead by the idempotent step from §5.1, which `init` runs and
+which any operation that needs to sign runs first. Three consequences, each
+deliberate:
+
+- **An installation acquires a key the first time it needs one**, not on the
+  upgrade that made keys possible. A manager upgrade that silently generates
+  cryptographic material on a machine nobody asked is a surprise; producing a
+  signed artifact is a request.
+- **`doctor` reports a machine at schema 6 with no signing key** as information,
+  not a failure. It becomes a warning only once the installation is configured to
+  do something that signs — publishing a fleet row on a timer, say — because then
+  it is a scheduled operation that will fail.
+- **The refusal in §5.4 stays sharp** by being about disagreement rather than
+  absence. Empty state with no key file is an un-minted machine; a key file whose
+  public half is not the recorded one is a machine to stop.
+
+What this costs is that `signing.public_key` is not a field a consumer may assume
+is populated. Every consumer already has to handle its absence — 0026's roster
+may name an installation that has never signed — so the alternative would have
+bought nothing but a mandatory-looking field with an empty value in it.
 
 ## 6. Decisions
 
@@ -223,6 +285,8 @@ Written here once, and carried by every consumer per 0025 decision 2:
 | 6 | The public key lives in installation state, schema 6 | LOCKED | §5.4. It has to reach `status`, the export and a fleet row without any of them opening a key file. |
 | 7 | Losing the signing key is not recoverable and that is acceptable | LOCKED | Old signatures stay verifiable; only new ones are lost. A recovery path would add a second secret to protect for a much smaller loss than the age identity's. |
 | 8 | The key is minted for every installation, including `--mode dev` | ASSUMED | Uniformity beats a conditional nobody remembers; a sandbox that cannot sign would be a sandbox whose artifacts differ in shape from production's. Reversed if a consumer finds a reason a sandbox must be unable to sign. |
+| 9 | The 5→6 migration bumps the number and mints nothing | LOCKED | §5.6, measured: `migrateInstallation` is a pure value-to-value function and every migration in it is a comment plus a bump. Making it able to write a key file would make loading state a thing that can write to disk. The consequence this decision accepts, and that consumers must handle: `signing.public_key` may legitimately be empty. |
+| 10 | A signature verifying against a retired key is a distinct verification outcome | LOCKED | §5.3. Folding it into "valid" means a rotation after a suspected compromise still accepts whatever the old key signs, which is the one case rotation exists for. |
 
 ## 7. Tests
 
@@ -236,8 +300,16 @@ Written here once, and carried by every consumer per 0025 decision 2:
 - Round-trip through the export: public key out, predecessor recorded on import,
   asserted against a real rebuild in the recovery scenario the acceptance suite
   already runs.
-- A schema-6 installation with an empty `signing.public_key` is refused (§5.4),
-  and a schema-5 installation is migrated rather than rejected.
+- The three states §5.6 separates, because the refusal is about disagreement and
+  it would be easy to write one that refuses absence instead: a key file whose
+  public half is not the recorded one is refused; a schema-5 installation
+  migrates to 6 with an empty `signing` block and keeps working; and the minting
+  step run on that machine produces a key and records it, leaving the
+  installation indistinguishable from one `init` minted.
+- A signature made with a retired key verifies as *signed by a predecessor*
+  rather than as valid (decision 10), asserted by rotating and then verifying an
+  artifact signed before the rotation — a verifier that reports both cases
+  identically passes every other test in this list.
 - The key file is `0400` and its directory is not world-readable, asserted the
   way `stepCreateIdentity`'s `Verify` already asserts it for the age identity.
 
@@ -250,9 +322,10 @@ machine signs with a new key.
 
 ## 9. Phasing, and why it is not scheduled ahead of its consumer
 
-- **P1 — The key and the signer.** Minting, storage, mode, schema 6, the public
-  key in state and in the export, the succession record on import, `doctor`
-  check, and the interop tests in §7.
+- **P1 — The key and the signer.** Minting as an idempotent step (§5.1, §5.6),
+  storage, mode, schema 6 and its bump-only migration, the public key in state
+  and in the export, the succession record on import, `doctor` check, and the
+  interop tests in §7.
 - **P2 — Rotation.** `installation rotate-signing-key`: mint, push the old public
   key onto `previous_keys`, keep old signatures verifiable. Wanted the first time
   somebody believes a host was compromised.
@@ -283,6 +356,11 @@ particular can stop treating its overwrite defence as unresolved.
   consumer's artifact rather than a paragraph here.
 - **Schema 6 is a state migration**, and 0023 P2 wants one too. If both land in
   the same window they should be one bump, not two.
+- **`signing.public_key` may be empty on a real installation** (§5.6, decision 9),
+  and the risk is a consumer written against the happy machine — one that treats
+  the field as always present, and produces a fleet row or an attestation
+  claiming a signer that is the empty string. Every consumer needs the absent
+  case in a test, not in a comment.
 
 ## 11. Amendments
 
