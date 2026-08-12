@@ -55,6 +55,28 @@ sit behind `HookRunner`, `SecretStore` and `Supervisor`.
 A layering rule nothing checks is a paragraph in a document that the next
 refactor quietly violates.
 
+### Two rules, because one of them was doing less than it looked like
+
+`depguard` is an import linter. It answers "may this package depend on that
+one", and nothing else — so a file in `internal/ports` whose exported API is the
+Docker Compose interpolation contract passes it without complaint, because that
+file imports nothing at all.
+
+That gap was found by asking what would happen if a second runtime were added,
+and it is now covered by a second check: `just runtime-check` fails the build on
+a name above `internal/adapters` that says which runtime is running, or on a
+comparison against one. The existing mentions are an inventory rather than a
+suppression list — each is classified as *port-shaped* (the concept is general,
+only the name is borrowed), *Compose-shaped* (the concept is Compose's own and
+has to move), or *catalogue* (a runtime named as data, which a second runtime
+extends). `just runtime-inventory` prints it.
+
+Two rules, two guarantees, and neither implies the other: **imports say what a
+package may reach for; names say what it believes it is talking to.** Both are
+narrower than "the architecture is correct", and the leaks that matter most —
+a Compose concept wearing a neutral name — are found by reading rather than by
+either.
+
 ## Interfaces are declared by the consumer
 
 `internal/ports` holds the interfaces, and none of them are written by the thing

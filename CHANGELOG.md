@@ -201,6 +201,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `installation describe` refuses rather than recording what it could not read. A release pointer that will not parse or a secret store that will not open produces an error, not a document asserting there is no release and there are no secrets. The file is written to be committed, so a false record in it outlives the run that produced it.
 
+- `just runtime-check` fails the build on a package above `internal/adapters` that names a container runtime or branches on which one is running. The layering rules were enforced by an import linter, which cannot see a name: the file whose exported API is the Compose interpolation contract imports nothing and passed cleanly. The existing mentions are an inventory rather than a suppression list — each classified as a rename, a concept that has to move, or a runtime named as data — and a mention that is fixed and left in the list fails too, because a list checked one way only ever grows.
+
 ### Changed
 
 - The installation page leads with the install script and keeps the manual sequence underneath, because the manual sequence is what the script does and an operator checking its work needs to be able to read it.

@@ -66,7 +66,8 @@ The site lives in [`pages/`](pages/) and is published to
 | A design that has not shipped | [`rfcs/`](rfcs/), not the site |
 
 ```sh
-just docs-check  # the drift gate; part of `just ci`
+just docs-check     # the drift gate; part of `just ci`
+just runtime-check  # the runtime boundary; also part of `just ci`
 just serve-docs  # live reload on localhost:8046
 just build-docs  # build into pages/site
 ```
@@ -130,18 +131,34 @@ cli -> ui -> lifecycle -> ports <- adapters
 
 - `internal/domain` imports nothing from this repository, and nothing beyond
   stdlib and semver.
-- The lifecycle layer speaks only to ports. The string `docker` appears nowhere
-  above `internal/adapters`.
+- The lifecycle layer speaks only to ports.
 - `internal/cli` is the single place adapters are named.
+- No package above `internal/adapters` names a runtime or branches on one.
 
-`depguard` in [`.golangci.yml`](.golangci.yml) enforces these mechanically. When
-it objects, the boundary is usually wrong — add a port method or an optional
-capability interface rather than widening the rule. It has already caught three
-real violations that had been described as compliant.
+**Two checkers, because the first three rules and the fourth are different
+questions.** `depguard` in [`.golangci.yml`](.golangci.yml) is an import linter:
+it answers what a package may depend on. `just runtime-check`
+([`tools/runtimecheck`](tools/runtimecheck)) reads names, because a file whose
+exported API is the Compose interpolation contract imports nothing and passes
+depguard cleanly.
+
+This section used to claim depguard guaranteed that *"the string `docker`
+appears nowhere above `internal/adapters`"*. It never did and could not — an
+import linter cannot see a name — and [RFC 0023](rfcs/0023-runtimes-beyond-compose.md)
+started from that sentence and had to correct it in §2. The rule is now true
+because something checks it, which is the only way a sentence like this one is
+ever true.
+
+When either objects, the boundary is usually wrong — add a port method or an
+optional capability interface rather than widening the rule. depguard has
+already caught three real violations that had been described as compliant. For
+`runtime-check`, "widening the rule" means adding to the inventory in
+[`tools/runtimecheck/inventory.go`](tools/runtimecheck/inventory.go), and every
+entry there has to say what would remove it again.
 
 ## Coverage
 
-`just coverage-gate` enforces a floor, currently 75% for `go test` and 77% across every suite. It is a floor, not a
+`just coverage-gate` enforces a floor, currently 84% for `go test` and 86% across every suite. It is a floor, not a
 target: raise it deliberately, and if a change genuinely lowers it, lower
 `COVERAGE_FLOOR` in `.github/workflows/ci.yml` in the same pull request, so the
 decision is reviewable rather than silent.
