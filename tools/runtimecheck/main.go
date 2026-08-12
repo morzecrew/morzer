@@ -55,6 +55,9 @@ func main() {
 	}
 }
 
+// run is the gate: walk, reconcile, and report either the findings or the
+// summary. A non-nil error is a failed build, and its text is the guidance,
+// because the message is what somebody acts on.
 func run(root string, out io.Writer) error {
 	found, err := Check(root)
 	if err != nil {

@@ -30,6 +30,11 @@ import (
 // rather than to weaken the match.
 var runtimeWords = []string{"compose", "docker", "podman", "quadlet"}
 
+// namesARuntime returns the runtime word a name contains, or the empty string.
+//
+// The word rather than a bool, because every report says which one it matched:
+// "names \"quadlet\"" tells a reader what rule fired on what, and a bare "this
+// is a leak" makes them go looking.
 func namesARuntime(s string) string {
 	l := strings.ToLower(s)
 	for _, w := range runtimeWords {
