@@ -27,8 +27,11 @@ const alpine = "alpine:3.21"
 // test server, with the script and the certificate mounted.
 //
 // --network host because the fixture is served on the host's loopback: the
-// alternative is publishing a port from a container that does not exist, since
-// the server is in the test binary rather than in a container.
+// server lives in the test binary rather than in a container, so there is no
+// port to publish. That works on a Linux daemon sharing the host's network
+// namespace, which is what this project targets and what CI runs; a Docker
+// Desktop or remote daemon has its own loopback and cannot reach the fixture.
+// The probe below turns that into a sentence instead of a download timeout.
 func inAlpine(t *testing.T, rel *release, scriptPath, command string) (string, error) {
 	t.Helper()
 
@@ -52,7 +55,27 @@ func inAlpine(t *testing.T, rel *release, scriptPath, command string) (string, e
 		alpine, "sh", "-c", command,
 	}
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	if strings.Contains(string(out), unreachable) {
+		t.Fatalf("the container cannot reach the fixture server at %s.\n"+
+			"These tests need a daemon that shares the host's network namespace "+
+			"(--network host), which means a native Linux Docker. On Docker "+
+			"Desktop or a remote daemon the container's loopback is its own.\n%s",
+			rel.url, out)
+	}
 	return string(out), err
+}
+
+// unreachable is printed by the probe every container command runs first, so a
+// daemon that cannot reach the fixture fails with that sentence rather than
+// with whatever the installer says when a download times out.
+const unreachable = "FIXTURE-UNREACHABLE"
+
+// reach prefixes a command with the probe. curl is installed by the caller's
+// `apk add`, so this runs after it and before anything that matters.
+func reach(rel *release, command string) string {
+	return "curl -fsS --max-time 10 -o /dev/null --cacert /ca.pem " +
+		rel.url + "/releases/download/" + fixtureTag + "/SHA256SUMS" +
+		" || { echo " + unreachable + "; exit 97; }; " + command
 }
 
 func TestTheScriptRunsWhereThereIsNoBash(t *testing.T) {
@@ -66,10 +89,10 @@ func TestTheScriptRunsWhereThereIsNoBash(t *testing.T) {
 	// `zstd -dc | tar -xf -` fallback -- the path no test on a GNU machine
 	// takes.
 	out, err := inAlpine(t, rel, scriptPath,
-		"apk add --no-cache curl zstd >/dev/null 2>&1 && "+
+		"apk add --no-cache curl zstd >/dev/null 2>&1 && "+reach(rel,
 			"sh /install.sh --version "+fixtureVersion+
-			" --dir /usr/local/bin --no-verify-signature --no-completions && "+
-			"/usr/local/bin/morzer version")
+				" --dir /usr/local/bin --no-verify-signature --no-completions && "+
+				"/usr/local/bin/morzer version"))
 	if err != nil {
 		t.Fatalf("the script failed under busybox ash: %v\n%s", err, out)
 	}
@@ -91,9 +114,9 @@ func TestTheScriptRefusesUnderBusyboxToo(t *testing.T) {
 	rel := newRelease(t, fixtureOptions{omitSumsLine: true})
 
 	out, err := inAlpine(t, rel, script(t, rel),
-		"apk add --no-cache curl zstd >/dev/null 2>&1 && "+
+		"apk add --no-cache curl zstd >/dev/null 2>&1 && "+reach(rel,
 			"sh /install.sh --version "+fixtureVersion+
-			" --dir /usr/local/bin --no-verify-signature --no-completions")
+				" --dir /usr/local/bin --no-verify-signature --no-completions"))
 	if err == nil {
 		t.Fatalf("a SHA256SUMS with no line for the archive was accepted:\n%s", out)
 	}
@@ -116,11 +139,11 @@ func TestFishReadsTheBlockThisScriptWrote(t *testing.T) {
 	rel := newRelease(t, fixtureOptions{})
 
 	out, err := inAlpine(t, rel, script(t, rel),
-		"apk add --no-cache curl zstd fish >/dev/null 2>&1 && "+
+		"apk add --no-cache curl zstd fish >/dev/null 2>&1 && "+reach(rel,
 			"SHELL=/usr/bin/fish sh /install.sh --version "+fixtureVersion+
-			" --dir /opt/morzer/bin --no-verify-signature --no-completions && "+
-			"fish -c 'source /root/.config/fish/conf.d/morzer.fish; "+
-			"if contains /opt/morzer/bin $PATH; echo PREFIX-ON-PATH; end'")
+				" --dir /opt/morzer/bin --no-verify-signature --no-completions && "+
+				"fish -c 'source /root/.config/fish/conf.d/morzer.fish; "+
+				"if contains /opt/morzer/bin $PATH; echo PREFIX-ON-PATH; end'"))
 	if err != nil {
 		t.Fatalf("fish could not read the block: %v\n%s", err, out)
 	}
@@ -141,9 +164,9 @@ func TestTheCompletionCallReachesTheBinaryInAContainer(t *testing.T) {
 	// --completions forces it on: nothing here is a terminal, which is the
 	// default this flag exists to override.
 	out, err := inAlpine(t, rel, script(t, rel),
-		"apk add --no-cache curl zstd >/dev/null 2>&1 && "+
+		"apk add --no-cache curl zstd >/dev/null 2>&1 && "+reach(rel,
 			"SHELL=/bin/bash sh /install.sh --version "+fixtureVersion+
-			" --dir /usr/local/bin --no-verify-signature --completions")
+				" --dir /usr/local/bin --no-verify-signature --completions"))
 	if err != nil {
 		t.Fatalf("the install failed: %v\n%s", err, out)
 	}

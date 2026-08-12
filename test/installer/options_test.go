@@ -2,11 +2,10 @@ package installer
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"golang.org/x/sys/unix"
 )
 
 // The branches the sabotage sweep could not reach, because they are not guards
@@ -255,13 +254,37 @@ func TestNoHomeAndNoPrefixIsARefusalRatherThanARelativePath(t *testing.T) {
 	// `$HOME/.local/bin` with an empty $HOME is `/.local/bin`, and under a
 	// user who can write / that is a successful install nobody can find.
 	// The systemd unit and the container build are where $HOME goes missing.
+	//
+	// --print-only, and not as a detail: without it, a machine that *can*
+	// write /usr/local/bin -- which is most CI runners -- takes the other
+	// arm of the default and this test installs a fixture binary into the
+	// real system prefix before failing its own assertion. A test that
+	// writes outside its temporary directory to prove a refusal has already
+	// done the thing the refusal exists to prevent.
 	rel := newRelease(t, fixtureOptions{})
 
-	run(t, script(t, rel),
+	out := run(t, script(t, rel),
 		env{home: "", shell: "/bin/bash", release: rel},
-		"--version", fixtureVersion, "--no-verify-signature", "--no-completions",
-	).requireFailed(t, "there is no home directory and no --dir").
+		"--version", fixtureVersion, "--print-only")
+
+	if systemPrefixIsWritable(t) {
+		// There is a prefix to fall back to, so there is nothing to
+		// refuse: the documented default resolves and says so.
+		out.requireOK(t).requireSays(t, "/usr/local/bin/morzer")
+		return
+	}
+	out.requireFailed(t, "there is no home directory and no --dir").
 		requireSays(t, "--dir")
+}
+
+// systemPrefixIsWritable answers the question install.sh asks, by asking it the
+// same way: `[ -d /usr/local/bin ] && [ -w /usr/local/bin ]`. Which arm of the
+// default runs is a property of the machine, and both are asserted rather than
+// one being assumed.
+func systemPrefixIsWritable(t *testing.T) bool {
+	t.Helper()
+	return exec.Command("sh", "-c",
+		"[ -d /usr/local/bin ] && [ -w /usr/local/bin ]").Run() == nil
 }
 
 func TestThePrefixDefaultsToWhatThisMachineAllows(t *testing.T) {
@@ -276,7 +299,7 @@ func TestThePrefixDefaultsToWhatThisMachineAllows(t *testing.T) {
 		env{home: home, shell: "/bin/bash", release: rel},
 		"--version", fixtureVersion, "--print-only").requireOK(t)
 
-	systemWritable := unix.Access("/usr/local/bin", unix.W_OK) == nil
+	systemWritable := systemPrefixIsWritable(t)
 	want := filepath.Join(home, ".local", "bin", "morzer")
 	if systemWritable {
 		want = "/usr/local/bin/morzer"
