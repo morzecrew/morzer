@@ -45,12 +45,22 @@ cp "$source_file" "${work}/install.sh"
 chmod 0755 "${work}/install.sh"
 
 cd "$work"
-if git diff --quiet -- install.sh; then
+
+# Staged first, and compared against HEAD rather than against the working
+# tree. `git diff` reports nothing at all for an untracked path, so on the one
+# run that matters -- the first, when the root has no install.sh yet -- the
+# working-tree comparison said "already these bytes" and exited 0. The step
+# passed, the release published, and the URL the README tells people to curl
+# returned 404 until somebody tried it.
+#
+# Staging makes all three cases the same question: absent stages as a new file
+# and differs, changed differs, unchanged does not.
+git add install.sh
+if git diff --cached --quiet -- install.sh; then
 	echo "install.sh at the site root is already these bytes"
 	exit 0
 fi
 
-git add install.sh
 git commit -m "🔧 chore(docs): publish install.sh at the site root"
 git push origin "HEAD:${branch}"
 echo "published install.sh to the ${branch} root"
