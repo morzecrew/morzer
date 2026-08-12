@@ -162,7 +162,10 @@ Ed25519 signing key at `init` (a new key with a new lifecycle, a new thing
 `installation import` must carry, and a new thing to lose), reuse the age
 identity through a construction age was not designed for (no), or drop the
 signature and say the artifact is unauthenticated (which changes what it is
-worth). **This is an OPEN decision and it blocks the phase that depends on it.**
+worth). **[RFC 0028](0028-the-machines-signing-identity.md) answers this**: a
+per-installation Ed25519 key in minisign format, minted at `init`, whose
+signature proves that a process holding this installation's key produced the
+bytes — and nothing more. P4 depends on 0028 P1.
 
 ## 4. Decisions
 
@@ -172,7 +175,7 @@ worth). **This is an OPEN decision and it blocks the phase that depends on it.**
 | 2 | Allowlist inclusion, enumerated as an ABI, shrinking only on a version bump | LOCKED | §3.2. 0015's rule one level up: a component added later is not exported until someone classifies it. |
 | 3 | Encrypted to vendor recipients only when declared; plaintext and loud when not | LOCKED | §3.4. Refusing to produce a plaintext archive would break the forum case, which is the case §2 rests on. |
 | 3a | A *malformed* `support.recipients` is a refusal, never a fall back to plaintext | LOCKED | "Declared but unparseable" is not "absent". Falling back would produce a plaintext archive for the operator who most clearly asked for an encrypted one, and it would do it quietly — an intent-guard where an outcome-guard is needed. `--preview` prints the recipient fingerprints so the target is verifiable before the archive exists. |
-| 4 | What the signature is, and what it proves | **OPEN** | The bound is settled: whatever signs it proves the archive came from a machine holding that key, *not* that the operator did not edit it first, and not who the operator is. An overstated signature is worse than none — the same failure 0013 exists to fix, in a different costume. What is **not** settled is the signer: §3.7 measured that no signing key exists on the machine. P4 cannot start until this is answered. |
+| 4 | What the signature is, and what it proves | LOCKED | The bound is settled: whatever signs it proves the archive came from a machine holding that key, *not* that the operator did not edit it first, and not who the operator is. An overstated signature is worse than none — the same failure 0013 exists to fix, in a different costume. The signer is answered by [0028](0028-the-machines-signing-identity.md): a per-installation minisign key, minted at `init`. P4 lands after 0028 P1. |
 | 5 | No `--raw` escape hatch | LOCKED | A flag that disables redaction will be the flag every support article tells operators to pass, and then redaction is a feature nobody uses. An operator who genuinely needs unredacted logs already has `morzer logs --no-redact` (0021) and is making that choice one file at a time. |
 | 6 | The manager never transmits | LOCKED | §3.6. |
 | 7 | `support redact --check <file>` ships alongside | LOCKED | So an operator can run the same redactor over a paste they were going to send anyway. Cheap, and the feature most likely to actually prevent a leak. |

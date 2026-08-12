@@ -79,7 +79,8 @@ fleet/<product>/<installation-id>/status.json
 
 Content: a schema version, product, version, mode (0016's `dev`/`prod`), manager
 version, health summary, last operation with outcome and timestamp, drift
-indicator, and the publish timestamp. Signed — by what, decision 6a leaves open.
+indicator, and the publish timestamp, and the signing key's public half. Signed with
+[0028](0028-the-machines-signing-identity.md)'s per-installation key.
 
 **The schema version is in the payload, not inferred.** §3.4 already promises
 that an unknown schema version is a row carrying its problem, and a reader
@@ -155,7 +156,7 @@ That generalisation is worth more than the feature.
 | 4 | Rows carry their problems | LOCKED | §3.4. A view that drops what it cannot read reports health it did not observe. |
 | 5 | Absence requires a roster, and the absence of a roster is reported | LOCKED | §3.3. A partial table presented as complete is the failure mode of every fleet view. |
 | 6 | Verification failure is a visible row, not an exclusion | LOCKED | §3.4. Whatever authenticates a row, a row that fails to authenticate is displayed carrying its problem. |
-| 6a | What signs a row | **OPEN** | The same unresolved question as 0024 §3.7 and 0025 §4.8: the machine identity is an age *encryption* key and the manager signs nothing today. It matters more here than there, because §9's shared-bucket overwrite is detected *by the signature* — without one, decision 6 has nothing to verify and prefix scoping is the only defence. |
+| 6a | What signs a row | LOCKED | [0028](0028-the-machines-signing-identity.md)'s per-installation minisign key, and the row carries the public half so a reader needs nothing else. This one mattered most here: §9's shared-bucket overwrite is detected *by the signature*, so without it decision 6 had nothing to verify. |
 | 7 | Dev-mode drops fleet targets, via a single generalised drop list | LOCKED | §3.5, and §10.1 measured that no such list exists yet — so this decision creates it. |
 | 8 | No new state | LOCKED | The published object is derived entirely from what `status`/`ls` already compute. §10.2 confirms `ls` needs no Docker call, so a publisher can report the case where the runtime is the problem. If publishing needs the manager to record something new, that is a signal the payload is too big. |
 
