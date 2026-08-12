@@ -215,7 +215,11 @@ Ed25519 signing key at `init` (a new key with a new lifecycle, a new thing
 `installation import` must carry, and a new thing to lose), reuse the age
 identity through a construction age was not designed for (no), or drop the
 signature and say the artifact is unauthenticated (which changes what it is
-worth). **This is an OPEN decision and it blocks the phase that depends on it.**
+worth). **[RFC 0028](0028-the-machines-signing-identity.md) answers this**, and this
+RFC is its first consumer: 0028 P1 and 0025 P1 land in the same wave, so the key
+is exercised by an artifact rather than by its own tests alone. 0028 §5.3 also
+answers what happens to `attest verify`'s chain across a rebuild — the machine is
+honestly a new signer and the predecessor's public key is recorded.
 
 ## 5. Decisions
 
@@ -223,7 +227,7 @@ worth). **This is an OPEN decision and it blocks the phase that depends on it.**
 | --- | --- | --- | --- |
 | 1 | Own predicate type, versioned by URI | LOCKED | §4.2. Reusing SLSA's build predicate would validate against a schema while asserting something it does not mean. |
 | 2 | The claim's bound is a field in the document, not documentation | LOCKED | §4.3. An artifact that travels must carry the bound on its own claim. |
-| 2a | What signs the statement | **OPEN** | §4.8. The machine identity is an age *encryption* key, nothing in the manager signs, and 0004 decision 8 refuses a signing verb. An attestation nobody can authenticate is decision 8's theatre in a different costume, so P1 does not start until this is answered. |
+| 2a | What signs the statement | LOCKED | [0028](0028-the-machines-signing-identity.md)'s per-installation minisign key. P1 lands with 0028 P1 — the attestation is that key's first consumer, which is why 0028 is not scheduled ahead of this. |
 | 3 | Emitted on failure and compensation, not only on success | LOCKED | §4.5. A system that attests only its successes attests nothing. |
 | 4 | Parameter names yes, values never, rendered digest salted per installation | LOCKED | §4.4. An unsalted digest over a port number is brute-forceable. |
 | 5 | Reuses 0009's target registry unchanged | LOCKED | Third consumer of that shape (release sources → backup targets → attestations); if it needs a fourth method, extract `ports.ObjectStore` rather than widening `BackupTarget`, and record it here. |
@@ -272,8 +276,14 @@ about targets rather than only here.
 
 ## 9. Phasing
 
-- **P1 — The statement.** Predicate schema, emission on success only, local
-  append, the salt from decision 10. Generated JSON Schema alongside.
+- **P1 — The statement, signed.** Predicate schema, emission on success only,
+  local append, the salt from decision 10. Generated JSON Schema alongside.
+  **And the signing, because there is no unsigned half of this to ship**:
+  [0028](0028-the-machines-signing-identity.md) P1 lands here (decision 2a), the
+  statement carries the signature and the public key that verifies it, and
+  `attest verify` — P3's command — is preceded in P1 by whatever verification the
+  emission tests need to prove the signature is real rather than recorded. An
+  unsigned statement is the theatre §2 warns about, so it is not a phase.
 - **P2 — Failure and compensation paths.** Emission from the fault-injection suite;
   each injected failure produces a statement whose step list stops where the
   injection did.

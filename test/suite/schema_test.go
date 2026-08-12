@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/schema"
 )
 
@@ -32,8 +33,9 @@ func schemaPath(t *testing.T, name string) string {
 // "generated from the types" and a claim that used to be true.
 func TestCheckedInSchemasMatchTheTypes(t *testing.T) {
 	for name, generate := range map[string]func() ([]byte, error){
-		schema.ManifestSchemaFile: schema.Manifest,
-		schema.SecretSchemaFile:   schema.Secrets,
+		schema.ManifestSchemaFile:             schema.Manifest,
+		schema.SecretSchemaFile:               schema.Secrets,
+		schema.InstallationDocumentSchemaFile: schema.InstallationDocument,
 	} {
 		t.Run(name, func(t *testing.T) {
 			want, err := generate()
@@ -195,6 +197,48 @@ func TestSchemaDescribesTheFieldsAVendorWrites(t *testing.T) {
 			"reject data the loader accepts")
 }
 
+// TestTheInstallationSchemaConstrainsWhatTheWriterProduces.
+//
+// Generated from struct shape alone, the schema said every field was optional
+// and any string was a valid `api_version` -- so `{}` validated, and so did a
+// manifest, and so did a document from a contract that does not exist. A schema
+// that accepts everything is worse than no schema: it is a green check beside a
+// file nobody validated.
+//
+// The other half is the trap in stating `required` at all: the writer must
+// actually emit all of them, on the emptiest installation there can be. An
+// `omitempty` added to one of these fields would turn this schema into one that
+// rejects the command's own output.
+func TestTheInstallationSchemaConstrainsWhatTheWriterProduces(t *testing.T) {
+	var node map[string]any
+	raw, err := os.ReadFile(schemaPath(t, schema.InstallationDocumentSchemaFile))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &node))
+
+	props := object(t, node, "properties")
+	assert.Contains(t, object(t, props, "api_version")["enum"], "selfhost/v1alpha1")
+	assert.Equal(t, []any{domain.KindInstallationDocument}, object(t, props, "kind")["enum"],
+		"a document of another kind must not validate against this schema")
+
+	required, ok := node["required"].([]any)
+	require.True(t, ok, "the schema must state what the writer never omits")
+
+	// The emptiest document the command can produce: an installation
+	// between `init` and the first `apply`, which is a case the CLI suite
+	// covers precisely because it is the one somebody most wants to
+	// document.
+	empty, err := json.Marshal(domain.Installation{}.Describe(domain.DescribedRelease{}, nil))
+	require.NoError(t, err)
+	var emitted map[string]any
+	require.NoError(t, json.Unmarshal(empty, &emitted))
+
+	for _, field := range required {
+		name, _ := field.(string)
+		assert.Contains(t, emitted, name,
+			"the schema requires %q, and a bare installation's document does not carry it", name)
+	}
+}
+
 // object descends one level, failing the test rather than panicking when the
 // schema is not the shape the assertion assumes.
 func object(t *testing.T, node map[string]any, key string) map[string]any {
@@ -219,6 +263,10 @@ func TestEverySchemaIsCheckedIn(t *testing.T) {
 			found = append(found, e.Name())
 		}
 	}
-	assert.ElementsMatch(t, []string{schema.ManifestSchemaFile, schema.SecretSchemaFile}, found,
+	assert.ElementsMatch(t, []string{
+		schema.ManifestSchemaFile,
+		schema.SecretSchemaFile,
+		schema.InstallationDocumentSchemaFile,
+	}, found,
 		"schemas/ must hold exactly what the generator produces")
 }

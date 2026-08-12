@@ -34,6 +34,11 @@ func main() {
 		fail(err)
 	}
 
+	installation, err := schema.InstallationDocument()
+	if err != nil {
+		fail(err)
+	}
+
 	root, err := repoRoot()
 	if err != nil {
 		fail(err)
@@ -46,8 +51,9 @@ func main() {
 	}
 
 	for name, data := range map[string][]byte{
-		schema.ManifestSchemaFile: manifest,
-		schema.SecretSchemaFile:   secrets,
+		schema.ManifestSchemaFile:             manifest,
+		schema.SecretSchemaFile:               secrets,
+		schema.InstallationDocumentSchemaFile: installation,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 			fail(err)
