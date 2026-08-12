@@ -2241,9 +2241,9 @@ variable's existence rather than its value would otherwise mutate during a plan.
 <p>The same executable may be invoked in more than one phase; branching on <code>PHASE</code>
 is how one hook serves several.</p>
 <h2 id="what-is-in-backup_dir">What is in <code>BACKUP_DIR</code><a class="headerlink" href="#what-is-in-backup_dir" title="Permanent link">&para;</a></h2>
-<p><code>&lt;PRODUCT&gt;_BACKUP_DIR</code> names a directory, and until now this page said nothing
-about what is in it. That gap is worth closing before the first release rather
-than after: once bundles exist in the wild, whatever their hooks happen to read
+<p><code>&lt;PRODUCT&gt;_BACKUP_DIR</code> names a directory, and this page once said nothing about
+what is in it. That gap was closed before the first release rather than after,
+because once bundles exist in the wild whatever their hooks happen to read
 becomes a contract regardless of what any page says.</p>
 <p>So this is the contract. It is deliberately narrow.</p>
 <h3 id="what-a-hook-may-rely-on">What a hook may rely on<a class="headerlink" href="#what-a-hook-may-rely-on" title="Permanent link">&para;</a></h3>
