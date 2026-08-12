@@ -6,7 +6,7 @@ their rationale, and what is deliberately excluded.
 
 ## Allocating a number
 
-The next free number is **0023**. Before creating an RFC, glance at the table
+The next free number is **0028**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -40,6 +40,11 @@ number in the filename in sync.
 | [0021](0021-into-the-running-deployment.md) | Into the running deployment | ✅ Complete | The commands for when the deployment is running and something is wrong — logs, process state, resource use, and a command inside a container. |
 | [0022](0022-bootstrapping-the-manager.md) | Bootstrapping the manager | ✅ Complete | Getting the manager onto a machine in the first place: an install script that verifies what it downloaded, and instructions somebody has run. |
 
+| [0023](0023-runtimes-beyond-compose.md) | Runtimes beyond Compose | 📝 Draft | Grading the runtime port by writing a second implementation of it — rootless Podman with Quadlet — on the theory that a port with one adapter is a guess rather than an abstraction. |
+| [0024](0024-the-support-bundle.md) | The support bundle | 📝 Draft | One redacted archive an operator can hand to a stranger, because every command a vendor has runs before the bundle leaves their machine and none after. |
+| [0025](0025-attesting-an-installation.md) | Attesting an installation | 📝 Draft | Making the manager's evidence leave the machine as a signed statement, and binding the feature to a verifier that can fail for a reason other than corruption. |
+| [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | 📝 Draft | Seeing many machines at once without a control plane: each installation publishes one signed row to a bucket, and the reader can never act. |
+| [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 📝 Draft | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |
 ## Status legend
 
 - 📝 **Draft** — proposed, not started
