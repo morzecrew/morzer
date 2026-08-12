@@ -34,9 +34,9 @@ repository and nothing beyond the standard library and a semver parser.
 
 ## The rule that does the work
 
-**The lifecycle layer speaks only to ports.** The string `docker` appears
-nowhere above `internal/adapters`, and `internal/cli` is the single place an
-adapter is named.
+**The lifecycle layer speaks only to ports**, and `internal/cli` is the single
+place an adapter is named. Nothing above `internal/adapters` decides anything by
+asking which container runtime is running.
 
 This is not a style preference. It is what makes the entire test suite run
 without Docker, without root and without a network — which is what makes a
@@ -54,6 +54,34 @@ sit behind `HookRunner`, `SecretStore` and `Supervisor`.
 
 A layering rule nothing checks is a paragraph in a document that the next
 refactor quietly violates.
+
+### Two checkers, because one of them was doing less than it looked like
+
+`depguard` is an import linter. It answers "may this package depend on that
+one", and nothing else — so a file in `internal/ports` whose exported API is the
+Docker Compose interpolation contract passes it without complaint, because that
+file imports nothing at all.
+
+That gap was found by asking what would happen if a second runtime were added,
+and it is now covered by a second checker. `just runtime-check` fails the build
+on a name above `internal/adapters` that says which runtime is running, on a
+string whose value *is* a runtime's name, or on a comparison against one — the
+middle rule because `const defaultRuntime = "compose"` has a neutral name and a
+neutral comparison, and would otherwise walk past the other two.
+
+The mentions that exist are an inventory rather than a suppression list. Each is
+classified as *port-shaped* (the concept is general, only the name is borrowed),
+*Compose-shaped* (the concept is Compose's own and has to move), or *catalogue*
+(a runtime named as data, which a second runtime extends rather than
+contradicts). `just runtime-inventory` prints it, and an entry left behind after
+its leak is fixed fails the build too — a list checked in one direction only ever
+grows.
+
+Two checkers, two guarantees, and neither implies the other: **imports say what a
+package may reach for; names say what it believes it is talking to.** Both are
+narrower than "the architecture is correct", and the leak that matters most — a
+Compose concept wearing a neutral name, like the manifest's `project` — is found
+by reading rather than by either.
 
 ## Interfaces are declared by the consumer
 

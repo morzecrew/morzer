@@ -211,15 +211,25 @@ tidy:
     go mod tidy
     go mod verify
 
-# Everything CI runs.
-check: fmt-check vet test
+# Formatting, vet, the boundary check and the tests. Not everything CI runs.
+#
+# `runtime-check` earns its place here rather than only in `ci` because what it
+# reports is an architectural boundary having moved, and the fix is a rename or
+# a design decision -- not the sort of thing anybody wants to discover after the
+# push. It costs milliseconds and needs nothing installed.
+#
+# `docs-check` needs nothing installed either and is deliberately still out:
+# it fails on a documented surface that has not been written yet, which is
+# work-in-progress rather than a mistake, and failing the inner loop on it
+# would train people to skip the inner loop.
+check: fmt-check vet runtime-check test
 
 # `check` deliberately omits lint and the strict contract run so it works
 # without golangci-lint or sops installed. This recipe is the exact-parity one:
 # if it passes, CI passes.
 
 # Run exactly what CI runs. Needs golangci-lint and sops.
-ci: fmt-check vet lint shellcheck docs-check contract-strict test-race coverage-gate
+ci: fmt-check vet lint shellcheck runtime-check docs-check contract-strict test-race coverage-gate
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.
@@ -359,6 +369,18 @@ build-docs:
 # Check the docs against the code: links, nav, contracts, commands.
 docs-check:
     go run ./tools/docscheck
+
+# depguard enforces the layering as *imports*, which is a real guarantee and a
+# different one: a ports file whose exported API is the Compose interpolation
+# contract imports nothing at all. This is the vocabulary half — RFC 0023 P1.
+
+# Check that no layer above internal/adapters names a runtime or branches on one.
+runtime-check:
+    go run ./tools/runtimecheck
+
+# Print the leak inventory as a table: every mention, its class, and its exit.
+runtime-inventory:
+    go run ./tools/runtimecheck -list
 
 # Regenerate the command index page from the cobra tree.
 #

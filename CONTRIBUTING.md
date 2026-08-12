@@ -66,7 +66,8 @@ The site lives in [`pages/`](pages/) and is published to
 | A design that has not shipped | [`rfcs/`](rfcs/), not the site |
 
 ```sh
-just docs-check  # the drift gate; part of `just ci`
+just docs-check     # the drift gate; part of `just ci`
+just runtime-check  # the runtime boundary; also part of `just ci`
 just serve-docs  # live reload on localhost:8046
 just build-docs  # build into pages/site
 ```
@@ -130,18 +131,40 @@ cli -> ui -> lifecycle -> ports <- adapters
 
 - `internal/domain` imports nothing from this repository, and nothing beyond
   stdlib and semver.
-- The lifecycle layer speaks only to ports. The string `docker` appears nowhere
-  above `internal/adapters`.
+- The lifecycle layer speaks only to ports.
 - `internal/cli` is the single place adapters are named.
+- Nothing above `internal/adapters` branches on which runtime is running, and
+  nothing new above it names one. The existing names are inventoried, each with
+  what would remove it; `just runtime-inventory` prints the list and the count.
 
-`depguard` in [`.golangci.yml`](.golangci.yml) enforces these mechanically. When
-it objects, the boundary is usually wrong — add a port method or an optional
-capability interface rather than widening the rule. It has already caught three
-real violations that had been described as compliant.
+**Two checkers, because the first three rules and the fourth are different
+questions.** `depguard` in [`.golangci.yml`](.golangci.yml) is an import linter:
+it answers what a package may depend on. `just runtime-check`
+([`tools/runtimecheck`](tools/runtimecheck)) reads names and values, because a
+file whose exported API is the Compose interpolation contract imports nothing and
+passes depguard cleanly. Three rules: a declared name, file name or package name
+that says which runtime is running; a string whose value *is* a runtime's name,
+outside tests, which catches the `const defaultRuntime = "compose"` indirection
+the first two walk past; and a comparison or case against one, which has no
+allowlist at all.
+
+This section used to claim depguard guaranteed that *"the string `docker`
+appears nowhere above `internal/adapters`"*. It never did and could not — an
+import linter cannot see a name — and [RFC 0023](rfcs/0023-runtimes-beyond-compose.md)
+started from that sentence and had to correct it in §2. The rule is now true
+because something checks it, which is the only way a sentence like this one is
+ever true.
+
+When either objects, the boundary is usually wrong — add a port method or an
+optional capability interface rather than widening the rule. depguard has
+already caught three real violations that had been described as compliant. For
+`runtime-check`, "widening the rule" means adding to the inventory in
+[`tools/runtimecheck/inventory.go`](tools/runtimecheck/inventory.go), and every
+entry there has to say what would remove it again.
 
 ## Coverage
 
-`just coverage-gate` enforces a floor, currently 75% for `go test` and 77% across every suite. It is a floor, not a
+`just coverage-gate` enforces a floor, currently 84% for `go test` and 86% across every suite. It is a floor, not a
 target: raise it deliberately, and if a change genuinely lowers it, lower
 `COVERAGE_FLOOR` in `.github/workflows/ci.yml` in the same pull request, so the
 decision is reviewable rather than silent.

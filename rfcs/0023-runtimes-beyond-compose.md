@@ -1,7 +1,12 @@
 # RFC 0023 — Runtimes beyond Compose
 
-- **Status:** 📝 Draft — the architecture test in §1 is the deliverable; P1 is the
-  phase that decides whether the rest is cheap or is closed as partially wrong.
+- **Status:** 🚧 In progress — **P1a shipped 2026-08-12**: the leak inventory
+  came to 19 mentions in three classes, and `tools/runtimecheck` now enforces the
+  boundary depguard cannot see. It reversed §12.2's cost estimate along the way:
+  the expensive leaks are a published environment variable and a default, not a
+  category. P1b
+  — a rootless Podman host and the three measurements behind it — is open, and is
+  the only thing between here and P2.
 - **Scope:** Grading the `ports.Runtime` seam by writing a second implementation
   of it — rootless Podman with Quadlet — and recording every place the port had
   to change to accommodate one. Covers the manifest's runtime dimension, the
@@ -63,6 +68,13 @@ importing anything from this repository. That is a real and valuable rule about
 *dependencies*. It says nothing about vocabulary, and the leak this RFC is looking
 for is vocabulary.
 
+**P1 found where the draft got that idea**, which matters more than the slip
+itself: [`CONTRIBUTING.md`](../CONTRIBUTING.md) stated it as an enforced rule, in
+a list introduced by *"`depguard` enforces these mechanically"*. Anybody
+reasoning about this boundary would have read that first and believed it. It has
+been corrected there — and the sentence is true now, because P1 built the thing
+that checks it.
+
 **The leak inventory, measured.** Compose semantics reach above
 `internal/adapters` in the type system, not merely in prose:
 
@@ -80,6 +92,103 @@ runtime name: `providers.runtime.name`, which
 the manifest is not runtime-blind; it names a runtime and then describes it in
 Compose's vocabulary. The design below has to reconcile with that field rather
 than introduce a second way of saying the same thing.
+
+### 2.1 The inventory, finished (P1, 2026-08-12)
+
+The table above was the first draft. P1 walked the AST rather than grepping, and
+the result is [`tools/runtimecheck`](../tools/runtimecheck) — `just
+runtime-inventory` prints it, `just runtime-check` enforces it, and the list is
+not repeated here because a copy of a machine-checked list is a copy that drifts.
+
+**The number, as measured on 2026-08-12: 19 mentions above `internal/adapters`
+— 8 port-shaped, 3 Compose-shaped, 8 catalogue — and 0 branches on runtime
+kind.**
+
+Dated, because it is a measurement rather than a property: `just
+runtime-inventory` is the live count, and the whole point of writing this one
+down is that a later reader can see whether it fell.
+
+Three classes, not the two P1 was asked for. The third earned its place: a
+runtime named as *data* — a key in the table of tools the manager can probe,
+matching what a vendor writes in `requirements.tools` — is not a leak. A second
+runtime adds a row. Eight of the nineteen are that, and counting them as leaks
+would have made the problem look twice the size it is.
+
+**The finding that matters is that §12.2's conclusion was wrong.** It said both
+`ports.compose_abi.go` and `HookEnv.ComposeProject` are published ABIs, "so
+renaming them is a bundle-breaking change and not a refactor. This is the finding
+that decides the RFC's cost, and it says the RFC is not cheap." Measured, the two
+are not alike at all:
+
+- **`ComposeVars` is port-shaped and the rename is free.** Its values are
+  `DATA_DIR`, `SECRETS_DIR`, `CONFIG_FILE`, `RELEASE_DIR`, `VERSION`, `PROFILE`,
+  `DOMAIN`. Not one is a Compose concept — they are the facts about an
+  installation that a declarative file refers to, and a Quadlet unit needs the
+  same seven. The published ABI is the *environment variable names*, which the
+  Go identifier does not appear in. Renaming `ComposeVars` to something
+  runtime-neutral changes no bundle anywhere.
+- **`HookEnv.ComposeProject` is the expensive one.** A Compose project is
+  Compose's grouping primitive; Quadlet has a unit prefix, which is a naming
+  convention rather than a handle. It reaches every vendor hook as
+  `<PRODUCT>_COMPOSE_PROJECT`, and [the reference
+  page](../pages/docs/reference/hooks.md) documents it as being for a hook that
+  shells out to `docker compose`. Its *meaning* is absent under a second runtime,
+  not merely its name.
+
+- **And the manifest's default**, which review found and the first version of
+  the checker did not. `manifest.go:452` sets `providers.runtime.name` to
+  `"compose"` when a bundle declares nothing, in the domain layer, on a line
+  where every symbol is neutrally named. It is §2's "the manifest is not
+  runtime-blind" as one assignment, and it is decision 8's question in
+  executable form.
+
+So the cost is two things — a published variable and a default — rather than a
+category of bundle-breaking renames. That is a materially different RFC from the
+one §12.2 described.
+
+### 2.2 What a vocabulary checker structurally cannot find
+
+The rule catches leaks that are *spelled*. The ones that are not spelled are
+worse, and P1 found them by hand:
+
+- **`RuntimeSpec.Project`** is Compose's grouping primitive wearing a neutral
+  name. It is read by [`ui/views/release.go`](../internal/ui/views/release.go)
+  to print `(project X)`, by [`ops/doctor.go`](../internal/lifecycle/ops/doctor.go)
+  to say *"no containers exist for project %q"*, and defaulted in
+  [`manifest.go`](../internal/domain/manifest.go) to the product name. No linter
+  will ever flag it.
+- **[`ops/doctor.go`](../internal/lifecycle/ops/doctor.go) hard-codes
+  `tools.Docker`** in the branch that runs when there is no installation yet,
+  with the comment that tool availability is *"what `init` will need next"*. That
+  is the lifecycle layer stating which runtime this machine will use, in a
+  sentence with no runtime's name in it.
+- **`RuntimeSpec.Files` validation** says *"must list at least one compose
+  file"* — the vocabulary in a string an operator reads, which the checker
+  deliberately does not scan (§2.3).
+
+One item left this list during review. The manifest's `"compose"` default was
+here as unfindable, and it is now found — by a third rule that flags a string
+whose *value* is a runtime's name, which also closes the `const defaultRuntime =
+"compose"` indirection that would have walked past the other two. The lesson is
+not that the list was wrong but that "a checker cannot see this" is a claim worth
+attacking before it is written down: two of the three survived the attack and one
+did not.
+
+This is the same shape as the finding about depguard that opened this section,
+one level along: **depguard sees imports and not names; a name checker sees names
+and not meanings.** Each rule buys exactly its own layer, and the ones that
+matter most are still found by reading.
+
+### 2.3 What the checker deliberately does not do
+
+It does not scan prose. 148 string literals above the adapters mention a runtime
+and almost all are help text, error hints and comments — `--help` explaining that
+this deploys "with Docker Compose on one Linux machine" is documentation of what
+the product does today, not an architectural claim. The first draft of the branch
+rule flagged nine of them, because Go spells string concatenation with the same
+AST node as comparison; a rule that cries wolf on the command's own help text is
+a rule somebody switches off. The branch rule now matches a literal that *is* a
+runtime's name, not prose containing one.
 
 **The rest of §2's candidates, unchanged and still unverified in detail:**
 
@@ -195,7 +304,9 @@ refusal, which is also the first test that the refusal path is reachable.
 | 5 | An absent declared runtime is a refusal, not a fallback | LOCKED | Same reasoning as 0011 decision 20: a fallback that silently converges on a different substrate than the vendor tested is worse than a stop. |
 | 6 | `Supervisor` keeps ownership of manager-generated units; `Runtime` owns product units | ASSUMED | They both call `systemctl` and that is fine — the ports are distinguished by *whose* units, not by which binary they invoke. Graded ASSUMED because §12.3 measured the collision as one-sided today and the Quadlet case is untested. |
 | 7 | The port may grow methods; it may not grow `switch kind` | LOCKED | A conditional on runtime kind above `internal/adapters` is the abstraction failing in the one way that looks like progress. |
-| 7a | What enforces decision 7 | **OPEN** | The draft said "the same mechanism that already forbids the string `docker`" — §2 measured that no such mechanism exists: `depguard` restricts imports and cannot see a `switch`. Enforcing this needs a `go/analysis` pass or a `forbidigo`-style pattern rule, and P1 names one and lands it with a deliberately failing fixture. A decision with no enforcement is a comment. |
+| 7a | What enforces decision 7 | LOCKED | Resolved by P1: [`tools/runtimecheck`](../tools/runtimecheck), an AST walk rather than `forbidigo`, because the rule needs to tell a comparison from a concatenation and a declared name from a mention in prose — §2.3 — and a pattern matcher cannot. Two rules: an allowlisted vocabulary rule whose allowlist is the inventory, and an un-allowlistable branch rule. `just runtime-check`, in CI beside the linter, with failing fixtures for both. |
+| 7b | The vocabulary rule names `podman` and `quadlet` before either exists | LOCKED | The measured Compose leak is inventoried and meant to shrink; the leak worth preventing is the *second* adapter teaching the layers above it a second private language. A rule naming only the incumbent would have permitted exactly that, and would have been added after the first `if kind == "quadlet"` was already load-bearing. |
+| 7c | A runtime named as data is not a leak | LOCKED | §2.1. `tools.Docker` is a key in a probe catalogue matching `requirements.tools`; a second runtime adds a row rather than contradicting one. Eight of the nineteen are this, and classing them as leaks would have roughly doubled the apparent problem and sent P2 renaming a lookup table. |
 | 8 | How the runtime is named in the manifest | OPEN | §4.1. `providers.runtime.name` already exists; P2 chooses and records here. |
 
 ## 6. The escape hatch, restated after measurement
@@ -252,11 +363,17 @@ for the declared runtime's presence, which is where an operator meets decision 5
 
 ## 10. Phasing
 
-- **P1 — The leak inventory.** No adapter. §2 above is its first draft, measured
-  rather than assumed; P1 finishes it by classifying each leak as *port-shaped*
-  (belongs in `ports`, rename it) or *Compose-shaped* (must move below the
-  adapter boundary), and lands the lint rule from decision 7. Deliverable is a
-  list and a number.
+- **P1a — The leak inventory and its enforcement.** ✅ **Shipped 2026-08-12.**
+  No adapter. The classification came out as three classes rather than two
+  (decision 7c), the number was 19 on the day, and the rule from decision 7 is
+  `tools/runtimecheck` in CI. §2.1–2.3.
+- **P1b — The Podman host.** ⏳ §12 items 4–6: the `EnvironmentFile`-on-tmpfs
+  question, rootless volume paths against 0010's staging, and whether 0011's
+  in-process registry is reachable over plain HTTP. One task, not three, and the
+  only thing between here and P2. Split out because P1a turned out to be
+  answerable from a laptop and P1b is not — keeping them one phase would have
+  meant either blocking a finished deliverable or reporting a phase complete with
+  half of its questions open.
 - **P2 — Manifest and state.** `runtimes:` map, decision 8 resolved, kind fixed at
   `init`, carried by `installation import`, refused on mismatch, reported by
   `doctor`.
@@ -294,12 +411,28 @@ Taken 2026-08-12, against the code rather than the documentation.
    defaults to `"compose"`**, which the draft did not know and which §4.1 now has
    to reconcile with (decision 8).
 2. **The count and location of Compose-semantic leaks above `internal/adapters`.**
-   **Measured: not short.** The table in §2. The load-bearing one is
-   `internal/ports/compose_abi.go` — an entire ports file whose exported API is
-   the Compose interpolation contract — plus `HookEnv.ComposeProject`, which
-   reaches every vendor hook as `COMPOSE_PROJECT`. Both are *published ABIs*, so
-   renaming them is a bundle-breaking change and not a refactor. **This is the
-   finding that decides the RFC's cost, and it says the RFC is not cheap.**
+   **Answered by P1, and this item's own conclusion was wrong.** It read: *"Both
+   are published ABIs, so renaming them is a bundle-breaking change and not a
+   refactor. This is the finding that decides the RFC's cost, and it says the RFC
+   is not cheap."*
+
+   The count and its breakdown are in §2.1 and are deliberately not repeated
+   here: this paragraph carried its own copy and it was stale within a day, which
+   is the second time a number restated in prose has drifted in this document.
+   What matters is the shape — **most of the mentions are renames that break
+   nothing, and the expensive ones are two.**
+
+   `ComposeVars` is not a published ABI: the published thing is the *variable
+   names* it produces, and the Go identifier appears in none of them. The
+   genuinely expensive items are `HookEnv.ComposeProject`, whose meaning — not
+   whose spelling — is absent under Quadlet, and the manifest defaulting
+   `providers.runtime.name` to `"compose"`, which decision 8 is already open
+   about and which only the literal rule finds (§2.1).
+
+   The correction is worth more than the number. This item was the reason to
+   believe the RFC was expensive, and it was reasoning from a grep. **Reasoning
+   from a grep is what produced the wrong premise in §2's opening paragraph too**,
+   where the draft believed depguard forbade the string `docker`.
 3. **Whether `Supervisor` and a Quadlet `Runtime` genuinely collide.**
    **One-sided today.** `Supervisor` has eleven methods and the only caller of
    `systemctl` in the tree is
@@ -319,7 +452,45 @@ Items 4–6 all need one thing: a rootless Podman host in the test lanes. Standi
 that up is the true first task of P1, ahead of the inventory, because three of the
 six unknowns are behind it.
 
+**Status after P1 (2026-08-12): items 1–3 answered, 4–6 not, and P1 is therefore
+not closed.** The inventory and the enforcement shipped; the Podman host did not,
+because the development environment has no Podman and this project does not
+report a lane it has never run as a lane that works — the rule that already
+stopped the acceptance and container suites being described as CI's problem.
+Writing a Podman job into CI from here would produce exactly that: a green badge
+nobody has watched go red.
+
+So the remaining three measurements are all that stands between P1 and P2, and
+they are one task rather than three. §14 records the split.
+
 ## 13. Amendments
 
-*(Empty. Implementation contradicting the design is recorded here, dated, in the
-manner of 0009 §12 and 0011 decisions 18–21.)*
+**2026-08-12 — P1 split into P1a and P1b.** The phase was written as one task
+whose deliverable was "a list and a number", with §12 separately asserting that
+standing up a Podman host was "the true first task of P1". Those are not one
+phase: the inventory is a static analysis of this repository and the three open
+measurements need a machine this project does not have. P1a shipped; P1b is
+named and open. Recorded rather than quietly redefined, because the phase's own
+text says P1 "may not report complete" without item 4 and that remains true.
+
+**2026-08-12 — decision 7a resolved, and the mechanism is not the one the draft
+predicted.** It expected `forbidigo` or an equivalent pattern rule. A pattern
+rule cannot distinguish `kind == "compose"` from `"…deployed with Docker Compose
+on one Linux machine"`, and the first attempt at the branch rule proved it by
+flagging nine help strings. The enforcement is an AST walk.
+
+**2026-08-12 — §12.2's conclusion reversed.** The item concluded the RFC "is not
+cheap" on the strength of two symbols it called published ABIs. One of them is
+not (§2.1). The RFC's cost estimate moves from *a category of bundle-breaking
+renames* to *one published environment variable*.
+
+## 14. What P1 leaves for whoever picks this up
+
+- **P1b, above.** Three measurements behind one Podman host.
+- **The two unspelled leaks** in §2.2 — `RuntimeSpec.Project` and `doctor.go`'s
+  hard-coded `tools.Docker` — are not in the inventory, because the inventory is
+  what a checker can see and these are not. They are P2's, and they are the ones
+  most likely to be forgotten precisely because nothing fails when they are.
+- **The renames themselves are not P1's.** P1 classified; it changed no name. A
+  rename sweep that lands before the manifest work of P2 would churn the same
+  files twice.
