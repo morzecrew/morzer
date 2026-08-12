@@ -224,7 +224,30 @@ else
 	[ -n "${HOME:-}" ] || die "cannot resolve \$HOME; name a prefix with --dir"
 fi
 
-case ":${PATH}:" in
+# ${PATH:-} rather than ${PATH}: with `set -u` an unset PATH aborts here, three
+# lines before the check that would have said "neither curl nor wget is on
+# PATH". `env -i sh install.sh` and a systemd unit with no PATH= both hit it,
+# and "PATH: parameter not set" is not a diagnostic anybody can act on.
+# The prefix is written into a shell startup file and into a fish drop-in, and
+# from then on it is code that shell runs at every start. A quote, a `$`, a
+# backtick or a newline in it produces a file that is malformed at best and
+# executes something at worst -- on the file an operator is least likely to
+# suspect and most likely to keep for years.
+#
+# Refused rather than escaped: quoting this correctly for two shells is a lot
+# of care spent on a prefix nobody has. Spaces are deliberately allowed, since
+# they are the one case that does occur and the generated block handles them.
+case "$dir" in
+*[\"\'\$\`\\]* | *"
+"*)
+	die "the install prefix contains a character this cannot safely write into
+       a shell startup file: ${dir}
+       Quotes, \$, backticks, backslashes and newlines are refused. Choose a
+       plainer --dir, or pass --no-modify-path and add it yourself."
+	;;
+esac
+
+case ":${PATH:-}:" in
 *":${dir}:"*) on_path=yes ;;
 *) on_path=no ;;
 esac
@@ -568,7 +591,10 @@ posix_block() {
 fish_block() {
 	printf '%s\n' "$BEGIN_MARK"
 	printf '%s\n' "# Added by morzer's install.sh. Remove this file to undo it."
-	printf 'fish_add_path %s\n' "$dir"
+	# Single-quoted: an unquoted path with a space becomes two arguments and
+	# fish_add_path adds neither of them. The guard above has already refused
+	# the characters that single quotes cannot carry.
+	printf "fish_add_path '%s'\\n" "$dir"
 	printf '%s\n' "$END_MARK"
 }
 

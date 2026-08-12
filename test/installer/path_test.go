@@ -296,3 +296,66 @@ func touch(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 }
+
+func TestAPrefixWithASpaceStillWorksInBothShells(t *testing.T) {
+	// The one awkward path that actually occurs. In the POSIX block it is
+	// inside quotes and works; in fish it was an unquoted argument, so
+	// `fish_add_path /opt/my morzer/bin` added neither of the two paths it
+	// was split into -- an installer that reported success and left the
+	// binary unfindable.
+	for _, shell := range []string{"bash", "fish"} {
+		t.Run(shell, func(t *testing.T) {
+			spaced := filepath.Join(t.TempDir(), "my morzer", "bin")
+			rel := newRelease(t, fixtureOptions{})
+			home := newHome(t)
+
+			run(t, script(t, rel),
+				env{home: home, shell: "/bin/" + shell, release: rel},
+				"--version", fixtureVersion, "--dir", spaced,
+				"--no-verify-signature", "--no-completions").requireOK(t)
+
+			file := filepath.Join(home, ".profile")
+			if shell == "fish" {
+				file = filepath.Join(home, ".config", "fish", "conf.d", "morzer.fish")
+			}
+			body := read(t, file)
+			if !strings.Contains(body, spaced) {
+				t.Fatalf("the block does not name the prefix:\n%s", body)
+			}
+			// The path has to survive as one word. In fish that means
+			// quotes around it; in POSIX sh the assignment already has
+			// them.
+			if shell == "fish" && !strings.Contains(body, "'"+spaced+"'") {
+				t.Errorf("the fish block leaves the path unquoted, so it is two "+
+					"arguments:\n%s", body)
+			}
+		})
+	}
+}
+
+func TestAPrefixThatWouldBecomeCodeIsRefused(t *testing.T) {
+	// The block is written once and then run by that shell at every start,
+	// so a prefix carrying shell syntax is not a formatting problem: it is a
+	// line of code in the file an operator is least likely to suspect.
+	// Refused rather than escaped -- quoting correctly for two shells is a
+	// lot of care spent on a prefix nobody has.
+	for _, bad := range []string{
+		`/tmp/a"; touch /tmp/pwned; #`,
+		"/tmp/a$(id)",
+		"/tmp/a`id`",
+		`/tmp/a'b`,
+		"/tmp/a\nb",
+	} {
+		rel := newRelease(t, fixtureOptions{})
+		out := run(t, script(t, rel),
+			env{home: newHome(t), shell: "/bin/bash", release: rel},
+			"--version", fixtureVersion, "--dir", bad,
+			"--no-verify-signature", "--no-completions")
+
+		out.requireFailed(t, "the prefix carries shell syntax").
+			requireSays(t, "--no-modify-path")
+		if len(rel.hits.paths) != 0 {
+			t.Errorf("--dir %q downloaded %v before refusing", bad, rel.hits.paths)
+		}
+	}
+}
