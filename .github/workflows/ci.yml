@@ -165,6 +165,12 @@ jobs:
       - run: just vet
       - run: just lint
 
+      # depguard, which `just lint` runs, enforces the layering as imports.
+      # This is the half it cannot see: a name above internal/adapters that
+      # says which runtime is running, or a branch on one. Needs only Go, so
+      # it sits beside the linter rather than in a job of its own.
+      - run: just runtime-check
+
       - name: Install shellcheck
         run: |
           set -euo pipefail

@@ -219,7 +219,7 @@ check: fmt-check vet test
 # if it passes, CI passes.
 
 # Run exactly what CI runs. Needs golangci-lint and sops.
-ci: fmt-check vet lint shellcheck docs-check contract-strict test-race coverage-gate
+ci: fmt-check vet lint shellcheck runtime-check docs-check contract-strict test-race coverage-gate
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.
@@ -359,6 +359,18 @@ build-docs:
 # Check the docs against the code: links, nav, contracts, commands.
 docs-check:
     go run ./tools/docscheck
+
+# depguard enforces the layering as *imports*, which is a real guarantee and a
+# different one: a ports file whose exported API is the Compose interpolation
+# contract imports nothing at all. This is the vocabulary half — RFC 0023 P1.
+
+# Check that no layer above internal/adapters names a runtime or branches on one.
+runtime-check:
+    go run ./tools/runtimecheck
+
+# Print the leak inventory as a table: every mention, its class, and its exit.
+runtime-inventory:
+    go run ./tools/runtimecheck -list
 
 # Regenerate the command index page from the cobra tree.
 #
