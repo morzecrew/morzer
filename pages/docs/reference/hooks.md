@@ -59,9 +59,9 @@ is how one hook serves several.
 
 ## What is in `BACKUP_DIR`
 
-`<PRODUCT>_BACKUP_DIR` names a directory, and until now this page said nothing
-about what is in it. That gap is worth closing before the first release rather
-than after: once bundles exist in the wild, whatever their hooks happen to read
+`<PRODUCT>_BACKUP_DIR` names a directory, and this page once said nothing about
+what is in it. That gap was closed before the first release rather than after,
+because once bundles exist in the wild whatever their hooks happen to read
 becomes a contract regardless of what any page says.
 
 So this is the contract. It is deliberately narrow.

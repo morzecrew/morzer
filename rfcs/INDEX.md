@@ -4,6 +4,41 @@ Design proposals for morzer. Each RFC captures a design before or while it is
 built: the problem, the state of the code today, the locked decisions with
 their rationale, and what is deliberately excluded.
 
+## Live design work
+
+Everything else in the table below has landed. As of 0.1.0 that is 22 of 28
+RFCs, and a reader looking for what is still being decided should not have to
+find six rows among them.
+
+A list rather than a table, deliberately: the index table below is parsed, and a
+second table of the same shape is a second set of rows for the same numbers.
+
+- **[0023 — Runtimes beyond Compose](0023-runtimes-beyond-compose.md).** P1a
+  shipped: the leak inventory and the boundary checker. **P1b needs a rootless
+  Podman host** — three measurements sit behind it, and nothing else blocks P2.
+- **[0024 — The support bundle](0024-the-support-bundle.md).** Unstarted. P1 is
+  an inventory with no code, and P2 must not ship without P3, which is the phase
+  that proves redaction works.
+- **[0025 — Attesting an installation](0025-attesting-an-installation.md).**
+  Unstarted, and the first consumer of 0028 — the two P1s land together.
+- **[0026 — Fleet as a read model](0026-fleet-as-a-read-model.md).** Unstarted.
+  Design settled through decision 6b: the roster, not the row, is the trust
+  anchor.
+- **[0027 — Desired state in a repository](0027-desired-state-in-a-repository.md).**
+  P1 shipped as `installation describe`. **P2 is gated on a user who is not the
+  author asking for it**, and if that never happens the correct outcome is that
+  P2 is never built.
+- **[0028 — The machine's signing identity](0028-the-machines-signing-identity.md).**
+  Design complete. P1 is deliberately not scheduled ahead of 0025 P1: a signing
+  key with nothing to sign would be the third mechanism this project built
+  before its caller.
+
+**An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
+and its row in the index below carries it from then on. The file never moves and
+is never deleted: 330 cross-references between RFCs use bare filenames, a
+rejection that leaves no record gets re-proposed, and a shipped design is the
+only account of why the code is shaped the way it is.
+
 ## Allocating a number
 
 The next free number is **0029**. Before creating an RFC, glance at the table
