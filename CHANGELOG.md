@@ -7,11 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-13
+
+Repairs the documented way to install this. 0.1.0 is unaffected as an artifact —
+its binaries, checksums and signature are what they always were, and installing
+from the release assets worked throughout — but the one-line command the README
+and the installation page give did not.
+
 ### Fixed
 
-- `install.sh` is published at the documentation site's root, which is the URL the README and the installation page tell people to `curl`. It was never published for 0.1.0 and that URL returned 404: the publication step compares the file it is about to write against the branch, and `git diff` reports nothing at all for a path the branch does not track — so on the one run that matters, the first, it announced that the file was already published and exited successfully.
+- **`install.sh` is served from the documentation site's root**, which is the URL the README and the installation page tell people to `curl`. It never was: the URL returned 404 for the whole of 0.1.0. The publication step decides whether to commit by comparing the file it is about to write against the branch, and `git diff` reports nothing at all for a path the branch does not yet track — so on the one run that matters, the first, into a root with no `install.sh`, it announced that the file was already published and exited successfully. It could only ever have worked where the file already existed.
 
-- The installation examples name a release that exists. They pinned `--version 1.0.0`, which was a placeholder when they were written and is not a version anybody can install.
+- The installation examples name a release that exists. They pinned `--version 1.0.0`, a placeholder from before there was anything to install.
 
 ## [0.1.0] - 2026-08-12
 
@@ -125,5 +132,6 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/morzecrew/morzer/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/morzecrew/morzer/releases/tag/v0.1.0
