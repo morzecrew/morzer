@@ -45,14 +45,15 @@ func TestEveryInstallationFieldIsAccounted(t *testing.T) {
 	}
 }
 
-// TestTheOperatorsAnswersSurviveTheDocument.
+// fullyPopulatedInstallation is an installation with every operator-settable
+// field set, and every reference-bearing one non-empty.
 //
-// The RFC's claim is that the file recreates the installation, so every field
-// an operator can set has to arrive on the other side with the value they set.
-// Populated by hand rather than with a zero value: a document assembled from an
-// empty installation would pass a round-trip test while carrying nothing.
-func TestTheOperatorsAnswersSurviveTheDocument(t *testing.T) {
-	inst := domain.Installation{
+// Shared by the round-trip and aliasing tests because both are worthless
+// against a zero value: a document assembled from an empty installation
+// round-trips perfectly while carrying nothing, and shares no slice because
+// there is no slice to share.
+func fullyPopulatedInstallation() domain.Installation {
+	return domain.Installation{
 		SchemaVersion: domain.InstallationSchemaVersion,
 		ID:            "inst-7",
 		Product:       "acme",
@@ -73,6 +74,16 @@ func TestTheOperatorsAnswersSurviveTheDocument(t *testing.T) {
 			{URL: "s3://bucket/prefix", Credentials: "s3_creds"},
 		}},
 	}
+}
+
+// TestTheOperatorsAnswersSurviveTheDocument.
+//
+// The RFC's claim is that the file recreates the installation, so every field
+// an operator can set has to arrive on the other side with the value they set.
+// Populated by hand rather than with a zero value: a document assembled from an
+// empty installation would pass a round-trip test while carrying nothing.
+func TestTheOperatorsAnswersSurviveTheDocument(t *testing.T) {
+	inst := fullyPopulatedInstallation()
 	release := domain.DescribedRelease{
 		Name:   "acme",
 		Digest: "sha256:abc",
@@ -141,37 +152,57 @@ func TestTheDocumentIsStableAcrossRuns(t *testing.T) {
 // TestTheDocumentCannotCarryASecretValue.
 //
 // RFC 0027 decision 2: the schema has no place to put a value, and that is a
-// property of the types rather than a rule somebody follows. The credential
-// fields the document carries are references by name -- if one of them ever
-// becomes a value, or a value-shaped field is added, this fails.
+// property of the types rather than a rule somebody follows.
 //
-// Asserted by putting a distinctive value everywhere a value could hide and
-// requiring it not to appear in the rendered document.
+// So it is asserted against the type graph. The earlier version of this test
+// put a distinctive literal in a constant, never gave it to `Describe`, and
+// checked the rendered document did not contain it -- which no document could,
+// and which would have kept passing with a `domain.Secret` field added to the
+// document, since `Secret` renders as `[redacted]` and the literal still would
+// not have appeared. A test that cannot fail is a decision nobody is enforcing.
+//
+// The machine-level claim -- a real installation holding a real secret, whose
+// value does not reach the file -- is `TestDescribeCarriesNoSecretValue` in the
+// CLI suite, where there is a secret store to hold one.
 func TestTheDocumentCannotCarryASecretValue(t *testing.T) {
-	const secret = "hunter2-THE-ACTUAL-SECRET"
-
-	inst := domain.Installation{
-		ID:         "inst-7",
-		Product:    "acme",
-		Parameters: map[string]string{"http_port": "8443"},
-		Notify: domain.NotifyConfig{Targets: []domain.NotifyTargetConfig{
-			{Name: "ops", URLSecret: "webhook_token"},
-		}},
-		Backup: domain.BackupConfig{Targets: []domain.BackupTargetConfig{
-			{URL: "s3://bucket/prefix", Credentials: "s3_creds"},
-		}},
+	valueBearing := map[reflect.Type]bool{
+		reflect.TypeFor[domain.Secret]():    true,
+		reflect.TypeFor[domain.SecretSet](): true,
 	}
 
+	var walk func(t reflect.Type, path string, seen map[reflect.Type]bool)
+	walk = func(typ reflect.Type, path string, seen map[reflect.Type]bool) {
+		if valueBearing[typ] {
+			t.Errorf("%s is a %s: the document has somewhere to put a secret value, "+
+				"and a document that can hold one eventually does", path, typ)
+			return
+		}
+		if seen[typ] {
+			return
+		}
+		seen[typ] = true
+
+		switch typ.Kind() {
+		case reflect.Struct:
+			for i := range typ.NumField() {
+				f := typ.Field(i)
+				walk(f.Type, path+"."+f.Name, seen)
+			}
+		case reflect.Slice, reflect.Array, reflect.Pointer:
+			walk(typ.Elem(), path+"[]", seen)
+		case reflect.Map:
+			walk(typ.Elem(), path+"[k]", seen)
+		}
+	}
+	walk(reflect.TypeFor[domain.InstallationDocument](), "InstallationDocument",
+		map[reflect.Type]bool{})
+
+	// And the credential-bearing fields carry the names they were given,
+	// which is the other half of decision 2: a reference is only safe if it
+	// stays a reference.
+	inst := fullyPopulatedInstallation()
 	doc := inst.Describe(domain.DescribedRelease{}, []string{"db_password"})
-	rendered, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(rendered), secret) {
-		t.Fatalf("a secret value reached the document:\n%s", rendered)
-	}
 
-	// And the shape itself: every credential-bearing field is a name.
 	if doc.Notify.Targets[0].URLSecret != "webhook_token" {
 		t.Error("the notify credential is not carried as a reference")
 	}
@@ -188,20 +219,71 @@ func TestTheDocumentCannotCarryASecretValue(t *testing.T) {
 // It is handed to a renderer and may outlive the installation it came from. A
 // document sharing a map or slice with live state is one an unrelated later
 // write can change under a caller who has already read it.
+//
+// Every reference is mutated by walking the installation rather than by naming
+// the fields, because naming them is how this test came to check `Parameters`
+// and `Domains` while `Policy.SigningKeys`, `Notify.Targets` and
+// `Backup.Targets` -- all reached through a struct that was copied by value,
+// so all still shared -- went unchecked. A nested slice added tomorrow is
+// covered the day it is added.
 func TestTheDocumentDoesNotAliasTheInstallation(t *testing.T) {
-	inst := domain.Installation{
-		Parameters: map[string]string{"http_port": "8443"},
-		Domains:    []string{"acme.example"},
-	}
-	doc := inst.Describe(domain.DescribedRelease{}, nil)
+	inst := fullyPopulatedInstallation()
+	doc := inst.Describe(domain.DescribedRelease{}, []string{"db_password"})
 
-	inst.Parameters["http_port"] = "9999"
-	inst.Domains[0] = "somewhere.else"
-
-	if doc.Parameters["http_port"] != "8443" {
-		t.Error("the document's parameters alias the installation's")
+	before, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if doc.Domains[0] != "acme.example" {
-		t.Error("the document's domains alias the installation's")
+
+	mutateThroughReferences(reflect.ValueOf(&inst).Elem(), false)
+
+	after, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("mutating the installation changed a document already assembled:\nbefore %s\nafter  %s",
+			before, after)
+	}
+}
+
+// mutateThroughReferences changes every string reachable from v *through* a
+// slice, a map or a pointer -- exactly the values a struct copy still shares
+// with its original, and none of the ones it does not.
+//
+// The distinction is the whole test. Mutating `inst.Product` proves nothing:
+// it is a string field, copied by value, and no document could see the change.
+// Mutating `inst.Backup.Targets[0].URL` reaches through a slice header that a
+// shallow copy hands over intact.
+func mutateThroughReferences(v reflect.Value, throughReference bool) {
+	switch v.Kind() {
+	case reflect.String:
+		if throughReference && v.CanSet() {
+			v.SetString("MUTATED-AFTER-THE-DOCUMENT-WAS-ASSEMBLED")
+		}
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if v.Field(i).CanSet() {
+				mutateThroughReferences(v.Field(i), throughReference)
+			}
+		}
+	case reflect.Slice:
+		for i := range v.Len() {
+			mutateThroughReferences(v.Index(i), true)
+		}
+	case reflect.Map:
+		// Map values are unaddressable, so each is copied out, mutated
+		// and written back -- which changes this map and any map
+		// sharing its header, and leaves a copied map alone.
+		for _, k := range v.MapKeys() {
+			elem := reflect.New(v.Type().Elem()).Elem()
+			elem.Set(v.MapIndex(k))
+			mutateThroughReferences(elem, true)
+			v.SetMapIndex(k, elem)
+		}
+	case reflect.Pointer:
+		if !v.IsNil() {
+			mutateThroughReferences(v.Elem(), true)
+		}
 	}
 }

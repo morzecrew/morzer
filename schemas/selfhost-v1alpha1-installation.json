@@ -5,6 +5,9 @@
   "description": "An installation as a file, written by `morzer installation describe`. Nothing reads it back: it documents a machine rather than configuring one. Generated from the Go types that produce it; do not edit by hand.",
   "properties": {
     "api_version": {
+      "enum": [
+        "selfhost/v1alpha1"
+      ],
       "type": "string"
     },
     "backup": {
@@ -38,6 +41,9 @@
       "type": "string"
     },
     "kind": {
+      "enum": [
+        "installation-document"
+      ],
       "type": "string"
     },
     "mode": {
@@ -163,6 +169,14 @@
       "type": "object"
     }
   },
+  "required": [
+    "api_version",
+    "kind",
+    "id",
+    "product",
+    "release",
+    "policy"
+  ],
   "title": "morzer installation document",
   "type": "object"
 }

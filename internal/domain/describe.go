@@ -117,11 +117,36 @@ func (i Installation) Describe(release DescribedRelease, secretNames []string) I
 		Domains:    append([]string(nil), i.Domains...),
 		Parameters: copyStringMap(i.Parameters),
 		Secrets:    names,
-		Policy:     i.Policy,
+		Policy:     copyPolicy(i.Policy),
 		Update:     i.Update,
-		Notify:     i.Notify,
-		Backup:     i.Backup,
+		Notify:     copyNotify(i.Notify),
+		Backup:     copyBackup(i.Backup),
 	}
+}
+
+// The nested configuration blocks are copied field by field rather than
+// assigned.
+//
+// Assigning them copies the struct and hands over its slice headers intact, so
+// `Policy.SigningKeys`, `Notify.Targets` and `Backup.Targets` stayed shared
+// with the live installation while the document claimed to own its contents --
+// a caller holding an assembled document would see it change under them.
+// `UpdateConfig` is assigned directly because every field in it is a scalar;
+// if it gains a slice, TestTheDocumentDoesNotAliasTheInstallation fails,
+// because that test walks the installation rather than a list of field names.
+func copyPolicy(p Policy) Policy {
+	p.SigningKeys = append([]string(nil), p.SigningKeys...)
+	return p
+}
+
+func copyNotify(n NotifyConfig) NotifyConfig {
+	n.Targets = append([]NotifyTargetConfig(nil), n.Targets...)
+	return n
+}
+
+func copyBackup(b BackupConfig) BackupConfig {
+	b.Targets = append([]BackupTargetConfig(nil), b.Targets...)
+	return b
 }
 
 // DescribedInstallationFields sorts every Installation field into one of three

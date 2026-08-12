@@ -57,6 +57,35 @@ func TestDescribeWritesTheFileItWasAskedFor(t *testing.T) {
 	out.StderrContains(path)
 }
 
+// TestDescribeReplacingAFileNarrowsItsPermissions.
+//
+// `os.WriteFile`'s mode applies only when it creates the file. Writing over an
+// existing world-readable `morzer.yaml` therefore left it world-readable while
+// the code read as though it had set 0600 -- and the second write is the
+// common case, since the whole point of the file is to be regenerated and
+// diffed.
+//
+// It names an installation, its domains and its targets. None of that is a
+// secret and none of it is anybody else's business either.
+func TestDescribeReplacingAFileNarrowsItsPermissions(t *testing.T) {
+	r := clitest.NewInstalled(t)
+	path := filepath.Join(t.TempDir(), "morzer.yaml")
+
+	if err := os.WriteFile(path, []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Run("installation", "describe", "--output", path).ExitCode(0)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("the replaced document is mode %04o, want 0600", got)
+	}
+}
+
 func TestDescribeUnderJSONEmitsOneObject(t *testing.T) {
 	// The contract break wave 11 found in `completion install --print-path`:
 	// a raw document on stdout *and* an envelope. `--json` promises one JSON

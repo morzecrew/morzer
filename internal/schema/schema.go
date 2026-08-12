@@ -60,6 +60,18 @@ func installationDocumentSchema() map[string]any {
 		"`morzer installation describe`. Nothing reads it back: it documents " +
 		"a machine rather than configuring one. Generated from the Go types " +
 		"that produce it; do not edit by hand."
+
+	// The same two constraints the manifest and secret schemas carry, and
+	// for the same reason: struct shape says a field may appear, never that
+	// it must, so a schema generated from shape alone validates `{}` and
+	// validates a document from another contract entirely. The writer emits
+	// all six of these unconditionally -- none carries omitempty -- so an
+	// object missing one did not come from this command.
+	props, _ := s["properties"].(map[string]any)
+	props["api_version"] = withEnum(props["api_version"], apiVersions())
+	props["kind"] = withEnum(props["kind"], []string{domain.KindInstallationDocument})
+	s["required"] = []string{"api_version", "kind", "id", "product", "release", "policy"}
+
 	return s
 }
 

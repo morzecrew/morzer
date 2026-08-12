@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
 
@@ -109,24 +109,35 @@ func renderDocument(doc domain.InstallationDocument) ([]byte, error) {
 	return append([]byte(header), rendered...), nil
 }
 
-// writeDocument writes the file, refusing to follow a symlink.
+// writeDocument writes the file, refusing a symlink and replacing atomically.
 //
 // The path comes from an operator's command line and is usually inside a
-// repository. Writing through a symlink there would put a description of a
-// production installation somewhere the operator did not name.
+// repository, which is what each of the two rules is about.
+//
+// The symlink check is a *refusal*, not the protection. `atomicfs.WriteFile`
+// renames a finished temporary file into place, so it replaces the link rather
+// than writing through it whatever this check does -- and quietly replacing a
+// symlink an operator deliberately created is its own surprise. The check is
+// what turns that into a sentence naming the file they meant. It cannot be
+// raced into following a link, because there is no path-following write to
+// race: the rename is the write.
+//
+// Atomic because this file is regenerated over a previous copy that somebody
+// has already reviewed and committed. A truncating write that fails halfway
+// leaves a partial document where a whole one used to be, and git would show
+// the loss as an ordinary edit.
+//
+// 0600 is enforced on the replacement rather than only on creation:
+// `os.WriteFile` applies its mode when it *creates* a file, so rewriting an
+// existing world-readable document left it world-readable. atomicfs chmods the
+// temporary file before the rename, which lands the mode every time.
 func writeDocument(path string, body []byte) error {
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		target, _ := os.Readlink(path)
 		return domain.Usage("%s is a symlink to %s", path, target).
-			WithHint("refusing to write through it -- name the file you mean")
+			WithHint("refusing to replace it -- name the file you mean")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return domain.Internal(err, "cannot create %s", filepath.Dir(path))
-	}
-	// 0600: it names an installation, its domains and its targets. None of
-	// that is a secret, and none of it is anybody else's business either.
-	if err := os.WriteFile(path, body, 0o600); err != nil {
-		return domain.Internal(err, "cannot write %s", path)
-	}
-	return nil
+	// It names an installation, its domains and its targets. None of that
+	// is a secret, and none of it is anybody else's business either.
+	return atomicfs.WriteFile(path, body, 0o600)
 }
