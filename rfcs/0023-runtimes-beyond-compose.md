@@ -1,9 +1,10 @@
 # RFC 0023 — Runtimes beyond Compose
 
 - **Status:** 🚧 In progress — **P1a shipped 2026-08-12**: the leak inventory
-  came to 15 mentions in three classes, and `tools/runtimecheck` now enforces the
+  came to 19 mentions in three classes, and `tools/runtimecheck` now enforces the
   boundary depguard cannot see. It reversed §12.2's cost estimate along the way:
-  the expensive leak is one published environment variable, not a category. P1b
+  the expensive leaks are a published environment variable and a default, not a
+  category. P1b
   — a rootless Podman host and the three measurements behind it — is open, and is
   the only thing between here and P2.
 - **Scope:** Grading the `ports.Runtime` seam by writing a second implementation
@@ -99,8 +100,8 @@ the result is [`tools/runtimecheck`](../tools/runtimecheck) — `just
 runtime-inventory` prints it, `just runtime-check` enforces it, and the list is
 not repeated here because a copy of a machine-checked list is a copy that drifts.
 
-**The number, as measured on 2026-08-12: 15 mentions above `internal/adapters`
-— 8 port-shaped, 2 Compose-shaped, 5 catalogue — and 0 branches on runtime
+**The number, as measured on 2026-08-12: 19 mentions above `internal/adapters`
+— 8 port-shaped, 3 Compose-shaped, 8 catalogue — and 0 branches on runtime
 kind.**
 
 Dated, because it is a measurement rather than a property: `just
@@ -110,8 +111,8 @@ down is that a later reader can see whether it fell.
 Three classes, not the two P1 was asked for. The third earned its place: a
 runtime named as *data* — a key in the table of tools the manager can probe,
 matching what a vendor writes in `requirements.tools` — is not a leak. A second
-runtime adds a row. Five of the fifteen are that, and counting them as leaks
-would have made the problem look a third bigger than it is.
+runtime adds a row. Eight of the nineteen are that, and counting them as leaks
+would have made the problem look twice the size it is.
 
 **The finding that matters is that §12.2's conclusion was wrong.** It said both
 `ports.compose_abi.go` and `HookEnv.ComposeProject` are published ABIs, "so
@@ -126,7 +127,7 @@ are not alike at all:
   same seven. The published ABI is the *environment variable names*, which the
   Go identifier does not appear in. Renaming `ComposeVars` to something
   runtime-neutral changes no bundle anywhere.
-- **`HookEnv.ComposeProject` is the expensive one, alone.** A Compose project is
+- **`HookEnv.ComposeProject` is the expensive one.** A Compose project is
   Compose's grouping primitive; Quadlet has a unit prefix, which is a naming
   convention rather than a handle. It reaches every vendor hook as
   `<PRODUCT>_COMPOSE_PROJECT`, and [the reference
@@ -134,8 +135,16 @@ are not alike at all:
   shells out to `docker compose`. Its *meaning* is absent under a second runtime,
   not merely its name.
 
-So the cost is one published variable, not a category. That is a materially
-different RFC from the one §12.2 described.
+- **And the manifest's default**, which review found and the first version of
+  the checker did not. `manifest.go:452` sets `providers.runtime.name` to
+  `"compose"` when a bundle declares nothing, in the domain layer, on a line
+  where every symbol is neutrally named. It is §2's "the manifest is not
+  runtime-blind" as one assignment, and it is decision 8's question in
+  executable form.
+
+So the cost is two things — a published variable and a default — rather than a
+category of bundle-breaking renames. That is a materially different RFC from the
+one §12.2 described.
 
 ### 2.2 What a vocabulary checker structurally cannot find
 
@@ -157,10 +166,18 @@ worse, and P1 found them by hand:
   file"* — the vocabulary in a string an operator reads, which the checker
   deliberately does not scan (§2.3).
 
+One item left this list during review. The manifest's `"compose"` default was
+here as unfindable, and it is now found — by a third rule that flags a string
+whose *value* is a runtime's name, which also closes the `const defaultRuntime =
+"compose"` indirection that would have walked past the other two. The lesson is
+not that the list was wrong but that "a checker cannot see this" is a claim worth
+attacking before it is written down: two of the three survived the attack and one
+did not.
+
 This is the same shape as the finding about depguard that opened this section,
 one level along: **depguard sees imports and not names; a name checker sees names
 and not meanings.** Each rule buys exactly its own layer, and the ones that
-matter most are found by reading.
+matter most are still found by reading.
 
 ### 2.3 What the checker deliberately does not do
 
@@ -289,7 +306,7 @@ refusal, which is also the first test that the refusal path is reachable.
 | 7 | The port may grow methods; it may not grow `switch kind` | LOCKED | A conditional on runtime kind above `internal/adapters` is the abstraction failing in the one way that looks like progress. |
 | 7a | What enforces decision 7 | LOCKED | Resolved by P1: [`tools/runtimecheck`](../tools/runtimecheck), an AST walk rather than `forbidigo`, because the rule needs to tell a comparison from a concatenation and a declared name from a mention in prose — §2.3 — and a pattern matcher cannot. Two rules: an allowlisted vocabulary rule whose allowlist is the inventory, and an un-allowlistable branch rule. `just runtime-check`, in CI beside the linter, with failing fixtures for both. |
 | 7b | The vocabulary rule names `podman` and `quadlet` before either exists | LOCKED | The measured Compose leak is inventoried and meant to shrink; the leak worth preventing is the *second* adapter teaching the layers above it a second private language. A rule naming only the incumbent would have permitted exactly that, and would have been added after the first `if kind == "quadlet"` was already load-bearing. |
-| 7c | A runtime named as data is not a leak | LOCKED | §2.1. `tools.Docker` is a key in a probe catalogue matching `requirements.tools`; a second runtime adds a row rather than contradicting one. Five of the fifteen are this, and classing them as leaks would have inflated the problem by a third and sent P2 renaming a lookup table. |
+| 7c | A runtime named as data is not a leak | LOCKED | §2.1. `tools.Docker` is a key in a probe catalogue matching `requirements.tools`; a second runtime adds a row rather than contradicting one. Eight of the nineteen are this, and classing them as leaks would have roughly doubled the apparent problem and sent P2 renaming a lookup table. |
 | 8 | How the runtime is named in the manifest | OPEN | §4.1. `providers.runtime.name` already exists; P2 chooses and records here. |
 
 ## 6. The escape hatch, restated after measurement
@@ -348,7 +365,7 @@ for the declared runtime's presence, which is where an operator meets decision 5
 
 - **P1a — The leak inventory and its enforcement.** ✅ **Shipped 2026-08-12.**
   No adapter. The classification came out as three classes rather than two
-  (decision 7c), the number was 15 on the day, and the rule from decision 7 is
+  (decision 7c), the number was 19 on the day, and the rule from decision 7 is
   `tools/runtimecheck` in CI. §2.1–2.3.
 - **P1b — The Podman host.** ⏳ §12 items 4–6: the `EnvironmentFile`-on-tmpfs
   question, rootless volume paths against 0010's staging, and whether 0011's
@@ -399,12 +416,18 @@ Taken 2026-08-12, against the code rather than the documentation.
    refactor. This is the finding that decides the RFC's cost, and it says the RFC
    is not cheap."*
 
-   The count is **14, of which 7 are renames that break nothing, 5 are catalogue
-   data, and 2 are Compose's own concepts** (§2.1). `ComposeVars` is not a
-   published ABI: the published thing is the *variable names* it produces, and
-   the Go identifier appears in none of them. The one genuinely expensive item is
-   `HookEnv.ComposeProject`, whose meaning — not whose spelling — is absent under
-   Quadlet.
+   The count and its breakdown are in §2.1 and are deliberately not repeated
+   here: this paragraph carried its own copy and it was stale within a day, which
+   is the second time a number restated in prose has drifted in this document.
+   What matters is the shape — **most of the mentions are renames that break
+   nothing, and the expensive ones are two.**
+
+   `ComposeVars` is not a published ABI: the published thing is the *variable
+   names* it produces, and the Go identifier appears in none of them. The
+   genuinely expensive items are `HookEnv.ComposeProject`, whose meaning — not
+   whose spelling — is absent under Quadlet, and the manifest defaulting
+   `providers.runtime.name` to `"compose"`, which decision 8 is already open
+   about and which only the literal rule finds (§2.1).
 
    The correction is worth more than the number. This item was the reason to
    believe the RFC was expensive, and it was reasoning from a grep. **Reasoning

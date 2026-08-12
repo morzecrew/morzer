@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -61,7 +62,7 @@ func guarded(path string) bool {
 
 // Finding is one place a runtime is named above the boundary.
 type Finding struct {
-	Rule   string // "vocabulary" or "branch"
+	Rule   string // "vocabulary", "literal" or "branch"
 	File   string
 	Line   int
 	Symbol string
@@ -122,7 +123,7 @@ func Check(root string) ([]Finding, error) {
 			})
 		}
 
-		found = append(found, inspect(fset, f, slash)...)
+		found = append(found, inspect(fset, f, slash, strings.HasSuffix(rel, "_test.go"))...)
 		return nil
 	})
 	if err != nil {
@@ -138,7 +139,7 @@ func Check(root string) ([]Finding, error) {
 	return found, nil
 }
 
-func inspect(fset *token.FileSet, f *ast.File, rel string) []Finding {
+func inspect(fset *token.FileSet, f *ast.File, rel string, isTest bool) []Finding {
 	var out []Finding
 	add := func(rule string, pos token.Pos, symbol, word string) {
 		out = append(out, Finding{
@@ -209,9 +210,61 @@ func inspect(fset *token.FileSet, f *ast.File, rel string) []Finding {
 					add("branch", e.Pos(), "case "+lit, w)
 				}
 			}
+
+		// Rule 3: the runtime's name written down as a value.
+		//
+		// Rule 2 sees `kind == "compose"` and misses
+		// `const defaultRuntime = "compose"` followed by `kind ==
+		// defaultRuntime` -- the name is neutral, so rule 1 is silent, and
+		// the comparison is against an identifier, so rule 2 is too.
+		// Resolving constants would need type information and would still
+		// miss one imported across packages; flagging the value itself
+		// needs neither and cannot be routed around.
+		//
+		// Not in tests, and this is the one place the rules differ. A test
+		// *name* saying "compose" establishes vocabulary, which is why rule
+		// 1 covers tests; a test *value* saying "compose" is the fixture's
+		// subject -- a manifest whose runtime is Compose has to say so, and
+		// a rule flagging that would be a rule demanding tests describe
+		// something they are not testing.
+		case *ast.BasicLit:
+			if isTest || x.Kind != token.STRING {
+				return true
+			}
+			if w, lit := runtimeLiteral(x); w != "" {
+				add("literal", x.Pos(), "literal "+lit, w)
+			}
 		}
 		return true
 	})
+	return dedupe(out)
+}
+
+// dedupe drops a literal finding on a line another rule already covers.
+//
+// `kind == "compose"` is one problem that rules 2 and 3 both see, and
+// `const Docker = "docker"` is one problem that rules 1 and 3 both see. One
+// line is one place a decision was made, so it earns one inventory entry and
+// one classification; reporting it twice would make the number measure the
+// checker rather than the code.
+//
+// The literal is the one dropped because it is the least specific: "a runtime's
+// name appears here" says less than "this branches on it" or "this is called
+// that".
+func dedupe(in []Finding) []Finding {
+	covered := map[string]bool{}
+	for _, f := range in {
+		if f.Rule != "literal" {
+			covered[fmt.Sprintf("%s:%d", f.File, f.Line)] = true
+		}
+	}
+	out := in[:0]
+	for _, f := range in {
+		if f.Rule == "literal" && covered[fmt.Sprintf("%s:%d", f.File, f.Line)] {
+			continue
+		}
+		out = append(out, f)
+	}
 	return out
 }
 
@@ -228,7 +281,15 @@ func runtimeLiteral(e ast.Expr) (word, literal string) {
 	if !ok || lit.Kind != token.STRING {
 		return "", ""
 	}
-	value := strings.Trim(lit.Value, "`\"")
+	// Unquoted rather than trimmed: `"\x64ocker"` is the string `docker`,
+	// and trimming the quotes off leaves the escape intact and the match
+	// failing. A bypass nobody would write by accident, which is the kind a
+	// checker has to close anyway -- the rule is worth what its weakest
+	// spelling is worth.
+	value, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return "", ""
+	}
 	// Exactly the name, not a sentence containing it.
 	for _, w := range runtimeWords {
 		if strings.EqualFold(value, w) {

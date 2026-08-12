@@ -211,8 +211,18 @@ tidy:
     go mod tidy
     go mod verify
 
-# Everything CI runs.
-check: fmt-check vet test
+# Formatting, vet, the boundary check and the tests. Not everything CI runs.
+#
+# `runtime-check` earns its place here rather than only in `ci` because what it
+# reports is an architectural boundary having moved, and the fix is a rename or
+# a design decision -- not the sort of thing anybody wants to discover after the
+# push. It costs milliseconds and needs nothing installed.
+#
+# `docs-check` needs nothing installed either and is deliberately still out:
+# it fails on a documented surface that has not been written yet, which is
+# work-in-progress rather than a mistake, and failing the inner loop on it
+# would train people to skip the inner loop.
+check: fmt-check vet runtime-check test
 
 # `check` deliberately omits lint and the strict contract run so it works
 # without golangci-lint or sops installed. This recipe is the exact-parity one:

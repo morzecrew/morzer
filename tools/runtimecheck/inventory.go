@@ -6,7 +6,8 @@ import "sort"
 //
 // Every place above `internal/adapters` that names a concrete runtime, each
 // classified and each carrying the thing that would remove it. This is the
-// list; `len(inventory)` is the number.
+// list; the number is the sum of every entry's Count, which is not
+// `len(inventory)` — one entry can cover a name that appears twice in a file.
 //
 // It is an allowlist, so it is also the enforcement: a name not here fails the
 // build. And it is checked in both directions — an entry describing a symbol
@@ -47,13 +48,34 @@ type Entry struct {
 	// Removes is what would take this entry off the list. For a catalogue
 	// entry it is empty: nothing removes it, and nothing should.
 	Removes string
+
+	// Occurrences is how many times this file/symbol pair appears, when it
+	// appears more than once. Zero means one.
+	//
+	// Needed because the key is file and symbol rather than file and line:
+	// a line number churns whenever anything above it moves, so keying on it
+	// would mean editing the inventory to make unrelated changes compile.
+	// The cost of leaving the line out is that two `literal "docker"` on
+	// different lines of one file collapse into one entry — and then
+	// deleting one of them leaves the entry matching, which is the
+	// only-ever-grows failure this list is checked in both directions to
+	// avoid, wearing a smaller hat.
+	Occurrences int
+}
+
+// Count is Occurrences with its default applied.
+func (e Entry) Count() int {
+	if e.Occurrences == 0 {
+		return 1
+	}
+	return e.Occurrences
 }
 
 var inventory = []Entry{
 	// ---- internal/ports ----
 	{
 		File: "internal/ports/compose_abi.go", Symbol: "file compose_abi.go", Class: PortShaped,
-		Why: "the file name is the loudest of the fourteen: a ports file called " +
+		Why: "the loudest one in the list: a ports file called " +
 			"compose_abi says the interpolation contract belongs to one runtime, " +
 			"before a reader opens it. Its three symbols say the same thing and its " +
 			"contents say the opposite",
@@ -94,6 +116,18 @@ var inventory = []Entry{
 
 	// ---- internal/domain ----
 	{
+		File: "internal/domain/manifest.go", Symbol: `literal "compose"`, Class: ComposeShaped,
+		Why: "the sharpest one, and no rule but the literal rule finds it: a manifest " +
+			"that declares no runtime is *defaulted* to Compose, in the domain layer, " +
+			"by `m.Providers.Runtime.Name = \"compose\"`. Every symbol on that line is " +
+			"neutrally named. It is the whole of §2's observation that the manifest is " +
+			"not runtime-blind -- it names a runtime and then describes it in Compose's " +
+			"vocabulary -- expressed in one assignment",
+		Removes: "decision 8, which is OPEN and is exactly this question. A default that " +
+			"picks a runtime has to become a declaration that names one, or the second " +
+			"runtime is opt-in on a field most bundles will not set",
+	},
+	{
 		File: "internal/domain/manifest.go", Symbol: "func ComposeFiles", Class: PortShaped,
 		Why: "returns the base files plus a profile's additions and refuses an unknown " +
 			"profile. Both halves are the manager's own model of a deployment profile; " +
@@ -123,6 +157,18 @@ var inventory = []Entry{
 	{
 		File: "internal/infra/tools/registry.go", Symbol: "type dockerVersionDoc", Class: Catalogue,
 		Why: "the shape of `docker version --format {{json .}}`, which only the probe reads",
+	},
+	{
+		File: "internal/infra/tools/registry.go", Symbol: `literal "docker"`, Class: Catalogue,
+		Why: "the binary two probes resolve in PATH -- the Docker one and the Compose " +
+			"one, since `docker compose` is a plugin of the same executable. A probe " +
+			"has to name what it runs, and a Podman probe will name podman beside them",
+		Occurrences: 2,
+	},
+	{
+		File: "internal/infra/tools/registry.go", Symbol: `literal "compose"`, Class: Catalogue,
+		Why: "the subcommand in `docker compose version --short`. Argv for one probe, " +
+			"which is the most concrete form of a runtime named as data there is",
 	},
 	{
 		File: "internal/infra/tools/registry.go", Symbol: "func parseDockerVersion", Class: Catalogue,
@@ -189,7 +235,7 @@ type ClassCount struct {
 func counts() []ClassCount {
 	byClass := map[Class]int{}
 	for _, e := range inventory {
-		byClass[e.Class]++
+		byClass[e.Class] += e.Count()
 	}
 	out := make([]ClassCount, 0, 3)
 	for _, c := range []Class{PortShaped, ComposeShaped, Catalogue} {

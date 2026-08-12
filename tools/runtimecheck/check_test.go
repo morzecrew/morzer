@@ -103,8 +103,12 @@ func TestABranchOnRuntimeKindIsCaught(t *testing.T) {
 			branches = append(branches, f)
 		}
 	}
-	if len(branches) != 2 {
-		t.Fatalf("want the if and the case, got %d: %v", len(branches), branches)
+	// `kind == "compose"`, `"podman" == kind`, `kind != "quadlet"` and a case
+	// clause. Reversed and negated are the same decision, and a rule that
+	// only matched the textbook spelling would be a rule with three ways
+	// around it.
+	if len(branches) != 4 {
+		t.Fatalf("want the three comparisons and the case, got %d: %v", len(branches), branches)
 	}
 
 	// Handed an allowlist that *does* list every branch, by position and
@@ -128,6 +132,63 @@ func TestABranchOnRuntimeKindIsCaught(t *testing.T) {
 		if !containsFinding(unexpected, b) {
 			t.Errorf("%s was allowlisted; a runtime branch must not be", b)
 		}
+	}
+}
+
+// TestTheIndirectRuntimeBranchIsCaughtByItsValue.
+//
+// `const defaultRuntime = "compose"` then `if kind == defaultRuntime` defeats
+// both of the other rules on purpose: the name is neutral, so the vocabulary
+// rule is silent, and the comparison is against an identifier, so the branch
+// rule is too. Resolving the constant would need type information and would
+// still miss one imported from another package.
+//
+// So the value is what gets caught, and this test states the limit as much as
+// the guarantee: **the comparison is not reported, the constant is.** A reader
+// who expects a "branch" finding here and sees none should find this test
+// rather than conclude the rule is broken.
+func TestTheIndirectRuntimeBranchIsCaughtByItsValue(t *testing.T) {
+	found, err := Check("testdata/leaky")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !hasSymbol(found, `literal "compose"`) {
+		t.Error("the constant holding the runtime's name was not reported")
+	}
+	// And the escaped spelling, which `strings.Trim` could not unquote.
+	if !hasSymbol(found, `literal "\x64ocker"`) {
+		t.Error(`"\x64ocker" was not recognised as the string docker`)
+	}
+
+	for _, f := range found {
+		if f.Rule == "branch" && strings.Contains(f.Symbol, "defaultRuntime") {
+			t.Errorf("the branch rule reported %s; if it can now resolve constants, "+
+				"this test and the comment on rule 3 are both out of date", f)
+		}
+		// `"quadlet" + "-unit"` is a literal, and concatenation is not
+		// comparison. Without the operator guard the branch rule reads
+		// every concatenated string as a decision.
+		if f.Rule == "branch" && f.Word == "quadlet" && f.Line == 22 {
+			t.Errorf("a concatenation was reported as a branch: %s", f)
+		}
+	}
+}
+
+// TestAValueInATestIsNotALeak.
+//
+// The one place the rules differ, and it needs a reason rather than an
+// exemption. A test *name* saying "compose" establishes vocabulary, so rule 1
+// covers tests. A test *value* saying "compose" is the fixture's subject: a
+// manifest whose runtime is Compose has to say so, and flagging it would demand
+// that tests describe something they are not testing.
+func TestAValueInATestIsNotALeak(t *testing.T) {
+	found, err := Check("testdata/clean")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range found {
+		t.Errorf("a value in a test file was reported: %s", f)
 	}
 }
 
@@ -176,6 +237,20 @@ func TestAFixedLeakFailsUntilTheInventoryCatchesUp(t *testing.T) {
 	if len(stale) != len(inventory) {
 		t.Fatalf("want every entry reported stale against an empty tree, got %d of %d",
 			len(stale), len(inventory))
+	}
+
+	// And it says the entry is gone rather than under-counted. Detection
+	// does not need this branch -- "found 0 of 1" is also less than one, so
+	// the partial case catches a vanished entry too -- which is exactly why
+	// the wording needs a test: a mutation deleting the branch changed only
+	// the sentence an engineer reads, and passed.
+	for _, s := range stale {
+		if strings.Contains(s, "claims") {
+			t.Errorf("a wholly absent entry was reported as a miscount: %q", s)
+		}
+		if !strings.Contains(s, ": ") {
+			t.Errorf("the stale report does not name file and symbol: %q", s)
+		}
 	}
 }
 
@@ -241,9 +316,58 @@ func TestTheInventoryPrintsAsATable(t *testing.T) {
 			t.Errorf("the summary omits the %s class", c.Class)
 		}
 	}
-	if total != len(inventory) {
-		t.Errorf("the class counts total %d, the inventory holds %d — an entry is "+
-			"classified as something the summary does not print", total, len(inventory))
+
+	// Mentions, not rows: an entry may stand for a name that appears twice
+	// in one file. The two numbers differing is the design; a class the
+	// summary does not print would make them differ for the wrong reason,
+	// which is what this compares against.
+	mentions := 0
+	for _, e := range inventory {
+		mentions += e.Count()
+	}
+	if total != mentions {
+		t.Errorf("the class counts total %d, the entries account for %d mentions — "+
+			"an entry is classified as something the summary does not print",
+			total, mentions)
+	}
+	if total < len(inventory) {
+		t.Errorf("fewer mentions (%d) than entries (%d)", total, len(inventory))
+	}
+}
+
+// TestAnEntryStopsCoveringWhatItNoLongerCovers.
+//
+// An entry may stand for a name that appears twice in one file, because the key
+// is file and symbol rather than file and line — a line number churns whenever
+// anything above it moves. The cost is that deleting *one* of the two leaves the
+// entry matching, and the list quietly claims a mention that is gone. Declared
+// counts close that, and this drives the case the real tree cannot.
+func TestAnEntryStopsCoveringWhatItNoLongerCovers(t *testing.T) {
+	twice := Entry{
+		File: "internal/x/y.go", Symbol: `literal "docker"`, Class: Catalogue,
+		Why:         "a name appearing twice in one file, which is what Count exists for",
+		Occurrences: 2,
+	}
+	known := map[string]Entry{twice.File + "\x00" + twice.Symbol: twice}
+	one := Finding{Rule: "literal", File: twice.File, Line: 10, Symbol: twice.Symbol, Word: "docker"}
+
+	// Both present: nothing to report.
+	if u, s := reconcile([]Finding{one, {Rule: "literal", File: twice.File, Line: 20,
+		Symbol: twice.Symbol, Word: "docker"}}, known); len(u) != 0 || len(s) != 0 {
+		t.Errorf("two of two reported something: %v %v", u, s)
+	}
+
+	// One removed: the entry over-claims and must say so.
+	_, stale := reconcile([]Finding{one}, known)
+	if len(stale) != 1 || !strings.Contains(stale[0], "claims 2, found 1") {
+		t.Errorf("a half-fixed entry was not reported: %v", stale)
+	}
+
+	// A third appears: the surplus is a new mention, not a covered one.
+	three := []Finding{one, one, one}
+	unexpected, _ := reconcile(three, known)
+	if len(unexpected) != 1 {
+		t.Errorf("want the surplus reported once, got %d", len(unexpected))
 	}
 }
 

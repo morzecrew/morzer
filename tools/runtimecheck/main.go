@@ -6,17 +6,24 @@
 // RFC 0023 is looking for is vocabulary — a ports file whose exported API is the
 // Compose interpolation contract imports nothing at all.
 //
-// Two rules:
+// Three rules:
 //
-//   - vocabulary — a declared name above `internal/adapters` that says which
-//     runtime this is. Allowlisted by the inventory in inventory.go, which is
-//     RFC 0023 P1's deliverable: every existing leak, classified, with the thing
-//     that would remove it.
+//   - vocabulary — a declared name, file name or package name above
+//     `internal/adapters` that says which runtime this is.
+//
+//   - literal — a string whose value *is* a runtime's name, outside tests. It
+//     catches the indirection the other two miss: `const defaultRuntime =
+//     "compose"` has a neutral name and a neutral comparison, and flagging the
+//     value needs no type information and cannot be routed around.
 //
 //   - branch — a comparison or case against a runtime's name. RFC 0023
 //     decision 7: the port may grow methods, it may not grow a `switch kind`.
 //     There is no allowlist for this one and there are no findings today, which
 //     is the state it exists to preserve.
+//
+// The first two are allowlisted by the inventory in inventory.go, which is RFC
+// 0023 P1's deliverable: every existing mention, classified, with the thing that
+// would remove it.
 //
 // Run with -list to print the inventory rather than check it.
 package main
@@ -70,11 +77,13 @@ func run(root string, out io.Writer) error {
 
 	byClass := counts()
 	parts := make([]string, 0, len(byClass))
+	total := 0
 	for _, c := range byClass {
 		parts = append(parts, fmt.Sprintf("%d %s", c.N, c.Class))
+		total += c.N
 	}
 	fmt.Fprintf(out, "runtimecheck: %d known mentions above internal/adapters (%s), 0 runtime branches\n",
-		len(inventory), strings.Join(parts, ", "))
+		total, strings.Join(parts, ", "))
 	return nil
 }
 
@@ -90,7 +99,7 @@ func run(root string, out io.Writer) error {
 // refuses to allowlist a branch is unreachable from the real data — and a
 // mutation deleting it survived the sweep for exactly that reason.
 func reconcile(found []Finding, known map[string]Entry) (unexpected []Finding, stale []string) {
-	seen := map[string]bool{}
+	seen := map[string]int{}
 
 	for _, f := range found {
 		key := f.File + "\x00" + f.Symbol
@@ -100,16 +109,26 @@ func reconcile(found []Finding, known map[string]Entry) (unexpected []Finding, s
 			unexpected = append(unexpected, f)
 			continue
 		}
-		if _, ok := known[key]; ok {
-			seen[key] = true
+		e, ok := known[key]
+		if !ok {
+			unexpected = append(unexpected, f)
 			continue
 		}
-		unexpected = append(unexpected, f)
+		seen[key]++
+		// Past its declared count, the surplus is a new mention that
+		// happens to share a name with an old one.
+		if seen[key] > e.Count() {
+			unexpected = append(unexpected, f)
+		}
 	}
 
-	for key := range known {
-		if !seen[key] {
+	for key, e := range known {
+		switch {
+		case seen[key] == 0:
 			stale = append(stale, strings.ReplaceAll(key, "\x00", ": "))
+		case seen[key] < e.Count():
+			stale = append(stale, fmt.Sprintf("%s (claims %d, found %d)",
+				strings.ReplaceAll(key, "\x00", ": "), e.Count(), seen[key]))
 		}
 	}
 	sort.Strings(stale)
@@ -138,7 +157,11 @@ func printInventory(out io.Writer) {
 	for _, c := range counts() {
 		fmt.Fprintf(out, "%-16s %d\n", string(c.Class), c.N)
 	}
-	fmt.Fprintf(out, "%-16s %d\n\n", "total", len(inventory))
+	total := 0
+	for _, c := range counts() {
+		total += c.N
+	}
+	fmt.Fprintf(out, "%-16s %d\n\n", "total", total)
 
 	fmt.Fprintf(out, "| Where | Symbol | Class | Why | What removes it |\n")
 	fmt.Fprintf(out, "| --- | --- | --- | --- | --- |\n")
@@ -147,7 +170,11 @@ func printInventory(out io.Writer) {
 		if removes == "" {
 			removes = "nothing — and nothing should"
 		}
-		fmt.Fprintf(out, "| `%s` | `%s` | %s | %s | %s |\n",
-			e.File, e.Symbol, e.Class, e.Why, removes)
+		symbol := fmt.Sprintf("`%s`", e.Symbol)
+		if e.Count() > 1 {
+			symbol += fmt.Sprintf(" ×%d", e.Count())
+		}
+		fmt.Fprintf(out, "| `%s` | %s | %s | %s | %s |\n",
+			e.File, symbol, e.Class, e.Why, removes)
 	}
 }

@@ -140,9 +140,13 @@ cli -> ui -> lifecycle -> ports <- adapters
 **Two checkers, because the first three rules and the fourth are different
 questions.** `depguard` in [`.golangci.yml`](.golangci.yml) is an import linter:
 it answers what a package may depend on. `just runtime-check`
-([`tools/runtimecheck`](tools/runtimecheck)) reads names, because a file whose
-exported API is the Compose interpolation contract imports nothing and passes
-depguard cleanly.
+([`tools/runtimecheck`](tools/runtimecheck)) reads names and values, because a
+file whose exported API is the Compose interpolation contract imports nothing and
+passes depguard cleanly. Three rules: a declared name, file name or package name
+that says which runtime is running; a string whose value *is* a runtime's name,
+outside tests, which catches the `const defaultRuntime = "compose"` indirection
+the first two walk past; and a comparison or case against one, which has no
+allowlist at all.
 
 This section used to claim depguard guaranteed that *"the string `docker`
 appears nowhere above `internal/adapters`"*. It never did and could not — an
