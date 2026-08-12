@@ -253,6 +253,6 @@ somebody is reading it.
 
 ## Related
 
-- [`morzer ls`](../reference/installation-commands.md#morzer-ls) — the command surface
+- [`morzer ls`](../reference/installation-commands.md#installation-list) — the command surface
 - [Recovering a lost machine](recovering-a-lost-machine.md) — rebuilding one installation
 - [Changing configuration](changing-configuration.md) — `config set`, which is how a port moves

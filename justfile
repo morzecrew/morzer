@@ -358,9 +358,13 @@ serve-docs:
     uvx --from zensical=={{zensical}} zensical serve
 
 # Build the documentation site into pages/site.
+#
+# --strict because without it a broken cross-reference is a line of build output
+# and an exit code of 0: a link into a heading that no longer exists rode a green
+# CI run into the published site, where the only way to find it was to click it.
 [working-directory("pages")]
 build-docs:
-    uvx --from zensical=={{zensical}} zensical build
+    uvx --from zensical=={{zensical}} zensical build --strict
 
 # Documentation drift is a build failure, not a discovery. The checker reads the
 # command tree, the manifest schema and the hook ABI out of the source, so a new
