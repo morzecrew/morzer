@@ -108,10 +108,36 @@ Stated here rather than discovered during an incident:
 - `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
   implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
 
+## Dependency advisories with no code change
+
+An advisory against a module this project depends on is not the same as a
+vulnerability in this project, and the difference is worth writing down once
+rather than re-deriving it each time a scanner reports one.
+
+`govulncheck ./...` is the check that answers it: it resolves call paths, so it
+distinguishes "the module is in the graph" from "this code reaches the
+vulnerable symbol". Scorecard's vulnerabilities check works at module level and
+cannot make that distinction, so it reports both alike.
+
+- **[GO-2026-5932](https://osv.dev/GO-2026-5932) — `golang.org/x/crypto/openpgp`
+  is unmaintained.** Not imported anywhere in this repository. `x/crypto` is
+  here for `ssh` and `ssh/knownhosts`, which the SFTP backup target uses; the
+  advisory covers a sibling package with no fixed version, since its remedy is
+  to stop using it. `govulncheck` reports it as not called. Nothing to change,
+  and no version to move to.
+
 ## Closed gaps
 
 Kept here because a security policy that only ever grows is one nobody trusts to
 be current.
+
+- **A reachable XSS advisory in a markdown dependency** (closed 2026-08-12).
+  `goldmark` before 1.7.17 carried [GO-2026-5320](https://osv.dev/GO-2026-5320),
+  and it was reachable rather than merely present: `ui.RenderNotes` renders a
+  release's notes through `glamour`, which reaches goldmark's HTML renderer.
+  What a terminal does with the injected markup is another question, and not one
+  worth resting on — the module is now 1.7.17 and `govulncheck` reports no
+  reachable vulnerability. The golden renderings are unchanged by the upgrade.
 
 - **`require_signature: true` refused every operation instead of enforcing
   signing** (closed 2026-08-03). Every part of the policy existed except a
