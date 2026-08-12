@@ -32,6 +32,11 @@ second table of the same shape is a second set of rows for the same numbers.
   Design complete. P1 is deliberately not scheduled ahead of 0025 P1: a signing
   key with nothing to sign would be the third mechanism this project built
   before its caller.
+- **[0029 — macOS as a development host](0029-macos-as-a-development-host.md).**
+  **P1 is execution-ready and unconditional**: the tree does not compile for
+  darwin, which makes `install.sh`'s "build from source" advice false. P2 — a
+  published darwin archive and the tier around it — is gated on somebody who is
+  not the author asking for it.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -41,7 +46,7 @@ only account of why the code is shaped the way it is.
 
 ## Allocating a number
 
-The next free number is **0029**. Before creating an RFC, glance at the table
+The next free number is **0030**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -80,6 +85,7 @@ number in the filename in sync.
 | [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | 📝 Draft | Seeing many machines at once without a control plane: each installation publishes one signed row to a bucket, and the reader can never act. |
 | [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 🚧 In progress | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |
 | [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | 📝 Draft | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |
+| [0029](0029-macos-as-a-development-host.md) | macOS as a development host | 📝 Draft | Making `GOOS=darwin` compile, and then bounding what that means: a tier for authoring and evaluating bundles on a Mac, never for running a production installation. |
 
 ## Status legend
 
