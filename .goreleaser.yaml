@@ -51,6 +51,11 @@ archives:
 
 checksum:
   name_template: SHA256SUMS
+  # The installer is covered by the same file it teaches an operator to check,
+  # which closes the "who verifies the verifier" loop: somebody who has the
+  # release can verify the script that installs it against the signed sums.
+  extra_files:
+    - glob: install.sh
 
 # Signing is what makes the checksums worth anything: without it, whoever can
 # replace a binary can replace the sums file beside it.
@@ -106,11 +111,29 @@ changelog:
 
 release:
   draft: true
+  # Carried as an asset so a machine that has the release tarball can bootstrap
+  # without reaching the site, and so the script that installed a version is
+  # archived beside it. The canonical copy is at the site root; both are the
+  # same bytes, which the nightly job checks rather than assumes.
+  extra_files:
+    - glob: install.sh
   # A release an operator installs is a release a human looked at first. The
   # draft is published by hand after checking the notes.
   prerelease: auto
   footer: |
-    ## Verifying this release
+    ## Installing this release
+
+    ```sh
+    curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version {{ .Version }}
+    ```
+
+    The script verifies the checksum always and the signature whenever
+    `minisign` is present; `--require-signature` makes a missing minisign fatal,
+    which is what a production runbook sets. `--print-only` shows everything it
+    detected and would do, and changes nothing. `install.sh` is an asset of this
+    release and is covered by `SHA256SUMS` below.
+
+    ## Verifying this release by hand
 
     ```sh
     ARCHIVE=morzer_{{ .Version }}_linux_amd64.tar.zst   # the one you downloaded

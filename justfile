@@ -173,6 +173,25 @@ lint:
     fi
     golangci-lint run
 
+# shellcheck, with `sh` as the dialect.
+#
+# The dialect is the point rather than a detail: install.sh runs on a freshly
+# provisioned box where /bin/sh may be dash or busybox, so a bashism fails on
+# exactly the machine it exists for. Checking it as bash would accept the one
+# class of defect that matters here.
+#
+# The CI scripts are checked too, at whatever dialect their shebang declares --
+# `acceptance.sh` is bash on purpose and would be wrong to check as sh.
+shellcheck:
+    #!/usr/bin/env sh
+    if ! command -v shellcheck >/dev/null 2>&1; then
+        echo "shellcheck is not installed:"
+        echo "  apt install shellcheck / apk add shellcheck / brew install shellcheck"
+        exit 1
+    fi
+    shellcheck --shell=sh install.sh
+    shellcheck .github/scripts/*.sh
+
 # Format the tree.
 fmt:
     gofmt -w .
@@ -200,7 +219,7 @@ check: fmt-check vet test
 # if it passes, CI passes.
 
 # Run exactly what CI runs. Needs golangci-lint and sops.
-ci: fmt-check vet lint docs-check contract-strict test-race coverage-gate
+ci: fmt-check vet lint shellcheck docs-check contract-strict test-race coverage-gate
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.

@@ -1,13 +1,16 @@
 # RFC 0022 — Bootstrapping the manager
 
-- **Status:** 🚧 In progress — **P1 shipped 2026-08-10**: the documented download
+- **Status:** ✅ Complete — **P1 shipped 2026-08-10**: the documented download
   URL named an asset the pipeline does not produce, and the checksum step passed
   when the archive was absent. Both corrected in the docs and in the release
   notes footer, the example pins a version, and `docs-check` now builds a pattern
   from goreleaser's own template and fails on an asset name it cannot produce —
-  verified red against the defect it exists for. P2 onwards (the script, PATH,
-  completions, publication) is unstarted and has no consumer until a release is
-  tagged.
+  verified red against the defect it exists for. **P2–P6 shipped 2026-08-12**:
+  [`install.sh`](../install.sh), the PATH block, the delegated completions, the
+  publication in three places, and the nightly job that installs the newest
+  release for real. Divergences in §13. The nightly job reports "no published
+  release yet" and passes until the first tag exists, which is the only part of
+  this RFC that cannot be exercised before one.
 - **Scope:** Getting the `morzer` binary onto a machine: an sh-compatible
   `install.sh` that takes a version and verifies what it downloaded, published
   from this repository and from every release, plus the corrections the current
@@ -210,7 +213,7 @@ that nobody maintains.
 | Architecture | `uname -m` | `x86_64`/`amd64` → `amd64`; `aarch64`/`arm64` → `arm64`. Anything else — `armv7l`, `riscv64`, `i686` — is refused by name rather than guessed. Guessing here downloads an archive that extracts to a binary the kernel will not exec, which fails several steps later with a worse message. |
 | Kernel | `uname -r` | Recorded in the summary; warned below the floor a Go 1.25 static binary needs. Not otherwise acted on: Docker's kernel requirements are `doctor`'s business, not the installer's. |
 | libc | not checked | `CGO_ENABLED=0`, so there is no dynamic dependency to check. Stated because its absence otherwise looks like an oversight. |
-| Shell | `basename "$SHELL"`, overridable with `--shell` | `$SHELL` holds a path (`/bin/bash`, `/usr/bin/fish`), and every consumer of this wants the name: the startup file for PATH (§5.4) and the `--shell` argument for completions (§5.5), which accepts `bash\|zsh\|fish` and nothing else. Normalised once, here. An unrecognised shell is not fatal: the binary still installs, and the script prints what to add by hand. |
+| Shell | `basename "$SHELL"`, overridable with `--shell` | `$SHELL` holds a path (`/bin/bash`, `/usr/bin/fish`), and every consumer of this wants the name: the startup file for PATH (§5.4) and the shell argument for completions (§5.5), which accepts `bash\|zsh\|fish` and nothing else. Normalised once, here. An unrecognised shell is not fatal: the binary still installs, and the script prints what to add by hand. |
 | `$PATH` | string match against the resolved prefix | Decides whether §5.4 has anything to do at all. |
 | An existing `morzer` | `command -v morzer` | Warns when the binary that will answer to `morzer` is **not** the one just installed — the ordinary trap of installing to `~/.local/bin` while `/usr/local/bin/morzer` exists and wins. Names both paths and their versions. |
 | Interactivity | stdout is a terminal | Decides the completions default (§5.5) and nothing else. |
@@ -316,7 +319,7 @@ The script installs shell completions by **running the binary it just
 installed**:
 
 ```sh
-"$dir/morzer" completion install --shell "$shell"
+"$dir/morzer" completion install "$shell"   # positional; see §13
 ```
 
 That is [0019](0019-the-command-surface.md) §5.8, and the split is the point:
@@ -449,8 +452,8 @@ running it.
 - **Completions are delegated, not reimplemented.** The stub goes at
   `<dir>/morzer` — the path the script actually invokes — not on `PATH`, where it
   would never be reached and the test would pass by never running. It records its
-  argv, and the assertion is that `completion install --shell <detected>` was
-  called. A test that checked for a completion *file* would pass on a script that
+  argv, and the assertion is that `completion install <detected>` was called --
+  the positional form the command shipped with, recorded in §13. A test that checked for a completion *file* would pass on a script that
   wrote one itself, which is the thing this design forbids.
 - **The install target is refused when it is not a regular file.** A symlink at
   `<dir>/morzer` (into a package manager's tree) and a directory at
@@ -552,19 +555,62 @@ running it.
   removal, the versioned URL, and the `docs-check` assertion that a documented
   release URL matches the goreleaser template. This is a bug fix and needs
   nothing else in this RFC.
-- **P2 — The script: fetch, verify, install.** `install.sh` with detection
-  (§5.2), verification (§5.3) and the write (§5.6); `shellcheck` in CI; the
-  container-lane test with its failure cases; publication as a release asset.
-  Stops at "the binary is on the disk and `--print-only` explains everything".
-- **P3 — PATH.** The marked block, the per-shell file, `--no-modify-path`, the
-  symlink refusal, and the second-run test. Separable from P2 and the piece most
-  likely to want a round of opinions before it edits anyone's dotfiles.
-- **P4 — Completions.** One call to `morzer completion install`, its defaults and
-  its non-fatal failure. **Gated on [0019](0019-the-command-surface.md) P5**;
-  until that ships the script prints the invocation, which is already its
-  behaviour for an unrecognised shell.
-- **P5 — The site URL and the docs rewrite.** Publishing the script at the
-  `gh-pages` root beside `mike`'s version directories, re-published on every docs
-  release, plus the identical-copies check.
-- **P6 — The nightly drift job.** Independent; last because it is the only piece
-  that depends on a release existing.
+- **P2 — The script: fetch, verify, install.** ✅ Shipped 2026-08-12.
+  `install.sh` with detection (§5.2), verification (§5.3) and the write (§5.6);
+  `just shellcheck` with the `sh` dialect, wired into `just ci` and the quality
+  job; `test/installer`, which runs the script against a fixture release served
+  over TLS from the test process, plus a container lane on busybox `ash`.
+- **P3 — PATH.** ✅ Shipped 2026-08-12. The marked block, the per-shell files,
+  `--no-modify-path`, the symlink refusal, and the second-run test — plus a
+  real `fish` in the container lane reading the block the script generated,
+  which is the only thing that can prove it is fish rather than POSIX.
+- **P4 — Completions.** ✅ Shipped 2026-08-12, the gate on
+  [0019](0019-the-command-surface.md) P5 having cleared the same day. One call
+  to `morzer completion install`, its defaults and its non-fatal failure. The
+  stub that proves the delegation sits at the path the script invokes rather
+  than on `PATH`, so a test cannot pass by never reaching it.
+- **P5 — The site URL and the docs rewrite.** ✅ Shipped 2026-08-12.
+  `publish-install-script.sh` writes the `gh-pages` root after `mike` on every
+  docs release; `goreleaser` carries the script as a release asset *and* under
+  `SHA256SUMS` (`checksum.extra_files`, which is a separate key from
+  `release.extra_files` — verified with a snapshot build rather than assumed).
+  The installation page leads with the script and keeps the long form.
+- **P6 — The nightly drift job.** ✅ Shipped 2026-08-12. It installs the newest
+  release for real with `--require-signature`, then compares the published
+  copies. Until a release exists it says so and passes, which is a fact about
+  the repository rather than a skip.
+
+## 13. Divergences recorded during P2–P6
+
+- **`completion install` takes a positional shell, not `--shell`.** §5.5 writes
+  `morzer completion install --shell "$shell"`; what [0019](0019-the-command-surface.md)
+  P5 shipped is `completion install [bash|zsh|fish]`, because the shell is the
+  command's subject rather than a modifier. The script calls the positional
+  form and the test asserts it.
+- **`zstd` is not the optional dependency §4 describes.** GNU `tar --zstd` runs
+  the `zstd` binary as a filter, so a machine without it cannot extract the
+  archive whatever its `tar` accepts; busybox and bsdtar decompress internally
+  and do not need it. There is no probe that separates the two without an
+  archive in hand, so the script records it in `--print-only` and the refusal at
+  extraction time names both ways out. Found by a test that ran the script under
+  a `PATH` holding exactly the documented dependency set.
+- **The three-copies check is anchored at the release tag, not at `main`.** §6
+  says "the repository file, the release asset and the deployed site file", and
+  those three cannot all agree: `main` legitimately moves on after a release, so
+  the first would differ from the other two for the ordinary reason that
+  somebody edited the script. What must agree is the asset, the site copy, and
+  `install.sh` as it was at that tag, and that is what the nightly job compares.
+- **The signature has four branches and the tests double `minisign` for all
+  four.** The signing key never leaves the release pipeline, so there is no key
+  material in this repository to sign a fixture with. The unit lane exercises
+  verified / refused / absent / absent-and-required against a stub; the nightly
+  job is where a real signature meets the real embedded key.
+- **`-h` / `--help` exists and §5.1 does not list it.** The interface table
+  names every option that changes what the script does; a script an operator
+  pipes into a shell also has to be able to say what those options are without
+  running.
+- **`--print-only` resolves `latest` and therefore reaches the network, unless
+  `--version` was given.** §5.2 calls the detection testable without a download,
+  which holds: every refusal in the table fires before any request, and the
+  tests stub `uname` and never reach the server. But a `--print-only` with no
+  version has to ask the API what "latest" means before it can print it.

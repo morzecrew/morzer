@@ -45,6 +45,15 @@ env:
   GOLANGCI_LINT_VERSION: "2.12.2"
   ACTIONLINT_VERSION: "1.7.12"
   SOPS_VERSION: "3.13.3"
+  # Pinned like the rest, and for the reason above rather than for tidiness:
+  # the runner image ships its own shellcheck, and using it made a branch that
+  # touched no shell script fail on an informational finding in a file it did
+  # not edit. A linter nobody chose is a linter that changes under you.
+  SHELLCHECK_VERSION: "0.11.0"
+  # There is no checksums file in shellcheck's releases, so the digest of the
+  # asset itself is pinned here. Bumping the version means bumping this too,
+  # which is the point: both are a reviewable change in this file.
+  SHELLCHECK_SHA256: "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
 
 jobs:
   changes:
@@ -69,6 +78,10 @@ jobs:
               - 'justfile'
               - '.golangci.yml'
               - 'testdata/**'
+              # The installer is shipped code with its own test suite, and
+              # neither lives under a Go path -- without this, the two
+              # edits that change what it does trigger nothing.
+              - 'install.sh'
               # The scripts the gates below execute, and the workflow that
               # defines them. `acceptance.sh` *is* the acceptance scenario and
               # this file decides when it runs, yet neither matched a filter
@@ -151,6 +164,20 @@ jobs:
       - run: just fmt-check
       - run: just vet
       - run: just lint
+
+      - name: Install shellcheck
+        run: |
+          set -euo pipefail
+          v="${SHELLCHECK_VERSION}"
+          curl -fsSL -o shellcheck.tar.xz \
+            "https://github.com/koalaman/shellcheck/releases/download/v${v}/shellcheck-v${v}.linux.x86_64.tar.xz"
+          echo "${SHELLCHECK_SHA256}  shellcheck.tar.xz" | sha256sum -c -
+          tar -xJf shellcheck.tar.xz "shellcheck-v${v}/shellcheck"
+          sudo install -m 0755 "shellcheck-v${v}/shellcheck" /usr/local/bin/shellcheck
+
+      # install.sh is checked with `sh` as the dialect, so a bashism fails
+      # here rather than on the freshly provisioned box the script exists for.
+      - run: just shellcheck
 
   test:
     name: Test (go ${{ matrix.go }})
