@@ -6,9 +6,13 @@ their rationale, and what is deliberately excluded.
 
 ## Live design work
 
-Everything else in the table below has landed. As of 0.1.0 that is 22 of 28
-RFCs, and a reader looking for what is still being decided should not have to
-find six rows among them.
+Everything else in the table below has landed. Most of the directory has, which
+is the point of this section: a reader looking for what is still being decided
+should not have to pick those rows out of the whole design history.
+
+Deliberately without a count. The sentence here used to carry one — "22 of 28",
+pinned to 0.1.0 — and it was wrong by the next release, which is the argument
+against putting a number anywhere it has to be maintained.
 
 A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
