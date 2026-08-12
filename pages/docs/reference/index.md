@@ -68,6 +68,7 @@ here. The reference column points at the section that documents it; the
 | `morzer installation` | List, export and rebuild the installations on this machine | [installation-commands](installation-commands.md#morzer-installation) |
 | `morzer installation list` | List the installations on this machine | [installation-commands](installation-commands.md#installation-list) |
 | `morzer installation export` | Write the installation identity and encrypted secrets to a file | [installation-commands](installation-commands.md#installation-export) |
+| `morzer installation describe` | Write this installation as a file that documents it | [installation-commands](installation-commands.md#installation-describe) |
 | `morzer installation import` | Rebuild this machine from an export and an offline recovery key | [installation-commands](installation-commands.md#installation-import) |
 | `morzer version` | Print version, commit, and supported manifest API versions | [commands](commands.md#version) |
 | `morzer completion install` | Write the completion script where this shell will read it | [commands](commands.md#completion-install) |

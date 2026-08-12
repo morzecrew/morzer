@@ -75,7 +75,9 @@ func newInstallationCommand(app *App) *cobra.Command {
 			"somebody on an unfamiliar host will look for it.\n\n" +
 			"An installation export carries the identity of a deployment and its\n" +
 			"encrypted secret state, so a lost machine can be rebuilt from an offline\n" +
-			"recovery key. It carries no application data: `morzer backup` owns that.",
+			"recovery key. It carries no application data: `morzer backup` owns that.\n\n" +
+			"`describe` is the other export: plaintext, readable, and safe to commit,\n" +
+			"because it holds the names of secrets rather than their values.",
 	}
 
 	cmd.AddCommand(
@@ -84,6 +86,7 @@ func newInstallationCommand(app *App) *cobra.Command {
 		// `import` chooses its own: the product comes out of the export
 		// file, and the graph is rebuilt around it mid-run.
 		installationScope(newInstallationExportCommand(app)),
+		installationScope(newInstallationDescribeCommand(app)),
 		machineScope(newInstallationImportCommand(app)),
 	)
 	return cmd

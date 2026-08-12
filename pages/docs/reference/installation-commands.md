@@ -212,6 +212,76 @@ every export would make exports enormous for no gain. The export records the
 version and digest instead, which is what lets an operator confirm they got the
 same bytes.
 
+## Describing an installation as a file
+
+### installation describe
+
+```sh
+morzer installation describe                      # to stdout
+morzer installation describe --output morzer.yaml # to a file
+```
+
+Writes what an operator *chose*, as a document:
+
+```yaml
+# Written by `morzer installation describe`. Nothing reads it back:
+# editing this file changes nothing. See RFC 0027.
+api_version: selfhost/v1alpha1
+kind: installation-document
+id: 01J9Z5K3QH
+product: acme
+release:
+  name: acme
+  version: 4.2.1
+  digest: sha256:…
+  ref: oci://registry.example.com/acme/release
+domains: [acme.example]
+parameters:
+  http_port: "8443"
+secrets:
+  - db_password
+policy:
+  require_signature: true
+backup:
+  targets:
+    - url: s3://bucket/prefix
+      credentials: s3_creds
+```
+
+The answer to "what is this machine" becomes a file rather than four commands.
+It is reviewable, diffable, and safe to commit.
+
+#### It holds no secret value, and cannot
+
+Every credential in an installation is already a *reference*: a backup target
+names the secret holding its credentials, a notification target names the secret
+holding its URL. The document carries those names. `secrets` is a list of names
+too — what `secret set` would have to be run for, never what was set.
+
+That is a property of the configuration rather than a filter applied on the way
+out, which is why it can be stated flatly: there is nowhere in this document to
+put a value.
+
+#### Nothing reads it back
+
+There is no `morzer apply -f`. Changing the file changes nothing, and the header
+the document carries says so, because a file that looks like desired state and
+is not is the defect [`config`](parameters.md) was built to fix.
+
+Its uses are the ones that need no reader: documenting a machine, diffing two
+that should match, and reviewing what changed after somebody ran `config set`.
+
+#### What it leaves out, and why
+
+| Not in the document | Why |
+| --- | --- |
+| `schema_version` | State bookkeeping. The document has its own `api_version`. |
+| `created_at` | History, not a choice — a recreated installation has its own. |
+| `providers` | Declared by the release manifest, not chosen by the operator. |
+
+The list is not maintained by hand: a field added to an installation and not
+accounted for one way or the other fails the build.
+
 ## Related
 
 - [`secret recipients`](secret-commands.md#secret-recipients) — who can decrypt

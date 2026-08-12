@@ -1,0 +1,132 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/goccy/go-yaml"
+	"github.com/spf13/cobra"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+)
+
+// `morzer installation describe` — RFC 0027 P1.
+//
+// A verb of its own rather than a flag on `installation export`, which decision
+// 8 left open and this resolves. `export` produces an encrypted identity bundle
+// whose whole purpose is to be unreadable by anyone but a recovery key holder;
+// this produces a plaintext file whose whole purpose is to be read, reviewed and
+// committed. Two artifacts that differ in exactly the property an operator cares
+// about, behind one verb separated by a flag, is how somebody publishes the
+// wrong one.
+
+func newInstallationDescribeCommand(app *App) *cobra.Command {
+	var output string
+
+	cmd := &cobra.Command{
+		Use:   "describe",
+		Short: "Write this installation as a file that documents it",
+		Long: "Reads a live installation and writes what an operator chose: the release\n" +
+			"and its digest, the parameters, the policy, the backup and notification\n" +
+			"targets, and the names of the secrets that must exist.\n\n" +
+			"It holds no secret value and cannot -- every credential in an\n" +
+			"installation is already a reference to a secret by name, so the document\n" +
+			"carries names. That is what makes it safe to commit, which is the point:\n" +
+			"the answer to \"what is this machine\" becomes a file somebody can review\n" +
+			"and diff rather than four commands somebody has to remember to run.\n\n" +
+			"Nothing reads it back. `morzer apply -f` is specified in RFC 0027 and\n" +
+			"deliberately not built, so this is documentation rather than an\n" +
+			"interface, and changing the file changes nothing.",
+		Example: "  morzer installation describe\n" +
+			"  morzer installation describe --output morzer.yaml\n" +
+			"  morzer installation describe --json | jq -e '.data.release.digest'",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			doc, err := ops.Describe(cmd.Context(), app.Deps)
+			if err != nil {
+				return err
+			}
+			return app.emitDocument(cmd.Context(), doc, output)
+		},
+	}
+
+	cmd.Flags().StringVarP(&output, "output", "o", "",
+		"write to this file instead of stdout")
+	return cmd
+}
+
+// emitDocument writes the description where the caller asked for it.
+//
+// Three destinations and one rule: whatever `--json` is given, stdout carries
+// one JSON object and nothing else. A YAML document on stdout beside an
+// envelope is the contract break wave 11 already found once, in
+// `completion install --print-path`.
+func (a *App) emitDocument(_ context.Context, doc domain.InstallationDocument, output string) error {
+	if output == "" {
+		if a.json != nil {
+			a.jsonData = doc
+			return nil
+		}
+		rendered, err := renderDocument(doc)
+		if err != nil {
+			return err
+		}
+		a.passThrough(string(rendered))
+		return nil
+	}
+
+	rendered, err := renderDocument(doc)
+	if err != nil {
+		return err
+	}
+	if err := writeDocument(output, rendered); err != nil {
+		return err
+	}
+
+	if a.json != nil {
+		a.jsonData = doc
+		return nil
+	}
+	// On stderr, so `describe --output -` style redirection of stdout stays
+	// empty and a caller piping stdout gets nothing it did not ask for.
+	fmt.Fprintf(a.Stream.Err, "wrote %s\n", output)
+	return nil
+}
+
+func renderDocument(doc domain.InstallationDocument) ([]byte, error) {
+	rendered, err := yaml.Marshal(doc)
+	if err != nil {
+		return nil, domain.Internal(err, "cannot render the installation document")
+	}
+	// A header, because this file is going into somebody's repository and
+	// the first question a reader has is what wrote it and whether editing
+	// it does anything.
+	header := "# Written by `morzer installation describe`. Nothing reads it back:\n" +
+		"# editing this file changes nothing. See RFC 0027.\n"
+	return append([]byte(header), rendered...), nil
+}
+
+// writeDocument writes the file, refusing to follow a symlink.
+//
+// The path comes from an operator's command line and is usually inside a
+// repository. Writing through a symlink there would put a description of a
+// production installation somewhere the operator did not name.
+func writeDocument(path string, body []byte) error {
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		target, _ := os.Readlink(path)
+		return domain.Usage("%s is a symlink to %s", path, target).
+			WithHint("refusing to write through it -- name the file you mean")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return domain.Internal(err, "cannot create %s", filepath.Dir(path))
+	}
+	// 0600: it names an installation, its domains and its targets. None of
+	// that is a secret, and none of it is anybody else's business either.
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		return domain.Internal(err, "cannot write %s", path)
+	}
+	return nil
+}
