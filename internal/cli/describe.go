@@ -90,8 +90,11 @@ func (a *App) emitDocument(_ context.Context, doc domain.InstallationDocument, o
 		a.jsonData = doc
 		return nil
 	}
-	// On stderr, so `describe --output -` style redirection of stdout stays
-	// empty and a caller piping stdout gets nothing it did not ask for.
+	// On stderr, so that a run which named a file leaves stdout empty and a
+	// caller piping it gets nothing it did not ask for. `--output -` is not
+	// a spelling of stdout here -- it writes a file called `-` -- because
+	// stdout is what the command already does when `--output` is absent,
+	// and a second way to ask for it is a second thing to get wrong.
 	fmt.Fprintf(a.Stream.Err, "wrote %s\n", output)
 	return nil
 }
