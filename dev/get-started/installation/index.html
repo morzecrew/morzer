@@ -2066,22 +2066,36 @@
 <p>morzer is a single static binary with no runtime dependency on the machine's
 libc. Getting it is a download and a checksum.</p>
 <h2 id="the-script">The script<a class="headerlink" href="#the-script" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.1.0
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.1.1
 </code></pre></div>
 <p>It resolves the archive for this machine's architecture, checks the checksum
 against the release's own <code>SHA256SUMS</code>, checks the signature when <code>minisign</code> is
 installed, installs one file, and puts the prefix on <code>PATH</code> if it is not there
 already. Then it tells you what it did.</p>
+<div class="admonition warning">
+<p class="admonition-title">Unpacking needs <code>zstd</code> on the machine</p>
+<p>Releases are <code>tar.zst</code>, and GNU tar's <code>--zstd</code> runs the <code>zstd</code> binary as a
+filter rather than decompressing on its own — so a machine without it cannot
+unpack a release however new its tar is. <code>apt install zstd</code>, <code>apk add zstd</code>
+or <code>dnf install zstd</code>.</p>
+<p>An installed server usually has it — on Debian and Ubuntu the initramfs
+tooling pulls it in. Container images mostly do not: of
+<code>debian:bookworm-slim</code>, <code>ubuntu:24.04</code>, <code>rockylinux:9</code>, <code>alpine:3.20</code> and
+<code>fedora:41</code>, only Fedora ships it.</p>
+<p><code>--print-only</code> reports whether this machine has it, and reports it before
+anything is downloaded. Without it the script still downloads, checksums and
+verifies the archive, then refuses at the last step and names this.</p>
+</div>
 <div class="highlight"><pre><span></span><code><span class="c1"># See everything it detected and would do, and change nothing.</span>
 curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--print-only
 
 <span class="c1"># A production runbook: pin the version, and refuse to install unsigned.</span>
 curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.1.0<span class="w"> </span>--require-signature
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.1.1<span class="w"> </span>--require-signature
 
 <span class="c1"># Somewhere else, without touching a startup file.</span>
 curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.1.0<span class="w"> </span>--dir<span class="w"> </span>/opt/morzer/bin<span class="w"> </span>--no-modify-path
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.1.1<span class="w"> </span>--dir<span class="w"> </span>/opt/morzer/bin<span class="w"> </span>--no-modify-path
 </code></pre></div>
 <p><code>sh -s --</code> is how arguments reach a script that arrived on stdin. <code>MORZER_VERSION</code>
 and <code>MORZER_INSTALL_DIR</code> do the same job for a runbook that would rather set
@@ -2143,7 +2157,7 @@ it:</p>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh
 less<span class="w"> </span>install.sh
 sh<span class="w"> </span>install.sh<span class="w"> </span>--print-only
-sh<span class="w"> </span>install.sh<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.1.0
+sh<span class="w"> </span>install.sh<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.1.1
 </code></pre></div>
 <p>The same file is at
 <a href="https://raw.githubusercontent.com/morzecrew/morzer/main/install.sh"><code>raw.githubusercontent.com</code></a>
@@ -2155,7 +2169,7 @@ check.</p>
 <p>The script is doing this. It stays documented because an operator who wants to
 check its work needs to be able to, and because a machine that cannot reach the
 site can still install from a release it already has.</p>
-<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.1.0<span class="w">                            </span><span class="c1"># the release you mean, not &quot;whatever is newest&quot;</span>
+<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.1.1<span class="w">                            </span><span class="c1"># the release you mean, not &quot;whatever is newest&quot;</span>
 <span class="nv">ARCHIVE</span><span class="o">=</span>morzer_<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>_linux_amd64.tar.zst
 <span class="nv">BASE</span><span class="o">=</span>https://github.com/morzecrew/morzer/releases/download/v<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>
 
@@ -2167,7 +2181,7 @@ curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubuser
 minisign<span class="w"> </span>-Vm<span class="w"> </span>SHA256SUMS<span class="w"> </span>-p<span class="w"> </span>morzer.pub<span class="w">    </span><span class="c1"># who published it</span>
 grep<span class="w"> </span><span class="s2">&quot; </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span><span class="s2">\$&quot;</span><span class="w"> </span>SHA256SUMS<span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c<span class="w"> </span>-<span class="w">  </span><span class="c1"># that this is what they published</span>
 
-tar<span class="w"> </span>--zstd<span class="w"> </span>-xf<span class="w"> </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span>
+tar<span class="w"> </span>--zstd<span class="w"> </span>-xf<span class="w"> </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span><span class="w">                </span><span class="c1"># runs zstd as a filter; install it first</span>
 sudo<span class="w"> </span>install<span class="w"> </span>-m<span class="w"> </span><span class="m">0755</span><span class="w"> </span>morzer<span class="w"> </span>/usr/local/bin/morzer
 </code></pre></div>
 <p>Both checks matter and they answer different questions. The signature says a key
