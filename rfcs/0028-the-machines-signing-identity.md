@@ -188,12 +188,38 @@ somebody else's hands, and a verifier that accepts a retired key without saying
 so accepts new forgeries from whoever holds it, forever, in exchange for keeping
 old artifacts readable.
 
-That distinction is what the retirement point is for. Rotation (P2) records
-*when* a key left service, so a predecessor signature over an artifact the
-installation dated after that point is reported as the contradiction it is. This
-is provenance rather than proof: the artifact's own timestamp is not
-authenticated by anything an attacker could not also produce, so the rule catches
-an accident and a lazy forgery, and does not pretend to catch a careful one.
+**And that outcome establishes provenance only. It cannot establish that the
+signature was made while the key was in service**, so it is not a weaker "valid"
+— it is a different question answered.
+
+The tempting rule is the one to state and reject: rotation records *when* a key
+left service, so reject a predecessor signature over an artifact dated after that
+point. It does not work here, because the date comes from the artifact and the
+artifact is what the forger writes. Anyone holding a stolen key signs a
+back-dated statement as easily as a current one. A rule that stops only the
+attacker who neglects to set a timestamp is a rule that reads as a defence and
+is not one — this RFC's own §2 argument about overstated guarantees, applied to
+itself.
+
+`previous_keys` carries a retirement time regardless, because an operator
+reading their own history needs to know when the machine stopped signing with
+what. It is history for a human, not a check, and the RFC says so where the
+field is defined rather than leaving a reader to assume a recorded timestamp is
+an enforced one.
+
+So the operational consequence is the whole answer, and it is worth stating
+plainly because it is what somebody actually has to do: **rotating after a
+suspected compromise does not repair anything the old key signed.** Every
+artifact bearing that key is suspect, including the ones that look old. An
+operator who still vouches for some of them re-signs those; the rest stay
+suspect. Rotation protects the future, and nothing in this design protects the
+past.
+
+That is a real limit rather than a deferred one, and closing it needs a chronology
+an attacker cannot write — a countersignature from something that was not on the
+machine, or a transparency log. Both are out of scope by decision 11, and neither
+is worth building for a fleet of self-hosted installations before somebody has a
+concrete reason.
 
 What this does **not** do is prove the rebuild was legitimate. Anyone holding the
 export can import it and mint a key that claims the same predecessor. The
@@ -209,7 +235,13 @@ in the artifact rather than in this document alone.
 ```yaml
 signing:
   public_key: RWQf6L…
-  previous_keys: [RWTz9k…]
+  previous_keys:
+    # retired_at is history for an operator reading their own timeline, and
+    # deliberately not a check: §5.3 and decision 11 record why a verifier
+    # cannot reject a signature for being dated after it.
+    - key: RWTz9k…
+      retired_at: 2026-08-12T09:14:00Z
+      reason: rebuild        # or `rotation`
 ```
 
 In the installation rather than only on disk, so it reaches `status --json`, the
@@ -287,6 +319,7 @@ bought nothing but a mandatory-looking field with an empty value in it.
 | 8 | The key is minted for every installation, including `--mode dev` | ASSUMED | Uniformity beats a conditional nobody remembers; a sandbox that cannot sign would be a sandbox whose artifacts differ in shape from production's. Reversed if a consumer finds a reason a sandbox must be unable to sign. |
 | 9 | The 5→6 migration bumps the number and mints nothing | LOCKED | §5.6, measured: `migrateInstallation` is a pure value-to-value function and every migration in it is a comment plus a bump. Making it able to write a key file would make loading state a thing that can write to disk. The consequence this decision accepts, and that consumers must handle: `signing.public_key` may legitimately be empty. |
 | 10 | A signature verifying against a retired key is a distinct verification outcome | LOCKED | §5.3. Folding it into "valid" means a rotation after a suspected compromise still accepts whatever the old key signs, which is the one case rotation exists for. |
+| 11 | That outcome is provenance only; the RFC does not try to reject a retired-key signature by date | LOCKED | §5.3. The date comes from the artifact and the artifact is what a forger writes, so the rule would stop only an attacker who forgot to set a timestamp — a defence in appearance and not in fact, which is the failure §2 exists to avoid. The consequence is stated instead: rotation protects the future and nothing here protects the past. *Reopens if* an authenticated chronology arrives — a countersignature from off the machine, or a transparency log — at which point the rejection rule becomes implementable rather than decorative. |
 
 ## 7. Tests
 
@@ -310,15 +343,23 @@ bought nothing but a mandatory-looking field with an empty value in it.
   rather than as valid (decision 10), asserted by rotating and then verifying an
   artifact signed before the rotation — a verifier that reports both cases
   identically passes every other test in this list.
+- And the same outcome for an artifact signed with the retired key *after* the
+  rotation, dated after `retired_at`. It is the same "signed by a predecessor",
+  not a rejection, which is decision 11 written as a test so that a later reader
+  who assumes the timestamp is enforced finds out here rather than from an
+  incident.
 - The key file is `0400` and its directory is not world-readable, asserted the
   way `stepCreateIdentity`'s `Verify` already asserts it for the age identity.
 
 ## 8. Docs
 
 The security policy gains the key: what it is, what a signature by it proves
-(§5.5 verbatim), and what losing it costs. The installation reference gains
-`signing.public_key`, and the recovery guide gains the sentence that a rebuilt
-machine signs with a new key.
+(§5.5 verbatim), what losing it costs, and — the sentence an operator needs at
+the moment they are rotating — that rotation protects future artifacts and
+repairs nothing the old key signed. The installation reference gains
+`signing.public_key` and `previous_keys`, saying where `retired_at` is history
+rather than a check. The recovery guide gains the sentence that a rebuilt machine
+signs with a new key.
 
 ## 9. Phasing, and why it is not scheduled ahead of its consumer
 
@@ -354,6 +395,13 @@ particular can stop treating its overwrite defence as unresolved.
 - **Succession is provenance, not authentication** (§5.3). The risk is a reader
   taking it for more than it is, which is why the bound is a field in every
   consumer's artifact rather than a paragraph here.
+- **A stolen key stays useful to whoever stole it, and rotation does not change
+  that** (§5.3, decision 11). The dangerous version of this risk is not the
+  attacker — it is an operator who rotates, believes the incident closed, and
+  leaves artifacts signed by the old key in circulation as though the rotation
+  retroactively vouched for them. The docs (§8) carry the sentence rather than
+  only the decision table, because the person who needs it is reading a recovery
+  guide at the time.
 - **Schema 6 is a state migration**, and 0023 P2 wants one too. If both land in
   the same window they should be one bump, not two.
 - **`signing.public_key` may be empty on a real installation** (§5.6, decision 9),
