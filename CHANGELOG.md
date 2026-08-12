@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `install.sh` is published at the documentation site's root, which is the URL the README and the installation page tell people to `curl`. It was never published for 0.1.0 and that URL returned 404: the publication step compares the file it is about to write against the branch, and `git diff` reports nothing at all for a path the branch does not track — so on the one run that matters, the first, it announced that the file was already published and exited successfully.
+
+- The installation examples name a release that exists. They pinned `--version 1.0.0`, which was a placeholder when they were written and is not a version anybody can install.
+
 ## [0.1.0] - 2026-08-12
 
 First release. Everything here is new, so there is nothing to record as changed,
