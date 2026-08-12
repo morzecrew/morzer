@@ -527,10 +527,38 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#from-a-release" class="md-nav__link">
+  <a href="#the-script" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        From a release
+        The script
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The script">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reading-it-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reading it first
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        By hand
       </span>
     </span>
   </a>
@@ -1881,10 +1909,38 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#from-a-release" class="md-nav__link">
+  <a href="#the-script" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        From a release
+        The script
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The script">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reading-it-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reading it first
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        By hand
       </span>
     </span>
   </a>
@@ -2009,7 +2065,96 @@
 <h1 id="installing-morzer">Installing morzer<a class="headerlink" href="#installing-morzer" title="Permanent link">&para;</a></h1>
 <p>morzer is a single static binary with no runtime dependency on the machine's
 libc. Getting it is a download and a checksum.</p>
-<h2 id="from-a-release">From a release<a class="headerlink" href="#from-a-release" title="Permanent link">&para;</a></h2>
+<h2 id="the-script">The script<a class="headerlink" href="#the-script" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">1</span>.0.0
+</code></pre></div>
+<p>It resolves the archive for this machine's architecture, checks the checksum
+against the release's own <code>SHA256SUMS</code>, checks the signature when <code>minisign</code> is
+installed, installs one file, and puts the prefix on <code>PATH</code> if it is not there
+already. Then it tells you what it did.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># See everything it detected and would do, and change nothing.</span>
+curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--print-only
+
+<span class="c1"># A production runbook: pin the version, and refuse to install unsigned.</span>
+curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">1</span>.0.0<span class="w"> </span>--require-signature
+
+<span class="c1"># Somewhere else, without touching a startup file.</span>
+curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">1</span>.0.0<span class="w"> </span>--dir<span class="w"> </span>/opt/morzer/bin<span class="w"> </span>--no-modify-path
+</code></pre></div>
+<p><code>sh -s --</code> is how arguments reach a script that arrived on stdin. <code>MORZER_VERSION</code>
+and <code>MORZER_INSTALL_DIR</code> do the same job for a runbook that would rather set
+environment variables than get that incantation right.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--version X.Y.Z</code></td>
+<td>The release to install. Without it, the newest published release — resolved once, then printed. A prerelease is installed when you name it and never when it is inferred.</td>
+</tr>
+<tr>
+<td><code>--dir PATH</code></td>
+<td>Where to install. Default: <code>/usr/local/bin</code> when writable, otherwise <code>$HOME/.local/bin</code>.</td>
+</tr>
+<tr>
+<td><code>--digest sha256:…</code></td>
+<td>Bytes you are asserting. Checked before <code>SHA256SUMS</code>, and a mismatch is fatal.</td>
+</tr>
+<tr>
+<td><code>--require-signature</code></td>
+<td>Refuse to install when <code>minisign</code> is missing or the signature does not verify.</td>
+</tr>
+<tr>
+<td><code>--no-verify-signature</code></td>
+<td>Skip the signature check, and say so. Refused together with <code>--require-signature</code>.</td>
+</tr>
+<tr>
+<td><code>--no-modify-path</code></td>
+<td>Never edit a startup file; print the block instead.</td>
+</tr>
+<tr>
+<td><code>--completions</code> / <code>--no-completions</code></td>
+<td>Force shell completions on or off. On by default at a terminal, off in a build.</td>
+</tr>
+<tr>
+<td><code>--shell NAME</code></td>
+<td>Override the shell detected from <code>$SHELL</code>.</td>
+</tr>
+<tr>
+<td><code>--print-only</code></td>
+<td>Print what it detected and would do. Changes nothing.</td>
+</tr>
+</tbody>
+</table>
+<p>What it never does: run <code>sudo</code> on its own initiative — if the prefix needs root
+it prints the command to re-run and exits non-zero — install anything but
+<code>&lt;dir&gt;/morzer</code>, or leave a partial download behind.</p>
+<h3 id="reading-it-first">Reading it first<a class="headerlink" href="#reading-it-first" title="Permanent link">&para;</a></h3>
+<p>Piping a script into a shell means running what a server chose to send. The
+criticism is correct in general, and the answer here is that everything the
+script does is also documented below, and that you can read it before running
+it:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh
+less<span class="w"> </span>install.sh
+sh<span class="w"> </span>install.sh<span class="w"> </span>--print-only
+sh<span class="w"> </span>install.sh<span class="w"> </span>--version<span class="w"> </span><span class="m">1</span>.0.0
+</code></pre></div>
+<p>The same file is at
+<a href="https://raw.githubusercontent.com/morzecrew/morzer/main/install.sh"><code>raw.githubusercontent.com</code></a>
+— swap <code>main</code> for a tag to pin the script itself — and it ships as an asset of
+every release, covered by that release's <code>SHA256SUMS</code>. So the script that
+verifies the archive is itself verifiable against the file it teaches you to
+check.</p>
+<h2 id="by-hand">By hand<a class="headerlink" href="#by-hand" title="Permanent link">&para;</a></h2>
+<p>The script is doing this. It stays documented because an operator who wants to
+check its work needs to be able to, and because a machine that cannot reach the
+site can still install from a release it already has.</p>
 <div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">1</span>.0.0<span class="w">                            </span><span class="c1"># the release you mean, not &quot;whatever is newest&quot;</span>
 <span class="nv">ARCHIVE</span><span class="o">=</span>morzer_<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>_linux_amd64.tar.zst
 <span class="nv">BASE</span><span class="o">=</span>https://github.com/morzecrew/morzer/releases/download/v<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>
@@ -2066,6 +2211,10 @@ build from a tag is byte-identical to the published one.</p>
 <p>Puts the completion script where your shell reads completions from — bash, zsh
 and fish — creating the directory if it is missing, and printing anything else
 that shell needs. It defaults to <code>$SHELL</code>; name one to override.</p>
+<p>The install script above runs exactly this command when the install is
+interactive and the shell is one of the three, which is why there is no second
+copy of these paths written in <code>sh</code>: a completion in the wrong directory
+produces no error at all, just a Tab key that does nothing.</p>
 <p>A shell it cannot place a file for gets the script on stdout instead, and exits
 0. The paths are in <a href="../../reference/commands/#completion-install"><code>completion install</code></a>.</p>
 <h2 id="what-the-machine-needs">What the machine needs<a class="headerlink" href="#what-the-machine-needs" title="Permanent link">&para;</a></h2>
