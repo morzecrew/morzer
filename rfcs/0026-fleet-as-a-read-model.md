@@ -258,6 +258,14 @@ Note the ordering: the timer is **last**. A scheduled publisher built before the
 payload is stable would put badly-shaped objects in twelve buckets, and objects in
 buckets are the one thing this design cannot recall.
 
+And note what decision 6b did to P2. The roster is the trust anchor, and the
+roster arrives in P3 — so `fleet ls` ships in P2 able to read rows and unable to
+authenticate any of them. That is acceptable only because §3.6 makes it *say* so:
+a reader without a roster reports that it cannot authenticate and cannot see
+absences, in one breath, because the two limitations have one cause. A P2 that
+displayed rows as verified because their own embedded key checked out would be
+the defect this RFC just removed, reintroduced as a phase boundary.
+
 ## 9. Risks
 
 - **The credential problem, again.** 0009 already hit it in its sharpest form:
