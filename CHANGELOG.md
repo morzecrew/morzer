@@ -7,279 +7,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-12
+
+First release. Everything here is new, so there is nothing to record as changed,
+removed or fixed: entries of that kind would describe churn between unreleased
+commits rather than anything an operator installing this can observe.
+
+The manifest contract is `selfhost/v1alpha1`. It is an alpha API version on
+purpose — it may change, and the mechanisms for changing it without breaking a
+bundle in the field are in place.
+
 ### Added
 
-- Command-line manager for the lifecycle of a self-hosted product on a single Linux machine running Docker Compose. Provides init, apply, update, rollback, status, doctor, backup, restore, secret and release commands.
+- A command-line manager for the whole life of a self-hosted product on one Linux machine running Docker Compose: install, converge, update, roll back, back up, restore, inspect and diagnose. No agent, no control plane, and no network dependency beyond fetching a release.
 
-- Moving between releases with `update`, which verifies the bundle, gates it on the compatibility the manifest declares, takes a pre-update backup and converges to the new release. A failure returns the release pointer to what was running, keeping both the staged release and the backup.
+- A step engine behind every mutating command, giving idempotent runs, dry-run planning, resume after interruption, and automatic compensation of completed work when a step fails. Each transition is journalled before and after it executes, so a crash mid-operation stays diagnosable.
 
-- Returning to the previous release with `rollback`, which reports three things separately before acting: whether the containers can be reversed, whether the database schema is still readable by that release, and whether a restore is required instead. A failed rollback returns the pointer to what was running.
+- Dry-run planning that shows the intended steps, marks the ones whose work is already done, and renders a diff of any configuration file that would change.
 
-- Selecting a specific installed release with `--to` on both update and rollback. Without it a second rollback returns to where the first started, since each one promotes the release it displaced, so reaching a release two steps back needs naming it.
+- Operations that cannot be undone automatically, such as a partially applied migration, end in a state that keeps surfacing in `status` and `doctor` until an operator acknowledges it explicitly.
 
-- Refusal to roll back when the answers do not permit a safe return, naming the backup to restore from instead. Forcing does not override it, and the database is never rolled back automatically: an old release reading a newer schema corrupts data quietly.
+- `update` verifies the bundle, gates it on the compatibility the manifest declares, takes a pre-update backup and converges. A failure returns the release pointer to what was running and keeps both the staged release and the backup.
+
+- `rollback` reports three things separately before acting: whether the containers can be reversed, whether the database schema is still readable by that release, and whether a restore is required instead. It refuses rather than guessing, forcing does not override the refusal, and the database is never rolled back automatically — an old release reading a newer schema corrupts data quietly. `--to` reaches a specific installed release, since each rollback promotes the release it displaced.
 
 - Refusal to install a release whose declared compatibility does not admit the installed version, the running database schema, or the manager's own version. Forcing does not bypass it: a release stating it cannot be installed over what is running is stating a fact about its migrations.
 
-- Release bundle contract under manifest version `selfhost/v1alpha1`, covering providers, runtime topology, requirements, images, configuration templates, operations, health checks, compatibility and retention. Decoding is strict, so an unknown or misspelled field is an error rather than a silent fall back to a default.
+- The release bundle contract under manifest version `selfhost/v1alpha1`, covering providers, runtime topology, requirements, images, configuration templates, operations, health checks, compatibility and retention. Decoding is strict, so an unknown or misspelled field is an error rather than a silent fall back to a default.
 
-- Release parameters: a manifest declares the knobs an operator may set, each with a type, an optional default and the services to restart when it changes. Set them with repeated `--set name=value` on init. A value the release does not declare, or does not accept, is refused by name before anything is created.
+- Published JSON Schemas for the manifest, the secret schema and the installation document, generated from the types that enforce them, so a bundle author can validate in an editor or in their own pipeline without running the manager.
 
-- A parameter's value reaches Compose files and hooks as a namespaced environment variable and configuration templates as a template field, always under the same name. Every declared parameter is exported, holding the release's default when the operator set nothing.
+- Container images must be pinned by digest; a bare tag is refused at load time. Releases are identified by name and version together with the bundle's content digest, and the same version appearing with a different digest is an error rather than a warning.
 
-- A release's port requirements and health-check URLs can follow a parameter, so changing a published port moves the conflict check and the health probe with it. Previously the two were fixed in the manifest, and changing a port produced a deployment that worked and a converge that failed waiting for health.
+- Releases install from an unpacked directory, a compressed archive, HTTPS, or an OCI registry using the credentials the machine already holds for its container images. A bundle and its archive produce the same content digest, so pinning a release does not pin a transport. A reference whose scheme cannot be fetched is refused by name.
 
-- Reading and changing parameters after install with `morzer config`: list every declared parameter with its value and where that value came from, get one value alone for a script, set one or several, and unset one back to the release default.
+- Signature verification for release bundles, against the public keys the installation configures rather than any the bundle names. The signature covers the per-file checksum manifest, so the two together cover every file and both stay checkable with standard command-line tools. An installation can require signing, at creation or afterwards.
 
-- Changing a parameter re-creates the services the release says depend on it, rather than restarting them. A published port is fixed when a container is created, so a restart would report success and leave the old port in place.
+- Operator parameters: a release declares the knobs an operator may set, each with a type, an optional default and the services to re-create when it changes. Set them at `init` with `--set name=value`; read and change them afterwards with `morzer config`, which reports where each value came from. A value the release does not declare, or does not accept, is refused by name before anything is created.
 
-- A diagnostic reporting when the operator-facing installation file disagrees with the recorded state, naming the fields that differ. Nothing reads that file back, so an edit to it changes nothing; the check turns a silent no-op into a diagnosis.
+- A parameter reaches Compose files and hooks as a namespaced environment variable, and configuration templates as a template field, always under the same name. Changing one re-creates the services the release says depend on it rather than restarting them, because a published port is fixed when a container is created.
 
-- A three-tier example bundle with a frontend, a backend and a database. Each application tier publishes its own port from its own parameter, credentials reach only the tier that needs them, and changing one tier's port leaves the others running. It is installed and exercised against real Docker on every change, so the worked example in the documentation is a bundle that runs.
+- A release's port requirements and health-check URLs can follow a parameter, so changing a published port moves the conflict check and the health probe with it.
 
-- Complete reference for everything a bundle may reference: the variables Compose files interpolate, the fields a configuration template can use, and where each is available. All three surfaces are now gated, so a name that exists in the code and not in the documentation fails the build, and so does a documented name that does not exist.
+- A hook ABI letting a release ship its own migrate, smoke-test, backup, restore and health-check executables. Hooks receive a documented environment, report structured results on a dedicated descriptor, and use a distinct exit code to mean nothing to do.
 
-- Container images must be pinned by digest. A bare tag is rejected at load time, because an unpinned image makes a release mutable and a mutable release makes rollback meaningless.
+- Backups coordinated through the release's own hooks *and* the project's named volumes, which the manager reads for itself — the uploads directory, the generated thumbnails, the certificate store and the queue's spool are not in a database dump, and nobody notices until a restore produces a working database and an application with no files. A release that declares no backup operation at all can still produce a restorable backup.
 
-- Releases are identified by name and version together with the content digest of the bundle. The same version appearing with a different digest is reported as an error rather than a warning.
+- Each backup is wrapped in a self-describing manifest recording the installation, release, schema version, component list and checksums, and is verified by re-reading it. Retention never removes the most recent backup or the one taken before an update.
 
-- Step engine behind every mutating command, giving idempotent runs, dry-run planning, resume after interruption, and automatic rollback of completed work when a step fails. Each transition is journaled before and after execution, so a crash mid-operation stays diagnosable.
+- Volume consistency is the release's declaration: an unclassified volume is read with the services that mount it stopped, `hot` is a claim the vendor makes about their own product and is recorded in every manifest taken under it, and `exclude` leaves the volume to their backup hook. `--no-downtime` skips what it would have to stop rather than quietly taking a live copy, bind mounts are reported and never captured, and the manifest records what was left out and why.
 
-- Dry-run planning shows the intended step list, marks steps whose work is already done, and renders a diff of any configuration file that would change.
+- A backup that would not fit is refused before anything is written or stopped, naming what it needs and what is free — as is a volume the manager cannot measure.
 
-- Operations that cannot be undone automatically, such as a partially applied migration, end in a state that keeps surfacing in status and doctor until an operator acknowledges it explicitly.
+- Backup targets: somewhere a backup is kept that is not the machine that took it. `file://` for a second disk, `ssh://` for another host, and `s3://` for S3 and everything that speaks its API. Every verified backup is pushed to every target, and a failed push fails the backup. Retention, listing, fetching and verification all work against a target, and listing transfers only the manifest — the one file in a backup that is not encrypted — so it works from a machine that has lost every key it ever had.
+
+- `restore` verifies the backup, stops writers, restores, re-applies the release and runs the smoke test, behind an explicit force flag and a typed confirmation of the installation identifier. Restoring a backup belonging to a different installation is refused unless it is asked for by name.
+
+- Rebuilding a lost machine from an offline recovery key, with `installation export` and `installation import`. The export carries the installation identity and the encrypted secret state — never plaintext and never application data — and import keeps the original installation identifier so backups taken by the lost machine remain restorable, generates a fresh key for the new host, and revokes the lost machine's.
+
+- Secret management covering listing, setting, generating, rotating, removing, rendering and recipient administration, plus `secret edit` for changing several in one editor session. Rotation restarts only the services a release declares as dependent on what changed.
+
+- Several installations on one machine: `morzer ls` lists them from the state files alone — no Docker call, no lock, no network — and `--status` adds what is running, bounded per installation so one unresponsive daemon costs that row and no other. An installation whose state will not load is listed with the reason rather than left out. A command that acts on one installation is refused unless the operator says which, and `--config`, `--product` and `MORZER_PRODUCT` select one.
+
+- Commands for a deployment that is already running and misbehaving: `logs` with follow, tail and since; `ps` for the service table with the container beside each service; `stats` for CPU, memory and I/O per container; and `exec` to run one command inside a running container, propagating its exit code. None of them takes the deployment lock, because they are what an operator runs *while* something else is happening. Every `exec` is journalled with its service, argv and exit code, and never its output.
+
+- `installation describe` writes the installation as a file: the release and its digest, the parameters, the policy, the backup and notification targets, and the names of the secrets that must exist. It is reviewable, diffable and committable, holds no secret value and structurally cannot, and nothing reads it back — the header says so.
+
+- Notifications for the operations that run with nobody watching, and update checking that is off by default because a check reveals an IP, a timestamp and by inference an installed version. Unattended updates install only what passes a gate the release and the installation both have to open.
 
 - Read-only diagnostics covering host, tools, installation, secrets, runtime, systemd units and backup freshness. Every result that is not ok carries a suggested remedy, and the exit code reflects the worst finding.
 
-- Stable exit codes distinguishing usage errors, preflight failures, a held lock, missing installation, secret problems, runtime failures, failed health checks, incompatible releases, backup failures, rolled-back operations, and operations needing manual intervention.
+- Stable exit codes distinguishing usage errors, preflight failures, a held lock, a missing installation, secret problems, runtime failures, failed health checks, incompatible releases, backup failures, rolled-back operations, and operations needing manual intervention.
 
-- Plain and machine-readable output modes. The mode is resolved once at startup and honours a non-terminal, NO_COLOR, CLICOLOR, a dumb terminal, and CI without needing a flag. Machine-readable runs emit exactly one object on standard output.
+- Plain and machine-readable output, resolved once at startup, honouring a non-terminal, `NO_COLOR`, `CLICOLOR`, a dumb terminal and CI without needing a flag. A machine-readable run emits exactly one object on stdout; `logs --json` is the single documented exception, because a stream has no end at which to write an envelope.
 
-- Live output at a terminal, showing every operation as a step list with the steps still to come, elapsed times, progress where a step can report it, and a tail of the current subprocess output. It carries no information the plain mode omits, and interrupting shows cancellation as a state rather than stopping the display.
-
-- Styled diagnostics, plan and status views: doctor results grouped into a table with remedies collected underneath, dry-run configuration diffs coloured by addition and removal, and the status marked by service state. Every state is distinguishable without colour, and symbols fall back to ASCII when the terminal or locale cannot render them.
-
-- Watching the deployment with `morzer status --watch`, redrawing on an interval until interrupted. A failed refresh leaves the last good reading on screen with the error beneath it, and the view never acts on the deployment.
-
-- Hook ABI letting a release ship its own migrate, smoke-test, backup, restore and health-check executables. Hooks receive a documented environment, report structured results on a dedicated descriptor, and use a distinct exit code to mean nothing to do.
-
-- Backups coordinated through the release's own hooks, wrapped in a self-describing manifest recording installation, release, schema version, component list and checksums. Backups are verified by re-reading them, and retention never removes the most recent one.
-
-- Restore verifies the backup, stops writers, restores, re-applies the release and runs the smoke test. It requires an explicit force flag plus a typed confirmation of the installation identifier.
-
-- Restoring a backup that belongs to a different installation is refused unless it is asked for by name. Forcing does not grant it: every restore already requires forcing, so a shared flag would mean the check could never apply.
-
-- Rebuilding a lost machine from an offline recovery key, with `installation export` and `installation import`. An export carries the installation identity and the encrypted secret state, never plaintext and never application data. Import keeps the original installation identifier, so backups taken by the lost machine remain restorable.
-
-- Import generates a fresh key for the rebuilt host, re-encrypts the secret state for it, and revokes the lost machine's key. An identity that cannot decrypt the export is refused before anything is created.
-
-- Secret management covering listing, setting, generating, rotating, removing, rendering and recipient administration. Rotation restarts only the services a release declares as dependent on the changed secret.
-
-- Release management covering listing, inspection, validation, fetching into the release store and pruning. Pruning never removes the current or previous release, since rollback depends on both.
-
-- Installing a release from a compressed archive as well as an unpacked directory. A bundle and its archive produce the same content digest, so a digest recorded from one verifies the other and pinning a release does not pin a transport.
-
-- Selection of a release source by reference scheme, so a reference the build cannot fetch is refused by name and told which forms are supported.
-
-- Signature verification for release bundles, against public keys the installation configures rather than any the bundle names. The signature covers the bundle's per-file checksum manifest, so a signature and that manifest together cover every file, and both remain checkable with standard command-line tools.
-
-- Refusal of any unsigned release when an installation requires signing, configurable at creation or by editing the installation file afterwards.
-
-- Fetching a release over HTTPS. Transport failures and server errors are retried; a definitive answer such as not-found or unauthorised is not, because repeating the request only delays it.
-
-- Fetching a release from an OCI registry, using the credentials the machine already holds for its container images. Listing available versions works there, which no other transport can offer, and tags that are not versions are ignored rather than presented as installable.
-
-- A published JSON Schema for the release manifest and the secret schema, generated from the types that enforce them, so a bundle author can validate in an editor or in their own pipeline without running the manager.
-
-- A diagnostic reporting which of a release's images are already present locally, so an operator can tell before losing network access whether the deployment would still come up.
-
-- Reproducible signed release builds for linux amd64 and arm64, published as compressed archives with a signed checksum file.
-
-- Editing several secrets in one editor session with `secret edit`. Rotating a related group of credentials is one logical change, and only the services that declare a dependency on something that changed are restarted.
-
-- Diagnostics reporting secrets older than the rotation period their release declares, naming whichever command can actually replace the value. Secrets whose release states no period are not mentioned.
-
-- Diagnostics reporting a decrypted-secret directory that is not memory-backed, since overwriting a file there does not reliably destroy it.
-
-- An interactive first run of `init` at a terminal, which asks only for what is missing and prints the equivalent command line so the same install can be scripted afterwards. It never runs without a terminal, with assume-yes, or when the command line already answers everything.
+- A live view at a terminal showing each operation as a step list with elapsed times, progress where a step can report it, and a tail of the current subprocess output. It carries no information the plain mode omits, every state is distinguishable without colour, and symbols fall back to ASCII where the terminal or locale cannot render them.
 
 - Generated systemd units for boot-time convergence and scheduled backups. The main unit will not restart on the exit code meaning manual intervention is required, so a system needing a human stops instead of looping.
 
-- Reporting of measured sizes such as free disk space in readable units, while values declared in a manifest keep their exact written form.
+- An install script, published at `https://morzecrew.github.io/morzer/install.sh` and as a release asset covered by that release's `SHA256SUMS`. It verifies before it installs — the archive against its own line in the checksum file, the checksum file's signature against a key embedded in the script, and the extracted binary against the version that was asked for — installs one file, and puts the prefix on `PATH` in one marked block in the files the shell actually reads. It never runs `sudo`.
 
-- Backup targets: somewhere a backup is kept that is not the machine that took it. `morzer backup target add` accepts `file://` for a second disk or removable media, `ssh://` for another host, and `s3://` for S3 and everything that speaks its API, including MinIO, R2, B2 and Google Cloud Storage in interoperability mode.
+- Shell completions for bash, zsh and fish via `morzer completion install`, which writes where each shell actually reads from and prints whatever else that shell needs.
 
-- Every backup is copied to every configured target after it is verified, and a push that fails fails the backup. Reporting success for data that is still only on the machine that will die is the state targets exist to end. The local copy is kept either way, so a failed push leaves an operator no worse off than before they configured one. Two exceptions warn instead: a backup taken with the push disabled, and the backup taken before an update.
+- A documentation site, versioned per release, with a generated index of every command and the reference section that documents it. The build fails on drift between the code and the pages.
 
-- Retrying a copy that failed with `morzer backup push`, which verifies the backup again and sends it without taking a new one. The data on disk is already correct; what failed was the medium.
-
-- Reading a target with `morzer backup list --remote` and `morzer backup fetch`. Listing transfers only each backup's manifest, which is the one file in a backup that is not encrypted, so it works from a machine that has lost every key it ever had.
-
-- Diagnostics reporting a target that cannot be reached and a backup that never arrived on one. Both fail rather than warn: the second is the failure that hides, because the backup ran, the backup succeeded, and the copy that would survive the machine is not there.
-
-- Retention applies on targets as well as locally, under the same policy and with the same refusal to remove the most recent backup or one taken before an update.
-
-- Checking the copy on a target with `morzer backup verify --remote`, which streams each component through a checksum and keeps nothing. It needs no key, so an off-site archive can be checked from a machine that holds none, and it is the only thing that notices rot on a target while the local copy is still perfect.
-
-- The backup taken before an update is copied to the targets too. A failure warns rather than blocking the update: the local copy is what a rollback on this machine uses, and refusing to install a fix because a disk was unplugged helps nobody.
-
-- Backups now include the project's named volumes, which the manager reads for itself rather than through the release's hook. A hook is usually written by somebody thinking about the database, and the uploads volume, the generated thumbnails, the certificate store and the queue's spool are not in the dump — nobody notices until a restore produces a working database and an application with no files.
-
-- A release that declares no backup operation at all can now produce a restorable backup, since the volumes are something the manager can read without a client for whatever wrote them. Previously such a release had a backup command with nothing behind it.
-
-- A volume the release has not classified is captured with the services that mount it stopped, so nothing is writing while it is read. Only those services are stopped, and every such volume in one backup shares a single stop and start.
-
-- A release can declare `consistency: hot` for a volume that may be read while the product runs, and `consistency: exclude` for one its backup hook owns. Hot is a claim the vendor makes about their own product and is recorded in every backup manifest taken under it; the manager never assumes it. Copying a live volume yields a crash-consistent copy — what a power cut would have left — so this does not replace a backup hook for anything with a transaction log.
-
-- `morzer backup --no-downtime` never stops a service. Volumes that would need it are skipped and named in the backup manifest rather than copied live, because taking a hot copy of a volume nobody classified would be the manager making the vendor's claim on their behalf.
-
-- The backup manifest records what was left out and why, alongside what was taken: a volume the release excludes, one skipped for downtime, and every bind mount. A backup that silently covers less than it appears to is the failure this exists to prevent.
-
-- Bind mounts are reported and never captured. A bind mount is an arbitrary host path that may be enormous, shared, or outside anything the manager manages, so copying one is the operator's to arrange.
-
-- Restoring a volume is refused while any service that mounts it is running, named by service. A restored volume holds exactly what the backup held, rather than merging with what was there: a volume matching no point in time, beside a database restored to an exact one, is how a record without its file is made.
-
-- Volumes are read and written through a small helper container pinned by digest, rather than through the host's storage directory, which is an implementation detail and unreadable under a rootless or remote daemon. The source is mounted read-only. A diagnostic reports the image when it is absent, with the command to pull it, so an air-gapped machine learns about it before backup night rather than during it.
-
-- `MORZER_VOLUME_HELPER_IMAGE` names a different image to read volumes through, for the operator whose registry does not carry busybox. Any image with a POSIX `tar`, `du`, `find`, `wc` and `sh` will do — `find` and `wc` are what the size check counts a volume's entries with. An environment variable rather than a setting, because the backup that needs it is usually the scheduled one and a systemd drop-in reaches that without regenerating a unit.
-
-- A service that is paused counts as holding its volumes open: it is stopped before one is read, and a restore into one is refused. A paused container is frozen mid-write with its file handles open, so treating it as neither running nor stopped would let a restore write over a volume something still held.
-
-- A backup that would not fit is refused before anything is written or stopped, naming what it needs and what is free. A diagnostic also warns when keeping the configured number of backups will not fit, since retention counts backups rather than bytes and volume backups are much larger than database dumps.
-
-- A volume the manager cannot measure is refused the same way, naming the volume and what to do about it — a helper image that cannot walk the volume, or a `du` whose output is not a size. Starting a copy onto a disk nobody could check means discovering it does not fit once the services are already stopped. A measurement that simply did not run leaves that one volume unbudgeted instead, so a helper that exits non-zero on one awkward volume does not stop the deployment being backed up at all.
-
-- `morzer ls` lists the installations on this machine — product, release, mode, how many systemd units it manages, and where its configuration lives. It reads the state files alone: no Docker call, no lock and no network, so it answers on a machine whose daemon is down, which is usually when somebody is asking what a host runs. `morzer installation list` is the same command under its long name.
-
-- `morzer ls --status` adds what is running, by asking each installation's runtime. Each query is bounded at five seconds on its own, so one unresponsive daemon costs that row and no other. The counts are read without taking the deployment lock — a listing that blocked behind a running update would be useless exactly when somebody is watching one — and the output says so.
-
-- An installation whose state will not load is listed with the reason rather than left out, and its row carries no field the manager could not read. The moment an installation's state breaks is the moment it must not look absent, and a mode or a release reported out of a state file this manager does not understand would be a guess presented as a fact. A directory in `/etc` this process cannot open is listed as not counted rather than omitted: on a real host most of those belong to somebody else, so it is neither a deployment nor a fault, and a listing that dropped it silently would report a smaller machine than the one that is there. An `/etc` that cannot be read at all is an error.
-
-- `MORZER_PRODUCT` selects an installation for a shell session. Both `--product` and `--config` override it, which is what makes it usable in the case it exists for: a session pinned to one installation where a single command needs another. The generated systemd units pass `--config`, which outranks it, so exporting it globally does not redirect anybody's timers. There is deliberately no command that writes a current selection to disk.
-
-- Two diagnostics about the machine rather than the installation: how many installations it holds, warning when one has systemd units installed and state that will not load; and a warning when two installations declare the same host port, naming both. They cannot both run, and today the second one's converge fails inside Compose with a message about the port and nothing about the neighbour holding it. Both are warnings and never failures — several installations on one machine is a supported arrangement, and a diagnostic that failed on one would teach operators to ignore diagnostics.
-
-- `morzer logs` reads the deployment's logs without anybody having to reconstruct the Compose project, the file list the profile selected, or the environment the manager interpolates into them. `--follow`, `--tail`, and `--since` taking either a duration or an RFC 3339 instant — a timestamp with no zone is refused rather than assumed local, because which midnight is meant is not something a log query should guess. Ctrl-C during a follow exits 0: the operator finished reading. Scoped to the Compose project rather than to the services the manifest names, so a sidecar the vendor's own file starts is included.
-
-- This installation's secret values are scrubbed from that stream by default. The filter holds bytes to a line boundary before matching, so a value split across two reads is still caught, and a line longer than 64 KiB is dropped with a marker rather than passed through unmatched — a filter that gave up on the hard case would leak precisely when a service prints something enormous. It is best effort and the documentation says so: a value the service *derived* from a secret is beyond any redactor. `--no-redact` turns it off and warns; a machine whose secret state cannot be read at all still gets its logs, with a warning that nothing could be scrubbed.
-
-- `morzer logs --json` emits one JSON object per line — the instant the container wrote it, the container, the service and the text — and no envelope. It is the single exception to the one-object contract, because a stream has no end at which to write one, and it is documented as the only one there will be: `morzer stats --watch --json` is refused rather than given a second. Anything the manager has to say goes to stderr, never into the stream, so a consumer parsing lines never has to tell the vendor's output from the manager's opinion of it.
-
-- `morzer ps` is the service table on its own, with the container beside each service: a scaled service is several containers, and two rows under one name with nothing to tell them apart is not a listing. `morzer status` still answers this and three other questions at once; an operator watching a crash loop wants one of them repeatedly.
-
-- `morzer stats` reports CPU, memory and I/O per container, once or with `--watch`. One row per container and never an aggregate per service, and a total line for the two figures that add — a memory limit does not. A figure the host does not account for, which is what a rootless daemon reports for block I/O, is a dash rather than a zero: a container that has written nothing reports zero, and the two must not print the same thing. A runtime that cannot report statistics at all refuses by name instead of returning an empty table that looks like an idle deployment.
-
-- `morzer exec <service> -- <command>` runs one command inside a running container and propagates its exit code, so a command that failed fails the invocation. Everything after `--` is the container's command line and nothing else; there is no `--user` and no shortcut for running as root. It refuses a service that is not running, naming the state. Not an interactive shell: there is no TTY and no stdin.
-
-- Every `exec` is journalled with its service, its argv and its exit code, and never with its output. The argv is redacted with this installation's known secret values first, because a password in an argv is the ordinary case — and when those values cannot be loaded at all, the record keeps everything else and says the command line was omitted rather than writing down one it could not scrub. Refusing to journal would lose the fact that a human was inside the deployment, and refusing the command would take `exec` away on a machine somebody is already debugging. What a redactor cannot catch even when it is armed is said plainly rather than implied away.
-
-- None of the four takes the deployment lock. They are what an operator runs *while* something else is happening, which is exactly the case a lock would break.
-
-- A generated page listing every command with the reference section that documents it, so knowing a command exists is enough to find where it is written up. It is produced by the same walk of the same command tree that checks documentation coverage — two tools would be two walks, and the day they disagreed the index would be missing exactly the command nothing had noticed was undocumented. `just docs-index` writes it and `just docs-check` fails on drift, so a command cannot be added without a row and a `Short` cannot drift from the page it links to.
-
-- `morzer completion install` writes the completion script where a shell reads completions from — bash, zsh and fish — creating the directory when it is missing and printing whatever else that shell needs, such as the `fpath` line zsh wants. The paths are a table rather than a guess, because a completion written to the wrong directory produces no error at all: just a Tab key that does nothing. `--print-path` prints where the file would go and writes nothing, `--system` writes the distribution's own directory, and writing is idempotent.
-
-- A shell `completion install` cannot place a file for is not a failure: the script goes to stdout with a note naming the ones it can, and the command exits 0. That keeps redirecting it useful, and keeps an installer's optional completion step from failing an install.
-
-- An install script, published at `https://morzecrew.github.io/morzer/install.sh`, as a release asset covered by that release's `SHA256SUMS`, and readable from the repository. It resolves the archive for the machine's architecture, verifies before it installs, installs one file, and reports the version, the digest and the path. `--version` pins a release and `--print-only` shows everything it detected without changing anything.
-
-- Verification the six documented commands could not do: the archive is matched against its own line in `SHA256SUMS` rather than with `--ignore-missing`, which reports `OK` when no archive is present at all; a `--digest` the caller pins is checked first; the checksum file's signature is verified against a key embedded in the script rather than fetched beside it; and the extracted binary has to report the version that was asked for. `--require-signature` makes a missing `minisign` fatal, which is what a production runbook sets.
-
-- The install prefix is put on `PATH` when it is not there already, in one marked block, in the files the named shell actually reads — both the login file and the interactive one for bash and zsh, a drop-in for fish, and fish syntax in the fish one. The marker makes a second run change nothing. A symlinked or unwritable startup file is printed to instead, since appending to a file a dotfiles repository generates loses the edit at the next sync.
-
-- Shell completions are installed by running `morzer completion install`, never by the script writing completion paths of its own. A failure there warns and leaves the install successful: the binary is what was asked for.
-
-- The script never runs `sudo`. A prefix it cannot write to prints the command to re-run with elevation and exits non-zero.
-
-- A nightly job that installs the newest published release with `--require-signature` and compares the published copies of the script against the one at that release's tag. It is the only check that can catch an asset name drifting, which is the defect that prompted all of this, and it reports that there is nothing to check until a release exists.
-
-- `morzer installation describe` writes an installation as a file: the release and its digest, the parameters, the policy, the backup and notification targets, and the names of the secrets that must exist. The answer to "what is this machine" becomes something reviewable, diffable and committable rather than four commands somebody has to remember to run. `--output` writes a file; `--json` carries the same document in the envelope.
-
-- The document holds no secret value and cannot. Every credential in an installation is already a reference to a secret by name, so carrying those fields carries names — a property of the configuration rather than a filter applied on the way out. Nothing reads the document back: there is no `apply -f`, and the header the file carries says so, because a file that looks like desired state and is not is the defect `config` was built to fix.
-
-- A field added to an installation and not accounted for — carried by the document, or excluded with a stated reason — fails the build. The alternative is a document that quietly describes less than an installation while every test still passes.
-
-- `installation describe` refuses rather than recording what it could not read. A release pointer that will not parse or a secret store that will not open produces an error, not a document asserting there is no release and there are no secrets. The file is written to be committed, so a false record in it outlives the run that produced it.
-
-- `just runtime-check` fails the build on a package above `internal/adapters` that names a container runtime or branches on which one is running. The layering rules were enforced by an import linter, which cannot see a name: the file whose exported API is the Compose interpolation contract imports nothing and passed cleanly. The existing mentions are an inventory rather than a suppression list — each classified as a rename, a concept that has to move, or a runtime named as data — and a mention that is fixed and left in the list fails too, because a list checked one way only ever grows.
-
-### Changed
-
-- The installation page leads with the install script and keeps the manual sequence underneath, because the manual sequence is what the script does and an operator checking its work needs to be able to read it.
-
-- The installation state format moved to schema 3 for backup targets. An older manager refuses a newer state rather than reading it, seeing no targets, and quietly leaving every backup on the machine a target was configured to survive.
-
-- The backup manifest format moved to schema 3 for volume components. An older manager refuses such a backup rather than restoring the database, silently omitting the volumes it does not know how to write, and reporting success. Backups written under earlier schemas still restore.
-
-- The container runtime no longer inherits the whole environment of whoever invoked the manager. It receives an allow-list of what a tool needs to run, plus the release's declared parameters. Any product-prefixed variable set in a shell used to interpolate into Compose files unvalidated and unrecorded.
-
-- The header of the operator-facing installation file no longer claims that editing it overrides release defaults. It never did: the manager reads its own state. The file is now described as a report, and names the command that changes a parameter.
-
-- The free-form `settings` block on an installation is replaced by declared parameters. It reached configuration templates but nothing could set it, so no deployment can depend on it.
-
-- On a machine holding more than one installation, a command that acts on one is refused unless the operator says which — naming the installations it found. Previously the manager fell back to a placeholder product, found nothing at `/etc/morzer`, and advised running `init`: advice to create a third installation. **This changes an exit code.** A script that relied on "no installation found" (5) on such a machine now receives a usage error (2). That script was acting on the wrong installation or on none.
-
-- The refusal now covers the commands that read a store without loading an installation. `release list`, `secret list`, `config list` and `backup list` previously answered about the placeholder layout, so a machine holding three installations was told `no releases are installed`, which is an answer an operator acts on rather than an error they investigate.
-
-### Removed
-
-- The configuration-template render context no longer exposes the process environment. It offered every product-prefixed variable from whichever shell invoked the manager as an unvalidated, unrecorded input to a rendered configuration file — the same channel the container runtime stopped inheriting. Nothing set it deliberately and no template used it.
-
-### Fixed
-
-- A secret could reach a log line through a value whose type implements only a string method, or through a plain struct. The redacting handler scrubbed strings and errors and passed everything else through for the log handler to format, so such a value printed in full. It now scrubs the rendering of anything it does not recognise.
-
-
-- Container images now come from the digests the manifest pins. Previously the pull ignored the list it was given and the compose file's image references were never substituted, so a release ran whatever its topology file defaulted to and the pinning that makes a release immutable decided nothing.
-
-- Secret generation no longer hangs when a release declares an alphabet whose length divides 256 evenly, such as the common 64-character case. Rejection sampling computed a cutoff that overflowed to zero, so every random draw was discarded and generation never terminated.
-
-- A registry pull refused for credentials now says to run `docker login` whatever the bundle's digest happens to be. The failure was classified by searching the error's text for `404` and `not found` before `401` and `unauthorized`, and that text carries the request URL: a digest is 64 hex characters, so roughly one release in seventy contains `404` somewhere inside it. Those releases reported an expired login as a missing artifact and sent the operator to check a reference that was correct. The status the registry returned is now read from the response itself.
-
-- An installation state file written by a newer manager reported only that the state was invalid, dropping both the schema version and the remedy. It read as corruption and sent an operator looking for a backup, when the file was fine and the binary was old. Both are now reported.
+- A three-tier example bundle — frontend, backend and database — installed and exercised against real Docker on every change, so the worked example in the documentation is a bundle that runs.
 
 ### Security
 
-- Secret values never reach process arguments, logs, the operation journal or machine-readable output. The secret type renders as redacted anywhere it is printed, and a redacting log handler plus subprocess output scrubbing back it up.
+- Secret values never reach process arguments, logs, the operation journal or machine-readable output. The secret type renders as redacted anywhere it is printed, a redacting log handler and subprocess output scrubbing back it up, and values are read from a terminal without echo or from standard input — there is no flag for supplying one, because process arguments are readable by other local users.
 
-- Secret state is encrypted at rest for the machine and for an offline recovery recipient. Removing the last recipient, or the machine's own, is refused because either would make the state permanently unreadable.
+- Secret state is encrypted at rest for the machine and for an offline recovery recipient. Removing the last recipient, or the machine's own, is refused: either would make the state permanently unreadable.
 
-- Backups are encrypted to the same recipients as the secret state, so nothing in a backup is readable without a key except its manifest. Previously a backup held the database dump in plaintext, which mattered little while backups stayed on the machine and matters a great deal once one leaves it.
+- Backups are encrypted to the same recipients, so nothing in one is readable without a key except its manifest. `restore --identity` covers the case the recovery design exists for — a rebuilt machine whose new key was never a recipient of the lost machine's backups.
 
-- Restoring accepts `--identity` for the case the recovery design exists for: a rebuilt machine has a new key that was never a recipient of the lost machine's backups, and the offline key is what opens them.
+- Rendered secrets are written read-only to the owner, inside an owner-only directory on memory-backed storage, and files no longer backed by a declaration are removed so stale credentials do not linger. Generated configuration contains paths to secrets rather than the values. `secret edit` writes plaintext only inside that directory, in a directory of its own that is overwritten and removed however the editor exits — including a crash — because editors leave swap and backup files beside the one they were given.
 
-- A second SSH backup target on the same host is handshaked in its own right, so its host key is checked rather than inherited from the first target's connection.
+- Backup target credentials are named rather than written into the installation, and a target URL carrying a password is refused: the URL is stored on disk, printed by diagnostics and quoted in support requests. Only the components a backup's manifest names are copied to a target, so a plaintext dump left by an interrupted restore is not pushed off the machine.
 
-- An SSH backup target must pin its host key, and no flag disables checking it. An impostor cannot read a backup, which is encrypted to the deployment's own recipients, but it can accept every push and answer every listing while an operator believes they have off-site copies they do not have.
+- An SSH target must pin its host key and no flag disables checking it. An impostor cannot read a backup, but it can accept every push and answer every listing while an operator believes they have off-site copies they do not have. A second target on the same host is handshaked in its own right rather than inheriting the first connection's key.
 
-- Target credentials are named rather than written into the installation, and a target URL carrying a password is refused. The URL is stored on disk, printed by diagnostics and quoted in support requests.
+- Bundle extraction and configuration rendering are confined to their target directory by the operating system rather than by string inspection. Archives are bounded by entry count and by size *while they are being written*, so an archive that expands enormously is refused before it fills the disk. Entries that escape the destination, links of any kind, device nodes and other non-regular files are refused, and extracted files carry either an executable or a plain permission set so a release cannot arrive world-writable.
 
-- Only the components a backup's manifest names are copied to a target. A backup directory can hold decrypted files left by an interrupted restore, and copying everything found there would put a plaintext database dump on a second machine.
+- Transport-layer encryption is not optional when fetching over the network and a redirect out of it is refused. Response and layer sizes are bounded as they are read rather than trusted to match what the server declared, and content fetched from a registry is checked against the digests that registry advertises for it. A registry reference naming no version is refused, since it resolves to whatever a moving tag points at today.
 
-- Rendered secrets are written read-only to the owner inside an owner-only directory on temporary storage, and files no longer backed by a declaration are removed so stale credentials do not linger.
+- The container runtime receives an allow-list of what a tool needs plus the release's declared parameters, rather than inheriting the environment of whoever invoked the manager. The configuration-template render context does not expose the process environment either.
 
-- Generated configuration contains paths to secrets rather than the values themselves, so a configuration file on disk never holds a credential.
+- Secret values belonging to the installation are scrubbed from `logs` output by default, holding bytes to a line boundary so a value split across two reads is still caught. It is best effort and the documentation says so — a value a service *derived* from a secret is beyond any redactor — and `--no-redact` warns.
 
-- Bundle extraction and configuration rendering are confined to their target directory by the operating system rather than by string inspection, and archives are bounded by entry count and size. Symlinks and non-regular files in a bundle are rejected.
-
-- Secret values are read from a terminal without echo or from standard input. There is no flag for supplying one, because process arguments are readable by other local users.
-
-- Archive extraction refuses entries that escape the destination, links of any kind, device nodes and other non-regular files, and anything beyond the entry, per-file or total size limits. The limits apply while files are being written, so an archive that expands enormously is refused before it fills the disk rather than after.
-
-- Extracted files carry either an executable or a plain permission set, so a release cannot arrive world-writable regardless of how it was packed.
-
-- Requiring signatures without configuring any signing key is refused when the installation is written. The policy could not be satisfied by any release, and reporting that as a failure of each later operation would point at bundles instead of at configuration.
-
-- Editing secrets writes plaintext only inside the memory-backed render directory, in a directory of its own that is overwritten and removed however the editor exits — including a crash or a non-zero exit. The whole directory goes, because editors leave swap and backup files beside the one they were given.
+- Requiring signatures without configuring any signing key is refused when the installation is written, rather than reported as a failure of every later operation.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-- Transport-layer encryption is not optional when fetching over the network, and a redirect out of it is refused. Otherwise a server could hand over a release unencrypted by asking politely, defeating the refusal of plaintext references.
-
-- Response and layer sizes are bounded while they are read rather than trusted to match what the server declared, since the declaration comes from the same server as the content.
-
-- Content fetched from a registry is checked against the digests that registry advertises for it, which the client library does not do on its own. A registry serving bytes other than the ones it named is refused rather than discovered later.
-
-- A registry reference naming no version is refused. Such a reference resolves to whatever a moving tag points at today, which is what content-addressed release identity exists to prevent.
-
-[unreleased]: https://github.com/morzecrew/morzer/commits/main
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/morzecrew/morzer/releases/tag/v0.1.0

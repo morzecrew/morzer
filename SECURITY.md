@@ -14,8 +14,19 @@ there is no paid response team and no bounty.
 
 ## Supported versions
 
-Nothing has been released yet, so `main` is the only supported version. This
-section will name a supported range once there is a tag.
+**The latest 0.x release, and nothing else.** There is no backport branch: a fix
+ships in the next release and an operator on an older one upgrades to it.
+
+While the major version is 0 there is no long-term support to offer and saying
+otherwise would be a promise nobody here can keep. What *is* promised is that
+upgrading is a supported path rather than a reinstall — an older installation's
+state is migrated forward, and a manager refuses state written by a newer one
+rather than misreading it.
+
+| Version | Supported |
+| --- | --- |
+| 0.1.x | ✅ |
+| `main` | Fixes land here first; it is not a release |
 
 ## Verifying a release
 
