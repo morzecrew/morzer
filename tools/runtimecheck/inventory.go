@@ -52,6 +52,14 @@ type Entry struct {
 var inventory = []Entry{
 	// ---- internal/ports ----
 	{
+		File: "internal/ports/compose_abi.go", Symbol: "file compose_abi.go", Class: PortShaped,
+		Why: "the file name is the loudest of the fourteen: a ports file called " +
+			"compose_abi says the interpolation contract belongs to one runtime, " +
+			"before a reader opens it. Its three symbols say the same thing and its " +
+			"contents say the opposite",
+		Removes: "the rename that removes its three symbols renames the file with them",
+	},
+	{
 		File: "internal/ports/compose_abi.go", Symbol: "name ComposeVars", Class: PortShaped,
 		Why: "the values are DATA_DIR, SECRETS_DIR, CONFIG_FILE, RELEASE_DIR, VERSION, " +
 			"PROFILE, DOMAIN. Not one of them is a Compose concept: they are the " +
@@ -169,26 +177,23 @@ func allowed() map[string]Entry {
 	return out
 }
 
-// counts summarises the inventory by class, in a fixed order so the number is
-// comparable between runs.
-func counts() []struct {
+// ClassCount is one row of the summary.
+type ClassCount struct {
 	Class Class
 	N     int
-} {
+}
+
+// counts summarises the inventory by class, in a fixed order so two runs are
+// comparable and so a class with nothing in it still reports zero — a class
+// that vanishes when it empties is a class nobody notices reaching zero.
+func counts() []ClassCount {
 	byClass := map[Class]int{}
 	for _, e := range inventory {
 		byClass[e.Class]++
 	}
-	classes := []Class{PortShaped, ComposeShaped, Catalogue}
-	out := make([]struct {
-		Class Class
-		N     int
-	}, 0, len(classes))
-	for _, c := range classes {
-		out = append(out, struct {
-			Class Class
-			N     int
-		}{c, byClass[c]})
+	out := make([]ClassCount, 0, 3)
+	for _, c := range []Class{PortShaped, ComposeShaped, Catalogue} {
+		out = append(out, ClassCount{c, byClass[c]})
 	}
 	return out
 }

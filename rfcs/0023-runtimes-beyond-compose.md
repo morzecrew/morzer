@@ -1,11 +1,11 @@
 # RFC 0023 — Runtimes beyond Compose
 
-- **Status:** 🚧 In progress — **P1a shipped 2026-08-12**: the leak inventory is
-  14 mentions in three classes, and `tools/runtimecheck` enforces the boundary
-  depguard cannot see. It also reversed §12.2's cost estimate — the expensive
-  leak is one published environment variable, not a category. P1b (a rootless
-  Podman host, and the three measurements behind it) is open and is the only
-  thing before P2.
+- **Status:** 🚧 In progress — **P1a shipped 2026-08-12**: the leak inventory
+  came to 15 mentions in three classes, and `tools/runtimecheck` now enforces the
+  boundary depguard cannot see. It reversed §12.2's cost estimate along the way:
+  the expensive leak is one published environment variable, not a category. P1b
+  — a rootless Podman host and the three measurements behind it — is open, and is
+  the only thing between here and P2.
 - **Scope:** Grading the `ports.Runtime` seam by writing a second implementation
   of it — rootless Podman with Quadlet — and recording every place the port had
   to change to accommodate one. Covers the manifest's runtime dimension, the
@@ -60,20 +60,19 @@ Measured 2026-08-12. The draft asserted this section from documentation; what
 follows is what the code says, and it differs in one important way.
 
 **What `depguard` actually enforces.** The draft claimed it *"guarantees the
-string `docker` appears nowhere above `internal/adapters`"*.
-
-**P1 found where the draft got that** — [`CONTRIBUTING.md`](../CONTRIBUTING.md)
-stated it as an enforced rule, in a list introduced by "`depguard` enforces these
-mechanically". So the error was not a drafting slip; it was a false claim living
-in the contributor guide, which anybody reasoning about this boundary would have
-read first and believed. It has been corrected there, and it is now true, because
-P1 built the thing that checks it.
-
-It does not, and cannot: `depguard` is an import linter. [`.golangci.yml`](../.golangci.yml) denies
+string `docker` appears nowhere above `internal/adapters`"*. It does not, and
+cannot: `depguard` is an import linter. [`.golangci.yml`](../.golangci.yml) denies
 `internal/lifecycle` importing `internal/adapters`, and denies `internal/domain`
 importing anything from this repository. That is a real and valuable rule about
 *dependencies*. It says nothing about vocabulary, and the leak this RFC is looking
 for is vocabulary.
+
+**P1 found where the draft got that idea**, which matters more than the slip
+itself: [`CONTRIBUTING.md`](../CONTRIBUTING.md) stated it as an enforced rule, in
+a list introduced by *"`depguard` enforces these mechanically"*. Anybody
+reasoning about this boundary would have read that first and believed it. It has
+been corrected there — and the sentence is true now, because P1 built the thing
+that checks it.
 
 **The leak inventory, measured.** Compose semantics reach above
 `internal/adapters` in the type system, not merely in prose:
@@ -100,14 +99,19 @@ the result is [`tools/runtimecheck`](../tools/runtimecheck) — `just
 runtime-inventory` prints it, `just runtime-check` enforces it, and the list is
 not repeated here because a copy of a machine-checked list is a copy that drifts.
 
-**The number: 14 mentions above `internal/adapters` — 7 port-shaped, 2
-Compose-shaped, 5 catalogue — and 0 branches on runtime kind.**
+**The number, as measured on 2026-08-12: 15 mentions above `internal/adapters`
+— 8 port-shaped, 2 Compose-shaped, 5 catalogue — and 0 branches on runtime
+kind.**
+
+Dated, because it is a measurement rather than a property: `just
+runtime-inventory` is the live count, and the whole point of writing this one
+down is that a later reader can see whether it fell.
 
 Three classes, not the two P1 was asked for. The third earned its place: a
 runtime named as *data* — a key in the table of tools the manager can probe,
 matching what a vendor writes in `requirements.tools` — is not a leak. A second
-runtime adds a row. Five of the fourteen are that, and counting them as leaks
-would have made the problem look 55% bigger than it is.
+runtime adds a row. Five of the fifteen are that, and counting them as leaks
+would have made the problem look a third bigger than it is.
 
 **The finding that matters is that §12.2's conclusion was wrong.** It said both
 `ports.compose_abi.go` and `HookEnv.ComposeProject` are published ABIs, "so
@@ -344,7 +348,7 @@ for the declared runtime's presence, which is where an operator meets decision 5
 
 - **P1a — The leak inventory and its enforcement.** ✅ **Shipped 2026-08-12.**
   No adapter. The classification came out as three classes rather than two
-  (decision 7c), the number is 14, and the rule from decision 7 is
+  (decision 7c), the number was 15 on the day, and the rule from decision 7 is
   `tools/runtimecheck` in CI. §2.1–2.3.
 - **P1b — The Podman host.** ⏳ §12 items 4–6: the `EnvironmentFile`-on-tmpfs
   question, rootless volume paths against 0010's staging, and whether 0011's

@@ -133,7 +133,9 @@ cli -> ui -> lifecycle -> ports <- adapters
   stdlib and semver.
 - The lifecycle layer speaks only to ports.
 - `internal/cli` is the single place adapters are named.
-- No package above `internal/adapters` names a runtime or branches on one.
+- Nothing above `internal/adapters` branches on which runtime is running, and
+  nothing new above it names one. The existing names are inventoried, each with
+  what would remove it; `just runtime-inventory` prints the list and the count.
 
 **Two checkers, because the first three rules and the fourth are different
 questions.** `depguard` in [`.golangci.yml`](.golangci.yml) is an import linter:

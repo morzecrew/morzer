@@ -24,6 +24,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -47,13 +48,13 @@ func main() {
 	}
 }
 
-func run(root string, out *os.File) error {
+func run(root string, out io.Writer) error {
 	found, err := Check(root)
 	if err != nil {
 		return err
 	}
 
-	unexpected, stale := reconcile(found)
+	unexpected, stale := reconcile(found, allowed())
 
 	for _, f := range unexpected {
 		fmt.Fprintf(out, "%s\n", f)
@@ -82,8 +83,13 @@ func run(root string, out *os.File) error {
 // Both directions, because an allowlist checked in one direction only ever
 // grows: the day somebody deletes `ComposeFilePaths`, the entry describing it
 // should fail rather than sit there making the number look worse than it is.
-func reconcile(found []Finding) (unexpected []Finding, stale []string) {
-	known := allowed()
+//
+// The allowlist is a parameter rather than read from the package, so a test can
+// hand it one that *does* list a runtime branch and prove the branch is still
+// reported. With the real inventory there is no such entry, so the code that
+// refuses to allowlist a branch is unreachable from the real data — and a
+// mutation deleting it survived the sweep for exactly that reason.
+func reconcile(found []Finding, known map[string]Entry) (unexpected []Finding, stale []string) {
 	seen := map[string]bool{}
 
 	for _, f := range found {
@@ -127,7 +133,7 @@ func guidance(unexpected []Finding, stale []string) string {
 	return b.String()
 }
 
-func printInventory(out *os.File) {
+func printInventory(out io.Writer) {
 	fmt.Fprintf(out, "# The runtime leak inventory (RFC 0023 P1)\n\n")
 	for _, c := range counts() {
 		fmt.Fprintf(out, "%-16s %d\n", string(c.Class), c.N)

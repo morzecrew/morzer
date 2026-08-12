@@ -19,6 +19,14 @@ import (
 // teaching the layers above it a second private language, one `if kind ==
 // "quadlet"` at a time. A rule that only names the incumbent would permit
 // exactly that.
+// Two of these are also ordinary English. `compose` is a verb, so a
+// `composeMessage` helper would be reported, and there is no allowlist entry
+// that would be honest for it -- the inventory is a list of leaks, and that is
+// not one. The intended answer is to rename it: in this codebase `compose`
+// means Docker Compose, and a reader meeting the word has to disambiguate it
+// whichever sense the author meant. There are none today; if one arrives and
+// renaming it is genuinely wrong, that is the point to add a fourth class
+// rather than to weaken the match.
 var runtimeWords = []string{"compose", "docker", "podman", "quadlet"}
 
 func namesARuntime(s string) string {
@@ -94,7 +102,27 @@ func Check(root string) ([]Finding, error) {
 		if perr != nil {
 			return fmt.Errorf("%s: %w", rel, perr)
 		}
-		found = append(found, inspect(fset, f, filepath.ToSlash(rel))...)
+		slash := filepath.ToSlash(rel)
+
+		// The file's own name, and the package's. A name checker that read
+		// only declarations would pass `internal/lifecycle/ops/podman.go`
+		// with every symbol in it neutrally named -- and a file named for a
+		// runtime is a stronger statement about where the boundary sits
+		// than any single declaration inside it.
+		if w := namesARuntime(filepath.Base(rel)); w != "" {
+			found = append(found, Finding{
+				Rule: "vocabulary", File: slash, Line: 1,
+				Symbol: "file " + filepath.Base(rel), Word: w,
+			})
+		}
+		if w := namesARuntime(f.Name.Name); w != "" {
+			found = append(found, Finding{
+				Rule: "vocabulary", File: slash, Line: fset.Position(f.Name.Pos()).Line,
+				Symbol: "package " + f.Name.Name, Word: w,
+			})
+		}
+
+		found = append(found, inspect(fset, f, slash)...)
 		return nil
 	})
 	if err != nil {
