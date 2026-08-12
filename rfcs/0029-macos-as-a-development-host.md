@@ -3,12 +3,13 @@
 - **Status:** 📝 Draft — P1 execution-ready (one small PR); P2 design locked,
   **demand-gated** on §6
 - **Scope:** Making `GOOS=darwin` compile, and then making it *mean* something
-  bounded. P1 is six portability sites and one honest error message: the binary
-  builds from source on a Mac, and nothing else changes. P2 promotes that into a
-  supported tier — a published darwin archive, a relocated layout, a `doctor`
-  that tells the truth about secrets on a machine with no tmpfs — scoped
-  explicitly to **authoring bundles and evaluating the manager**, never to
-  running a production installation. Deliberately not a launchd supervisor, not
+  bounded. P1 is four compile fixes, a fail-safe stub for a fifth site, and one
+  honest error message: the binary builds from source on a Mac, and nothing else
+  changes. The sixth site and the real fix for the fifth are P2's, and §5.1 says
+  which is which. P2 promotes that into a supported tier — a published darwin
+  archive, a relocated layout, a `doctor` that tells the truth about secrets on
+  a machine with no tmpfs — scoped explicitly to **authoring bundles and
+  evaluating the manager**, never to running a production installation. Deliberately not a launchd supervisor, not
   an ephemeral-storage mechanism for macOS, not Windows, and not any change to
   the Linux layout, the manifest contract or the hook ABI.
 - **Related:** [`internal/infra/atomicfs`](../internal/infra/atomicfs),
@@ -177,23 +178,32 @@ predicate can be enumerated correctly for the platform it was written on and
 still invert when its silence acquires a new cause. P2 fixes it by answering the
 question rather than widening the guard (§5.6).
 
-### 3.5 CI cannot run Docker on macOS, and this is getting worse rather than better
+### 3.5 CI cannot run Docker on the macOS anybody in this tier uses
 
 The acceptance lane drives real Docker on every push. It cannot follow the
-binary to macOS:
+binary to macOS in any form worth having.
 
-- Apple silicon runners (`macos-14`, `macos-15`, `macos-latest`) **cannot run
-  Docker at all**: Apple's Virtualization framework did not expose nested
-  virtualization on M1, and while M3 and macOS 15 support it in hardware and
-  software, GitHub has not enabled it on the hosted images.
-- `macos-13` — the Intel image where `colima` did work — **was retired on
-  4 December 2025**.
-- `macos-15-intel` is the migration label for x86_64 and is announced as **the
-  last Intel image, available until August 2027**, after which GitHub does not
-  support x86_64 macOS at all.
+- **Apple silicon runners cannot run Docker at all.** `macos-14`, `macos-15`,
+  `macos-26` and `macos-latest` are arm64, and Apple's Virtualization framework
+  did not expose nested virtualization on M1. M3 and macOS 15 support it in
+  hardware and software; GitHub has not enabled it on the hosted images. This is
+  the binding constraint, and it is architectural rather than a scheduling
+  matter.
+- **Intel runners still exist**, and this draft first claimed otherwise.
+  `macos-13` — the image where `colima` demonstrably worked — was retired on
+  4 December 2025, and `macos-15-intel` was announced as the last x86_64 image;
+  but `macos-26-intel` reached general availability on 26 February 2026. So
+  x86_64 macOS did not end, and any argument resting on its retirement is
+  unsound. §14 records the correction.
 
-So there is no durable Docker-capable macOS runner. Any design that assumes one
-has an expiry date on it, and a short one.
+That leaves a narrower and more awkward fact than "impossible". A Docker-capable
+macOS lane is *plausible* — `colima` on an Intel image — and it would prove the
+`darwin/amd64` binary against a Linux VM, on the one architecture the tier's
+audience does not have. Everyone this tier is for is on Apple silicon.
+
+**A lane that runs only where the users are not is worse than no lane**, because
+it reports green about a platform it never touched. That is what decides §5.7,
+and it holds whatever GitHub does with Intel images next.
 
 ## 4. Goals / Non-goals
 
@@ -264,10 +274,16 @@ gets the same PID-reuse guarantee Linux has.
 ### 5.3 P1 — the honest refusal
 
 `install.sh` keeps refusing on Darwin. The sentence that changes is the advice:
-after P1, "build from source with Go 1.25 or newer" is true, and the message
-should also say what it gets them — a binary that runs the CLI against Docker
-Desktop, and a tier defined in the docs. The refusal itself is correct until P2
-publishes an archive to point at.
+after P1, "build from source with Go 1.25 or newer" is true, and the message may
+say that and nothing more.
+
+In particular it must **not** promise that the binary drives a deployment. P1
+delivers a CLI that builds and runs on a Mac; whether the manager actually works
+against Docker Desktop is §11's first unresolved question and P2's first spike.
+A refusal that over-promises is the same defect this RFC exists to fix, one
+release later — and P1's whole point is that the message can be trusted. What it
+gets them is a binary; what that binary can do is P2's to state, once something
+has run it.
 
 ### 5.4 P2 — the release matrix
 
@@ -336,14 +352,20 @@ the reasons the tier is what it is.
 
 Given §3.5, the darwin lane is:
 
-- `GOOS=darwin go build ./...` on the Linux runner — free, and catches every
-  compile regression. **This is the gate that matters**, and it is available in
-  P1.
+- `GOOS=darwin go build ./...` on the Linux runner, for **both** `amd64` and
+  `arm64` — free, and catches every compile regression. **This is the gate that
+  matters**, and it is available in P1. Both architectures because the matrix
+  P2 publishes has both, and because site 1 is itself an arch-dependent type
+  question: a gate covering one arch would be a gate that agrees with the bug it
+  is there to catch.
 - `go test ./...` on `macos-latest` for the packages that do not need Docker —
   proves the darwin syscall paths (memory, statfs, kinfo_proc) actually work,
-  which cross-compilation cannot.
-- **No acceptance lane on macOS.** Not deferred — unavailable. §3.5 is the
-  reason, and it goes in the docs rather than in a TODO.
+  which cross-compilation cannot. This is arm64, which is what the tier's
+  audience runs.
+- **No acceptance lane on macOS.** Not "unavailable" — §3.5 corrects that — but
+  available only on Intel, against an architecture no one this tier serves is
+  using. Declined rather than deferred, and the docs say so rather than carrying
+  a TODO.
 
 The consequence is stated rather than hidden: macOS is verified at a lower tier
 than Linux, and the docs say which tier and why.
@@ -389,13 +411,15 @@ P1 makes P2 cheap to pick up later. That is P1's second job.
 | RAM-disk secrets on macOS | A memory-backed filesystem on macOS, or the tier changing |
 | Windows | Nothing in this RFC; the port model would need re-deriving |
 | Production support on macOS | Nothing. §5.5 is mechanical, and removing it is a decision to be argued, not an omission to be fixed |
-| Docker-in-CI on macOS | GitHub enabling nested virtualization on Apple silicon images (§3.5) |
+| Docker-in-CI on macOS | GitHub enabling nested virtualization on Apple silicon images (§3.5). An Intel lane does not reopen it — that is the option decision 9 declines |
 
 ## 8. Tests
 
-- **Build gate (P1).** `GOOS=darwin GOARCH=arm64 go build ./...` in `just ci`.
-  Cheap, runs on the Linux runner, and is the only thing standing between this
-  and the same rot returning.
+- **Build gate (P1).** `GOOS=darwin GOARCH=amd64 go build ./...` and
+  `GOOS=darwin GOARCH=arm64 go build ./...` in `just ci` — `CGO_ENABLED=0` is
+  already exported at the top of the `justfile`, so the recipe adds two lines
+  and no configuration. Cheap, runs on the Linux runner, and is the only thing
+  standing between this and the same rot returning.
 - **Unchanged Linux suites (P1).** Every fix in §5.1 is required to leave the
   existing `atomicfs`, `preflight`, `lock` and `cli` tests passing untouched. A
   fix that needed its Linux test rewritten is a fix that changed Linux
@@ -469,13 +493,13 @@ P1 makes P2 cheap to pick up later. That is P1's second job.
 | --- | --- | --- |
 | 1 | `LOCKED` | macOS is a **development and evaluation** platform, never a production host. Everything else in this RFC follows from this row; reversing it reopens the supervisor, the ephemeral-storage mechanism and the layout together. |
 | 2 | `LOCKED` | P1 is unconditional and P2 is demand-gated (§6). P1's deliverable is "it compiles and the refusal is true", nothing more. |
-| 3 | `LOCKED` | `GOOS=darwin go build ./...` joins `just ci` in P1. Without it the gap returns and the message becomes false again — which is how it got here. |
+| 3 | `LOCKED` | `GOOS=darwin go build ./...` joins `just ci` in P1, for **both** `darwin/amd64` and `darwin/arm64`. Without it the gap returns and the message becomes false again — which is how it got here; and with only one arch it would miss exactly the class of defect site 1 belongs to. |
 | 4 | `LOCKED` | No launchd adapter. `Supervisor.Available()` returning false is the design; the port already handles a nil supervisor at every call site (§3.2). |
 | 5 | `LOCKED` | No RAM disk. The downgrade is **stated** rather than mechanised, and `doctor` states it on every run (§5.6). |
 | 6 | `LOCKED` | On darwin, an unrooted invocation is refused (§5.5). The tier is enforced mechanically because a documented tier is not one. |
 | 7 | `LOCKED` | `""` from `FilesystemType` must stop being reachable on darwin before it keeps meaning OK. Fixing the check by widening the guard instead of answering the question is refused — see [0010](0010-compose-volume-capture.md) and §3.4. |
 | 8 | `LOCKED` | Platform differences are per-OS files, not runtime branches, so Linux behaviour is unchanged by construction rather than by test. |
-| 9 | `LOCKED` | No acceptance lane on macOS, and the docs say why rather than carrying a TODO (§3.5). Verification parity is not achievable and pretending otherwise is worse than the gap. |
+| 9 | `LOCKED` | No acceptance lane on macOS, and the docs say why rather than carrying a TODO (§3.5). It is **declined, not impossible**: Intel runners exist and `colima` works there, but that lane would prove `darwin/amd64` while every user of this tier is on Apple silicon. A green badge for an architecture nobody runs is worse than an acknowledged gap. |
 | 10 | `ASSUMED` | Docker Desktop's default file sharing covers a rooted prefix under the user's home. P2's first spike settles it; if wrong, §5.5's layout changes and this row is superseded. |
 | 11 | `ASSUMED` | `x/term` for the no-echo prompt beats two files of ioctl constants, and is already a direct dependency so it adds nothing. Execution may depart if `ReadPassword`'s behaviour differs from what the current prompt promises. |
 | 12 | `OPEN` | Whether P1 fixes the lock's darwin path (§5.2) with `SysctlKinfoProc` immediately or leaves the fail-safe stub for P2. The stub is specified; an implementer who finds the real call trivial should take it and log that they did. |
@@ -516,12 +540,23 @@ Every claim above that could be checked from this machine was, on 2026-08-13.
   first draft of that paragraph was wrong in both directions.
 - **`golang.org/x/term` is already a direct dependency** (`go.mod:30`), which
   turns site 4's fix from "add a dependency" into "delete platform trivia".
-- **The CI ceiling (§3.5)** was researched rather than assumed: Apple silicon
-  hosted runners cannot run Docker for want of nested virtualization; `macos-13`,
-  the last image where `colima` worked, was retired on 4 December 2025;
-  `macos-15-intel` is announced as the final x86_64 image, available until
-  August 2027. This is the fact that decides §5.7, so it is the one most worth
-  re-checking if P2 is picked up long after this draft.
+- **The CI ceiling (§3.5)**, which this draft got half wrong and which review
+  corrected. Researched: Apple silicon hosted runners cannot run Docker for want
+  of nested virtualization, and `macos-13` — where `colima` demonstrably worked
+  — was retired on 4 December 2025. **Wrong on first writing:** the draft
+  repeated the September 2025 announcement that `macos-15-intel` would be the
+  final x86_64 image and inferred that Intel macOS was ending. It is not.
+  `macos-26-intel` reached general availability on 26 February 2026, so Intel
+  runners are still being shipped and an argument from their retirement is
+  unsound.
+
+  The correction moves §5.7 from "impossible" to "declined", which is a
+  different and better claim: the lane could exist on Intel and would report on
+  an architecture this tier's audience does not use. Recorded here rather than
+  quietly edited, because a reader picking this up later needs to know which
+  facts were dated and which were reasoned — this is the one most worth
+  re-checking, and it was already stale within six months of the announcement it
+  came from.
 
 What this draft could **not** measure, and does not claim: anything that
 requires a Mac. Docker Desktop's behaviour, `hw.memsize`, `kinfo_proc`, and
@@ -530,4 +565,14 @@ and P2 spikes them first.
 
 ## 15. Amendments
 
-None. This is the draft as first written.
+None yet — the RFC has not left Draft, so nothing here has been relied on.
+
+For the record, because §14 is a claim about rigour and would be worth less if it
+were quietly maintained: this draft was corrected in review, before adoption. The
+Intel-runner facts in §3.5 were stale, which moved decision 9's reason from
+"impossible" to "declined"; the Scope paragraph claimed P1 covered six sites when
+§5.1 gives it four and a stub; §5.3 promised a P1 binary that drives Docker
+Desktop while §11 lists that as unverified; and the build gate covered one
+architecture for a matrix with two. All four are folded into the sections above
+rather than tracked here, since the draft never shipped in the state that had
+them.
