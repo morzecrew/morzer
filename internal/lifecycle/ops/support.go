@@ -42,6 +42,15 @@ type SupportOptions struct {
 	// directory, which is where an operator expects a file they are about
 	// to attach to something.
 	Dir string
+
+	// NoLogs leaves container logs out.
+	//
+	// Not a redaction switch -- decision 5 refuses one of those, and this is
+	// its opposite: it removes a component rather than removing the filter
+	// from it, so every value of this flag is safe. It exists because the
+	// operator knows things the manager does not, such as that this
+	// product logs request bodies.
+	NoLogs bool
 }
 
 // SupportEntry is one file in the archive, as reported.
@@ -141,7 +150,7 @@ var supportCollectors = []supportCollector{
 	{Name: "releases.json", Collect: collectReleases},
 	{Name: "services.json", Collect: collectServices},
 	{Name: "manager.json", Collect: collectManager},
-	{Name: "logs/", Collect: collectLogs},
+	{Name: logsPrefix, Collect: collectLogs},
 }
 
 // The bound on a captured log stream (RFC 0024 §9, §11.3).
@@ -150,11 +159,20 @@ var supportCollectors = []supportCollector{
 // not. Both limits apply: lines first because that is the unit an operator
 // thinks in, bytes second because one line can be a megabyte of stack trace.
 //
-// §11.3 owes these numbers a measurement on a populated deployment and §12 A4
-// records what was taken. The shape it settled: everything else in the archive
-// is small and roughly fixed, so this bound alone decides the artifact's size,
-// and it is set where the file stays attachable to a ticket while holding the
-// minutes around a failure.
+// Measured on the acceptance deployment after it had run init, apply, three
+// configuration changes, a backup, a restore, an update killed mid-flight, a
+// resume and a refused rollback (§12 A4): **the whole archive is 5,882 bytes
+// compressed, of which the journal is 10,539 uncompressed** -- roughly a
+// kilobyte per operation, so a machine at one operation a day reaches a third of
+// a megabyte in a year and needs no bound of its own.
+//
+// What the measurement cannot say is how loud a real product is: the acceptance
+// containers wrote 889 bytes between them, and a production service writes that
+// in a second. So the bound is reasoned rather than fitted, and it is what
+// decides this artifact's size -- everything else in it is small and roughly
+// fixed. At a 200-byte line, 2000 lines is 400KiB before compression, which
+// stays attachable to a ticket while holding the minutes around a failure. The
+// byte limit is the backstop for the log line that is a whole stack trace.
 const (
 	supportLogLines = 2000
 	supportLogBytes = 1 << 20
@@ -236,7 +254,7 @@ func collectLogs(ctx context.Context, d *Deps, _ *supportSource) ([]supportFile,
 			body = fmt.Sprintf("[truncated at %d bytes and %d lines by `morzer support bundle`]\n",
 				supportLogBytes, supportLogLines) + body
 		}
-		out = append(out, supportFile{Name: "logs/" + name, Data: []byte(body)})
+		out = append(out, supportFile{Name: logsPrefix + name, Data: []byte(body)})
 	}
 	return out, nil
 }
@@ -261,6 +279,10 @@ func logFileName(line ports.LogLine) string {
 // supportMetaName is the archive's own index, which is not a collector: it
 // describes the others, so it is built after the loop rather than inside it.
 const supportMetaName = "meta.json"
+
+// logsPrefix is the container-log component, which is a directory rather than a
+// file: one component that happens to be several entries, one per service.
+const logsPrefix = "logs/"
 
 // supportProduced is every archive name this build can write.
 //
@@ -318,6 +340,13 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 
 	files := make([]supportFile, 0, len(supportCollectors))
 	for _, c := range supportCollectors {
+		if opts.NoLogs && c.Name == logsPrefix {
+			report.Omitted = append(report.Omitted, SupportOmission{
+				Name:   c.Name,
+				Reason: "left out by --no-logs",
+			})
+			continue
+		}
 		collected, err := c.Collect(ctx, d, src)
 		if err != nil {
 			// Omitted with its reason, never dropped silently and never
@@ -666,11 +695,42 @@ func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile,
 		names = append(names, f.Name)
 	}
 
+	// Absolute, always, and that is a contract rather than a nicety.
+	//
+	// `--json` puts this path on stdout, where it is read by something that
+	// then acts on it -- and the thing that acts on it is not necessarily in
+	// the directory the archive was written to. A relative name is correct
+	// only for a reader who is standing where the writer stood, which is the
+	// one assumption a machine-readable field must not make.
+	dir, err = archiveDir(dir)
+	if err != nil {
+		return "", err
+	}
+
 	path := filepath.Join(dir, supportArchiveName(d, inst))
-	if err := atomicfs.WriteTarZst(path, staging, names, d.Now()); err != nil {
+	if err := atomicfs.WriteTarZst(path, staging, names, d.now()); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+// archiveDir resolves where the archive goes.
+//
+// An empty `--dir` is the working directory, which is where an operator expects
+// a file they are about to attach to something.
+func archiveDir(dir string) (string, error) {
+	if dir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", domain.Internal(err, "cannot tell where to write the support bundle")
+		}
+		return wd, nil
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", domain.Internal(err, "cannot resolve %s", dir)
+	}
+	return abs, nil
 }
 
 // supportArchiveName is `support-<product>-<installation-id>-<timestamp>.tar.zst`.
@@ -684,5 +744,5 @@ func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile,
 // whose purpose is to be sent.
 func supportArchiveName(d *Deps, inst domain.Installation) string {
 	return fmt.Sprintf("support-%s-%s-%s.tar.zst",
-		inst.Product, inst.ID, d.Now().UTC().Format("20060102T150405Z"))
+		inst.Product, inst.ID, d.now().UTC().Format("20060102T150405Z"))
 }

@@ -89,7 +89,10 @@ see what would leave this machine before anything does. It is the same
 table either way — one rendering, so the preview and the archive cannot
 disagree about what was collected.
 
-`--dir` writes the archive somewhere other than the working directory.
+`--no-logs` leaves your containers' output out. It is not a way to turn
+redaction off — it removes a component rather than removing the filter
+from it, so it can only ever send less. `--dir` writes the archive
+somewhere other than the working directory.
 There is no flag that disables redaction. A flag like that becomes the
 one every support article tells you to pass, and then redaction is a
 feature nobody uses; if you genuinely need unredacted output, `morzer

@@ -167,11 +167,38 @@ func TestTheArchiveNameSurvivesBeingSent(t *testing.T) {
 	report, err := ops.SupportBundle(context.Background(), h.Deps, ops.SupportOptions{Dir: t.TempDir()})
 	require.NoError(t, err)
 
+	// Absolute, because `--json` puts this on stdout for something else to
+	// act on, and that something is not standing where the archive was
+	// written. Found by the acceptance lane reading `.data.path` from a
+	// directory other than the one it had cd'd into.
+	require.True(t, filepath.IsAbs(report.Path), "the reported path is relative: %s", report.Path)
+
 	name := filepath.Base(report.Path)
 	require.NotContains(t, name, ":", "a colon in the name makes scp read it as a host")
 	require.Contains(t, name, inst.Product)
 	require.Contains(t, name, inst.ID)
 	require.True(t, strings.HasSuffix(name, ".tar.zst"))
+}
+
+// The archive is written by a build that injects no clock.
+//
+// Found by the acceptance lane, not by this suite, and the reason is the
+// harness: every test here sets `Deps.Now` so that journal output is stable, so
+// every test here was exercising a field production leaves nil. `Deps` has a
+// `now()` accessor for exactly this and the archive writer was calling `Now()`
+// directly -- which meant the one code path no unit test could reach was the
+// one an operator reaches first.
+//
+// `--preview` never touched it, so the crash waited behind the flag an operator
+// is told to run second.
+func TestTheArchiveIsWrittenWithNoInjectedClock(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Now = nil
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps, ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err)
+	require.FileExists(t, report.Path)
 }
 
 // An installation with no release still produces an archive.

@@ -221,3 +221,33 @@ func seedJournal(t *testing.T, h *harness, text string) {
 		}},
 	}))
 }
+
+// `--no-logs` removes the component and says it did.
+//
+// The distinction from decision 5's refused `--raw` is worth keeping straight:
+// this removes a component, `--raw` would have removed the filter from one. An
+// operator who knows their product logs request bodies knows something the
+// manager cannot, and every value of this flag is safe.
+func TestNoLogsRemovesTheComponentAndRecordsIt(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	holdSecret(h)
+	h.Runtime.LogOutput = "web-1| starting up\n"
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps,
+		ops.SupportOptions{Dir: t.TempDir(), NoLogs: true})
+	require.NoError(t, err)
+
+	for name := range archiveEntries(t, report.Path) {
+		require.NotContains(t, name, "logs/", "--no-logs still collected logs")
+	}
+
+	var reasons []string
+	for _, o := range report.Omitted {
+		if o.Name == "logs/" {
+			reasons = append(reasons, o.Reason)
+		}
+	}
+	require.Len(t, reasons, 1, "the archive does not record that logs were left out")
+	require.Contains(t, reasons[0], "--no-logs")
+}

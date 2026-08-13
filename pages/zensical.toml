@@ -49,6 +49,7 @@ nav = [
         "operating/installing-offline.md",
         "operating/notifications.md",
         "operating/looking-inside.md",
+        "operating/asking-for-help.md",
         "operating/several-installations.md",
         "operating/recovering-a-lost-machine.md",
     ] },

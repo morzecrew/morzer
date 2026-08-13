@@ -37,6 +37,7 @@ func newSupportCommand(app *App) *cobra.Command {
 func newSupportBundleCommand(app *App) *cobra.Command {
 	var (
 		preview bool
+		noLogs  bool
 		dir     string
 	)
 
@@ -55,6 +56,10 @@ func newSupportBundleCommand(app *App) *cobra.Command {
 			"collected, with per-file sizes. An operator who cannot see what\n" +
 			"leaves will either send nothing or send everything, and both are\n" +
 			"failures of this command.\n\n" +
+			"`--no-logs` leaves your containers' output out. It is not a way to\n" +
+			"turn redaction off -- there is no such flag, deliberately -- it removes\n" +
+			"a component rather than removing the filter from it, so it can only\n" +
+			"ever send less.\n\n" +
 			"The archive is plaintext today and says so. Encrypting it to a\n" +
 			"vendor's recipients is RFC 0024 P4.",
 		Example: "  morzer support bundle --preview\n" +
@@ -64,6 +69,7 @@ func newSupportBundleCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			report, err := ops.SupportBundle(cmd.Context(), app.Deps, ops.SupportOptions{
 				Preview: preview,
+				NoLogs:  noLogs,
 				Dir:     dir,
 			})
 			if err != nil {
@@ -75,6 +81,8 @@ func newSupportBundleCommand(app *App) *cobra.Command {
 
 	cmd.Flags().BoolVar(&preview, "preview", false,
 		"print what would be collected and write nothing")
+	cmd.Flags().BoolVar(&noLogs, "no-logs", false,
+		"leave container logs out of the archive")
 	cmd.Flags().StringVar(&dir, "dir", "",
 		"write the archive to this directory instead of the working directory")
 	return cmd

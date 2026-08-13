@@ -1,7 +1,16 @@
 # RFC 0024 — The support bundle
 
-- **Status:** 📝 Draft — P1–P3 are buildable now and need no vendor to exist; P4
-  is the vendor half and is one manifest field.
+- **Status:** 🚧 In progress — **P1–P3 shipped (2026-08-13)**. `morzer support
+  bundle` and `--preview` produce a plaintext archive from eleven components,
+  the inclusion list is generated from the code into
+  [the reference page](../pages/docs/reference/support-bundle.md), and container
+  logs land bounded, per service and scrubbed. §11.3's measurement was taken and
+  is in §12 A4. One decision moved during execution: redaction is applied to
+  **every** component rather than to the one class whose bytes are raw (A3),
+  which is what §11.1's eager-capture defect turns into at the scale of an
+  archive. **P4 (`support.recipients`, encryption, signing, `support inspect`)
+  and P5 (`support redact --check`) are unscheduled**; §10's manifest-window
+  question is still open and still has a deadline.
 - **Scope:** One command that exports a complete, redacted, self-contained account
   of an installation — journal, `doctor` results, resolved manifest, config diff,
   version history, container state and bounded logs — in a form safe to hand to a
@@ -225,23 +234,23 @@ first paragraph what the archive never contains.
 
 ## 8. Phasing
 
-- **P1 — The inventory and the classification.** Every candidate component listed,
+- **P1 — The inventory and the classification.** ✅ Shipped 2026-08-13. Every candidate component listed,
   each marked include/redact/never, each with the reason. No code. The output is
   the reference page that decision 2 freezes.
-- **P2 — `support bundle` and `--preview`**, plaintext, no encryption, operator
+- **P2 — `support bundle` and `--preview`** ✅ Shipped 2026-08-13, plaintext, no encryption, operator
   audience only — **and no container logs**. §9 says P2 without P3 is a leak
   generator with a progress bar, and shipping the one raw-vendor-bytes component
   before the phase that proves redaction works would be exactly that. Everything
   else in the allowlist is manager-produced and already structured, so P2 is
   still usable for a forum post, which is the point of §2. `--no-logs` is the
   default until P3 lands, and then it becomes a flag.
-- **P3 — Redaction under test.** Drive the redactor over synthetic logs seeded
+- **P3 — Redaction under test.** ✅ Shipped 2026-08-13. Drive the redactor over synthetic logs seeded
   with every secret shape 0008 found it missing — a `Stringer`, a struct, an
   `error` wrapping a value — and fail the build if any survives. This phase is
   the one that decides whether the feature is safe; P2 without it is a leak
   generator with a progress bar.
-- **P4 — `support.recipients`, encryption, signing, `support inspect`.**
-- **P5 — `support redact --check`.**
+- **P4 — `support.recipients`, encryption, signing, `support inspect`.** Unscheduled; gated on §10's manifest window (§11.4).
+- **P5 — `support redact --check`.** Unscheduled.
 
 ## 9. Risks
 
@@ -295,4 +304,99 @@ Taken 2026-08-12.
 
 ## 12. Amendments
 
-*(Empty.)*
+**A1 — the archive's timestamp is RFC 3339's basic form (2026-08-13, P2).**
+
+§3.1 specifies `support-<product>-<installation-id>-<rfc3339>.tar.zst`. The
+timestamp is `20260813T174241Z` rather than `2026-08-13T17:42:41Z`, because a
+colon is legal in a filename on every platform this runs on and is a trap on the
+one journey this file is built to make: `scp support-…T17:42:41Z.tar.zst host:`
+makes `scp` read everything before the first colon as a hostname. A filename
+that breaks the tool an operator uses to send it is a bad filename for a file
+whose only purpose is to be sent.
+
+The reported path is also absolute, which §3.1 does not discuss. `--json` puts
+it on stdout for something else to act on, and that something is not
+necessarily standing in the directory the archive was written to. The
+acceptance lane found this by reading `.data.path` from one directory after
+writing from another.
+
+**A2 — the redactor's version is the manager's (2026-08-13, P2).**
+
+§3.3 says `meta.json` records "the redactor version". There is no such thing:
+`logging.Redactor` is one type with no version of its own, and minting one would
+create a number nobody remembers to bump — which is worse than none, because a
+reader would trust it. The manager version identifies the redaction logic
+exactly, since the redactor ships inside the binary, so that is what the field
+carries and what the archive says.
+
+**A3 — every component is redacted, not only the class named `redact`
+(2026-08-13, P3).**
+
+§3.2 classifies container logs as the component that goes "through 0021's
+redactor", with everything else included as-is because it is manager-produced
+and already structured. Execution applies the redactor to **every** component.
+
+The reason is §11.1's defect one level up. A component's class describes where
+its bytes came from; redaction is about *when* they were written, and most of
+this archive was written long before the command ran. The journal is the clear
+case: it is appended to across every operation the installation has ever run,
+and `logging`'s own `TestRegisteringAfterWithIsAKnownLimit` pins that the log
+handler redacts at capture time and keeps the clear copy. So a step message that
+embedded a secret before that secret was registered is on disk in the clear, and
+no correctness in the handler helps an archive assembled a month later.
+Redacting at collection is what makes registration order stop mattering.
+
+Two consequences worth stating. The per-file count in `meta.json` is meaningful
+for every entry rather than for one, which is what makes a zero in that column
+readable at all. And the count's honest bound narrowed: it means "no value this
+installation *currently* holds appeared here", so a rotated-away credential is
+not something it can recognise — the reference page says so.
+
+Container logs keep a stricter rule than the rest, which §3.3 did not settle:
+when the secret values cannot be loaded they are **omitted entirely** rather
+than included unfiltered. 0021 lets `morzer logs` print an unscrubbed stream and
+say so, because an operator reading their own terminal can decide what to do
+with what they see. This artifact is read by somebody else, later, holding only
+the file and `meta.json` — and decision 5 already refuses a flag that turns
+redaction off, so shipping unredactable bytes by default would be that flag with
+no way to turn it off.
+
+**A4 — §11.3's measurement, taken (2026-08-13, P1).**
+
+On the acceptance deployment, after init, apply, three configuration changes, a
+backup, a restore, an update killed mid-flight, a resume and a refused rollback:
+
+| | |
+| --- | --- |
+| Whole archive | **5,882 bytes** compressed |
+| Journal | 10,539 bytes uncompressed, ~1KiB per operation |
+| Container logs | 889 bytes, from two stub containers |
+
+The journal needs no bound of its own: a machine at one operation a day reaches
+a third of a megabyte in a year.
+
+What the measurement cannot say is how loud a real product is — the acceptance
+containers write in a whole run what a production service writes in a second. So
+the log bound stayed reasoned rather than fitted: 2000 lines and 1MiB per
+service, which at a 200-byte line is 400KiB before compression. Everything else
+in the archive is small and roughly fixed, so that bound alone decides the
+artifact's size.
+
+**A5 — §3.2's "values marked non-sensitive" has no referent (2026-08-13, P2).**
+
+The Included list says "parameter *names* and values marked non-sensitive",
+which assumes a sensitivity marking on parameters. There is none, and its
+absence is deliberate: `ParameterSpec`'s own contract is that a parameter is
+**not** a secret — its value already reaches Compose as an environment variable,
+`docker inspect`, `status --json` and the journal, and secrets have their own
+declared, audited, tmpfs-rendered path that "must never become a second one".
+
+So the qualifier had nothing to select on, and withholding parameter values
+would have hidden the most common cause of a support question while protecting
+nothing this archive does not already carry in the journal. Values are included,
+and the reference page gives that argument rather than the RFC's phrasing.
+
+The neighbouring worry resolved the same way and is worth recording because it
+looked more serious: the configuration diff renders each target, and a rendered
+target cannot embed a secret either — `templateData` puts secret *references* in
+the render context, a name to the path of the rendered file, never a value.
