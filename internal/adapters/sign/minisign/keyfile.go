@@ -122,8 +122,14 @@ func generate(comment string) (keypair, error) {
 	}
 
 	id := strings.ToUpper(hex.EncodeToString(reverse(keyID[:])))
+
+	// The comment is sanitised here as well as at the trusted comment,
+	// because a newline in it writes a *third line* into the key file --
+	// and both go-minisign and the real binary then fail to parse a key
+	// this machine depends on. The identity would be lost on the next load,
+	// which is a worse outcome than any comment is worth.
 	file := fmt.Sprintf("%s%s\n%s\n",
-		commentPrefix, comment, base64.StdEncoding.EncodeToString(payload))
+		commentPrefix, sanitiseComment(comment), base64.StdEncoding.EncodeToString(payload))
 
 	return keypair{
 		secretFile: []byte(file),

@@ -198,18 +198,61 @@ func TestAMachineWithNoSaltEmitsNoDigestRatherThanAnUnsaltedOne(t *testing.T) {
 		"a machine with no salt published a digest that can be brute-forced")
 }
 
-// A machine that has never minted a key still emits a statement -- unsigned,
-// and saying so. RFC 0028 decision 9 makes this the normal state of every
-// installation that reached schema 6 by migration, and a consumer written
-// against the happy machine is the risk §5.6 names.
-func TestAMachineWithNoKeyStillEmitsAnUnsignedStatement(t *testing.T) {
+// A machine that has never minted a key acquires one when it first signs.
+//
+// This is RFC 0028 §5.6 rather than a convenience: the migration mints nothing,
+// so an installation upgraded into schema 6 has no key, and "a manager upgrade
+// that silently generates cryptographic material is a surprise -- producing a
+// signed artifact is a request". Emission is that request.
+//
+// Without this the migrated machines -- every installation in the field -- would
+// have emitted unsigned statements forever, which is the shape of gap review
+// found rather than tests did.
+func TestAMachineWithNoKeyMintsOneWhenItFirstSigns(t *testing.T) {
 	dockerlab.Require(t)
 
 	h := signingHarness(t)
 	h.install()
 
+	// No key, no recorded key: the migrated machine.
+	require.NoFileExists(t, h.Paths.SigningKeyFile())
+
 	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
 	require.NoError(t, err, "apply failed on a machine with no signing key")
+
+	files := attestations(t, h)
+	require.Len(t, files, 1)
+	require.FileExists(t, files[0]+".minisig",
+		"a machine that could have minted a key emitted an unsigned statement")
+
+	var stmt domain.Statement
+	body, err := os.ReadFile(files[0])
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(body, &stmt))
+	require.NotEmpty(t, stmt.Predicate.Installation.SigningKey)
+
+	// And the document names the key that actually signed it, which is the
+	// property that survives state and disk disagreeing.
+	out, err := minisignRun(t, filepath.Dir(files[0]),
+		"minisign", "-Vm", filepath.Base(files[0]),
+		"-P", stmt.Predicate.Installation.SigningKey)
+	require.NoError(t, err, out)
+}
+
+// A build with no signer at all still files the record, unsigned.
+//
+// Writing the statement is the job; signing it is what a signer adds. Making
+// the first conditional on the second would mean such a build silently kept no
+// record at all.
+func TestABuildWithNoSignerStillFilesTheRecord(t *testing.T) {
+	dockerlab.Require(t)
+
+	h := signingHarness(t)
+	h.Deps.Signer = nil
+	h.install()
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
 
 	files := attestations(t, h)
 	require.Len(t, files, 1)
@@ -220,4 +263,44 @@ func TestAMachineWithNoKeyStillEmitsAnUnsignedStatement(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(body, &stmt))
 	assert.Empty(t, stmt.Predicate.Installation.SigningKey)
+}
+
+// A converged apply digests the same configuration as the one that changed it.
+//
+// The digest is a drift detector, and `stepRenderConfiguration.Check` returns
+// true when every rendered target already matches the file on disk -- so the
+// engine skips Execute on exactly the runs where nothing changed. Reading the
+// configuration only from the executing path meant those runs digested nothing,
+// and two applies of identical configuration produced two different digests: a
+// drift detector that reports drift every second run.
+func TestARepeatedApplyDigestsTheSameConfiguration(t *testing.T) {
+	dockerlab.Require(t)
+
+	h := signingHarness(t)
+	applied(t, h)
+
+	first := attestations(t, h)
+	require.Len(t, first, 1)
+
+	// The second apply converges onto a system that is already converged,
+	// which is the case systemd runs at every boot.
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	files := attestations(t, h)
+	require.Len(t, files, 2, "the second apply filed no statement")
+
+	digests := make([]string, 0, 2)
+	for _, f := range files {
+		body, err := os.ReadFile(f)
+		require.NoError(t, err)
+		var stmt domain.Statement
+		require.NoError(t, json.Unmarshal(body, &stmt))
+		digests = append(digests, stmt.Predicate.Config.RenderedDigest)
+	}
+
+	require.NotEmpty(t, digests[0], "the first apply recorded no configuration digest")
+	assert.Equal(t, digests[0], digests[1],
+		"identical configuration produced two different digests, so the digest tracks "+
+			"whether the step had work to do rather than what the configuration is")
 }

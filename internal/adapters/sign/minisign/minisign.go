@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -67,7 +68,37 @@ func (s *Signer) EnsureKey(ctx context.Context) (ports.PublicSigningKey, error) 
 	if err := atomicfs.MkdirAll(filepath.Dir(s.keyPath), 0o700); err != nil {
 		return ports.PublicSigningKey{}, err
 	}
-	if err := atomicfs.WriteFile(s.keyPath, pair.secretFile, keyMode); err != nil {
+
+	// O_EXCL rather than an atomic rename, and this is the one place in the
+	// codebase where a rename is the wrong primitive.
+	//
+	// A rename is last-writer-wins, so two EnsureKey calls that both read
+	// "no key" would both mint and the second would replace the first. The
+	// loser's signatures then verify against a key no longer on the
+	// machine, with no error at the time and no symptom until somebody
+	// checks an old artifact. An exclusive create makes the race decidable:
+	// exactly one creator wins, and the loser reads the winner's key rather
+	// than overwriting it.
+	//
+	// `init` holds the deployment lock, so this is defence for the port's
+	// contract -- any operation about to sign may call this -- rather than
+	// for a race that exists today.
+	f, err := os.OpenFile(s.keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, keyMode)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			// Somebody else minted between our read and this
+			// create. Theirs is the identity.
+			return s.PublicKey(ctx)
+		}
+		return ports.PublicSigningKey{}, domain.SecretsError(err,
+			"cannot write the signing key to %s", s.keyPath)
+	}
+	if _, err := f.Write(pair.secretFile); err != nil {
+		_ = f.Close()
+		return ports.PublicSigningKey{}, domain.SecretsError(err,
+			"cannot write the signing key to %s", s.keyPath)
+	}
+	if err := f.Close(); err != nil {
 		return ports.PublicSigningKey{}, domain.SecretsError(err,
 			"cannot write the signing key to %s", s.keyPath)
 	}

@@ -143,8 +143,18 @@ type AttestedVerification struct {
 	// only a caller that watched a verification fills it in.
 	SignatureVerified *bool  `json:"signature_verified,omitempty"`
 	KeyID             string `json:"key_id,omitempty"`
-	DigestPinned      bool   `json:"digest_pinned"`
-	DigestMatched     bool   `json:"digest_matched"`
+
+	// DigestPinned says the release carries a content digest. That is a
+	// fact about the record and is always knowable.
+	DigestPinned bool `json:"digest_pinned"`
+
+	// DigestMatched is a tri-state for the same reason SignatureVerified
+	// is, and it was originally written as the same mistake: set true
+	// merely because a digest existed. Having a digest is not comparing
+	// against one. The comparison happens when a bundle is fetched and
+	// staged; an operation that did not fetch anything has nothing to
+	// report, and says nothing rather than claiming a match it never made.
+	DigestMatched *bool `json:"digest_matched,omitempty"`
 }
 
 type AttestedImage struct {

@@ -316,7 +316,22 @@ func stepCreateSigningKey(d *Deps) engine.Step {
 			if d.Signer == nil {
 				return true, nil
 			}
-			return atomicfs.Exists(d.Paths.SigningKeyFile())
+
+			// Deliberately *not* "the key file exists". Execute is
+			// what publishes the public key for the installation
+			// record, so skipping it on file-existence alone left
+			// `init --repair` unable to record a key that is on
+			// disk and missing from state -- which is exactly the
+			// state `doctor` reports with the remedy "run `morzer
+			// init --repair` to record it". The remedy did not
+			// work, and the warning survived the repair.
+			//
+			// EnsureKey reads before it mints, so running Execute
+			// against an existing key is safe and returns that
+			// same key. Never reporting done is the simpler
+			// correct answer than a Check that has to know what
+			// state records.
+			return false, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			key, err := d.Signer.EnsureKey(ctx)

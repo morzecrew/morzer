@@ -45,6 +45,36 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 	// warning about a failure to write it is a courtesy, and making the
 	// first conditional on the second would mean a build wired without a
 	// bus silently filed nothing.
+	// The key that will actually sign, resolved before the document is
+	// built so the document names it.
+	//
+	// Two failures this closes. A machine that reached schema 6 by
+	// migration has no key and no operation had ever minted one, so it
+	// would have emitted unsigned statements forever -- RFC 0028 §5.6 says
+	// the minting step runs for `init` *and* for any operation that needs
+	// to sign, and only the first half was wired. And when the key on disk
+	// disagreed with the key in state, the document named state's key while
+	// the .minisig came from the other: a statement attributable to nobody,
+	// which is precisely the case `doctor` exists to report.
+	if d.Signer != nil {
+		key, err := d.Signer.EnsureKey(ctx)
+		switch {
+		case err != nil:
+			d.warnf("cannot resolve this machine's signing key: %s",
+				domain.AsError(err).Message)
+		case in.Installation.Signing.HasKey() && in.Installation.Signing.PublicKey != key.Line:
+			// State is not silently overwritten here -- that is
+			// `init --repair`'s job, and doctor names it. What is
+			// refused is emitting a document that lies about which
+			// key signed it.
+			d.warnf("the signing key on disk is not the one installation state records; "+
+				"attesting under the key that signs (%s)", key.KeyID)
+			in.Installation.Signing.PublicKey = key.Line
+		default:
+			in.Installation.Signing.PublicKey = key.Line
+		}
+	}
+
 	stmt := domain.Attest(rec, in)
 
 	body, err := json.MarshalIndent(stmt, "", "  ")
@@ -158,10 +188,14 @@ func attestationInputs(
 	// a release is *staged*, and apply runs against one already on disk. So
 	// the honest output for this operation is silence on the question, which
 	// is what the absent field means.
+	// DigestMatched is left unset for the same reason SignatureVerified is,
+	// and it was the same mistake: `rel.Digest != ""` says the release
+	// *has* a digest, not that anything compared against it. The comparison
+	// happens when a bundle is fetched and staged, and this operation
+	// fetched nothing.
 	in.Verification = domain.AttestedVerification{
 		SignatureRequired: inst.Policy.RequireSignature,
 		DigestPinned:      rel.Digest != "",
-		DigestMatched:     rel.Digest != "",
 	}
 	return in
 }

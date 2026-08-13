@@ -118,11 +118,15 @@ func renderedConfigFor(st *engine.State) []byte {
 		return nil
 	}
 
-	// Canonical: targets sorted, each length-prefixed by its own name. Map
-	// iteration order is random in Go, so digesting the concatenation
-	// directly would produce a different digest for identical
-	// configuration on every run -- a drift detector that reports drift
-	// constantly, which is a drift detector nobody reads.
+	// Canonical, and injective. Map iteration order is random in Go, so
+	// digesting the concatenation directly would produce a different digest
+	// for identical configuration on every run.
+	//
+	// Both the target and the content are length-prefixed rather than
+	// delimited. Delimiters alone are not injective when a target may
+	// contain the delimiter: a path holding a newline could be chosen so
+	// that one target-and-content pair encodes identically to a different
+	// one, and two different configurations would share a digest.
 	targets := make([]string, 0, len(rendered))
 	for target := range rendered {
 		targets = append(targets, target)
@@ -131,9 +135,8 @@ func renderedConfigFor(st *engine.State) []byte {
 
 	var buf bytes.Buffer
 	for _, target := range targets {
-		fmt.Fprintf(&buf, "%s\n%d\n", target, len(rendered[target]))
+		fmt.Fprintf(&buf, "%d:%s%d:", len(target), target, len(rendered[target]))
 		buf.Write(rendered[target])
-		buf.WriteByte('\n')
 	}
 	return buf.Bytes()
 }
@@ -410,6 +413,16 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if err != nil {
 				return false, err
 			}
+			// Published from Check as well as Execute. A converged
+			// apply skips Execute entirely, and an attestation
+			// that read the configuration only from the executing
+			// path digested nothing on exactly the runs where
+			// nothing changed -- so two applies of identical
+			// configuration produced two different digests, and a
+			// drift detector with that property reports drift
+			// every second run.
+			st.Set(engine.KeyRenderedConfig, rendered)
+
 			// Byte-identical output means there is nothing to do.
 			// Rewriting an unchanged file would churn its mtime and
 			// make `apply` look like it changed something.

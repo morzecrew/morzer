@@ -423,7 +423,12 @@ func (d *Deps) checkIdentity() preflight.Check {
 //     a warning on every machine in the field for a capability none of them has
 //     been asked to use.
 //
-//   - **A key that disagrees with recorded state.** A failure. Such a machine
+//   - **A key that disagrees with recorded state.** Reported at the highest
+//     severity this check can produce, which is a **warning**: `Fatal` is false,
+//     and preflight's runner rewrites a non-fatal failure to a warning. Said
+//     plainly because an earlier draft of this comment called it a refusal, and
+//     a comment claiming a stop the code cannot perform is the same defect this
+//     whole feature exists to avoid. Such a machine
 //     signs with one key while telling everybody -- through `status`, the
 //     export, an attestation -- that it signs with another, so its artifacts are
 //     attributable to nobody. This is the narrow refusal the design asks for,
@@ -432,9 +437,12 @@ func (d *Deps) checkIdentity() preflight.Check {
 //   - **A key that matches.** Fine, and the key id is reported so an operator
 //     can compare it against an artifact they are holding.
 //
-// Not fatal: a machine that cannot sign can still be updated, backed up and
-// rolled back, and refusing to operate over a signing key would take a
-// deployment down for a bookkeeping reason.
+// Not fatal, and that is the trade rather than an oversight: a machine that
+// cannot sign can still be updated, backed up and rolled back, and refusing to
+// operate over a signing key would take a deployment down for a bookkeeping
+// reason. What it costs is that the disagreement arrives as a warning among
+// warnings, which is why the message says the artifacts are unattributable
+// rather than merely that two keys differ.
 func (d *Deps) checkSigningIdentity() preflight.Check {
 	return preflight.Check{
 		ID:          "secrets.signing-identity",
