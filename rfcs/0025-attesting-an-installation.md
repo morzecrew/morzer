@@ -1,11 +1,15 @@
 # RFC 0025 — Attesting an installation
 
-- **Status:** 🚧 In progress — **P1 shipped 2026-08-13** with 0028 P1: `apply`
-  emits a signed in-toto statement, verified against the real `minisign` binary
-  in the container lane. P2 (failure paths), P3 (`attest verify`, and decision
-  8's failing case) and P4 (push, `attest log`) remain. **Decision 8 still
-  governs**: if no fault-injection case can make `--against-live` fail, this
-  RFC closes as rejected regardless of what P1 shipped.
+- **Status:** 🚧 In progress — **P1–P3 shipped (2026-08-13)**. P1 emits a
+  signed in-toto statement; P2 attests failures and compensations; P3 is
+  `morzer attest verify`, with signature outcomes, chain continuity and
+  `--against-live`.
+  **Decision 8 is answered and the RFC lives**: an image swapped behind the
+  manager's back makes `--against-live` fail, asserted in `test/suite`
+  (`TestAgainstLiveFailsWhenAnImageWasSwappedByHand`), and so does an attested
+  service that is gone. P4 — pushing statements through 0009's registry,
+  `attest log`, and the `doctor` check for an unpushed directory — remains, as
+  does emission from `update`, `rollback` and `restore`.
 - **Scope:** A portable, signed, third-party-readable statement of what the
   manager did — one in-toto Statement per lifecycle operation, emitted on failure
   as well as success, appended locally and optionally pushed through 0009's target

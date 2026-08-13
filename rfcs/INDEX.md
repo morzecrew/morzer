@@ -24,10 +24,10 @@ second table of the same shape is a second set of rows for the same numbers.
   an inventory with no code, and P2 must not ship without P3, which is the phase
   that proves redaction works.
 - **[0025 — Attesting an installation](0025-attesting-an-installation.md).**
-  P1 shipped with 0028 P1, as the two RFCs required of each other. **Decision 8
-  still decides whether this RFC lives**: `attest verify --against-live` must
-  have a fault-injection case that makes it fail, or the whole design closes as
-  rejected — and that is P3.
+  P1–P3 shipped. **Decision 8 is answered**: `--against-live` fails when an
+  image is swapped behind the manager's back, so the design is not theatre and
+  the RFC lives. P4 is pushing statements off the machine, and `update`,
+  `rollback` and `restore` do not attest yet.
 - **[0026 — Fleet as a read model](0026-fleet-as-a-read-model.md).** Unstarted.
   Design settled through decision 6b: the roster, not the row, is the trust
   anchor.
