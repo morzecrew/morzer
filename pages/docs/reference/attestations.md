@@ -128,7 +128,8 @@ copy no longer matches the types.
 ```console
 $ morzer attest verify
 4 statement(s), 0 problem(s)
-  ✔ op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json  apply succeeded
+  ✔ op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json
+    apply succeeded
   ...
 ```
 
@@ -168,7 +169,7 @@ what the runtime reports right now:
 $ morzer attest verify --against-live
 5 statement(s), 1 problem(s)
   ✖ live: image
-    app runs registry.example/demo/app at sha256:9f2c0a1b4d5e, attested at sha256:3ab77f01c2d9
+    app runs registry.example/demo/app at sha256:9f2c0a1b4d5e, which no attested image matches
 ```
 
 Four ways it can disagree, and each is something somebody does by hand:
@@ -194,9 +195,9 @@ problem; an unverifiable one, a broken chain and a live mismatch all are.
 ```console
 $ morzer attest log
 2 statement(s), newest first
-  operation                    kind    outcome    release          signature
-  op_01K2ZB4M8QF0R7V3X5Y6Z7A8  config  succeeded  1.3.0            signed
-  op_01K2Z9X7QK8V3H4M5N6P7R8S  update  succeeded  1.2.0 -> 1.3.0   signed
+  OPERATION                      KIND    OUTCOME    RELEASE         SIGNATURE
+  op_01K2ZB4M8QF0R7V3X5Y6Z7A8Q9  config  succeeded  1.3.0           signed
+  op_01K2Z9X7QK8V3H4M5N6P7R8S9T  update  succeeded  1.2.0 -> 1.3.0  signed
 ```
 
 Deliberately not `verify` with less output. `signed` says a signature is
@@ -234,10 +235,22 @@ counted by retention.
 ```console
 $ morzer attest push
 pushed 3 attestation(s) to 1 target
+
+$ morzer attest push
+every one of 3 attestation(s) is already on 1 target
 ```
 
-It sends only what is not already there, so it is safe from cron. `doctor`
-reports the same gap under `backup.attestations-pushed`.
+It sends only what is not already there, so it is safe from cron — and a
+statement counts as there only when the target holds its signature too, because
+the document goes first and a transfer that died between the two would otherwise
+look complete forever.
+
+`doctor` reports the same gap under `backup.attestations-pushed`:
+
+```console
+! attestations have reached the configured targets
+  1 of 1 attestation(s) are only on this machine
+```
 
 ## What this does not do yet
 

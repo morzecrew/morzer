@@ -148,17 +148,13 @@ func TestARefusedOperationFilesNoStatement(t *testing.T) {
 }
 
 // `attest log` reads the record back without asking whether to believe it.
-func TestAttestLogListsTheRecordNewestFirst(t *testing.T) {
+//
+// `Signed` says a signature is *there*. Whether it checks out is `attest
+// verify`'s answer, and a listing that implied it had checked would be the
+// overclaim the whole format is built to refuse.
+func TestAttestLogListsWhatEachOperationRecorded(t *testing.T) {
 	h := verifyHarness(t)
 	attested(t, h)
-
-	// The clock moves, because ordering by the time an operation started is
-	// the claim under test and the harness's clock is otherwise frozen.
-	// Without this the two statements share a timestamp, ids are ULIDs with
-	// a random tail, and the assertion would be about the tiebreaker rather
-	// than about the history.
-	later := h.Deps.Now().Add(time.Hour)
-	h.Deps.Now = func() time.Time { return later }
 
 	_, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
 		Set: map[string]string{"http_port": "9000"},
@@ -169,11 +165,93 @@ func TestAttestLogListsTheRecordNewestFirst(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 
-	assert.Equal(t, string(domain.OpTypeConfig), entries[0].Kind,
-		"the newest operation must come first")
-	assert.Equal(t, string(domain.OpTypeApply), entries[1].Kind)
+	kinds := map[string]bool{}
 	for _, e := range entries {
+		kinds[e.Kind] = true
 		assert.True(t, e.Signed, "this machine has a key, so its statements are signed")
 		assert.Equal(t, string(domain.StatusSucceeded), e.Outcome)
+		assert.NotEmpty(t, e.Operation)
+		assert.False(t, e.Started.IsZero())
 	}
+	assert.True(t, kinds[string(domain.OpTypeApply)])
+	assert.True(t, kinds[string(domain.OpTypeConfig)])
+}
+
+// Something unparseable among the audit records is itself worth seeing, and it
+// goes last.
+//
+// Reported rather than skipped, because a directory of records containing a
+// file that is not one is a finding -- and last, because a listing whose first
+// row is a broken file is a listing an operator stops reading. Last falls out
+// of the ordering rather than being a case of its own: a file that did not
+// parse has no time, and newest-first puts the zero time at the end.
+func TestAttestLogReportsAFileThatIsNotAStatement(t *testing.T) {
+	h := verifyHarness(t)
+	attested(t, h)
+
+	require.NoError(t, os.WriteFile(
+		filepath.Join(h.Paths.AttestationsDir(), "aaa-not-a-statement.json"),
+		[]byte("{this is not json"), 0o644))
+
+	entries, err := ops.AttestLog(context.Background(), h.Deps, ops.VerifyOptions{})
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+
+	assert.Empty(t, entries[0].Unreadable, "a broken file led the listing")
+	assert.NotEmpty(t, entries[1].Unreadable,
+		"a file that is not a statement was hidden from the record")
+}
+
+// Two operations in the same second are still ordered newest first.
+//
+// Not an edge case: `domain.Time` truncates to the second, so a script that
+// applies and then sets a parameter produces exactly this. Left to the
+// filename order the pair would print oldest first -- a listing that says
+// "newest first" and is backwards inside every second, which is the resolution
+// most operators work at.
+//
+// The refinement is the operation id: ULIDs carry the mint time in their first
+// 48 bits, so descending id order is time order at millisecond resolution.
+// Written rather than driven, because the tie has to be certain. Running two
+// real operations lands them in the same second most of the time, and a test
+// whose precondition is a coin flip on a second boundary proves nothing on the
+// runs where the coin lands the other way.
+func TestAttestLogOrdersTwoOperationsFromTheSameSecond(t *testing.T) {
+	dir := t.TempDir()
+	instant := domain.NewTime(time.Date(2026, 8, 13, 9, 30, 0, 0, time.UTC))
+
+	// Ids in mint order: a ULID's first 48 bits are its millisecond
+	// timestamp, so the later operation's id sorts higher.
+	for _, s := range []struct {
+		id   string
+		kind domain.OperationType
+	}{
+		{"op_01K2Z9X7QK8V3H4M5N6P7R8S9T", domain.OpTypeApply},
+		{"op_01K2ZB4M8QF0R7V3X5Y6Z7A8Q9", domain.OpTypeConfig},
+	} {
+		stmt := domain.Attest(domain.OperationRecord{
+			ID:        s.id,
+			Type:      s.kind,
+			Status:    domain.StatusSucceeded,
+			StartedAt: instant,
+		}, domain.AttestationInputs{})
+
+		body, err := json.MarshalIndent(stmt, "", "  ")
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, s.id+".json"), body, 0o644))
+	}
+
+	// Nil deps on purpose, and it is an assertion rather than a shortcut:
+	// `attest log <path>` has to work on an auditor's laptop, which is not
+	// an installation. A future edit that reaches for state here panics in
+	// this test, which is exactly the signal wanted.
+	entries, err := ops.AttestLog(context.Background(), nil, ops.VerifyOptions{Path: dir})
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	require.Equal(t, entries[0].Started, entries[1].Started, "the two did not tie")
+
+	assert.Equal(t, string(domain.OpTypeConfig), entries[0].Kind,
+		"the later operation of a tied pair printed second, so a listing that "+
+			"says newest first is backwards inside every second")
+	assert.Equal(t, string(domain.OpTypeApply), entries[1].Kind)
 }

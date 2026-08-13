@@ -92,20 +92,24 @@ func AttestLog(ctx context.Context, d *Deps, opts VerifyOptions) ([]LogEntry, er
 	// all, so ordering by what the documents say keeps the answer about the
 	// history rather than about how the files were named.
 	//
-	// Ties are broken by id, and that is for **determinism, not for
-	// truth**. Ids are ULIDs minted from a random tail, so two statements
-	// sharing a timestamp cannot be ordered by their ids in any meaningful
-	// sense -- what this buys is that the same directory always prints in
-	// the same order, rather than flapping between runs and making an
-	// operator wonder what changed. Operations serialise on the deployment
-	// lock, so a real tie means two machines' records in one directory.
+	// **Ties are ordinary, and are broken by id.** `domain.Time` truncates
+	// to the second, so an `apply` and the `config` that follows it in a
+	// script share a timestamp — this is not an edge case, it is what a
+	// deploy script produces. Left at that, a tied pair would print in
+	// filename order, which is oldest first: a listing that says "newest
+	// first" and is backwards inside every second.
 	//
-	// An unreadable file carries no time and sorts last, where it stays
-	// visible rather than leading a listing nobody reads past.
+	// Descending id is the right refinement rather than merely a stable
+	// one. Operation ids are ULIDs, whose first 48 bits are the mint time in
+	// milliseconds, so lexicographic order *is* time order at a thousand
+	// times the resolution the timestamp survives at. An id from somewhere
+	// else degrades to a lexicographic comparison, which is no worse than
+	// the arbitrary order it replaces.
+	//
+	// An unreadable file needs no case of its own: its time never parsed,
+	// so it is the zero time, and newest-first puts it at the end — visible
+	// rather than leading a listing nobody reads past.
 	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Unreadable != "" || out[j].Unreadable != "" {
-			return out[j].Unreadable != "" && out[i].Unreadable == ""
-		}
 		if !out[i].Started.Equal(out[j].Started.Time) {
 			return out[i].Started.After(out[j].Started.Time)
 		}

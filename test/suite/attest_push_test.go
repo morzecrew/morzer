@@ -141,6 +141,107 @@ func TestAttestPushSendsWhatAnEarlierFailureLeftBehind(t *testing.T) {
 	assert.Contains(t, again.Summary, "already on")
 }
 
+// A statement whose signature did not make it is not pushed.
+//
+// This command's own failure mode: the document goes first, so a transfer that
+// died between the two leaves a statement on the target and no signature. If
+// only the document decided, the document would be there, nothing would be
+// missing, `doctor` would say all clear, and the record an auditor holds could
+// never be checked -- a remedy that cannot repair the damage its own
+// interruption causes.
+func TestAStatementWhoseSignatureDidNotArriveIsPushedAgain(t *testing.T) {
+	h := verifyHarness(t)
+	_, offsite := h.withAttestationTarget(t)
+	applyOnce(t, h)
+
+	require.NotEmpty(t, pushedStatements(t, offsite))
+
+	// The interrupted push, reconstructed: the document arrived, the
+	// signature did not.
+	remote := filepath.Join(offsite, "attestations")
+	for _, name := range pushedStatements(t, offsite) {
+		if filepath.Ext(name) == ".minisig" {
+			require.NoError(t, os.Remove(filepath.Join(remote, name)))
+		}
+	}
+
+	// doctor must be saying so in the meantime, or nobody would run the
+	// command that repairs it.
+	before, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+	for _, res := range before.Results {
+		if res.ID == "backup.attestations-pushed" {
+			assert.Equal(t, events.CheckWarn, res.Status,
+				"a statement the target cannot verify was reported as pushed")
+		}
+	}
+
+	report, err := ops.AttestPush(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.Contains(t, report.Summary, "pushed",
+		"a statement missing its signature on the target was reported as already there")
+
+	var sigs int
+	for _, name := range pushedStatements(t, offsite) {
+		if filepath.Ext(name) == ".minisig" {
+			sigs++
+		}
+	}
+	assert.Positive(t, sigs, "the signature was never sent again")
+}
+
+// A dry run says what it would send and sends nothing.
+func TestAttestPushDryRunSendsNothing(t *testing.T) {
+	h := verifyHarness(t)
+	inst, offsite := h.withAttestationTarget(t)
+
+	bare := inst
+	bare.Backup.Targets = nil
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), bare))
+	applyOnce(t, h)
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	result, err := ops.AttestPush(context.Background(), h.Deps, ops.Options{DryRun: true})
+	require.NoError(t, err)
+	assert.Contains(t, result.Summary, "would push")
+	assert.Empty(t, pushedStatements(t, offsite),
+		"a dry run sent an attestation to the target")
+}
+
+// A target that does not answer is reported, and reported as unreachable
+// rather than as done.
+//
+// The distinction is what the command's exit code is built on: a statement
+// still missing is not a failure of `attest push` -- it pushed what it could,
+// and `doctor` keeps saying so -- but a target that could not be reached at all
+// is what a cron job needs to hear about.
+func TestAttestPushReportsATargetThatDoesNotAnswer(t *testing.T) {
+	h := verifyHarness(t)
+	inst, _ := h.withAttestationTarget(t)
+
+	bare := inst
+	bare.Backup.Targets = nil
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), bare))
+	applyOnce(t, h)
+
+	// A target path under a regular file: nothing can create the directory.
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + blocker + "/offsite"}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	result, err := ops.AttestPush(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err, "an unreachable target is a finding to report, not an error to raise")
+
+	report, ok := result.Data.(ops.AttestPushReport)
+	require.True(t, ok)
+	assert.True(t, report.Unreachable(),
+		"a target that did not answer was reported as though the push had worked")
+	assert.Contains(t, result.Summary, "did not answer")
+	require.Len(t, report.Targets, 1)
+	assert.NotEmpty(t, report.Targets[0].Error)
+}
+
 // `doctor` keeps saying it after the warning has scrolled past.
 func TestDoctorReportsStatementsThatAreOnlyOnThisMachine(t *testing.T) {
 	h := verifyHarness(t)

@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -86,6 +87,56 @@ func TestNothingToCompareIsNotAFinding(t *testing.T) {
 		// such a statement actually looks like.
 		assert.Empty(t, domain.CompareConfigToLive(configured("", rendered), "", other))
 	})
+}
+
+// A step's text is not all the manager's own words, and the statement travels.
+//
+// A failing hook contributes the last three lines of its stderr to the step's
+// error, and a hook ships with the release. `lastLines` bounds it by lines,
+// which is no bound at all when a line can be a megabyte -- and P4 pushes the
+// document to a bucket automatically.
+func TestAStepsTextCannotCarryWhateverAHookPrinted(t *testing.T) {
+	record := domain.OperationRecord{
+		ID: "op_1", Type: domain.OpTypeApply, Status: domain.StatusFailed,
+		Steps: []domain.StepRecord{{
+			ID:     "run-hook",
+			Status: domain.StepFailed,
+			Error: "hook \"migrate\" failed with exit code 1: " +
+				strings.Repeat("A", 100_000),
+		}},
+	}
+
+	stmt := domain.Attest(record, domain.AttestationInputs{})
+	require.Len(t, stmt.Predicate.Steps, 1)
+
+	got := stmt.Predicate.Steps[0].Error
+	assert.LessOrEqual(t, len(got), domain.MaxAttestedText+len("… [truncated]"),
+		"a hook's output reached a signed document unbounded")
+	assert.Contains(t, got, "exit code 1", "the diagnosis was truncated away")
+	assert.Contains(t, got, "truncated",
+		"a silent truncation reads as the whole sentence")
+}
+
+// And escape sequences, for the same reason: a record that travels is read in
+// terminals, in logs and in web views.
+func TestAStepsTextCannotCarryAnEscapeSequence(t *testing.T) {
+	record := domain.OperationRecord{
+		ID: "op_1", Type: domain.OpTypeApply, Status: domain.StatusFailed,
+		Steps: []domain.StepRecord{{
+			ID:      "run-hook",
+			Status:  domain.StepFailed,
+			Message: "everything is\x1b[2J\x1b[H fine",
+			Error:   "line one\nline two\ttabbed",
+		}},
+	}
+
+	step := domain.Attest(record, domain.AttestationInputs{}).Predicate.Steps[0]
+	assert.NotContains(t, step.Message, "\x1b",
+		"an escape sequence in a signed document is a payload aimed at whoever opens it")
+	assert.NotContains(t, step.Error, "\n")
+	assert.NotContains(t, step.Error, "\t")
+	assert.Contains(t, step.Error, "line one")
+	assert.Contains(t, step.Error, "line two")
 }
 
 // The encoding is injective, which is what stops two different configurations

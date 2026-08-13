@@ -388,7 +388,21 @@ disagree reports drift on every machine.
 The check can say *that* the configuration differs and never how. That is
 decision 4's salt working as intended rather than a limitation to fix.
 
-**A3 — a refused operation files nothing (2026-08-13, P4).**
+**A3 — `morzer attest push`, which §4.7 did not list (2026-08-13, P4).**
+
+P4 names three things: the push, `attest log`, and a `doctor` check for a
+directory that is not being pushed. The check needs a fourth. Its remedy is
+"run this to close the gap", and a check whose advertised remedy does not exist
+is a check that teaches an operator to ignore it — the same defect wave 15
+found when `init --repair` could not record a key that was on disk. So the
+command shipped with the check rather than after it.
+
+It also repairs the push's own failure mode. `pushOne` writes the document
+before the signature, so a transfer that died between the two leaves a
+statement a reader cannot check; counting only documents would have reported
+that target as complete forever. A statement is *there* when its signature is.
+
+**A4 — a refused operation files nothing (2026-08-13, P4).**
 
 Every emission is placed before its operation returns an error, so that failures
 are attested as well as successes (decision 3). An operation the deployment lock

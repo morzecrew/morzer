@@ -87,11 +87,18 @@ func pushOne(ctx context.Context, d *Deps, target ports.TargetRef, file string) 
 	}
 
 	sig, err := os.ReadFile(file + minisigExt)
-	if err != nil {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		// No signature is a state, not a failure: a machine with no key
 		// files unsigned statements, and refusing to push them would
 		// leave the machines with the least evidence keeping all of it.
 		return nil
+	case err != nil:
+		// Anything else -- a permission, a short read -- is a signature
+		// that exists and did not go. Reported, because the alternative
+		// is a target holding a document nobody can check while this
+		// command says it pushed one.
+		return domain.Internal(err, "cannot read the signature beside %s", file)
 	}
 	return d.Objects.PutObject(ctx, target, objectKeyFor(file)+minisigExt, sig)
 }
@@ -132,7 +139,8 @@ type AttestPushReport struct {
 type AttestTargetStatus struct {
 	URL string `json:"url"`
 
-	// Missing is how many local statements are not there.
+	// Missing is how many local statements this target does not hold
+	// completely -- the document, and the signature when there is one.
 	Missing int `json:"missing"`
 
 	// Pushed is how many this run copied.
@@ -269,13 +277,21 @@ func (d *Deps) attestationPushState(
 			there[key] = true
 		}
 		for _, file := range local {
-			// The document alone decides. A statement whose
-			// signature did not make it is *not* counted as
-			// missing: the record is there, an auditor can read it,
-			// and re-pushing every signed statement on every run
-			// because one signature is absent would make the count
-			// an operator watches never reach zero.
-			if key := objectKeyFor(file); !there[key] {
+			// The signature counts as well as the document, and
+			// only because this machine has one to send. Counting
+			// the document alone left the gap this command's own
+			// failure mode creates: `pushOne` writes the document
+			// first, so a transfer that died between the two put a
+			// statement on the target and not its signature --
+			// after which the document was there, nothing was
+			// missing, `doctor` said all clear, and the record an
+			// auditor holds could never be checked.
+			//
+			// A machine with no local signature asks for nothing,
+			// which keeps the count reachable on an installation
+			// that signs nothing at all.
+			key := objectKeyFor(file)
+			if !there[key] || (hasSignature(file) && !there[key+minisigExt]) {
 				status.missing[key] = true
 				status.Missing++
 			}

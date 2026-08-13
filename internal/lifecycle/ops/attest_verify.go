@@ -7,9 +7,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -201,24 +198,16 @@ func statementFiles(path string) ([]string, error) {
 		return []string{path}, nil
 	}
 
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, domain.Internal(err, "cannot read %s", path)
-	}
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		out = append(out, filepath.Join(path, e.Name()))
-	}
-	sort.Strings(out)
-	return out, nil
+	// The same listing `attest push` walks. Two functions reading one
+	// directory for one kind of file is two chances to disagree about what
+	// counts as a statement -- and the count `doctor` reports would then be
+	// about a different set from the one `verify` checked.
+	return localStatements(path)
 }
 
 // readSignature reads the detached signature beside a statement.
 func readSignature(file string) ([]byte, bool) {
-	body, err := os.ReadFile(file + ".minisig")
+	body, err := os.ReadFile(file + minisigExt)
 	if err != nil {
 		return nil, false
 	}
