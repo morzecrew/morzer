@@ -58,10 +58,12 @@ func newFleetPublishCommand(app *App) *cobra.Command {
 			"this machine for whoever is allowed to look.\n\n" +
 			"Nothing here is scheduled. Run it from cron or from a systemd timer\n" +
 			"and it is safe to repeat: it reads what is already at the key first\n" +
-			"and declines to replace a newer row with an older one. That check is\n" +
-			"best effort — a write-only credential cannot perform it, which is the\n" +
-			"credential this design wants, so the report says when it was skipped\n" +
-			"rather than refusing to publish.\n\n" +
+			"and declines to replace a newer row with an older one, or one a newer\n" +
+			"manager wrote. `--force` overrides both, which is the way back when a\n" +
+			"stray document is sitting at the key. That check is best effort — a\n" +
+			"write-only credential cannot perform it, which is the credential this\n" +
+			"design wants, so the report says when it was skipped rather than\n" +
+			"refusing to publish.\n\n" +
 			"A failed publish fails nothing. A row that did not leave is a gap in\n" +
 			"a view whose subject is fine, and this machine still knows everything\n" +
 			"the row would have said.",
@@ -123,8 +125,8 @@ func newFleetListCommand(app *App) *cobra.Command {
 			"at a key naming a different installation is printed carrying that\n" +
 			"problem. A view that quietly dropped what it could not read would\n" +
 			"report health it never observed, which is worse than no view.\n\n" +
-			"**This command cannot authenticate anything, and it says so on every\n" +
-			"run.** The `signature` column says a signature is *there*, never\n" +
+			"**It cannot authenticate anything, and says so on every run.**\n" +
+			"The `signature` column says a signature is *there*, never\n" +
 			"that it checks out — and checking one against the key the row itself\n" +
 			"carries would establish nothing, because a machine overwriting its\n" +
 			"neighbour's row rewrites the payload, the key and the signature\n" +
