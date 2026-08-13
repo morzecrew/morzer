@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -160,6 +161,7 @@ func attestationInputs(
 			ToVersion:     rel.Version().String(),
 			ContentDigest: rel.Digest,
 		}
+		in.Images = attestedImages(rel)
 	}
 	if !from.IsZero() {
 		in.Release.FromVersion = from.String()
@@ -198,6 +200,35 @@ func attestationInputs(
 		DigestPinned:      rel.Digest != "",
 	}
 	return in
+}
+
+// attestedImages records what the release said should run, by repository and
+// digest.
+//
+// From the manifest rather than from the runtime, deliberately: the statement
+// says what the manager *deployed*, and asking the daemon what is running would
+// make the document agree with reality by construction -- which is precisely
+// the comparison `--against-live` exists to perform. A statement that recorded
+// the running state could never disagree with it, and RFC 0025 decision 8 makes
+// the design conditional on that disagreement being possible.
+func attestedImages(rel domain.Release) []domain.AttestedImage {
+	names := make([]string, 0, len(rel.Manifest.Images))
+	for name := range rel.Manifest.Images {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make([]domain.AttestedImage, 0, len(names))
+	for _, name := range names {
+		spec := rel.Manifest.Images[name]
+		digest, _ := spec.Digest()
+		out = append(out, domain.AttestedImage{
+			Ref:    domain.RepositoryOf(spec.Ref),
+			Digest: digest,
+			Origin: string(spec.Source()),
+		})
+	}
+	return out
 }
 
 // schemeOf pulls the scheme out of a source ref -- "oci", "https", "file" --

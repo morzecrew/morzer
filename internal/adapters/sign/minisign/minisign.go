@@ -202,3 +202,27 @@ func sanitiseComment(in string) string {
 	}
 	return out
 }
+
+// Checker verifies detached signatures without holding any key.
+//
+// Stateless, so it is constructed where it is used rather than wired through
+// the whole dependency graph as a singleton.
+type Checker struct{}
+
+func NewChecker() *Checker { return &Checker{} }
+
+var _ ports.SignatureChecker = (*Checker)(nil)
+
+// Check reports whether signature was made over data by publicKey.
+func (c *Checker) Check(data []byte, signature []byte, publicKey string) bool {
+	pk, err := gominisign.NewPublicKey(strings.TrimSpace(publicKey))
+	if err != nil {
+		return false
+	}
+	sig, err := gominisign.DecodeSignature(string(signature))
+	if err != nil {
+		return false
+	}
+	ok, err := pk.Verify(data, sig)
+	return err == nil && ok
+}

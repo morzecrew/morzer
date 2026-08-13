@@ -72,3 +72,22 @@ type Signature struct {
 	// KeyID identifies the key that made it.
 	KeyID string
 }
+
+// SignatureChecker verifies a detached signature against a public key.
+//
+// Separate from Signer because verification needs no private key and no
+// machine: `attest verify` runs against a directory of files, and requiring the
+// signer would mean a statement could only be checked on a host that can also
+// produce new ones. That is the wrong shape for an audit tool -- the auditor is
+// not the machine.
+type SignatureChecker interface {
+	// Check reports whether signature was made over data by publicKey.
+	//
+	// A boolean rather than an error, because the caller is asking a
+	// question with three answers and "no" is one of them: `attest verify`
+	// tries the current key, then each retired key, and a failure to verify
+	// is data rather than a fault. A malformed key or signature is also
+	// false -- there is no outcome it could otherwise produce that the
+	// caller would treat differently.
+	Check(data []byte, signature []byte, publicKey string) bool
+}
