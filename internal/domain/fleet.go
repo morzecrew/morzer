@@ -186,8 +186,13 @@ func NewFleetRow(in FleetRowInputs) FleetRow {
 		Mode:           in.Installation.Mode,
 		Version:        boundedText(in.Version),
 		ManagerVersion: boundedText(in.ManagerVersion),
-		SigningKey:     in.Installation.Signing.PublicKey,
-		PublishedAt:    in.PublishedAt,
+		// Bounded like the rest, and it is not the manager's own words
+		// either: the public key is copied out of installation.yaml,
+		// which an operator can hand-edit, and nothing between that file
+		// and this row checks its shape -- FleetKey validates the product
+		// and the id, and Validate only checks fields are non-empty.
+		SigningKey:  boundedText(in.Installation.Signing.PublicKey),
+		PublishedAt: in.PublishedAt,
 	}
 
 	row.Health = FleetHealth{
@@ -345,6 +350,66 @@ func (r FleetRow) Validate() error {
 		return ValidationError(nil, "it says when nothing was published")
 	}
 	return nil
+}
+
+// Bounded returns the row with every free-text field made safe to render.
+//
+// **The rule that governs writing a row governs reading one, and only the
+// writing half was wired.** `NewFleetRow` bounds what this machine publishes,
+// on the argument that the text is not all the manager's own words. A row read
+// back is worse in every respect: the bytes are chosen by whoever can write to
+// a target several machines share, the reader is a laptop in the middle of an
+// incident, and the output goes to a terminal.
+//
+// `encoding/json` refuses a raw control character in a string literal, which
+// makes this look safe from the outside and is not the check: `\u001b` is
+// perfectly legal JSON and decodes to an escape. A row carrying
+// `"version": "1.0.0\u001b[2J\u001b[1;1HALL SYSTEMS NOMINAL"` clears the
+// screen of whoever lists the fleet and writes its own line in place of the
+// table.
+//
+// Applied after Validate rather than inside it, because Validate answers a
+// question and this changes a value -- and because a caller that only wants the
+// verdict must not silently get a different document back.
+//
+// Product and InstallationID are bounded too, even though the reader overwrites
+// them from the key it parsed: they are published fields, a `--json` consumer
+// reads them, and a field that is sanitised only because something downstream
+// happens to replace it is one refactor from being unsanitised.
+func (r FleetRow) Bounded() FleetRow {
+	// The bound is the one field a legitimate row fills past
+	// MaxAttestedText -- FleetBound is 330 characters, and truncating it
+	// would mangle the single sentence that tells a reader what the row
+	// proves, on every honest row in the fleet. Replaced rather than
+	// trimmed: whatever a remote row claims here, the only text worth
+	// showing a reader is the one this manager can vouch for, and a row
+	// that disagrees is telling the reader something about its own bound
+	// that the reader must not act on anyway.
+	r.Bound = FleetBound
+
+	r.Product = boundedText(r.Product)
+	r.InstallationID = boundedText(r.InstallationID)
+	r.Mode = Mode(boundedText(string(r.Mode)))
+	r.Version = boundedText(r.Version)
+	r.ManagerVersion = boundedText(r.ManagerVersion)
+	r.SigningKey = boundedText(r.SigningKey)
+	r.Health.Problem = boundedText(r.Health.Problem)
+	r.Drift.Problem = boundedText(r.Drift.Problem)
+
+	if r.LastOperation != nil {
+		op := *r.LastOperation
+		op.ID = boundedText(op.ID)
+		op.Kind = boundedText(op.Kind)
+		op.Outcome = boundedText(op.Outcome)
+		r.LastOperation = &op
+	}
+
+	// Detached, so bounding a row cannot reach into the one it was built
+	// from -- the same promise copyCount makes on the way out.
+	r.Health.Services = copyCount(r.Health.Services)
+	r.Health.Running = copyCount(r.Health.Running)
+	r.Drift.Targets = copyCount(r.Drift.Targets)
+	return r
 }
 
 // Age is how long ago this row was published, as of now.

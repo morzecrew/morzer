@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -218,13 +219,38 @@ func FleetList(ctx context.Context, d *Deps, opts FleetListOptions) (FleetReport
 func (d *Deps) fleetRowsOn(
 	ctx context.Context, target ports.TargetRef, now time.Time, stale time.Duration,
 ) []FleetRowStatus {
-	keys, err := d.Objects.ObjectKeys(ctx, target, domain.FleetPrefix)
+	listed, err := d.Objects.ObjectKeys(ctx, target, domain.FleetPrefix)
 	if err != nil {
 		return []FleetRowStatus{{
 			Target:  target.String(),
 			Key:     domain.FleetPrefix,
-			Problem: domain.AsError(err).Message,
+			Problem: domain.BoundedText(domain.AsError(err).Message),
 		}}
+	}
+
+	// A listing prefix is a string match, not a path one.
+	//
+	// Asking a store for `fleet` is answered with `fleet-old/notes.txt` as
+	// readily as with `fleet/demo/…`, because every adapter filters on
+	// `strings.HasPrefix`. Left in, those keys became rows carrying "not a
+	// fleet row's key" -- and since a problem row makes `fleet ls` exit
+	// non-zero, an unrelated directory on a shared target turned a healthy
+	// fleet into a failing command.
+	//
+	// Filtered here rather than by listing `fleet/`, which cannot be asked
+	// for: `guardObjectKey` refuses a prefix that `path.Clean` would change,
+	// so the trailing slash is rejected before any adapter sees it. Widening
+	// that guard would loosen the same check attestations rely on, for a
+	// problem this line solves.
+	//
+	// Dropping them rather than reporting them is the right reading of
+	// decision 4: a key outside this namespace is not a fleet row that could
+	// not be read, it is somebody else's object.
+	keys := make([]string, 0, len(listed))
+	for _, key := range listed {
+		if strings.HasPrefix(key, domain.FleetPrefix+"/") {
+			keys = append(keys, key)
+		}
 	}
 
 	present := make(map[string]bool, len(keys))
@@ -233,6 +259,8 @@ func (d *Deps) fleetRowsOn(
 	}
 
 	var out []FleetRowStatus
+	var fetched int
+
 	for _, key := range keys {
 		if strings.HasSuffix(key, fleetSigExt) {
 			// A signature whose row is there is accounted for by
@@ -242,17 +270,51 @@ func (d *Deps) fleetRowsOn(
 			// and a signature they did not.
 			if !present[strings.TrimSuffix(key, fleetSigExt)] {
 				out = append(out, FleetRowStatus{
-					Target: target.String(), Key: key,
+					Target: target.String(), Key: domain.BoundedText(key),
 					Problem: "a signature with no row beside it",
 				})
 			}
 			continue
 		}
 
+		// One fetch per row, and the row count is bounded.
+		//
+		// Every object is capped at ports.MaxObjectBytes, which bounds
+		// each fetch and not the number of them -- and the number is
+		// chosen by whoever can write to the prefix, which §9 says is
+		// every machine in the fleet plus whoever holds one of their
+		// credentials. A flooded prefix would otherwise cost this
+		// reader one request and one allocation per key, on a laptop,
+		// during the incident that made somebody run it.
+		//
+		// The cap is *reported*, never silent: a truncated listing that
+		// looked complete would be the failure this whole design is
+		// written against, so the excess becomes a row saying how much
+		// was not read.
+		if fetched >= MaxFleetRows {
+			out = append(out, FleetRowStatus{
+				Target: target.String(), Key: domain.FleetPrefix,
+				Problem: fmt.Sprintf(
+					"this target holds more than %d rows; %d were not read, so this "+
+						"listing is incomplete", MaxFleetRows, len(keys)-fetched),
+			})
+			break
+		}
+		fetched++
+
 		out = append(out, d.fleetRowAt(ctx, target, key, now, stale, present))
 	}
 	return out
 }
+
+// MaxFleetRows bounds how many rows one target contributes to a listing.
+//
+// Generous: a fleet this design is built for is twelve machines, and a hundred
+// times that is still a table nobody reads. It is not a capacity limit, it is a
+// bound on what a writer with access to the prefix can make this reader do --
+// and reaching it produces a row saying the listing is incomplete rather than a
+// shorter table that looks whole.
+const MaxFleetRows = 1000
 
 // fleetRowAt reads one key.
 func (d *Deps) fleetRowAt(
@@ -263,12 +325,25 @@ func (d *Deps) fleetRowAt(
 	stale time.Duration,
 	present map[string]bool,
 ) FleetRowStatus {
-	status := FleetRowStatus{Target: target.String(), Key: key, Signature: FleetUnsigned}
+	// The key is bounded before it is stored on the status, not after.
+	//
+	// It came out of a listing of a target several machines can write to, so
+	// it is remote text like any other -- and it is the one field that
+	// reaches the terminal on the path where *nothing else* does: a key that
+	// will not parse has no row behind it, and the table prints the key
+	// itself in both the name column and the problem table.
+	status := FleetRowStatus{
+		Target:    target.String(),
+		Key:       domain.BoundedText(key),
+		Signature: FleetUnsigned,
+	}
 
-	// Parsed before it is fetched. The keys came out of a prefix several
-	// machines write to, so `fleet/../../etc/passwd` has to be a finding
-	// rather than a read -- the transports refuse it too, and this layer
-	// must not depend on being saved by the one below it.
+	// Parsed before it is fetched, and parsed from the *original* key: the
+	// bounded copy exists to be displayed, and using it here would let a
+	// dropped control character change which object is fetched. The keys came
+	// out of a prefix several machines write to, so `fleet/../../etc/passwd`
+	// has to be a finding rather than a read -- the transports refuse it too,
+	// and this layer must not depend on being saved by the one below it.
 	product, id, err := domain.ParseFleetKey(key)
 	if err != nil {
 		status.Problem = domain.AsError(err).Message
@@ -283,17 +358,20 @@ func (d *Deps) fleetRowAt(
 
 	body, err := d.Objects.GetObject(ctx, target, key)
 	if err != nil {
-		status.Problem = domain.AsError(err).Message
+		// The adapter's message quotes the key it was asked for.
+		status.Problem = domain.BoundedText(domain.AsError(err).Message)
 		return status
 	}
 
 	var row domain.FleetRow
 	if err := json.Unmarshal(body, &row); err != nil {
-		status.Problem = "it is not a fleet row: " + err.Error()
+		// The decoder's message quotes the input, so it is bounded like
+		// everything else that arrived here.
+		status.Problem = domain.BoundedText("it is not a fleet row: " + err.Error())
 		return status
 	}
 	if err := row.Validate(); err != nil {
-		status.Problem = domain.AsError(err).Message
+		status.Problem = domain.BoundedText(domain.AsError(err).Message)
 		return status
 	}
 
@@ -304,11 +382,23 @@ func (d *Deps) fleetRowAt(
 	// installation from the one whose key it occupies was either published
 	// to the wrong place or put there by somebody else. Neither is a row to
 	// display as that installation's status.
+	//
+	// **Compared before the row is bounded**, and the order is the check.
+	// Bounding drops control characters, so a row naming `demo\u001b` would
+	// become `demo` and match a key it does not belong at -- sanitising
+	// first would hand an attacker a way through the one check this phase
+	// has. The message is bounded instead, since it quotes what it refused.
 	if row.Product != product || row.InstallationID != id {
-		status.Problem = "the row says it is " + row.Product + "/" + row.InstallationID +
-			", which is not the installation whose key it is at"
+		status.Problem = domain.BoundedText(
+			"the row says it is " + row.Product + "/" + row.InstallationID +
+				", which is not the installation whose key it is at")
 		return status
 	}
+
+	// Bounded once it has passed every check, and before anything can render
+	// it. Every string in it came off a target several machines can write to;
+	// see FleetRow.Bounded for what that costs if it does not happen.
+	row = row.Bounded()
 
 	status.Row = &row
 	status.Age = fleetAge(row.Age(now))
