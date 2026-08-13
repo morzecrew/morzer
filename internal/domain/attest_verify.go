@@ -179,7 +179,7 @@ func VerifyChain(statements []Statement) []ChainBreak {
 // LiveMismatch is one way the running deployment differs from what the newest
 // statement says was deployed.
 type LiveMismatch struct {
-	// Kind is what disagrees: "image", "missing", "unattested".
+	// Kind is what disagrees: "image", "missing", "config".
 	Kind string `json:"kind"`
 
 	// Subject names the service or image the mismatch is about.
@@ -283,6 +283,54 @@ func CompareToLive(stmt Statement, live []LiveImage) []LiveMismatch {
 		}
 	}
 	return out
+}
+
+// CompareConfigToLive reports whether the configuration on disk still digests
+// to what the statement recorded.
+//
+// The other half of RFC 0025 §4.7's promise, and the half that was missing: a
+// config "edited in place" is named there alongside a swapped image as
+// something `--against-live` catches, and comparing images alone left the
+// commonest hand-edit of all -- somebody opening the compose file -- invisible.
+//
+// It is the same shape as the image comparison and not the same evidence.
+// Images are compared item by item, so a mismatch can name the service. The
+// configuration is one salted digest over the whole rendered set, by
+// construction: publishing per-file digests of a small parameter space is what
+// decision 4's salt exists to prevent. So this can say *that* the configuration
+// differs and never *how* -- which is the trade the design already made, stated
+// here so a reader of the output is not left wondering.
+//
+// Silent in the two cases where there is nothing to compare rather than nothing
+// wrong: a statement carrying no digest (an operation that rendered nothing, or
+// a machine with no salt), and an installation with no salt to re-derive one.
+// Reporting drift because the evidence is absent would put a finding on every
+// machine that predates schema 6.
+func CompareConfigToLive(stmt Statement, salt string, onDisk map[string][]byte) []LiveMismatch {
+	want := stmt.Predicate.Config.RenderedDigest
+	if want == "" || strings.TrimSpace(salt) == "" {
+		return nil
+	}
+
+	got := SaltedConfigDigest(salt, CanonicalConfig(onDisk))
+	if got == want {
+		return nil
+	}
+
+	// An empty digest means nothing of the attested configuration is on
+	// disk, which is a different sentence from "it differs" and sends an
+	// operator somewhere else entirely.
+	detail := "the rendered configuration on disk does not match the newest statement"
+	if got == "" {
+		detail = "the configuration this statement attested is not on disk"
+	}
+	return []LiveMismatch{{
+		Kind:     "config",
+		Subject:  "configuration",
+		Expected: want,
+		Actual:   got,
+		Detail:   detail,
+	}}
 }
 
 // expectedDigests renders the attested set for a message, so an operator

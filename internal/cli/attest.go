@@ -22,7 +22,81 @@ func newAttestCommand(app *App) *cobra.Command {
 			"produced those bytes. Not that the bytes are true, and not that the\n" +
 			"machine was uncompromised when it signed.",
 	}
-	cmd.AddCommand(installationScope(newAttestVerifyCommand(app)))
+	cmd.AddCommand(
+		installationScope(newAttestLogCommand(app)),
+		installationScope(newAttestVerifyCommand(app)),
+		installationScope(newAttestPushCommand(app)),
+	)
+	return cmd
+}
+
+func newAttestLogCommand(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "log [path]",
+		Short: "List what this machine has recorded, newest first",
+		Long: "What the statements say, without asking whether to believe them.\n\n" +
+			"That is `attest verify`'s question, and it is kept separate on\n" +
+			"purpose: an operator reading a timeline during an incident should\n" +
+			"not have it withheld because a signature is missing, and one asking\n" +
+			"whether a record can be trusted should not be answered by a listing.\n\n" +
+			"The `signed` column says a signature is *there*, never that it\n" +
+			"checks out.\n\n" +
+			"With no path, the installation's own statements are listed.",
+		Example: "  morzer attest log\n" +
+			"  morzer attest log --json | jq -r '.data.entries[0].operation'",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var path string
+			if len(args) == 1 {
+				path = args[0]
+			}
+			entries, err := ops.AttestLog(cmd.Context(), app.Deps, ops.VerifyOptions{
+				Options: app.operationOptions(),
+				Path:    path,
+			})
+			if err != nil {
+				return err
+			}
+			return app.render(attestationLogView(entries))
+		},
+	}
+	return cmd
+}
+
+func newAttestPushCommand(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "push",
+		Short: "Copy statements that are only on this machine to the targets",
+		Long: "Statements are pushed as they are written, to the same targets this\n" +
+			"installation keeps its backups on. A push that fails does **not**\n" +
+			"fail the operation being recorded -- the inverse of what a backup\n" +
+			"does, because a backup that did not leave is a data-loss risk that\n" +
+			"has already materialised, while a record that did not leave is a gap\n" +
+			"whose local copy is still here.\n\n" +
+			"This is what closes that gap afterwards, and what `doctor` names.\n" +
+			"It sends only what is not already there, so it is safe to run from\n" +
+			"cron.",
+		Example: "  morzer attest push\n" +
+			"  morzer attest push --dry-run",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := ops.AttestPush(cmd.Context(), app.Deps, app.operationOptions())
+			if err != nil {
+				return err
+			}
+			app.finish(result)
+
+			// Non-zero when a target did not answer, so a cron job
+			// finds out. Statements that are simply still missing
+			// are not a failure of this command: it pushed what it
+			// could, and `doctor` is what keeps saying so.
+			report, ok := result.Data.(ops.AttestPushReport)
+			if ok && report.Unreachable() {
+				return domain.Preflight(nil, "some targets did not answer")
+			}
+			return nil
+		},
+	}
 	return cmd
 }
 
@@ -87,6 +161,26 @@ func newAttestVerifyCommand(app *App) *cobra.Command {
 	cmd.Flags().BoolVar(&againstLive, "against-live", false,
 		"compare the newest successful statement against what is running now")
 	return cmd
+}
+
+// attestationLogView maps the listing onto the view that draws it, the same
+// seam and for the same reason as verificationView.
+func attestationLogView(entries []ops.LogEntry) views.AttestationLog {
+	out := views.AttestationLog{Entries: make([]views.LogRow, 0, len(entries))}
+	for _, e := range entries {
+		out.Entries = append(out.Entries, views.LogRow{
+			Operation:  e.Operation,
+			Kind:       e.Kind,
+			Outcome:    e.Outcome,
+			Started:    e.Started,
+			From:       e.From,
+			To:         e.To,
+			Signed:     e.Signed,
+			File:       e.File,
+			Unreadable: e.Unreadable,
+		})
+	}
+	return out
 }
 
 // verificationView maps the operation's report onto the view that draws it.

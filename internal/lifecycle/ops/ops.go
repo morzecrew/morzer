@@ -83,6 +83,15 @@ type Deps struct {
 	// working exactly as it did before they existed.
 	Targets ports.BackupTarget
 
+	// Objects is the same registry seen through the half of it that holds
+	// things which are not backups -- attestations, today.
+	//
+	// A second field rather than a type assertion on Targets, so that a
+	// build which wires one and not the other is a wiring decision somebody
+	// made rather than an interface check failing at three in the morning.
+	// Nil in a build that pushes nothing, like every field around it.
+	Objects ports.ObjectStore
+
 	Source     ports.ReleaseSource
 	Verifier   ports.Verifier
 	Health     ports.HealthWaiter

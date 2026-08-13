@@ -909,6 +909,11 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		Secrets:  secrets,
 		Source:   sources,
 		Targets:  targets,
+		// The same registry again, seen through the half of it that
+		// holds things which are not backups. One object, two fields,
+		// because a build that pushes backups and not attestations is a
+		// decision somebody could want to make.
+		Objects: targets,
 		// Both, always. The checksum verifier answers "is this the
 		// artifact I was told to expect"; minisign answers "did a key
 		// this machine trusts publish it". A build with only the first

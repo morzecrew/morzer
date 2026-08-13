@@ -42,6 +42,21 @@ import (
 // above. The one thing it must never do is claim to have written a statement it
 // did not.
 func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, in domain.AttestationInputs) {
+	// A record with no id is an operation that never ran: the deployment
+	// lock was held by somebody else, or the unfinished-operation gate
+	// refused it before the engine started. There is nothing to attest.
+	//
+	// Every caller emits *before* returning its error, deliberately, so
+	// that a failure is attested as well as a success -- and that is the
+	// path that reaches here with a zero record. Without this guard a
+	// refusal filed a statement naming no operation, no kind and no
+	// outcome, at the path `<attestations>/.json`, overwritten by the next
+	// one; `attest verify` then read it back as a statement, because it is
+	// one. A guard must not journal its own refusals.
+	if rec.ID == "" {
+		return
+	}
+
 	// No early return on a missing bus. Writing the record is the job;
 	// warning about a failure to write it is a courtesy, and making the
 	// first conditional on the second would mean a build wired without a
@@ -99,6 +114,30 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 		return
 	}
 
+	// Signed if this machine can, and pushed either way.
+	//
+	// **Either way** is the deliberate part, and it is why this is a
+	// sequence rather than a chain of early returns -- which is what it was,
+	// and which meant an unsigned statement never left the machine. A
+	// build with no signer, or a machine that has never minted a key,
+	// produces exactly the record that most needs to survive its disk, and
+	// keeping it local because it lacked a signature would withhold
+	// evidence from the installations with the least of it.
+	sign(ctx, d, rec, in, path, body)
+
+	// Off the machine last, after whatever was going to be written locally
+	// is written: a push before that would copy bytes this machine does not
+	// have, and a record that dies with the disk is the gap RFC 0025 §1 is
+	// about.
+	pushStatement(ctx, d, in.Installation, path)
+}
+
+// sign writes the detached signature beside a statement, or says why it could
+// not. Never fails the emission; the statement is already on disk.
+func sign(
+	ctx context.Context, d *Deps, rec domain.OperationRecord,
+	in domain.AttestationInputs, path string, body []byte,
+) {
 	if d.Signer == nil {
 		// An unsigned statement is still a record, and this build signs
 		// nothing. Said out loud rather than left for a reader to infer
@@ -117,7 +156,7 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 		return
 	}
 
-	if err := atomicfs.WriteFile(path+".minisig", sig.Encoded, 0o644); err != nil {
+	if err := atomicfs.WriteFile(path+minisigExt, sig.Encoded, 0o644); err != nil {
 		d.warnf("cannot write the attestation signature for %s: %s",
 			rec.ID, domain.AsError(err).Message)
 	}

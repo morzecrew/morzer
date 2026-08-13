@@ -159,11 +159,48 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 		Data: next,
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, runErr)
+
+	// The last of RFC 0025 §4.1's five operations to attest, and the one an
+	// audit reads most often: a parameter change alters what the deployment
+	// *is* without moving a version, so nothing else in the record would
+	// show it happened.
+	//
+	// It moves no version, so it carries no from_version and joins no
+	// chain -- exactly like `apply`, and for the same reason.
+	if !opts.DryRun {
+		current, err := d.State.CurrentRelease(ctx)
+		if err == nil {
+			emitAttestation(ctx, d, result.Record,
+				attestationInputs(attestedParameters(ctx, d, inst), rel, current,
+					domain.Version{}, renderedConfigFor(result.State)))
+		}
+	}
+
 	if runErr != nil {
 		return out, runErr
 	}
 
 	return out, nil
+}
+
+// attestedParameters is the parameter set as it actually stands now.
+//
+// Re-read rather than assumed, and this is the one operation where the
+// difference is the point: a config statement's whole subject is the parameter
+// set, so recording the values the operation *intended* would make the one
+// statement about configuration the one most likely to describe something that
+// is not there. A compensated failure has already put the previous set back,
+// and a compensation that itself failed has left the new one.
+//
+// The pre-operation copy is the fallback, because a statement carrying slightly
+// stale parameter names is better than no statement at all -- the names are the
+// least load-bearing field in it, and the digest beside them is taken over what
+// was rendered either way.
+func attestedParameters(ctx context.Context, d *Deps, before domain.Installation) domain.Installation {
+	if now, err := d.State.LoadInstallation(ctx); err == nil {
+		return now
+	}
+	return before
 }
 
 // mergeParameters applies the requested changes and validates the outcome.

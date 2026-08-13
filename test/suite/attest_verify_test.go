@@ -46,16 +46,32 @@ func verifyHarness(t *testing.T) *harness {
 // attested runs one apply so there is a statement to verify.
 func attested(t *testing.T, h *harness) domain.Installation {
 	t.Helper()
+	inst := signingInstallation(t, h)
+	applyOnce(t, h)
+	return inst
+}
+
+// signingInstallation installs and gives the machine an identity to sign with.
+//
+// Separate from the apply because `h.install()` writes a whole installation:
+// anything a test configured before it -- targets, above all -- is gone.
+// Tests that need both call this first and apply afterwards.
+func signingInstallation(t *testing.T, h *harness) domain.Installation {
+	t.Helper()
 	inst := h.install()
 	key, err := h.Deps.Signer.EnsureKey(context.Background())
 	require.NoError(t, err)
 	inst.Signing.PublicKey = key.Line
 	inst.AttestationSalt = "0123456789abcdef0123456789abcdef"
 	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
-
-	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
-	require.NoError(t, err)
 	return inst
+}
+
+// applyOnce runs one apply, which files one statement.
+func applyOnce(t *testing.T, h *harness) {
+	t.Helper()
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
 }
 
 // statementsOnDisk lists the statements this installation has filed.

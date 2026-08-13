@@ -165,13 +165,24 @@ func AttestVerify(ctx context.Context, d *Deps, opts VerifyOptions) (VerifyRepor
 				WithHint("--against-live needs one operation that succeeded; " +
 					"every statement here records a failure")
 		}
-		live, err := d.liveImages(ctx, inst)
+		rel, err := d.currentReleaseFor(ctx)
+		if err != nil {
+			return report, err
+		}
+		live, err := d.liveImages(ctx, inst, rel)
 		if err != nil {
 			return report, err
 		}
 		report.LiveChecked = true
 		report.LiveAgainst = newest.Predicate.Operation.ID
 		report.Live = domain.CompareToLive(newest, live)
+
+		// Two comparisons, one list. They answer the same question about
+		// different halves of a deployment -- what is running, and what
+		// it was configured with -- and an operator who has to ask for
+		// the second one separately is an operator who will not.
+		report.Live = append(report.Live,
+			domain.CompareConfigToLive(newest, inst.AttestationSalt, configOnDisk(d, rel))...)
 	}
 
 	return report, nil
@@ -221,19 +232,13 @@ func readSignature(file string) ([]byte, bool) {
 // and CompareToLive treats that as "cannot tell" rather than as a mismatch --
 // an unpinned image is a manifest that never promised a digest, not evidence
 // that somebody swapped one.
-func (d *Deps) liveImages(ctx context.Context, inst domain.Installation) ([]domain.LiveImage, error) {
+func (d *Deps) liveImages(
+	ctx context.Context, inst domain.Installation, rel domain.Release,
+) ([]domain.LiveImage, error) {
 	if d.Runtime == nil {
 		return nil, domain.Internal(nil, "no runtime configured")
 	}
 
-	current, err := d.State.CurrentRelease(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rel, err := d.resolveCurrentRelease(ctx, current)
-	if err != nil {
-		return nil, err
-	}
 	cfg, err := d.runtimeConfig(rel, inst, "")
 	if err != nil {
 		return nil, err
@@ -257,6 +262,40 @@ func (d *Deps) liveImages(ctx context.Context, inst domain.Installation) ([]doma
 		})
 	}
 	return out, nil
+}
+
+// currentReleaseFor loads the installed release, for the comparisons that need
+// to know what should be there.
+func (d *Deps) currentReleaseFor(ctx context.Context) (domain.Release, error) {
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil {
+		return domain.Release{}, err
+	}
+	return d.resolveCurrentRelease(ctx, current)
+}
+
+// configOnDisk reads the configuration files the release renders, as they are
+// now.
+//
+// Keyed by the same target paths the render step wrote them to, because that is
+// what the attested digest was taken over -- the statement carries the digest
+// and never the paths, so the release manifest is the only thing that can say
+// which files were in it.
+//
+// A file that cannot be read is left out rather than reported here. That makes
+// the digest differ, which is the finding, and it keeps the decision about what
+// a missing file *means* in one place instead of two.
+func configOnDisk(d *Deps, rel domain.Release) map[string][]byte {
+	out := make(map[string][]byte, len(rel.Manifest.Configuration))
+	for _, cfg := range rel.Manifest.Configuration {
+		target := d.configTarget(cfg.Target)
+		body, err := os.ReadFile(target)
+		if err != nil {
+			continue
+		}
+		out[target] = body
+	}
+	return out
 }
 
 // newestSucceeded returns the latest statement whose operation succeeded.

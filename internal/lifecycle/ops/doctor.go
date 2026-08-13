@@ -199,6 +199,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			checks = append(checks, d.checkBackupTargetFreshness(inst))
 		}
 	}
+	if d.Objects != nil && inst.Backup.HasTargets() {
+		checks = append(checks, d.checkAttestationsPushed(inst))
+	}
 
 	return checks
 }
@@ -501,6 +504,66 @@ func (d *Deps) checkSigningIdentity() preflight.Check {
 			}
 
 			return preflight.OK("key %s", key.KeyID)
+		},
+	}
+}
+
+// checkAttestationsPushed reports statements that are only on this machine.
+//
+// RFC 0025 P4's check, and the one that makes the emission path's warning
+// honest: a failed push is deliberately not a failed operation, so the gap it
+// leaves has to be visible somewhere afterwards or the design has simply chosen
+// not to notice. A warning at the moment it happens scrolls past; this is what
+// is still saying it tomorrow.
+//
+// Registered only when the installation configures targets. An installation
+// with none has made a choice -- an air-gapped one has made it deliberately --
+// and a permanent finding on every such machine is how an operator learns to
+// read past `doctor`.
+//
+// Never fatal, and reachability failures are reported as what they are: this
+// asks whether a *record* left the machine, and no answer to that question is a
+// reason to stop a deployment.
+func (d *Deps) checkAttestationsPushed(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "backup.attestations-pushed",
+		Category:    preflight.CategoryBackup,
+		Description: "attestations have reached the configured targets",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			report, err := d.attestationPushState(ctx, inst)
+			if err != nil {
+				return preflight.Fail("", "%s", domain.AsError(err).Message)
+			}
+			if report.Local == 0 {
+				return preflight.OK("no attestations on this machine yet")
+			}
+
+			// Unreachable first. A target that did not answer has
+			// an unknown number of statements missing, and
+			// reporting the ones it could count as though that were
+			// the total would understate the gap on exactly the
+			// target that has a problem.
+			var unreachable []string
+			for _, t := range report.Targets {
+				if t.Error != "" {
+					unreachable = append(unreachable, t.URL)
+				}
+			}
+			if len(unreachable) > 0 {
+				return preflight.Warn(
+					"run `morzer attest push` once it is reachable",
+					"cannot tell whether attestations have reached %s",
+					strings.Join(unreachable, ", "))
+			}
+
+			if missing := report.Missing(); missing > 0 {
+				return preflight.Warn(
+					"run `morzer attest push`",
+					"%d of %d attestation(s) are only on this machine",
+					missing, report.Local)
+			}
+			return preflight.OK("%d attestation(s), all pushed", report.Local)
 		},
 	}
 }

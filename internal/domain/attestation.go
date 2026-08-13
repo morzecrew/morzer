@@ -1,9 +1,11 @@
 package domain
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -270,6 +272,42 @@ func Attest(rec OperationRecord, in AttestationInputs) Statement {
 			Steps: steps,
 		},
 	}
+}
+
+// CanonicalConfig encodes a set of rendered configuration files as the bytes
+// the digest is taken over.
+//
+// Canonical, and injective. Map iteration order is random in Go, so digesting
+// the concatenation directly would produce a different digest for identical
+// configuration on every run.
+//
+// Both the target and the content are length-prefixed rather than delimited.
+// Delimiters alone are not injective when a target may contain the delimiter: a
+// path holding a newline could be chosen so that one target-and-content pair
+// encodes identically to a different one, and two different configurations
+// would share a digest.
+//
+// **Here rather than beside the operation that renders**, because the verifier
+// re-derives this from the files on disk. Two encoders for one digest is one
+// encoder too many: they would agree on the day they were written and drift
+// into a drift detector that reports drift on every machine.
+func CanonicalConfig(rendered map[string][]byte) []byte {
+	if len(rendered) == 0 {
+		return nil
+	}
+
+	targets := make([]string, 0, len(rendered))
+	for target := range rendered {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+
+	var buf bytes.Buffer
+	for _, target := range targets {
+		fmt.Fprintf(&buf, "%d:%s%d:", len(target), target, len(rendered[target]))
+		buf.Write(rendered[target])
+	}
+	return buf.Bytes()
 }
 
 // SaltedConfigDigest is HMAC-SHA256 of the rendered configuration under the
