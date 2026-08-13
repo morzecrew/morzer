@@ -93,6 +93,9 @@ func main() {
 		if err := writeCommandIndex(root, pages); err != nil {
 			fail(err)
 		}
+		if err := writeSupportInventory(root); err != nil {
+			fail(err)
+		}
 		return
 	}
 
@@ -102,6 +105,7 @@ func main() {
 	checkContracts(&rep, root, pages)
 	checkCommands(&rep, pages)
 	checkCommandIndex(&rep, root, pages)
+	checkSupportInventory(&rep, root)
 	checkReleaseAssets(&rep, root, pages)
 
 	if rep.failed() {

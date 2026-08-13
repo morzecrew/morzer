@@ -107,7 +107,8 @@ func TestAConfigChangeFilesAStatement(t *testing.T) {
 		// `http_port: 9000` would publish a port to whoever the
 		// document travels to.
 		assert.Contains(t, stmt.Predicate.Config.ParameterNames, "http_port")
-		assert.NotContains(t, string(body), "9000")
+		assert.NotContains(t, withoutDigests(string(body)), "9000",
+			"a parameter value reached the attestation")
 
 		// It moves no version, so it joins no chain -- exactly like an
 		// apply, and for the same reason.

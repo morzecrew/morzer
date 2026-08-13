@@ -546,6 +546,11 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupOperate, installationScope(newStatsCommand(app))),
 		grouped(groupOperate, installationScope(newExecCommand(app))),
 
+		// And the one that packages all of the above for somebody who is
+		// not at this terminal, which is where an operator looks after
+		// the four above have not answered it.
+		grouped(groupOperate, perCommandScope(newSupportCommand(app))),
+
 		grouped(groupData, perCommandScope(newAttestCommand(app))),
 		grouped(groupData, installationScope(newBackupCommand(app))),
 		grouped(groupData, installationScope(newRestoreCommand(app))),

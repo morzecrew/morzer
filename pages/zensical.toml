@@ -49,6 +49,7 @@ nav = [
         "operating/installing-offline.md",
         "operating/notifications.md",
         "operating/looking-inside.md",
+        "operating/asking-for-help.md",
         "operating/several-installations.md",
         "operating/recovering-a-lost-machine.md",
     ] },
@@ -75,6 +76,7 @@ nav = [
         "reference/variables.md",
         "reference/hooks.md",
         "reference/attestations.md",
+        "reference/support-bundle.md",
     ] },
     { "Explanation" = [
         "explanation/architecture.md",

@@ -26,10 +26,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MORZER="${MORZER:-${ROOT_DIR}/morzer}"
+# Absolute for the same reason WORK is, below: two steps invoke it after a `cd`.
+MORZER="$(cd "$(dirname "${MORZER}")" && pwd)/$(basename "${MORZER}")"
 REGISTRY="${ACCEPTANCE_REGISTRY:-localhost:5000}"
 REGISTRY_NAME="morzer-acceptance-registry"
 WORK="${ACCEPTANCE_WORK:-$(mktemp -d -t morzer-acceptance-XXXXXX)}"
 mkdir -p "${WORK}"
+# Absolute from here on, the same way ROOT_DIR is resolved above.
+#
+# `mktemp -d` already answers absolutely, so this only matters when a caller
+# supplies ACCEPTANCE_WORK -- and it did not matter at all until the support
+# bundle steps below, which are the only two commands in this script that run
+# from inside ${WORK} rather than from wherever it was invoked. A relative
+# ACCEPTANCE_WORK made ${ROOT} and every redirection target resolve a second
+# time against the new directory, so the run looked for ${WORK}/${WORK}/root.
+WORK="$(cd "${WORK}" && pwd)"
 ROOT="${WORK}/root"
 
 # Deliberately not the bundle's default of 18080. The whole point of the
@@ -641,6 +652,60 @@ info "$(echo "${refusal}" | jq -r '.error.hint')"
 
 step "doctor, after everything"
 "${MORZER}" --root "${ROOT}" doctor
+
+# ----------------------------------------------------------------------------
+# The support bundle, on the one installation that has actually lived
+#
+# Here rather than earlier because everything above it is what makes the
+# measurement mean anything: this installation has run init, apply, three
+# configuration changes, a backup, a restore, an update killed mid-flight, a
+# resume and a refused rollback. RFC 0024 §11.3 owed the log bound a number from
+# a populated deployment rather than a guess, and a bundle taken from a fresh
+# install would have measured an empty journal.
+
+step "support bundle --preview writes nothing and says what would leave"
+"${MORZER}" --root "${ROOT}" --json support bundle --preview >"${WORK}/support-preview.json" ||
+	fail "support bundle --preview failed: $(cat "${WORK}/support-preview.json")"
+jq -e '.data.preview == true and (.data.path // "") == ""' \
+	"${WORK}/support-preview.json" >/dev/null ||
+	fail "--preview reported a path: $(jq -c '.data | {preview, path}' "${WORK}/support-preview.json")"
+# The refusals are enforced in Go against the archive's bytes; what this checks
+# is the operator-facing half -- that the preview names the components rather
+# than reporting a total somebody has to trust.
+for component in journal.jsonl doctor.json manifest.yaml meta.json; do
+	jq -e --arg c "${component}" '[.data.entries[] | select(.name == $c)] | length == 1' \
+		"${WORK}/support-preview.json" >/dev/null ||
+		fail "the preview does not name ${component}"
+done
+info "$(jq -r '.data.entries | length' "${WORK}/support-preview.json") component(s) named, nothing written"
+
+step "support bundle produces an archive a stranger can open"
+(cd "${WORK}" && "${MORZER}" --root "${ROOT}" --json support bundle >"${WORK}/support.json") ||
+	fail "support bundle failed: $(cat "${WORK}/support.json")"
+BUNDLE=$(jq -r '.data.path' "${WORK}/support.json")
+[ -f "${BUNDLE}" ] || fail "support bundle reported ${BUNDLE}, which does not exist"
+
+# With `tar`, not with the manager: the recipient of this file has neither
+# morzer nor a reason to install it.
+tar --zstd -tf "${BUNDLE}" >"${WORK}/support-entries.txt" 2>/dev/null ||
+	fail "the archive does not open with tar --zstd"
+grep -qx 'meta.json' "${WORK}/support-entries.txt" ||
+	fail "the archive has no meta.json: $(cat "${WORK}/support-entries.txt")"
+
+# The measurement RFC 0024 §11.3 asked for, printed rather than asserted: it is
+# a fact about a deployment, and a threshold here would fail the build the first
+# time somebody added a step to this script.
+# And once in the form an operator actually sees, which is the output the
+# documentation quotes. A sample nobody captured from a running binary is a
+# sample that drifts the first time a column moves.
+step "the same run, as an operator sees it"
+(cd "${WORK}" && "${MORZER}" --root "${ROOT}" support bundle) ||
+	fail "support bundle failed in plain mode"
+
+BUNDLE_BYTES=$(stat -c%s "${BUNDLE}")
+JOURNAL_BYTES=$(jq -r '[.data.entries[] | select(.name == "journal.jsonl") | .bytes] | first // 0' "${WORK}/support.json")
+LOG_BYTES=$(jq -r '[.data.entries[] | select(.name | startswith("logs/")) | .bytes] | add // 0' "${WORK}/support.json")
+info "archive ${BUNDLE_BYTES} B compressed; journal ${JOURNAL_BYTES} B; logs ${LOG_BYTES} B uncompressed"
 
 # ----------------------------------------------------------------------------
 # The three-tier example
