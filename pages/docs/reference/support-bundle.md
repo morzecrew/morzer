@@ -56,13 +56,30 @@ part of it is raw output from your product.
 
 The only raw bytes from your containers in the archive, and the only
 component whose safety depends on the redactor rather than on its shape.
-`meta.json` records how many redactions were applied to each file. A count
-of zero is **not** proof that a file was clean — it is proof that no
-registered secret value appeared in it, which is a smaller claim.
 
 | File | Component | Why |
 | --- | --- | --- |
 | `logs/` | Container logs | The single most useful component and the only raw vendor bytes in the archive. Bounded by lines and by bytes, passed through the same redactor `morzer logs` uses, and omitted entirely rather than included unfiltered when that redactor cannot be armed. |
+
+## What redaction actually promises
+
+**Every** component is scrubbed on its way into the archive, not only the
+one classified above. The class says where a component's bytes came
+from; redaction is about *when* they were written, and most of these
+were written long before you ran this command. The journal is the clear
+case: it is appended to across every operation this installation has
+ever run, and a message that embedded a secret was written at a moment
+the manager may not have known that secret yet.
+
+`meta.json` records how many values were replaced in each file. A count
+of zero is **not** proof that a file was clean — it is proof that no
+value this installation currently holds appeared in it, which is a
+smaller claim. A secret that was rotated away, or one that was never
+declared to the manager at all, is not something it can recognise.
+
+Container logs are the exception that is enforced rather than promised:
+if the secret values cannot be loaded, they are left out of the archive
+entirely and `meta.json` says so. Everything else still ships.
 
 ## Before you send one
 

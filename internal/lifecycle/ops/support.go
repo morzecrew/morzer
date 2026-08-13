@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 
@@ -127,10 +128,9 @@ type supportSource struct {
 
 // supportCollectors is every collector, in the order the entries appear.
 //
-// `logs/` is classified in the inventory and has no collector here: it is the
-// one component that is raw vendor bytes, and it arrives in P3 with the tests
-// that prove the redactor handles it. §9 is blunt about why that order and not
-// the other: P2 without P3 is a leak generator with a progress bar.
+// `logs/` is last for the same reason it shipped last: it is the only component
+// that is raw vendor bytes, and §9 is blunt that collecting it before the phase
+// which proves redaction works would be "a leak generator with a progress bar".
 var supportCollectors = []supportCollector{
 	{Name: "manifest.yaml", Collect: collectManifest},
 	{Name: "installation.yaml", Collect: collectInstallation},
@@ -141,6 +141,121 @@ var supportCollectors = []supportCollector{
 	{Name: "releases.json", Collect: collectReleases},
 	{Name: "services.json", Collect: collectServices},
 	{Name: "manager.json", Collect: collectManager},
+	{Name: "logs/", Collect: collectLogs},
+}
+
+// The bound on a captured log stream (RFC 0024 §9, §11.3).
+//
+// A container log stream is unbounded, and an archive somebody has to email is
+// not. Both limits apply: lines first because that is the unit an operator
+// thinks in, bytes second because one line can be a megabyte of stack trace.
+//
+// §11.3 owes these numbers a measurement on a populated deployment and §12 A4
+// records what was taken. The shape it settled: everything else in the archive
+// is small and roughly fixed, so this bound alone decides the artifact's size,
+// and it is set where the file stays attachable to a ticket while holding the
+// minutes around a failure.
+const (
+	supportLogLines = 2000
+	supportLogBytes = 1 << 20
+)
+
+// collectLogs captures each service's recent output (RFC 0024 P3).
+//
+// The only component that is raw vendor bytes, which is why it arrives last and
+// with the phase that proves the redactor handles it. Two things are load-bearing
+// here and neither is the capture itself:
+//
+//   - It is **omitted entirely** when redaction could not be armed. 0021 lets
+//     `morzer logs` print an unfiltered stream and say so, because an operator
+//     reading their own terminal can decide what to do with what they see. An
+//     archive cannot: it is read by somebody else, later, who has only the file
+//     and the count in `meta.json`. Decision 5 refuses a `--raw` flag for the
+//     same reason, and shipping unredactable logs by default would be that flag
+//     with no way to turn it off.
+//   - The bound is recorded when it truncates, so a reader knows the silence
+//     before the first line is a limit rather than the start of the incident.
+func collectLogs(ctx context.Context, d *Deps, _ *supportSource) ([]supportFile, error) {
+	if d.Redactor == nil {
+		return nil, domain.InstallationError(nil,
+			"no redactor is wired, so container logs cannot be scrubbed and are not collected")
+	}
+
+	stream, err := StreamLogs(ctx, d, LogsOptions{
+		Tail:       supportLogLines,
+		Structured: true,
+		Redact:     true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+
+	if !stream.RedactionArmed {
+		return nil, domain.SecretsError(nil,
+			"the secret values could not be loaded, so container logs could not be "+
+				"scrubbed and are not collected; everything else is here")
+	}
+
+	perService := map[string]*strings.Builder{}
+	truncated := map[string]bool{}
+	err = stream.Lines(func(line ports.LogLine) error {
+		name := logFileName(line)
+		b, ok := perService[name]
+		if !ok {
+			b = &strings.Builder{}
+			perService[name] = b
+		}
+		if b.Len()+len(line.Text)+1 > supportLogBytes {
+			truncated[name] = true
+			return nil
+		}
+		if !line.At.IsZero() {
+			b.WriteString(line.At.UTC().Format(time.RFC3339) + " ")
+		}
+		b.WriteString(line.Text)
+		b.WriteByte('\n')
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(perService))
+	for name := range perService {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make([]supportFile, 0, len(names))
+	for _, name := range names {
+		body := perService[name].String()
+		if truncated[name] {
+			// At the top, where somebody opening the file reads it
+			// before deciding the incident started here.
+			body = fmt.Sprintf("[truncated at %d bytes and %d lines by `morzer support bundle`]\n",
+				supportLogBytes, supportLogLines) + body
+		}
+		out = append(out, supportFile{Name: "logs/" + name, Data: []byte(body)})
+	}
+	return out, nil
+}
+
+// logFileName is the per-service file a line belongs in.
+//
+// By service rather than by container, so a product with three replicas of one
+// service produces one readable file. A line the runtime wrote about the stream
+// itself belongs to no service and goes to `runtime.log` rather than being
+// dropped -- it is often the line that explains why the rest stopped.
+func logFileName(line ports.LogLine) string {
+	switch {
+	case line.Service != "":
+		return line.Service + ".log"
+	case line.Container != "":
+		return line.Container + ".log"
+	default:
+		return "runtime.log"
+	}
 }
 
 // supportMetaName is the archive's own index, which is not a collector: it
@@ -222,7 +337,7 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 			})
 			continue
 		}
-		files = append(files, collected...)
+		files = append(files, scrub(d, collected)...)
 	}
 
 	files = append(files, supportMeta(&report, files))
@@ -476,6 +591,38 @@ func supportMeta(report *SupportReport, files []supportFile) supportFile {
 		body = []byte("{}")
 	}
 	return supportFile{Name: supportMetaName, Data: append(body, '\n')}
+}
+
+// scrub runs every collected file through the redactor and records what it
+// removed.
+//
+// Every component, not only the ones classified `redact`, and the reason is
+// §11.1's defect at the scale of an archive. A component's class describes
+// where its bytes came from -- `redact` is the one that is raw vendor output --
+// but redaction here is about *when* the bytes were written, and most of these
+// components were written long before this command ran.
+//
+// The journal is the clear case. It is appended to across every operation this
+// installation has ever run, and a step message that embedded a secret was
+// written at a moment when the redactor may not have been told about that
+// secret yet; `logging`'s own `TestRegisteringAfterWithIsAKnownLimit` pins that
+// the log handler captures eagerly and keeps the clear copy. Redacting at
+// collection time is what makes registration order stop mattering: whatever is
+// on disk, whenever it was written, is scrubbed against what this installation
+// holds now.
+//
+// It also means a redaction count is meaningful for every entry rather than for
+// one, which is what makes a zero in that column readable at all.
+func scrub(d *Deps, files []supportFile) []supportFile {
+	if d.Redactor == nil {
+		return files
+	}
+	for i, f := range files {
+		clean, n := d.Redactor.ApplyCount(string(f.Data))
+		files[i].Data = []byte(clean)
+		files[i].Redactions += n
+	}
+	return files
 }
 
 func jsonFile(name string, v any) ([]supportFile, error) {

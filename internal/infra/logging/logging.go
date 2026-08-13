@@ -121,17 +121,35 @@ func (r *Redactor) Values() []string {
 
 // Apply scrubs a string.
 func (r *Redactor) Apply(s string) string {
+	clean, _ := r.ApplyCount(s)
+	return clean
+}
+
+// ApplyCount scrubs a string and reports how many occurrences it replaced.
+//
+// The count exists for the support bundle, which records it per file: an
+// operator deciding whether an archive is safe to send looks at that number
+// first. It is deliberately a count of *replacements*, not of distinct secrets
+// -- a log line holding one password twice is a line where two copies had to go.
+//
+// A zero is not proof that a file was clean, and the documentation says so. It
+// is proof that no registered value appeared in it, which is a smaller claim and
+// the only one this can honestly make.
+func (r *Redactor) ApplyCount(s string) (string, int) {
 	if s == "" {
-		return s
+		return s, 0
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
+	count := 0
 	for _, v := range r.values {
-		if strings.Contains(s, v) {
+		if n := strings.Count(s, v); n > 0 {
+			count += n
 			s = strings.ReplaceAll(s, v, domain.Redacted)
 		}
 	}
-	return s
+	return s, count
 }
 
 const minRedactLength = 6

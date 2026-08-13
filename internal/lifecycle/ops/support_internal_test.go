@@ -52,33 +52,27 @@ func TestNoTwoCollectorsWriteTheSameEntry(t *testing.T) {
 	}
 }
 
-// What is classified and not yet collected, named here so the debt is visible.
+// Every classified component is collected: the inventory and the build agree in
+// both directions.
 //
-// P2 ships every component except container logs, which is the RFC's phase
-// order and not an oversight: logs are the only raw vendor bytes in the
-// archive, and §9 is blunt that shipping them before the phase that proves
-// redaction works is "a leak generator with a progress bar".
-//
-// P3 deletes this list. A test that merely tolerated uncollected rows would
-// tolerate them forever; this one fails when the set changes in either
-// direction, so adding a row without a collector is as loud as forgetting to
-// remove this list once one exists.
-func TestOnlyContainerLogsAreClassifiedAndNotYetCollected(t *testing.T) {
+// This replaces the list P2 carried of components that were classified and not
+// yet collected. That list held exactly one name, `logs/`, and deleting it is
+// what P3 landing means -- so the assertion is now the strong one, and a row
+// added to the page without a collector fails here rather than being tolerated.
+func TestEveryClassifiedComponentIsCollected(t *testing.T) {
 	collected := map[string]bool{}
 	for _, name := range supportProduced() {
 		collected[name] = true
 	}
 
-	var pending []string
 	for _, c := range domain.SupportInventory {
-		if c.Class != domain.SupportNever && !collected[c.Name] {
-			pending = append(pending, c.Name)
+		if c.Class == domain.SupportNever {
+			continue
 		}
+		require.Truef(t, collected[c.Name],
+			"%s is on the reference page and nothing collects it, so the page "+
+				"promises an operator a component the archive does not have", c.Name)
 	}
-
-	require.Equal(t, []string{"logs/"}, pending,
-		"the set of classified-but-uncollected components changed; if this is P3 "+
-			"landing container logs, delete this test")
 }
 
 // supportTitle answers for a per-service log file from its directory row.
