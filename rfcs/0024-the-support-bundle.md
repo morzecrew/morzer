@@ -1,16 +1,19 @@
 # RFC 0024 — The support bundle
 
-- **Status:** 🚧 In progress — **P1–P3 shipped (2026-08-13)**. `morzer support
-  bundle` and `--preview` produce a plaintext archive from eleven components,
-  the inclusion list is generated from the code into
-  [the reference page](../pages/docs/reference/support-bundle.md), and container
-  logs land bounded, per service and scrubbed. §11.3's measurement was taken and
-  is in §12 A4. One decision moved during execution: redaction is applied to
-  **every** component rather than to the one class whose bytes are raw (A3),
-  which is what §11.1's eager-capture defect turns into at the scale of an
-  archive. **P4 (`support.recipients`, encryption, signing, `support inspect`)
-  and P5 (`support redact --check`) are unscheduled**; §10's manifest-window
-  question is still open and still has a deadline.
+- **Status:** 🚧 In progress — **P1–P3 and P5 shipped (2026-08-13)**. `morzer
+  support bundle` and `--preview` produce a plaintext archive from eleven
+  components, the inclusion list is generated from the code into
+  [the reference page](../pages/docs/reference/support-bundle.md), container
+  logs land bounded, per service and scrubbed, and `support redact --check`
+  points the same redactor at a file an operator was going to send by hand.
+  §11.3's measurement was taken and is in §12 A4. Two things moved during
+  execution: redaction applies to **every** component rather than to the one
+  class whose bytes are raw (A3), which is what §11.1's eager-capture defect
+  becomes at the scale of an archive; and P5 shipped ahead of P4 because
+  decision 7 is `LOCKED` and says it ships alongside the bundle, which §8
+  contradicted (A6). **P4 — `support.recipients`, encryption, signing and
+  `support inspect` — is unscheduled**, and §10's manifest-window question is
+  still open and still has a deadline.
 - **Scope:** One command that exports a complete, redacted, self-contained account
   of an installation — journal, `doctor` results, resolved manifest, config diff,
   version history, container state and bounded logs — in a form safe to hand to a
@@ -250,7 +253,7 @@ first paragraph what the archive never contains.
   the one that decides whether the feature is safe; P2 without it is a leak
   generator with a progress bar.
 - **P4 — `support.recipients`, encryption, signing, `support inspect`.** Unscheduled; gated on §10's manifest window (§11.4).
-- **P5 — `support redact --check`.** Unscheduled.
+- **P5 — `support redact --check`.** ✅ Shipped 2026-08-13, ahead of P4: decision 7 is `LOCKED` and says it ships alongside the bundle (§12 A6).
 
 ## 9. Risks
 
@@ -381,6 +384,43 @@ the log bound stayed reasoned rather than fitted: 2000 lines and 1MiB per
 service, which at a 200-byte line is 400KiB before compression. Everything else
 in the archive is small and roughly fixed, so that bound alone decides the
 artifact's size.
+
+**A6 — decision 7 outranked the phasing: `support redact --check` ships now
+(2026-08-13, self-audit).**
+
+The RFC says two different things about it. Decision 7 is graded `LOCKED` and
+says it "ships alongside"; §8 lists it as P5, after the encryption phase. The
+self-audit walked the decision table rather than the diff, which is what made
+the contradiction visible at all — conformance looked perfect against §8.
+
+Resolved in the `LOCKED` row's favour, and the row's own argument is why:
+"cheap, and the feature most likely to actually prevent a leak". The archive is
+safe by construction; the thing an operator pastes into a chat window is not,
+and until this shipped the feature had nothing to offer that case. `--check` is
+a required flag rather than a default because it is the only mode that exists —
+the alternative, printing a redacted file to stdout, is an output surface
+nothing has specified, and a command that rewrote an operator's file would
+destroy the evidence they were about to send.
+
+§8's P5 entry is therefore empty and stays as a record of the order that was
+planned.
+
+**A7 — three narrowings the self-audit found and closed (2026-08-13).**
+
+- **`manager.json` carried the version and not the build.** §3.2 asks for
+  "manager version and build", and this file is also the archive's statement
+  about which redaction logic ran (A2) — a version alone cannot distinguish a
+  release binary from a patched host. The commit and date are stamped at link
+  time into the command layer, so they travel as an option rather than as new
+  `Deps` fields: they are an input to one report, not a capability the lifecycle
+  layer acquired.
+- **A deployment that logged nothing produced neither a file nor an
+  explanation.** Every other component states its gap in `meta.json`, and logs
+  are the one place a missing file is most suspicious. "There was no output" is
+  now said rather than left as an absence a reader has to interpret.
+- **`--dir`, which §3.1 does not mention**, writes the archive somewhere other
+  than the working directory. Recorded here because an unrecorded addition is
+  the same defect as an unrecorded departure, in the other direction.
 
 **A5 — §3.2's "values marked non-sensitive" has no referent (2026-08-13, P2).**
 

@@ -84,6 +84,21 @@ secret values cannot be loaded — a missing sops key, most often — the logs a
 left out of the archive entirely and `meta.json` says why. Everything else
 still ships.
 
+## Checking something you are sending by hand
+
+The archive is safe by construction. A log you tailed into a file, or a config
+you exported to paste into a chat window, is not — and that is the leak this
+feature would otherwise watch happen beside it.
+
+```console
+$ morzer support redact --check /tmp/paste.txt
+2 secret value(s) found in paste.txt
+  do not send this file as it is
+```
+
+It reports and writes nothing. The file is yours, and rewriting it would
+destroy what you were about to send.
+
 ## There is no flag to turn redaction off
 
 A flag like that becomes the one every support article tells you to pass, and

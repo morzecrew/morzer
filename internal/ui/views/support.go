@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui"
@@ -104,4 +105,36 @@ func humanBytes(n int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+func init() {
+	ui.Register(ui.View[ops.RedactCheckReport]{
+		Rich:  func(w io.Writer, t *theme.Theme, r ops.RedactCheckReport) { emit(w, redactCheckDoc(doc(w, t), r)) },
+		Plain: func(w io.Writer, r ops.RedactCheckReport) { emit(w, redactCheckDoc(plainDoc(w), r)) },
+	})
+}
+
+// redactCheckDoc says what was found, and refuses to say "clean".
+//
+// The unarmed case gets its own sentence rather than a zero, because a count of
+// zero from a check that never ran is the one reading that would send somebody
+// to paste the file with confidence.
+func redactCheckDoc(d *ui.Doc, r ops.RedactCheckReport) *ui.Doc {
+	if !r.Armed {
+		d.Title("nothing could be checked")
+		d.Text(2, "the secret values could not be loaded, so this file was not examined")
+		return d
+	}
+
+	if r.Redactions == 0 {
+		d.Title("no known secret found in " + filepath.Base(r.Path))
+		d.Text(2, "no value this installation currently holds appears in it — which is")
+		d.Text(2, "not the same as clean: a rotated or undeclared secret is not something")
+		d.Text(2, "the manager can recognise")
+		return d
+	}
+
+	d.Title(fmt.Sprintf("%d secret value(s) found in %s", r.Redactions, filepath.Base(r.Path)))
+	d.Text(2, "do not send this file as it is")
+	return d
 }

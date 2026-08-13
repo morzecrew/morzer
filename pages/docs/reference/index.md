@@ -45,6 +45,7 @@ here. The reference column points at the section that documents it; the
 | `morzer exec` | Run a command inside a running service | [commands](commands.md#exec) |
 | `morzer support` | Produce evidence somebody else can read | [support-bundle](support-bundle.md#what-a-support-bundle-contains) |
 | `morzer support bundle` | Write one archive describing this installation, safe to send | [support-bundle](support-bundle.md#what-a-support-bundle-contains) |
+| `morzer support redact` | Say whether a file holds any of this installation's secrets | [support-bundle](support-bundle.md#what-a-support-bundle-contains) |
 | `morzer attest` | Read back the signed record of what this machine did | [attestations](attestations.md#attestations) |
 | `morzer attest log` | List what this machine has recorded, newest first | [attestations](attestations.md#attestations) |
 | `morzer attest verify` | Check the signatures, the chain, and what is running now | [attestations](attestations.md#attestations) |

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -250,4 +252,119 @@ func TestNoLogsRemovesTheComponentAndRecordsIt(t *testing.T) {
 	}
 	require.Len(t, reasons, 1, "the archive does not record that logs were left out")
 	require.Contains(t, reasons[0], "--no-logs")
+}
+
+// `support redact --check` answers about a file the operator holds.
+//
+// RFC 0024 decision 7 grades this LOCKED and says it ships alongside the
+// bundle, which the phasing section contradicts by listing it as P5. The self-
+// audit resolved that in the LOCKED row's favour: the archive is safe by
+// construction and the thing somebody pastes into a chat window is not.
+func TestRedactCheckFindsASecretInAFileTheOperatorHolds(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	holdSecret(h)
+
+	paste := filepath.Join(t.TempDir(), "paste.txt")
+	require.NoError(t, os.WriteFile(paste,
+		[]byte("DB_URL=postgres://app:"+leaked+"@db/app\nand again "+leaked+"\n"), 0o600))
+
+	report, err := ops.SupportRedactCheck(context.Background(), h.Deps, paste)
+	require.NoError(t, err)
+	require.True(t, report.Armed)
+	require.Equal(t, 2, report.Redactions)
+
+	// And it changed nothing: the operator was about to send this file, and
+	// a check that rewrote it would have destroyed the evidence.
+	after, err := os.ReadFile(paste)
+	require.NoError(t, err)
+	require.Contains(t, string(after), leaked)
+}
+
+// A file with nothing in it reports zero, and the report says the check ran.
+//
+// `Armed` is what separates "checked and found nothing" from "never checked",
+// and a caller reading the count alone cannot tell them apart -- which is the
+// reading that sends somebody to paste a file with confidence.
+func TestRedactCheckSeparatesCleanFromUnchecked(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	holdSecret(h)
+
+	paste := filepath.Join(t.TempDir(), "clean.txt")
+	require.NoError(t, os.WriteFile(paste, []byte("nothing to see here\n"), 0o600))
+
+	clean, err := ops.SupportRedactCheck(context.Background(), h.Deps, paste)
+	require.NoError(t, err)
+	require.True(t, clean.Armed)
+	require.Zero(t, clean.Redactions)
+
+	h.Secrets.Fail = map[string]error{"Load": errors.New("the sops key is missing")}
+	unchecked, err := ops.SupportRedactCheck(context.Background(), h.Deps, paste)
+	require.NoError(t, err)
+	require.False(t, unchecked.Armed,
+		"an unarmed check reports zero redactions and must not also report that it ran")
+	require.Zero(t, unchecked.Redactions)
+}
+
+// A directory and an oversized file are refused rather than read.
+func TestRedactCheckRefusesWhatItCannotHonestlyAnswer(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	dir := t.TempDir()
+	_, err := ops.SupportRedactCheck(context.Background(), h.Deps, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "directory")
+
+	_, err = ops.SupportRedactCheck(context.Background(), h.Deps,
+		filepath.Join(dir, "nothing-here.txt"))
+	require.Error(t, err)
+}
+
+// A deployment that wrote nothing is an answer, not a missing file.
+//
+// Every other component states its gap in meta.json, and logs are the one place
+// a missing file is most suspicious -- so "there was no output" has to be said
+// rather than left as an absence a reader has to interpret.
+func TestADeploymentThatLoggedNothingSaysSoRatherThanGoingQuiet(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	holdSecret(h)
+	h.Runtime.LogOutput = ""
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps,
+		ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err)
+
+	var reason string
+	for _, o := range report.Omitted {
+		if o.Name == "logs/" {
+			reason = o.Reason
+		}
+	}
+	require.NotEmpty(t, reason,
+		"no log files and no explanation: a reader cannot tell an empty deployment "+
+			"from a component that failed")
+	require.Contains(t, reason, "no log output")
+}
+
+// manager.json carries the build, not only the version.
+//
+// It is the archive's statement about which redaction logic ran (§12 A2), and
+// "1.0.0" cannot distinguish a release binary from a patched host.
+func TestTheArchiveNamesTheBuildThatWroteIt(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps, ops.SupportOptions{
+		Dir:   t.TempDir(),
+		Build: ops.SupportBuild{Commit: "abc1234", Date: "2026-08-13T17:00:00Z"},
+	})
+	require.NoError(t, err)
+
+	manager := archiveEntries(t, report.Path)["manager.json"]
+	require.Contains(t, manager, "abc1234")
+	require.Contains(t, manager, "2026-08-13T17:00:00Z")
+	require.Contains(t, manager, "1.0.0")
 }

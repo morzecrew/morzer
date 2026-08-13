@@ -43,6 +43,10 @@ type SupportOptions struct {
 	// to attach to something.
 	Dir string
 
+	// Build is the link-time stamp for `manager.json`. Empty in a build
+	// that stamps nothing, which is what `go run` produces.
+	Build SupportBuild
+
 	// NoLogs leaves container logs out.
 	//
 	// Not a redaction switch -- decision 5 refuses one of those, and this is
@@ -133,6 +137,20 @@ type supportSource struct {
 	Installation domain.Installation
 	Release      domain.Release
 	HasRelease   bool
+
+	// Build is the link-time stamp, which only the CLI layer knows.
+	Build SupportBuild
+}
+
+// SupportBuild is the binary's own identity, passed in rather than read.
+//
+// The version is already in Deps; the commit and date are stamped at link time
+// into the command layer and have never had a reason to reach an operation
+// before. They travel as an option rather than as new Deps fields because they
+// are an input to one report, not a capability the lifecycle layer has.
+type SupportBuild struct {
+	Commit string
+	Date   string
 }
 
 // supportCollectors is every collector, in the order the entries appear.
@@ -239,6 +257,17 @@ func collectLogs(ctx context.Context, d *Deps, _ *supportSource) ([]supportFile,
 		return nil, err
 	}
 
+	if len(perService) == 0 {
+		// Not silence. A component that produces no files and no
+		// explanation leaves its reader unable to tell "this deployment
+		// wrote nothing" from "this was never collected" -- the exact
+		// ambiguity `meta.json` exists to close for every other
+		// component, and it would be closed everywhere except the one
+		// place where a missing file is most suspicious.
+		return nil, domain.RuntimeError(nil,
+			"the deployment produced no log output to capture")
+	}
+
 	names := make([]string, 0, len(perService))
 	for name := range perService {
 		names = append(names, name)
@@ -249,9 +278,17 @@ func collectLogs(ctx context.Context, d *Deps, _ *supportSource) ([]supportFile,
 	for _, name := range names {
 		body := perService[name].String()
 		if truncated[name] {
-			// At the top, where somebody opening the file reads it
-			// before deciding the incident started here.
-			body = fmt.Sprintf("[truncated at %d bytes and %d lines by `morzer support bundle`]\n",
+			// Names the bound that actually cut, which is always the
+			// byte one here: the line bound is applied by the
+			// runtime as a tail, so a stream that hit *it* arrives
+			// already short and this code cannot tell it apart from
+			// a service that simply said less. Claiming both bounds
+			// would tell a reader their logs were cut at 2000 lines
+			// when they were cut at a megabyte, and send them
+			// looking for the wrong thing.
+			body = fmt.Sprintf(
+				"[truncated by `morzer support bundle` at %d bytes; "+
+					"at most %d lines per service are requested]\n",
 				supportLogBytes, supportLogLines) + body
 		}
 		out = append(out, supportFile{Name: logsPrefix + name, Data: []byte(body)})
@@ -317,7 +354,7 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 	// of a whole archive.
 	armed := d.armRedaction(ctx)
 
-	src := &supportSource{Installation: inst}
+	src := &supportSource{Installation: inst, Build: opts.Build}
 	if rel, ok, err := supportRelease(ctx, d); err != nil {
 		return SupportReport{}, err
 	} else if ok {
@@ -331,10 +368,17 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		ManagerVersion: d.ManagerVersion.String(),
 	}
 	if !armed {
+		// Precisely what happened, because this line is the reader's
+		// only warning. Nothing was scrubbed from *anything* -- not
+		// just from the component that was skipped -- and a reader who
+		// takes "0 redactions" beside this omission as "clean" has
+		// drawn exactly the wrong conclusion.
 		report.Omitted = append(report.Omitted, SupportOmission{
 			Name: "redaction",
-			Reason: "the installation's secret values could not be loaded, so nothing " +
-				"could be scrubbed; components that can carry vendor output were skipped",
+			Reason: "the installation's secret values could not be loaded, so no " +
+				"component was scrubbed and every redaction count below is zero " +
+				"for that reason rather than because nothing was found; container " +
+				"logs were left out entirely",
 		})
 	}
 
@@ -372,7 +416,7 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 	files = append(files, supportMeta(&report, files))
 
 	for _, f := range files {
-		row := SupportEntry{Name: f.Name, Title: supportTitle(f.Name), Bytes: int64(len(f.Data)), Redactions: f.Redactions}
+		row := entryFor(f)
 		report.Entries = append(report.Entries, row)
 		report.TotalBytes += row.Bytes
 	}
@@ -573,10 +617,22 @@ func collectServices(ctx context.Context, d *Deps, _ *supportSource) ([]supportF
 	return jsonFile("services.json", services)
 }
 
-func collectManager(_ context.Context, d *Deps, _ *supportSource) ([]supportFile, error) {
-	return jsonFile("manager.json", map[string]string{
-		"version": d.ManagerVersion.String(),
-	})
+// collectManager records which binary produced the archive.
+//
+// Version *and* build, which §3.2 asks for and the first pass narrowed to the
+// version alone. The commit is what distinguishes two binaries claiming the
+// same version -- a development build and a release, or a patched host -- and
+// this file is also the archive's statement about which redaction logic ran
+// (§12 A2). "1.4.0" is not enough to answer that.
+func collectManager(_ context.Context, d *Deps, src *supportSource) ([]supportFile, error) {
+	manager := map[string]string{"version": d.ManagerVersion.String()}
+	if src.Build.Commit != "" {
+		manager["commit"] = src.Build.Commit
+	}
+	if src.Build.Date != "" {
+		manager["built"] = src.Build.Date
+	}
+	return jsonFile("manager.json", manager)
 }
 
 // supportMeta is the archive's account of itself, and is built last because it
@@ -589,12 +645,7 @@ func collectManager(_ context.Context, d *Deps, _ *supportSource) ([]supportFile
 func supportMeta(report *SupportReport, files []supportFile) supportFile {
 	entries := make([]SupportEntry, 0, len(files))
 	for _, f := range files {
-		entries = append(entries, SupportEntry{
-			Name:       f.Name,
-			Title:      supportTitle(f.Name),
-			Bytes:      int64(len(f.Data)),
-			Redactions: f.Redactions,
-		})
+		entries = append(entries, entryFor(f))
 	}
 
 	meta := struct {
@@ -652,6 +703,21 @@ func scrub(d *Deps, files []supportFile) []supportFile {
 		files[i].Redactions += n
 	}
 	return files
+}
+
+// entryFor is how a collected file is reported, in one place.
+//
+// The printed table and `meta.json` are built from the same function because
+// they are the same claim made to two readers -- the operator at the terminal
+// and whoever opens the archive later -- and two constructions of it would be
+// two chances for those readers to be told different things.
+func entryFor(f supportFile) SupportEntry {
+	return SupportEntry{
+		Name:       f.Name,
+		Title:      supportTitle(f.Name),
+		Bytes:      int64(len(f.Data)),
+		Redactions: f.Redactions,
+	}
 }
 
 func jsonFile(name string, v any) ([]supportFile, error) {
@@ -717,18 +783,15 @@ func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile,
 // archiveDir resolves where the archive goes.
 //
 // An empty `--dir` is the working directory, which is where an operator expects
-// a file they are about to attach to something.
+// a file they are about to attach to something -- and `filepath.Abs` already
+// answers that, because joining the working directory with "" is the working
+// directory. An explicit branch for the empty case was here and a sabotage
+// survived it: the special case could not fail, because the general one was
+// already handling it.
 func archiveDir(dir string) (string, error) {
-	if dir == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return "", domain.Internal(err, "cannot tell where to write the support bundle")
-		}
-		return wd, nil
-	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return "", domain.Internal(err, "cannot resolve %s", dir)
+		return "", domain.Internal(err, "cannot tell where to write the support bundle")
 	}
 	return abs, nil
 }
@@ -745,4 +808,74 @@ func archiveDir(dir string) (string, error) {
 func supportArchiveName(d *Deps, inst domain.Installation) string {
 	return fmt.Sprintf("support-%s-%s-%s.tar.zst",
 		inst.Product, inst.ID, d.now().UTC().Format("20060102T150405Z"))
+}
+
+// ----------------------------------------------------------------------------
+// support redact --check
+
+// RedactCheckReport is what `support redact --check` answers.
+type RedactCheckReport struct {
+	Path  string `json:"path"`
+	Bytes int64  `json:"bytes"`
+
+	// Redactions is how many values this installation holds were found.
+	Redactions int `json:"redactions"`
+
+	// Armed says whether the secret values could be loaded at all.
+	//
+	// Load-bearing, and the reason this is not a bare count: zero
+	// redactions from an unarmed redactor means "nothing was checked",
+	// which is the opposite of what zero looks like. A caller reading the
+	// number without this field can be told the file is clean by a check
+	// that never ran.
+	Armed bool `json:"armed"`
+}
+
+// maxCheckedFile bounds what `--check` will read.
+//
+// The file is an operator's own paste rather than anything this program wrote,
+// so its size is not something the manager controls. Reading it whole is what
+// makes the answer exact -- a secret split across a chunk boundary is exactly
+// the case a streaming reader gets wrong -- so the bound is what keeps that
+// from meaning "read whatever you are pointed at".
+const maxCheckedFile = 32 << 20
+
+// SupportRedactCheck runs this installation's redactor over a file the operator
+// was going to send anyway (RFC 0024 decision 7).
+//
+// Cheap, and the feature most likely to actually prevent a leak: the archive is
+// safe by construction, and the thing an operator pastes into a chat window is
+// not. It reports and writes nothing -- the file is theirs, and a command that
+// rewrote it would have destroyed the evidence they were about to send.
+func SupportRedactCheck(ctx context.Context, d *Deps, path string) (RedactCheckReport, error) {
+	if _, err := d.loadInstallation(ctx); err != nil {
+		return RedactCheckReport{}, err
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return RedactCheckReport{}, domain.Usage("cannot read %s: %v", path, err)
+	}
+	if info.IsDir() {
+		return RedactCheckReport{}, domain.Usage("%s is a directory", path).
+			WithHint("name the file you were going to send")
+	}
+	if info.Size() > maxCheckedFile {
+		return RedactCheckReport{}, domain.Usage(
+			"%s is %d bytes, past the %d this can check", path, info.Size(), maxCheckedFile).
+			WithHint("check the part you were going to paste")
+	}
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return RedactCheckReport{}, domain.Usage("cannot read %s: %v", path, err)
+	}
+
+	armed := d.armRedaction(ctx)
+	report := RedactCheckReport{Path: path, Bytes: int64(len(body)), Armed: armed}
+	if !armed || d.Redactor == nil {
+		return report, nil
+	}
+	_, report.Redactions = d.Redactor.ApplyCount(string(body))
+	return report, nil
 }

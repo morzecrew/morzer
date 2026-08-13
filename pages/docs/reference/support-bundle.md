@@ -97,3 +97,20 @@ There is no flag that disables redaction. A flag like that becomes the
 one every support article tells you to pass, and then redaction is a
 feature nobody uses; if you genuinely need unredacted output, `morzer
 logs --no-redact` makes that choice one file at a time.
+
+## Checking something you are sending by hand
+
+`morzer support redact` with `--check` runs the same redactor over a file
+you were going to send anyway — a log you tailed into a file, a paste, a
+config you exported. It reports and writes nothing: the file is yours,
+and rewriting it would destroy what you were about to send.
+
+```console
+$ morzer support redact --check /tmp/paste.txt
+2 secret value(s) found in paste.txt
+  do not send this file as it is
+```
+
+The archive is safe by construction. The thing you paste into a chat
+window is not, and this is the only part of the feature that can help
+with that.

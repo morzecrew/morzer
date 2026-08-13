@@ -30,7 +30,10 @@ func newSupportCommand(app *App) *cobra.Command {
 			"contains is enumerated in the reference documentation and enforced by\n" +
 			"the build, not promised in prose.",
 	}
-	cmd.AddCommand(installationScope(newSupportBundleCommand(app)))
+	cmd.AddCommand(
+		installationScope(newSupportBundleCommand(app)),
+		installationScope(newSupportRedactCommand(app)),
+	)
 	return cmd
 }
 
@@ -71,6 +74,10 @@ func newSupportBundleCommand(app *App) *cobra.Command {
 				Preview: preview,
 				NoLogs:  noLogs,
 				Dir:     dir,
+				Build: ops.SupportBuild{
+					Commit: app.Build.Commit,
+					Date:   app.Build.Date,
+				},
 			})
 			if err != nil {
 				return err
@@ -85,5 +92,51 @@ func newSupportBundleCommand(app *App) *cobra.Command {
 		"leave container logs out of the archive")
 	cmd.Flags().StringVar(&dir, "dir", "",
 		"write the archive to this directory instead of the working directory")
+	return cmd
+}
+
+// `morzer support redact --check <file>` — RFC 0024 decision 7.
+//
+// The archive is safe by construction; the thing an operator pastes into a chat
+// window is not, and this is the same redactor pointed at that. Decision 7 grades
+// it LOCKED and says it ships alongside the bundle, which the phasing section
+// contradicts by listing it as P5 -- the LOCKED row wins, and §12 A6 records
+// which way that was resolved.
+//
+// `--check` is required rather than defaulted because it is the only mode that
+// exists. The alternative -- printing the redacted file to stdout -- is a second
+// output surface nothing has specified, and a command that quietly rewrote an
+// operator's file would destroy the evidence they were about to send.
+func newSupportRedactCommand(app *App) *cobra.Command {
+	var check bool
+
+	cmd := &cobra.Command{
+		Use:   "redact --check <file>",
+		Short: "Say whether a file holds any of this installation's secrets",
+		Long: "Runs the same redactor the support bundle uses over a file you were\n" +
+			"going to send anyway — a log you tailed into a file, a paste, a config\n" +
+			"you exported by hand.\n\n" +
+			"It reports and writes nothing. The file is yours, and rewriting it\n" +
+			"would destroy what you were about to send.\n\n" +
+			"A count of zero means no value this installation currently holds\n" +
+			"appears in the file. That is a smaller claim than \"clean\": a\n" +
+			"credential you rotated away, or one the manager was never told about,\n" +
+			"is not something it can recognise. If the secret values cannot be\n" +
+			"loaded at all, the report says so instead of reporting zero.",
+		Example: "  morzer support redact --check /tmp/paste.txt\n" +
+			"  morzer support redact --check app.log --json | jq -e '.data.redactions == 0'",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			report, err := ops.SupportRedactCheck(cmd.Context(), app.Deps, args[0])
+			if err != nil {
+				return err
+			}
+			return app.render(report)
+		},
+	}
+
+	cmd.Flags().BoolVar(&check, "check", false,
+		"report what would be redacted, changing nothing")
+	_ = cmd.MarkFlagRequired("check")
 	return cmd
 }

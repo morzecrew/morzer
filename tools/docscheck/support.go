@@ -104,6 +104,20 @@ func renderSupportInventory() string {
 	b.WriteString("feature nobody uses; if you genuinely need unredacted output, `morzer\n")
 	b.WriteString("logs --no-redact` makes that choice one file at a time.\n")
 
+	b.WriteString("\n## Checking something you are sending by hand\n\n")
+	b.WriteString("`morzer support redact` with `--check` runs the same redactor over a file\n")
+	b.WriteString("you were going to send anyway — a log you tailed into a file, a paste, a\n")
+	b.WriteString("config you exported. It reports and writes nothing: the file is yours,\n")
+	b.WriteString("and rewriting it would destroy what you were about to send.\n\n")
+	b.WriteString("```console\n")
+	b.WriteString("$ morzer support redact --check /tmp/paste.txt\n")
+	b.WriteString("2 secret value(s) found in paste.txt\n")
+	b.WriteString("  do not send this file as it is\n")
+	b.WriteString("```\n\n")
+	b.WriteString("The archive is safe by construction. The thing you paste into a chat\n")
+	b.WriteString("window is not, and this is the only part of the feature that can help\n")
+	b.WriteString("with that.\n")
+
 	return b.String()
 }
 

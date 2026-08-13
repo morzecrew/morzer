@@ -1,12 +1,15 @@
 package ops
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The binding between the inventory and the collectors (RFC 0024 decision 2).
@@ -97,4 +100,39 @@ func TestALogFileIsTitledByItsComponent(t *testing.T) {
 	// And a name nothing claims is returned as itself rather than
 	// mislabelled with a neighbour's title.
 	require.Equal(t, "unknown.txt", supportTitle("unknown.txt"))
+}
+
+// A line that belongs to no service still gets a file.
+//
+// The runtime narrates about the stream itself -- a container that exited, a
+// restart loop -- and those lines carry no frame. They are often the ones that
+// explain why the rest stopped, so they go to `runtime.log` rather than being
+// dropped for having no owner.
+func TestALineWithNoServiceStillHasAFile(t *testing.T) {
+	require.Equal(t, "web.log", logFileName(ports.LogLine{Service: "web", Container: "web-1"}))
+
+	// No service attribution -- a container renamed by `container_name:`,
+	// which the project listing cannot map back.
+	require.Equal(t, "web-1.log", logFileName(ports.LogLine{Container: "web-1"}))
+
+	require.Equal(t, "runtime.log", logFileName(ports.LogLine{Text: "container exited"}))
+}
+
+// An empty `--dir` is the working directory, and the answer is absolute.
+//
+// The default an operator hits, and the one no test reached: every suite test
+// passes an explicit directory, so the branch that resolves the working
+// directory was only ever exercised by the acceptance lane.
+func TestAnEmptyDirIsTheWorkingDirectory(t *testing.T) {
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+
+	resolved, err := archiveDir("")
+	require.NoError(t, err)
+	require.Equal(t, wd, resolved)
+
+	relative, err := archiveDir("some/nested/place")
+	require.NoError(t, err)
+	require.True(t, filepath.IsAbs(relative),
+		"a relative --dir stayed relative, so `.data.path` would be too")
 }
