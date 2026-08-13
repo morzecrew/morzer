@@ -276,7 +276,8 @@ func Attest(rec OperationRecord, in AttestationInputs) Statement {
 	}
 }
 
-// MaxAttestedText bounds every free-text field in a statement.
+// MaxAttestedText bounds every free-text field in a document that travels --
+// an attestation's steps, and a fleet row's.
 //
 // Generous enough for the sentence a failing step actually produces, and small
 // enough that no amount of it changes what the document is.
