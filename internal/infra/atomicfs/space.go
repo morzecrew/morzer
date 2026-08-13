@@ -47,6 +47,5 @@ func FreeSpace(path string) (int64, error) {
 		}
 		target = parent
 	}
-	//nolint:gosec // Bavail and Bsize are non-negative in practice.
-	return int64(stat.Bavail) * stat.Bsize, nil
+	return availableBytes(&stat), nil
 }

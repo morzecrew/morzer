@@ -17,7 +17,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -572,15 +571,6 @@ func RequiredParameters(declared map[string]domain.ParameterSpec, set map[string
 				"the release requires a value for %s", strings.Join(missing, ", "))
 		},
 	}
-}
-
-func totalMemory() (int64, error) {
-	var info syscall.Sysinfo_t
-	if err := syscall.Sysinfo(&info); err != nil {
-		return 0, err
-	}
-	//nolint:gosec // Totalram and Unit are non-negative.
-	return int64(info.Totalram) * int64(info.Unit), nil
 }
 
 // NoUnfinishedOperation refuses to start while a previous operation is still

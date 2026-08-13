@@ -8,16 +8,12 @@
 package lock
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -234,55 +230,25 @@ func ownerAlive(o ports.LockOwner) bool {
 	// Only decides when both sides are known. A record written before this
 	// field existed, or a platform that cannot report the start time, falls
 	// back to the PID alone.
-	if o.PIDStart != 0 {
-		if live := pidStart(o.PID); live != 0 && live != o.PIDStart {
-			return false
-		}
+	if o.PIDStart != 0 && startTimeContradicts(o.PIDStart, pidStart(o.PID)) {
+		return false
 	}
 	return true
 }
 
-// pidStart reads the kernel's start time for a PID, in clock ticks since boot.
+// startTimeContradicts reports whether the live start time *proves* the
+// recorded holder is gone.
 //
-// Field 22 of /proc/<pid>/stat, counted after the comm field rather than by
-// splitting the whole line: comm is the executable name in parentheses and may
-// contain spaces, which is what breaks the naive split.
+// Split from the call so the branch can be driven directly, which RFC 0029 §8
+// requires of P1: on darwin `pidStart` cannot answer, and "cannot determine"
+// has to mean "assume the holder is live". That is the direction the whole
+// guard is asymmetric in -- a stale lock costs an operator a wait, a stolen one
+// costs two deployments running against one installation -- and it is not
+// reachable from a Linux test any other way, because provoking a `/proc` read
+// that fails while `kill(pid, 0)` succeeds means racing a process exit.
 //
-// Zero when it cannot be read -- a kernel without procfs, a PID that has
-// already gone. Callers treat zero as "unknown" and fall back.
-func pidStart(pid int) uint64 {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return 0
-	}
-	return parsePIDStart(data)
-}
-
-// parsePIDStart pulls field 22 out of a /proc/<pid>/stat line.
-//
-// Split from the read so the parsing is testable without a process to point
-// at: the shapes that break a naive reader -- a comm with a space in it, a
-// comm with a parenthesis in it, a truncated line -- are the ones no live
-// process on the machine running the tests is likely to have.
-//
-// Zero for anything it cannot read, which callers treat as "unknown".
-func parsePIDStart(data []byte) uint64 {
-	// Last ')' rather than first: comm is the executable name in parentheses
-	// and may itself contain one, so scanning forward finds the wrong end.
-	commEnd := bytes.LastIndexByte(data, ')')
-	if commEnd < 0 || commEnd+2 >= len(data) {
-		return 0
-	}
-	// After "(comm) " the fields are state (3) onward, so the start time --
-	// field 22 -- is the 20th of what remains.
-	fields := strings.Fields(string(data[commEnd+2:]))
-	const startTimeOffset = 19
-	if len(fields) <= startTimeOffset {
-		return 0
-	}
-	v, err := strconv.ParseUint(fields[startTimeOffset], 10, 64)
-	if err != nil {
-		return 0
-	}
-	return v
+// Contradiction needs *both* sides known. Either side zero is silence, and
+// silence is not evidence.
+func startTimeContradicts(recorded, live uint64) bool {
+	return recorded != 0 && live != 0 && recorded != live
 }

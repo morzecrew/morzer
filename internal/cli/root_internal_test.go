@@ -201,13 +201,10 @@ func TestTheLiveViewReadsOnlyFromATerminal(t *testing.T) {
 		})
 	}
 
-	// A real terminal is read from, because an embedder that supplied its
-	// own pty must have its keys read from there.
-	_, slave := openPTY(t)
-	app := &App{Stream: ui.Streams{In: slave}}
-	if got := app.terminalInput(); got != slave {
-		t.Errorf("terminalInput = %v, want the injected terminal", got)
-	}
+	// The other direction -- that a real terminal *is* read from -- needs a
+	// pty to allocate, so it lives beside the rest of the pty tests in
+	// prompt_pty_linux_test.go. Both halves matter and only one of them is
+	// portable.
 }
 
 // TestConfigAcceptsTheRootThatMeansTheSameLayout. `--root /` and a config under

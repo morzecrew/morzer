@@ -154,9 +154,23 @@ os="$(uname -s 2>/dev/null || echo unknown)"
 case "$os" in
 Linux) ;;
 Darwin)
+	# The refusal stands; the advice under it is what changed. It used to
+	# say "build from source" while the tree did not compile for darwin at
+	# all, so an hour of somebody's evening went into a suggestion that
+	# could not work. A refusal that tells you what to do instead has to be
+	# right about it.
+	#
+	# It is careful about what that buys, too: a binary that builds and
+	# runs. Whether it can drive a deployment against Docker Desktop is not
+	# something anyone has run yet, and promising it here would be the same
+	# defect one release later.
 	die "this installs Linux builds only, and there is no macOS build to point
-       at: the release matrix is linux/amd64 and linux/arm64. Build from
-       source with Go 1.25 or newer if you need one."
+       at: the release matrix is linux/amd64 and linux/arm64.
+
+       Building from source does work: \`go build ./cmd/morzer\` with Go 1.25
+       or newer produces a binary that runs on macOS. That is a CLI for
+       authoring bundles and looking around -- running a deployment is a
+       Linux server's job, and this installer will not pretend otherwise."
 	;;
 *) die "unsupported operating system: ${os} (this installs Linux builds only)" ;;
 esac

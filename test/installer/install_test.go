@@ -359,8 +359,25 @@ func TestDetectionRefusesWhatItCannotServe(t *testing.T) {
 		wantRefusal       bool
 		wantSays          []string
 	}{
+		// The advice has to be true, which is the whole of RFC 0029 P1:
+		// this message told people to build from source for as long as
+		// the tree did not compile for darwin, so an hour went into a
+		// suggestion that could not work.
+		//
+		// The command is asserted verbatim because it is the sentence
+		// somebody acts on, and the bound is asserted alongside it
+		// because §5.3 requires the message not to promise that the
+		// binary drives a deployment — a refusal that over-promises is
+		// the same defect one release later.
 		{name: "macOS", os: "Darwin", machine: "arm64", wantRefusal: true,
-			wantSays: []string{"Linux builds only", "no macOS build"}},
+			wantSays: []string{
+				"Linux builds only", "no macOS build",
+				"go build ./cmd/morzer", "Go 1.25",
+				// Short enough not to be broken by the message's own
+				// wrapping, which is what an assertion on rendered
+				// text has to survive.
+				"Linux server's job",
+			}},
 		{name: "32-bit arm", os: "Linux", machine: "armv7l", wantRefusal: true,
 			wantSays: []string{"armv7l", "amd64 and arm64"}},
 		{name: "riscv", os: "Linux", machine: "riscv64", wantRefusal: true,

@@ -1,8 +1,14 @@
 package lock
 
+// The /proc/<pid>/stat parser, which is Linux by subject and not only by
+// plumbing: `pidstart_darwin.go` answers "cannot determine" and has nothing to
+// parse. Named for the file under test so the build constraint is the filename
+// rather than a tag somebody has to notice (RFC 0029 decision 8).
+
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -100,5 +106,33 @@ func TestParsePIDStartAgreesWithProcfs(t *testing.T) {
 	}
 	if got := parsePIDStart(data); got == 0 {
 		t.Fatalf("this process's own stat line parsed as unknown:\n%s", data)
+	}
+}
+
+// A PID with no /proc entry is unknown, not an answer.
+//
+// This is the read half's only branch, and it is the same fail-safe direction
+// `pidstart_darwin.go` takes by construction: zero reaches
+// `startTimeContradicts` as silence, so the holder is assumed live and the lock
+// is not stolen. Anything else here -- a sentinel, a panic, a partial read
+// returned as a number -- would make a departed process contradict a live
+// record, which is the one outcome the guard exists to prevent.
+func TestPIDStartCannotReadAProcessThatIsNotThere(t *testing.T) {
+	t.Parallel()
+
+	// pid_max is the first value the kernel will not assign, so no process can
+	// hold it and the read must fail rather than race a live PID.
+	data, err := os.ReadFile("/proc/sys/kernel/pid_max")
+	if err != nil {
+		t.Skip("no procfs on this platform")
+	}
+	absent, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatalf("cannot read pid_max: %v", err)
+	}
+
+	if got := pidStart(absent); got != 0 {
+		t.Errorf("pidStart(%d) = %d for a PID that cannot exist, want 0 (unknown); "+
+			"a non-zero answer here makes a live holder look recycled", absent, got)
 	}
 }
