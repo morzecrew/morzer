@@ -1,7 +1,15 @@
 # RFC 0029 — macOS as a development host
 
-- **Status:** 📝 Draft — P1 execution-ready (one small PR); P2 design locked,
-  **demand-gated** on §6
+- **Status:** 🚧 In progress — **P1 shipped (2026-08-13)**. `GOOS=darwin go
+  build ./...` and `go vet ./...` are clean for `amd64` and `arm64`, gated in
+  `just ci` as `darwin-check`, and `install.sh`'s advice is true for the first
+  time. Two decisions moved during execution and §15 records both: **11**
+  departed (the prompt keeps its own ioctl pair rather than adopting
+  `x/term.ReadPassword`, which would have reintroduced a race the code exists to
+  close), and **12** resolved to the fail-safe stub rather than the real
+  `SysctlKinfoProc`. §3.1's count of six sites was also two short — it counted
+  what `go build` reaches, and test files are invisible to it. P2 remains
+  **demand-gated** on §6.
 - **Scope:** Making `GOOS=darwin` compile, and then making it *mean* something
   bounded. P1 is four compile fixes, a fail-safe stub for a fifth site, and one
   honest error message: the binary builds from source on a Mac, and nothing else
@@ -565,7 +573,73 @@ and P2 spikes them first.
 
 ## 15. Amendments
 
-None yet — the RFC has not left Draft, so nothing here has been relied on.
+**A1 — decision 11 departed: the prompt keeps its own ioctls (2026-08-13, P1).**
+
+Decision 11 is graded `ASSUMED` and says `x/term`'s `ReadPassword` beats two
+files of ioctl constants, with the escape "execution may depart if
+`ReadPassword`'s behaviour differs from what the current prompt promises". It
+does, in the one way that matters, and the answer was already written in the
+code being ported:
+
+> The echo flip is performed *here*, not in the reader goroutine: […]
+> `x/term.ReadPassword` does its flip inside the reading goroutine, which is
+> exactly the ordering race this replaces.
+
+`readPassword` flips the terminal before the reader starts and restores it where
+the reader can no longer contradict it; `prompt_test.go` synchronises on the
+flip being observable, precisely so that ordering is pinned. Adopting
+`ReadPassword` for portability would have reintroduced a defect somebody had
+already fixed, in the one prompt that handles a secret.
+
+So §5.1's other option was taken: `termios_linux.go` and `termios_darwin.go`,
+two constants each — darwin spells the requests `TIOCGETA`/`TIOCSETA` and has no
+`TCGETS`. Everything else the prompt touches is identical on both. **The lesson
+generalises past this row: a portability assumption made about a function's
+*signature* can be wrong about its *concurrency*, and the code being replaced is
+where that shows.**
+
+**A2 — decision 12 resolved: the fail-safe stub, not `SysctlKinfoProc`
+(2026-08-13, P1).**
+
+Decision 12 was `OPEN` and invited whoever executed to take the real call if
+they found it trivial, and to log that they did. It is trivial —
+`unix.SysctlKinfoProc` is available and the implementation is about five lines.
+It was still not taken, and the reason is not effort.
+
+Decision 9 declines a macOS lane, so anything written for darwin ships
+unexecuted, and the two options fail in opposite directions. The stub returns
+zero, the caller reads zero as "unknown", and an unmatched PID is treated as a
+**live holder**: wrong, and an operator waits for a lock that was free. A
+`SysctlKinfoProc` implementation that is subtly wrong — wrong field, wrong
+units, a `Timeval` compared against Linux's clock ticks — makes every lock look
+stale, and the next operation **steals** it: a concurrent deployment against one
+installation, which is the single thing the guard exists to prevent.
+
+An untested guard that fails unsafe is worse than an acknowledged absence that
+fails safe. P2 takes the real call, with a Mac to run it on.
+
+**A3 — §3.1 counted six sites; there were eight (2026-08-13, P1).**
+
+The measurement in §14 is sound and its method has a blind spot it names without
+following: `go build ./...` does not compile test files. Two more sites were
+waiting in them — `internal/cli/prompt_test.go`'s pty harness (`/dev/ptmx`,
+`TIOCGPTN`, `TIOCSPTLCK`) and one pty-dependent assertion in
+`root_internal_test.go`. Neither blocks the binary, and both would have met a
+developer on the second command they ran, which is worse than meeting them on
+the first.
+
+Both files were split rather than gated wholesale, so the portable tests in them
+keep running everywhere and only the pty plumbing is Linux-only.
+
+Consequently the gate in decision 3 is `go build` **and** `go vet` for both
+architectures, since vet type-checks test files and build does not. That is one
+step beyond what decision 3 specified; it is recorded here rather than silently
+widened.
+
+---
+
+For the record, because §14 is a claim about rigour and would be worth less if it
+were quietly maintained: this draft was corrected in review, before adoption. The
 
 For the record, because §14 is a claim about rigour and would be worth less if it
 were quietly maintained: this draft was corrected in review, before adoption. The

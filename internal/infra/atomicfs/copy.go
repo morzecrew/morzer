@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 
 	"golang.org/x/sys/unix"
 
@@ -129,7 +128,7 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 	if err != nil {
 		return domain.ValidationError(err, "cannot read source directory %s", src)
 	}
-	defer func() { _ = syscall.Close(srcDir) }()
+	defer func() { _ = unix.Close(srcDir) }()
 
 	var entries int
 	var total int64
@@ -253,8 +252,8 @@ var errSymlinkComponent = errors.New("a path component is a symlink")
 
 // openDirNoFollow opens a directory, refusing it if it is a symlink.
 func openDirNoFollow(dir string) (int, error) {
-	return syscall.Open(dir,
-		syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	return unix.Open(dir,
+		unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 }
 
 // openFileNoFollow opens rel beneath an already-open directory, refusing a
@@ -279,7 +278,7 @@ func openFileNoFollow(dir int, rel string) (*os.File, error) {
 	opened := false
 	defer func() {
 		if opened {
-			_ = syscall.Close(current)
+			_ = unix.Close(current)
 		}
 	}()
 
@@ -288,13 +287,13 @@ func openFileNoFollow(dir int, rel string) (*os.File, error) {
 			return nil, domain.ValidationError(nil,
 				"bundle path %q cannot be resolved safely", rel)
 		}
-		next, err := syscall.Openat(current, part,
-			syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+		next, err := unix.Openat(current, part,
+			unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 		if err != nil {
 			return nil, classifyDescent(current, part, err)
 		}
 		if opened {
-			_ = syscall.Close(current)
+			_ = unix.Close(current)
 		}
 		current, opened = next, true
 	}
@@ -310,8 +309,8 @@ func openFileNoFollow(dir int, rel string) (*os.File, error) {
 	// hang the copy outright. Non-blocking, the descriptor opens, the caller
 	// stats it, and a non-regular file is refused as it always was. On a
 	// regular file the flag does nothing at all.
-	fd, err := syscall.Openat(current, name,
-		syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	fd, err := unix.Openat(current, name,
+		unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, classifyDescent(current, name, err)
 	}

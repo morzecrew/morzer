@@ -501,7 +501,7 @@ func readPassword(ctx context.Context, in io.Reader, out io.Writer, prompt strin
 	}
 	fd := int(f.Fd())
 
-	saved, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	saved, err := unix.IoctlGetTermios(fd, getTermios)
 	if err != nil {
 		return "", domain.Internal(err, "cannot read the terminal state")
 	}
@@ -512,10 +512,10 @@ func readPassword(ctx context.Context, in io.Reader, out io.Writer, prompt strin
 	noEcho.Lflag &^= unix.ECHO
 	noEcho.Lflag |= unix.ICANON | unix.ISIG
 	noEcho.Iflag |= unix.ICRNL
-	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &noEcho); err != nil {
+	if err := unix.IoctlSetTermios(fd, setTermios, &noEcho); err != nil {
 		return "", domain.Internal(err, "cannot prepare the terminal")
 	}
-	restore := func() error { return unix.IoctlSetTermios(fd, unix.TCSETS, saved) }
+	restore := func() error { return unix.IoctlSetTermios(fd, setTermios, saved) }
 
 	fmt.Fprint(out, prompt)
 	type outcome struct {

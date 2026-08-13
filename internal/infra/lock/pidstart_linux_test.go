@@ -1,5 +1,10 @@
 package lock
 
+// The /proc/<pid>/stat parser, which is Linux by subject and not only by
+// plumbing: `pidstart_darwin.go` answers "cannot determine" and has nothing to
+// parse. Named for the file under test so the build constraint is the filename
+// rather than a tag somebody has to notice (RFC 0029 decision 8).
+
 import (
 	"fmt"
 	"os"

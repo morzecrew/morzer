@@ -163,6 +163,14 @@ jobs:
       # rather than after the linter has walked the whole module.
       - run: just fmt-check
       - run: just vet
+
+      # The tree still type-checks for macOS, both architectures (RFC 0029
+      # decision 3). Not a macOS runner and not a test: a cross type-check on
+      # this Linux box, which is all that is needed to keep `install.sh`'s
+      # "build from source" advice true. It was false for as long as nothing
+      # asked.
+      - run: just darwin-check
+
       - run: just lint
 
       # depguard, which `just lint` runs, enforces the layering as imports.

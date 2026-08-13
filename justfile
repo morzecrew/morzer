@@ -163,6 +163,36 @@ cover-html: test-cover
 vet:
     go vet ./...
 
+# The tree still type-checks for macOS.
+#
+# RFC 0029 decision 3: without this the gap returns and `install.sh`'s advice
+# becomes false again, which is exactly how it got here -- the message told
+# people to build from source for as long as the tree did not compile for
+# darwin, and nothing noticed because nothing asked.
+#
+# **Both architectures**, because site 1 was a field whose *width* differs
+# (`Statfs_t.Bsize`), and a single-arch gate is blind to that whole class.
+#
+# **vet and not only build**, which is one step beyond what decision 3
+# specified, and the reason is what the wider gate found: §3.1 counted six
+# sites by what `go build ./...` reaches, and test files are invisible to it.
+# Two more were waiting there -- the pty harness in `internal/cli` -- so a
+# developer on a Mac would have built the binary and then had `go test` fail on
+# the second command they ran. `go vet` type-checks test files; `go build` does
+# not.
+#
+# CGO off, because a Linux box has no darwin C toolchain and this is a
+# type-check rather than a link.
+darwin-check:
+    #!/usr/bin/env sh
+    set -e
+    for arch in amd64 arm64; do
+        printf 'darwin/%s: ' "$arch"
+        GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 go build ./...
+        GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 go vet ./...
+        echo 'builds and vets'
+    done
+
 # golangci-lint, including the depguard layering rules.
 lint:
     #!/usr/bin/env sh
@@ -229,7 +259,7 @@ check: fmt-check vet runtime-check test
 # if it passes, CI passes.
 
 # Run exactly what CI runs. Needs golangci-lint and sops.
-ci: fmt-check vet lint shellcheck runtime-check docs-check contract-strict test-race coverage-gate
+ci: fmt-check vet darwin-check lint shellcheck runtime-check docs-check contract-strict test-race coverage-gate
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.
