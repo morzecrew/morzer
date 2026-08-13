@@ -368,3 +368,61 @@ func TestTheArchiveNamesTheBuildThatWroteIt(t *testing.T) {
 	require.Contains(t, manager, "2026-08-13T17:00:00Z")
 	require.Contains(t, manager, "1.0.0")
 }
+
+// A file past the bound is refused rather than read whole.
+//
+// The file is an operator's own paste, so its size is not something the manager
+// controls, and reading it entire is what makes the answer exact -- a secret
+// split across a chunk boundary is the case a streaming reader gets wrong. The
+// bound is what keeps "exact" from meaning "read whatever you are pointed at".
+//
+// Sparse, so the test costs an inode rather than 32MiB.
+func TestRedactCheckRefusesAFilePastTheBound(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	huge := filepath.Join(t.TempDir(), "enormous.log")
+	f, err := os.Create(huge)
+	require.NoError(t, err)
+	require.NoError(t, f.Truncate(33<<20))
+	require.NoError(t, f.Close())
+
+	_, err = ops.SupportRedactCheck(context.Background(), h.Deps, huge)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "past the")
+}
+
+// A service louder than the byte bound is cut, and the file says so at the top.
+//
+// At the top because somebody opening it reads the first line before deciding
+// the incident started there. The banner names the byte bound alone: the line
+// bound is applied by the runtime as a tail, so a stream that hit *that* arrives
+// already short and this code cannot tell it from a service that said less.
+func TestALoudServiceIsTruncatedAndTheFileSaysSo(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	holdSecret(h)
+
+	var b strings.Builder
+	line := strings.Repeat("x", 512)
+	for b.Len() < (2 << 20) {
+		b.WriteString("web-1| " + line + "\n")
+	}
+	h.Runtime.LogOutput = b.String()
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps,
+		ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err)
+
+	var captured string
+	for name, body := range archiveEntries(t, report.Path) {
+		if strings.HasPrefix(name, "logs/") {
+			captured = body
+		}
+	}
+	require.NotEmpty(t, captured, "no log file was produced")
+	require.Less(t, len(captured), 2<<20, "the byte bound did not cut anything")
+	require.True(t, strings.HasPrefix(captured, "[truncated"),
+		"the truncation is not announced at the top of the file: %.80s", captured)
+	require.Contains(t, captured, "bytes")
+}
