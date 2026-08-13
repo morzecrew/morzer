@@ -416,12 +416,28 @@ newer one. §9 requires the credential on a managed machine to be write-only. A
 write-only credential cannot perform that read, so as specified the two rules
 made the safer credential the one that breaks the feature.
 
-Resolved in favour of §9. The check runs when it can, and every failure to read
-— absent object, permission denied, unreachable target — is a publish that
-happens anyway, with the reason recorded in `FleetPublishTarget.Unchecked`. The
-ordering guarantee is therefore weaker than §3.1 implies on a write-only target,
-and the report says so per target rather than leaving a reader to assume it held.
-`--force` skips the check outright and records that too.
+Resolved in favour of §9. The check runs when it can, and a failure to *read*
+— permission denied, unreachable target, bytes that are not a row — is a publish
+that happens anyway, with the reason recorded in `FleetPublishTarget.Unchecked`.
+The ordering guarantee is therefore weaker than §3.1 implies on a write-only
+target, and the report says so per target rather than leaving a reader to assume
+it held. `--force` skips the check outright and records that too.
+
+An **absent** object is not one of those cases and carries no `Unchecked`: it is
+the state every target is in before its first publish, and reporting the most
+ordinary run in the feature's life as a check that did not happen would make the
+field mean nothing by the time it mattered.
+
+**What this does not do is serialise.** The read and the write are two
+operations, so two publishers can both read the same prior row, both pass the
+comparison, and the later write can install the older row. Closing that needs a
+conditional write — an `If-Match` on an ETag, or the equivalent — which is a
+fourth method on `ports.ObjectStore` and a capability all three transports would
+have to answer for, and `file://` and `ssh://` have nothing to answer with. The
+check is therefore what it says on the tin: it stops the common case, which is a
+timer and an operator publishing minutes apart, and it does not stop a genuine
+race. Deliberately not scheduled work — P4 adds the timer, and if a race is ever
+observed rather than reasoned about, that is the phase to reopen this in.
 
 The second half of §3.1's ordering rule — a reader reporting a row older than
 one it has already seen — is not implemented and is not needed yet: `fleet ls`
