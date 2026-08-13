@@ -28,6 +28,7 @@ package lock
 // concurrent deployments are a likelier accident than a stale lock is a
 // nuisance. P2 takes the real call, with something on a Mac to run it.
 //
-// Nothing else changes: `holderIsLive` already treats zero as unknown, because
-// the record predates this field and had to.
+// Nothing else changes: `startTimeContradicts` needs *both* sides known, so a
+// zero from here is silence rather than a mismatch — the same path a record
+// written before this field existed already takes.
 func pidStart(int) uint64 { return 0 }
