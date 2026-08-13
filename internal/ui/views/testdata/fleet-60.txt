@@ -8,8 +8,10 @@
   epsilon/inst_09  —        —
   (signature, drift, published hidden: the terminal is too
   narrow)
-  UNREADABLE                         WHY
-  fleet/epsilon/inst_09/status.json  it was written by a ne…
+  ROW              WHAT IT SAYS
+  gamma            health: cannot reach the container runti…
+  gamma            drift: no release is installed
+  epsilon/inst_09  it was written by a newer manager (schem…
 
   a row is called stale once it is older than 24h0m0s
 

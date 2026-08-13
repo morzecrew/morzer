@@ -6,8 +6,10 @@
   sandbox (dev)    1.4.0    2/2 up, 1 need attention  12m0s ago           1 target     unsigned
   delta            1.4.0    2/2 up                    in 3h0m0s           none         signed
   epsilon/inst_09  —        —                         —                   —            signed
-  UNREADABLE                         WHY
-  fleet/epsilon/inst_09/status.json  it was written by a newer manager (schema 2, this manager reads 1)
+  ROW              WHAT IT SAYS
+  gamma            health: cannot reach the container runtime
+  gamma            drift: no release is installed
+  epsilon/inst_09  it was written by a newer manager (schema 2, this manager reads 1)
 
   a row is called stale once it is older than 24h0m0s
 

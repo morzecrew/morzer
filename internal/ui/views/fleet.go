@@ -92,20 +92,44 @@ func fleetDoc(d *ui.Doc, v Fleet) *ui.Doc {
 
 	d.Table(2, ui.Table{Columns: columns, Rows: rows, Empty: "no rows have been published here"})
 
-	// The problems, in full, below the table. They are messages rather than
-	// cells: a row that will not parse says why in a sentence, and a
+	// The diagnostics, in full, below the table. They are messages rather
+	// than cells: a row that will not parse says why in a sentence, and a
 	// sentence squeezed into a column is a sentence nobody reads.
+	//
+	// Three sources, one table. A row that could not be read at all carries
+	// its problem; a row that *was* read can still say the runtime did not
+	// answer or that drift could not be measured, and those two were
+	// collected by the publisher precisely so somebody could act on them.
+	// Rendering only `not checked` in the cell and dropping the sentence
+	// left the operator knowing a measurement is missing and not why --
+	// which, on a fleet screen, means going to each machine to find out.
 	var problems [][]string
 	for _, r := range v.Rows {
-		if r.Problem != "" {
-			problems = append(problems, []string{r.Key, r.Problem})
+		switch {
+		case r.Problem != "":
+			problems = append(problems, []string{fleetName(r), r.Problem})
+		case r.Row == nil:
+			// Unreachable from FleetList, which sets a problem on every
+			// path that leaves the row nil -- and kept because the
+			// alternative to an unreachable branch here is a nil
+			// dereference in the one command whose whole job is
+			// rendering a listing somebody else can write to. Mutating
+			// it away breaks no test, which is the point: this guards
+			// an invariant rather than a behaviour.
+		default:
+			if p := r.Row.Health.Problem; p != "" {
+				problems = append(problems, []string{fleetName(r), "health: " + p})
+			}
+			if p := r.Row.Drift.Problem; p != "" {
+				problems = append(problems, []string{fleetName(r), "drift: " + p})
+			}
 		}
 	}
 	if len(problems) > 0 {
 		d.Table(2, ui.Table{
 			Columns: []ui.Column{
-				{Header: "unreadable", Essential: true},
-				{Header: "why", Essential: true},
+				{Header: "row", Essential: true},
+				{Header: "what it says", Essential: true},
 			},
 			Rows: problems,
 		})
