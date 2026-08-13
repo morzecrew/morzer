@@ -91,12 +91,21 @@ type BackupTarget interface {
 // that writes arbitrary bytes would have left all of that true by accident and
 // wrong the first time somebody's retention ran.
 //
-// Deliberately two methods and not four. There is no GetObject and no
-// DeleteObject because nothing needs them: statements are read from the machine
-// that wrote them, and an audit record is not something this manager deletes
-// remotely. This project has twice found a port fully specified and never
-// exercised (RFC 0015's Notifier, 0021's Logs); an unused method is a claim
-// nothing tests.
+// Three methods and not four. There is still no DeleteObject, because nothing
+// needs one: an audit record is not something this manager deletes remotely,
+// and a fleet row is replaced in place rather than removed. This project has
+// twice found a port fully specified and never exercised (RFC 0015's Notifier,
+// 0021's Logs); an unused method is a claim nothing tests.
+//
+// GetObject was the third, and it was added when something needed it rather
+// than in anticipation -- which is the rule this comment used to state in the
+// other direction. RFC 0025 read statements from the machine that wrote them,
+// so a reader was a method nothing exercised; RFC 0026's `fleet ls` reads rows
+// off a target from a laptop that holds no installation, and there is no other
+// way to do that. `BackupTarget.FetchFile` is not one: it is defined in terms
+// of a backup, resolves its key under a backup id, and carries the backup's
+// manifest along to bind the two -- all of which is exactly right for a backup
+// component and meaningless for an object that belongs to no backup.
 //
 // Implemented by the transports that can (all three today) and reached through
 // the registry, which refuses by name when the selected one cannot.
@@ -115,7 +124,32 @@ type ObjectStore interface {
 	// is the state before the first push, and the caller asking is usually
 	// asking precisely because it may never have happened.
 	ObjectKeys(ctx context.Context, target TargetRef, prefix string) ([]string, error)
+
+	// GetObject reads back what is at key.
+	//
+	// Bytes rather than an io.ReadCloser, and that is the contract rather
+	// than a convenience: every object this port carries is a small
+	// document, and a caller handed a stream is a caller that has to
+	// remember to bound it. Refused above MaxObjectBytes -- a target is a
+	// medium this manager does not control, and `fleet ls` walks every key
+	// under a shared prefix, so one object nobody wrote must not be able to
+	// exhaust the laptop reading the fleet.
+	//
+	// A key that is not there returns an error satisfying
+	// errors.Is(err, fs.ErrNotExist), because "nothing has been published
+	// here" and "the bucket is unreachable" send a reader to different
+	// places -- and because the publisher's read-before-write needs to tell
+	// a first publish from a target it cannot read.
+	GetObject(ctx context.Context, target TargetRef, key string) ([]byte, error)
 }
+
+// MaxObjectBytes bounds a single object read back off a target.
+//
+// The same bound a fetched backup manifest already gets, for the same reason
+// and against the same threat: kilobytes of JSON are what is expected, the
+// medium is one somebody else may be able to write to, and the reader is often
+// a machine in the middle of an incident.
+const MaxObjectBytes = 1 << 20
 
 // TargetRef is a normalized backup target reference: where, plus what it takes
 // to get in.

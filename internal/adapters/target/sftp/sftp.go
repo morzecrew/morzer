@@ -182,6 +182,14 @@ func (t *Target) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix str
 	return blob.ObjectKeys(ctx, store, prefix)
 }
 
+func (t *Target) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
+	store, err := t.store(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return blob.GetObject(ctx, store, key)
+}
+
 // Close releases every cached connection.
 //
 // The cache is emptied under the lock and the connections are closed after it

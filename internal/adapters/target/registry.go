@@ -161,7 +161,7 @@ func (r *Registry) Remove(ctx context.Context, ref ports.RemoteRef) error {
 
 var _ ports.ObjectStore = (*Registry)(nil)
 
-// PutObject and ObjectKeys dispatch the ports.ObjectStore half.
+// PutObject, ObjectKeys and GetObject dispatch the ports.ObjectStore half.
 //
 // The selected target may not implement it, which is a refusal rather than a
 // silent skip: a build whose sftp:// transport could not hold attestations
@@ -185,6 +185,14 @@ func (r *Registry) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix s
 	return store.ObjectKeys(ctx, ref, prefix)
 }
 
+func (r *Registry) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
+	store, err := r.objectStore(ref)
+	if err != nil {
+		return nil, err
+	}
+	return store.GetObject(ctx, ref, key)
+}
+
 func (r *Registry) objectStore(ref ports.TargetRef) (ports.ObjectStore, error) {
 	t, err := r.For(ref)
 	if err != nil {
@@ -194,7 +202,7 @@ func (r *Registry) objectStore(ref ports.TargetRef) (ports.ObjectStore, error) {
 	if !ok {
 		return nil, domain.Usage(
 			"%s keeps backups but cannot hold anything else", ref).
-			WithHint("attestations can be pushed to file://, ssh:// and s3:// targets")
+			WithHint("attestations and fleet rows go to file://, ssh:// and s3:// targets")
 	}
 	return store, nil
 }
