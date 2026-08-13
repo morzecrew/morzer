@@ -215,6 +215,36 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// being one. Refusing a state file from the future is the
 			// only thing that prevents it.
 			i.SchemaVersion = 5
+		case 5:
+			// 5 -> 6 added `signing` and `attestation_salt`.
+			// Nothing to convert, and -- the part worth reading --
+			// nothing to *mint*.
+			//
+			// The tempting version of this migration generates the
+			// signing key, so that every installation reaching
+			// schema 6 can sign. It does not fit here and should
+			// not be made to. This function is
+			// `func(domain.Installation) (domain.Installation,
+			// error)`: a pure value-to-value transform, called on
+			// the load path. Minting needs a CSPRNG, a directory
+			// that may not exist, and a file created at 0400 by a
+			// write that must not half-happen. Threading a
+			// filesystem in here to get them would make *loading
+			// state* a thing that can write to disk, in every
+			// future migration as well as this one.
+			//
+			// So a migrated installation is at schema 6 with an
+			// empty signing block, which states the truth: this
+			// machine has never had a signing key. It acquires one
+			// the first time it needs to sign, from the idempotent
+			// step that `init` also runs -- an installation
+			// acquires a key when somebody asks for a signed
+			// artifact, not on the upgrade that made keys
+			// possible. RFC 0028 §5.6 and decision 9.
+			//
+			// The same applies to attestation_salt, which is
+			// minted beside it.
+			i.SchemaVersion = 6
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

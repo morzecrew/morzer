@@ -74,6 +74,30 @@ var (
 	ErrToolIncompatible    = errors.New("required tool version incompatible")
 	ErrOperationIncomplete = errors.New("a previous operation did not finish")
 
+	// ErrNoSigningKey marks a machine that has no signing identity yet.
+	//
+	// **Not a corruption and not a failure.** Every installation that
+	// reached schema 6 by migration is in this state, because the migration
+	// mints nothing (RFC 0028 decision 9) -- a machine acquires a key the
+	// first time it is asked to sign, not on the upgrade that made keys
+	// possible. A sentinel rather than an empty return value so a caller has
+	// to decide which of the two it means: `status` reports it, and a signer
+	// mints.
+	//
+	// Distinct from a key that disagrees with recorded state, which is
+	// ErrSigningKeyMismatch and is a machine to stop.
+	ErrNoSigningKey = errors.New("installation has no signing key")
+
+	// ErrSigningKeyMismatch marks a signing key file whose public half is
+	// not the one installation state records.
+	//
+	// This is the refusal RFC 0028 §5.4 asks for, and it is narrower than
+	// "there is no key": such a machine would sign with one key while
+	// telling everybody -- through `status`, the export, an attestation --
+	// that it signs with another, and its artifacts are attributable to
+	// nobody. Absence is ordinary; disagreement is not.
+	ErrSigningKeyMismatch = errors.New("signing key does not match recorded public key")
+
 	// ErrTemplateSyntax marks a manifest template that does not parse, as
 	// opposed to one that parses and refers to something absent.
 	//
@@ -250,6 +274,22 @@ func InstallationError(cause error, format string, args ...any) *Error {
 
 func SecretsError(cause error, format string, args ...any) *Error {
 	return newf(CodeSecrets, CategoryUser, ErrSecrets, cause, format, args...)
+}
+
+// NoSigningKey reports a machine that has never minted a signing identity.
+//
+// CategoryUser: the remedy is an operator action -- run something that signs,
+// or `init` -- rather than a broken machine or a bug.
+func NoSigningKey(cause error, format string, args ...any) *Error {
+	return newf(CodeSecrets, CategoryUser, ErrNoSigningKey, cause, format, args...)
+}
+
+// SigningKeyMismatch reports a key file that disagrees with recorded state.
+//
+// CategorySystem rather than User: nothing the operator typed produced this,
+// and the machine is in a state where its own artifacts cannot be attributed.
+func SigningKeyMismatch(cause error, format string, args ...any) *Error {
+	return newf(CodeSecrets, CategorySystem, ErrSigningKeyMismatch, cause, format, args...)
 }
 
 func RuntimeError(cause error, format string, args ...any) *Error {
