@@ -72,7 +72,11 @@ var referencePage = map[string]string{
 	// The attestations page documents the artifact and the command that
 	// reads it back, because the two are unusable apart: the command's
 	// whole output is verdicts about that document's fields.
-	"attest":     "reference/attestations.md",
+	"attest": "reference/attestations.md",
+	// Same reasoning as `attest`: the page documents the artifact, and the
+	// command is unusable apart from it -- what the archive contains *is*
+	// what the command does.
+	"support":    "reference/support-bundle.md",
 	"ls":         "reference/installation-commands.md#installation-list",
 	"completion": "reference/commands.md#completion-install",
 }

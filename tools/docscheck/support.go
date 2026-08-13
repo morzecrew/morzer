@@ -76,9 +76,16 @@ func renderSupportInventory() string {
 	writeSupportTable(&b, domain.SupportRedact, "File")
 
 	b.WriteString("\n## Before you send one\n\n")
-	b.WriteString("Run `morzer support bundle --preview`. It writes nothing and prints the\n")
-	b.WriteString("same component list with per-file sizes and redaction counts, so you can\n")
-	b.WriteString("see what would leave this machine before anything does.\n")
+	b.WriteString("Run `morzer support bundle` with `--preview`. It writes nothing and prints\n")
+	b.WriteString("the same component list with per-file sizes and redaction counts, so you can\n")
+	b.WriteString("see what would leave this machine before anything does. It is the same\n")
+	b.WriteString("table either way — one rendering, so the preview and the archive cannot\n")
+	b.WriteString("disagree about what was collected.\n\n")
+	b.WriteString("`--dir` writes the archive somewhere other than the working directory.\n")
+	b.WriteString("There is no flag that disables redaction. A flag like that becomes the\n")
+	b.WriteString("one every support article tells you to pass, and then redaction is a\n")
+	b.WriteString("feature nobody uses; if you genuinely need unredacted output, `morzer\n")
+	b.WriteString("logs --no-redact` makes that choice one file at a time.\n")
 
 	return b.String()
 }

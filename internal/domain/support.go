@@ -108,9 +108,11 @@ var SupportInventory = []SupportComponent{
 		Name:  "config-diff.txt",
 		Title: "Configuration drift",
 		Class: SupportInclude,
-		Reason: "Where the files on disk differ from what the release renders. " +
-			"This is the evidence an operator is usually asked for and least able " +
-			"to produce by hand.",
+		Reason: "Where the files on disk differ from what the release renders — " +
+			"the evidence an operator is usually asked for and least able to " +
+			"produce by hand. It cannot embed a secret: a configuration template " +
+			"is rendered with secret *references*, a name to the path of its " +
+			"rendered file, and the values never enter the render context.",
 	},
 	{
 		Name:  "journal.jsonl",

@@ -44,7 +44,7 @@ part of it is raw output from your product.
 | `manifest.yaml` | The resolved manifest | What the release actually declares after templating, which is the document every other answer is relative to. A vendor reading a bundle without it is guessing which of their own releases this is. |
 | `installation.yaml` | Installation state | What the operator chose: product, layout, policy, targets by name. It holds no secret value and cannot -- every credential in an installation is a reference to a secret by name, which is what makes `installation describe` safe to commit and makes this safe to send. |
 | `parameters.json` | Parameters and their values | Values as well as names. A parameter is not a secret by construction -- its value already reaches Compose as an environment variable, `docker inspect`, `status --json` and the journal -- so withholding the values here would hide the most common cause of a support question while protecting nothing. |
-| `config-diff.txt` | Configuration drift | Where the files on disk differ from what the release renders. This is the evidence an operator is usually asked for and least able to produce by hand. |
+| `config-diff.txt` | Configuration drift | Where the files on disk differ from what the release renders — the evidence an operator is usually asked for and least able to produce by hand. It cannot embed a secret: a configuration template is rendered with secret *references*, a name to the path of its rendered file, and the values never enter the render context. |
 | `journal.jsonl` | The operation journal | Every operation this installation has run, newest first, with its steps and outcomes. It is the difference between "the update failed" and a timestamped account of which step failed and what it said. |
 | `doctor.json` | Diagnostic checks | `doctor`'s results as it would print them now, including the host facts its machine checks collect. Those facts have no producer separate from the checks that report them, so they are here rather than in a file of their own. |
 | `releases.json` | Version history | Which releases are on this machine and which are current, previous and staged. "It worked before" needs a before. |
@@ -66,6 +66,14 @@ registered secret value appeared in it, which is a smaller claim.
 
 ## Before you send one
 
-Run `morzer support bundle --preview`. It writes nothing and prints the
-same component list with per-file sizes and redaction counts, so you can
-see what would leave this machine before anything does.
+Run `morzer support bundle` with `--preview`. It writes nothing and prints
+the same component list with per-file sizes and redaction counts, so you can
+see what would leave this machine before anything does. It is the same
+table either way — one rendering, so the preview and the archive cannot
+disagree about what was collected.
+
+`--dir` writes the archive somewhere other than the working directory.
+There is no flag that disables redaction. A flag like that becomes the
+one every support article tells you to pass, and then redaction is a
+feature nobody uses; if you genuinely need unredacted output, `morzer
+logs --no-redact` makes that choice one file at a time.

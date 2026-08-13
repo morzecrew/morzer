@@ -51,6 +51,7 @@ func TestEveryReportTypeHasAView(t *testing.T) {
 		views.WithServices{},
 		views.Verification{},
 		views.AttestationLog{},
+		ops.SupportReport{},
 	}
 
 	for _, report := range want {
