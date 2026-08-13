@@ -264,7 +264,7 @@ func archiveEntries(t *testing.T, path string) map[string]string {
 
 	f, err := os.Open(path)
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	zr, err := zstd.NewReader(f)
 	require.NoError(t, err)

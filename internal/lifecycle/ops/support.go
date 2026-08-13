@@ -207,7 +207,7 @@ func collectLogs(ctx context.Context, d *Deps, _ *supportSource) ([]supportFile,
 	if err != nil {
 		return nil, err
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	if !stream.RedactionArmed {
 		return nil, domain.SecretsError(nil,
@@ -681,7 +681,7 @@ func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile,
 	// Ours, made a line ago, and it holds a copy of everything the archive
 	// holds. Leaving it behind would put a second, unencrypted, unnoticed
 	// copy in the system temporary directory.
-	defer os.RemoveAll(staging)
+	defer func() { _ = os.RemoveAll(staging) }()
 
 	names := make([]string, 0, len(files))
 	for _, f := range files {
