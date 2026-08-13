@@ -12,13 +12,13 @@
         <meta name="author" content="Lev Litvinov">
       
       
-        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/operating/unattended-updates/">
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/reference/attestations/">
       
       
-        <link rel="prev" href="../updating/">
+        <link rel="prev" href="../hooks/">
       
       
-        <link rel="next" href="../rolling-back/">
+        <link rel="next" href="../../explanation/architecture/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Unattended updates - morzer</title>
+        <title>Attestations - morzer</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#unattended-updates" class="md-skip">
+        <a href="#attestations" class="md-skip">
           Skip to content
         </a>
       
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Unattended updates
+              Attestations
             
           </span>
         </div>
@@ -243,16 +243,14 @@
   
   
   
-    
-  
   
     
       
     
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../updating/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../operating/updating/" class="md-tabs__link">
           
   
   Operating
@@ -289,14 +287,16 @@
   
   
   
+    
+  
   
     
       
     
     
     
-      <li class="md-tabs__item">
-        <a href="../../reference/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
           
   
   Reference
@@ -521,31 +521,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -562,7 +557,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -579,7 +574,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../updating/" class="md-nav__link">
+      <a href="../../operating/updating/" class="md-nav__link">
         
   
   
@@ -605,38 +600,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Unattended updates
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="././" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
         
   
   
@@ -653,138 +620,6 @@
   
 
       </a>
-      
-        
-
-
-<nav class="md-nav md-nav--secondary" aria-label="On this page">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      On this page
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#what-the-gate-promises" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What the gate promises
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-gate" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        The gate
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#turning-it-on" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Turning it on
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Turning it on">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#the-maintenance-window-is-an-oncalendar-expression" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        The maintenance window is an <code>OnCalendar</code> expression
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#a-tick-that-cannot-take-the-lock-exits-0" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        A tick that cannot take the lock exits 0
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dev-mode-a-machine-that-is-a-sandbox-from-birth" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Dev mode: a machine that is a sandbox from birth
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Dev mode: a machine that is a sandbox from birth">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#mode-is-fixed-when-the-installation-is-created" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Mode is fixed when the installation is created
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#what-is-not-claimed" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What is not claimed
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#for-vendors" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        For vendors
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -797,7 +632,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../rolling-back/" class="md-nav__link">
+      <a href="../../operating/rolling-back/" class="md-nav__link">
         
   
   
@@ -826,7 +661,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../secrets/" class="md-nav__link">
+      <a href="../../operating/secrets/" class="md-nav__link">
         
   
   
@@ -855,7 +690,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../backups/" class="md-nav__link">
+      <a href="../../operating/backups/" class="md-nav__link">
         
   
   
@@ -884,7 +719,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../changing-configuration/" class="md-nav__link">
+      <a href="../../operating/changing-configuration/" class="md-nav__link">
         
   
   
@@ -913,7 +748,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../installing-offline/" class="md-nav__link">
+      <a href="../../operating/installing-offline/" class="md-nav__link">
         
   
   
@@ -942,7 +777,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../notifications/" class="md-nav__link">
+      <a href="../../operating/notifications/" class="md-nav__link">
         
   
   
@@ -971,7 +806,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../looking-inside/" class="md-nav__link">
+      <a href="../../operating/looking-inside/" class="md-nav__link">
         
   
   
@@ -1000,7 +835,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../several-installations/" class="md-nav__link">
+      <a href="../../operating/several-installations/" class="md-nav__link">
         
   
   
@@ -1029,7 +864,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../recovering-a-lost-machine/" class="md-nav__link">
+      <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
   
@@ -1322,26 +1157,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
             
   
   
@@ -1358,7 +1198,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1375,7 +1215,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -1404,7 +1244,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/commands/" class="md-nav__link">
+      <a href="../commands/" class="md-nav__link">
         
   
   
@@ -1433,7 +1273,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/backup-targets/" class="md-nav__link">
+      <a href="../backup-targets/" class="md-nav__link">
         
   
   
@@ -1462,7 +1302,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/secret-commands/" class="md-nav__link">
+      <a href="../secret-commands/" class="md-nav__link">
         
   
   
@@ -1491,7 +1331,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/release-commands/" class="md-nav__link">
+      <a href="../release-commands/" class="md-nav__link">
         
   
   
@@ -1520,7 +1360,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/installation-commands/" class="md-nav__link">
+      <a href="../installation-commands/" class="md-nav__link">
         
   
   
@@ -1549,7 +1389,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/exit-codes/" class="md-nav__link">
+      <a href="../exit-codes/" class="md-nav__link">
         
   
   
@@ -1578,7 +1418,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/output-modes/" class="md-nav__link">
+      <a href="../output-modes/" class="md-nav__link">
         
   
   
@@ -1607,7 +1447,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/parameters/" class="md-nav__link">
+      <a href="../parameters/" class="md-nav__link">
         
   
   
@@ -1636,7 +1476,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/manifest/" class="md-nav__link">
+      <a href="../manifest/" class="md-nav__link">
         
   
   
@@ -1665,7 +1505,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/variables/" class="md-nav__link">
+      <a href="../variables/" class="md-nav__link">
         
   
   
@@ -1694,7 +1534,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../reference/hooks/" class="md-nav__link">
+      <a href="../hooks/" class="md-nav__link">
         
   
   
@@ -1720,10 +1560,38 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../reference/attestations/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-signature" viewBox="0 0 24 24"><path d="M14.364 13.634a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506l4.013-4.009a1 1 0 0 0-3.004-3.004zM14.487 7.858A1 1 0 0 1 14 7V2"/><path d="M20 19.645V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l2.516 2.516M8 18h1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Attestations
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1740,6 +1608,110 @@
   
 
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-signature-proves" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What a signature proves
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-in-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What is in one
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is in one">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration-names-always-values-never" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Configuration: names always, values never
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signature_verified-is-absent-not-false" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>signature_verified</code> is absent, not false
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#steps-carry-durations-not-timestamps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Steps carry durations, not timestamps
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validating-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Validating one
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-does-not-do-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What this does not do yet
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1966,10 +1938,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-the-gate-promises" class="md-nav__link">
+  <a href="#what-a-signature-proves" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        What the gate promises
+        What a signature proves
       </span>
     </span>
   </a>
@@ -1977,33 +1949,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-gate" class="md-nav__link">
+  <a href="#what-is-in-one" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        The gate
+        What is in one
       </span>
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#turning-it-on" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Turning it on
-      </span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Turning it on">
+    <nav class="md-nav" aria-label="What is in one">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-maintenance-window-is-an-oncalendar-expression" class="md-nav__link">
+  <a href="#configuration-names-always-values-never" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        The maintenance window is an <code>OnCalendar</code> expression
+        Configuration: names always, values never
       </span>
     </span>
   </a>
@@ -2011,10 +1972,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#a-tick-that-cannot-take-the-lock-exits-0" class="md-nav__link">
+  <a href="#signature_verified-is-absent-not-false" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        A tick that cannot take the lock exits 0
+        <code>signature_verified</code> is absent, not false
       </span>
     </span>
   </a>
@@ -2027,49 +1988,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dev-mode-a-machine-that-is-a-sandbox-from-birth" class="md-nav__link">
+  <a href="#steps-carry-durations-not-timestamps" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Dev mode: a machine that is a sandbox from birth
+        Steps carry durations, not timestamps
       </span>
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Dev mode: a machine that is a sandbox from birth">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#mode-is-fixed-when-the-installation-is-created" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Mode is fixed when the installation is created
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#what-is-not-claimed" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        What is not claimed
-      </span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#for-vendors" class="md-nav__link">
+  <a href="#validating-one" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        For vendors
+        Validating one
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-does-not-do-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What this does not do yet
       </span>
     </span>
   </a>
@@ -2123,11 +2067,11 @@
     
     
       <li class="md-path__item">
-        <a href="../updating/" class="md-path__link">
+        <a href="../" class="md-path__link">
           
   
   <span class="md-ellipsis">
-    Operating
+    Reference
   </span>
 
         </a>
@@ -2147,176 +2091,144 @@
   
 
 
-<h1 id="unattended-updates">Unattended updates<a class="headerlink" href="#unattended-updates" title="Permanent link">&para;</a></h1>
-<p><strong>Start with what this costs.</strong> Turning it on hands your vendor unattended root
-on this machine: hooks run as root, and an update runs the incoming release's
-migration hook. A compromise of the vendor's registry or signing key becomes
-root here with no human in the path. Today, the operator pasting a command is a
-control — a weak one, but a real one — and this removes it.</p>
-<p>That is the trade. What you get back is that the fetch, the verification and the
-downtime happen without anyone being awake for them, on a machine where the
-release has declared that a failure cannot leave the database somewhere the
-previous release cannot read.</p>
-<h2 id="what-the-gate-promises">What the gate promises<a class="headerlink" href="#what-the-gate-promises" title="Permanent link">&para;</a></h2>
-<p>Not "no human will be required". An update can still stop and page someone: a
-migration hook that exits non-zero, a health check that never passes, a converge
-the engine cannot compensate. None of that is inspected here, and all of it
-already ends in <a href="../../reference/exit-codes/">requires-manual-intervention</a>.</p>
-<p>What it promises is narrower and is the one that matters at 03:00: <strong>the failure
-will not be the unrecoverable kind.</strong> A failed unattended update that
-compensates back to the previous release is an incident report. One that needs a
-restore decision is the thing morzer refuses to make automatically, awake or
-not.</p>
-<h2 id="the-gate">The gate<a class="headerlink" href="#the-gate" title="Permanent link">&para;</a></h2>
-<p>An update installs itself only if <strong>all</strong> of these hold:</p>
+<h1 id="attestations">Attestations<a class="headerlink" href="#attestations" title="Permanent link">&para;</a></h1>
+<p>After an <code>apply</code>, the manager writes a signed record of what it did:</p>
+<div class="highlight"><pre><span></span><code>/var/lib/&lt;product&gt;/attestations/op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json
+/var/lib/&lt;product&gt;/attestations/op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json.minisig
+</code></pre></div>
+<p>The name is the operation id, so a statement lines up with the journal entry
+for the same run, and the ids sort in the order the operations happened.</p>
+<p>The manager already verifies signatures, pins digests, refuses unverified
+images and journals every step. Without this, that evidence stays on the
+machine in a format nothing else reads, and an operator asked to demonstrate
+that production runs what the vendor shipped reconstructs it by hand.</p>
+<p>The document is an <a href="https://in-toto.io/">in-toto</a> Statement. The signature is
+minisign's, detached, so verifying one is a command you already know:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span><span class="nb">cd</span><span class="w"> </span>/var/lib/demo/attestations
+<span class="gp">$ </span>minisign<span class="w"> </span>-Vm<span class="w"> </span>op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json<span class="w"> </span>-P<span class="w"> </span>RWQf6L...
+<span class="go">Signature and comment signature verified</span>
+<span class="go">Trusted comment: morzer demo apply op_01K2Z9X7QK8V3H4M5N6P7R8S9T</span>
+</code></pre></div>
+<p>The key is this installation's own — see
+<a href="https://github.com/morzecrew/morzer/blob/main/SECURITY.md">the security policy</a>
+for what it is and what losing it costs. <code>morzer status --json</code> reports it as
+<code>signing.public_key</code>, and every statement carries it too, so a reader holding
+only the file can check it.</p>
+<h2 id="what-a-signature-proves">What a signature proves<a class="headerlink" href="#what-a-signature-proves" title="Permanent link">&para;</a></h2>
+<p>Every statement carries this sentence in a <code>bound</code> field, and it is in the
+document rather than only in this page because the reader who most needs it is
+the one who was handed the file without it:</p>
+<div class="admonition warning">
+<p class="admonition-title">The bound on the claim</p>
+<p>This signature proves that a process holding this installation's signing key
+produced these bytes. It does not prove the bytes are true, it does not
+prove the machine was uncompromised when it signed, and it does not identify
+the operator.</p>
+</div>
+<p>A statement is what the manager <em>observed and recorded</em>. An attacker who owns
+the machine owns the key, and their statements verify too.</p>
+<h2 id="what-is-in-one">What is in one<a class="headerlink" href="#what-is-in-one" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Condition</th>
-<th>Where it comes from</th>
+<th>Field</th>
+<th></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>The compatibility check passes</td>
-<td>The same gate your own <code>update</code> runs</td>
+<td><code>subject</code></td>
+<td>The release the operation was about: name, version, and the content digest.</td>
 </tr>
 <tr>
-<td>The release declares <code>rollback_safe: true</code></td>
-<td>The incoming manifest</td>
+<td><code>predicate.bound</code></td>
+<td>The sentence above, verbatim.</td>
 </tr>
 <tr>
-<td>The release declares <code>database_schema_produces</code></td>
-<td>The incoming manifest; <strong>absent means never</strong></td>
+<td><code>predicate.operation</code></td>
+<td>Id, kind, start, end, and outcome.</td>
 </tr>
 <tr>
-<td>The installed release can read that schema</td>
-<td>Its <code>database_schema_max</code></td>
+<td><code>predicate.installation</code></td>
+<td>Id, product, mode, manager version, the signing key, and any predecessor keys.</td>
 </tr>
 <tr>
-<td><code>policy.require_signature</code> is set, with a key</td>
-<td>This installation</td>
+<td><code>predicate.release</code></td>
+<td>Versions moved between, the source scheme, the content digest.</td>
 </tr>
 <tr>
-<td>The pre-update backup is not disabled</td>
-<td>This installation</td>
+<td><code>predicate.verification</code></td>
+<td>What was checked before the manager acted — see below.</td>
+</tr>
+<tr>
+<td><code>predicate.images</code></td>
+<td>Each image by reference and digest, and whether it came from a registry or the bundle.</td>
+</tr>
+<tr>
+<td><code>predicate.config</code></td>
+<td>Parameter <strong>names</strong>, and a digest of the rendered configuration.</td>
+</tr>
+<tr>
+<td><code>predicate.steps</code></td>
+<td>Each step, its outcome, and how long it took.</td>
 </tr>
 </tbody>
 </table>
-<p>The middle three are one idea: <em>could this update end needing a database
-restore?</em> They are the <a href="../rolling-back/">rollback assessment</a> run <strong>before</strong> the
-update instead of after one, over what the manifest declares rather than over
-anything measured.</p>
-<p>Anything that fails the gate is still fetched, verified, staged and notified.
-Nothing is silently skipped, and the operator's remaining decision is only the
-one that costs downtime.</p>
-<h2 id="turning-it-on">Turning it on<a class="headerlink" href="#turning-it-on" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.check<span class="o">=</span><span class="nb">true</span>
-morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.channel<span class="o">=</span>oci://registry.example/demo/bundle:stable
-morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.auto_apply<span class="o">=</span><span class="nb">true</span>
-</code></pre></div>
-<p><code>update.auto_apply</code> is <strong>refused</strong> on an installation that does not require
-signatures — at the moment you set it, not at the tick that would have acted on
-it. A machine that accepts the setting and then refuses to act every night is
-worse than one that refuses the setting: you would believe it was armed.</p>
-<p>Setting a channel installs a <code>&lt;product&gt;-update.timer</code>; clearing it removes the
-timer again.</p>
-<h3 id="the-maintenance-window-is-an-oncalendar-expression">The maintenance window is an <code>OnCalendar</code> expression<a class="headerlink" href="#the-maintenance-window-is-an-oncalendar-expression" title="Permanent link">&para;</a></h3>
-<p>The timer is an ordinary systemd timer, so a window is one line:</p>
-<div class="highlight"><pre><span></span><code><span class="k">[Timer]</span>
-<span class="na">OnCalendar</span><span class="o">=</span><span class="s">Sun *-*-* 04:00:00</span>
-</code></pre></div>
-<p>There is no separate maintenance-window setting, deliberately: systemd already
-expresses this better than a configuration field would, including "the first
-Sunday of the month" and "weekdays only".</p>
-<p><code>RandomizedDelaySec</code> spreads installations across a window so a vendor's
-registry does not see every customer at the same second, and <code>Persistent=true</code>
-catches up a tick missed while the machine was off.</p>
-<h3 id="a-tick-that-cannot-take-the-lock-exits-0">A tick that cannot take the lock exits 0<a class="headerlink" href="#a-tick-that-cannot-take-the-lock-exits-0" title="Permanent link">&para;</a></h3>
-<p>Your interactive <code>backup</code> or <code>apply</code> is in the way; the next tick is soon.
-Queueing would make the start time unpredictable, and a failing unit every time
-somebody deploys by hand is a unit whose alerts get muted.</p>
-<p>A release left staged is also a <strong>successful</strong> tick. It is the configured
-behaviour when the gate refuses, and a unit that failed every night because a
-release is waiting would train you to ignore it.</p>
-<h2 id="dev-mode-a-machine-that-is-a-sandbox-from-birth">Dev mode: a machine that is a sandbox from birth<a class="headerlink" href="#dev-mode-a-machine-that-is-a-sandbox-from-birth" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--mode<span class="w"> </span>dev<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>--release<span class="w"> </span>./bundle
-</code></pre></div>
-<p>A sandbox is a machine whose data is disposable and whose purpose is rehearsing
-what will happen to a real one. It relaxes:</p>
+<h3 id="configuration-names-always-values-never">Configuration: names always, values never<a class="headerlink" href="#configuration-names-always-values-never" title="Permanent link">&para;</a></h3>
+<p>Parameter values do not appear. They include ports and hostnames, and this is an
+artifact deliberately readable by somebody outside the organisation.</p>
+<p><code>config.rendered_digest</code> is what makes drift detectable without publishing what
+drifted, and it is <strong>salted per installation</strong>. Two consequences, both
+deliberate:</p>
 <ul>
-<li><strong>The recovery gate.</strong> Auto-apply installs whatever the channel offers: there
-  is nothing here to be unable to recover.</li>
-<li><strong>Retention.</strong> It prunes old releases after every update, which a fast rebuild
-  loop needs — one release directory per build, each with its own images.</li>
-<li><strong><code>--skip-backup</code></strong>, without <code>--force</code>.</li>
-<li><strong>Prereleases.</strong> They are admissible update candidates. On a production
-  machine they are not: every development build carries a prerelease version,
-  and a check answering "1.4.1-dev.7 is available" is a check nobody reads.</li>
+<li>It detects change on <strong>one machine over time</strong>, which is the audit question.</li>
+<li>It is <strong>not comparable across machines</strong>, which is a capability given up on
+  purpose: the input is a handful of ports and booleans, and an unsalted digest
+  over that space can be brute-forced back to its inputs by anyone holding the
+  document.</li>
 </ul>
-<p>It relaxes <strong>nothing about verification</strong>. Signature checking, digest pinning
-and <code>SHA256SUMS</code> completeness are unchanged, because the sandbox's entire value
-is fidelity: every relaxation there reduces what a successful rehearsal proves,
-and what you are rehearsing is a customer's install. Sign dev builds with a dev
-key the sandbox pins — one <code>minisign -Sm</code> in CI, and it rehearses key handling
-too.</p>
-<h3 id="mode-is-fixed-when-the-installation-is-created">Mode is fixed when the installation is created<a class="headerlink" href="#mode-is-fixed-when-the-installation-is-created" title="Permanent link">&para;</a></h3>
-<p>Not one-way. <strong>No</strong> way, through any of the manager's surfaces: not
-<code>config set</code>, not <code>import</code>, not any command that writes installation state.</p>
-<table>
-<thead>
-<tr>
-<th>Transition</th>
-<th>What breaks</th>
-<th>When you find out</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>production → dev</td>
-<td>Real data is immediately under relaxed rules</td>
-<td>At once</td>
-</tr>
-<tr>
-<td>dev → production</td>
-<td>Untrusted history presented as trustworthy: <code>previous</code> was pruned and no pre-update backup was ever taken</td>
-<td>During an incident</td>
-</tr>
-</tbody>
-</table>
-<p>The second is the quieter one and it lands when it costs most, which is why
-neither direction is allowed.</p>
-<p><strong>Promotion is backup → fresh <code>init</code> → restore.</strong> That already works, and it is
-the right amount of ceremony for a machine about to hold real data.</p>
-<p><code>installation import</code> is the other moment a mode is chosen, because import
-reproduces an export wholesale:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>./demo.export.yaml<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key<span class="w"> </span>--mode<span class="w"> </span>dev
+<p>A machine with no salt — one that reached schema 6 by upgrade and has not run
+<code>init</code> since — emits <strong>no digest</strong> rather than an unsalted one.</p>
+<h3 id="signature_verified-is-absent-not-false"><code>signature_verified</code> is absent, not false<a class="headerlink" href="#signature_verified-is-absent-not-false" title="Permanent link">&para;</a></h3>
+<p><code>predicate.verification.signature_verified</code> is missing from an <code>apply</code>'s
+statement, and that is the honest answer rather than a gap.</p>
+<p>Signatures are checked when a release is <strong>staged</strong>. An <code>apply</code> converges onto a
+release already on disk, so it verifies nothing and the document says nothing.
+Writing <code>false</code> there would read as <em>"checked, and it failed"</em> — a much stronger
+claim, and one an auditor would act on.</p>
+<p>So: absent means no claim. Present and <code>false</code> would mean a check that failed.</p>
+<h2 id="steps-carry-durations-not-timestamps">Steps carry durations, not timestamps<a class="headerlink" href="#steps-carry-durations-not-timestamps" title="Permanent link">&para;</a></h2>
+<p><code>predicate.steps[].duration_ms</code> is what the operation journal records. A
+duration plus the operation's own <code>started</code> places a step in time; widening a
+persisted record to feed a new artifact would be the tail wagging the dog.</p>
+<h2 id="validating-one">Validating one<a class="headerlink" href="#validating-one" title="Permanent link">&para;</a></h2>
+<p>A <abbr title="JavaScript Object Notation">JSON</abbr> Schema ships with every release, generated from the Go types that produce
+the document rather than written alongside them:</p>
+<div class="highlight"><pre><span></span><code>schemas/morzer-attestation-v1.json
 </code></pre></div>
-<p>That is how you test a customer's backup on a sandbox. <strong>It drops the export's
-backup targets</strong>, and this is not optional: an import keeps the original
-installation id so a lost machine's backups stay restorable, and an export
-carries the backup targets <em>with their credentials</em> so a rebuilt machine can
-reach them. A sandbox that kept them would push throwaway backups into the
-customer's bucket under a matching id. The drop is reported, not silent.</p>
-<p>Importing a dev export <strong>as production is refused</strong>. With no <code>--mode</code> at all, an
-import reproduces whatever the export was — a lost sandbox comes back a sandbox.</p>
-<h3 id="what-is-not-claimed">What is not claimed<a class="headerlink" href="#what-is-not-claimed" title="Permanent link">&para;</a></h3>
-<p><code>mode</code> is a field in a <abbr title="JavaScript Object Notation">JSON</abbr> file, and root can edit it. Nothing here is
-tamper-evident, and the immutability above is a statement about the manager's
-own surfaces. Defending one boolean against an operator who can equally edit the
-recipient list, the backup targets or the installation id would be defending the
-wrong thing; root on the machine is outside every threat model in this
-documentation.</p>
-<p><code>status</code> and <code>doctor</code> mark a sandbox permanently and prominently — not as a
-first-run notice, because the failure mode is a machine nobody remembers the
-provenance of.</p>
-<h2 id="for-vendors">For vendors<a class="headerlink" href="#for-vendors" title="Permanent link">&para;</a></h2>
-<p>Declaring <code>database_schema_produces</code> is what opts your releases into this. See
-<a href="../../reference/manifest/#database_schema_produces-is-what-opts-a-release-into-unattended-updates">the manifest reference</a>
-and <a href="../../authoring/publishing/">publishing</a>.</p>
-<p>Omitting it is a valid choice, and it costs your customers nothing: their
-machines still fetch, verify and stage your releases, and still tell them one is
-waiting.</p>
+<p>It pins <code>_type</code> and <code>predicateType</code> to single values, so a document from another
+contract does not validate against it — notably a <strong>SLSA provenance</strong> document,
+which describes how an artifact was <em>built</em> where this describes how one was
+<em>deployed</em>. Reusing SLSA's predicate would have produced a document that
+validates against a well-known schema while asserting something that schema does
+not mean.</p>
+<p>Regenerated by <code>just schemas</code>, and a test fails the build when the checked-in
+copy no longer matches the types.</p>
+<h2 id="what-this-does-not-do-yet">What this does not do yet<a class="headerlink" href="#what-this-does-not-do-yet" title="Permanent link">&para;</a></h2>
+<p>Stated here rather than discovered:</p>
+<ul>
+<li><strong>Only <code>apply</code> emits one, and only on success.</strong> The failed operation is the
+  one an auditor asks about, and it is the next phase of this work.</li>
+<li><strong>Nothing pushes them anywhere.</strong> They are written locally, so a machine that
+  is lost takes its own record with it.</li>
+<li><strong>There is no <code>morzer attest verify</code>.</strong> Checking a statement today means
+  <code>minisign -Vm</code> plus reading the <abbr title="JavaScript Object Notation">JSON</abbr>. A verifier that can compare a statement
+  against the <em>running</em> deployment — and fail when somebody has swapped an image
+  by hand — is the phase this design lives or dies by.</li>
+</ul>
+<p>A rebuilt machine signs with a <strong>new key</strong>, and records its predecessor. A
+signature that checks out against a predecessor is <em>provenance</em> — "signed by an
+earlier incarnation of this installation" — and never plain validity.</p>
 
 
 
@@ -2357,7 +2269,7 @@ waiting.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../updating/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Updating">
+          <a href="../hooks/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Hook ABI">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -2367,20 +2279,20 @@ waiting.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Updating
+                Hook ABI
               </div>
             </div>
           </a>
         
         
           
-          <a href="../rolling-back/" class="md-footer__link md-footer__link--next" aria-label="Next: Rolling back">
+          <a href="../../explanation/architecture/" class="md-footer__link md-footer__link--next" aria-label="Next: Architecture">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Rolling back
+                Architecture
               </div>
             </div>
             <div class="md-footer__button md-icon">
