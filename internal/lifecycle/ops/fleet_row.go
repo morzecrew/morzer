@@ -101,7 +101,8 @@ func (d *Deps) fleetHealth(
 	current domain.ReleaseRecord,
 	currentErr error,
 ) domain.FleetHealth {
-	out := domain.FleetHealth{Attention: d.fleetAttention(ctx)}
+	attention, counted := d.fleetAttention(ctx)
+	out := domain.FleetHealth{Attention: attention}
 
 	if currentErr != nil {
 		out.Problem = "cannot read the current release: " + domain.AsError(currentErr).Message
@@ -116,20 +117,38 @@ func (d *Deps) fleetHealth(
 		total, running := entry.Services.Total, entry.Services.Running
 		out.Services, out.Running = &total, &running
 	}
+
+	// A state read that failed is reported when there is room to report it.
+	//
+	// `Attention` is an int rather than a pointer, so it cannot spell "I
+	// could not look" the way Services and Running can -- which made a
+	// failed read publish `attention: 0`, indistinguishable from a machine
+	// with nothing flagged. The failing machine is the one most likely to
+	// have something flagged.
+	//
+	// Widening the field would change the published schema for a case that
+	// is already rare, so the row says it in the one place that exists for
+	// saying things: Problem, and only when the runtime has not already
+	// claimed it. Two explanations on one line would bury the first, which
+	// is the reason this was swallowed in the first place -- that argument
+	// holds when Problem is taken and not when it is empty.
+	if !counted && out.Problem == "" {
+		out.Problem = "the operation journal could not be read, so the attention count is not a count"
+	}
 	return out
 }
 
-// fleetAttention counts the operations flagged requires-manual-intervention.
+// fleetAttention counts the operations flagged requires-manual-intervention,
+// and reports whether the count was taken at all.
 //
 // Read from state files, so it is answerable on a machine whose runtime is
-// down -- which is the machine most likely to have one. A read that fails
-// contributes zero rather than a problem of its own: the count sits beside a
-// Problem field that the runtime half already fills, and a second explanation
-// competing for that one line would bury the first.
-func (d *Deps) fleetAttention(ctx context.Context) int {
+// down -- which is the machine most likely to have one. The bool is what stops
+// a failed read from publishing as a confident zero; see fleetHealth for where
+// it goes and why it does not always get said.
+func (d *Deps) fleetAttention(ctx context.Context) (count int, taken bool) {
 	unfinished, err := d.State.UnfinishedOperations(ctx)
 	if err != nil {
-		return 0
+		return 0, false
 	}
 
 	var n int
@@ -138,7 +157,7 @@ func (d *Deps) fleetAttention(ctx context.Context) int {
 			n++
 		}
 	}
-	return n
+	return n, true
 }
 
 // fleetDrift counts the configuration targets that differ from what the release
