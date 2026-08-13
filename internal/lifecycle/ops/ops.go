@@ -63,6 +63,15 @@ type Deps struct {
 	Secrets ports.SecretStore
 	Backup  ports.BackupEngine
 
+	// Signer is this machine's own signing identity.
+	//
+	// Nil in a build or a test that signs nothing, and every use checks --
+	// the same discipline as Targets and Supervisor. An installation that
+	// has never signed must keep working exactly as it did before signing
+	// existed, which is every installation that reached schema 6 by
+	// migration (RFC 0028 decision 9).
+	Signer ports.Signer
+
 	// Targets is the registry of places a backup can be kept that are not
 	// this machine. Nil in a build or a test that configures none, which is
 	// why every use checks: an installation with no targets must keep

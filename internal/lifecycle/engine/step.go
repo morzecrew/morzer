@@ -242,4 +242,9 @@ const (
 	KeyRenderedFiles = "rendered-files"
 	KeyHealthResults = "health-results"
 	KeySchemaVersion = "database-schema-version"
+
+	// KeySigningKey carries the public signing key line from the step that
+	// mints it to the step that records it in installation state, so the
+	// two cannot disagree about what this machine's key is.
+	KeySigningKey = "signing-public-key"
 )
