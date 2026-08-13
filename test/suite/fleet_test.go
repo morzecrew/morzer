@@ -17,6 +17,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The fleet read model (RFC 0026 P1 and P2).
@@ -498,4 +499,131 @@ func TestAMachineWithNoKeyPublishesAnUnsignedRow(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Rows, 1)
 	assert.Equal(t, ops.FleetUnsigned, list.Rows[0].Signature)
+}
+
+// A dry run mints nothing.
+//
+// `--dry-run` is documented as "plan only, make no changes", and the row names
+// the key that will sign it -- so resolving that key through EnsureKey made a
+// planning command generate cryptographic material on a machine that had never
+// signed. The file is the identity every later signature is attributed to, and
+// creating one is not a plan.
+func TestADryRunDoesNotMintASigningKey(t *testing.T) {
+	h := newHarness(t)
+
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	h.Deps.Objects = registry
+	h.Deps.Signer = signer.New(h.Paths.SigningKeyFile(), "demo")
+
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	inst := h.install()
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	require.NoFileExists(t, h.Paths.SigningKeyFile(),
+		"this machine already has a key, so the test proves nothing")
+
+	_, err = ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{
+		TargetOptions: ops.TargetOptions{Options: ops.Options{DryRun: true}},
+	})
+	require.NoError(t, err)
+
+	assert.NoFileExists(t, h.Paths.SigningKeyFile(),
+		"a --dry-run publish minted this machine's signing identity")
+}
+
+// failingSignatureStore is a target that accepts the row and refuses the
+// signature.
+//
+// It exists to assert an ordering that nothing else can see: which of the two
+// objects is written first. A transport that never fails gives the same result
+// either way.
+type failingSignatureStore struct {
+	ports.ObjectStore
+	err error
+}
+
+func (s failingSignatureStore) PutObject(
+	ctx context.Context, ref ports.TargetRef, key string, data []byte,
+) error {
+	if strings.HasSuffix(key, ".minisig") {
+		return s.err
+	}
+	return s.ObjectStore.PutObject(ctx, ref, key, data)
+}
+
+// The row goes first, so an interrupted publish leaves something readable.
+//
+// The same rule that puts a backup's manifest last, and the same reasoning: a
+// row nobody can check is honest, and a signature over bytes that are not there
+// is not. It is worth pinning because the wrong order is invisible on a healthy
+// target and produces, on an unhealthy one, exactly the state `fleet ls` reports
+// as "a signature with no row beside it".
+func TestTheRowIsWrittenBeforeItsSignature(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+
+	h.Deps.Objects = failingSignatureStore{
+		ObjectStore: h.Deps.Objects,
+		err:         assert.AnError,
+	}
+
+	result, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+	require.NotEmpty(t, report.Targets[0].Error,
+		"a signature that did not reach the target was reported as a clean publish")
+
+	key, err := domain.FleetKey(inst.Product, inst.ID)
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(offsite, filepath.FromSlash(key)),
+		"the signature was written before the row, so an interrupted publish "+
+			"leaves a signature over bytes that are not there")
+	assert.NoFileExists(t, filepath.Join(offsite, filepath.FromSlash(key))+".minisig")
+}
+
+// A configuration target that cannot be read is not drift.
+//
+// An absent file is drift -- the release renders something and the machine has
+// nothing. A file that cannot be *read* is a permission fault, and counting it
+// would publish "1 target differs" for a machine where nothing changed at all,
+// on the row an operator scans to decide which machine to go and look at.
+func TestAnUnreadableConfigurationTargetIsNotCountedAsDrift(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	// Applied first, so the rendered files exist and there is genuinely no
+	// drift to find -- otherwise a count of one could come from anywhere.
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	_, err = ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+	before, _ := publishedRow(t, offsite, inst)
+	require.NotNil(t, before.Drift.Targets)
+	require.Zero(t, *before.Drift.Targets, "this deployment has drifted, so the test proves nothing")
+	require.Empty(t, before.Drift.Problem)
+
+	// A directory where a file belongs: os.ReadFile returns EISDIR, which is
+	// not fs.ErrNotExist. A permission bit would make this test pass for the
+	// wrong reason under `sudo just ci`, where root reads a 0000 file.
+	target := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+	require.NoError(t, os.Remove(target))
+	require.NoError(t, os.Mkdir(target, 0o755))
+
+	h.Deps.Now = func() time.Time { return time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC) }
+	_, err = ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	after, _ := publishedRow(t, offsite, inst)
+	require.NotNil(t, after.Drift.Targets)
+	assert.Zero(t, *after.Drift.Targets,
+		"a configuration target that could not be read was counted as drift")
+	assert.Contains(t, after.Drift.Problem, "could not be read",
+		"the row does not say a target was left out of the count")
 }

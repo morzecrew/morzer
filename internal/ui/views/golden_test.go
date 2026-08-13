@@ -222,6 +222,7 @@ func fixtures() []fixture {
 	all = append(all, machineFixtures()...)
 	all = append(all, inspectFixtures()...)
 	all = append(all, calloutFixtures()...)
+	all = append(all, fleetFixtures()...)
 	return all
 }
 

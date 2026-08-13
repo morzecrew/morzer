@@ -1,0 +1,4 @@
+0 row(s) on s3://fleet.example/rows
+  no rows have been published here
+
+  no roster was given

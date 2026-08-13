@@ -1,0 +1,15 @@
+6 row(s) on s3://fleet.example/rows
+  PRODUCT          VERSION  HEALTH                    PUBLISHED           DRIFT        SIGNATURE
+  acme             1.4.0    2/2 up                    12m0s ago           none         signed
+  beta             1.4.0    0/3 up                    12m0s ago           none         signed
+  gamma            1.4.0    not checked               4h0m0s ago (stale)  not checked  signed
+  sandbox (dev)    1.4.0    2/2 up, 1 need attention  12m0s ago           1 target     unsigned
+  delta            1.4.0    2/2 up                    in 3h0m0s           none         signed
+  epsilon/inst_09  —        —                         —                   —            signed
+  UNREADABLE                         WHY
+  fleet/epsilon/inst_09/status.json  it was written by a newer manager (schema 2, this manager reads 1)
+
+  a row is called stale once it is older than 24h0m0s
+
+  no roster was given, so no row below is authenticated and no absent installation can be shown;
+  both need the roster that binds an installation id to a public key
