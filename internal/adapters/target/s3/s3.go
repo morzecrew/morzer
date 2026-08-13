@@ -113,10 +113,12 @@ func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	return blob.Remove(ctx, store, ref)
 }
 
+// The object-store half builds the store without the bucket probe that the
+// backup half runs. See (*Target).bucket for the measurement that says why.
 var _ ports.ObjectStore = (*Target)(nil)
 
 func (t *Target) PutObject(ctx context.Context, ref ports.TargetRef, key string, data []byte) error {
-	store, err := t.store(ctx, ref)
+	store, err := t.bucket(ref)
 	if err != nil {
 		return err
 	}
@@ -124,7 +126,7 @@ func (t *Target) PutObject(ctx context.Context, ref ports.TargetRef, key string,
 }
 
 func (t *Target) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix string) ([]string, error) {
-	store, err := t.store(ctx, ref)
+	store, err := t.bucket(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -132,15 +134,55 @@ func (t *Target) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix str
 }
 
 func (t *Target) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
-	store, err := t.store(ctx, ref)
+	store, err := t.bucket(ref)
 	if err != nil {
 		return nil, err
 	}
 	return blob.GetObject(ctx, store, key)
 }
 
-// store builds the client and resolves the bucket and prefix out of the URL.
+// store builds the client, resolves the bucket and prefix out of the URL, and
+// checks the bucket is there.
+//
+// The check belongs to the *backup* half. A push copies many files, so
+// "NoSuchBucket" arriving in the middle of one reads as a transfer failure when
+// it is a configuration mistake, and this turns it into the message an operator
+// can act on -- at `backup target add`, where they are configuring it.
 func (t *Target) store(ctx context.Context, ref ports.TargetRef) (*bucketStore, error) {
+	store, err := t.bucket(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	exists, err := store.client.BucketExists(ctx, store.bucket)
+	if err != nil {
+		return nil, t.unreachable(ref, err)
+	}
+	if !exists {
+		return nil, domain.BackupError(domain.ErrNotFound,
+			"the bucket %q does not exist, or these credentials cannot see it", store.bucket).
+			WithHint("create it first; the manager does not create buckets, because " +
+				"a typo would silently make a new one and the backups would go " +
+				"somewhere nobody is watching")
+	}
+	return store, nil
+}
+
+// bucket is the same without the probe, and the object-store half uses it.
+//
+// **Measured, RFC 0026 §10.3.** `BucketExists` is a HeadBucket, which needs
+// `s3:ListBucket`. Probing before a single-object write therefore made
+// `s3:PutObject`-only credentials fail with "the bucket does not exist, or
+// these credentials cannot see it" -- and those credentials are exactly what
+// RFC 0026 §9 tells an operator to give a machine that publishes into a bucket
+// its neighbours also write to. The mitigation the design rests on was not
+// configurable, and the reason had nothing to do with the feature.
+//
+// Nothing is lost by skipping it here. These operations are one call each, so a
+// missing bucket surfaces as that call's own error rather than mid-transfer,
+// which is the entire argument for the probe. And the message an operator needs
+// still arrives where they configure the target, because that path lists.
+func (t *Target) bucket(ref ports.TargetRef) (*bucketStore, error) {
 	bucket, prefix := ref.Bucket()
 	if bucket == "" {
 		return nil, domain.Usage("the s3:// backup target names no bucket").
@@ -151,23 +193,10 @@ func (t *Target) store(ctx context.Context, ref ports.TargetRef) (*bucketStore, 
 	if err != nil {
 		return nil, err
 	}
-
-	// The bucket is checked here rather than at the first PUT, because
-	// "NoSuchBucket" arriving in the middle of a push reads as a transfer
-	// failure when it is a configuration mistake.
-	exists, err := client.BucketExists(ctx, bucket)
-	if err != nil {
-		return nil, t.unreachable(ref, err)
-	}
-	if !exists {
-		return nil, domain.BackupError(domain.ErrNotFound,
-			"the bucket %q does not exist, or these credentials cannot see it", bucket).
-			WithHint("create it first; the manager does not create buckets, because " +
-				"a typo would silently make a new one and the backups would go " +
-				"somewhere nobody is watching")
-	}
-
-	return &bucketStore{client: client, bucket: bucket, prefix: strings.Trim(prefix, "/"), ref: ref, target: t}, nil
+	return &bucketStore{
+		client: client, bucket: bucket,
+		prefix: strings.Trim(prefix, "/"), ref: ref, target: t,
+	}, nil
 }
 
 func (t *Target) client(ref ports.TargetRef) (*minio.Client, error) {

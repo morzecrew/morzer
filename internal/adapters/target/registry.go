@@ -161,7 +161,8 @@ func (r *Registry) Remove(ctx context.Context, ref ports.RemoteRef) error {
 
 var _ ports.ObjectStore = (*Registry)(nil)
 
-// PutObject, ObjectKeys and GetObject dispatch the ports.ObjectStore half.
+// PutObject writes an object, and ObjectKeys and GetObject read them back --
+// the ports.ObjectStore half of the port, dispatched like the rest.
 //
 // The selected target may not implement it, which is a refusal rather than a
 // silent skip: a build whose sftp:// transport could not hold attestations
