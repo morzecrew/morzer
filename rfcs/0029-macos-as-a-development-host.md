@@ -3,13 +3,14 @@
 - **Status:** 🚧 In progress — **P1 shipped (2026-08-13)**. `GOOS=darwin go
   build ./...` and `go vet ./...` are clean for `amd64` and `arm64`, gated in
   `just ci` as `darwin-check`, and `install.sh`'s advice is true for the first
-  time. Two decisions moved during execution and §15 records both: **11**
+  time. Three decisions moved during execution and §15 records each: **11**
   departed (the prompt keeps its own ioctl pair rather than adopting
   `x/term.ReadPassword`, which would have reintroduced a race the code exists to
-  close), and **12** resolved to the fail-safe stub rather than the real
-  `SysctlKinfoProc`. §3.1's count of six sites was also two short — it counted
-  what `go build` reaches, and test files are invisible to it. P2 remains
-  **demand-gated** on §6.
+  close), **12** resolved to the fail-safe stub rather than the real
+  `SysctlKinfoProc`, and **3** widened from `go build` to `go build` *and* `go
+  vet`. That last one has a cause: §3.1's count of six sites was two short
+  because it counted what `go build` reaches, and test files are invisible to
+  it. P2 remains **demand-gated** on §6.
 - **Scope:** Making `GOOS=darwin` compile, and then making it *mean* something
   bounded. P1 is four compile fixes, a fail-safe stub for a fifth site, and one
   honest error message: the binary builds from source on a Mac, and nothing else
@@ -652,15 +653,24 @@ the first.
 Both files were split rather than gated wholesale, so the portable tests in them
 keep running everywhere and only the pty plumbing is Linux-only.
 
-Consequently the gate in decision 3 is `go build` **and** `go vet` for both
-architectures, since vet type-checks test files and build does not. That is one
-step beyond what decision 3 specified; it is recorded here rather than silently
-widened.
+**A5 — decision 3 widened: the gate is `go build` *and* `go vet` (2026-08-13,
+P1).**
+
+Decision 3 is graded `LOCKED` and specifies `GOOS=darwin go build ./...` in `just
+ci` for both architectures. `darwin-check` runs `go vet` for both as well, which
+is more than the row says and therefore gets its own entry: a `LOCKED` row is
+graded that way because reopening it was meant to cost a second reader, and a
+widening folded into the tail of an amendment about something else is not a
+second reader seeing it.
+
+The reason is A4's. Two of the eight sites are in test files, and `go build` does
+not compile those, so the gate decision 3 specifies cannot observe the defect
+class A4 found — it would have gone green on a tree where `go test` did not
+compile. `go vet` type-checks test files, which is the cheapest thing that closes
+that gap and needs no macOS runner (decision 9). The direction is the safe one:
+this only ever refuses more than the row promised, never less.
 
 ---
-
-For the record, because §14 is a claim about rigour and would be worth less if it
-were quietly maintained: this draft was corrected in review, before adoption. The
 
 For the record, because §14 is a claim about rigour and would be worth less if it
 were quietly maintained: this draft was corrected in review, before adoption. The
