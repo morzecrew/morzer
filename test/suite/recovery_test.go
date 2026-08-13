@@ -16,6 +16,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/hooks"
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
+	signminisign "github.com/morzecrew/morzer/internal/adapters/sign/minisign"
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/adapters/target"
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
@@ -76,6 +77,11 @@ func newMachine(t *testing.T, root string) *machine {
 	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile())
 	runtime := fakes.NewRuntime()
 
+	// The real signer, like the real CLI wires. Not a fake: the thing under
+	// test here is whether an identity survives a rebuild, and a fake signer
+	// would answer that question about itself.
+	signer := signminisign.New(paths.SigningKeyFile(), paths.Product)
+
 	// See newHarness: the fake waits like the real one, so a test that
 	// wants a failing wait has to say how long it is prepared to wait.
 	health := fakes.NewHealth()
@@ -87,6 +93,7 @@ func newMachine(t *testing.T, root string) *machine {
 		Locker:         fakes.NewLocker(),
 		Runtime:        runtime,
 		Secrets:        secrets,
+		Signer:         signer,
 		Health:         health,
 		Renderer:       gotemplate.New(),
 		Source:         local.New(),
