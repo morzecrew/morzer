@@ -26,6 +26,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
+	signminisign "github.com/morzecrew/morzer/internal/adapters/sign/minisign"
 	"github.com/morzecrew/morzer/internal/adapters/source"
 	"github.com/morzecrew/morzer/internal/adapters/source/https"
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
@@ -911,7 +912,12 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// artifact I was told to expect"; minisign answers "did a key
 		// this machine trusts publish it". A build with only the first
 		// could not make require_signature mean anything.
-		Verifier:       verify.NewChain(checksum.New(), minisign.New()),
+		Verifier: verify.NewChain(checksum.New(), minisign.New()),
+		// This machine's own key, which is a different thing from the
+		// verifier above it despite the shared format: that one checks
+		// a vendor's signature over a release, and this one signs
+		// statements about this installation. RFC 0028 §2.
+		Signer:         signminisign.New(paths.SigningKeyFile(), paths.Product),
 		Renderer:       gotemplate.New(),
 		Supervisor:     systemd.New(runner),
 		Hooks:          hookRunner,

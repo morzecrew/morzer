@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -139,6 +140,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		d.checkSecretsDecryptable(),
 		d.checkRecoveryRecipient(),
 		d.checkSecretsOnEphemeralStorage(),
+		d.checkSigningIdentity(),
 		d.checkInstallationFileMatchesState(),
 		d.checkDiskSpace(),
 	)
@@ -404,6 +406,101 @@ func (d *Deps) checkIdentity() preflight.Check {
 				return preflight.Fail(e.Hint, "%s", e.Message)
 			}
 			return preflight.OK("%s", pub)
+		},
+	}
+}
+
+// checkSigningIdentity reports whether this machine can sign for itself, and
+// refuses the one state that makes its artifacts worthless.
+//
+// The three states are deliberately not graded on a single axis, because two of
+// them look alike and mean opposite things (RFC 0028 §5.6):
+//
+//   - **No key and no recorded key.** Information, not a finding. This is every
+//     installation that predates schema 6: the migration mints nothing, and a
+//     machine acquires a key the first time it is asked to sign rather than on
+//     the upgrade that made keys possible. Reporting it as a problem would put
+//     a warning on every machine in the field for a capability none of them has
+//     been asked to use.
+//
+//   - **A key that disagrees with recorded state.** Reported at the highest
+//     severity this check can produce, which is a **warning**: `Fatal` is false,
+//     and preflight's runner rewrites a non-fatal failure to a warning. Said
+//     plainly because an earlier draft of this comment called it a refusal, and
+//     a comment claiming a stop the code cannot perform is the same defect this
+//     whole feature exists to avoid. Such a machine
+//     signs with one key while telling everybody -- through `status`, the
+//     export, an attestation -- that it signs with another, so its artifacts are
+//     attributable to nobody. This is the narrow refusal the design asks for,
+//     and it is about *disagreement* rather than absence.
+//
+//   - **A key that matches.** Fine, and the key id is reported so an operator
+//     can compare it against an artifact they are holding.
+//
+// Not fatal, and that is the trade rather than an oversight: a machine that
+// cannot sign can still be updated, backed up and rolled back, and refusing to
+// operate over a signing key would take a deployment down for a bookkeeping
+// reason. What it costs is that the disagreement arrives as a warning among
+// warnings, which is why the message says the artifacts are unattributable
+// rather than merely that two keys differ.
+func (d *Deps) checkSigningIdentity() preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.signing-identity",
+		Category:    preflight.CategorySecrets,
+		Description: "machine signing key agrees with what state records",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			inst, err := d.State.LoadInstallation(ctx)
+			if err != nil {
+				return preflight.Fail("", "%s", domain.AsError(err).Message)
+			}
+
+			if d.Signer == nil {
+				return preflight.OK("this build has no signer configured")
+			}
+
+			key, err := d.Signer.PublicKey(ctx)
+			switch {
+			case errors.Is(err, domain.ErrNoSigningKey):
+				if inst.Signing.HasKey() {
+					// State names a key the machine cannot
+					// produce. Whatever it signed is
+					// unverifiable here, and anything it
+					// signs from now on will be signed by
+					// a key nobody was told about.
+					return preflight.Fail(
+						fmt.Sprintf("restore %s from a backup, or accept a new "+
+							"signer -- artifacts signed with the recorded key "+
+							"cannot be reproduced", d.Paths.SigningKeyFile()),
+						"installation state records a signing key, and there is none at %s",
+						d.Paths.SigningKeyFile())
+				}
+				return preflight.OK(
+					"no signing key yet: one is minted the first time this machine signs")
+			case err != nil:
+				return preflight.Fail("", "%s", domain.AsError(err).Message)
+			}
+
+			if !inst.Signing.HasKey() {
+				// A key on disk that state has never heard of.
+				// Consumers read the public key from state, so
+				// this machine would sign artifacts and publish
+				// no way to check them.
+				return preflight.Warn(
+					"run `morzer init --repair` to record it",
+					"there is a signing key at %s that installation state does not record",
+					d.Paths.SigningKeyFile())
+			}
+
+			if inst.Signing.PublicKey != key.Line {
+				return preflight.Fail(
+					fmt.Sprintf("this machine signs with %s while state says otherwise; "+
+						"nothing it signs can be attributed until they agree", key.KeyID),
+					"the signing key at %s is not the key installation state records",
+					d.Paths.SigningKeyFile())
+			}
+
+			return preflight.OK("key %s", key.KeyID)
 		},
 	}
 }

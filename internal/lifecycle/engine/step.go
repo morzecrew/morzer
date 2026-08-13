@@ -242,4 +242,15 @@ const (
 	KeyRenderedFiles = "rendered-files"
 	KeyHealthResults = "health-results"
 	KeySchemaVersion = "database-schema-version"
+
+	// KeyRenderedConfig carries the rendered configuration -- target path
+	// to bytes -- from the step that renders it to the attestation that
+	// digests it. The bytes never leave the machine: what travels is an
+	// HMAC under the installation's salt.
+	KeyRenderedConfig = "rendered-configuration"
+
+	// KeySigningKey carries the public signing key line from the step that
+	// mints it to the step that records it in installation state, so the
+	// two cannot disagree about what this machine's key is.
+	KeySigningKey = "signing-public-key"
 )

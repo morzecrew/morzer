@@ -36,7 +36,86 @@ import (
 // what prevents that, and it needs a version of its own: two field sets both
 // called schema 4 would let a manager implementing only one of them rewrite a
 // file written by the other, dropping fields it had never heard of.
-const InstallationSchemaVersion = 5
+// Bumped to 6 when `signing` arrived (RFC 0028). The read direction is safe --
+// an older binary that sees no signing block behaves as it always did -- and
+// the bump is for the write path, the same shape as 5: `config set` rewrites
+// the state, unknown fields are dropped on the way through, and one pass by an
+// older binary would silently discard the public key and the whole succession
+// record. Losing `previous_keys` is the expensive half: it is the only thing
+// that lets a verifier say "signed by a predecessor of this installation"
+// rather than "unknown signer", and nothing regenerates it.
+const InstallationSchemaVersion = 6
+
+// Signing is this installation's signing identity: the public half of the key
+// the machine signs its own statements with, and the keys it used to.
+//
+// State rather than only a file on disk, because it has to reach `status
+// --json`, the export and an attestation without any of them opening a key
+// file (RFC 0028 decision 6).
+//
+// **Every field here may legitimately be empty.** An installation that has
+// never signed anything has no key, and RFC 0028 decision 9 makes that the
+// normal state of every machine that existed before schema 6: the migration
+// bumps the number and mints nothing. A consumer that treats PublicKey as
+// always populated produces an artifact claiming a signer that is the empty
+// string.
+type Signing struct {
+	// PublicKey is the minisign public key line for the current key, as
+	// `minisign -P` accepts it. Empty means this machine has never minted
+	// one, which is not an error.
+	PublicKey string `yaml:"public_key" json:"public_key,omitempty"`
+
+	// PreviousKeys are the keys this installation signed with before,
+	// newest first.
+	PreviousKeys []RetiredKey `yaml:"previous_keys" json:"previous_keys,omitempty"`
+}
+
+// RetiredKey is a public key this installation used to sign with.
+type RetiredKey struct {
+	// Key is the retired public key, in the same form as
+	// Signing.PublicKey.
+	Key string `yaml:"key" json:"key"`
+
+	// RetiredAt is when this machine stopped signing with the key.
+	//
+	// **History for an operator reading their own timeline, and
+	// deliberately not a check.** A verifier must not reject a signature
+	// for being dated after this: the date would come from the artifact,
+	// and the artifact is what a forger writes. Enforcing it would stop
+	// only an attacker who neglected to set a timestamp -- a defence in
+	// appearance and not in fact. RFC 0028 §5.3 and decision 11.
+	RetiredAt Time `yaml:"retired_at" json:"retired_at,omitempty"`
+
+	// Reason is why the key was retired: RetiredByRebuild or
+	// RetiredByRotation.
+	Reason RetirementReason `yaml:"reason" json:"reason,omitempty"`
+}
+
+// RetirementReason says why a key stopped being this machine's.
+type RetirementReason string
+
+const (
+	// RetiredByRebuild is a key inherited from the installation an export
+	// came from. The predecessor is a *different machine* that held the
+	// same installation identity; its private key did not travel.
+	RetiredByRebuild RetirementReason = "rebuild"
+
+	// RetiredByRotation is a key this machine replaced deliberately. P2 of
+	// RFC 0028 -- named here so the field has both its values from the
+	// start and a reader is not left wondering what else can appear.
+	RetiredByRotation RetirementReason = "rotation"
+)
+
+// Valid reports whether a retirement reason is one this manager writes.
+func (r RetirementReason) Valid() bool {
+	return r == RetiredByRebuild || r == RetiredByRotation
+}
+
+// HasKey reports whether this installation has a current signing key.
+//
+// The predicate exists so consumers ask the question in one place rather than
+// each comparing against "" and each deciding what an empty string means.
+func (s Signing) HasKey() bool { return strings.TrimSpace(s.PublicKey) != "" }
 
 // Mode declares what a machine is for.
 //
@@ -185,6 +264,25 @@ type Installation struct {
 	// bucket, and a manifest that named one would be a vendor deciding where
 	// an operator's data is kept.
 	Backup BackupConfig `yaml:"backup" json:"backup,omitempty"`
+
+	// Signing is this machine's signing identity. Every field in it may be
+	// empty on a real installation -- see Signing.
+	Signing Signing `yaml:"signing" json:"signing,omitempty"`
+
+	// AttestationSalt makes the attestation's rendered-configuration digest
+	// resistant to being brute-forced back to its inputs.
+	//
+	// Minted at `init` and preserved across a rebuild by `installation
+	// import`, because a re-minted salt breaks the chain continuity on
+	// exactly the machine that most needs it -- the same failure RFC 0017
+	// found for the installation id (RFC 0025 decision 10).
+	//
+	// The consequence is deliberate and worth stating where the field is:
+	// the digest detects drift on **one machine over time**, which is the
+	// audit question, and is not comparable across machines. An unsalted
+	// digest would be comparable and would also be brute-forceable, since
+	// the input is a handful of ports and booleans.
+	AttestationSalt string `yaml:"attestation_salt" json:"attestation_salt,omitempty"`
 }
 
 // UpdateConfig is the operator's arrangement for learning about releases.
@@ -509,6 +607,24 @@ func (i Installation) Validate() error {
 		v.add("update.auto_apply",
 			"needs policy.require_signature, because it hands the vendor "+
 				"unattended root on this machine")
+	}
+
+	// The signing block is validated for shape and never for presence. An
+	// installation with no key at all is every machine that predates schema
+	// 6, and refusing those would refuse to load the state it is meant to
+	// migrate (RFC 0028 §5.6). What is checked is that a *recorded*
+	// predecessor is usable: an entry with no key names a signer nobody can
+	// check against, and a verifier walking the list would report "unknown
+	// signer" for a machine whose history is right there.
+	for idx, prev := range i.Signing.PreviousKeys {
+		field := fmt.Sprintf("signing.previous_keys[%d]", idx)
+		if strings.TrimSpace(prev.Key) == "" {
+			v.add(field+".key", "is required")
+		}
+		if prev.Reason != "" && !prev.Reason.Valid() {
+			v.add(field+".reason", "unknown reason %q (%s or %s)",
+				prev.Reason, RetiredByRebuild, RetiredByRotation)
+		}
 	}
 
 	if i.Policy.RetainReleases < 0 {

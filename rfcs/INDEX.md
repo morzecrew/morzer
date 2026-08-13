@@ -24,7 +24,10 @@ second table of the same shape is a second set of rows for the same numbers.
   an inventory with no code, and P2 must not ship without P3, which is the phase
   that proves redaction works.
 - **[0025 — Attesting an installation](0025-attesting-an-installation.md).**
-  Unstarted, and the first consumer of 0028 — the two P1s land together.
+  P1 shipped with 0028 P1, as the two RFCs required of each other. **Decision 8
+  still decides whether this RFC lives**: `attest verify --against-live` must
+  have a fault-injection case that makes it fail, or the whole design closes as
+  rejected — and that is P3.
 - **[0026 — Fleet as a read model](0026-fleet-as-a-read-model.md).** Unstarted.
   Design settled through decision 6b: the roster, not the row, is the trust
   anchor.
@@ -33,9 +36,9 @@ second table of the same shape is a second set of rows for the same numbers.
   author asking for it**, and if that never happens the correct outcome is that
   P2 is never built.
 - **[0028 — The machine's signing identity](0028-the-machines-signing-identity.md).**
-  Design complete. P1 is deliberately not scheduled ahead of 0025 P1: a signing
-  key with nothing to sign would be the third mechanism this project built
-  before its caller.
+  P1 shipped: the key exists and signs an artifact, which is why it shipped
+  beside its consumer rather than ahead of it. P2 is rotation, wanted the first
+  time somebody believes a host was compromised.
 - **[0029 — macOS as a development host](0029-macos-as-a-development-host.md).**
   **P1 is execution-ready and unconditional**: the tree does not compile for
   darwin, which makes `install.sh`'s "build from source" advice false. P2 — a
@@ -85,10 +88,10 @@ number in the filename in sync.
 | [0022](0022-bootstrapping-the-manager.md) | Bootstrapping the manager | ✅ Complete | Getting the manager onto a machine in the first place: an install script that verifies what it downloaded, and instructions somebody has run. |
 | [0023](0023-runtimes-beyond-compose.md) | Runtimes beyond Compose | 🚧 In progress | Grading the runtime port by writing a second implementation of it — rootless Podman with Quadlet — on the theory that a port with one adapter is a guess rather than an abstraction. |
 | [0024](0024-the-support-bundle.md) | The support bundle | 📝 Draft | One redacted archive an operator can hand to a stranger, because every command a vendor has runs before the bundle leaves their machine and none after. |
-| [0025](0025-attesting-an-installation.md) | Attesting an installation | 📝 Draft | Making the manager's evidence leave the machine as a signed statement, and binding the feature to a verifier that can fail for a reason other than corruption. |
+| [0025](0025-attesting-an-installation.md) | Attesting an installation | 🚧 In progress | Making the manager's evidence leave the machine as a signed statement, and binding the feature to a verifier that can fail for a reason other than corruption. |
 | [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | 📝 Draft | Seeing many machines at once without a control plane: each installation publishes one signed row to a bucket, and the reader can never act. |
 | [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 🚧 In progress | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |
-| [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | 📝 Draft | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |
+| [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | 🚧 In progress | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |
 | [0029](0029-macos-as-a-development-host.md) | macOS as a development host | 📝 Draft | Making `GOOS=darwin` compile, and then bounding what that means: a tier for authoring and evaluating bundles on a Mac, never for running a production installation. |
 
 ## Status legend

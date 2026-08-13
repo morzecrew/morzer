@@ -106,6 +106,21 @@ func (p Paths) SecretsFile() string      { return filepath.Join(p.EtcDir, "secre
 func (p Paths) AgeDir() string           { return filepath.Join(p.EtcDir, "age") }
 func (p Paths) AgeIdentityFile() string  { return filepath.Join(p.EtcDir, "age", "identity") }
 
+// The signing identity, in its own directory rather than under age/.
+//
+// That directory's name states what is in it, and a signing key is not an age
+// key: one encrypts and one signs, and they are not interchangeable in either
+// direction. A reader grepping for how this machine's secrets are protected
+// should not have to know that "age" grew a second meaning. RFC 0028 §5.1.
+
+func (p Paths) SigningDir() string     { return filepath.Join(p.EtcDir, "signing") }
+func (p Paths) SigningKeyFile() string { return filepath.Join(p.SigningDir(), "identity.key") }
+
+// AttestationsDir holds the signed statements this machine has emitted,
+// newest last. Under VarDir rather than EtcDir: they are records the manager
+// produces, not configuration an operator edits.
+func (p Paths) AttestationsDir() string { return filepath.Join(p.VarDir, "attestations") }
+
 // Persistent state.
 
 func (p Paths) DataDir() string    { return filepath.Join(p.VarDir, "data") }
@@ -158,9 +173,17 @@ func (p Paths) ManagedDirs() []ManagedDir {
 	return []ManagedDir{
 		{Path: p.EtcDir, Mode: 0o750},
 		{Path: p.AgeDir(), Mode: 0o700},
+		// 0700 like the age directory: it holds a private key, and the
+		// group that may read configuration is not the group that may
+		// read the key the machine signs with.
+		{Path: p.SigningDir(), Mode: 0o700},
 		{Path: p.VarDir, Mode: 0o750},
 		{Path: p.DataDir(), Mode: 0o750},
 		{Path: p.BackupsDir(), Mode: 0o700},
+		// 0755: attestations are audit records that carry no secret by
+		// construction, and one an auditor cannot read is one they will
+		// not read (RFC 0025 decision 7).
+		{Path: p.AttestationsDir(), Mode: 0o755},
 		{Path: p.ManagerDir(), Mode: 0o750},
 		{Path: p.StagingDir(), Mode: 0o750},
 		{Path: p.LockDir(), Mode: 0o750},

@@ -2,6 +2,8 @@ package ops
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -181,6 +183,10 @@ func initSteps(d *Deps, opts InitOptions) []engine.Step {
 	steps := []engine.Step{
 		stepCreateDirectories(d),
 		stepCreateIdentity(d),
+		// Before the installation is written, because the write records
+		// the public half. The other order would leave state claiming
+		// no key on a machine that has one.
+		stepCreateSigningKey(d),
 		stepWriteInstallation(d, opts),
 	}
 
@@ -275,6 +281,88 @@ func stepCreateIdentity(d *Deps) engine.Step {
 	}
 }
 
+// stepCreateSigningKey mints the machine's signing identity.
+//
+// Beside stepCreateIdentity and not inside it: one key encrypts and one signs,
+// they live in different directories, and a step that did both would report a
+// single outcome for two things that fail for different reasons.
+//
+// Not compensable, for the same reason the age identity is not. Deleting a
+// signing key is not as catastrophic -- old signatures stay verifiable against
+// the recorded public key, and only the ability to make new ones is lost (RFC
+// 0028 decision 7) -- but a compensation that removed it would still be
+// automatic destruction of key material in response to an unrelated failure
+// later in the operation.
+//
+// Idempotent through the port: EnsureKey reads before it mints, so this step
+// running a second time on a machine that already signed returns the same key
+// rather than orphaning every artifact that machine has emitted.
+func stepCreateSigningKey(d *Deps) engine.Step {
+	return engine.Step{
+		ID:          "create-signing-key",
+		Description: "create machine signing key",
+		Idempotent:  true,
+		OnFailure:   engine.Abort,
+		Timeout:     time.Minute,
+		Check: func(ctx context.Context, st *engine.State) (bool, error) {
+			// No signer configured is "nothing to do", not a
+			// failure. A build or a test that signs nothing must
+			// still be able to create an installation -- and an
+			// installation without a signing key is a state this
+			// design already has to support, because every machine
+			// that reaches schema 6 by migration is in it (RFC 0028
+			// decision 9). Refusing here would make the absent case
+			// unreachable through the one path that creates it.
+			if d.Signer == nil {
+				return true, nil
+			}
+
+			// Deliberately *not* "the key file exists". Execute is
+			// what publishes the public key for the installation
+			// record, so skipping it on file-existence alone left
+			// `init --repair` unable to record a key that is on
+			// disk and missing from state -- which is exactly the
+			// state `doctor` reports with the remedy "run `morzer
+			// init --repair` to record it". The remedy did not
+			// work, and the warning survived the repair.
+			//
+			// EnsureKey reads before it mints, so running Execute
+			// against an existing key is safe and returns that
+			// same key. Never reporting done is the simpler
+			// correct answer than a Check that has to know what
+			// state records.
+			return false, nil
+		},
+		Execute: func(ctx context.Context, st *engine.State) error {
+			key, err := d.Signer.EnsureKey(ctx)
+			if err != nil {
+				return err
+			}
+			// Into engine state so stepWriteInstallation records it,
+			// rather than each of them asking the port separately
+			// and risking two answers.
+			st.Set(engine.KeySigningKey, key.Line)
+			st.Detail("key %s", key.KeyID)
+			return nil
+		},
+		Verify: func(ctx context.Context, st *engine.State) error {
+			if d.Signer == nil {
+				return nil
+			}
+			ok, detail, err := atomicfs.CheckMode(d.Paths.SigningKeyFile(), 0o400)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return domain.SecretsError(nil,
+					"the signing key at %s is not 0400: %s",
+					d.Paths.SigningKeyFile(), detail)
+			}
+			return nil
+		},
+	}
+}
+
 // stepWriteInstallation writes installation.yaml and the state file.
 func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 	return engine.Step{
@@ -284,7 +372,7 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 		OnFailure:   engine.Compensate,
 		Timeout:     time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			inst, err := d.buildInstallation(ctx, opts)
+			inst, err := d.buildInstallation(ctx, st, opts)
 			if err != nil {
 				return err
 			}
@@ -306,7 +394,7 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 // Regenerating the ID would be silently destructive: backups are stamped with
 // it, and restore checks against it, so a new ID would make every existing
 // backup look like it belongs to a different machine.
-func (d *Deps) buildInstallation(ctx context.Context, opts InitOptions) (domain.Installation, error) {
+func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts InitOptions) (domain.Installation, error) {
 	inst := domain.Installation{
 		SchemaVersion: domain.InstallationSchemaVersion,
 		Product:       opts.Product,
@@ -320,9 +408,41 @@ func (d *Deps) buildInstallation(ctx context.Context, opts InitOptions) (domain.
 	inst.Policy.RequireSignature = opts.RequireSignature
 	inst.Policy.SigningKeys = opts.SigningKeys
 
+	// The key the minting step just produced, so state records what is
+	// actually on disk rather than what a second call to the port would
+	// return. Empty when this init did not mint one, which is why the
+	// repair branch below preserves whatever was already recorded.
+	if key := engine.MustGet[string](st, engine.KeySigningKey); key != "" {
+		inst.Signing.PublicKey = key
+	}
+
+	salt, err := newAttestationSalt()
+	if err != nil {
+		return domain.Installation{}, err
+	}
+	inst.AttestationSalt = salt
+
 	if existing, err := d.State.LoadInstallation(ctx); err == nil && existing.ID != "" {
 		inst.ID = existing.ID
 		inst.CreatedAt = existing.CreatedAt
+
+		// A repair keeps the signing identity and the salt. Both are
+		// carried rather than regenerated for the same reason the
+		// installation id is: re-minting the salt breaks the digest
+		// chain on the machine that most needs it, and re-recording a
+		// key would let `init --repair` disagree with the key file
+		// this run did not touch.
+		//
+		// PreviousKeys always, PublicKey only when this run did not
+		// mint -- an operator repairing a machine whose key file was
+		// lost gets the new key recorded, not the stale one.
+		inst.Signing.PreviousKeys = existing.Signing.PreviousKeys
+		if inst.Signing.PublicKey == "" {
+			inst.Signing.PublicKey = existing.Signing.PublicKey
+		}
+		if existing.AttestationSalt != "" {
+			inst.AttestationSalt = existing.AttestationSalt
+		}
 		if opts.Profile == "" {
 			inst.Profile = existing.Profile
 		}
@@ -344,6 +464,22 @@ func (d *Deps) buildInstallation(ctx context.Context, opts InitOptions) (domain.
 	}
 
 	return inst, nil
+}
+
+// newAttestationSalt mints the per-installation salt for the attestation's
+// rendered-configuration digest.
+//
+// 32 bytes from crypto/rand, hex. The digest it salts is over a handful of
+// ports, hostnames and booleans, so an unsalted one would be brute-forceable
+// back to its inputs by anybody holding an attestation -- which is the point of
+// RFC 0025 decision 4, and the reason parameter *values* never appear in the
+// document at all.
+func newAttestationSalt() (string, error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", domain.Internal(err, "cannot generate an attestation salt")
+	}
+	return hex.EncodeToString(b[:]), nil
 }
 
 // stepStageRelease copies a bundle into the release store.

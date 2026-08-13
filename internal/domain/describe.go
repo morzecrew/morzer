@@ -93,6 +93,21 @@ var installationFieldsNotDescribed = map[string]string{
 	"SchemaVersion": "state bookkeeping: the document carries api_version, which is its own contract",
 	"CreatedAt":     "history, not a choice -- a recreated installation has its own creation time",
 	"Providers":     "declared by the release manifest, not chosen by the operator",
+
+	// Machine identity, not desired state. Both are minted rather than
+	// chosen, and a document that carried them would be describing what
+	// this machine *is* rather than what an operator asked for -- which is
+	// the distinction RFC 0027 is built on.
+	"Signing": "machine identity: the public half is derived from the key file, and " +
+		"a rebuilt machine is honestly a different signer (RFC 0028 §5.3)",
+
+	// And this one must stay out for a second, harder reason: publishing
+	// it would undo the thing it exists for. The salt makes the
+	// attestation's configuration digest resistant to being brute-forced
+	// back over a small space of ports and booleans, and a describe
+	// document is written to be committed to a repository.
+	"AttestationSalt": "minted, not chosen -- and publishing it in a document meant for " +
+		"a git repository would make the digest it salts brute-forceable again",
 }
 
 // Describe assembles the document from an installation, the release it is

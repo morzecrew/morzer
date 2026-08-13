@@ -39,6 +39,11 @@ func main() {
 		fail(err)
 	}
 
+	attestation, err := schema.Attestation()
+	if err != nil {
+		fail(err)
+	}
+
 	root, err := repoRoot()
 	if err != nil {
 		fail(err)
@@ -54,6 +59,7 @@ func main() {
 		schema.ManifestSchemaFile:             manifest,
 		schema.SecretSchemaFile:               secrets,
 		schema.InstallationDocumentSchemaFile: installation,
+		schema.AttestationSchemaFile:          attestation,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 			fail(err)
