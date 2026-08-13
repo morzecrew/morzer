@@ -75,6 +75,7 @@ nav = [
         "reference/variables.md",
         "reference/hooks.md",
         "reference/attestations.md",
+        "reference/support-bundle.md",
     ] },
     { "Explanation" = [
         "explanation/architecture.md",
