@@ -139,6 +139,18 @@ func (t *Target) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix str
 	return blob.ObjectKeys(ctx, store, prefix)
 }
 
+// GetObject reads one back. The store is opened without creating it, like
+// ObjectKeys and unlike PutObject: reading a directory into existence would
+// make "this target has never been published to" indistinguishable from "this
+// target is now an empty directory I just made".
+func (t *Target) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
+	store, err := t.store(ref, false)
+	if err != nil {
+		return nil, err
+	}
+	return blob.GetObject(ctx, store, key)
+}
+
 // store resolves the target's root directory, creating it when a push is about
 // to need it.
 //

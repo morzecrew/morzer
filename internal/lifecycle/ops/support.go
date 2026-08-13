@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -637,9 +638,54 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 		return nil, src.noRelease("so nothing renders configuration")
 	}
 
-	rendered, err := renderConfiguration(ctx, d, src)
+	comparison, err := configComparison(ctx, d, src.Installation, src.Release)
 	if err != nil {
 		return nil, err
+	}
+
+	// slices.Concat rather than append: appending writes into Diffs' spare
+	// capacity when it has any, and `configComparison` is now shared with
+	// the fleet row's drift count. Nothing reads the comparison after this
+	// line today, which is exactly the state in which the trap is invisible.
+	body := "no drift: every configuration target matches what this release renders\n"
+	if reports := slices.Concat(comparison.Diffs, comparison.Unreadable); len(reports) > 0 {
+		body = strings.Join(reports, "\n")
+	}
+	return []supportFile{{Name: "config-diff.txt", Data: []byte(body)}}, nil
+}
+
+// ConfigComparison is what the files on disk say versus what the release
+// renders.
+//
+// Two lists rather than one, because there are two facts and a caller that
+// counts them needs to tell them apart. A target that differs is drift. A
+// target that cannot be *read* is a different thing entirely -- an absent file
+// is drift, an unreadable one is a permission problem -- and folding it into
+// the first would let a broken `/etc` publish itself as configuration change.
+//
+// The support bundle prints both, because a person reading a ticket wants both.
+// A fleet row counts only the first, and says how many were not compared.
+type ConfigComparison struct {
+	// Diffs is one unified diff per target that differs, in target order.
+	Diffs []string
+
+	// Unreadable is one line per target that could not be read.
+	Unreadable []string
+}
+
+// configComparison renders every configuration target and compares it with what
+// is on disk.
+//
+// One computation with two presentations, rather than one per consumer. Two
+// would agree on the day they were written and drift into a drift detector that
+// disagrees with the support bundle sitting beside it -- and the operator
+// holding both would have no way to tell which was lying.
+func configComparison(
+	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release,
+) (ConfigComparison, error) {
+	rendered, err := renderConfiguration(ctx, d, inst, rel)
+	if err != nil {
+		return ConfigComparison{}, err
 	}
 
 	targets := make([]string, 0, len(rendered))
@@ -648,7 +694,7 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 	}
 	sort.Strings(targets)
 
-	var diffs []string
+	var out ConfigComparison
 	for _, target := range targets {
 		existing, err := os.ReadFile(target)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -658,20 +704,15 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 			// empty, which is a claim about the machine nobody made
 			// -- on a command that exists to report facts about
 			// broken machines.
-			diffs = append(diffs, fmt.Sprintf(
+			out.Unreadable = append(out.Unreadable, fmt.Sprintf(
 				"%s: cannot be read (%v), so no comparison was made\n", target, err))
 			continue
 		}
 		if diff := unifiedDiff(target, string(existing), string(rendered[target])); diff != "" {
-			diffs = append(diffs, diff)
+			out.Diffs = append(out.Diffs, diff)
 		}
 	}
-
-	body := "no drift: every configuration target matches what this release renders\n"
-	if len(diffs) > 0 {
-		body = strings.Join(diffs, "\n")
-	}
-	return []supportFile{{Name: "config-diff.txt", Data: []byte(body)}}, nil
+	return out, nil
 }
 
 // renderConfiguration renders every configuration target, read-only.
@@ -680,27 +721,29 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 // has no side effects and reveals nothing -- the same reasoning that lets
 // `apply --dry-run` show a configuration diff without executing the step that
 // would normally have left the schema in state.
-func renderConfiguration(ctx context.Context, d *Deps, src *supportSource) (map[string][]byte, error) {
-	schema, err := release.LoadSecretSchema(src.Release)
+func renderConfiguration(
+	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release,
+) (map[string][]byte, error) {
+	schema, err := release.LoadSecretSchema(rel)
 	if err != nil {
 		return nil, err
 	}
-	data, err := d.templateData(src.Installation, src.Release, "", schema)
+	data, err := d.templateData(inst, rel, "", schema)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make(map[string][]byte, len(src.Release.Manifest.Configuration))
-	for _, cfg := range src.Release.Manifest.Configuration {
+	out := make(map[string][]byte, len(rel.Manifest.Configuration))
+	for _, cfg := range rel.Manifest.Configuration {
 		// Checked here as well as inside the renderer, as the apply
 		// step does: this refuses the "../" spelling with a message
 		// about the manifest, while os.Root refuses what only an open
 		// can see.
-		if _, err := src.Release.Path(cfg.Template); err != nil {
+		if _, err := rel.Path(cfg.Template); err != nil {
 			return nil, err
 		}
 		body, err := d.Renderer.Render(ctx,
-			ports.TemplateRef{Root: src.Release.Root, Name: cfg.Template}, data)
+			ports.TemplateRef{Root: rel.Root, Name: cfg.Template}, data)
 		if err != nil {
 			return nil, err
 		}

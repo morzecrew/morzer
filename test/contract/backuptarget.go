@@ -1,9 +1,11 @@
 package contract
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -427,6 +429,89 @@ func runObjectStoreCases(t *testing.T, newTarget BackupTargetFactory) {
 			assert.Error(t, store.PutObject(ctx, h.Ref, key, []byte("x")),
 				"%q was accepted as an object key", key)
 		}
+	})
+
+	t.Run("an object reads back byte for byte", func(t *testing.T) {
+		store, h := objects(t)
+		ctx := context.Background()
+
+		// A fleet row is verified before it is parsed, against a
+		// detached signature over the bytes as published. A transport
+		// that re-encoded on the way through -- a newline translation,
+		// a trailing byte -- would break every signature it carried
+		// while every other test still passed.
+		body := []byte("{\"schema\":1}\r\n\x00trailing")
+		require.NoError(t, store.PutObject(ctx, h.Ref, "fleet/demo/inst/status.json", body))
+
+		got, err := store.GetObject(ctx, h.Ref, "fleet/demo/inst/status.json")
+		require.NoError(t, err)
+		assert.Equal(t, body, got)
+	})
+
+	t.Run("an object under a prefix that was never written is an absence too", func(t *testing.T) {
+		store, h := objects(t)
+
+		// The narrower case the test below leaves open: not a missing key
+		// under a directory that exists, but a whole namespace nothing has
+		// ever created. `fleet publish` reads before it writes, so this is
+		// the very first thing every publisher does against a fresh target
+		// -- and a transport reporting it as unreachable would make the
+		// most ordinary run in the feature's life look like a fault.
+		_, err := store.GetObject(context.Background(), h.Ref,
+			"never/written/at/all/status.json")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, fs.ErrNotExist)
+	})
+
+	t.Run("an object that is not there is an absence, not a fault", func(t *testing.T) {
+		store, h := objects(t)
+
+		// The distinction the port promises and every reader depends
+		// on. `fleet ls` reports an installation whose row has never
+		// been written differently from a bucket it cannot reach, and
+		// the publisher's read-before-write treats the first as "go
+		// ahead" and the second as "say so" -- so a transport that
+		// flattened them would make the first publish to a new target
+		// look like a target that had gone away.
+		_, err := store.GetObject(context.Background(), h.Ref, "fleet/demo/inst/status.json")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, fs.ErrNotExist)
+	})
+
+	t.Run("an object cannot be read from outside the target", func(t *testing.T) {
+		store, h := objects(t)
+		ctx := context.Background()
+
+		// Wider input than PutObject's: `fleet ls` builds the keys it
+		// reads from a listing of a bucket several machines write to,
+		// so the names reaching this call are chosen by whoever can
+		// write there.
+		for _, key := range []string{
+			"../escaped.json",
+			"fleet/../../escaped.json",
+			"/etc/escaped.json",
+			"",
+		} {
+			_, err := store.GetObject(ctx, h.Ref, key)
+			assert.Error(t, err, "%q was accepted as an object key", key)
+		}
+	})
+
+	t.Run("an object larger than the bound is refused rather than truncated", func(t *testing.T) {
+		store, h := objects(t)
+		ctx := context.Background()
+
+		oversized := bytes.Repeat([]byte("x"), ports.MaxObjectBytes+1)
+		require.NoError(t, store.PutObject(ctx, h.Ref, "fleet/demo/inst/status.json", oversized))
+
+		// Truncating would hand back bytes that parse as far as they
+		// go and then fail a signature check, which reads to an
+		// operator as tampering rather than as a target somebody else
+		// is writing to.
+		_, err := store.GetObject(ctx, h.Ref, "fleet/demo/inst/status.json")
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, fs.ErrNotExist,
+			"an oversized object was reported as an absent one")
 	})
 
 	t.Run("objects are invisible to the backup listing", func(t *testing.T) {

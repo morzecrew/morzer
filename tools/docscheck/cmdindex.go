@@ -76,7 +76,12 @@ var referencePage = map[string]string{
 	// Same reasoning as `attest`: the page documents the artifact, and the
 	// command is unusable apart from it -- what the archive contains *is*
 	// what the command does.
-	"support":    "reference/support-bundle.md",
+	"support": "reference/support-bundle.md",
+	// And again: the page documents the published row, and both commands
+	// are one half each of it -- what `publish` writes is what `ls` reads,
+	// and splitting them across two pages would put the payload on neither.
+	"fleet": "reference/fleet.md",
+
 	"ls":         "reference/installation-commands.md#installation-list",
 	"completion": "reference/commands.md#completion-install",
 }

@@ -44,6 +44,18 @@ const (
 // bucket.
 func startMinIO(t *testing.T) ports.TargetCredentials {
 	t.Helper()
+	creds, _ := startMinIOContainer(t)
+	return creds
+}
+
+// startMinIOContainer is the same, and hands back the container too.
+//
+// Separate because most callers want only the credentials, and one wants to
+// reach into the server with `mc`: the credential-scoping measurement RFC 0026
+// §10.3 asked for needs to create a user and attach a policy, which is
+// administration rather than storage and has no place in the target port.
+func startMinIOContainer(t *testing.T) (ports.TargetCredentials, *dockerlab.Container) {
+	t.Helper()
 	dockerlab.Require(t)
 	dockerlab.Pull(t, dockerlab.ImageMinIO)
 
@@ -64,7 +76,7 @@ func startMinIO(t *testing.T) ports.TargetCredentials {
 		// accident in production.
 		Endpoint: "http://" + container.HostPort(t, 9000),
 		Region:   "us-east-1",
-	}
+	}, container
 }
 
 // createBucket makes a bucket with the SDK rather than with the adapter under

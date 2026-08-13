@@ -708,6 +708,127 @@ LOG_BYTES=$(jq -r '[.data.entries[] | select(.name | startswith("logs/")) | .byt
 info "archive ${BUNDLE_BYTES} B compressed; journal ${JOURNAL_BYTES} B; logs ${LOG_BYTES} B uncompressed"
 
 # ----------------------------------------------------------------------------
+# The fleet row, on the same installation
+#
+# Here for the same reason the support bundle is: the row reports health, drift
+# and the last operation, and every one of those is a placeholder on an
+# installation that has only ever run `init`. This one has lived.
+#
+# A directory target rather than a bucket. The transports are held to the object
+# store contract in Go against all three; what this scenario proves is the part
+# no unit test can -- that the real binary, wired the way `main` wires it,
+# writes a row somebody else's copy of the binary reads back.
+
+FLEET_TARGET="${WORK}/fleet-target"
+mkdir -p "${FLEET_TARGET}"
+
+step "a target to publish the row to"
+# Added as a backup target, because that is what the design reuses: RFC 0026
+# decision 3 keeps one registry and one list to configure. Every publish below
+# names it explicitly with --target, so this scenario asserts about one target
+# rather than about however many earlier steps happen to have added.
+"${MORZER}" --root "${ROOT}" backup target add "file://${FLEET_TARGET}" ||
+	fail "cannot add the fleet target"
+
+step "fleet publish --dry-run shows the row and writes nothing"
+"${MORZER}" --root "${ROOT}" --json fleet publish --dry-run --target "file://${FLEET_TARGET}" >"${WORK}/fleet-dry.json" ||
+	fail "fleet publish --dry-run failed: $(cat "${WORK}/fleet-dry.json")"
+jq -e '.data.row.schema == 1 and .data.row.bound != ""' "${WORK}/fleet-dry.json" >/dev/null ||
+	fail "--dry-run described the row instead of producing it"
+[ -z "$(find "${FLEET_TARGET}" -name status.json -print -quit)" ] ||
+	fail "fleet publish --dry-run wrote a row"
+
+step "fleet publish writes the row and its signature"
+"${MORZER}" --root "${ROOT}" --json fleet publish --target "file://${FLEET_TARGET}" >"${WORK}/fleet-publish.json" ||
+	fail "fleet publish failed: $(cat "${WORK}/fleet-publish.json")"
+FLEET_KEY=$(jq -r '.data.key' "${WORK}/fleet-publish.json")
+[ -f "${FLEET_TARGET}/${FLEET_KEY}" ] ||
+	fail "fleet publish reported ${FLEET_KEY}, which is not on the target"
+[ -f "${FLEET_TARGET}/${FLEET_KEY}.minisig" ] ||
+	fail "the row was published without a signature beside it"
+
+# The one check no Go test can make, because it is about a tool this project
+# does not own: what the manager writes is what `minisign` verifies. The whole
+# reason the signature is detached and over the bytes as published is that
+# `minisign -Vm` works on the document unmodified.
+if command -v minisign >/dev/null 2>&1; then
+	FLEET_KEYLINE=$(jq -r '.data.row.signing_key' "${WORK}/fleet-publish.json")
+	minisign -Vm "${FLEET_TARGET}/${FLEET_KEY}" -P "${FLEET_KEYLINE}" >/dev/null ||
+		fail "minisign will not verify the row this manager signed"
+	info "minisign verifies the published row"
+else
+	info "minisign is not installed; the row's signature was not checked with it"
+fi
+
+step "the row carries no parameter value and no secret"
+# The refusals are enforced in Go against the published bytes. What this adds is
+# the real installation's real values: the parameters this scenario actually set
+# are the ones a leak would carry, and no fixture can stand in for them.
+"${MORZER}" --root "${ROOT}" --json config list >"${WORK}/fleet-params.json" ||
+	fail "config list failed: $(cat "${WORK}/fleet-params.json")"
+jq -r '[.. | objects | .value? // empty | select(type == "string" and length > 2)] | .[]' \
+	"${WORK}/fleet-params.json" | sort -u >"${WORK}/fleet-forbidden.txt"
+[ -s "${WORK}/fleet-forbidden.txt" ] ||
+	fail "no parameter values were found, so this check proves nothing"
+while IFS= read -r forbidden; do
+	grep -qF -- "${forbidden}" "${FLEET_TARGET}/${FLEET_KEY}" &&
+		fail "the parameter value ${forbidden} reached the published row"
+done <"${WORK}/fleet-forbidden.txt"
+grep -qF 'demo.example' "${FLEET_TARGET}/${FLEET_KEY}" &&
+	fail "a hostname reached the published row"
+info "$(wc -l <"${WORK}/fleet-forbidden.txt") parameter value(s) checked against the row"
+
+step "publishing again declines to replace a newer row"
+# The read-before-write, against a real target. The row just published is
+# stamped now, and `--dry-run` is not involved: this is a second real publish
+# whose clock cannot be ahead of the first.
+"${MORZER}" --root "${ROOT}" --json fleet publish --target "file://${FLEET_TARGET}" >"${WORK}/fleet-again.json" ||
+	fail "the second fleet publish failed: $(cat "${WORK}/fleet-again.json")"
+jq -e '[.data.targets[] | select(.published or .declined != null)] | length == 1' \
+	"${WORK}/fleet-again.json" >/dev/null ||
+	fail "the second publish neither published nor declined: $(jq -c '.data.targets' "${WORK}/fleet-again.json")"
+
+step "fleet ls reads the row back"
+"${MORZER}" --root "${ROOT}" --json fleet ls "file://${FLEET_TARGET}" >"${WORK}/fleet-ls.json" ||
+	fail "fleet ls failed: $(cat "${WORK}/fleet-ls.json")"
+jq -e '.data.rows | length == 1' "${WORK}/fleet-ls.json" >/dev/null ||
+	fail "fleet ls found $(jq -r '.data.rows | length' "${WORK}/fleet-ls.json") row(s), expected 1"
+jq -e '.data.rows[0].problem == null and .data.rows[0].signature == "signed"' \
+	"${WORK}/fleet-ls.json" >/dev/null ||
+	fail "the row read back carries a problem: $(jq -c '.data.rows[0]' "${WORK}/fleet-ls.json")"
+
+# The refusal this phase lives or dies by (RFC 0026 §8): a reader with no roster
+# must never present a row as verified, and must say so rather than leaving it
+# to the documentation.
+jq -e '.data.rows[0].signature != "verified"' "${WORK}/fleet-ls.json" >/dev/null ||
+	fail "fleet ls claimed a row was verified with no roster to anchor it"
+jq -e '(.data.limitations | length) > 0 and (.data.limitations | join(" ") | contains("roster"))' \
+	"${WORK}/fleet-ls.json" >/dev/null ||
+	fail "fleet ls printed a table without saying what it could not see"
+
+step "a row nobody can read is a row, not an omission"
+# Written by hand at a key this manager would never have produced, which is what
+# a bucket several machines write to eventually contains.
+mkdir -p "${FLEET_TARGET}/fleet/impostor/inst_ACCEPTANCE"
+printf 'this is not JSON at all\n' >"${FLEET_TARGET}/fleet/impostor/inst_ACCEPTANCE/status.json"
+"${MORZER}" --root "${ROOT}" --json fleet ls "file://${FLEET_TARGET}" >"${WORK}/fleet-bad.json" && {
+	fail "fleet ls exited zero with an unreadable row on the target"
+}
+jq -e '[.data.rows[] | select(.problem != null)] | length == 1' "${WORK}/fleet-bad.json" >/dev/null ||
+	fail "the unreadable row was dropped instead of shown: $(jq -c '.data.rows' "${WORK}/fleet-bad.json")"
+rm -rf "${FLEET_TARGET:?}/fleet/impostor"
+
+# And once in the form an operator actually sees, which is the output the
+# documentation quotes. A sample nobody captured from a running binary is a
+# sample that drifts the first time a column moves.
+step "the same listing, as an operator sees it"
+"${MORZER}" --root "${ROOT}" fleet ls "file://${FLEET_TARGET}" ||
+	fail "fleet ls failed in plain mode"
+
+FLEET_BYTES=$(stat -c%s "${FLEET_TARGET}/${FLEET_KEY}")
+info "the published row is ${FLEET_BYTES} B"
+
+# ----------------------------------------------------------------------------
 # The three-tier example
 #
 # A separate, shorter scenario: the lifecycle is already proven above, and what
@@ -781,6 +902,32 @@ step "the three-tier example: doctor and journal"
 grep -q '"type":"config"' "${WEB_ROOT}/var/lib/web/manager/operations.jsonl" ||
 	fail "the parameter change was not journaled"
 info "three tiers, three parameters, one journal"
+
+# The fleet view's actual case: two installations, one target
+#
+# Everything above published one row, which proves the mechanism and not the
+# design -- a fleet of one is a `status` command with extra steps. This second
+# installation is a genuinely different one, on a different root, running a
+# different product, and it publishes to the same place.
+step "a second installation publishes to the same target"
+"${MORZER}" --root "${WEB_ROOT}" backup target add "file://${FLEET_TARGET}" >/dev/null ||
+	fail "cannot add the fleet target to the three-tier installation"
+"${MORZER}" --root "${WEB_ROOT}" --json fleet publish --target "file://${FLEET_TARGET}" \
+	>"${WORK}/fleet-web.json" ||
+	fail "the three-tier installation could not publish: $(cat "${WORK}/fleet-web.json")"
+
+"${MORZER}" --root "${ROOT}" --json fleet ls "file://${FLEET_TARGET}" >"${WORK}/fleet-both.json" ||
+	fail "fleet ls failed with two rows: $(cat "${WORK}/fleet-both.json")"
+jq -e '.data.rows | length == 2' "${WORK}/fleet-both.json" >/dev/null ||
+	fail "fleet ls found $(jq -r '.data.rows | length' "${WORK}/fleet-both.json") row(s), expected 2"
+jq -e '[.data.rows[].product] | sort == ["demo","web"]' "${WORK}/fleet-both.json" >/dev/null ||
+	fail "the two rows are not the two installations: $(jq -c '[.data.rows[].product]' "${WORK}/fleet-both.json")"
+
+# Read from the `demo` machine, about a machine it has no other knowledge of.
+# That is the whole feature, so it is worth printing rather than only asserting.
+step "two machines, read from one of them"
+"${MORZER}" --root "${ROOT}" fleet ls "file://${FLEET_TARGET}" ||
+	fail "fleet ls failed in plain mode with two rows"
 
 step "the journal recorded every operation"
 status_field '.data.last_operation.type'

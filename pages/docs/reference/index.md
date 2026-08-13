@@ -77,5 +77,8 @@ here. The reference column points at the section that documents it; the
 | `morzer installation export` | Write the installation identity and encrypted secrets to a file | [installation-commands](installation-commands.md#installation-export) |
 | `morzer installation describe` | Write this installation as a file that documents it | [installation-commands](installation-commands.md#installation-describe) |
 | `morzer installation import` | Rebuild this machine from an export and an offline recovery key | [installation-commands](installation-commands.md#installation-import) |
+| `morzer fleet` | See several machines without running a control plane | [fleet](fleet.md#the-fleet-view) |
+| `morzer fleet publish` | Write this installation's row to the targets it already uses | [fleet](fleet.md#the-fleet-view) |
+| `morzer fleet ls` (also `list`) | Read every installation's row off a target | [fleet](fleet.md#the-fleet-view) |
 | `morzer version` | Print version, commit, and supported manifest API versions | [commands](commands.md#version) |
 | `morzer completion install` | Write the completion script where this shell will read it | [commands](commands.md#completion-install) |

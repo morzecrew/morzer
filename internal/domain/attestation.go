@@ -276,7 +276,8 @@ func Attest(rec OperationRecord, in AttestationInputs) Statement {
 	}
 }
 
-// MaxAttestedText bounds every free-text field in a statement.
+// MaxAttestedText bounds every free-text field in a document that travels --
+// an attestation's steps, and a fleet row's.
 //
 // Generous enough for the sentence a failing step actually produces, and small
 // enough that no amount of it changes what the document is.
@@ -326,6 +327,15 @@ func boundedText(s string) string {
 	}
 	return b.String()
 }
+
+// BoundedText is boundedText, exported, because the rule runs in both
+// directions and only one of them was wired.
+//
+// Everything boundedText says is about what this machine *writes*. A fleet row
+// is read back off a target several machines can write to, and there the bytes
+// are chosen by somebody else entirely -- so the reader needs the same
+// treatment more than the writer does. See FleetRow.Bounded.
+func BoundedText(s string) string { return boundedText(s) }
 
 // CanonicalConfig encodes a set of rendered configuration files as the bytes
 // the digest is taken over.

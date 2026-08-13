@@ -1,0 +1,19 @@
+6 row(s) on s3://fleet.example/rows
+  PRODUCT          VERSION  HEALTH                    PUBLISHED
+  acme             1.4.0    2/2 up                    12m0s ago
+  beta             1.4.0    0/3 up                    12m0s ago
+  gamma            1.4.0    not checked               4h0m0s ago (stale)
+  sandbox (dev)    1.4.0    2/2 up, 1 need attention  12m0s ago
+  delta            1.4.0    2/2 up                    in 3h0m0s
+  epsilon/inst_09  —        —                         —
+  (signature, drift hidden: the terminal is too narrow)
+  ROW              WHAT IT SAYS
+  gamma            health: cannot reach the container runtime
+  gamma            drift: no release is installed
+  epsilon/inst_09  it was written by a newer manager (schema 2, this manager re…
+
+  a row is called stale once it is older than 24h0m0s
+
+  no roster was given, so no row below is authenticated and no absent
+  installation can be shown; both need the roster that binds an installation id
+  to a public key

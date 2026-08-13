@@ -559,6 +559,11 @@ func newRootCommand(app *App) *cobra.Command {
 
 		grouped(groupMachine, newListCommand(app, "ls")),
 		grouped(groupMachine, perCommandScope(newInstallationCommand(app))),
+		// Beside `ls`, which is the same question one scope out: `ls`
+		// answers "what is on this machine", `fleet` answers "what is on
+		// the machines", and an operator who has found one is looking
+		// for the other.
+		grouped(groupMachine, perCommandScope(newFleetCommand(app))),
 		grouped(groupMachine, machineScope(newVersionCommand(app))),
 	)
 

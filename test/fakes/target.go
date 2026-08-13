@@ -136,6 +136,13 @@ func (t *BackupTarget) ObjectKeys(ctx context.Context, ref ports.TargetRef, pref
 	return blob.ObjectKeys(ctx, t.store(ref), prefix)
 }
 
+func (t *BackupTarget) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
+	if t.FailWith != nil {
+		return nil, t.FailWith
+	}
+	return blob.GetObject(ctx, t.store(ref), key)
+}
+
 // Objects returns the keys currently held, sorted. For assertions about what a
 // half-finished push left behind.
 func (t *BackupTarget) Objects() []string {
