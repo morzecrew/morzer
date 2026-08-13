@@ -148,7 +148,7 @@ func TestTheStatementCarriesNamesAndTheBoundAndNoValues(t *testing.T) {
 	assert.Equal(t, domain.AttestationBound, stmt.Predicate.Bound)
 
 	assert.Contains(t, stmt.Predicate.Config.ParameterNames, "http_port")
-	assert.NotContains(t, string(body), "18443",
+	assert.NotContains(t, withoutDigests(string(body)), "18443",
 		"a parameter value reached the attestation")
 
 	// And the signer is named, so a reader can check the signature without
