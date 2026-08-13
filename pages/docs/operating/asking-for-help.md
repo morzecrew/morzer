@@ -39,25 +39,31 @@ at is one you will either not send or send too much of.
 
 ```console
 $ morzer support bundle
-11 component(s), 25.2 KiB
+11 component(s), 25.1 KiB
   FILE               COMPONENT                            SIZE      REDACTIONS
   manifest.yaml      The resolved manifest                2.7 KiB   0
-  installation.yaml  Installation state                   857 B     0
+  installation.yaml  Installation state                   631 B     0
   parameters.json    Parameters and their values          636 B     0
   config-diff.txt    Configuration drift                  71 B      0
   journal.jsonl      The operation journal                10.3 KiB  0
   doctor.json        Diagnostic checks                    7.5 KiB   0
   releases.json      Version history                      303 B     0
   services.json      Service and health state             520 B     0
-  manager.json       Manager version and build            43 B      0
+  manager.json       Manager version and build            101 B     0
   logs/app-1.log     Container logs                       1016 B    0
   meta.json          The archive's own account of itself  1.4 KiB   0
-  written  /home/ops/support-demo-op_01KZY3DTYE605RA1B71CMVNK05-20260813T174241Z.tar.zst
+
+  written
+/home/ops/support-demo-op_01KZY8CK9970RW6V3WFFTX0NSB-20260813T190924Z.tar.zst
 
   this archive is not encrypted: anyone who receives it can read all of it
 ```
 
-That archive is 5,882 bytes compressed, from an installation that had run an
+The path is printed unindented and unwrapped on purpose: it is there to be
+copied into an `scp` or an upload, and a path broken across two lines by a
+narrow terminal is one you paste wrong.
+
+That archive is 5,815 bytes compressed, from an installation that had run an
 apply, three configuration changes, a backup, a restore, an update killed
 mid-flight and a resume. Most of it is the journal.
 
@@ -73,6 +79,11 @@ A count of zero is **not** proof that a file was clean. It is proof that no
 secret value your installation currently holds appeared in it, which is a
 smaller claim: a credential you rotated away last month, or one you never told
 the manager about, is not something it can recognise.
+
+`meta.json` does not list itself. A file cannot state its own redaction count —
+the count is only known once the file exists, and scrubbing it would change the
+bytes the count describes — so that number is in the command's output, printed
+after the file was scrubbed, rather than inside a file claiming zero.
 
 Every component is scrubbed on its way in — not only the container logs. Most
 of what goes into the archive was written long before you ran the command, and

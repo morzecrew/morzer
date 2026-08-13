@@ -3,7 +3,9 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -145,6 +147,11 @@ type supportSource struct {
 	// there simply is not one. The components that need a release quote it,
 	// so the archive records the failure rather than its symptom.
 	ReleaseProblem string
+
+	// Record is the release pointer as state holds it, which is what the
+	// described document names -- version, digest and source ref -- and is
+	// readable even when the release directory it points at is not.
+	Record domain.ReleaseRecord
 }
 
 // SupportBuild is the binary's own identity, passed in rather than read.
@@ -360,9 +367,10 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 	armed := d.armRedaction(ctx)
 
 	src := &supportSource{Installation: inst, Build: opts.Build}
-	rel, ok, relErr := supportRelease(ctx, d)
+	rel, record, relErr := supportRelease(ctx, d)
+	src.Record = record
 	switch {
-	case ok:
+	case relErr == nil && !record.IsZero():
 		src.Release, src.HasRelease = rel, true
 	case relErr != nil:
 		// Why the release-dependent components will be missing, said
@@ -431,7 +439,15 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		files = append(files, scrub(d, collected)...)
 	}
 
-	files = append(files, supportMeta(&report, files))
+	// Scrubbed like everything else, and this was the gap that mattered
+	// most: `meta.json` is the file a reviewer opens to decide the archive
+	// is safe, and it is built from free-form error text. Every omission
+	// reason is `domain.AsError(err).Message` from an arbitrary collector --
+	// the state layer, the renderer, the runtime, `doctor` -- and any of
+	// them can quote a value the redactor would have removed from the file
+	// the error was about. The release problem this branch now records is
+	// exactly that shape: it carries a resolver message about a path.
+	files = append(files, scrub(d, []supportFile{supportMeta(&report, files)})...)
 
 	for _, f := range files {
 		row := entryFor(f)
@@ -457,14 +473,21 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 // machine", and it is a machine somebody may well be asking for help about --
 // a failed first `apply` is exactly when this command is useful. So the release
 // is optional and the components that need it omit themselves.
-func supportRelease(ctx context.Context, d *Deps) (domain.Release, bool, error) {
+// supportRelease reads the release pointer and resolves what it points at.
+//
+// Returns the record as well as the release, because they fail independently: a
+// machine whose release directory is unreadable still has a record saying which
+// release it believes it is running, and that is most of the question on
+// exactly that machine.
+func supportRelease(ctx context.Context, d *Deps) (domain.Release, domain.ReleaseRecord, error) {
 	rec, err := d.State.CurrentRelease(ctx)
 	if err != nil {
-		return domain.Release{}, false, err
+		return domain.Release{}, domain.ReleaseRecord{}, err
 	}
 	if rec.IsZero() {
-		return domain.Release{}, false, nil
+		return domain.Release{}, rec, nil
 	}
+
 	rel, err := d.resolveCurrentRelease(ctx, rec)
 	if err != nil {
 		// Kept, not discarded, and this is the same distinction
@@ -481,9 +504,9 @@ func supportRelease(ctx context.Context, d *Deps) (domain.Release, bool, error) 
 		// Still not fatal: the archive is worth more than the
 		// components this costs, and the failure travels as their
 		// omission reason.
-		return domain.Release{}, false, err
+		return domain.Release{}, rec, err
 	}
-	return rel, true, nil
+	return rel, rec, nil
 }
 
 // supportTitle is the inventory's title for an archive entry, so the printed
@@ -528,12 +551,70 @@ func collectManifest(_ context.Context, _ *Deps, src *supportSource) ([]supportF
 	return []supportFile{{Name: "manifest.yaml", Data: body}}, nil
 }
 
-func collectInstallation(_ context.Context, _ *Deps, src *supportSource) ([]supportFile, error) {
-	body, err := yaml.Marshal(src.Installation)
+// collectInstallation writes the *described* installation, not the record.
+//
+// `Installation.Describe` is the document `installation describe` produces, and
+// it exists because the raw record holds things that must not be published.
+// `AttestationSalt` is the one that decides this: it makes the attestation's
+// configuration digest resistant to being brute-forced back over a small space
+// of ports and booleans, and `describe.go` excludes it by name because
+// "publishing it in a document meant for a git repository would make the digest
+// it salts brute-forceable again". This archive travels further than a
+// repository -- it is built to be handed to a stranger.
+//
+// Marshalling the record also made this component's inventory entry false. That
+// entry cites `installation describe` being safe to commit as the reason this
+// is safe to send, which is only an argument if this is that document.
+func collectInstallation(ctx context.Context, d *Deps, src *supportSource) ([]supportFile, error) {
+	doc := src.Installation.Describe(releaseFromRecord(src.Record), supportSecretNames(ctx, d))
+	body, err := yaml.Marshal(doc)
 	if err != nil {
 		return nil, domain.Internal(err, "cannot render the installation")
 	}
 	return []supportFile{{Name: "installation.yaml", Data: body}}, nil
+}
+
+// releaseFromRecord names the release the document points at.
+//
+// From the record rather than the loaded release, so a machine whose release
+// directory is unreadable still says which release it believes it is running --
+// which is most of the question on exactly that machine.
+func releaseFromRecord(rec domain.ReleaseRecord) domain.DescribedRelease {
+	if rec.IsZero() {
+		return domain.DescribedRelease{}
+	}
+	return domain.DescribedRelease{
+		Name:    rec.Name,
+		Version: rec.Version,
+		Digest:  rec.Digest,
+		Ref:     rec.SourceRef,
+	}
+}
+
+// supportSecretNames lists the secrets that must exist, best-effort.
+//
+// `Describe` refuses when the store will not answer, because its document is
+// committed as a record and `secrets: []` would be a false one. This archive
+// makes the opposite trade: it is produced *because* something is broken, and a
+// store that will not open is one more thing the reader should see -- so the
+// names are omitted and every other field still ships.
+func supportSecretNames(ctx context.Context, d *Deps) []string {
+	if d.Secrets == nil {
+		return nil
+	}
+	ready, err := d.Secrets.Initialized(ctx)
+	if err != nil || !ready {
+		return nil
+	}
+	meta, err := d.Secrets.Metadata(ctx)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(meta))
+	for _, m := range meta {
+		names = append(names, m.Name)
+	}
+	return names
 }
 
 func collectParameters(ctx context.Context, d *Deps, _ *supportSource) ([]supportFile, error) {
@@ -569,7 +650,18 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 
 	var diffs []string
 	for _, target := range targets {
-		existing, _ := os.ReadFile(target)
+		existing, err := os.ReadFile(target)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			// An absent file is drift; an unreadable one is a
+			// different fact. Treating them alike renders the whole
+			// file as added and tells the reader the copy on disk is
+			// empty, which is a claim about the machine nobody made
+			// -- on a command that exists to report facts about
+			// broken machines.
+			diffs = append(diffs, fmt.Sprintf(
+				"%s: cannot be read (%v), so no comparison was made\n", target, err))
+			continue
+		}
 		if diff := unifiedDiff(target, string(existing), string(rendered[target])); diff != "" {
 			diffs = append(diffs, diff)
 		}
@@ -683,6 +775,15 @@ func collectManager(_ context.Context, d *Deps, src *supportSource) ([]supportFi
 
 // supportMeta is the archive's account of itself, and is built last because it
 // describes everything else.
+//
+// It does not list itself, and that is the honest answer to a real problem
+// rather than an omission: a file cannot state its own redaction count, because
+// the count is only known after the file exists and scrubbing it would change
+// the bytes the count describes. Recording a zero there would be the one
+// misreading this whole feature is arranged to prevent -- so the terminal
+// report and `--json` carry `meta.json`'s own count, where they are produced
+// after it has been scrubbed, and the file describes the components it is an
+// index of.
 //
 // It carries the omissions as well as the entries. An archive that simply
 // lacked a file would leave its reader to guess whether the component does not

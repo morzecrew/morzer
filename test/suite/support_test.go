@@ -372,3 +372,68 @@ func TestAnUnreadableReleaseRecordStillProducesAnArchive(t *testing.T) {
 	require.NotContains(t, reason, "no release is installed",
 		"a record that would not parse was reported as no release at all")
 }
+
+// The archive carries the described installation, not the raw record.
+//
+// `AttestationSalt` is the sharp case and the reason this is not a style
+// preference. The salt makes the attestation's configuration digest resistant
+// to being brute-forced back over a small space of ports and booleans, and
+// `describe.go` excludes it by name because "publishing it in a document meant
+// for a git repository would make the digest it salts brute-forceable again".
+// A support bundle travels further than a repository: it goes to a stranger.
+//
+// Marshalling the raw struct also made this file's inventory entry false. It
+// cites `installation describe` being safe to commit as the reason this
+// component is safe to send, while collecting something `describe` would never
+// have produced.
+func TestTheArchiveCarriesTheDescribedInstallationNotTheRawRecord(t *testing.T) {
+	h := newHarness(t)
+	inst := h.install()
+
+	inst.AttestationSalt = "SALT-THAT-MUST-NOT-TRAVEL-0123456789"
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps,
+		ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err)
+
+	for name, body := range archiveEntries(t, report.Path) {
+		require.NotContainsf(t, body, "SALT-THAT-MUST-NOT-TRAVEL",
+			"%s carries the attestation salt, which makes the configuration digest "+
+				"brute-forceable for whoever receives this archive", name)
+	}
+
+	// And it is still the document somebody can read: the operator's own
+	// choices are what the component exists for.
+	installation := archiveEntries(t, report.Path)["installation.yaml"]
+	require.Contains(t, installation, "demo")
+}
+
+// A configuration target that cannot be read is a different fact from drift.
+//
+// Discarding the read error rendered the whole file as added, which tells the
+// reader the copy on disk is empty. That is a claim about the machine nobody
+// made, on the one command whose purpose is reporting facts about machines that
+// are already broken.
+func TestAnUnreadableConfigTargetIsNotReportedAsDrift(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads regardless of mode, so the unreadable case cannot be built")
+	}
+
+	h := newHarness(t)
+	h.install()
+
+	target := filepath.Join(h.Root, "etc/demo/application.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o755))
+	require.NoError(t, os.WriteFile(target, []byte("secret-looking config\n"), 0o000))
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps,
+		ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err)
+
+	diff := archiveEntries(t, report.Path)["config-diff.txt"]
+	require.Contains(t, diff, "cannot be read",
+		"an unreadable target was compared anyway:\n%s", diff)
+	require.NotContains(t, diff, "secret-looking config",
+		"the unreadable file's contents were read after all")
+}

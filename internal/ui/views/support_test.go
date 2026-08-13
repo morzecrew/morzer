@@ -91,3 +91,22 @@ func TestTheRedactCheckViewNeverSaysClean(t *testing.T) {
 }
 
 var _ = views.Version{}
+
+// The archive path is not wrapped, at any terminal width.
+//
+// It exists to be copied — into an `scp`, an upload, an attachment dialog — and
+// a path broken across two lines is one an operator pastes wrong. The
+// acceptance run's own output wrapped exactly that way before this changed.
+func TestTheArchivePathIsNeverWrapped(t *testing.T) {
+	const path = "/tmp/morzer-acceptance-oazeKA/" +
+		"support-demo-op_01KZY3DTYE605RA1B71CMVNK05-20260813T174241Z.tar.zst"
+
+	for _, width := range []int{40, 60, 80, 100} {
+		out := render(t, width, ops.SupportReport{
+			Path:    path,
+			Entries: []ops.SupportEntry{{Name: "meta.json", Bytes: 100}},
+		})
+		require.Containsf(t, out, path,
+			"the path was broken across lines at width %d:\n%s", width, out)
+	}
+}

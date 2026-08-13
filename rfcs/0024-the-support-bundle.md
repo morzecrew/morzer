@@ -422,6 +422,47 @@ planned.
   than the working directory. Recorded here because an unrecorded addition is
   the same defect as an unrecorded departure, in the other direction.
 
+**A8 — the installation component is the *described* document (2026-08-13,
+review).**
+
+§3.2 says "installation state (redacted)", and the first pass marshalled the
+`Installation` record. The parenthesis had no implementation.
+
+`AttestationSalt` is what decides it. The salt makes the attestation's
+configuration digest resistant to being brute-forced back over a small space of
+ports and booleans, and [0027](0027-desired-state-in-a-repository.md)'s
+`describe` excludes it by name, saying so where the field is defined:
+"publishing it in a document meant for a git repository would make the digest it
+salts brute-forceable again". This archive travels further than a repository —
+§2's whole framing is that it is handed to a stranger — so the record was the
+wrong artifact and `Installation.Describe` was the right one all along.
+
+Two things follow. The reference page's reason for this component cites
+`installation describe` being safe to commit, which was an argument for a
+document the code was not producing; that is now true rather than aspirational.
+And the secret *names* are best-effort here where `describe` refuses without
+them — `describe`'s document is committed as a record and `secrets: []` would be
+a false one, while this archive exists because something is already broken and a
+store that will not open is one more thing its reader should see.
+
+**A9 — `meta.json` is scrubbed, and does not list itself (2026-08-13, review).**
+
+Every collected component passed through the redactor and the archive's own
+index did not, because it is built after the loop that scrubs. It is also the
+file most likely to carry a value: every omission reason is an arbitrary
+collector's error message, produced by the state layer, the renderer, the
+runtime or `doctor`, and any of those can quote something the redactor would
+have removed from the file the error was about. A6's release problem is exactly
+that shape. It is, on top of that, the file a reviewer opens to decide the
+archive is safe.
+
+It no longer lists itself, which is the honest resolution of a real problem
+rather than a gap: a file cannot state its own redaction count, because the
+count is known only once the file exists and scrubbing it changes the bytes the
+count describes. A zero there would be precisely the misreading this feature is
+arranged to prevent, so the count lives in the command's output — produced after
+the scrub — and the file is an index of the components it describes.
+
 **A5 — §3.2's "values marked non-sensitive" has no referent (2026-08-13, P2).**
 
 The Included list says "parameter *names* and values marked non-sensitive",

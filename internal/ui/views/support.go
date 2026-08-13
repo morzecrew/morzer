@@ -76,7 +76,15 @@ func supportDoc(d *ui.Doc, r ops.SupportReport) *ui.Doc {
 	}
 
 	if r.Path != "" {
-		d.Fields(2, []ui.Field{{Label: "written", Value: r.Path}})
+		// Verbatim rather than a field, because this value exists to be
+		// copied -- into an `scp`, an upload, an attachment dialog --
+		// and `Fields` wraps at the document measure. A path broken
+		// across two lines by a narrow terminal is one an operator
+		// pastes wrong, and the acceptance run's own output wrapped
+		// exactly that way.
+		d.Blank()
+		d.Text(2, "written")
+		d.Verbatim(r.Path)
 	}
 
 	// Said on every run, not once at the end of a long help text.

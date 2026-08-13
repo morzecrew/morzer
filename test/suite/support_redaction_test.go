@@ -426,3 +426,44 @@ func TestALoudServiceIsTruncatedAndTheFileSaysSo(t *testing.T) {
 		"the truncation is not announced at the top of the file: %.80s", captured)
 	require.Contains(t, captured, "bytes")
 }
+
+// meta.json is scrubbed too, and it is the file that most needed it.
+//
+// It is what a reviewer opens to decide the archive is safe, and it is built
+// from free-form error text: every omission reason is an arbitrary collector's
+// error message, produced by the state layer, the renderer, the runtime or
+// `doctor`. Any of them can quote a value the redactor would have removed from
+// the file the error was about.
+func TestTheArchivesOwnIndexIsScrubbed(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	holdSecret(h)
+
+	// An error message that quotes the secret, which is exactly how a
+	// value reaches meta.json without passing through any component.
+	h.Runtime.Fail = map[string]error{
+		"Status": errors.New("dial failed for postgres://app:" + leaked + "@db/app"),
+	}
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps,
+		ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err)
+
+	entries := archiveEntries(t, report.Path)
+	require.NotContains(t, entries["meta.json"], leaked,
+		"the archive's own index shipped an unredacted secret from an error message")
+	require.Contains(t, entries["meta.json"], domain.Redacted,
+		"the value is gone with no marker, so it may have been dropped rather than scrubbed")
+
+	// And the reported count for meta.json is the real one, taken after it
+	// was scrubbed -- the file cannot state its own count, so the report is
+	// where that number has to be true.
+	var meta ops.SupportEntry
+	for _, e := range report.Entries {
+		if e.Name == "meta.json" {
+			meta = e
+		}
+	}
+	require.NotZero(t, meta.Redactions,
+		"meta.json reports zero redactions on a run where it carried a secret")
+}
