@@ -3,6 +3,7 @@ package domain_test
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -137,6 +138,32 @@ func TestAStepsTextCannotCarryAnEscapeSequence(t *testing.T) {
 	assert.NotContains(t, step.Error, "\t")
 	assert.Contains(t, step.Error, "line one")
 	assert.Contains(t, step.Error, "line two")
+}
+
+// The bound's own edges, decided rather than inherited.
+//
+// The empty case and the rune boundary are where a truncating helper goes
+// wrong: a cut through the middle of a multi-byte rune produces a document that
+// is no longer valid UTF-8, in a format whose whole purpose is to be readable
+// by something that is not this program.
+func TestTheTextBoundIsDecidedAtItsEdges(t *testing.T) {
+	step := func(msg string) string {
+		return domain.Attest(domain.OperationRecord{
+			ID: "op", Steps: []domain.StepRecord{{Message: msg}},
+		}, domain.AttestationInputs{}).Predicate.Steps[0].Message
+	}
+
+	assert.Empty(t, step(""))
+	assert.Empty(t, step("\x00\x01\x1b"), "a string of nothing but control characters")
+
+	exact := strings.Repeat("a", domain.MaxAttestedText)
+	assert.Equal(t, exact, step(exact), "a string exactly at the bound was truncated")
+	assert.Contains(t, step(exact+"b"), "truncated", "one byte over was not")
+
+	// Two bytes per rune, so the limit falls between them.
+	wide := step(strings.Repeat("é", 400))
+	assert.True(t, utf8.ValidString(wide), "the truncation cut through a rune")
+	assert.Contains(t, wide, "truncated")
 }
 
 // The encoding is injective, which is what stops two different configurations

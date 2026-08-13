@@ -253,6 +253,16 @@ func (d *Deps) attestationPushState(
 
 	report := AttestPushReport{Local: len(local)}
 
+	// Which statements this machine has a signature for, read once. Asking
+	// the filesystem again per target would let two targets disagree about
+	// the same local file -- an operation finishing mid-run writes one, and
+	// the target listed after that would count it while the one before did
+	// not, from a single command.
+	signed := make(map[string]bool, len(local))
+	for _, file := range local {
+		signed[file] = hasSignature(file)
+	}
+
 	for _, cfg := range inst.Backup.Targets {
 		status := AttestTargetStatus{URL: cfg.URL, missing: map[string]bool{}}
 
@@ -291,7 +301,7 @@ func (d *Deps) attestationPushState(
 			// which keeps the count reachable on an installation
 			// that signs nothing at all.
 			key := objectKeyFor(file)
-			if !there[key] || (hasSignature(file) && !there[key+minisigExt]) {
+			if !there[key] || (signed[file] && !there[key+minisigExt]) {
 				status.missing[key] = true
 				status.Missing++
 			}
