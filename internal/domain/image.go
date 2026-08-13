@@ -350,3 +350,37 @@ func joinImageSources(vs []ImageSource) string {
 	}
 	return strings.Join(out, ", ")
 }
+
+// DigestFromRef recovers the content digest a reference names, in either of the
+// two spellings this manager produces.
+//
+// `repo@sha256:<hex>` is the pinned form a manifest carries. `repo:morzer-sha256-<hex>`
+// is the local alias the manager tags a bundled image with, because a daemon
+// cannot resolve a digest reference for a repository it never pulled from --
+// and the alias carries the digest precisely so the identity survives the
+// rewriting.
+//
+// Empty when the reference names neither, which is an unpinned image: a
+// manifest that never promised a digest, rather than evidence of one being
+// swapped.
+func DigestFromRef(ref string) string {
+	if at := strings.LastIndex(ref, "@"); at > 0 && at < len(ref)-1 {
+		return ref[at+1:]
+	}
+
+	colon := strings.LastIndex(ref, ":")
+	if colon < 0 || colon == len(ref)-1 {
+		return ""
+	}
+	tag := ref[colon+1:]
+	if !strings.HasPrefix(tag, localAliasPrefix) {
+		return ""
+	}
+	// `morzer-sha256-<hex>` back to `sha256:<hex>`.
+	rest := strings.TrimPrefix(tag, localAliasPrefix)
+	dash := strings.Index(rest, "-")
+	if dash <= 0 || dash == len(rest)-1 {
+		return ""
+	}
+	return rest[:dash] + ":" + rest[dash+1:]
+}

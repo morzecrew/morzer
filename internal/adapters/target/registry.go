@@ -159,6 +159,46 @@ func (r *Registry) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	return t.Remove(ctx, ref)
 }
 
+var _ ports.ObjectStore = (*Registry)(nil)
+
+// PutObject and ObjectKeys dispatch the ports.ObjectStore half.
+//
+// The selected target may not implement it, which is a refusal rather than a
+// silent skip: a build whose sftp:// transport could not hold attestations
+// would otherwise report every push as done and leave the record on the
+// machine. Every transport in this build does implement it, so the message is
+// about a future one -- and it names the target rather than the interface,
+// because the operator did not choose an interface.
+func (r *Registry) PutObject(ctx context.Context, ref ports.TargetRef, key string, data []byte) error {
+	store, err := r.objectStore(ref)
+	if err != nil {
+		return err
+	}
+	return store.PutObject(ctx, ref, key, data)
+}
+
+func (r *Registry) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix string) ([]string, error) {
+	store, err := r.objectStore(ref)
+	if err != nil {
+		return nil, err
+	}
+	return store.ObjectKeys(ctx, ref, prefix)
+}
+
+func (r *Registry) objectStore(ref ports.TargetRef) (ports.ObjectStore, error) {
+	t, err := r.For(ref)
+	if err != nil {
+		return nil, err
+	}
+	store, ok := t.(ports.ObjectStore)
+	if !ok {
+		return nil, domain.Usage(
+			"%s keeps backups but cannot hold anything else", ref).
+			WithHint("attestations can be pushed to file://, ssh:// and s3:// targets")
+	}
+	return store, nil
+}
+
 var _ io.Closer = (*Registry)(nil)
 
 // Close releases anything a target holds -- an SSH connection above all.

@@ -137,10 +137,18 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 			previousRel.Name(), current.Version, previous.Version)
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeRollback, result.Record, runErr)
+
+	// The other version-moving operation, and the one an auditor asks about
+	// most: a rollback is what happened when something went wrong.
+	if !opts.DryRun {
+		emitAttestation(ctx, d, result.Record,
+			attestationInputs(inst, previousRel, previous, current.Version,
+				renderedConfigFor(result.State)))
+	}
+
 	if runErr != nil {
 		return out, runErr
 	}
-
 	return out, nil
 }
 

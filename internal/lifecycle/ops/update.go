@@ -113,10 +113,20 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		},
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeUpdate, result.Record, runErr)
+
+	// An update is the operation the chain check is really about: it is one
+	// of the two that move a version, so a machine whose updates filed no
+	// statement has a chain nothing can follow. Emitted on failure too --
+	// the update that rolled back is what an incident review reads.
+	if !opts.DryRun {
+		emitAttestation(ctx, d, result.Record,
+			attestationInputs(inst, staged, from, from.Version,
+				renderedConfigFor(result.State)))
+	}
+
 	if runErr != nil {
 		return out, runErr
 	}
-
 	return out, nil
 }
 

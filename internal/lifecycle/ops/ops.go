@@ -72,11 +72,25 @@ type Deps struct {
 	// migration (RFC 0028 decision 9).
 	Signer ports.Signer
 
+	// Checker verifies a detached signature against a public key. Separate
+	// from Signer because verification needs no private key: `attest
+	// verify` must work on a machine that cannot produce new statements.
+	Checker ports.SignatureChecker
+
 	// Targets is the registry of places a backup can be kept that are not
 	// this machine. Nil in a build or a test that configures none, which is
 	// why every use checks: an installation with no targets must keep
 	// working exactly as it did before they existed.
 	Targets ports.BackupTarget
+
+	// Objects is the same registry seen through the half of it that holds
+	// things which are not backups -- attestations, today.
+	//
+	// A second field rather than a type assertion on Targets, so that a
+	// build which wires one and not the other is a wiring decision somebody
+	// made rather than an interface check failing at three in the morning.
+	// Nil in a build that pushes nothing, like every field around it.
+	Objects ports.ObjectStore
 
 	Source     ports.ReleaseSource
 	Verifier   ports.Verifier

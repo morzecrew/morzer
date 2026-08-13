@@ -1,11 +1,26 @@
 # RFC 0025 — Attesting an installation
 
-- **Status:** 🚧 In progress — **P1 shipped 2026-08-13** with 0028 P1: `apply`
-  emits a signed in-toto statement, verified against the real `minisign` binary
-  in the container lane. P2 (failure paths), P3 (`attest verify`, and decision
-  8's failing case) and P4 (push, `attest log`) remain. **Decision 8 still
-  governs**: if no fault-injection case can make `--against-live` fail, this
-  RFC closes as rejected regardless of what P1 shipped.
+- **Status:** ✅ Complete — **P1–P4 shipped (2026-08-13)**. P1 emits a signed
+  in-toto statement; P2 attests failures and compensations; P3 is `morzer attest
+  verify`, with signature outcomes, chain continuity and `--against-live`; P4
+  pushes statements through 0009's registry, adds `morzer attest log` and
+  `morzer attest push`, and gives `doctor` a check for a record that has not
+  left the machine. All five of §4.1's operations attest — `apply`, `update`,
+  `rollback`, `restore` and `config` — which is what makes the chain check
+  non-vacuous: only version-moving operations join a chain, and until `update`
+  attested there was nothing for it to follow.
+  **Decision 8 is answered and the RFC lives**: an image swapped behind the
+  manager's back makes `--against-live` fail, asserted in `test/suite`
+  (`TestAgainstLiveFailsWhenAnImageWasSwappedByHand`), and so do an attested
+  service that is gone and a rendered configuration edited in place.
+  Decision 5 was executed as it required rather than as it read: the registry
+  is reused, and the fourth method it needed became a separate
+  [`ports.ObjectStore`](../internal/ports/target.go) rather than a wider
+  `BackupTarget` — see §12. What remains is named in the reference page rather
+  than here: no retention on the attestation directory, `verify` reads local
+  copies only, attestations go to the same targets backups do, and
+  `--against-live` compares images as a **set** rather than per service, which
+  §12 A5 states precisely and gates on a P5.
 - **Scope:** A portable, signed, third-party-readable statement of what the
   manager did — one in-toto Statement per lifecycle operation, emitted on failure
   as well as success, appended locally and optionally pushed through 0009's target
@@ -338,4 +353,91 @@ Taken 2026-08-12.
 
 ## 12. Amendments
 
-*(Empty.)*
+**A1 — `ports.ObjectStore` extracted, as decision 5 required (2026-08-13, P4).**
+
+Decision 5 locked "reuses 0009's target registry unchanged", with the clause
+*"if it needs a fourth method, extract `ports.ObjectStore` rather than widening
+`BackupTarget`, and record it here"*. It needed one, and this is the record.
+
+The registry — scheme dispatch, `TargetRef`, credential resolution out of the
+secret store — is reused exactly. What could not be reused is `BackupTarget`
+itself, because **every method on it is defined in terms of a backup**: `Push`
+reads `backup.json` to decide which files to copy, `List` reports one entry per
+manifest, and `Remove` is what retention calls while counting backups. Pushing a
+statement through `Push` would have meant fabricating a manifest for it, and the
+consequences are not cosmetic: the directory would be offered by `backup list`,
+selectable by `restore`, and counted by a retention policy that then prunes a
+real backup to stay under its limit.
+
+So the second interface, with two methods and deliberately not four —
+`PutObject` and `ObjectKeys`. There is no `GetObject` and no `DeleteObject`
+because nothing needs them, and this project has twice found a port fully
+specified and never exercised (0015's `Notifier`, 0021's `Logs`). All three
+transports implement it, and the contract suite holds them to it — including the
+case that says an attestation must be invisible to the backup listing, which is
+the property decision 5 wanted and which is now asserted rather than assumed.
+
+**A2 — `--against-live` compares configuration as well as images (2026-08-13,
+P4).**
+
+§4.7 always named "a config edited in place" alongside a swapped image. P3
+shipped the image half only; this closes it by re-deriving the salted digest
+from the files on disk. The encoding that produces those bytes moved into the
+domain in the same change, because a verifier with its own copy of it would be a
+second chance for the two to disagree — and a drift detector whose two halves
+disagree reports drift on every machine.
+
+The check can say *that* the configuration differs and never how. That is
+decision 4's salt working as intended rather than a limitation to fix.
+
+**A5 — `--against-live` compares images as a set, and what that misses
+(2026-08-13, review of PR #38). Open.**
+
+`predicate.images` records repository and digest, not the service each image was
+deployed to. The manifest cannot supply that: it declares images by name, and
+the Compose file decides where each is used — possibly in several services. So
+the live comparison asks "is every attested digest running, and is everything
+running attested", and two situations pass it:
+
+- two services that swap images **with each other** leave both digests running,
+  so nothing is reported although both run the wrong thing;
+- two services sharing one digest hide each other's disappearance, so a stopped
+  service is not reported missing — which is one of the three failures §4.7
+  advertises.
+
+Both are stated in the reference page rather than left to be discovered.
+
+**Not fixed here, and the reason is the shape of the fix rather than its size.**
+Only the operations that render Compose could fill the field in, so `restore`
+and `config` statements would carry it while `apply` and `update` ones did — a
+field present in some documents and absent in others, whose fallback path is
+where the verifier's next bug lives. It is also a change to a versioned
+predicate. Both belong in a phase that decides them, not in a review round.
+
+*Reopens as:* P5, adding a deployed-service field sourced from the rendered
+Compose configuration, with the set comparison kept as the fallback for every
+statement written before it.
+
+**A3 — `morzer attest push`, which §4.7 did not list (2026-08-13, P4).**
+
+P4 names three things: the push, `attest log`, and a `doctor` check for a
+directory that is not being pushed. The check needs a fourth. Its remedy is
+"run this to close the gap", and a check whose advertised remedy does not exist
+is a check that teaches an operator to ignore it — the same defect wave 15
+found when `init --repair` could not record a key that was on disk. So the
+command shipped with the check rather than after it.
+
+It also repairs the push's own failure mode. `pushOne` writes the document
+before the signature, so a transfer that died between the two leaves a
+statement a reader cannot check; counting only documents would have reported
+that target as complete forever. A statement is *there* when its signature is.
+
+**A4 — a refused operation files nothing (2026-08-13, P4).**
+
+Every emission is placed before its operation returns an error, so that failures
+are attested as well as successes (decision 3). An operation the deployment lock
+turned away never ran, so the record reaching that path carried no id, and the
+statement was written to `<attestations>/.json` — naming no operation, no kind
+and no outcome, overwritten by the next refusal, and read back by `attest verify`
+as a statement because it is one. A busy lock is routine: a systemd timer firing
+during a manual update produces it. Emission now returns on a record with no id.

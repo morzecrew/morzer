@@ -1,11 +1,9 @@
 package ops
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -83,23 +81,26 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 
 	out := Result{Record: result.Record, Summary: applySummary(result.Record, rel)}
 	d.notifyFinished(ctx, opID, domain.OpTypeApply, result.Record, runErr)
-	if runErr != nil {
-		return out, runErr
-	}
 
 	// After the operation, never inside it. A statement is a record *of*
 	// what happened, so it cannot be a step whose own failure changes what
 	// happened -- and emitAttestation warns rather than returning for the
 	// same reason (RFC 0025 decision 6).
 	//
-	// P1 emits on success only. Failure and compensation paths are P2, and
-	// they are the interesting ones for an auditor: this is a gap the RFC
-	// names rather than one it hides.
+	// **Before the error is returned, not after.** A successful update is
+	// the least interesting event to an auditor; the failed one that rolled
+	// back is what they ask about, and a system that attests only its
+	// successes attests nothing. The record already carries `failed` or
+	// `compensated` and a step list that stops where the failure did, so
+	// the statement needs nothing the success path does not have.
 	if !opts.DryRun {
 		emitAttestation(ctx, d, result.Record,
 			attestationInputs(inst, rel, current, domain.Version{}, renderedConfigFor(result.State)))
 	}
 
+	if runErr != nil {
+		return out, runErr
+	}
 	return out, nil
 }
 
@@ -113,32 +114,11 @@ func renderedConfigFor(st *engine.State) []byte {
 	if st == nil {
 		return nil
 	}
-	rendered := engine.MustGet[map[string][]byte](st, engine.KeyRenderedConfig)
-	if len(rendered) == 0 {
-		return nil
-	}
-
-	// Canonical, and injective. Map iteration order is random in Go, so
-	// digesting the concatenation directly would produce a different digest
-	// for identical configuration on every run.
-	//
-	// Both the target and the content are length-prefixed rather than
-	// delimited. Delimiters alone are not injective when a target may
-	// contain the delimiter: a path holding a newline could be chosen so
-	// that one target-and-content pair encodes identically to a different
-	// one, and two different configurations would share a digest.
-	targets := make([]string, 0, len(rendered))
-	for target := range rendered {
-		targets = append(targets, target)
-	}
-	sort.Strings(targets)
-
-	var buf bytes.Buffer
-	for _, target := range targets {
-		fmt.Fprintf(&buf, "%d:%s%d:", len(target), target, len(rendered[target]))
-		buf.Write(rendered[target])
-	}
-	return buf.Bytes()
+	// The encoding lives in the domain, because `attest verify` re-derives
+	// this digest from the files on disk and a second encoder here would be
+	// a second chance for the two to disagree.
+	return domain.CanonicalConfig(
+		engine.MustGet[map[string][]byte](st, engine.KeyRenderedConfig))
 }
 
 func applyFlags(opts Options) map[string]string {

@@ -30,6 +30,11 @@ type Runtime struct {
 	// Services is the simulated project state.
 	Services map[string]ports.ServiceState
 
+	// Images is what each service runs, by service name. Set by a test that
+	// cares; empty leaves the state's image empty, which is what an
+	// unpinned deployment looks like.
+	Images map[string]string
+
 	// Calls records method names in order, so a test can assert on
 	// sequencing -- that migrations ran before services started, say.
 	Calls []string
@@ -127,6 +132,7 @@ type Runtime struct {
 func NewRuntime() *Runtime {
 	return &Runtime{
 		Services:       map[string]ports.ServiceState{},
+		Images:         map[string]string{},
 		Fail:           map[string]error{},
 		OneShotResults: map[string]ports.ExitResult{},
 		ExecResults:    map[string]ports.ExitResult{},
@@ -187,6 +193,12 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	for _, name := range r.ValidateResult.Services {
 		r.Services[name] = ports.ServiceState{
 			Name: name, State: "running", Health: ports.HealthHealthy,
+			// What this service is running, because the real
+			// adapter reports it and a fake that left it empty made
+			// every image comparison read as "nothing is running".
+			// A fake that diverges from the adapter it stands in
+			// for turns every test built on it into a fiction.
+			Image: r.Images[name],
 			// Named the way Compose names one, because the container
 			// is what attributes a log line to a service and a fake
 			// that left it empty would make every structured record
@@ -441,6 +453,33 @@ func (r *Runtime) Stats(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.S
 		return nil, nil
 	}
 	return r.StatsResult, nil
+}
+
+// SwapImage changes what a service reports it is running, without the manager
+// being involved.
+//
+// This is somebody pulling a different image and restarting a container by
+// hand. It exists so `attest verify --against-live` can be shown to *fail* --
+// RFC 0025 decision 8 makes the whole design conditional on that being
+// constructible, and a fake that could only ever agree with the statement would
+// make the check untestable rather than correct.
+func (r *Runtime) SwapImage(service, image string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.Services[service]
+	if !ok {
+		return
+	}
+	s.Image = image
+	r.Services[service] = s
+}
+
+// RemoveService drops a service from what the runtime reports, standing in for
+// a container somebody stopped and removed outside the manager.
+func (r *Runtime) RemoveService(service string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.Services, service)
 }
 
 func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.ServiceState, error) {

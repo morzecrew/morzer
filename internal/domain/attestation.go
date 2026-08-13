@@ -1,11 +1,15 @@
 package domain
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // An attestation is what the manager knows about an operation, in a form that
@@ -231,11 +235,11 @@ func Attest(rec OperationRecord, in AttestationInputs) Statement {
 	steps := make([]AttestedStep, 0, len(rec.Steps))
 	for _, s := range rec.Steps {
 		steps = append(steps, AttestedStep{
-			ID:         s.ID,
+			ID:         boundedText(s.ID),
 			Status:     string(s.Status),
 			DurationMS: s.DurationMS,
-			Message:    s.Message,
-			Error:      s.Error,
+			Message:    boundedText(s.Message),
+			Error:      boundedText(s.Error),
 		})
 	}
 
@@ -270,6 +274,93 @@ func Attest(rec OperationRecord, in AttestationInputs) Statement {
 			Steps: steps,
 		},
 	}
+}
+
+// MaxAttestedText bounds every free-text field in a statement.
+//
+// Generous enough for the sentence a failing step actually produces, and small
+// enough that no amount of it changes what the document is.
+const MaxAttestedText = 300
+
+// boundedText makes a string safe to put in a document that travels.
+//
+// RFC 0025 §10 named this risk and P1 did not act on it: **a step's text is not
+// all the manager's own words.** A failing hook contributes the last three
+// lines of its stderr to the step's error, and a hook ships with the release --
+// so vendor-controlled output reaches a signed artifact. `lastLines` bounds it
+// by lines, which is not a bound at all: three lines of a script that prints a
+// megabyte without a newline is a megabyte.
+//
+// It mattered less while statements stayed on the disk that produced them. P4
+// pushes them to a bucket automatically, which is what turns an ugly local file
+// into unbounded vendor bytes on somebody's object store, in a document signed
+// by this installation.
+//
+// Two rules, both about what a *reader* of the artifact meets:
+//
+//   - **Control characters are dropped**, tabs and newlines included. A record
+//     that travels is read in terminals, in logs and in web views; an escape
+//     sequence in a signed document is a payload aimed at whoever opens it.
+//   - **Truncated to MaxAttestedText bytes**, on a rune boundary, and it says
+//     that it was. A silent truncation would leave an auditor reading half a
+//     sentence as though it were the whole one.
+//
+// The journal keeps the full text. Only the copy that leaves is bounded, which
+// is the right split: diagnosing a failure happens on the machine, and the
+// statement exists to be read somewhere else.
+func boundedText(s string) string {
+	var b strings.Builder
+	b.Grow(min(len(s), MaxAttestedText))
+
+	for _, r := range s {
+		// Unicode's Cc (C0 and C1) plus the format characters that
+		// reorder text visually -- Cf covers the bidi overrides that
+		// make a string display as something other than what it says.
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			continue
+		}
+		if b.Len()+utf8.RuneLen(r) > MaxAttestedText {
+			return b.String() + "… [truncated]"
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// CanonicalConfig encodes a set of rendered configuration files as the bytes
+// the digest is taken over.
+//
+// Canonical, and injective. Map iteration order is random in Go, so digesting
+// the concatenation directly would produce a different digest for identical
+// configuration on every run.
+//
+// Both the target and the content are length-prefixed rather than delimited.
+// Delimiters alone are not injective when a target may contain the delimiter: a
+// path holding a newline could be chosen so that one target-and-content pair
+// encodes identically to a different one, and two different configurations
+// would share a digest.
+//
+// **Here rather than beside the operation that renders**, because the verifier
+// re-derives this from the files on disk. Two encoders for one digest is one
+// encoder too many: they would agree on the day they were written and drift
+// into a drift detector that reports drift on every machine.
+func CanonicalConfig(rendered map[string][]byte) []byte {
+	if len(rendered) == 0 {
+		return nil
+	}
+
+	targets := make([]string, 0, len(rendered))
+	for target := range rendered {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+
+	var buf bytes.Buffer
+	for _, target := range targets {
+		fmt.Fprintf(&buf, "%d:%s%d:", len(target), target, len(rendered[target]))
+		buf.Write(rendered[target])
+	}
+	return buf.Bytes()
 }
 
 // SaltedConfigDigest is HMAC-SHA256 of the rendered configuration under the

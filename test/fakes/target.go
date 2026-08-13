@@ -120,6 +120,22 @@ func (t *BackupTarget) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	return blob.Remove(ctx, t.store(ref.Target), ref)
 }
 
+var _ ports.ObjectStore = (*BackupTarget)(nil)
+
+func (t *BackupTarget) PutObject(ctx context.Context, ref ports.TargetRef, key string, data []byte) error {
+	if t.FailWith != nil {
+		return t.FailWith
+	}
+	return blob.PutObject(ctx, t.store(ref), key, data)
+}
+
+func (t *BackupTarget) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix string) ([]string, error) {
+	if t.FailWith != nil {
+		return nil, t.FailWith
+	}
+	return blob.ObjectKeys(ctx, t.store(ref), prefix)
+}
+
 // Objects returns the keys currently held, sorted. For assertions about what a
 // half-finished push left behind.
 func (t *BackupTarget) Objects() []string {
