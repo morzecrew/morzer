@@ -1,0 +1,501 @@
+package suite
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	signer "github.com/morzecrew/morzer/internal/adapters/sign/minisign"
+	"github.com/morzecrew/morzer/internal/adapters/target"
+	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+)
+
+// The fleet read model (RFC 0026 P1 and P2).
+//
+// The feature's failure mode is a table that looks complete and is not. So most
+// of what follows is about what the reader *refuses* to say, and it asserts
+// that by reading the published bytes rather than by reading the code that
+// wrote them.
+
+// fleetHarness is a machine that can sign and can reach a target.
+func fleetHarness(t *testing.T) *harness {
+	t.Helper()
+	h := newHarness(t)
+	h.Deps.Signer = signer.New(h.Paths.SigningKeyFile(), "demo")
+	h.Deps.Checker = signer.NewChecker()
+	return h
+}
+
+// withFleetTarget wires the production registry and a directory target.
+func (h *harness) withFleetTarget(t *testing.T) (inst domain.Installation, offsite string) {
+	t.Helper()
+
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	h.Deps.Objects = registry
+
+	offsite = filepath.Join(t.TempDir(), "offsite")
+
+	inst = signingInstallation(t, h)
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	return inst, offsite
+}
+
+// publishedRow reads back what a publish put on a target.
+func publishedRow(t *testing.T, offsite string, inst domain.Installation) (domain.FleetRow, []byte) {
+	t.Helper()
+
+	key, err := domain.FleetKey(inst.Product, inst.ID)
+	require.NoError(t, err)
+
+	body, err := os.ReadFile(filepath.Join(offsite, filepath.FromSlash(key)))
+	require.NoError(t, err)
+
+	var row domain.FleetRow
+	require.NoError(t, json.Unmarshal(body, &row))
+	return row, body
+}
+
+// A publish puts a row and its signature at the key the design names.
+func TestPublishingWritesTheRowAndItsSignature(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+
+	result, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+	require.Len(t, report.Targets, 1)
+	require.True(t, report.Targets[0].Published, "the row did not reach the target")
+	require.True(t, report.Signed, "the row was published unsigned by a machine with a key")
+
+	row, _ := publishedRow(t, offsite, inst)
+	assert.Equal(t, domain.FleetSchemaVersion, row.Schema)
+	assert.Equal(t, "demo", row.Product)
+	assert.Equal(t, inst.ID, row.InstallationID)
+	assert.Equal(t, "1.2.0", row.Version)
+	assert.Equal(t, domain.FleetBound, row.Bound)
+
+	key, err := domain.FleetKey(inst.Product, inst.ID)
+	require.NoError(t, err)
+	require.FileExists(t, filepath.Join(offsite, filepath.FromSlash(key))+".minisig")
+}
+
+// The signature is over the bytes as published, not over a re-serialisation.
+//
+// RFC 0026 §3.6 turns on this: a signature over "the JSON" is a signature over
+// whichever spelling of it the verifier reproduces, so it would need a
+// canonical form both ends implement identically. Asserting it here means a
+// change to how the row is marshalled -- indentation, key order, a trailing
+// newline -- cannot silently invalidate every signature in a fleet.
+func TestTheSignatureCoversTheBytesAsPublished(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+
+	_, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	key, err := domain.FleetKey(inst.Product, inst.ID)
+	require.NoError(t, err)
+	path := filepath.Join(offsite, filepath.FromSlash(key))
+
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	sig, err := os.ReadFile(path + ".minisig")
+	require.NoError(t, err)
+
+	require.True(t, h.Deps.Checker.Check(body, sig, inst.Signing.PublicKey),
+		"the published signature does not verify against the published bytes")
+
+	// And the negative, so the assertion above is not merely a checker that
+	// says yes: one byte different and it must fail.
+	require.False(t, h.Deps.Checker.Check(append(body, ' '), sig, inst.Signing.PublicKey))
+}
+
+// Nothing this payload refuses reaches the bucket.
+//
+// Asserted against the published bytes with markers seeded into the real
+// values, rather than against the list of fields the builder sets. The second
+// would be an intent-guard: it would pass on the day something serialised the
+// whole installation into the row by accident.
+func TestARowCarriesNoParameterValueOrSecret(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+
+	inst.Parameters = map[string]string{"http_port": "PARAM-VALUE-MUST-NOT-TRAVEL-8443"}
+	inst.Domains = []string{"HOSTNAME-MUST-NOT-TRAVEL.example"}
+	inst.AttestationSalt = "SALT-MUST-NOT-TRAVEL-0123456789abcdef"
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	h.Secrets.Seed(map[string]string{"db_password": "SECRET-MUST-NOT-TRAVEL-hunter2"})
+
+	_, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	_, body := publishedRow(t, offsite, inst)
+	for _, needle := range []string{
+		"PARAM-VALUE-MUST-NOT-TRAVEL",
+		"HOSTNAME-MUST-NOT-TRAVEL",
+		"SALT-MUST-NOT-TRAVEL",
+		"SECRET-MUST-NOT-TRAVEL",
+	} {
+		assert.NotContainsf(t, string(body), needle,
+			"%s reached a document published to a shared target", needle)
+	}
+}
+
+// A count that could not be taken is published as absent, not as zero.
+//
+// The end-to-end half of the domain test: a runtime that will not answer must
+// not make a deployment look like one whose services are all stopped, and this
+// asserts it in the bytes that leave the machine.
+func TestAnUnreachableRuntimePublishesNoCountAtAll(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+
+	h.Runtime.Fail = map[string]error{"Status": assert.AnError}
+
+	_, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err, "a runtime that will not answer must not fail the publish")
+
+	row, body := publishedRow(t, offsite, inst)
+	assert.Nil(t, row.Health.Running, "a count was published for a runtime that did not answer")
+	assert.Nil(t, row.Health.Services)
+	assert.NotEmpty(t, row.Health.Problem, "the row does not say why there is no count")
+	assert.Contains(t, string(body), `"running": null`)
+}
+
+// A newer row is not replaced by an older one.
+//
+// The key is stable and every write replaces in place, so without the
+// read-before-write a slow publisher finishing after a fast one silently
+// installs stale state as current -- which is what a timer beside a manual run
+// produces.
+func TestAPublishDeclinesToReplaceANewerRow(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	// The future, published first.
+	future := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	h.Deps.Now = func() time.Time { return future }
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	// Then a publisher whose clock -- or whose read of the world -- is
+	// older.
+	h.Deps.Now = func() time.Time { return future.Add(-time.Hour) }
+	result, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+	require.Len(t, report.Targets, 1)
+	assert.False(t, report.Targets[0].Published)
+	assert.Contains(t, report.Targets[0].Declined, "newer row")
+
+	// And the row on the target is still the newer one.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	row, _ := publishedRow(t, offsite, inst)
+	assert.Equal(t, future, row.PublishedAt.UTC())
+}
+
+// --force replaces it, because an operator must have a way out.
+func TestForceReplacesARowThePublisherWouldHaveDeclined(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	future := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	h.Deps.Now = func() time.Time { return future }
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	older := future.Add(-time.Hour)
+	h.Deps.Now = func() time.Time { return older }
+	result, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{
+		TargetOptions: ops.TargetOptions{Options: ops.Options{Force: true}},
+	})
+	require.NoError(t, err)
+
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+	assert.True(t, report.Targets[0].Published)
+	assert.NotEmpty(t, report.Targets[0].Unchecked,
+		"--force replaced a row without recording that nothing was compared")
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	row, _ := publishedRow(t, offsite, inst)
+	assert.Equal(t, older, row.PublishedAt.UTC())
+}
+
+// A dry run writes nothing and still shows the document.
+func TestADryRunPublishesNothingAndPrintsTheRow(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+
+	result, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{
+		TargetOptions: ops.TargetOptions{Options: ops.Options{DryRun: true}},
+	})
+	require.NoError(t, err)
+
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+	assert.Equal(t, domain.FleetSchemaVersion, report.Row.Schema,
+		"--dry-run described the row instead of producing it")
+	assert.NoDirExists(t, filepath.Join(offsite, "fleet"))
+}
+
+// The round trip: publish, then read it back.
+func TestFleetListReadsBackWhatWasPublished(t *testing.T) {
+	h := fleetHarness(t)
+	inst, _ := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	require.Len(t, report.Rows, 1)
+	row := report.Rows[0]
+	require.Empty(t, row.Problem)
+	require.NotNil(t, row.Row)
+	assert.Equal(t, "demo", row.Product)
+	assert.Equal(t, inst.ID, row.InstallationID)
+	assert.Equal(t, "1.2.0", row.Row.Version)
+	assert.Zero(t, report.Problems())
+}
+
+// The reader never says a row is verified, whatever it found.
+//
+// This is the test RFC 0026 §8 makes P2 conditional on. The row's own key
+// checks out perfectly -- that is exactly the point -- and the reader must
+// still report only that a signature is *there*, because the machine
+// overwriting its neighbour's row rewrites payload, key and signature together.
+// A reader that graduated to "verified" here would reintroduce the defect
+// decision 6b removed, as a phase boundary.
+func TestTheReaderNeverClaimsARowIsVerified(t *testing.T) {
+	h := fleetHarness(t)
+	h.withFleetTarget(t)
+	ctx := context.Background()
+
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	require.Len(t, report.Rows, 1)
+	assert.Equal(t, ops.FleetSigned, report.Rows[0].Signature)
+
+	// Not a value this vocabulary has, and the assertion is on the whole
+	// type rather than on one row: a third state would have to be added
+	// deliberately.
+	for _, forbidden := range []ops.FleetSignature{"verified", "valid", "trusted"} {
+		assert.NotEqual(t, forbidden, report.Rows[0].Signature)
+	}
+}
+
+// And it says so, on every run, in the report itself.
+//
+// Not in the documentation: an operator reading a complete-looking table is not
+// reading the documentation. §8 permits this phase to ship without a roster
+// only because the reader states both limitations, and the two are stated
+// together because they have one cause.
+func TestTheReaderStatesWhatItCannotDo(t *testing.T) {
+	h := fleetHarness(t)
+	h.withFleetTarget(t)
+	ctx := context.Background()
+
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, report.Limitations,
+		"the reader presented a table with no statement of what it could not see")
+
+	joined := strings.ToLower(strings.Join(report.Limitations, " "))
+	assert.Contains(t, joined, "roster")
+	assert.Contains(t, joined, "authenticated")
+	assert.Contains(t, joined, "absent")
+}
+
+// A row nobody can read is a row, not an omission.
+//
+// Decision 4, asserted against the three ways a row goes bad: bytes that are
+// not JSON, a document from a manager this one is too old to read, and a row
+// published at a key naming a different installation.
+func TestAnUnreadableRowIsShownCarryingItsProblem(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	write := func(product, id string, body []byte) {
+		key, err := domain.FleetKey(product, id)
+		require.NoError(t, err)
+		path := filepath.Join(offsite, filepath.FromSlash(key))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, body, 0o644))
+	}
+
+	write("garbage", "inst_A", []byte("this is not JSON at all"))
+	write("future", "inst_B", []byte(`{"schema":99,"product":"future",`+
+		`"installation_id":"inst_B","published_at":"2026-08-13T10:00:00Z"}`))
+	write("impostor", "inst_C", []byte(`{"schema":1,"product":"somebodyelse",`+
+		`"installation_id":"inst_C","published_at":"2026-08-13T10:00:00Z"}`))
+
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	problems := map[string]string{}
+	for _, row := range report.Rows {
+		if row.Problem != "" {
+			problems[row.Product] = row.Problem
+		}
+	}
+
+	require.Len(t, problems, 3, "a row that could not be read was dropped instead of shown")
+	assert.Contains(t, problems["garbage"], "not a fleet row")
+	assert.Contains(t, problems["future"], "newer manager")
+	assert.Contains(t, problems["impostor"], "not the installation whose key it is at")
+	assert.Equal(t, 3, report.Problems())
+}
+
+// A key that climbs out of the prefix is a finding, never a fetch.
+//
+// The keys come out of a listing of a bucket several machines write to, so this
+// layer must not depend on being saved by the transport underneath it.
+func TestAKeyThatEscapesThePrefixIsAFinding(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+
+	// Written under the prefix by hand, at a depth FleetKey would never
+	// have produced.
+	path := filepath.Join(offsite, "fleet", "demo", "inst_A", "nested", "status.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(`{"schema":1}`), 0o644))
+
+	report, err := ops.FleetList(context.Background(), h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	require.Len(t, report.Rows, 1)
+	assert.Nil(t, report.Rows[0].Row, "a key that is not a row's key was fetched anyway")
+	assert.Contains(t, report.Rows[0].Problem, "not a fleet row's key")
+}
+
+// A signature with no row beside it is worth a line of its own.
+func TestASignatureWithNoRowIsReported(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+
+	path := filepath.Join(offsite, "fleet", "demo", "inst_A", "status.json.minisig")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte("untrusted comment: x\n"), 0o644))
+
+	report, err := ops.FleetList(context.Background(), h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	require.Len(t, report.Rows, 1)
+	assert.Contains(t, report.Rows[0].Problem, "a signature with no row")
+}
+
+// Staleness is judged against a threshold the report states.
+func TestAStaleRowIsMarkedAndTheThresholdIsStated(t *testing.T) {
+	h := fleetHarness(t)
+	h.withFleetTarget(t)
+	ctx := context.Background()
+
+	published := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	// Two days later, read with the default threshold.
+	h.Deps.Now = func() time.Time { return published.Add(48 * time.Hour) }
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	require.Len(t, report.Rows, 1)
+	assert.True(t, report.Rows[0].Stale)
+	assert.Equal(t, 1, report.Stale())
+	assert.NotEmpty(t, report.StaleAfter,
+		"a staleness verdict was rendered without saying what it was judged against")
+
+	// A negative threshold judges nothing, which a reader who publishes
+	// weekly must be able to say.
+	report, err = ops.FleetList(ctx, h.Deps, ops.FleetListOptions{StaleAfter: -1})
+	require.NoError(t, err)
+	assert.False(t, report.Rows[0].Stale)
+	assert.Empty(t, report.StaleAfter)
+
+	// Staleness is not a problem: it is a judgement against a threshold,
+	// and a machine deliberately published weekly must not fail a check
+	// that defaults to a day.
+	assert.Zero(t, report.Problems())
+}
+
+// An installation with no targets publishes nowhere, and says so rather than
+// failing.
+func TestPublishingWithNoTargetsIsRefusedWithAdvice(t *testing.T) {
+	h := newHarness(t)
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	h.Deps.Objects = registry
+	h.install()
+
+	_, err = ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "no backup targets")
+}
+
+// A machine that has never minted a key publishes anyway, unsigned.
+//
+// Withholding the row would hide the installations with the least evidence,
+// which is the wrong half of a fleet to go quiet.
+func TestAMachineWithNoKeyPublishesAnUnsignedRow(t *testing.T) {
+	h := newHarness(t)
+
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	h.Deps.Objects = registry
+	h.Deps.Signer = nil
+
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	inst := h.install()
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	result, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+	require.True(t, report.Targets[0].Published)
+	assert.False(t, report.Signed)
+
+	list, err := ops.FleetList(context.Background(), h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+	require.Len(t, list.Rows, 1)
+	assert.Equal(t, ops.FleetUnsigned, list.Rows[0].Signature)
+}
