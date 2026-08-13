@@ -269,7 +269,7 @@ by name. The second thing to drop was the same field as the first, so nobody
 could forget it.
 
 That is exactly the accident decision 7 exists to stop relying on, so P1 pinned
-it: `TestASandboxImportedFromProductionCannotPublishIntoIt` asserts the outcome
+it: `TestImportingAsASandboxDropsTheBackupTargets` now asserts the outcome
 rather than the mechanism, and it will keep passing when the drop becomes a
 list and fail if fleet targets ever move off it. What P4 still owes is the
 generalisation itself — one list, one test — for the *third* thing to drop.
@@ -454,3 +454,29 @@ already builds a second installation on a second root running a second product,
 so it publishes too, and the listing is read from the first machine — which has
 no other knowledge of the second. That is the feature, and it is now the sample
 the documentation quotes.
+
+### A8 — Three things the reader does that the design did not ask for
+
+Recorded because §3.3 and §3.4 describe the reader's *classes* of row and not
+its behaviour, so each of these is a choice made in code that exists nowhere
+else.
+
+**A staleness threshold with a default of 24 hours.** §3.3 says "older than a
+threshold" and names none. A reader whose staleness column stays empty until
+somebody configures it never reports the thing it exists to report, so there is
+a default — and the threshold applied is printed with the table, so the verdict
+is never a judgement whose basis a reader has to guess. `--stale-after` with a
+negative value turns the judgement off entirely, which a fleet published weekly
+needs to be able to say.
+
+**A row is checked against the key it was found at.** A row claiming to be a
+different installation from the one whose key it occupies was either published
+to the wrong place or put there by somebody else, and it is displayed carrying
+that problem rather than as that installation's status. This is the only
+integrity statement the phase can make without a roster, and it costs nothing.
+
+**A signature with no row beside it is its own finding.** The listing shows it,
+because it is the state a publish interrupted between its two writes leaves —
+and, less innocently, the state left by removing a row and not its signature.
+
+None of the three is authentication, and none of them is presented as any.

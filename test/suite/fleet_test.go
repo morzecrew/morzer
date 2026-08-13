@@ -525,13 +525,22 @@ func TestADryRunDoesNotMintASigningKey(t *testing.T) {
 	require.NoFileExists(t, h.Paths.SigningKeyFile(),
 		"this machine already has a key, so the test proves nothing")
 
-	_, err = ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{
+	result, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{
 		TargetOptions: ops.TargetOptions{Options: ops.Options{DryRun: true}},
 	})
 	require.NoError(t, err)
 
 	assert.NoFileExists(t, h.Paths.SigningKeyFile(),
 		"a --dry-run publish minted this machine's signing identity")
+
+	// And the report says so. Without this the fix could report `signed`
+	// from a key it declined to create, which is the plan describing an
+	// outcome the real run would not produce.
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+	assert.False(t, report.Signed,
+		"the plan says the row would be signed, on a machine with no key to sign it")
+	assert.Empty(t, report.Row.SigningKey)
 }
 
 // failingSignatureStore is a target that accepts the row and refuses the
