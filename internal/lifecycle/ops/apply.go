@@ -1,9 +1,11 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -85,7 +87,55 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return out, runErr
 	}
 
+	// After the operation, never inside it. A statement is a record *of*
+	// what happened, so it cannot be a step whose own failure changes what
+	// happened -- and emitAttestation warns rather than returning for the
+	// same reason (RFC 0025 decision 6).
+	//
+	// P1 emits on success only. Failure and compensation paths are P2, and
+	// they are the interesting ones for an auditor: this is a gap the RFC
+	// names rather than one it hides.
+	if !opts.DryRun {
+		emitAttestation(ctx, d, result.Record,
+			attestationInputs(inst, rel, current, renderedConfigFor(result.State)))
+	}
+
 	return out, nil
+}
+
+// renderedConfigFor pulls the rendered configuration out of engine state so the
+// attestation can digest it.
+//
+// Returns nil when the operation rendered nothing, which is a real case rather
+// than a defect -- and produces an empty digest instead of a digest over
+// nothing, which would be a constant that looks like evidence.
+func renderedConfigFor(st *engine.State) []byte {
+	if st == nil {
+		return nil
+	}
+	rendered := engine.MustGet[map[string][]byte](st, engine.KeyRenderedConfig)
+	if len(rendered) == 0 {
+		return nil
+	}
+
+	// Canonical: targets sorted, each length-prefixed by its own name. Map
+	// iteration order is random in Go, so digesting the concatenation
+	// directly would produce a different digest for identical
+	// configuration on every run -- a drift detector that reports drift
+	// constantly, which is a drift detector nobody reads.
+	targets := make([]string, 0, len(rendered))
+	for target := range rendered {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+
+	var buf bytes.Buffer
+	for _, target := range targets {
+		fmt.Fprintf(&buf, "%s\n%d\n", target, len(rendered[target]))
+		buf.Write(rendered[target])
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
 }
 
 func applyFlags(opts Options) map[string]string {
@@ -390,6 +440,11 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if err != nil {
 				return err
 			}
+
+			// Into state for the attestation, which digests it
+			// under the installation's salt. The bytes stay here;
+			// only the digest travels.
+			st.Set(engine.KeyRenderedConfig, rendered)
 
 			backups := make(map[string][]byte, len(rendered))
 			modes := make(map[string]uint32, len(rendered))
