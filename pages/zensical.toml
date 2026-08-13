@@ -74,6 +74,7 @@ nav = [
         "reference/manifest.md",
         "reference/variables.md",
         "reference/hooks.md",
+        "reference/attestations.md",
     ] },
     { "Explanation" = [
         "explanation/architecture.md",

@@ -1,0 +1,222 @@
+{
+  "$id": "https://morzecrew.github.io/morzer/schemas/morzer-attestation-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An in-toto Statement describing what the manager did during one lifecycle operation, signed with the installation's own key. Generated from the Go types that produce it; do not edit by hand.",
+  "properties": {
+    "_type": {
+      "enum": [
+        "https://in-toto.io/Statement/v1"
+      ],
+      "type": "string"
+    },
+    "predicate": {
+      "additionalProperties": false,
+      "properties": {
+        "bound": {
+          "type": "string"
+        },
+        "config": {
+          "additionalProperties": false,
+          "properties": {
+            "parameter_names": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "rendered_digest": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "images": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "installation": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "manager_version": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "previous_keys": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "retired_at": {
+                    "description": "An RFC3339 timestamp in UTC.",
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "product": {
+              "type": "string"
+            },
+            "signing_key": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "operation": {
+          "additionalProperties": false,
+          "properties": {
+            "ended": {
+              "description": "An RFC3339 timestamp in UTC.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "outcome": {
+              "type": "string"
+            },
+            "started": {
+              "description": "An RFC3339 timestamp in UTC.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "release": {
+          "additionalProperties": false,
+          "properties": {
+            "content_digest": {
+              "type": "string"
+            },
+            "from_version": {
+              "type": "string"
+            },
+            "source_scheme": {
+              "type": "string"
+            },
+            "to_version": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "steps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "duration_ms": {
+                "type": "integer"
+              },
+              "error": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "verification": {
+          "additionalProperties": false,
+          "properties": {
+            "digest_matched": {
+              "type": "boolean"
+            },
+            "digest_pinned": {
+              "type": "boolean"
+            },
+            "key_id": {
+              "type": "string"
+            },
+            "signature_required": {
+              "type": "boolean"
+            },
+            "signature_verified": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "bound",
+        "operation",
+        "installation"
+      ],
+      "type": "object"
+    },
+    "predicateType": {
+      "enum": [
+        "https://morzecrew.github.io/morzer/attestation/v1"
+      ],
+      "type": "string"
+    },
+    "subject": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "_type",
+    "subject",
+    "predicateType",
+    "predicate"
+  ],
+  "title": "morzer deployment attestation",
+  "type": "object"
+}

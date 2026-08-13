@@ -267,6 +267,73 @@ func TestEverySchemaIsCheckedIn(t *testing.T) {
 		schema.ManifestSchemaFile,
 		schema.SecretSchemaFile,
 		schema.InstallationDocumentSchemaFile,
+		schema.AttestationSchemaFile,
 	}, found,
 		"schemas/ must hold exactly what the generator produces")
+}
+
+// TestTheAttestationSchemaConstrainsWhatTheWriterProduces is the same guard for
+// the statement, and it has one extra thing to pin.
+//
+// The schema must reject a document from another contract. An in-toto Statement
+// generated from struct shape alone accepts any `predicateType`, so it would
+// validate a SLSA provenance document — which is exactly the confusion morzer's
+// own predicate type exists to prevent, since SLSA describes how an artifact
+// was *built* and this describes how one was *deployed*.
+//
+// And the required set has to be one the writer actually emits, on the emptiest
+// statement there can be: an operation with no release, no images and no steps,
+// on a machine that has never signed. `bound` is in that set deliberately — a
+// statement without it is one whose reader was never told what the signature
+// proves.
+func TestTheAttestationSchemaConstrainsWhatTheWriterProduces(t *testing.T) {
+	var node map[string]any
+	raw, err := os.ReadFile(schemaPath(t, schema.AttestationSchemaFile))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &node))
+
+	props := object(t, node, "properties")
+	assert.Equal(t, []any{domain.StatementType}, object(t, props, "_type")["enum"])
+	assert.Equal(t, []any{domain.PredicateType}, object(t, props, "predicateType")["enum"],
+		"a document with another predicate type must not validate against this schema")
+
+	required, ok := node["required"].([]any)
+	require.True(t, ok, "the schema must state what the writer never omits")
+
+	// The emptiest statement the manager can produce.
+	empty, err := json.Marshal(domain.Attest(domain.OperationRecord{}, domain.AttestationInputs{}))
+	require.NoError(t, err)
+	var emitted map[string]any
+	require.NoError(t, json.Unmarshal(empty, &emitted))
+
+	for _, field := range required {
+		name, _ := field.(string)
+		assert.Contains(t, emitted, name,
+			"the schema requires %q, and the barest statement does not carry it", name)
+	}
+
+	predicate := object(t, props, "predicate")
+	predRequired, ok := predicate["required"].([]any)
+	require.True(t, ok, "the predicate must state what it never omits")
+
+	emittedPredicate, ok := emitted["predicate"].(map[string]any)
+	require.True(t, ok)
+	for _, field := range predRequired {
+		name, _ := field.(string)
+		assert.Contains(t, emittedPredicate, name,
+			"the predicate requires %q, and the barest statement does not carry it", name)
+	}
+
+	// The bound is not merely present, it is the sentence. A statement that
+	// carried an empty string here would satisfy `required` and tell the
+	// reader nothing.
+	assert.Equal(t, domain.AttestationBound, emittedPredicate["bound"])
+
+	// And the absence that matters: an operation that established no
+	// signature verification must not render the field at all, because a
+	// `false` there reads as "checked, and it failed".
+	verification, ok := emittedPredicate["verification"].(map[string]any)
+	require.True(t, ok)
+	assert.NotContains(t, verification, "signature_verified",
+		"an unestablished check was rendered as a finding")
 }

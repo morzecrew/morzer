@@ -17,6 +17,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -37,6 +38,15 @@ const (
 	// hand-written schema is a second description of one contract, and the
 	// two disagree quietly.
 	InstallationDocumentSchemaFile = "selfhost-v1alpha1-installation.json"
+
+	// The in-toto statement emitted after a lifecycle operation (RFC 0025).
+	//
+	// Named for the predicate's own version rather than the manifest API
+	// version the other three carry: this document's contract is the
+	// predicateType URI inside it, and it can move independently of the
+	// manifest surface. Coupling its filename to `v1alpha1` would promise a
+	// lockstep that does not exist.
+	AttestationSchemaFile = "morzer-attestation-v1.json"
 )
 
 const schemaBase = "https://morzecrew.github.io/morzer/schemas/"
@@ -50,6 +60,42 @@ func Secrets() ([]byte, error) { return render(secretSchema()) }
 // InstallationDocument returns the generated schema for the document
 // `morzer installation describe` writes.
 func InstallationDocument() ([]byte, error) { return render(installationDocumentSchema()) }
+
+// Attestation returns the generated schema for the signed statement emitted
+// after a lifecycle operation.
+func Attestation() ([]byte, error) { return render(attestationSchema()) }
+
+func attestationSchema() map[string]any {
+	s := schemaFor(reflect.TypeFor[domain.Statement]())
+	s["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+	s["$id"] = schemaBase + AttestationSchemaFile
+	s["title"] = "morzer deployment attestation"
+	s["description"] = "An in-toto Statement describing what the manager did " +
+		"during one lifecycle operation, signed with the installation's own key. " +
+		"Generated from the Go types that produce it; do not edit by hand."
+
+	// Pinned by value, not merely by shape. A schema generated from struct
+	// shape alone accepts any string here, so it would validate a SLSA
+	// provenance document -- which is the confusion the predicate type
+	// exists to prevent, since that describes how an artifact was *built*
+	// and this describes how one was *deployed*.
+	props, _ := s["properties"].(map[string]any)
+	props["_type"] = withEnum(props["_type"], []string{domain.StatementType})
+	props["predicateType"] = withEnum(props["predicateType"], []string{domain.PredicateType})
+
+	// The four the writer emits unconditionally. `bound` is in the required
+	// set on purpose: a statement without it is one whose reader was never
+	// told what the signature does and does not prove, and that is the
+	// failure the field exists to prevent rather than a cosmetic omission.
+	s["required"] = []string{"_type", "subject", "predicateType", "predicate"}
+
+	predicate, _ := props["predicate"].(map[string]any)
+	if predicate != nil {
+		predicate["required"] = []string{"bound", "operation", "installation"}
+	}
+
+	return s
+}
 
 func installationDocumentSchema() map[string]any {
 	s := schemaFor(reflect.TypeFor[domain.InstallationDocument]())
@@ -132,10 +178,20 @@ func apiVersions() []string {
 	return out
 }
 
+// withEnum pins a property to a fixed set of values.
+//
+// It panics on a node that is not a schema object, and that is deliberate. The
+// callers pass `props["some_field"]`, and a missing key yields nil -- which the
+// permissive version returned unchanged, so the caller's assignment wrote a
+// `null` property into the schema and generation succeeded. The result
+// validates nothing and looks fine, and the only symptom is an editor that
+// stops complaining. A field renamed without updating its pin is a build
+// failure now instead.
 func withEnum(node any, values []string) any {
 	m, ok := node.(map[string]any)
 	if !ok {
-		return node
+		panic(fmt.Sprintf("withEnum: not a schema object (%T); "+
+			"a pinned property was renamed or removed", node))
 	}
 	m["enum"] = values
 	return m
@@ -334,7 +390,16 @@ func structSchema(t reflect.Type) map[string]any {
 		if !f.IsExported() {
 			continue
 		}
+		// yaml first, json as the fallback. Most of what this
+		// generator describes is a file an operator edits, so the yaml
+		// tag is the field's real name -- but the attestation is a JSON
+		// document that is never YAML, and giving its types yaml tags
+		// to satisfy a generator would be a lie in the struct about
+		// what the format is.
 		name := strings.Split(f.Tag.Get("yaml"), ",")[0]
+		if name == "" {
+			name = strings.Split(f.Tag.Get("json"), ",")[0]
+		}
 		if name == "" || name == "-" {
 			continue
 		}
