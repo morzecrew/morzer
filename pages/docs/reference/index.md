@@ -44,7 +44,9 @@ here. The reference column points at the section that documents it; the
 | `morzer stats` | Show CPU, memory and I/O per container | [commands](commands.md#stats) |
 | `morzer exec` | Run a command inside a running service | [commands](commands.md#exec) |
 | `morzer attest` | Read back the signed record of what this machine did | [attestations](attestations.md#attestations) |
+| `morzer attest log` | List what this machine has recorded, newest first | [attestations](attestations.md#attestations) |
 | `morzer attest verify` | Check the signatures, the chain, and what is running now | [attestations](attestations.md#attestations) |
+| `morzer attest push` | Copy statements that are only on this machine to the targets | [attestations](attestations.md#attestations) |
 | `morzer backup` | Back up the database, volumes, configuration and secret state | [commands](commands.md#backup) |
 | `morzer backup list` | List backups, newest first | [commands](commands.md#backup-list) |
 | `morzer backup verify` | Re-read a backup and check its checksums | [commands](commands.md#backup-verify) |

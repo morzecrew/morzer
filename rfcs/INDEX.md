@@ -23,11 +23,6 @@ second table of the same shape is a second set of rows for the same numbers.
 - **[0024 — The support bundle](0024-the-support-bundle.md).** Unstarted. P1 is
   an inventory with no code, and P2 must not ship without P3, which is the phase
   that proves redaction works.
-- **[0025 — Attesting an installation](0025-attesting-an-installation.md).**
-  P1–P3 shipped. **Decision 8 is answered**: `--against-live` fails when an
-  image is swapped behind the manager's back, so the design is not theatre and
-  the RFC lives. P4 is pushing statements off the machine; `config` is the one
-  operation that still files nothing.
 - **[0026 — Fleet as a read model](0026-fleet-as-a-read-model.md).** Unstarted.
   Design settled through decision 6b: the roster, not the row, is the trust
   anchor.
@@ -88,7 +83,7 @@ number in the filename in sync.
 | [0022](0022-bootstrapping-the-manager.md) | Bootstrapping the manager | ✅ Complete | Getting the manager onto a machine in the first place: an install script that verifies what it downloaded, and instructions somebody has run. |
 | [0023](0023-runtimes-beyond-compose.md) | Runtimes beyond Compose | 🚧 In progress | Grading the runtime port by writing a second implementation of it — rootless Podman with Quadlet — on the theory that a port with one adapter is a guess rather than an abstraction. |
 | [0024](0024-the-support-bundle.md) | The support bundle | 📝 Draft | One redacted archive an operator can hand to a stranger, because every command a vendor has runs before the bundle leaves their machine and none after. |
-| [0025](0025-attesting-an-installation.md) | Attesting an installation | 🚧 In progress | Making the manager's evidence leave the machine as a signed statement, and binding the feature to a verifier that can fail for a reason other than corruption. |
+| [0025](0025-attesting-an-installation.md) | Attesting an installation | ✅ Complete | Making the manager's evidence leave the machine as a signed statement, and binding the feature to a verifier that can fail for a reason other than corruption. |
 | [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | 📝 Draft | Seeing many machines at once without a control plane: each installation publishes one signed row to a bucket, and the reader can never act. |
 | [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 🚧 In progress | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |
 | [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | 🚧 In progress | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |

@@ -6,8 +6,8 @@ summary: The signed statement the manager writes after a lifecycle operation —
 
 # Attestations
 
-After `apply`, `update`, `rollback` and `restore` — on failure as well as
-success — the manager writes a signed record of what it did:
+After `apply`, `update`, `rollback`, `restore` and `config` — on failure as well
+as success — the manager writes a signed record of what it did:
 
 ```text
 /var/lib/<product>/attestations/op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json
@@ -171,11 +171,16 @@ $ morzer attest verify --against-live
     app runs registry.example/demo/app at sha256:9f2c0a1b4d5e, attested at sha256:3ab77f01c2d9
 ```
 
-Three ways it can disagree, and each is something somebody does by hand:
+Four ways it can disagree, and each is something somebody does by hand:
 
 - an image running at a digest the statement never mentioned;
 - a service the statement attested that is no longer running;
-- a service running that the statement never attested at all.
+- a service running that the statement never attested at all;
+- the rendered configuration on disk no longer digesting to what was attested.
+
+The configuration check reports **that** it differs and never how. The digest is
+salted (above), so there is nothing in the statement to diff against — which is
+the trade that keeps a port number out of a document that travels.
 
 Newest **successful**, deliberately: comparing against a failed operation would
 report every difference that failure caused as though a person had made it.
@@ -184,19 +189,70 @@ report every difference that failure caused as though a person had made it.
 job or a CI step without parsing anything. A predecessor signature is not a
 problem; an unverifiable one, a broken chain and a live mismatch all are.
 
+### `attest log` — what happened, without asking whether to believe it
+
+```console
+$ morzer attest log
+2 statement(s), newest first
+  operation                    kind    outcome    release          signature
+  op_01K2ZB4M8QF0R7V3X5Y6Z7A8  config  succeeded  1.3.0            signed
+  op_01K2Z9X7QK8V3H4M5N6P7R8S  update  succeeded  1.2.0 -> 1.3.0   signed
+```
+
+Deliberately not `verify` with less output. `signed` says a signature is
+*there*, never that it checks out — an operator reading a timeline during an
+incident should not have it withheld because a key is missing, and one asking
+whether a record can be trusted should not be answered by a listing.
+
+## Getting them off the machine
+
+Statements are pushed as they are written, to the same targets this installation
+keeps its backups on:
+
+```text
+<target>/attestations/op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json
+<target>/attestations/op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json.minisig
+```
+
+They are not backups and never appear as one: `backup list` reports a directory
+only when it holds a `backup.json`, so nothing here can be restored from or
+counted by retention.
+
+!!! warning "A failed push does not fail the operation — the opposite of a backup"
+
+    `morzer backup` fails when a push fails, because reporting success for data
+    that is only on the doomed disk is exactly what pushing exists to prevent.
+
+    This inverts that on purpose. An attestation that did not leave is a gap in
+    a *record* whose subject — the deployment — is fine, and whose local copy is
+    still here. Failing an `update` because a log shipper was down would stop
+    the security fix an operator is applying, for bookkeeping.
+
+    So the gap is reported instead: a warning at the time, `doctor` until it is
+    closed, and `morzer attest push` to close it.
+
+```console
+$ morzer attest push
+pushed 3 attestation(s) to 1 target
+```
+
+It sends only what is not already there, so it is safe from cron. `doctor`
+reports the same gap under `backup.attestations-pushed`.
+
 ## What this does not do yet
 
 Stated here rather than discovered:
 
-- **`config` does not emit one.** `apply`, `update`, `rollback` and `restore`
-  all do, on failure as well as success. A configuration change that does not
-  reach a deployment leaves no statement.
-- **Nothing pushes them anywhere.** They are written locally, so a machine that
-  is lost takes its own record with it.
-- **`--against-live` compares images, and not yet configuration.** A
-  configuration edited in place is detectable in principle — the statement
-  carries a salted digest of the rendered configuration — and comparing it means
-  re-rendering, which is work an audit command should not do silently.
+- **Nothing prunes them.** One statement per operation is small, but `config`
+  and `apply` are frequent — a machine applying at every boot accumulates one
+  per boot. The directory has no retention policy the way releases and backups
+  do.
+- **`verify` reads the local directory**, or a path you give it. It will not
+  fetch a target's copies to check them, so verifying what is off-site means
+  fetching them yourself first.
+- **Attestations go where the backups go.** There is no separate target list, so
+  an installation that wants its records somewhere its data is not cannot say
+  so yet.
 
 A rebuilt machine signs with a **new key**, and records its predecessor. A
 signature that checks out against a predecessor is *provenance* — "signed by an
