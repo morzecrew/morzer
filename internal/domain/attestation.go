@@ -126,8 +126,22 @@ type AttestedRelease struct {
 // AttestedVerification is what the manager checked before it acted, which is
 // the part an auditor is actually asking about.
 type AttestedVerification struct {
-	SignatureRequired bool   `json:"signature_required"`
-	SignatureVerified bool   `json:"signature_verified"`
+	SignatureRequired bool `json:"signature_required"`
+
+	// SignatureVerified is a **tri-state**, and the third state is the
+	// reason it is a pointer.
+	//
+	// Absent means this document makes no claim: the operation did not
+	// verify a signature, because verification happens when a release is
+	// staged and an `apply` runs against one already on disk. Present and
+	// false would mean "checked, and it did not verify" -- a much stronger
+	// statement, and one an auditor would act on.
+	//
+	// Emitting a plain `false` for "did not check" is the RFC 0013 defect
+	// the whole bound field exists to avoid: a field that reads as a
+	// finding when it is an absence. So the zero value writes nothing, and
+	// only a caller that watched a verification fills it in.
+	SignatureVerified *bool  `json:"signature_verified,omitempty"`
 	KeyID             string `json:"key_id,omitempty"`
 	DigestPinned      bool   `json:"digest_pinned"`
 	DigestMatched     bool   `json:"digest_matched"`

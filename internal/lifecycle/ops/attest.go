@@ -41,10 +41,10 @@ import (
 // above. The one thing it must never do is claim to have written a statement it
 // did not.
 func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, in domain.AttestationInputs) {
-	if d.Bus == nil && d.Signer == nil {
-		return
-	}
-
+	// No early return on a missing bus. Writing the record is the job;
+	// warning about a failure to write it is a courtesy, and making the
+	// first conditional on the second would mean a build wired without a
+	// bus silently filed nothing.
 	stmt := domain.Attest(rec, in)
 
 	body, err := json.MarshalIndent(stmt, "", "  ")
@@ -106,10 +106,16 @@ func (d *Deps) warnf(format string, args ...any) {
 // Separated from emitAttestation so the assembly is testable without a
 // filesystem, and so the one place that decides what a statement says about
 // verification is a single function rather than each caller's idea of it.
+// from is the version this operation moved *away* from, and is zero for an
+// operation that moved nothing. `apply` converges an installation onto the
+// release already recorded as current, so it passes zero: writing
+// from_version == to_version there would describe an update that did not
+// happen.
 func attestationInputs(
 	inst domain.Installation,
 	rel domain.Release,
-	previous domain.ReleaseRecord,
+	record domain.ReleaseRecord,
+	from domain.Version,
 	rendered []byte,
 ) domain.AttestationInputs {
 	in := domain.AttestationInputs{
@@ -125,16 +131,21 @@ func attestationInputs(
 			ContentDigest: rel.Digest,
 		}
 	}
-	if !previous.Version.IsZero() {
-		in.Release.FromVersion = previous.Version.String()
-		in.Release.SourceScheme = schemeOf(previous.SourceRef)
+	if !from.IsZero() {
+		in.Release.FromVersion = from.String()
 	}
+	// The scheme the *installed* release came from -- oci, https, file --
+	// without the rest of the ref, which can name a private registry and a
+	// path inside it.
+	in.Release.SourceScheme = schemeOf(record.SourceRef)
 
 	// What the manager checked before it acted, which is the part an
 	// auditor is actually asking about -- and the part where it is easiest
 	// to write a field that reads as a check and is not one.
 	//
-	// SignatureVerified is **left false unless the caller establishes it**.
+	// SignatureVerified is **left unset**, which the document renders as an
+	// absent field rather than a false one.
+	//
 	// The tempting shortcut is `SignatureVerified: policy.RequireSignature`,
 	// on the reasoning that an operation which completed under that policy
 	// must have verified a signature. The reasoning is even sound. It is
@@ -143,28 +154,16 @@ func attestationInputs(
 	// verify` printing "bundle is valid" for a bundle that could not render
 	// -- reproduced in an artifact that travels to an auditor.
 	//
-	// So this function reports only what the release record carries, and
-	// SetSignatureVerified is how a caller that watched the verification say
-	// so. A machine with require_signature off tells the truth by leaving it
-	// false; that is not "unverified", it is "this document does not claim
-	// it", which is the honest reading of a field nobody populated.
+	// And `apply` genuinely cannot establish it: signatures are checked when
+	// a release is *staged*, and apply runs against one already on disk. So
+	// the honest output for this operation is silence on the question, which
+	// is what the absent field means.
 	in.Verification = domain.AttestedVerification{
 		SignatureRequired: inst.Policy.RequireSignature,
 		DigestPinned:      rel.Digest != "",
 		DigestMatched:     rel.Digest != "",
 	}
 	return in
-}
-
-// SetSignatureVerified records that this operation actually verified a
-// signature, and against which key.
-//
-// A separate call rather than a parameter, so that populating it is a
-// deliberate act by code that watched the check happen. Anything that has not
-// watched one leaves the field alone and the document claims nothing.
-func SetSignatureVerified(in *domain.AttestationInputs, keyID string) {
-	in.Verification.SignatureVerified = true
-	in.Verification.KeyID = keyID
 }
 
 // schemeOf pulls the scheme out of a source ref -- "oci", "https", "file" --

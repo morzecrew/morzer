@@ -109,12 +109,12 @@ func TestATamperedStatementStopsVerifying(t *testing.T) {
 	inst := applied(t, h)
 	doc := attestations(t, h)[0]
 
-	// The change an attacker would actually make: claim the signature was
-	// verified when it was not.
+	// The change an attacker would actually make: claim a verification the
+	// document deliberately says nothing about.
 	body, err := os.ReadFile(doc)
 	require.NoError(t, err)
 	tampered := strings.Replace(string(body),
-		`"signature_verified": false`, `"signature_verified": true`, 1)
+		`"digest_pinned"`, `"signature_verified": true, "digest_pinned"`, 1)
 	require.NotEqual(t, string(body), tampered, "the fixture did not contain the field to tamper with")
 	require.NoError(t, os.WriteFile(doc, []byte(tampered), 0o644))
 
@@ -154,6 +154,18 @@ func TestTheStatementCarriesNamesAndTheBoundAndNoValues(t *testing.T) {
 	// And the signer is named, so a reader can check the signature without
 	// having the installation to hand.
 	assert.NotEmpty(t, stmt.Predicate.Installation.SigningKey)
+
+	// apply verifies no signature -- that happens when a release is staged
+	// -- so the document must say nothing rather than say "false", which an
+	// auditor would read as a failed check.
+	assert.Nil(t, stmt.Predicate.Verification.SignatureVerified,
+		"the document claims a verification apply never performed")
+	assert.NotContains(t, string(body), "signature_verified",
+		"an unestablished check was rendered as a finding")
+
+	// And it does not describe an update that did not happen.
+	assert.Empty(t, stmt.Predicate.Release.FromVersion,
+		"an apply reported moving away from a version")
 }
 
 // A machine with no salt emits no digest rather than an unsalted one.

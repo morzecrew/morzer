@@ -97,7 +97,7 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 	// names rather than one it hides.
 	if !opts.DryRun {
 		emitAttestation(ctx, d, result.Record,
-			attestationInputs(inst, rel, current, renderedConfigFor(result.State)))
+			attestationInputs(inst, rel, current, domain.Version{}, renderedConfigFor(result.State)))
 	}
 
 	return out, nil
