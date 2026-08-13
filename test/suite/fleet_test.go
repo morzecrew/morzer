@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -635,4 +636,281 @@ func TestAnUnreadableConfigurationTargetIsNotCountedAsDrift(t *testing.T) {
 		"a configuration target that could not be read was counted as drift")
 	assert.Contains(t, after.Drift.Problem, "could not be read",
 		"the row does not say a target was left out of the count")
+}
+
+// escSeq is the escape character, built rather than written so this file holds
+// no control characters of its own.
+var escSeq = string(rune(27))
+
+// Text a hostile machine put in a row does not reach the terminal.
+//
+// The mirror of the rule the payload already followed on the way out, and the
+// half that was missing. A row is read off a target several machines can write
+// to, so its strings are chosen by whoever holds one of those credentials --
+// and `encoding/json` refusing a *raw* control byte is not the check: the
+// escaped spelling below is legal JSON and decodes to the same character.
+func TestHostileTextInARowNeverReachesTheReader(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+
+	dir := filepath.Join(offsite, "fleet", "demo", "inst_HOSTILE")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	body := `{"schema":1,"product":"demo","installation_id":"inst_HOSTILE",` +
+		`"version":"1.0.0\u001b[2J\u001b[1;1HALL SYSTEMS NOMINAL",` +
+		`"manager_version":"` + strings.Repeat("A", 5000) + `",` +
+		`"health":{"services":null,"running":null,"problem":"\u001b[31mred"},` +
+		`"drift":{"targets":null},` +
+		`"published_at":"2026-08-03T11:00:00Z"}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "status.json"), []byte(body), 0o644))
+
+	report, err := ops.FleetList(context.Background(), h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+	require.Len(t, report.Rows, 1)
+
+	row := report.Rows[0].Row
+	require.NotNil(t, row, "the row was refused for another reason: %s", report.Rows[0].Problem)
+
+	assert.NotContains(t, row.Version, escSeq,
+		"an escape sequence from a published row reached the reader")
+	assert.NotContains(t, row.Health.Problem, escSeq)
+	assert.LessOrEqual(t, len(row.ManagerVersion), domain.MaxAttestedText+len("… [truncated]"),
+		"unbounded remote text reached the reader")
+}
+
+// The same for a key, which is the path where there is no row to sanitise.
+//
+// A key that will not parse produces a status carrying the key itself, and the
+// table prints it in both the name column and the diagnostics. The key came out
+// of somebody else's listing.
+func TestAHostileKeyNeverReachesTheReader(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+
+	dir := filepath.Join(offsite, "fleet", "demo"+escSeq+"[2Jgotcha")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "status.json"), []byte("{}"), 0o644))
+
+	report, err := ops.FleetList(context.Background(), h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+	require.NotEmpty(t, report.Rows)
+
+	for _, r := range report.Rows {
+		assert.NotContains(t, r.Key, escSeq,
+			"an escape sequence from a remote key reached the reader")
+		assert.NotContains(t, r.Problem, escSeq)
+	}
+}
+
+// Sanitising must not become a way past the identity check.
+//
+// The row's product is compared with the key's *before* the row is bounded. The
+// other order would let a row naming `demo` plus a trailing escape become plain
+// `demo` and be accepted at a key it does not belong at -- turning the one
+// integrity check this phase has into a formality.
+func TestBoundingDoesNotLetARowClaimAnotherKey(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+
+	dir := filepath.Join(offsite, "fleet", "demo", "inst_SNEAKY")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	body := `{"schema":1,"product":"demo\u001b","installation_id":"inst_SNEAKY",` +
+		`"health":{"services":null,"running":null},"drift":{"targets":null},` +
+		`"published_at":"2026-08-03T11:00:00Z"}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "status.json"), []byte(body), 0o644))
+
+	report, err := ops.FleetList(context.Background(), h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+	require.Len(t, report.Rows, 1)
+
+	assert.Nil(t, report.Rows[0].Row,
+		"a row whose product only matches once sanitised was accepted at this key")
+	assert.Contains(t, report.Rows[0].Problem, "not the installation whose key it is at")
+}
+
+// A neighbouring prefix is not this namespace.
+//
+// A listing prefix is a string match, so asking for `fleet` is answered with
+// `fleet-old/...` too. Those became rows carrying "not a fleet row's key", and
+// a problem row makes `fleet ls` exit non-zero -- so an unrelated directory on
+// a shared target turned a healthy fleet into a failing command.
+func TestANeighbouringPrefixIsNotTheFleet(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	for _, stray := range []string{"fleet-old/demo/notes.txt", "fleetsomething/x.json"} {
+		path := filepath.Join(offsite, filepath.FromSlash(stray))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("not ours"), 0o644))
+	}
+
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	require.Len(t, report.Rows, 1, "a neighbouring prefix leaked into the fleet listing")
+	assert.Zero(t, report.Problems(),
+		"an unrelated directory on the target made `fleet ls` report a problem")
+}
+
+// A flooded prefix is bounded, and the bound is reported.
+//
+// The per-object cap bounds each fetch and not the number of them, and the
+// number is chosen by whoever can write to the prefix. A silent truncation
+// would be worse than the flood: a shorter table that looks complete is exactly
+// what this design is written against.
+func TestAFloodedPrefixIsBoundedAndSaysSo(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+
+	for i := range ops.MaxFleetRows + 20 {
+		dir := filepath.Join(offsite, "fleet", "flood", fmt.Sprintf("inst_%04d", i))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "status.json"),
+			[]byte(`{"schema":1}`), 0o644))
+	}
+
+	report, err := ops.FleetList(context.Background(), h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+
+	assert.LessOrEqual(t, len(report.Rows), ops.MaxFleetRows+1,
+		"the listing fetched every key a writer chose to create")
+
+	var truncated bool
+	for _, r := range report.Rows {
+		if strings.Contains(r.Problem, "listing is incomplete") {
+			truncated = true
+		}
+	}
+	assert.True(t, truncated, "the listing was cut short without saying so")
+}
+
+// A row that reached the target is reported as published, even when its
+// signature did not.
+//
+// `Published` says the row reached the target. Collapsing it with "everything
+// worked" left the report saying `published: false` about an object sitting on
+// the target, which a --json consumer reads as "nothing is there" and an
+// operator reads as a row to go and re-send.
+func TestAPartialPublishReportsTheRowAsPublished(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+
+	h.Deps.Objects = failingSignatureStore{ObjectStore: h.Deps.Objects, err: assert.AnError}
+
+	result, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+	require.Len(t, report.Targets, 1)
+
+	assert.True(t, report.Targets[0].Published,
+		"the row is on the target and the report says it is not")
+	assert.NotEmpty(t, report.Targets[0].Error,
+		"the signature failure was swallowed along with it")
+	assert.Contains(t, result.Summary, "signature did not",
+		"the summary counts a partial publish as a target that did not answer")
+
+	key, err := domain.FleetKey(inst.Product, inst.ID)
+	require.NoError(t, err)
+	require.FileExists(t, filepath.Join(offsite, filepath.FromSlash(key)))
+}
+
+// The overwrite, as far as this phase can play it out.
+//
+// RFC 0026 §6 owes P3 the full scenario, which needs the roster. What is
+// testable now is the half that does not: a second installation, with its own
+// valid signing key, writing its own genuinely signed row over the first's key.
+// The reader must keep it as a problem row rather than showing it as the first
+// installation's status.
+func TestAnotherInstallationsRowAtThisKeyIsAProblem(t *testing.T) {
+	h := fleetHarness(t)
+	victim, offsite := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	victimKey, err := domain.FleetKey(victim.Product, victim.ID)
+	require.NoError(t, err)
+
+	// A second machine, with a key of its own, publishing its own row.
+	attacker := fleetHarness(t)
+	attackerInst, attackerSite := attacker.withFleetTarget(t)
+
+	// A different installation, which the shared harness does not give for
+	// free: both machines are seeded with the same id, and a test in which
+	// the two keys coincide would prove nothing about an overwrite.
+	attackerInst.ID = "inst_01ATTACKERINSTALLATION"
+	require.NoError(t, attacker.Deps.State.SaveInstallation(ctx, attackerInst))
+
+	_, err = ops.FleetPublish(ctx, attacker.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	attackerKey, err := domain.FleetKey(attackerInst.Product, attackerInst.ID)
+	require.NoError(t, err)
+	require.NotEqual(t, victimKey, attackerKey, "both harnesses produced the same key")
+
+	// Payload, embedded public key and detached signature, all replaced
+	// together -- which is what makes the row verify perfectly against
+	// itself, and why the row's own key can never be the anchor.
+	for _, ext := range []string{"", ".minisig"} {
+		src := filepath.Join(attackerSite, filepath.FromSlash(attackerKey)) + ext
+		dst := filepath.Join(offsite, filepath.FromSlash(victimKey)) + ext
+		data, readErr := os.ReadFile(src)
+		require.NoError(t, readErr)
+		require.NoError(t, os.WriteFile(dst, data, 0o644))
+	}
+
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{})
+	require.NoError(t, err)
+	require.Len(t, report.Rows, 1)
+
+	assert.Nil(t, report.Rows[0].Row,
+		"another installation's row was displayed as this installation's status")
+	assert.Contains(t, report.Rows[0].Problem, "not the installation whose key it is at")
+	assert.Equal(t, 1, report.Problems())
+}
+
+// failingJournalStore is a state store whose journal cannot be read.
+//
+// A double rather than a filesystem trick: `os.Open` succeeds on a directory
+// and `chmod 000` does nothing under root, so both of the obvious ways to make
+// the journal unreadable pass for the wrong reason on some machine. This fails
+// exactly the call under test and leaves every other read working, which is
+// also the real shape of the fault -- installation state is readable, the
+// journal is not.
+type failingJournalStore struct {
+	ports.StateStore
+	err error
+}
+
+func (s failingJournalStore) UnfinishedOperations(context.Context) ([]domain.OperationRecord, error) {
+	return nil, s.err
+}
+
+// A journal that cannot be read is not an attention count of zero.
+//
+// `Attention` is an int and cannot spell "I could not look" the way the service
+// counts can, so a failed read published a confident zero -- on the machine
+// most likely to have something flagged. The row says it in the one field that
+// exists for saying things, and only when the runtime has not already claimed
+// it: two explanations on one line would bury the first.
+func TestAnUnreadableJournalIsNotZeroAttention(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+
+	h.Deps.State = failingJournalStore{StateStore: h.Deps.State, err: assert.AnError}
+
+	_, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err, "an unreadable journal must not fail the publish")
+
+	row, _ := publishedRow(t, offsite, inst)
+	assert.Zero(t, row.Health.Attention)
+	assert.Contains(t, row.Health.Problem, "journal",
+		"a journal that could not be read published as a confident attention count of zero")
 }

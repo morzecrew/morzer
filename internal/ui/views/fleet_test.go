@@ -113,6 +113,22 @@ func TestAnUnreadableRowIsRendered(t *testing.T) {
 		"the row is listed without saying why it cannot be read")
 }
 
+// A row that *was* read still says why a measurement is missing.
+//
+// The publisher collected `health.problem` and `drift.problem` precisely so
+// somebody could act on them. Rendering only `not checked` in the cell told an
+// operator that a measurement was missing and not why -- which on a fleet
+// screen means going to each machine to find out, and is the whole reason the
+// row carries the sentence.
+func TestTheReasonAMeasurementIsMissingIsRendered(t *testing.T) {
+	out := render(t, 100, fleetMixed())
+
+	assert.Contains(t, out, "cannot reach the container runtime",
+		"the row says why health was not taken and the table does not")
+	assert.Contains(t, out, "no release is installed",
+		"the row says why drift was not measured and the table does not")
+}
+
 // The limitations are printed, every run.
 //
 // RFC 0026 §8 permits this phase to exist only because the reader states them.

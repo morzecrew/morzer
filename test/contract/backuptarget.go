@@ -448,6 +448,21 @@ func runObjectStoreCases(t *testing.T, newTarget BackupTargetFactory) {
 		assert.Equal(t, body, got)
 	})
 
+	t.Run("an object under a prefix that was never written is an absence too", func(t *testing.T) {
+		store, h := objects(t)
+
+		// The narrower case the test below leaves open: not a missing key
+		// under a directory that exists, but a whole namespace nothing has
+		// ever created. `fleet publish` reads before it writes, so this is
+		// the very first thing every publisher does against a fresh target
+		// -- and a transport reporting it as unreachable would make the
+		// most ordinary run in the feature's life look like a fault.
+		_, err := store.GetObject(context.Background(), h.Ref,
+			"never/written/at/all/status.json")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, fs.ErrNotExist)
+	})
+
 	t.Run("an object that is not there is an absence, not a fault", func(t *testing.T) {
 		store, h := objects(t)
 
