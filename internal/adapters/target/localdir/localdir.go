@@ -121,6 +121,24 @@ func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	return nil
 }
 
+var _ ports.ObjectStore = (*Target)(nil)
+
+func (t *Target) PutObject(ctx context.Context, ref ports.TargetRef, key string, data []byte) error {
+	store, err := t.store(ref, true)
+	if err != nil {
+		return err
+	}
+	return blob.PutObject(ctx, store, key, data)
+}
+
+func (t *Target) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix string) ([]string, error) {
+	store, err := t.store(ref, false)
+	if err != nil {
+		return nil, err
+	}
+	return blob.ObjectKeys(ctx, store, prefix)
+}
+
 // store resolves the target's root directory, creating it when a push is about
 // to need it.
 //

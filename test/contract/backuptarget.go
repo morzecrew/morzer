@@ -348,6 +348,103 @@ func RunBackupTargetSuite(t *testing.T, newTarget BackupTargetFactory) {
 				"an unencrypted component reached the target: %s", key)
 		}
 	})
+
+	runObjectStoreCases(t, newTarget)
+}
+
+// runObjectStoreCases holds every transport to the ports.ObjectStore half.
+//
+// Part of this suite rather than a suite of its own, because it is the same
+// three adapters answering about the same medium -- and because a rule enforced
+// on two of three transports is a rule that holds or not depending on which one
+// an operator happened to configure. Attestations go through here, so a
+// transport that got this wrong would lose an audit record on exactly the
+// installations that keep their backups furthest away.
+func runObjectStoreCases(t *testing.T, newTarget BackupTargetFactory) {
+	t.Helper()
+
+	objects := func(t *testing.T) (ports.ObjectStore, BackupTargetHarness) {
+		t.Helper()
+		h := newTarget(t)
+		store, ok := h.Target.(ports.ObjectStore)
+		require.True(t, ok,
+			"this transport cannot hold anything but backups, so attestations "+
+				"pushed to it would be silently dropped")
+		return store, h
+	}
+
+	t.Run("an object round-trips and can be listed", func(t *testing.T) {
+		store, h := objects(t)
+		ctx := context.Background()
+
+		body := []byte(`{"_type":"https://in-toto.io/Statement/v1"}`)
+		require.NoError(t, store.PutObject(ctx, h.Ref, "attestations/op_01.json", body))
+
+		keys, err := store.ObjectKeys(ctx, h.Ref, "attestations")
+		require.NoError(t, err)
+		assert.Contains(t, keys, "attestations/op_01.json")
+	})
+
+	t.Run("a prefix that was never written lists nothing rather than failing", func(t *testing.T) {
+		store, h := objects(t)
+
+		// The state every installation is in before its first push, and
+		// the state `doctor` asks about -- so an error here would put a
+		// finding on every machine that has never pushed one.
+		keys, err := store.ObjectKeys(context.Background(), h.Ref, "attestations")
+		require.NoError(t, err)
+		assert.Empty(t, keys)
+	})
+
+	t.Run("re-writing an object replaces it rather than duplicating it", func(t *testing.T) {
+		store, h := objects(t)
+		ctx := context.Background()
+
+		// `attest push` is meant to be safe from cron, which means
+		// idempotent: a transport that appended a copy per run would
+		// grow the target without bound.
+		require.NoError(t, store.PutObject(ctx, h.Ref, "attestations/op_01.json", []byte("first")))
+		require.NoError(t, store.PutObject(ctx, h.Ref, "attestations/op_01.json", []byte("second")))
+
+		keys, err := store.ObjectKeys(ctx, h.Ref, "attestations")
+		require.NoError(t, err)
+		assert.Len(t, keys, 1)
+	})
+
+	t.Run("an object cannot be written outside the target", func(t *testing.T) {
+		store, h := objects(t)
+		ctx := context.Background()
+
+		// Keys are built from filenames read off a directory an operator
+		// can put anything in, so a name that climbs out must not decide
+		// what a push overwrites on the far side.
+		for _, key := range []string{
+			"../escaped.json",
+			"attestations/../../escaped.json",
+			"/etc/escaped.json",
+			"",
+		} {
+			assert.Error(t, store.PutObject(ctx, h.Ref, key, []byte("x")),
+				"%q was accepted as an object key", key)
+		}
+	})
+
+	t.Run("objects are invisible to the backup listing", func(t *testing.T) {
+		store, h := objects(t)
+		ctx := context.Background()
+
+		require.NoError(t, store.PutObject(ctx, h.Ref, "attestations/op_01.json", []byte("{}")))
+
+		// The property RFC 0025 decision 5 wanted, asserted rather than
+		// assumed: an attestation is not a backup, so `backup list` must
+		// not offer it, `restore` must not be able to pick it, and
+		// retention must not count it towards a policy that then prunes
+		// a real one.
+		manifests, err := h.Target.List(ctx, h.Ref)
+		require.NoError(t, err)
+		assert.Empty(t, manifests,
+			"an attestation appeared in the backup listing")
+	})
 }
 
 // rewriteComponentPath edits a manifest to name a component somewhere else,

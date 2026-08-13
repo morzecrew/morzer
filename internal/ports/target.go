@@ -78,6 +78,45 @@ type BackupTarget interface {
 	Remove(ctx context.Context, ref RemoteRef) error
 }
 
+// ObjectStore is a target that can also hold objects which are not backups.
+//
+// A second interface rather than two more methods on BackupTarget, which is
+// what RFC 0025 decision 5 requires of the registry's third consumer: release
+// sources, then backup targets, then attestations. The reason is not tidiness.
+// Everything a BackupTarget does is defined in terms of a backup -- Push reads
+// the manifest to decide what to copy, List reports one entry per manifest,
+// Remove is called by retention counting backups. An attestation has no
+// manifest and must never be offered by `backup list`, restored from, or pruned
+// as though it were a copy of the data. Widening BackupTarget with a method
+// that writes arbitrary bytes would have left all of that true by accident and
+// wrong the first time somebody's retention ran.
+//
+// Deliberately two methods and not four. There is no GetObject and no
+// DeleteObject because nothing needs them: statements are read from the machine
+// that wrote them, and an audit record is not something this manager deletes
+// remotely. This project has twice found a port fully specified and never
+// exercised (RFC 0015's Notifier, 0021's Logs); an unused method is a claim
+// nothing tests.
+//
+// Implemented by the transports that can (all three today) and reached through
+// the registry, which refuses by name when the selected one cannot.
+type ObjectStore interface {
+	// PutObject writes data at key, replacing whatever was there.
+	//
+	// Keys are slash-separated and relative to the target's own root, the
+	// same namespace backups live in -- so a caller picks a prefix that
+	// cannot collide with a backup id.
+	PutObject(ctx context.Context, target TargetRef, key string, data []byte) error
+
+	// ObjectKeys lists everything under prefix, as keys relative to the
+	// target's root.
+	//
+	// A prefix that is not there yields nothing rather than an error: that
+	// is the state before the first push, and the caller asking is usually
+	// asking precisely because it may never have happened.
+	ObjectKeys(ctx context.Context, target TargetRef, prefix string) ([]string, error)
+}
+
 // TargetRef is a normalized backup target reference: where, plus what it takes
 // to get in.
 //
