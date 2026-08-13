@@ -117,7 +117,7 @@ func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Resul
 		return Result{}, err
 	}
 
-	row := d.fleetRow(ctx, inst)
+	row := d.fleetRow(ctx, inst, opts.DryRun)
 	body, err := json.MarshalIndent(row, "", "  ")
 	if err != nil {
 		return Result{}, domain.Internal(err, "cannot serialise the fleet row")
@@ -125,6 +125,21 @@ func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Resul
 	body = append(body, '\n')
 
 	report := FleetPublishReport{Row: row, Key: key}
+
+	if opts.DryRun {
+		// Not signed, and nothing is written. Signing is not itself a
+		// change -- it reads a key and returns bytes -- but resolving
+		// the key to sign with is: on a machine that has never signed,
+		// that mints the identity every later signature is attributed
+		// to. A plan does not create one, so a dry run reports whether
+		// the row *would* be signed from the key that is already there.
+		report.Signed = row.SigningKey != ""
+		for _, target := range targets {
+			report.Targets = append(report.Targets,
+				FleetPublishTarget{URL: target.String()})
+		}
+		return Result{Summary: fleetPublishSummary(report, true), Data: report}, nil
+	}
 
 	// Signed over the bytes about to be written, never over the row
 	// re-serialised by a reader (§3.6). A signature over "the JSON" is a
@@ -135,14 +150,6 @@ func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Resul
 	// parses.
 	sig := d.signFleetRow(ctx, inst, body)
 	report.Signed = len(sig) > 0
-
-	if opts.DryRun {
-		for _, target := range targets {
-			report.Targets = append(report.Targets,
-				FleetPublishTarget{URL: target.String()})
-		}
-		return Result{Summary: fleetPublishSummary(report, true), Data: report}, nil
-	}
 
 	for _, target := range targets {
 		status := FleetPublishTarget{URL: target.String()}

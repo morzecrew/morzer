@@ -27,7 +27,10 @@ import (
 // because RFC 0026 decision 4 is that a row carries its problems: a publisher
 // that refused to publish because the daemon was down would go silent exactly
 // when the machine had something to say.
-func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation) domain.FleetRow {
+//
+// planning suppresses every side effect, which here means exactly one: minting
+// the signing key. See fleetSigningKey.
+func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation, planning bool) domain.FleetRow {
 	in := domain.FleetRowInputs{
 		Installation:   inst,
 		ManagerVersion: d.ManagerVersion.String(),
@@ -36,7 +39,7 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation) domain.Fl
 
 	// The key that will actually sign, so the row names the key that signed
 	// it rather than the one state remembers.
-	if key := d.signingKeyForDocument(ctx, inst, "publishing"); key != "" {
+	if key := d.fleetSigningKey(ctx, inst, planning); key != "" {
 		in.Installation.Signing.PublicKey = key
 	}
 
@@ -50,6 +53,38 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation) domain.Fl
 	in.LastOperation = d.fleetLastOperation(ctx)
 
 	return domain.NewFleetRow(in)
+}
+
+// fleetSigningKey resolves the key that will sign the row, minting one only
+// when this run is actually going to publish.
+//
+// The distinction exists because `EnsureKey` has a side effect: on a machine
+// that has never signed it writes the identity file, and that file is what
+// every later signature is attributed to. `--dry-run` is documented as "plan
+// only, make no changes", so a planning run that generated cryptographic
+// material would be the flag's contract being false in the one way an operator
+// could not see -- the command prints a row and says nothing about the key it
+// just created.
+//
+// A dry run therefore asks `PublicKey`, which is the read-only question and
+// returns ErrNoSigningKey on a machine with no key. That is also the honest
+// answer for the report: this machine has no key *yet*, so the row it would
+// publish today is unsigned.
+func (d *Deps) fleetSigningKey(ctx context.Context, inst domain.Installation, planning bool) string {
+	if !planning {
+		return d.signingKeyForDocument(ctx, inst, "publishing")
+	}
+	if d.Signer == nil {
+		return ""
+	}
+	key, err := d.Signer.PublicKey(ctx)
+	if err != nil {
+		// Silent, unlike the publishing path. A machine with no key is
+		// the ordinary case here and a warning would fire on every dry
+		// run; the report's `signed: false` already carries it.
+		return ""
+	}
+	return key.Line
 }
 
 // fleetHealth asks the runtime what is running, through the same function `ls
