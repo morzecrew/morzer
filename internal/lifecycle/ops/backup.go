@@ -640,6 +640,19 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 	out := Result{Record: result.Record}
 	d.notifyFinished(ctx, opID, domain.OpTypeRestore, result.Record, runErr)
 
+	// A restore moves data rather than versions, so it carries no
+	// from_version and does not join the chain -- but it is the operation
+	// that most changes what a deployment *is*, and an audit that could not
+	// see one would be missing the event most worth explaining.
+	//
+	// The backup it came from is in the record's flags, which is where an
+	// incident review looks for it.
+	if !opts.DryRun {
+		emitAttestation(ctx, d, result.Record,
+			attestationInputs(inst, rel, current, domain.Version{},
+				renderedConfigFor(result.State)))
+	}
+
 	if runErr != nil {
 		return out, restoreLeftBehind(result.Record, runErr)
 	}

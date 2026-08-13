@@ -3,13 +3,16 @@
 - **Status:** 🚧 In progress — **P1–P3 shipped (2026-08-13)**. P1 emits a
   signed in-toto statement; P2 attests failures and compensations; P3 is
   `morzer attest verify`, with signature outcomes, chain continuity and
-  `--against-live`.
+  `--against-live`. `apply`, `update`, `rollback` and `restore` all attest,
+  which is what makes the chain check non-vacuous: only version-moving
+  operations join a chain, and until `update` attested there was nothing for it
+  to follow.
   **Decision 8 is answered and the RFC lives**: an image swapped behind the
   manager's back makes `--against-live` fail, asserted in `test/suite`
   (`TestAgainstLiveFailsWhenAnImageWasSwappedByHand`), and so does an attested
   service that is gone. P4 — pushing statements through 0009's registry,
   `attest log`, and the `doctor` check for an unpushed directory — remains, as
-  does emission from `update`, `rollback` and `restore`.
+  does emission from `config`.
 - **Scope:** A portable, signed, third-party-readable statement of what the
   manager did — one in-toto Statement per lifecycle operation, emitted on failure
   as well as success, appended locally and optionally pushed through 0009's target

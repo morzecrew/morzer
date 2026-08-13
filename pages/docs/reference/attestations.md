@@ -6,7 +6,8 @@ summary: The signed statement the manager writes after a lifecycle operation —
 
 # Attestations
 
-After an `apply`, the manager writes a signed record of what it did:
+After `apply`, `update`, `rollback` and `restore` — on failure as well as
+success — the manager writes a signed record of what it did:
 
 ```text
 /var/lib/<product>/attestations/op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json
@@ -187,9 +188,9 @@ problem; an unverifiable one, a broken chain and a live mismatch all are.
 
 Stated here rather than discovered:
 
-- **Only `apply` emits one.** `update`, `rollback` and `restore` do not yet,
-  though failures of `apply` are attested — a system that attests only its
-  successes attests nothing.
+- **`config` does not emit one.** `apply`, `update`, `rollback` and `restore`
+  all do, on failure as well as success. A configuration change that does not
+  reach a deployment leaves no statement.
 - **Nothing pushes them anywhere.** They are written locally, so a machine that
   is lost takes its own record with it.
 - **`--against-live` compares images, and not yet configuration.** A

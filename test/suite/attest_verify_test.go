@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,6 +56,21 @@ func attested(t *testing.T, h *harness) domain.Installation {
 	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
 	require.NoError(t, err)
 	return inst
+}
+
+// statementsOnDisk lists the statements this installation has filed.
+func statementsOnDisk(t *testing.T, h *harness) []string {
+	t.Helper()
+	entries, err := os.ReadDir(h.Paths.AttestationsDir())
+	require.NoError(t, err)
+
+	var out []string
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".json" {
+			out = append(out, filepath.Join(h.Paths.AttestationsDir(), e.Name()))
+		}
+	}
+	return out
 }
 
 func TestVerifyAcceptsWhatThisMachineSigned(t *testing.T) {
@@ -199,4 +215,51 @@ func TestAgainstLiveNoticesAnAttestedServiceThatIsGone(t *testing.T) {
 
 	require.NotEmpty(t, report.Live)
 	assert.Equal(t, "missing", report.Live[0].Kind)
+}
+
+// An update files a statement that joins the chain.
+//
+// This is what makes `attest verify`'s chain check mean anything on a real
+// machine. Only version-moving operations participate, and `apply` moves
+// nothing -- so until `update` attested, the chain check was exercised by unit
+// tests over synthetic statements and was inert in production. A check for data
+// nothing produces is not a check.
+func TestAnUpdateFilesAStatementThatJoinsTheChain(t *testing.T) {
+	h := verifyHarness(t)
+	attested(t, h)
+
+	before := len(statementsOnDisk(t, h))
+
+	// A real second version, retargeted the way every other update test
+	// retargets it, so what is installed is a release this machine could
+	// really run.
+	next := filepath.Join(t.TempDir(), "bundle-1.3.0")
+	copyBundle(t, filepath.Join(testBundlePath(t), "..", "bundle-1.3.0"), next)
+	retargetManifest(t, next, h.Root)
+
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: next})
+	require.NoError(t, err)
+
+	files := statementsOnDisk(t, h)
+	require.Greater(t, len(files), before, "the update filed no statement")
+
+	report, err := ops.AttestVerify(context.Background(), h.Deps, ops.VerifyOptions{})
+	require.NoError(t, err)
+
+	// The update's statement carries a from_version, which is what the
+	// chain is built out of -- an apply's never does.
+	var moved int
+	for _, f := range files {
+		body, err := os.ReadFile(f)
+		require.NoError(t, err)
+		var s domain.Statement
+		require.NoError(t, json.Unmarshal(body, &s))
+		if s.Predicate.Release.FromVersion != "" {
+			moved++
+		}
+	}
+	assert.Positive(t, moved, "no statement records the version it moved from, so the chain check has nothing to follow")
+
+	assert.Empty(t, report.Chain, "a straightforward update broke its own chain")
+	assert.Zero(t, report.Problems())
 }

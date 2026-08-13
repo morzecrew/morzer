@@ -26,8 +26,8 @@ second table of the same shape is a second set of rows for the same numbers.
 - **[0025 — Attesting an installation](0025-attesting-an-installation.md).**
   P1–P3 shipped. **Decision 8 is answered**: `--against-live` fails when an
   image is swapped behind the manager's back, so the design is not theatre and
-  the RFC lives. P4 is pushing statements off the machine, and `update`,
-  `rollback` and `restore` do not attest yet.
+  the RFC lives. P4 is pushing statements off the machine; `config` is the one
+  operation that still files nothing.
 - **[0026 — Fleet as a read model](0026-fleet-as-a-read-model.md).** Unstarted.
   Design settled through decision 6b: the roster, not the row, is the trust
   anchor.
