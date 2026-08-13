@@ -261,12 +261,18 @@ know that reads a complete-looking table as complete.
 - **P4 — The timer**, as a sibling of the backup timer, and the generalised
   dev-mode drop list (§3.5).
 
-**Until P4, §3.5's hazard is live and unmitigated.** `installation import` drops
-backup targets, and fleet targets are the same list — so a sandbox rebuilt from
-a production export holds the customer's bucket, the customer's credentials and
-a matching id, and `fleet publish` on it would write into the production prefix
-under the production installation's own key. The reference page says so plainly;
-that is the whole mitigation this phase has.
+**§3.5's hazard turns out to be covered already, and by luck rather than by
+design.** Decision 3 reuses 0009's target list, and `modeForImport` already sets
+`inst.Backup.Targets = nil` on an import as `--mode dev` — so a sandbox rebuilt
+from a production export has no targets at all and `fleet publish` on it refuses
+by name. The second thing to drop was the same field as the first, so nobody
+could forget it.
+
+That is exactly the accident decision 7 exists to stop relying on, so P1 pinned
+it: `TestASandboxImportedFromProductionCannotPublishIntoIt` asserts the outcome
+rather than the mechanism, and it will keep passing when the drop becomes a
+list and fail if fleet targets ever move off it. What P4 still owes is the
+generalisation itself — one list, one test — for the *third* thing to drop.
 
 Note the ordering: the timer is **last**. A scheduled publisher built before the
 payload is stable would put badly-shaped objects in twelve buckets, and objects in

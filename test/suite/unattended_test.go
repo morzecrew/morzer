@@ -315,6 +315,24 @@ func TestImportingAsASandboxDropsTheBackupTargets(t *testing.T) {
 	// Reported, not silent: an operator who believes their sandbox is still
 	// backing up finds out during a recovery that it was not.
 	assert.Contains(t, result.Summary, "backup target")
+
+	// And the outcome, for the second thing that rides on this list.
+	//
+	// RFC 0026 §3.5 names the same hazard for fleet rows and expects a
+	// generalised drop list to cover it. There is none: decision 3 reuses
+	// this exact field, so fleet publishing is covered by the drop above
+	// rather than by anything anybody wrote for it. That is precisely the
+	// accident decision 7 exists to stop relying on, so it is asserted as
+	// an outcome -- this keeps passing when the drop becomes a list, and
+	// fails the day fleet targets move off it.
+	if store, ok := sandbox.Deps.Targets.(ports.ObjectStore); ok {
+		sandbox.Deps.Objects = store
+	}
+	_, err = ops.FleetPublish(ctx, sandbox.Deps, ops.FleetPublishOptions{})
+	require.Error(t, err,
+		"a sandbox rebuilt from a production export published a fleet row, "+
+			"which goes into the customer's bucket under a matching installation id")
+	assert.Contains(t, domain.AsError(err).Message, "no backup targets")
 }
 
 // TestASandboxCannotBeImportedAsProduction.

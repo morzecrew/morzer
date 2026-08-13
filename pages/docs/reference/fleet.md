@@ -213,6 +213,13 @@ because restore checks against it — and a recovery export carries backup targe
 and their credentials. So a sandbox rebuilt from a production export would hold
 the customer's bucket, the customer's credentials, and a matching id.
 
-`morzer installation import` already drops backup targets for exactly this
-reason. Until fleet targets join that same drop list, **do not point a
-`--mode dev` installation at a production target by hand.**
+`morzer installation import --mode dev` already drops backup targets for exactly
+this reason, and fleet rows go to the same targets — so a sandbox rebuilt this
+way has nowhere to publish, and `morzer fleet publish` on it refuses by name.
+
+What is *not* covered is a target you add by hand afterwards. Pointing a
+`--mode dev` installation at a production bucket makes it publish under the
+production installation's own key, because an imported installation keeps its
+id. There is no check for that, and there is deliberately no automatic one: the
+manager cannot tell a sandbox you meant to point somewhere from one you did
+not.
