@@ -1,7 +1,10 @@
 # RFC 0028 — The machine's signing identity
 
-- **Status:** 📝 Draft — design locked, execution scheduled with its first
-  consumer rather than ahead of it (§9).
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-13**, in the same wave as
+  its first consumer (0025 P1), as §9 required. The key, the format, schema 6
+  and its bump-only migration, succession across a rebuild and the `doctor`
+  check are in. **P2 (rotation) is unscheduled** and wanted the first time
+  somebody believes a host was compromised.
 - **Scope:** One per-installation Ed25519 key, minted at `init`, that lets a
   machine sign statements about itself — the capability [0024](0024-the-support-bundle.md),
   [0025](0025-attesting-an-installation.md) and [0026](0026-fleet-as-a-read-model.md)

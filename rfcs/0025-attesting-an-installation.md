@@ -1,7 +1,11 @@
 # RFC 0025 — Attesting an installation
 
-- **Status:** 📝 Draft — decision 8 is the condition on which this ships or is
-  closed as rejected; P3 is where that is decided.
+- **Status:** 🚧 In progress — **P1 shipped 2026-08-13** with 0028 P1: `apply`
+  emits a signed in-toto statement, verified against the real `minisign` binary
+  in the container lane. P2 (failure paths), P3 (`attest verify`, and decision
+  8's failing case) and P4 (push, `attest log`) remain. **Decision 8 still
+  governs**: if no fault-injection case can make `--against-live` fail, this
+  RFC closes as rejected regardless of what P1 shipped.
 - **Scope:** A portable, signed, third-party-readable statement of what the
   manager did — one in-toto Statement per lifecycle operation, emitted on failure
   as well as success, appended locally and optionally pushed through 0009's target
