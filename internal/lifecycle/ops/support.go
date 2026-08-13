@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -642,8 +643,12 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 		return nil, err
 	}
 
+	// slices.Concat rather than append: appending writes into Diffs' spare
+	// capacity when it has any, and `configComparison` is now shared with
+	// the fleet row's drift count. Nothing reads the comparison after this
+	// line today, which is exactly the state in which the trap is invisible.
 	body := "no drift: every configuration target matches what this release renders\n"
-	if reports := append(comparison.Diffs, comparison.Unreadable...); len(reports) > 0 {
+	if reports := slices.Concat(comparison.Diffs, comparison.Unreadable); len(reports) > 0 {
 		body = strings.Join(reports, "\n")
 	}
 	return []supportFile{{Name: "config-diff.txt", Data: []byte(body)}}, nil
