@@ -333,6 +333,19 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+
+	// The machine this export came from is gone, and its signing key did
+	// not travel with it. Record it as a predecessor and clear the current
+	// key, so this machine does not claim to sign with a key it does not
+	// hold -- which is the disagreement `doctor` refuses. The new key is
+	// minted by init's step, which runs below.
+	//
+	// The attestation salt is preserved by carrying the installation
+	// through unchanged (RFC 0025 decision 10): re-minting it would break
+	// the configuration-digest chain on exactly the machine that most needs
+	// its history to line up.
+	imported = imported.SucceedSigning(domain.NewTime(d.now()), domain.RetiredByRebuild)
+
 	export.Installation = imported
 
 	store, err := d.recoverableSecrets()
