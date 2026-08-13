@@ -162,32 +162,49 @@ func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Resul
 		}
 		status.Unchecked = verdict.unchecked
 
-		if err := d.putFleetRow(ctx, target, key, body, sig); err != nil {
+		published, err := d.putFleetRow(ctx, target, key, body, sig)
+		status.Published = published
+		if err != nil {
 			status.Error = domain.AsError(err).Message
-			report.Targets = append(report.Targets, status)
-			continue
 		}
-		status.Published = true
 		report.Targets = append(report.Targets, status)
 	}
 
 	return Result{Summary: fleetPublishSummary(report, false), Data: report}, nil
 }
 
-// putFleetRow writes the row and then its signature.
+// putFleetRow writes the row and then its signature, and reports the two
+// outcomes separately.
 //
 // The signature goes second, on the same reasoning that puts a backup's
 // manifest last: a transfer interrupted between the two leaves a row somebody
 // can read and cannot check, which is honest, rather than a signature over
 // bytes that are not there, which is not.
-func (d *Deps) putFleetRow(ctx context.Context, target ports.TargetRef, key string, body, sig []byte) error {
+//
+// **published is whether the row reached the target, not whether everything
+// worked**, and the two come apart in exactly one case. Returning a bare error
+// collapsed them: a signature write that failed after the row landed left the
+// report saying `published: false` about an object sitting on the target, which
+// contradicts that field's own meaning. A `--json` consumer would conclude
+// nothing was there, and an operator reading the count would go looking for a
+// row they already have.
+//
+// The error still travels, so the run is not reported as clean and the exit
+// status is still non-zero. What changes is that the report describes the
+// target's actual state.
+func (d *Deps) putFleetRow(
+	ctx context.Context, target ports.TargetRef, key string, body, sig []byte,
+) (published bool, err error) {
 	if err := d.Objects.PutObject(ctx, target, key, body); err != nil {
-		return err
+		return false, err
 	}
 	if len(sig) == 0 {
-		return nil
+		return true, nil
 	}
-	return d.Objects.PutObject(ctx, target, key+fleetSigExt, sig)
+	if err := d.Objects.PutObject(ctx, target, key+fleetSigExt, sig); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 // orderingVerdict is what the read-before-write concluded.
@@ -291,16 +308,26 @@ func fleetPublishSummary(r FleetPublishReport, dry bool) string {
 			r.Key, describeTargetCount(len(r.Targets)))
 	}
 
+	// A target that took the row and refused its signature is counted as
+	// published *and* named as a problem. The two are independent -- see
+	// putFleetRow -- and a switch that treated any error as "not published"
+	// would put the summary back at odds with the field it is summarising.
 	var published, declined int
-	var failed []string
+	var silent, unsigned []string
+
 	for _, t := range r.Targets {
 		switch {
-		case t.Error != "":
-			failed = append(failed, t.URL)
 		case t.Declined != "":
 			declined++
 		case t.Published:
 			published++
+		}
+
+		switch {
+		case t.Error != "" && t.Published:
+			unsigned = append(unsigned, t.URL)
+		case t.Error != "":
+			silent = append(silent, t.URL)
 		}
 	}
 
@@ -313,8 +340,12 @@ func fleetPublishSummary(r FleetPublishReport, dry bool) string {
 	if declined > 0 {
 		summary += fmt.Sprintf("; %d already held a row this one must not replace", declined)
 	}
-	if len(failed) > 0 {
-		summary += "; " + strings.Join(failed, ", ") + " did not answer"
+	if len(unsigned) > 0 {
+		summary += "; the row reached " + strings.Join(unsigned, ", ") +
+			" and its signature did not"
+	}
+	if len(silent) > 0 {
+		summary += "; " + strings.Join(silent, ", ") + " did not answer"
 	}
 	return summary
 }
