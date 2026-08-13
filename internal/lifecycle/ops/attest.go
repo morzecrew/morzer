@@ -61,34 +61,8 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 	// warning about a failure to write it is a courtesy, and making the
 	// first conditional on the second would mean a build wired without a
 	// bus silently filed nothing.
-	// The key that will actually sign, resolved before the document is
-	// built so the document names it.
-	//
-	// Two failures this closes. A machine that reached schema 6 by
-	// migration has no key and no operation had ever minted one, so it
-	// would have emitted unsigned statements forever -- RFC 0028 §5.6 says
-	// the minting step runs for `init` *and* for any operation that needs
-	// to sign, and only the first half was wired. And when the key on disk
-	// disagreed with the key in state, the document named state's key while
-	// the .minisig came from the other: a statement attributable to nobody,
-	// which is precisely the case `doctor` exists to report.
-	if d.Signer != nil {
-		key, err := d.Signer.EnsureKey(ctx)
-		switch {
-		case err != nil:
-			d.warnf("cannot resolve this machine's signing key: %s",
-				domain.AsError(err).Message)
-		case in.Installation.Signing.HasKey() && in.Installation.Signing.PublicKey != key.Line:
-			// State is not silently overwritten here -- that is
-			// `init --repair`'s job, and doctor names it. What is
-			// refused is emitting a document that lies about which
-			// key signed it.
-			d.warnf("the signing key on disk is not the one installation state records; "+
-				"attesting under the key that signs (%s)", key.KeyID)
-			in.Installation.Signing.PublicKey = key.Line
-		default:
-			in.Installation.Signing.PublicKey = key.Line
-		}
+	if key := d.signingKeyForDocument(ctx, in.Installation, "attesting"); key != "" {
+		in.Installation.Signing.PublicKey = key
 	}
 
 	stmt := domain.Attest(rec, in)
@@ -130,6 +104,49 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 	// have, and a record that dies with the disk is the gap RFC 0025 §1 is
 	// about.
 	pushStatement(ctx, d, in.Installation, path)
+}
+
+// signingKeyForDocument resolves the key that will actually sign, so a document
+// about to be built can name the key that signed it.
+//
+// Two failures this closes, and both were found in the attestation path before
+// a second consumer existed. A machine that reached schema 6 by migration has
+// no key and no operation had ever minted one, so it would have emitted
+// unsigned documents forever -- RFC 0028 §5.6 says the minting step runs for
+// `init` *and* for any operation that needs to sign, and only the first half
+// was wired. And when the key on disk disagreed with the key in state, the
+// document named state's key while the .minisig came from the other: a document
+// attributable to nobody, which is precisely the case `doctor` exists to
+// report.
+//
+// Returns empty when this machine cannot sign, which is a state and not a
+// fault: the caller publishes the document unsigned rather than withholding it,
+// because the installations with the least evidence are the ones that would be
+// silenced.
+//
+// The verb names what the caller is doing, so the warning reads as a sentence
+// on whichever command produced it.
+func (d *Deps) signingKeyForDocument(
+	ctx context.Context, inst domain.Installation, verb string,
+) string {
+	if d.Signer == nil {
+		return ""
+	}
+
+	key, err := d.Signer.EnsureKey(ctx)
+	switch {
+	case err != nil:
+		d.warnf("cannot resolve this machine's signing key: %s",
+			domain.AsError(err).Message)
+		return ""
+	case inst.Signing.HasKey() && inst.Signing.PublicKey != key.Line:
+		// State is not silently overwritten here -- that is
+		// `init --repair`'s job, and doctor names it. What is refused is
+		// emitting a document that lies about which key signed it.
+		d.warnf("the signing key on disk is not the one installation state records; "+
+			"%s under the key that signs (%s)", verb, key.KeyID)
+	}
+	return key.Line
 }
 
 // sign writes the detached signature beside a statement, or says why it could
