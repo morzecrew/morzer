@@ -20,12 +20,17 @@ second table of the same shape is a second set of rows for the same numbers.
 - **[0023 — Runtimes beyond Compose](0023-runtimes-beyond-compose.md).** P1a
   shipped: the leak inventory and the boundary checker. **P1b needs a rootless
   Podman host** — three measurements sit behind it, and nothing else blocks P2.
-- **[0024 — The support bundle](0024-the-support-bundle.md).** Unstarted. P1 is
-  an inventory with no code, and P2 must not ship without P3, which is the phase
-  that proves redaction works.
-- **[0026 — Fleet as a read model](0026-fleet-as-a-read-model.md).** Unstarted.
-  Design settled through decision 6b: the roster, not the row, is the trust
-  anchor.
+- **[0024 — The support bundle](0024-the-support-bundle.md).** P1–P3 and P5
+  shipped: the inventory, the archive, redaction proved against seeded values,
+  and `support redact --check`. **P4 is window-constrained** — §11.4 assumed no
+  tag existed and one now does, so `support.recipients` has to go through 0018's
+  `extensions` namespace or be a break.
+- **[0026 — Fleet as a read model](0026-fleet-as-a-read-model.md).** P1 and P2
+  shipped: the payload, `fleet publish`, `fleet ls`. Design settled through
+  decision 6b — the roster, not the row, is the trust anchor — and P2 therefore
+  ships unable to authenticate anything, saying so on every run. **P3 is the
+  roster**, which unlocks both authentication and absence at once. Until P4,
+  §3.5's sandbox hazard is live and only documented.
 - **[0027 — Desired state in a repository](0027-desired-state-in-a-repository.md).**
   P1 shipped as `installation describe`. **P2 is gated on a user who is not the
   author asking for it**, and if that never happens the correct outcome is that
@@ -84,7 +89,7 @@ number in the filename in sync.
 | [0023](0023-runtimes-beyond-compose.md) | Runtimes beyond Compose | 🚧 In progress | Grading the runtime port by writing a second implementation of it — rootless Podman with Quadlet — on the theory that a port with one adapter is a guess rather than an abstraction. |
 | [0024](0024-the-support-bundle.md) | The support bundle | 🚧 In progress | One redacted archive an operator can hand to a stranger, because every command a vendor has runs before the bundle leaves their machine and none after. |
 | [0025](0025-attesting-an-installation.md) | Attesting an installation | ✅ Complete | Making the manager's evidence leave the machine as a signed statement, and binding the feature to a verifier that can fail for a reason other than corruption. |
-| [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | 📝 Draft | Seeing many machines at once without a control plane: each installation publishes one signed row to a bucket, and the reader can never act. |
+| [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | 🚧 In progress | Seeing many machines without a control plane: each publishes one signed row to a bucket and the reader can never act. P1–P2 shipped; no row is authenticated until P3's roster, and it says so. |
 | [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 🚧 In progress | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |
 | [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | 🚧 In progress | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |
 | [0029](0029-macos-as-a-development-host.md) | macOS as a development host | 🚧 In progress | Making `GOOS=darwin` compile, and then bounding what that means: a tier for authoring and evaluating bundles on a Mac, never for running a production installation. |

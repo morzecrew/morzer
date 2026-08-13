@@ -1,7 +1,11 @@
 # RFC 0026 — Fleet as a read model
 
-- **Status:** 📝 Draft — decision 1 is what the RFC exists to preserve; the timer
-  is deliberately the last phase.
+- **Status:** 🚧 In progress — P1 and P2 shipped 2026-08-13: the payload,
+  `fleet publish`, `fleet ls`, staleness and the unreadable-row rule. P3 (the
+  roster) and P4 (the timer, and the generalised dev-mode drop list) remain, and
+  P2 ships with both of its limitations stated on every run — see §8 and A2.
+  Decision 1 is what the RFC exists to preserve; the timer is deliberately the
+  last phase.
 - **Scope:** Making several machines visible without a control plane: each
   installation publishes one small object at a stable key through 0009's
   existing target registry, and a stateless command lists, verifies and renders
@@ -245,14 +249,24 @@ know that reads a complete-looking table as complete.
 
 ## 8. Phasing
 
-- **P1 — The payload.** Schema, derived purely from existing computation (decision
-  8), signed, plus `fleet publish` as a manual command. Nothing scheduled. This is
-  usable immediately by anyone with cron and it tests the payload before the
-  timer exists.
-- **P2 — `fleet ls`**, staleness, unparseable rows, `--json`.
+- **P1 — The payload.** ✅ Shipped 2026-08-13. Schema, derived purely from
+  existing computation (decision 8), signed, plus `fleet publish` as a manual
+  command. Nothing scheduled. This is usable immediately by anyone with cron and
+  it tests the payload before the timer exists. §10.3's measurement was taken as
+  part of it, and produced a fix — see A3 and the item itself.
+- **P2 — `fleet ls`**, staleness, unparseable rows, `--json`. ✅ Shipped
+  2026-08-13, with both of its limitations enforced in the report rather than
+  documented — see A2.
 - **P3 — The roster and absence reporting** (§3.3).
 - **P4 — The timer**, as a sibling of the backup timer, and the generalised
   dev-mode drop list (§3.5).
+
+**Until P4, §3.5's hazard is live and unmitigated.** `installation import` drops
+backup targets, and fleet targets are the same list — so a sandbox rebuilt from
+a production export holds the customer's bucket, the customer's credentials and
+a matching id, and `fleet publish` on it would write into the production prefix
+under the production installation's own key. The reference page says so plainly;
+that is the whole mitigation this phase has.
 
 Note the ordering: the timer is **last**. A scheduled publisher built before the
 payload is stable would put badly-shaped objects in twelve buckets, and objects in
@@ -307,10 +321,29 @@ here.
    as the opt-in that costs one call per row. A publisher can therefore report
    the case where the runtime is the problem, which is the case worth reporting.
 3. **Whether 0009's target port supports write-only, prefix-scoped credentials on
-   both `s3://` and `ssh://`.** Not measured. 0009 §12 already records a listing
-   prefix that *deleted a neighbouring backup*, so this class of defect is known
-   to be live in this code, and P1 must answer it before anything writes to a
-   shared bucket.
+   both `s3://` and `ssh://`.** **Measured 2026-08-13, and the first answer was
+   no.**
+
+   For `s3://`: taken against MinIO with a policy holding exactly `s3:PutObject`
+   on one prefix. The credential could not publish at all, and the reason had
+   nothing to do with this feature — the adapter probed `BucketExists` before
+   every operation, that is a HeadBucket, and HeadBucket needs `s3:ListBucket`.
+   So the mitigation §9 rests on was not something an operator could configure.
+   Fixed in P1 by keeping the probe on the backup half, where a multi-file push
+   makes a mid-transfer `NoSuchBucket` genuinely misleading, and dropping it from
+   the object-store half, where every operation is one call. Now measured to
+   hold in all three directions: the credential publishes, cannot enumerate or
+   read the fleet, and cannot write outside its prefix
+   (`TestAWriteOnlyPrefixScopedCredential`).
+
+   For `ssh://`: **prefix scoping yes, write-only no.** OpenSSH confines a key to
+   a subtree with `ChrootDirectory` plus `ForceCommand internal-sftp`, which is
+   prefix scoping enforced by the server. There is no write-only counterpart —
+   `internal-sftp -R` is read-only and has no inverse — so a machine that can
+   publish over SFTP can also read every other machine's row. That is a
+   documented limitation rather than a silently weaker guarantee, as §9 required,
+   and it is the reason an `s3://` target is the better choice for a shared fleet
+   prefix.
 4. **Whether the installation id is stable across an `installation import`.**
    **Confirmed by construction:** the import path preserves it deliberately —
    that is exactly why `modeForImport` has to drop credentials. The id is
@@ -319,4 +352,99 @@ here.
 
 ## 11. Amendments
 
-*(Empty.)*
+### A1 — The port grew a third method, and the comment forbidding one was wrong
+
+RFC 0025 extracted `ports.ObjectStore` with two methods and a comment arguing
+for exactly two: *"There is no GetObject and no DeleteObject because nothing
+needs them: statements are read from the machine that wrote them."* That was
+true when it was written and P2 makes it false — `fleet ls` reads rows off a
+target from a laptop holding no installation, and there is no other way to do
+that. `BackupTarget.FetchFile` is not one: it is defined in terms of a backup,
+resolves its key under a backup id, and carries the backup's manifest along to
+bind the two.
+
+So `GetObject` was added, with the port's bound rather than around it: bytes
+rather than a stream, refused above `MaxObjectBytes`, and an absent key
+reported as `fs.ErrNotExist` so a first publish and an unreachable target stay
+distinguishable. `DeleteObject` still does not exist, and the comment now says
+which of the two was the rule and which was the observation.
+
+### A2 — P2's phase-boundary honesty is enforced, not documented
+
+§8 permits `fleet ls` to ship before the roster only because the reader *says*
+it cannot authenticate a row and cannot see absences. Execution made that a
+property of the report rather than of the documentation: `FleetReport.Limitations`
+is non-empty on every run, printed under the table by the view, and asserted by
+`TestTheReaderStatesWhatItCannotDo` and by the acceptance scenario.
+
+The reader also does not check a signature against the row's own embedded key at
+all, rather than checking it and captioning the result. `FleetSignature` has two
+values — `signed` and `unsigned` — following the precedent `attest log` set, and
+a test asserts no third one appears. A caption is something a reader skims past;
+a vocabulary with no word for "verified" cannot be misread.
+
+### A3 — The read-before-write is best effort, because §9 and §3.1 pull opposite ways
+
+§3.1 requires a publisher to read the existing object and decline to replace a
+newer one. §9 requires the credential on a managed machine to be write-only. A
+write-only credential cannot perform that read, so as specified the two rules
+made the safer credential the one that breaks the feature.
+
+Resolved in favour of §9. The check runs when it can, and every failure to read
+— absent object, permission denied, unreachable target — is a publish that
+happens anyway, with the reason recorded in `FleetPublishTarget.Unchecked`. The
+ordering guarantee is therefore weaker than §3.1 implies on a write-only target,
+and the report says so per target rather than leaving a reader to assume it held.
+`--force` skips the check outright and records that too.
+
+The second half of §3.1's ordering rule — a reader reporting a row older than
+one it has already seen — is not implemented and is not needed yet: `fleet ls`
+is stateless and has seen nothing before. It becomes real when something caches,
+which is P3's roster or a viewer nobody has built.
+
+### A4 — A row from a newer manager is declined, not overwritten
+
+Not in the design. The publisher reads what is at the key anyway for §3.1's
+ordering, and a row whose `schema` is higher than this manager writes is a
+manager that was upgraded and rolled back. Overwriting silently downgrades what
+a newer reader can see, so it is refused by the same rule that refuses a future
+installation whole — with `--force` as the way out, because the alternative is a
+key one stray document can wedge forever.
+
+### A5 — Drift is a count, and the comparison has one implementation
+
+§3.1 asks the payload for a "drift indicator" without saying what one is.
+Execution made it a count of configuration targets that differ, never a diff:
+the number is the signal an operator acts on, and a shared bucket holding twelve
+machines' configuration would be the artifact this payload exists not to be.
+
+Targets that could not be *read* are excluded from the count and named in a
+problem instead, because an unreadable `/etc` is a permission fault and counting
+it as drift would publish "3 targets differ" for a machine where nothing changed.
+
+The comparison itself was extracted out of 0024's `collectConfigDiff` rather
+than written again, so the count in a row and the diff in a support bundle
+cannot disagree — an operator holding both must not be shown two answers.
+
+### A6 — Health is derived through `ls`'s own function, not a copy of it
+
+Decision 8 says the payload is derived from what `status`/`ls` already compute.
+The literal reading — call `GetStatus` — does not work: `Status.Problems` is a
+flat list of strings, so a `--json` consumer cannot tell "the runtime did not
+answer" from "the backup is stale", and the payload needs that distinction to
+publish an absent count rather than a zero.
+
+`InstallationEntry` already has the right shape (`Services *ServiceCounts` plus
+`ServicesProblem`), so `fleetHealth` calls `fillServiceCounts` — the same
+function `ls --status` calls, not a copy — and maps its two fields onto the
+row's. That brings the per-row timeout with it, so one wedged daemon costs a row
+its counts and nothing else.
+
+### A7 — Both installations in the acceptance scenario publish to one target
+
+The scenario originally published one row, which proves the mechanism and not
+the design: a fleet of one is `status` with extra steps. The three-tier example
+already builds a second installation on a second root running a second product,
+so it publishes too, and the listing is read from the first machine — which has
+no other knowledge of the second. That is the feature, and it is now the sample
+the documentation quotes.
