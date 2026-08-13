@@ -242,6 +242,39 @@ func TestAttestPushReportsATargetThatDoesNotAnswer(t *testing.T) {
 	assert.NotEmpty(t, report.Targets[0].Error)
 }
 
+// A dry run against a target that did not answer must not claim everything is
+// already there.
+//
+// A failed listing says nothing about what the target holds, so nothing counts
+// as missing -- and "every one is already on 1 target" is then an answer built
+// out of ignorance, which is the reading that sends an operator away from a
+// target holding no record at all.
+func TestAttestPushDryRunDoesNotClaimAnUnreadableTargetIsUpToDate(t *testing.T) {
+	h := verifyHarness(t)
+	inst, _ := h.withAttestationTarget(t)
+
+	bare := inst
+	bare.Backup.Targets = nil
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), bare))
+	applyOnce(t, h)
+
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + blocker + "/offsite"}}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	result, err := ops.AttestPush(context.Background(), h.Deps, ops.Options{DryRun: true})
+	require.NoError(t, err)
+
+	assert.NotContains(t, result.Summary, "already on",
+		"a dry run claimed an unreadable target was up to date")
+	assert.Contains(t, result.Summary, "cannot tell")
+
+	report, ok := result.Data.(ops.AttestPushReport)
+	require.True(t, ok)
+	assert.True(t, report.Unreachable())
+}
+
 // `doctor` keeps saying it after the warning has scrolled past.
 func TestDoctorReportsStatementsThatAreOnlyOnThisMachine(t *testing.T) {
 	h := verifyHarness(t)

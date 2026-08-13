@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The rest of RFC 0025 §4.1's five operations, and the parts of `--against-live`
@@ -114,6 +116,73 @@ func TestAConfigChangeFilesAStatement(t *testing.T) {
 	assert.True(t, found, "no statement records the config operation")
 }
 
+// A state-read failure must cost the statement a field, not the statement.
+//
+// The release record is read for one thing -- the scheme the installed release
+// came from. Swallowing the error turned a blip into a silent gap in the record
+// of one of the five operations RFC 0025 requires one for, and told nobody.
+func TestAConfigChangeIsAttestedEvenWhenTheReleaseRecordCannotBeRead(t *testing.T) {
+	h := verifyHarness(t)
+	attested(t, h)
+
+	before := len(statementsOnDisk(t, h))
+
+	// The read fails only for the attestation's own lookup, which is the
+	// last one the operation makes. Failing every read would refuse the
+	// operation at its first step and prove nothing about what happens
+	// afterwards; deleting state does not fail the read at all, which is
+	// how an earlier version of this test passed while asserting nothing.
+	failing := &releaseReadFailsLate{StateStore: h.Deps.State, after: 1}
+	h.Deps.State = failing
+
+	_, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"http_port": "9000"},
+	})
+	require.NoError(t, err, "the operation itself must be unaffected")
+	require.Positive(t, failing.refused, "the read never failed, so this proves nothing")
+
+	files := statementsOnDisk(t, h)
+	require.Greater(t, len(files), before,
+		"a state-read failure discarded the statement instead of a field of it")
+
+	// And what it cost is one field, named rather than guessed at.
+	//
+	// Found by kind rather than by taking the last file: the listing is
+	// filename-sorted and ids are ULIDs with a random tail, so "the last
+	// one" is not "the one this operation wrote".
+	var config domain.Statement
+	for _, file := range files {
+		body, err := os.ReadFile(file)
+		require.NoError(t, err)
+		var stmt domain.Statement
+		require.NoError(t, json.Unmarshal(body, &stmt))
+		if stmt.Predicate.Operation.Kind == string(domain.OpTypeConfig) {
+			config = stmt
+		}
+	}
+	require.NotEmpty(t, config.Predicate.Operation.ID, "no statement records the config operation")
+	assert.Empty(t, config.Predicate.Release.SourceScheme,
+		"the scheme was reported despite the read that would have supplied it failing")
+}
+
+// releaseReadFailsLate lets the first n reads of the release record through and
+// refuses the rest.
+type releaseReadFailsLate struct {
+	ports.StateStore
+	after   int
+	seen    int
+	refused int
+}
+
+func (s *releaseReadFailsLate) CurrentRelease(ctx context.Context) (domain.ReleaseRecord, error) {
+	s.seen++
+	if s.seen > s.after {
+		s.refused++
+		return domain.ReleaseRecord{}, errors.New("the release record cannot be read")
+	}
+	return s.StateStore.CurrentRelease(ctx)
+}
+
 // A refusal is not an operation, and must not leave a record of one.
 //
 // The lock is the path that reaches it. Every emission is placed *before* its
@@ -212,6 +281,48 @@ func TestAttestLogReportsAFileThatIsNotAStatement(t *testing.T) {
 //
 // The refinement is the operation id: ULIDs carry the mint time in their first
 // 48 bits, so descending id order is time order at millisecond resolution.
+// `--against-live` compares against the *latest* successful statement, and a
+// second-resolution tie must not send it to an older one.
+//
+// `domain.Time` truncates to the second, so an update and the apply that
+// follows it share a timestamp. A strict "is after" keeps whichever arrived
+// first, and they arrive in filename order — oldest first. The deployment
+// would then be checked against a statement a later operation had already
+// superseded, and every difference that operation made would be reported as
+// though somebody had made it by hand.
+func TestAgainstLiveComparesAgainstTheLatestOfATiedPair(t *testing.T) {
+	h := verifyHarness(t)
+	attested(t, h)
+
+	// A second statement for the same deployment, tied to the first's
+	// second and later by id. Both are honest records of what is running,
+	// so the comparison must come out clean either way -- what is asserted
+	// is *which* one was used.
+	existing := statementsOnDisk(t, h)
+	require.Len(t, existing, 1)
+
+	body, err := os.ReadFile(existing[0])
+	require.NoError(t, err)
+	var stmt domain.Statement
+	require.NoError(t, json.Unmarshal(body, &stmt))
+
+	// An id above the first's, minted from the same instant.
+	later := "op_ZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+	stmt.Predicate.Operation.ID = later
+	reissued, err := json.MarshalIndent(stmt, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(h.Paths.AttestationsDir(), later+".json"), reissued, 0o644))
+
+	report, err := ops.AttestVerify(context.Background(), h.Deps,
+		ops.VerifyOptions{AgainstLive: true})
+	require.NoError(t, err)
+
+	require.True(t, report.LiveChecked)
+	assert.Equal(t, later, report.LiveAgainst,
+		"the deployment was compared against the older statement of a tied pair")
+}
+
 // Written rather than driven, because the tie has to be certain. Running two
 // real operations lands them in the same second most of the time, and a test
 // whose precondition is a coin flip on a second boundary proves nothing on the

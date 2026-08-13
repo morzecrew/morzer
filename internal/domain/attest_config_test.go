@@ -140,6 +140,55 @@ func TestAStepsTextCannotCarryAnEscapeSequence(t *testing.T) {
 	assert.Contains(t, step.Error, "line two")
 }
 
+// The boundary of the live comparison, pinned as a **limitation rather than a
+// promise**.
+//
+// Images are compared as a set, because the statement records repository and
+// digest and not the service each was deployed to — the manifest declares
+// images by name and the Compose file decides where each is used. These two
+// cases therefore pass, and the reference page says so.
+//
+// Written down so the boundary is explicit rather than folklore, and so that
+// whoever implements RFC 0025 §12 A5 is made to update the documentation: this
+// test will fail the moment the comparison gets service identity, which is the
+// intended signal.
+func TestTheLiveComparisonIsBySetAndNotByService(t *testing.T) {
+	const (
+		a = "sha256:aa00000000000000000000000000000000000000000000000000000000000000"
+		b = "sha256:bb00000000000000000000000000000000000000000000000000000000000000"
+	)
+
+	t.Run("two services that swap images with each other", func(t *testing.T) {
+		stmt := domain.Statement{Predicate: domain.Predicate{Images: []domain.AttestedImage{
+			{Ref: "reg/app", Digest: a}, {Ref: "reg/db", Digest: b},
+		}}}
+		assert.Empty(t, domain.CompareToLive(stmt, []domain.LiveImage{
+			{Service: "app", Ref: "reg/db", Digest: b},
+			{Service: "db", Ref: "reg/app", Digest: a},
+		}), "if this now reports, the comparison gained service identity -- update the docs")
+	})
+
+	t.Run("a stopped service whose digest another still runs", func(t *testing.T) {
+		stmt := domain.Statement{Predicate: domain.Predicate{Images: []domain.AttestedImage{
+			{Ref: "reg/app", Digest: a},
+		}}}
+		assert.Empty(t, domain.CompareToLive(stmt, []domain.LiveImage{
+			{Service: "worker", Ref: "reg/app", Digest: a},
+		}), "if this now reports, the comparison gained service identity -- update the docs")
+	})
+
+	// And the cases it does catch, beside them, so the pin cannot be read
+	// as "the comparison establishes nothing".
+	t.Run("a digest nobody attested is still caught", func(t *testing.T) {
+		stmt := domain.Statement{Predicate: domain.Predicate{Images: []domain.AttestedImage{
+			{Ref: "reg/app", Digest: a},
+		}}}
+		assert.NotEmpty(t, domain.CompareToLive(stmt, []domain.LiveImage{
+			{Service: "app", Ref: "reg/app", Digest: b},
+		}))
+	})
+}
+
 // The bound's own edges, decided rather than inherited.
 //
 // The empty case and the rune boundary are where a truncating helper goes

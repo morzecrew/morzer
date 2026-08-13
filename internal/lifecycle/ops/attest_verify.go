@@ -292,6 +292,19 @@ func configOnDisk(d *Deps, rel domain.Release) map[string][]byte {
 // Succeeded, not merely latest: comparing the running deployment against a
 // failed operation would report every difference the failure caused as though
 // somebody had made it by hand.
+//
+// **Ties are broken by id, and getting that wrong compared against stale
+// data.** `domain.Time` truncates to the second, so an update and the apply
+// that follows it share a timestamp — routine, not an edge case. A strict
+// `After` keeps whichever arrived first, and the caller hands them over in
+// filename order, which is oldest first: `--against-live` would then check the
+// deployment against a statement that a later operation had already
+// superseded, and report every difference that operation made as though
+// somebody had made it by hand.
+//
+// Ids are ULIDs, whose first 48 bits are the mint time in milliseconds, so the
+// higher id is the later operation at a thousand times the resolution the
+// timestamp survives at.
 func newestSucceeded(statements []domain.Statement) (domain.Statement, bool) {
 	var best domain.Statement
 	found := false
@@ -299,9 +312,18 @@ func newestSucceeded(statements []domain.Statement) (domain.Statement, bool) {
 		if s.Predicate.Operation.Outcome != string(domain.StatusSucceeded) {
 			continue
 		}
-		if !found || s.Predicate.Operation.Started.After(best.Predicate.Operation.Started.Time) {
+		if !found || newer(s, best) {
 			best, found = s, true
 		}
 	}
 	return best, found
+}
+
+// newer reports whether a is the later of two statements.
+func newer(a, b domain.Statement) bool {
+	at, bt := a.Predicate.Operation.Started, b.Predicate.Operation.Started
+	if !at.Equal(bt.Time) {
+		return at.After(bt.Time)
+	}
+	return a.Predicate.Operation.ID > b.Predicate.Operation.ID
 }

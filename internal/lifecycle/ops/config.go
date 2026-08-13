@@ -168,12 +168,24 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 	// It moves no version, so it carries no from_version and joins no
 	// chain -- exactly like `apply`, and for the same reason.
 	if !opts.DryRun {
+		// The record is read for one field -- the scheme the installed
+		// release came from -- and a failure to read it must not cost
+		// the statement.
+		//
+		// It used to: the error was swallowed and nothing was filed,
+		// which meant a state-read blip turned one of the five
+		// operations RFC 0025 requires a record for into a silent gap.
+		// A statement whose source_scheme is absent is a smaller loss
+		// than no statement at all, and the operator is told which.
 		current, err := d.State.CurrentRelease(ctx)
-		if err == nil {
-			emitAttestation(ctx, d, result.Record,
-				attestationInputs(attestedParameters(ctx, d, inst), rel, current,
-					domain.Version{}, renderedConfigFor(result.State)))
+		if err != nil {
+			d.warnf("attesting the configuration change without the release record: %s",
+				domain.AsError(err).Message)
+			current = domain.ReleaseRecord{}
 		}
+		emitAttestation(ctx, d, result.Record,
+			attestationInputs(attestedParameters(ctx, d, inst), rel, current,
+				domain.Version{}, renderedConfigFor(result.State)))
 	}
 
 	if runErr != nil {

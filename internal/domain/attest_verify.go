@@ -131,46 +131,74 @@ type ChainBreak struct {
 // start time here, because a directory listing is alphabetical and an auditor's
 // copy may have arrived in any order.
 func VerifyChain(statements []Statement) []ChainBreak {
-	moving := make([]Statement, 0, len(statements))
+	ordered := make([]Statement, 0, len(statements))
 	for _, s := range statements {
 		if s.Predicate.Release.FromVersion != "" || s.Predicate.Release.ToVersion != "" {
-			moving = append(moving, s)
+			ordered = append(ordered, s)
 		}
 	}
-	sort.SliceStable(moving, func(i, j int) bool {
-		return moving[i].Predicate.Operation.Started.Before(moving[j].Predicate.Operation.Started.Time)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Predicate.Operation.Started.Before(ordered[j].Predicate.Operation.Started.Time)
 	})
 
-	var breaks []ChainBreak
-	for i := 1; i < len(moving); i++ {
-		prev, cur := moving[i-1], moving[i]
+	// The version the installation was left at, carried forward — not the
+	// immediately preceding statement's.
+	//
+	// Comparing adjacent pairs was the first shape and it had a hole a
+	// reviewer found: a statement that establishes nothing, sitting between
+	// two that do, **suppressed the check across itself**. A *failed*
+	// `apply` carries no from_version and left no version, so there was
+	// nothing to compare the next update against, and the code skipped it —
+	// which meant an out-of-band install immediately after a failed apply
+	// was invisible to exactly the check that exists to find it. That
+	// sequence is not exotic: an apply that fails is why somebody starts
+	// touching the machine by hand.
+	//
+	// Carrying the version forward has no such gap. A statement that
+	// establishes nothing simply does not update it.
+	var left string
+	var leftBy string
 
-		from := cur.Predicate.Release.FromVersion
-		if from == "" {
-			// Converged onto what was already there. Nothing to join.
+	var breaks []ChainBreak
+	for _, s := range ordered {
+		rel := s.Predicate.Release
+		succeeded := s.Predicate.Operation.Outcome == string(StatusSucceeded)
+
+		if rel.FromVersion != "" {
+			if left != "" && rel.FromVersion != left {
+				breaks = append(breaks, ChainBreak{
+					After:  leftBy,
+					Before: s.Predicate.Operation.ID,
+					Detail: fmt.Sprintf("moves from %s, but the previous operation left %s",
+						rel.FromVersion, left),
+				})
+			}
+			// A failed move left the installation where it was, so the
+			// next operation moves from the same version. Treating a
+			// failure as a transition would report a break on every
+			// recovery from one — the sequence most likely to be
+			// audited.
+			//
+			// Either way the position is taken from *this* statement,
+			// including right after a break. Keeping the old value
+			// there turned one gap into a finding on every statement
+			// that followed it, and a check that reports a wall for a
+			// single event is one whose output stops being read.
+			if succeeded && rel.ToVersion != "" {
+				left, leftBy = rel.ToVersion, s.Predicate.Operation.ID
+			} else {
+				left, leftBy = rel.FromVersion, s.Predicate.Operation.ID
+			}
 			continue
 		}
 
-		// The predecessor's *outcome* decides what the next statement
-		// should have moved from. A failed operation left the release
-		// where it was, so the next one moves from the same version --
-		// treating a failure as a transition would report a break on
-		// every rollback that worked.
-		want := prev.Predicate.Release.ToVersion
-		if prev.Predicate.Operation.Outcome != string(StatusSucceeded) {
-			want = prev.Predicate.Release.FromVersion
-			if want == "" {
-				continue
-			}
-		}
-
-		if from != want {
-			breaks = append(breaks, ChainBreak{
-				After:  prev.Predicate.Operation.ID,
-				Before: cur.Predicate.Operation.ID,
-				Detail: fmt.Sprintf("moves from %s, but the previous operation left %s",
-					from, want),
-			})
+		// No from_version: an `apply` or a `config`, which converge onto
+		// the release already installed rather than moving to it. One
+		// that succeeded is evidence of where the installation *is*; one
+		// that failed is evidence of nothing and must not overwrite what
+		// is known.
+		if succeeded && rel.ToVersion != "" {
+			left, leftBy = rel.ToVersion, s.Predicate.Operation.ID
 		}
 	}
 	return breaks
@@ -213,6 +241,16 @@ type LiveImage struct {
 // where the manager inspected them -- and reporting a wall of findings for a
 // document that simply did not carry the data would make the mode useless on
 // exactly the installations that have been running longest.
+//
+// **This compares sets, not services, and two situations slip through.** The
+// statement records images by repository and digest and not by the service they
+// were deployed to, because the manifest does not say: it declares images by
+// name and the Compose file decides where each is used, possibly in several
+// services. So two services that swap images with each other leave both digests
+// running and report nothing, and two services sharing one digest hide each
+// other's disappearance. Closing that means recording the deployed service
+// alongside each image -- a change to the predicate, and one that only the
+// operations which render Compose could fill in. RFC 0025 §12 carries it.
 func CompareToLive(stmt Statement, live []LiveImage) []LiveMismatch {
 	// Matched on **digest**, not on the image reference.
 	//

@@ -175,13 +175,34 @@ $ morzer attest verify --against-live
 Four ways it can disagree, and each is something somebody does by hand:
 
 - an image running at a digest the statement never mentioned;
-- a service the statement attested that is no longer running;
-- a service running that the statement never attested at all;
+- an attested image that is no longer running anywhere;
+- an image running that the statement never attested at all;
 - the rendered configuration on disk no longer digesting to what was attested.
 
 The configuration check reports **that** it differs and never how. The digest is
 salted (above), so there is nothing in the statement to diff against — which is
 the trade that keeps a port number out of a document that travels.
+
+!!! warning "Images are compared as a set, not per service"
+
+    `predicate.images` records what the release said should run, by repository
+    and digest. It does **not** record which service runs which, because the
+    manifest does not say: it declares images by name, and the Compose file
+    decides where each one is used — possibly in several services.
+
+    So the comparison asks "is every attested digest running, and is everything
+    running attested", and two situations slip through it:
+
+    - **Two services swap images with each other.** Both digests are still
+      running, so nothing is reported, even though both services run the wrong
+      thing.
+    - **Two services run the same digest and one stops.** The other keeps that
+      digest present, so the stopped one is not reported missing.
+
+    Everything else is caught: a digest nobody attested, a digest attested and
+    running nowhere, and any change to the rendered configuration. Closing the
+    gap means recording the service each image was deployed to, which is a
+    change to the predicate — see RFC 0025 §12.
 
 Newest **successful**, deliberately: comparing against a failed operation would
 report every difference that failure caused as though a person had made it.

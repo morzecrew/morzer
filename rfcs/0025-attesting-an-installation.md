@@ -18,7 +18,9 @@
   [`ports.ObjectStore`](../internal/ports/target.go) rather than a wider
   `BackupTarget` — see §12. What remains is named in the reference page rather
   than here: no retention on the attestation directory, `verify` reads local
-  copies only, and attestations go to the same targets backups do.
+  copies only, attestations go to the same targets backups do, and
+  `--against-live` compares images as a **set** rather than per service, which
+  §12 A5 states precisely and gates on a P5.
 - **Scope:** A portable, signed, third-party-readable statement of what the
   manager did — one in-toto Statement per lifecycle operation, emitted on failure
   as well as success, appended locally and optionally pushed through 0009's target
@@ -387,6 +389,34 @@ disagree reports drift on every machine.
 
 The check can say *that* the configuration differs and never how. That is
 decision 4's salt working as intended rather than a limitation to fix.
+
+**A5 — `--against-live` compares images as a set, and what that misses
+(2026-08-13, review of PR #38). Open.**
+
+`predicate.images` records repository and digest, not the service each image was
+deployed to. The manifest cannot supply that: it declares images by name, and
+the Compose file decides where each is used — possibly in several services. So
+the live comparison asks "is every attested digest running, and is everything
+running attested", and two situations pass it:
+
+- two services that swap images **with each other** leave both digests running,
+  so nothing is reported although both run the wrong thing;
+- two services sharing one digest hide each other's disappearance, so a stopped
+  service is not reported missing — which is one of the three failures §4.7
+  advertises.
+
+Both are stated in the reference page rather than left to be discovered.
+
+**Not fixed here, and the reason is the shape of the fix rather than its size.**
+Only the operations that render Compose could fill the field in, so `restore`
+and `config` statements would carry it while `apply` and `update` ones did — a
+field present in some documents and absent in others, whose fallback path is
+where the verifier's next bug lives. It is also a change to a versioned
+predicate. Both belong in a phase that decides them, not in a review round.
+
+*Reopens as:* P5, adding a deployed-service field sourced from the rendered
+Compose configuration, with the set comparison kept as the fallback for every
+statement written before it.
 
 **A3 — `morzer attest push`, which §4.7 did not list (2026-08-13, P4).**
 

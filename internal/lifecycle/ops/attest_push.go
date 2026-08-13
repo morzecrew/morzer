@@ -341,12 +341,30 @@ func pushSummary(r AttestPushReport, dry bool) string {
 	switch {
 	case r.Local == 0:
 		return "there are no attestations on this machine to push"
-	case dry && r.Missing() == 0:
+
+	// A target that did not answer contributes **nothing** to the missing
+	// count, because a listing that failed says nothing about what is
+	// there. So "every one is already pushed" must never be the answer when
+	// one of them could not be read -- that reading sends an operator away
+	// from a target holding no record at all.
+	//
+	// The actionable count still leads when there is one: a run with three
+	// statements to send and one unreachable target has something to do,
+	// and burying that under the unknown would be the opposite mistake.
+	case dry && r.Missing() > 0:
+		summary := fmt.Sprintf("would push %d attestation(s) to %s",
+			r.Missing(), describeTargetCount(len(r.Targets)))
+		if r.Unreachable() {
+			summary += "; cannot tell what " + unreachableTargets(r) + " holds"
+		}
+		return summary
+	case dry && r.Unreachable():
+		return fmt.Sprintf(
+			"cannot tell what %s holds; %d attestation(s) on this machine",
+			unreachableTargets(r), r.Local)
+	case dry:
 		return fmt.Sprintf("every one of %d attestation(s) is already on %s",
 			r.Local, describeTargetCount(len(r.Targets)))
-	case dry:
-		return fmt.Sprintf("would push %d attestation(s) to %s",
-			r.Missing(), describeTargetCount(len(r.Targets)))
 	}
 
 	var pushed int
@@ -360,7 +378,18 @@ func pushSummary(r AttestPushReport, dry bool) string {
 	summary := fmt.Sprintf("pushed %d attestation(s) to %s",
 		pushed, describeTargetCount(len(r.Targets)))
 	if r.Unreachable() {
-		summary += "; some targets did not answer"
+		summary += "; " + unreachableTargets(r) + " did not answer"
 	}
 	return summary
+}
+
+// unreachableTargets names the targets that could not be read or written.
+func unreachableTargets(r AttestPushReport) string {
+	var out []string
+	for _, t := range r.Targets {
+		if t.Error != "" {
+			out = append(out, t.URL)
+		}
+	}
+	return strings.Join(out, ", ")
 }
