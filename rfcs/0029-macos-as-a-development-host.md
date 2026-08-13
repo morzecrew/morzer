@@ -106,6 +106,13 @@ commands.
 There is not one `//go:build linux` in the tree. Every coupling below is
 incidental rather than designed, which is why the list is this short.
 
+> **Read as of 2026-08-13, before P1.** The line references below are to the
+> code as it was; P1 moved four of them into per-OS files (`space_linux.go`,
+> `memory_linux.go`, `termios_linux.go`, `pidstart_linux.go`) and each has a
+> darwin counterpart beside it. The count was also two short — §15 A4. The table
+> is left as it was measured, because a current-state section that gets edited
+> to match the code stops being evidence of anything.
+
 | # | Site | What | Compiles on darwin? |
 | --- | --- | --- | --- |
 | 1 | [`atomicfs/space.go:51`](../internal/infra/atomicfs/space.go#L51) | `Statfs_t.Bsize` is `int64` on Linux, `uint32` on darwin | ❌ |
@@ -586,7 +593,7 @@ code being ported:
 > exactly the ordering race this replaces.
 
 `readPassword` flips the terminal before the reader starts and restores it where
-the reader can no longer contradict it; `prompt_test.go` synchronises on the
+the reader can no longer contradict it; `prompt_pty_linux_test.go` synchronises on the
 flip being observable, precisely so that ordering is pinned. Adopting
 `ReadPassword` for portability would have reintroduced a defect somebody had
 already fixed, in the one prompt that handles a secret.
@@ -618,7 +625,21 @@ installation, which is the single thing the guard exists to prevent.
 An untested guard that fails unsafe is worse than an acknowledged absence that
 fails safe. P2 takes the real call, with a Mac to run it on.
 
-**A3 — §3.1 counted six sites; there were eight (2026-08-13, P1).**
+**A3 — §8's lock test was owed by P1 and nearly missed (2026-08-13, P1).**
+
+§8's third bullet requires P1 to drive the "cannot determine a start time" path
+directly, and the first pass of P1 shipped without it: the stub was written, its
+reasoning was written, and the branch that reads it had no test. The self-audit
+found it by walking §8 rather than the diff, which is the only order that finds
+an obligation nobody wrote code for.
+
+Driving it needed a seam. `ownerAlive` called `pidStart` inline, and provoking a
+`/proc` read that fails while `kill(pid, 0)` succeeds means racing a process
+exit — so the comparison is now `startTimeContradicts(recorded, live)`, a pure
+function whose truth table is asserted exhaustively. Either side zero is
+silence, and silence is not evidence.
+
+**A4 — §3.1 counted six sites; there were eight (2026-08-13, P1).**
 
 The measurement in §14 is sound and its method has a blind spot it names without
 following: `go build ./...` does not compile test files. Two more sites were

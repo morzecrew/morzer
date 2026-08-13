@@ -230,10 +230,25 @@ func ownerAlive(o ports.LockOwner) bool {
 	// Only decides when both sides are known. A record written before this
 	// field existed, or a platform that cannot report the start time, falls
 	// back to the PID alone.
-	if o.PIDStart != 0 {
-		if live := pidStart(o.PID); live != 0 && live != o.PIDStart {
-			return false
-		}
+	if o.PIDStart != 0 && startTimeContradicts(o.PIDStart, pidStart(o.PID)) {
+		return false
 	}
 	return true
+}
+
+// startTimeContradicts reports whether the live start time *proves* the
+// recorded holder is gone.
+//
+// Split from the call so the branch can be driven directly, which RFC 0029 §8
+// requires of P1: on darwin `pidStart` cannot answer, and "cannot determine"
+// has to mean "assume the holder is live". That is the direction the whole
+// guard is asymmetric in -- a stale lock costs an operator a wait, a stolen one
+// costs two deployments running against one installation -- and it is not
+// reachable from a Linux test any other way, because provoking a `/proc` read
+// that fails while `kill(pid, 0)` succeeds means racing a process exit.
+//
+// Contradiction needs *both* sides known. Either side zero is silence, and
+// silence is not evidence.
+func startTimeContradicts(recorded, live uint64) bool {
+	return recorded != 0 && live != 0 && recorded != live
 }

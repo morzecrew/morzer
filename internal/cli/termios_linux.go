@@ -11,8 +11,8 @@ import "golang.org/x/sys/unix"
 // `ReadPassword` performs its echo flip *inside* the goroutine that reads,
 // while `readPassword` performs it before the reader starts and restores it
 // where the reader can no longer contradict it. That ordering is the race this
-// code was written to close, and `prompt_test.go` synchronises on the flip
-// being observable to pin it. Adopting `ReadPassword` for portability would
+// code was written to close, and `prompt_pty_linux_test.go` synchronises on
+// the flip being observable to pin it. Adopting `ReadPassword` for portability would
 // have reintroduced a defect somebody had already fixed, in the one prompt that
 // handles a secret.
 //
