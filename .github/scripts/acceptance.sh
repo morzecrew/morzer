@@ -26,10 +26,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MORZER="${MORZER:-${ROOT_DIR}/morzer}"
+# Absolute for the same reason WORK is, below: two steps invoke it after a `cd`.
+MORZER="$(cd "$(dirname "${MORZER}")" && pwd)/$(basename "${MORZER}")"
 REGISTRY="${ACCEPTANCE_REGISTRY:-localhost:5000}"
 REGISTRY_NAME="morzer-acceptance-registry"
 WORK="${ACCEPTANCE_WORK:-$(mktemp -d -t morzer-acceptance-XXXXXX)}"
 mkdir -p "${WORK}"
+# Absolute from here on, the same way ROOT_DIR is resolved above.
+#
+# `mktemp -d` already answers absolutely, so this only matters when a caller
+# supplies ACCEPTANCE_WORK -- and it did not matter at all until the support
+# bundle steps below, which are the only two commands in this script that run
+# from inside ${WORK} rather than from wherever it was invoked. A relative
+# ACCEPTANCE_WORK made ${ROOT} and every redirection target resolve a second
+# time against the new directory, so the run looked for ${WORK}/${WORK}/root.
+WORK="$(cd "${WORK}" && pwd)"
 ROOT="${WORK}/root"
 
 # Deliberately not the bundle's default of 18080. The whole point of the

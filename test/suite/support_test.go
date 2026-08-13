@@ -307,3 +307,68 @@ func keys(m map[string]string) []string {
 	}
 	return out
 }
+
+// A release that cannot be read is reported as broken, not as absent.
+//
+// This is the distinction `describe.go` names and this file's own omission
+// policy rests on: absent is absent, broken is broken, and the state layer
+// already tells them apart. Discarding the resolution error collapsed them, so
+// an operator whose release directory had been modified after installation --
+// a digest mismatch, which the resolver raises deliberately -- got a bundle
+// saying no release was installed. The one machine most in need of a support
+// bundle produced the one that hid why.
+func TestABrokenReleaseIsReportedAsBrokenNotAbsent(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	// Modified after installation: the release is there, and it is no
+	// longer what was verified.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(h.Release.Root, "morzer.yaml"), []byte("name: tampered\n"), 0o600))
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps,
+		ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err, "a broken release must still produce an archive")
+
+	reasons := map[string]string{}
+	for _, o := range report.Omitted {
+		reasons[o.Name] = o.Reason
+	}
+	require.Contains(t, reasons, "manifest.yaml")
+	require.NotContainsf(t, reasons["manifest.yaml"], "no release is installed",
+		"a release that failed to load was reported as one that was never installed: %q",
+		reasons["manifest.yaml"])
+	require.Contains(t, reasons, "config-diff.txt")
+}
+
+// A release record that will not parse is also reported, not fatal.
+//
+// The narrower half of the same fix. Keeping the resolution error made an
+// unreadable *record* travel the way a broken release directory does, where it
+// used to fail the whole command — and an installation whose state will not
+// answer is one somebody urgently needs a bundle from.
+func TestAnUnreadableReleaseRecordStillProducesAnArchive(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	require.NoError(t, os.WriteFile(h.Paths.CurrentReleaseFile(),
+		[]byte("{not json at all"), 0o600))
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps,
+		ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err, "an unreadable release record cost the whole archive")
+
+	entries := archiveEntries(t, report.Path)
+	require.Contains(t, entries, "installation.yaml")
+	require.Contains(t, entries, "journal.jsonl")
+
+	var reason string
+	for _, o := range report.Omitted {
+		if o.Name == "manifest.yaml" {
+			reason = o.Reason
+		}
+	}
+	require.NotEmpty(t, reason)
+	require.NotContains(t, reason, "no release is installed",
+		"a record that would not parse was reported as no release at all")
+}

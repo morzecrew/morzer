@@ -140,6 +140,11 @@ type supportSource struct {
 
 	// Build is the link-time stamp, which only the CLI layer knows.
 	Build SupportBuild
+
+	// ReleaseProblem is why the release could not be resolved, empty when
+	// there simply is not one. The components that need a release quote it,
+	// so the archive records the failure rather than its symptom.
+	ReleaseProblem string
 }
 
 // SupportBuild is the binary's own identity, passed in rather than read.
@@ -355,10 +360,23 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 	armed := d.armRedaction(ctx)
 
 	src := &supportSource{Installation: inst, Build: opts.Build}
-	if rel, ok, err := supportRelease(ctx, d); err != nil {
-		return SupportReport{}, err
-	} else if ok {
+	rel, ok, relErr := supportRelease(ctx, d)
+	switch {
+	case ok:
 		src.Release, src.HasRelease = rel, true
+	case relErr != nil:
+		// Why the release-dependent components will be missing, said
+		// once here rather than guessed at by each of them.
+		//
+		// Non-fatal, deliberately, and this widened when the resolution
+		// error stopped being discarded: an unreadable release *record*
+		// used to fail the whole command and now travels the same way a
+		// broken release directory does. That is the right direction --
+		// an installation whose state will not answer is one somebody
+		// urgently needs a bundle from, and every other component is
+		// still collectable. The installation itself is the exception,
+		// and it is read above: without it there is nothing to describe.
+		src.ReleaseProblem = domain.AsError(relErr).Message
 	}
 
 	report := SupportReport{
@@ -449,7 +467,21 @@ func supportRelease(ctx context.Context, d *Deps) (domain.Release, bool, error) 
 	}
 	rel, err := d.resolveCurrentRelease(ctx, rec)
 	if err != nil {
-		return domain.Release{}, false, nil
+		// Kept, not discarded, and this is the same distinction
+		// `describe` draws: absent is absent and broken is broken, and
+		// the state layer already tells them apart.
+		//
+		// Collapsing them here made a release that failed to load --
+		// a digest mismatch, which the resolver raises deliberately
+		// when the directory was modified after installation -- report
+		// itself as a release that was never installed. That is a
+		// support bundle hiding the answer on the one machine that most
+		// needed it to say something.
+		//
+		// Still not fatal: the archive is worth more than the
+		// components this costs, and the failure travels as their
+		// omission reason.
+		return domain.Release{}, false, err
 	}
 	return rel, true, nil
 }
@@ -468,12 +500,26 @@ func supportTitle(name string) string {
 	return name
 }
 
+// noRelease explains the absence of a release to a component that needed one.
+//
+// Two different sentences, because they send a reader to two different places:
+// an installation that has never had a release is a machine waiting for its
+// first `update`, and one whose release will not load is a machine with a
+// problem somebody has to look at.
+func (s *supportSource) noRelease(consequence string) error {
+	if s.ReleaseProblem != "" {
+		return domain.InstallationError(nil,
+			"the installed release could not be read (%s), %s", s.ReleaseProblem, consequence)
+	}
+	return domain.InstallationError(nil, "no release is installed, %s", consequence)
+}
+
 // ----------------------------------------------------------------------------
 // Collectors
 
 func collectManifest(_ context.Context, _ *Deps, src *supportSource) ([]supportFile, error) {
 	if !src.HasRelease {
-		return nil, domain.InstallationError(nil, "no release is installed, so there is no manifest to resolve")
+		return nil, src.noRelease("so there is no manifest to resolve")
 	}
 	body, err := yaml.Marshal(src.Release.Manifest)
 	if err != nil {
@@ -507,7 +553,7 @@ func collectParameters(ctx context.Context, d *Deps, _ *supportSource) ([]suppor
 // a secret to leak here.
 func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supportFile, error) {
 	if !src.HasRelease {
-		return nil, domain.InstallationError(nil, "no release is installed, so nothing renders configuration")
+		return nil, src.noRelease("so nothing renders configuration")
 	}
 
 	rendered, err := renderConfiguration(ctx, d, src)
