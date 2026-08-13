@@ -225,19 +225,39 @@ reports that it cannot see absences — the two limitations have one cause.
 
 ## 6. Tests
 
-- The payload is derived from the same computation `ls` uses, asserted by a test
-  that publishes with the daemon stopped — the case decision 8 exists for.
-- Round-trip: publish, list, verify, render, with a tampered object and an
-  unparseable object each producing a row rather than an omission (decision 4).
-- **The overwrite, played out**: a second installation with its own valid key
-  rewrites the first's object, its embedded public key and its signature. The
-  row must be reported as signed by a key the roster does not name. A verifier
-  that trusts the row's own key passes this scenario, which is what makes it the
-  test decision 6b lives or dies by.
-- A reader with no roster says it cannot authenticate, rather than showing rows
-  as verified.
-- The drop list from decision 7 gets one test covering every credential-bearing
-  field, so a third thing to drop cannot be added without failing it.
+Phased, because three of these cannot be written before the roster exists and a
+reader checking this list against P1–P2 would otherwise count them as omissions.
+
+- ✅ **P1.** The payload is derived from the same computation `ls` uses, asserted
+  by a test that publishes with the daemon stopped — the case decision 8 exists
+  for. `TestAnUnreachableRuntimePublishesNoCountAtAll`.
+- ✅ **P1–P2, less its verify half.** Round-trip: publish, list, render, with an
+  unparseable object producing a row rather than an omission (decision 4) —
+  joined by a row from a newer manager and one sitting at a key that names a
+  different installation.
+
+  **A *tampered* object is deliberately not on that list, and cannot be.** A row
+  whose bytes were altered and still parse is indistinguishable to this phase
+  from one that was not, because nothing here verifies anything. That is not a
+  gap in the tests; it is the sentence `fleet ls` prints on every run, and the
+  test that pins it is the one below.
+- ⏳ **P3.** **The overwrite, played out**: a second installation with its own
+  valid key rewrites the first's object, its embedded public key and its
+  signature. The row must be reported as signed by a key the roster does not
+  name. A verifier that trusts the row's own key passes this scenario, which is
+  what makes it the test decision 6b lives or dies by.
+
+  P2 pays its way toward it differently: `TestTheReaderNeverClaimsARowIsVerified`
+  asserts the vocabulary has no word for "verified" at all, so the verifier this
+  test would catch cannot be written by accident in the meantime.
+- ✅ **P2.** A reader with no roster says it cannot authenticate, rather than
+  showing rows as verified. `TestTheReaderStatesWhatItCannotDo`.
+- ⏳ **P4**, with its outcome half already pinned. The drop list from decision 7
+  gets one test covering every credential-bearing field, so a third thing to
+  drop cannot be added without failing it. There is no list yet (§10.1), so what
+  P1 could assert is the outcome: `TestImportingAsASandboxDropsTheBackupTargets`
+  now also checks that such a sandbox cannot publish a fleet row. §8's note
+  on §3.5 says why that was worth doing before the list exists.
 
 ## 7. Docs
 
