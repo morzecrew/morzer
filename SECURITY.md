@@ -88,6 +88,58 @@ resist:
   `policy.require_signature` makes one mandatory, and the two checks compose:
   signature → `SHA256SUMS` → every file.
 
+## The machine's signing key
+
+Each installation mints an Ed25519 key at `init`, in minisign format, at
+`/etc/<product>/signing/identity.key` (`0400`, in a `0700` directory). It signs
+statements the machine makes *about itself* — starting with the attestation
+written after each `apply`. The public half is recorded in installation state,
+so `status --json` and an export both carry it.
+
+This does not reverse the rule that keeps release signing off deployment hosts
+([RFC 0004](rfcs/0004-distribution-and-verification.md) decision 8). That rule
+protects a *vendor's* key, whose signatures every customer trusts. This one
+speaks for one installation, to whoever reads that installation's artifacts, and
+a host holding a key that can impersonate only itself has given nothing away.
+
+**What a signature by it proves**, carried verbatim in every document it signs:
+
+> This signature proves that a process holding this installation's signing key
+> produced these bytes. It does not prove the bytes are true, it does not prove
+> the machine was uncompromised when it signed, and it does not identify the
+> operator.
+
+There is no passphrase, deliberately: the key is used unattended by a timer, and
+a passphrase for an unattended signer is a passphrase stored beside the key.
+
+**Losing it is not recoverable, and that is an accepted cost.** Old signatures
+stay verifiable against the recorded public key; only the ability to make new
+ones is lost. That is a small enough loss that a recovery path — one more secret
+to protect, travelling in an export — is the worse trade. The age identity is
+the opposite case, and is why it gets ceremony this key does not.
+
+**A rebuilt machine is a new signer.** An export never carries a private key, so
+`installation import` mints a fresh one and records the predecessor's public key
+under `signing.previous_keys`. A signature checking out against one of those is
+*provenance* — "signed by a predecessor of this installation" — and never plain
+validity. Collapsing the two would make rotation useless.
+
+### Rotation protects the future and repairs nothing
+
+The sentence to read before rotating after a suspected compromise:
+
+**Rotating does not un-sign anything.** Every artifact bearing the old key stays
+suspect, including the ones that look old, because whoever holds a stolen key
+can back-date a statement as easily as write a current one. `retired_at` is
+recorded for an operator reading their own timeline; it is **not** a check, and
+no verifier may reject a signature for being dated after it — the date comes
+from the artifact, and the artifact is what the forger writes.
+
+An operator who still vouches for particular artifacts re-signs those. The rest
+stay suspect. Closing this properly needs a chronology an attacker cannot write
+— a countersignature from off the machine, or a transparency log — and neither
+is built. See [RFC 0028](rfcs/0028-the-machines-signing-identity.md).
+
 ## What is not
 
 - **A malicious root user on the same machine.** Anyone with root can read the
@@ -118,6 +170,16 @@ Stated here rather than discovered during an incident:
   ambient Docker credentials are used.
 - `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
   implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
+- An attestation records what the manager did; it does not record that a
+  signature was *verified during that operation*, because signatures are checked
+  when a release is staged and `apply` runs against one already on disk. The
+  field is absent rather than `false` in that case, so an auditor cannot read
+  "not established" as "checked and failed".
+- Attestations are written locally and are not yet pushed anywhere. A machine
+  that is lost takes its own record with it. See
+  [RFC 0025](rfcs/0025-attesting-an-installation.md) P4.
+- Only `apply` emits an attestation so far, and only on success. The failed
+  operation is the one an auditor asks about, and it is P2 of the same RFC.
 
 ## Dependency advisories with no code change
 
