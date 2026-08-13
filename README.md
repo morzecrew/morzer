@@ -57,11 +57,11 @@ checked in preflight and reported by `doctor`.
 
 | | |
 | --- | --- |
-| [Your first deployment](https://morzecrew.github.io/morzer/get-started/first-deployment/) | Empty machine to running product, on a throwaway directory |
-| [Operating](https://morzecrew.github.io/morzer/operating/updating/) | Updating, rolling back, secrets, backups, offline installs, recovery |
-| [Authoring a bundle](https://morzecrew.github.io/morzer/authoring/) | Shipping your own product through this |
-| [Reference](https://morzecrew.github.io/morzer/reference/commands/) | Commands, exit codes, the manifest schema, the hook ABI |
-| [Explanation](https://morzecrew.github.io/morzer/explanation/architecture/) | Architecture, the step engine, the secrets model |
+| [Your first deployment](https://morzecrew.github.io/morzer/latest/get-started/first-deployment/) | Empty machine to running product, on a throwaway directory |
+| [Operating](https://morzecrew.github.io/morzer/latest/operating/updating/) | Updating, rolling back, secrets, backups, offline installs, recovery |
+| [Authoring a bundle](https://morzecrew.github.io/morzer/latest/authoring/) | Shipping your own product through this |
+| [Reference](https://morzecrew.github.io/morzer/latest/reference/commands/) | Commands, exit codes, the manifest schema, the hook ABI |
+| [Explanation](https://morzecrew.github.io/morzer/latest/explanation/architecture/) | Architecture, the step engine, the secrets model |
 
 ## Status
 
