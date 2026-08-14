@@ -279,6 +279,15 @@ type UnitParams struct {
 	// would contact nothing on a schedule and read, in `systemctl
 	// list-timers`, as though it did.
 	UpdateTimer bool
+
+	// FleetSchedule is an OnCalendar expression for the fleet timer.
+	FleetSchedule string
+
+	// FleetTimer generates the fleet pair at all. False on a machine with
+	// no target to publish to, for the reason UpdateTimer is false on one
+	// with no channel: the unit would fail on every tick, and a unit that
+	// fails on every tick is one an operator stops reading.
+	FleetTimer bool
 }
 
 // ServiceUnitName and friends derive unit names from the product.
@@ -287,6 +296,8 @@ func BackupServiceUnitName(product string) string { return product + "-backup.se
 func BackupTimerUnitName(product string) string   { return product + "-backup.timer" }
 func UpdateServiceUnitName(product string) string { return product + "-update.service" }
 func UpdateTimerUnitName(product string) string   { return product + "-update.timer" }
+func FleetServiceUnitName(product string) string  { return product + "-fleet.service" }
+func FleetTimerUnitName(product string) string    { return product + "-fleet.timer" }
 
 // serviceTemplate is the main unit.
 //
@@ -399,6 +410,65 @@ RandomizedDelaySec=1800
 WantedBy=timers.target
 `
 
+// fleetServiceTemplate publishes this installation's row (RFC 0026 P4).
+//
+// The last phase of that design, and deliberately so: a scheduled publisher
+// built before the payload was stable would have put badly-shaped objects in
+// twelve buckets, and objects in buckets are the one thing this design cannot
+// recall.
+//
+// No Restart=, like the update tick and for the same reason. A publish that
+// failed is a gap in a *view* whose subject -- the deployment -- is fine, and
+// this machine still knows everything the row would have said. The next tick
+// carries the current truth, which is better than a retry carrying the old one.
+//
+// After the product's own service so a machine that has just booted publishes
+// what converged rather than what was still starting: the row's health counts
+// come from the runtime, and "0/3 up" thirty seconds into a boot is a true
+// statement about a moment nobody wants a fleet screen to be showing.
+const fleetServiceTemplate = `[Unit]
+Description={{.Description}}
+After=network-online.target {{.Product}}.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{.ManagerPath}} fleet publish --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+`
+
+// fleetTimerTemplate schedules it.
+//
+// Hourly, which is the one place this project's timers differ in kind rather
+// than in hour. A backup's value does not decay between runs and a row's is
+// nothing but its age: `fleet ls` calls a row stale after a day by default, so
+// a daily publisher would sit exactly at the threshold and report healthy
+// machines as stale whenever scheduler jitter went the wrong way.
+//
+// RandomizedDelaySec spreads twelve machines that share one prefix, and
+// Persistent catches up a machine that was off -- which publishes a fresh row
+// at boot, the moment somebody is most likely to be looking at the fleet.
+const fleetTimerTemplate = `[Unit]
+Description={{.Description}}
+
+[Timer]
+OnCalendar={{.FleetSchedule}}
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target
+`
+
+// DefaultFleetSchedule publishes on the hour.
+//
+// See fleetTimerTemplate: hourly against a staleness default of a day gives a
+// machine twenty-four chances to be current, so one missed tick is not a row
+// somebody investigates.
+const DefaultFleetSchedule = "*-*-* *:00:00"
+
 // DefaultUpdateSchedule is a daily check at an hour when nobody is deploying.
 //
 // Daily rather than every few minutes: the cost of a tick belongs to the
@@ -416,6 +486,9 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	}
 	if p.UpdateSchedule == "" {
 		p.UpdateSchedule = DefaultUpdateSchedule
+	}
+	if p.FleetSchedule == "" {
+		p.FleetSchedule = DefaultFleetSchedule
 	}
 	if p.Description == "" {
 		p.Description = p.Product + " (managed by morzer)"
@@ -453,6 +526,28 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 				enable bool
 			}{UpdateTimerUnitName(p.Product), updateTimerTemplate,
 				p.Product + " scheduled update check", true},
+		)
+	}
+
+	if p.FleetTimer {
+		specs = append(specs,
+			struct {
+				name   string
+				tmpl   string
+				desc   string
+				enable bool
+			}{FleetServiceUnitName(p.Product), fleetServiceTemplate,
+				p.Product + " fleet row", false},
+			// The timer is enabled and the service is not, which is the
+			// third time this file says so and the third time it is
+			// load-bearing: enabling a oneshot runs it at every boot.
+			struct {
+				name   string
+				tmpl   string
+				desc   string
+				enable bool
+			}{FleetTimerUnitName(p.Product), fleetTimerTemplate,
+				p.Product + " scheduled fleet publish", true},
 		)
 	}
 
@@ -497,6 +592,8 @@ func UnitNames(product string) []string {
 		BackupTimerUnitName(product),
 		UpdateServiceUnitName(product),
 		UpdateTimerUnitName(product),
+		FleetServiceUnitName(product),
+		FleetTimerUnitName(product),
 	}
 }
 
@@ -524,6 +621,8 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		BackupSchedule: params.BackupSchedule,
 		UpdateSchedule: params.UpdateSchedule,
 		UpdateTimer:    params.UpdateTimer,
+		FleetSchedule:  params.FleetSchedule,
+		FleetTimer:     params.FleetTimer,
 	})
 }
 

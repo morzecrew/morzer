@@ -605,18 +605,26 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 	names := s.ManagedUnitNames(params.Product)
 	out := make([]ports.Unit, 0, len(names))
 	for _, name := range names {
-		// The update pair is conditional, exactly as a real supervisor
-		// makes it. A fake that returned every managed unit whatever it
-		// was asked for would make any test about UpdateTimer vacuous --
-		// it would pass whether the lifecycle layer set the field or
-		// not, which is the only thing such a test is checking.
+		// The update and fleet pairs are conditional, exactly as a
+		// real supervisor makes them. A fake that returned every
+		// managed unit whatever it was asked for would make any test
+		// about UpdateTimer or FleetTimer vacuous -- it would pass
+		// whether the lifecycle layer set the field or not, which is
+		// the only thing such a test is checking.
 		if strings.Contains(name, "-update.") && !params.UpdateTimer {
+			continue
+		}
+		if strings.Contains(name, "-fleet.") && !params.FleetTimer {
 			continue
 		}
 		out = append(out, ports.Unit{
 			Name:     name,
 			Contents: []byte("# fake unit for " + params.Product + "\n"),
-			Enable:   !strings.HasSuffix(name, "-backup.service"),
+			// Timers are enabled and the oneshot services they
+			// start are not, which is the real adapter's rule:
+			// enabling a oneshot runs it at every boot.
+			Enable: !strings.HasSuffix(name, ".service") ||
+				name == params.Product+".service",
 		})
 	}
 	return out, nil
@@ -629,6 +637,8 @@ func (s *Supervisor) ManagedUnitNames(product string) []string {
 		product + "-backup.timer",
 		product + "-update.service",
 		product + "-update.timer",
+		product + "-fleet.service",
+		product + "-fleet.timer",
 	}
 }
 

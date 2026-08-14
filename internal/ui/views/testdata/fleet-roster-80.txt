@@ -1,0 +1,18 @@
+3 row(s) on s3://fleet.example/rows
+  PRODUCT        VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
+  acme           1.4.0    2/2 up  12m0s ago  none   verified
+  beta/inst_01   —        —       —          —      signed-by-another-key
+  gamma          1.4.0    2/2 up  12m0s ago  none   signed
+  delta/inst_07  —        —       —          —      —
+  ROW            WHAT IT SAYS
+  beta/inst_01   signed by a key the roster does not name
+  gamma          the roster does not name this installation
+  delta/inst_07  the roster expects this installation; no target holds a row
+
+  the roster expects 3 installation(s); 2 published a row and 1 did not
+
+  a row is called stale once it is older than 24h0m0s
+
+  every verdict below is against the roster you supplied: it is what says which
+  installations exist and which key each one signs with, and nothing here can
+  check that it is right

@@ -1187,17 +1187,70 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				return preflight.OK("systemd is not in use on this host")
 			}
 
+			// What this installation *should* have, not the superset.
+			//
+			// ManagedUnitNames is what removal walks, so it names every
+			// unit this supervisor may ever own -- including the
+			// conditional pairs a machine with no channel and no target
+			// deliberately does not get. Checking against it reported
+			// four units as "not installed" on an ordinary machine, on
+			// every run, with a remedy that could not clear them. A
+			// warning that fires always and cannot be fixed is a warning
+			// nobody reads on the run that meant something.
 			var problems []string
+
+			// The unit, not a boolean. Whether a unit should be enabled
+			// is the supervisor's decision and it varies within one
+			// machine: each timer is enabled and the oneshot service
+			// beside it deliberately is not, because enabling a oneshot
+			// runs it at every boot. Reducing this to "expected" would
+			// either miss a switched-off timer or demand enablement of
+			// the oneshots that must never have it.
+			expected := make(map[string]ports.Unit)
+			units, unitsErr := d.Supervisor.Units(d.unitParams(inst))
+			if unitsErr != nil {
+				// Reported rather than swallowed. An empty expectation
+				// would make every "not installed" below unreachable,
+				// so a check that could not work would read exactly
+				// like one that found nothing wrong.
+				problems = append(problems,
+					"cannot work out which units this installation should have: "+
+						domain.AsError(unitsErr).Message)
+			}
+			for _, u := range units {
+				expected[u.Name] = u
+			}
+
 			for _, name := range d.Supervisor.ManagedUnitNames(inst.Product) {
 				state, err := d.Supervisor.Status(ctx, name)
 				if err != nil {
 					problems = append(problems, name+": cannot query")
 					continue
 				}
+				want, wanted := expected[name]
 				if !state.Loaded {
-					problems = append(problems, name+": not installed")
+					// Absent and not wanted is the ordinary state.
+					if wanted {
+						problems = append(problems, name+": not installed")
+					}
 					continue
 				}
+
+				// Present and switched off. `systemctl disable` leaves
+				// the unit loaded, so a timer that has stopped firing
+				// looks identical to a healthy one to any check that
+				// asks only whether the file is there -- and the thing
+				// that stopped is a schedule, which is silent by nature.
+				// Nobody notices a backup or a fleet row that did not
+				// happen until they need the one that did not.
+				if wanted && want.Enable && !state.Enabled {
+					problems = append(problems, name+": not enabled")
+				}
+				// A unit that is *there* and failing is reported whether
+				// or not this installation wants it: an orphan left by a
+				// reconciliation that did not finish is exactly the thing
+				// somebody needs told about, and it is invisible to a
+				// check that only looks at what it expects.
 				if state.Failed() {
 					// Exit 12 through systemd is the
 					// requires-manual-intervention path, and

@@ -1,6 +1,7 @@
 package views_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -87,6 +88,128 @@ func fleetMixed() views.Fleet {
 				"installation id to a public key",
 		},
 	}
+}
+
+// fleetRostered is the same table read with a roster, which is the arrangement
+// an operator is in when something has actually gone wrong.
+func fleetRostered() views.Fleet {
+	verified := fleetRow("acme")
+	verified.Signature = "verified"
+	verified.Expected = true
+
+	overwritten := fleetRow("beta")
+	overwritten.Signature = "signed-by-another-key"
+	overwritten.Expected = true
+	overwritten.Row = nil
+	overwritten.Age = ""
+	overwritten.Problem = "signed by a key the roster does not name"
+
+	stranger := fleetRow("gamma")
+	stranger.Signature = "signed"
+
+	absent := views.FleetRow{
+		Key:            "fleet/delta/inst_07/status.json",
+		Product:        "delta",
+		InstallationID: "inst_07",
+		Expected:       true,
+		Absent:         true,
+		Problem:        "the roster expects this installation; no target holds a row",
+	}
+
+	return views.Fleet{
+		Targets:    []string{"s3://fleet.example/rows"},
+		Expected:   3,
+		StaleAfter: "24h0m0s",
+		Rows:       []views.FleetRow{verified, overwritten, stranger, absent},
+		Limitations: []string{
+			"every verdict below is against the roster you supplied: it is what " +
+				"says which installations exist and which key each one signs " +
+				"with, and nothing here can check that it is right",
+		},
+	}
+}
+
+// The row an operator came for is a row, and it is legible as one.
+//
+// An installation that stopped publishing is structurally invisible without a
+// roster: listing a prefix shows exactly the population that is fine. So the
+// rendering of the one line the roster buys is worth pinning here, where it
+// meets a reader, and not only at the operation that computes it.
+func TestAnAbsentInstallationIsRenderedAsALine(t *testing.T) {
+	out := render(t, 100, fleetRostered())
+
+	assert.Contains(t, out, "delta/inst_07",
+		"an installation the roster expects and nothing published was not shown")
+	assert.Contains(t, out, "the roster expects this installation; no target holds a row")
+	assert.Contains(t, out, "the roster expects 3 installation(s); 2 published a row and 1 did not",
+		"the table does not say how much of the expected fleet reported")
+
+	// The headline counts what the target holds, and the absent line is not
+	// on it. Three rows were published here; the fourth line of the table
+	// exists because nothing was. A title saying `4 row(s) on s3://...` is
+	// read first and is wrong about the one row the roster was added to
+	// surface.
+	assert.Contains(t, out, "3 row(s) on s3://fleet.example/rows",
+		"the headline counted a row no target holds")
+
+	// Not `unsigned`: there is no row, so nothing could have been signed,
+	// and the ordinary state of a machine with no key is the most
+	// reassuring possible spelling of the most alarming line in the table.
+	assert.NotContains(t, out, "unsigned")
+}
+
+// A fleet that went dark says so on the first line.
+//
+// The boundary the headline count exists for. Every row here is synthesised
+// from the roster because no target holds any of them, so a title counting
+// table lines would open the most alarming report this tool can produce with
+// the sentence "1 row(s) on s3://fleet.example/rows" -- a claim that the
+// bucket holds something, printed above a table saying it holds nothing.
+func TestAFleetThatPublishedNothingIsNotCountedAsRows(t *testing.T) {
+	out := render(t, 100, views.Fleet{
+		Targets:    []string{"s3://fleet.example/rows"},
+		Expected:   1,
+		StaleAfter: "24h0m0s",
+		Rows: []views.FleetRow{{
+			Key:            "fleet/delta/inst_07/status.json",
+			Product:        "delta",
+			InstallationID: "inst_07",
+			Expected:       true,
+			Absent:         true,
+			Problem:        "the roster expects this installation; no target holds a row",
+		}},
+	})
+
+	assert.Contains(t, out, "0 row(s) on s3://fleet.example/rows",
+		"a target holding nothing was reported as holding a row")
+	assert.Contains(t, out, "delta/inst_07",
+		"the installation that published nothing was not shown")
+}
+
+// The overwrite is loud, and the row it forged is not rendered.
+func TestARowSignedByAnUnnamedKeyIsRenderedAsSuch(t *testing.T) {
+	out := render(t, 100, fleetRostered())
+
+	assert.Contains(t, out, "signed-by-another-key")
+	assert.Contains(t, out, "roster does not name")
+
+	// Counted rather than matched as a substring spanning the line break.
+	// The product cell is the first column, so `"1.4.0\n  beta"` would need
+	// a line *ending* in a version, and every line ends in its signature
+	// cell -- an assertion that cannot match is one that cannot fail, and
+	// this is the branch's fail-closed property.
+	//
+	// Two rows earned a payload: acme, which verified, and gamma, which the
+	// roster does not name. beta's bytes were signed by a key the roster
+	// does not name and delta published nothing, so a third version in the
+	// output is a payload rendered for a row that did not earn one.
+	assert.Equal(t, 2, strings.Count(out, "1.4.0"),
+		"the payload of a row that failed verification was rendered")
+
+	// And a row from an installation the roster says nothing about is
+	// noted rather than failed: a roster covering three of twelve machines
+	// is a legitimate way to adopt this.
+	assert.Contains(t, out, "the roster does not name this installation")
 }
 
 // A runtime that did not answer must not render as a deployment that is down.
@@ -177,6 +300,13 @@ func fleetFixtures() []fixture {
 		fields: []string{
 			"acme", "0/3 up", "not checked", "sandbox (dev)", "in 3h",
 			"epsilon", "newer manager", "roster", "24h0m0s",
+		},
+	}, {
+		name:  "fleet-roster",
+		value: fleetRostered(),
+		fields: []string{
+			"verified", "signed-by-another-key", "delta/inst_07",
+			"no target holds a row", "roster expects 3",
 		},
 	}, {
 		name:   "fleet-empty",

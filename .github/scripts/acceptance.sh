@@ -929,6 +929,150 @@ step "two machines, read from one of them"
 "${MORZER}" --root "${ROOT}" fleet ls "file://${FLEET_TARGET}" ||
 	fail "fleet ls failed in plain mode with two rows"
 
+# ----------------------------------------------------------------------------
+# The roster: absence, and a key the roster does not name
+#
+# Everything above is a reader with no anchor. It can say a signature is
+# *there* and never that it checks out, and an installation that stopped
+# publishing is structurally invisible to it -- listing a prefix shows exactly
+# the population that is fine. Both need one file, and it is one file because
+# they are one fact.
+
+step "a roster, built the way the documentation says to build one"
+# The documented recipe, run against the real binary on both machines. A dry
+# run prints the row a machine would publish, and all three fields of a roster
+# entry are in it -- `installation describe` deliberately does not carry the
+# key, because that document is desired state and a signing key is machine
+# identity (RFC 0027, RFC 0028 §5.3).
+roster_entry() {
+	"${MORZER}" --root "$1" --json fleet publish --dry-run --target "file://${FLEET_TARGET}" |
+		jq -r '"  - product: " + .data.row.product,
+		       "    id: " + .data.row.installation_id,
+		       "    key: " + .data.row.signing_key'
+}
+{
+	printf 'schema: 1\ninstallations:\n'
+	roster_entry "${ROOT}"
+	roster_entry "${WEB_ROOT}"
+} >"${WORK}/roster.yaml"
+grep -q 'key: RW' "${WORK}/roster.yaml" ||
+	fail "the roster carries no signing key: $(cat "${WORK}/roster.yaml")"
+
+step "with a roster, a row is verified rather than merely signed"
+"${MORZER}" --root "${ROOT}" --json fleet ls "file://${FLEET_TARGET}" \
+	--expect "${WORK}/roster.yaml" >"${WORK}/fleet-verified.json" ||
+	fail "fleet ls with a roster failed: $(cat "${WORK}/fleet-verified.json")"
+jq -e '[.data.rows[] | select(.signature == "verified")] | length == 2' \
+	"${WORK}/fleet-verified.json" >/dev/null ||
+	fail "the rows were not verified against the roster: $(jq -c '[.data.rows[].signature]' "${WORK}/fleet-verified.json")"
+jq -e '.data.expected == 2 and ([.data.rows[] | select(.absent)] | length == 0)' \
+	"${WORK}/fleet-verified.json" >/dev/null ||
+	fail "the roster's own count is wrong: $(jq -c '.data' "${WORK}/fleet-verified.json")"
+# The anchor is a file the operator maintains, and a reader that stopped saying
+# so would be presenting its own input back as evidence.
+jq -e '(.data.limitations | length) > 0' "${WORK}/fleet-verified.json" >/dev/null ||
+	fail "a reader with a roster printed a table with no statement at all"
+
+step "an installation that never published is the row the roster exists for"
+# The answer no listing can produce: an object that was never written cannot
+# announce itself. This entry also binds no key, which is allowed and which the
+# reader has to say out loud.
+{
+	cat "${WORK}/roster.yaml"
+	printf '  - product: demo\n    id: inst_01ACCEPTANCEWENTQUIET\n'
+} >"${WORK}/roster-gone.yaml"
+"${MORZER}" --root "${ROOT}" --json fleet ls "file://${FLEET_TARGET}" \
+	--expect "${WORK}/roster-gone.yaml" >"${WORK}/fleet-absent.json" && {
+	fail "fleet ls exited zero with an installation missing from the fleet"
+}
+jq -e '[.data.rows[] | select(.absent)] | length == 1' "${WORK}/fleet-absent.json" >/dev/null ||
+	fail "the absent installation was not a row: $(jq -c '[.data.rows[] | {product, absent}]' "${WORK}/fleet-absent.json")"
+jq -e '.data.limitations | join(" ") | contains("binds no key")' \
+	"${WORK}/fleet-absent.json" >/dev/null ||
+	fail "the reader did not say which installations it cannot authenticate"
+
+step "a row signed by a key the roster does not name"
+# The scenario RFC 0026 decision 6b lives or dies by, arranged from the reader's
+# side: the roster binds the *other* machine's key to this installation, so the
+# row fails against the anchor and verifies against the key it carries. That is
+# what an overwrite by another machine looks like from here -- and it is also
+# what a roster with two keys transposed looks like, which this reader cannot
+# tell apart and does not pretend to.
+DEMO_ID=$(jq -r '.data.row.installation_id' "${WORK}/fleet-publish.json")
+WEB_KEYLINE=$(jq -r '.data.row.signing_key' "${WORK}/fleet-web.json")
+jq -r --arg id "${DEMO_ID}" --arg key "${WEB_KEYLINE}" \
+	'"schema: 1", "installations:", "  - product: demo", "    id: " + $id, "    key: " + $key' \
+	<<<'{}' >"${WORK}/roster-wrong.yaml"
+"${MORZER}" --root "${ROOT}" --json fleet ls "file://${FLEET_TARGET}" \
+	--expect "${WORK}/roster-wrong.yaml" >"${WORK}/fleet-wrongkey.json" && {
+	fail "fleet ls exited zero on a row it could not anchor"
+}
+jq -e '[.data.rows[] | select(.signature == "signed-by-another-key")] | length == 1' \
+	"${WORK}/fleet-wrongkey.json" >/dev/null ||
+	fail "the row was not named as signed by an unnamed key: $(jq -c '[.data.rows[].signature]' "${WORK}/fleet-wrongkey.json")"
+# The refusal, not the verdict: a verifier anchored in the row would have
+# reported this one as good, because the row carries the key that signed it.
+jq -e '[.data.rows[] | select(.signature == "verified")] | length == 0' \
+	"${WORK}/fleet-wrongkey.json" >/dev/null ||
+	fail "a row was verified against the key it carries"
+jq -e '[.data.rows[] | select(.signature == "signed-by-another-key") | .row] | all(. == null)' \
+	"${WORK}/fleet-wrongkey.json" >/dev/null ||
+	fail "the payload of a row that failed verification was rendered anyway"
+
+step "a signature removed is not the same as a machine that never had one"
+# The downgrade. An attacker who cannot forge a signature can delete one, and if
+# a stripped signature read as the ordinary unsigned state, removing the
+# .minisig beside a forged row would be enough to escape the roster.
+mv "${FLEET_TARGET}/${FLEET_KEY}.minisig" "${WORK}/held.minisig"
+"${MORZER}" --root "${ROOT}" --json fleet ls "file://${FLEET_TARGET}" \
+	--expect "${WORK}/roster.yaml" >"${WORK}/fleet-stripped.json" && {
+	fail "fleet ls exited zero on a row whose signature was removed"
+}
+jq -e '[.data.rows[] | select(.signature == "missing-signature")] | length == 1' \
+	"${WORK}/fleet-stripped.json" >/dev/null ||
+	fail "a stripped signature read as an ordinary unsigned row: $(jq -c '[.data.rows[].signature]' "${WORK}/fleet-stripped.json")"
+mv "${WORK}/held.minisig" "${FLEET_TARGET}/${FLEET_KEY}.minisig"
+
+# And once in the form an operator sees, which is the output the documentation
+# quotes. A sample nobody captured from a running binary is a sample that drifts
+# the first time a column moves.
+step "the fleet, with a roster, as an operator sees it"
+# The status is captured rather than discarded. `|| true` accepts *any* failure,
+# so a malformed roster, an unreadable target or a panic in the renderer would
+# all have read as the deliberate one -- and this is the only step that exercises
+# the plain rendering at all, so nothing else would have caught it either.
+fleet_plain_status=0
+"${MORZER}" --root "${ROOT}" fleet ls "file://${FLEET_TARGET}" \
+	--expect "${WORK}/roster-gone.yaml" >"${WORK}/fleet-plain.txt" ||
+	fleet_plain_status=$?
+cat "${WORK}/fleet-plain.txt"
+
+# 3 is the preflight status: one installation is deliberately absent. A 2 here
+# would be the roster being refused, which is a different scenario passing under
+# this one's name.
+[ "${fleet_plain_status}" -eq 3 ] ||
+	fail "plain fleet ls exited ${fleet_plain_status}, expected 3 for an absent installation"
+
+# The table is counted by what the target holds, and the absent installation is
+# a line in it rather than a number in the headline.
+grep -q "^2 row(s) on file://${FLEET_TARGET}$" "${WORK}/fleet-plain.txt" ||
+	fail "the headline is not the two rows the target holds: $(head -1 "${WORK}/fleet-plain.txt")"
+for expected in \
+	"the roster expects this installation; no target holds a row" \
+	"the roster expects 3 installation(s); 2 published a row and 1 did not"; do
+	grep -qF "${expected}" "${WORK}/fleet-plain.txt" ||
+		fail "the plain rendering lost: ${expected}"
+done
+info "plain fleet ls renders the absent installation and exits ${fleet_plain_status}"
+
+# The P4 timer is deliberately not exercised here: this scenario runs
+# `init --install-units=false`, so the machine manages no units at all and
+# reconciliation correctly does nothing. What the timer contains is asserted
+# against the rendered unit text in the systemd adapter's own tests, and that it
+# arrives with the first target and leaves with the last is asserted against the
+# supervisor port in the suite. Neither needs Docker, and a step here that ran
+# `doctor` and printed a sentence would read like a check without being one.
+
 step "the journal recorded every operation"
 status_field '.data.last_operation.type'
 for op in init apply backup restore update; do

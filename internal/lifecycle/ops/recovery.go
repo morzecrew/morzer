@@ -384,12 +384,12 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	if opts.DryRun {
 		summary := fmt.Sprintf("would import installation %s (%s) from %s",
 			export.Installation.ID, export.Installation.Product, opts.SourcePath)
-		if dropped > 0 {
+		if what := domain.DescribeSandboxDrops(dropped); what != "" {
 			// A plan that omitted this would be planning a different
 			// import from the one it would perform, and the omitted
 			// part is the one an operator would want to know before
 			// agreeing.
-			summary += fmt.Sprintf(", dropping %d backup target(s)", dropped)
+			summary += "; it " + what
 		}
 		return Result{Summary: summary, Data: importSummary(export, recoveryKey, "")}, nil
 	}
@@ -418,12 +418,11 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	machineKey, _ := d.Secrets.IdentityPublicKey(ctx)
 	out.Summary = fmt.Sprintf("imported installation %s for %s",
 		export.Installation.ID, export.Installation.Product)
-	if dropped > 0 {
+	if what := domain.DescribeSandboxDrops(dropped); what != "" {
 		// Reported, never silent. An operator who believes their sandbox
-		// is still backing up is an operator who finds out during a
-		// recovery that it was not.
-		out.Summary += fmt.Sprintf("; dropped %d backup target(s) -- a sandbox "+
-			"must not write into production's bucket", dropped)
+		// is still backing up -- or still paging them -- is an operator
+		// who finds out during a recovery that it was not.
+		out.Summary += "; " + what
 	}
 	out.Data = importSummary(export, recoveryKey, machineKey)
 	return out, nil
@@ -447,16 +446,16 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 // target is worse than no sandbox.
 func modeForImport(
 	inst domain.Installation, requested domain.Mode, requestedSet bool,
-) (domain.Installation, int, error) {
+) (domain.Installation, []domain.SandboxDropped, error) {
 	// No flag reproduces the export, which is what import does with
 	// everything else. A sandbox rebuilt from its own export is still a
 	// sandbox; silently making it production would be the deferred-risk
 	// transition arriving by omission.
 	if !requestedSet || requested == inst.Mode {
-		return inst, 0, nil
+		return inst, nil, nil
 	}
 	if requested != domain.ModeDev {
-		return domain.Installation{}, 0, domain.ValidationError(nil,
+		return domain.Installation{}, nil, domain.ValidationError(nil,
 			"this export is from a %s installation and cannot be imported as production",
 			inst.Mode.Describe()).
 			WithHint("a sandbox's history is not trustworthy -- releases pruned, " +
@@ -464,10 +463,11 @@ func modeForImport(
 				"rollback time. Build the production machine with `morzer init`")
 	}
 
-	inst.Mode = domain.ModeDev
-	dropped := len(inst.Backup.Targets)
-	inst.Backup.Targets = nil
-	return inst, dropped, nil
+	// The list rather than the two lines it used to be. RFC 0026 decision 7:
+	// the second thing to drop was the same field as the first, by luck, and
+	// this is where a third stops depending on somebody remembering.
+	sandbox, dropped := inst.Sandboxed()
+	return sandbox, dropped, nil
 }
 
 func importFlags(opts ImportOptions) map[string]string {

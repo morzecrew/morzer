@@ -1,7 +1,7 @@
 ---
 title: The fleet view
 icon: lucide/network
-summary: Each installation publishes one small row at a stable key, and a stateless command reads them back — what the row carries, what it never carries, and what the reader cannot yet tell you
+summary: Each installation publishes one small row at a stable key, and a stateless command reads them back — what the row carries, what it never carries, and what a roster is for
 ---
 
 # The fleet view
@@ -40,7 +40,9 @@ The signature is detached and covers the bytes as published, so checking one is
 `minisign -Vm status.json -P <key>` — the same gesture as an
 [attestation](attestations.md), not a second thing to learn.
 
-Nothing is scheduled. Run it from cron or a systemd timer; it is safe to repeat.
+`morzer init` installs a timer for this on any machine that has a backup
+target — see [Publishing on a schedule](#publishing-on-a-schedule). Running it
+by hand is safe at any time and safe to repeat.
 
 | Flag | What it does |
 | --- | --- |
@@ -112,6 +114,7 @@ machine names its targets.
 
 | Flag | What it does |
 | --- | --- |
+| `--expect` | a [roster](#the-roster): which installations should be there, and the key each signs with |
 | `--stale-after` | call a row stale once it is this old (default 24h; a negative value judges nothing) |
 | `--credentials-file` | a YAML credential document for the target |
 
@@ -172,10 +175,10 @@ the files are on the machine for whoever is allowed to look at them. A shared
 bucket holding twelve machines' configuration would be exactly the artifact this
 design exists not to produce.
 
-## What this reader cannot yet tell you
+## The roster
 
-Two things, and they have one cause. `morzer fleet ls` prints them on every run
-rather than leaving them to this page.
+Without one, `morzer fleet ls` cannot tell you two things, and they have one
+cause. It prints both on every run rather than leaving them to this page.
 
 **It cannot authenticate a row.** The `signature` column says a signature is
 *there* — never that it checks out. This is not laziness about verification: the
@@ -186,14 +189,143 @@ perfectly against itself. Checking a row against its own key therefore
 establishes nothing against the only attacker this design has, which is why it
 is not done at all rather than done and captioned.
 
-**It cannot show an installation that stopped publishing.** An object that was
-never written cannot announce itself, and listing a prefix shows you exactly the
-population that is fine — which is the failure mode of every fleet view ever
-built.
+**It cannot show an installation whose row is not there.** A machine that stops
+publishing leaves its last row behind, and that one goes stale on its own. What
+a listing structurally cannot show is an object that was never written, or one
+somebody removed: neither can announce itself, so a table built from a listing
+is complete by construction and complete-looking tables are the failure mode of
+every fleet view ever built.
 
-Both need the same thing: a roster naming the installations you expect and the
-public key each one signs with. That is the next phase, and until it lands a
-complete-looking table is not a complete one.
+One file answers both, because they are one fact: *these installations, signing
+with these keys, are the fleet*.
+
+```yaml title="roster.yaml"
+schema: 1
+installations:
+  - product: demo
+    id: op_01K2Z9QW8ERT6YH3VXNBM5CDFG
+    key: RWT7rtLRtKF6w2xzWe+mSOZBhXrz+VxeN1mdnNL2xgQq1jwtbt+ccErb
+  - product: web
+    id: op_01K3A7B2C9DEF4GH5IJ6KL7MNO
+    key: RWQ+QYtyW1lxQKN6N1DPOpPdi0VlWcoWadP9MjAAv8cpNYDqQ9jDLnpM
+```
+
+| Field | |
+| --- | --- |
+| `schema` | the roster's own version, stated rather than inferred |
+| `product` | which product this installation runs |
+| `id` | its installation id — the one in the key it publishes at |
+| `key` | the minisign public key it signs with — the single base64 line, not the whole `.pub` file; optional, see below |
+
+Keep it in version control beside whatever else describes the fleet. It is the
+anchor for every verdict the reader prints, so it wants reviewing when a machine
+joins and diffing when one leaves.
+
+The file is refused, naming the entry, rather than read into a table: a
+duplicate installation, an id that could never be a key, a schema that is not a
+version, and a key that is not a minisign public key — the `.pub` file pasted in
+whole, a line the terminal wrapped, or one truncated in transit. A key that
+cannot verify anything reports the machine it names as `unverifiable` on every
+run, which is indistinguishable from the attack the roster was added to catch,
+so a typo is worth catching at the file instead.
+
+### Getting the three fields off a machine
+
+A dry-run publish prints the row a machine *would* publish, and all three fields
+of a roster entry are in it:
+
+```sh
+ssh box 'morzer fleet publish --dry-run --json' |
+  jq -r '"  - product: " + .data.row.product,
+         "    id: "      + .data.row.installation_id,
+         "    key: "     + .data.row.signing_key'
+```
+
+The key has to arrive out of band — that is the whole point of it being the
+anchor. A dry run mints nothing, so this is safe to run on a machine that has
+never signed; such a machine prints an empty key, because it does not have one
+yet. Running any real operation gives it one.
+
+### What a roster changes
+
+```text
+2 row(s) on file:///tmp/fleet-target
+  PRODUCT                          VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
+  demo/inst_01ACCEPTANCEWENTQUIET  —        —       —          —      —
+  demo                             1.3.0    2/2 up  0s ago     none   verified
+  web                              1.0.0    3/3 up  0s ago     none   verified
+  ROW                              WHAT IT SAYS
+  demo/inst_01ACCEPTANCEWENTQUIET  the roster expects this installation; no target holds a row
+
+  the roster expects 3 installation(s); 2 published a row and 1 did not
+```
+
+The first line of the table is the one the roster exists for. Nothing on the
+target says that installation should be there; only the roster does — which is
+also why the headline counts two rows above a table of three. The count is what
+the target holds, and that line is there precisely because it holds nothing for
+it.
+
+The `signature` column now answers a question rather than reporting a fact:
+
+| Verdict | What it means |
+| --- | --- |
+| `verified` | the key the roster binds to this installation produced these bytes |
+| `signed-by-another-key` | the signature is valid, and made by the key the *row* carries, which the roster does not name — this is what one machine overwriting another's row looks like |
+| `missing-signature` | the roster says this installation signs, and this row arrived without a signature |
+| `unverifiable` | a signature is there and no key available accounts for it |
+| `signed` | a signature is there and nothing checked it: no roster, or none that names this installation, or no key bound to it |
+| `unsigned` | there is none, and nothing expected one |
+
+The last three columns of a row that failed verification are dashes, and its
+payload is not printed at all. A caption beside an impostor's `3/3 up` would be
+the caption doing the work.
+
+`fleet ls` exits non-zero for an absent installation and for the three failing
+verdicts. It does **not** for a row from an installation the roster says nothing
+about: that row is shown and noted, because a roster covering three of twelve
+machines is a legitimate way to start, and a reader that failed on the other
+nine would be unusable on the way in.
+
+### A key is optional, and the reader says which are missing
+
+An entry with no `key` still says the installation is expected, so absence
+reporting works before you have collected a single public key. The trade is
+stated on every run:
+
+```text
+  the roster binds no key to demo/inst_01ACCEPTANCEWENTQUIET, so nothing published under it can be
+  authenticated; `morzer fleet publish --dry-run --json` prints the key on the machine itself
+```
+
+### What a roster still does not buy
+
+The anchor is a file you maintain, and nothing here can check that it is right.
+A key transposed between two entries reads exactly like a machine overwriting
+its neighbour's row, and this reader does not pretend to tell them apart. It
+says so under every table.
+
+## Publishing on a schedule
+
+An installation with a backup target gets a systemd timer that publishes its
+row. It arrives when the first target is added and goes when the last one is
+removed — `morzer init` runs before any target exists, so this is not a unit you
+get at install time, and a timer with nowhere to publish would fail on every
+tick. A unit that fails on every tick is one an operator learns to ignore.
+
+| Unit | |
+| --- | --- |
+| `<product>-fleet.timer` | hourly, with a randomised delay so twelve machines do not write at the same second |
+| `<product>-fleet.service` | one publish; `Persistent=true` on the timer catches up a machine that was off |
+
+Hourly, where the backup and update timers are daily, and the difference is
+deliberate: a row's only value is its age. `fleet ls` calls a row stale after a
+day, so a daily publisher would sit at that threshold and report healthy
+machines as stale whenever the two drifted apart.
+
+A tick that failed is not retried. A row that did not leave is a gap in a view
+whose subject is fine, and the next tick carries the current truth rather than
+an hour-old one.
 
 ## What this will never do
 
@@ -213,9 +345,22 @@ because restore checks against it — and a recovery export carries backup targe
 and their credentials. So a sandbox rebuilt from a production export would hold
 the customer's bucket, the customer's credentials, and a matching id.
 
-`morzer installation import --mode dev` already drops backup targets for exactly
-this reason, and fleet rows go to the same targets — so a sandbox rebuilt this
-way has nowhere to publish, and `morzer fleet publish` on it refuses by name.
+`morzer installation import --mode dev` drops everything that would let a
+throwaway machine act on production's infrastructure, and it does so from one
+list rather than one line per hazard:
+
+| Dropped | What a sandbox would otherwise do |
+| --- | --- |
+| `backup.targets` | write into production's bucket — and fleet rows go to the same targets, so this covers them too |
+| `notify.targets` | report into production's alerting; a webhook URL is itself the credential, and it travels in the export |
+
+The list is a list because the second thing to drop was the same field as the
+first, by luck. Every field of an installation is classified in a test, so a
+third cannot be added without somebody saying in writing which side of the line
+it is on.
+
+The rule for membership is **reach**, not sensitivity: parameters and domains
+are sensitive too, and a sandbox needs them to render anything at all.
 
 What is *not* covered is a target you add by hand afterwards. Pointing a
 `--mode dev` installation at a production bucket makes it publish under the
