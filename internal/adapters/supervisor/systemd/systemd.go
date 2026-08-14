@@ -481,13 +481,34 @@ const DefaultBackupSchedule = "*-*-* 02:30:00"
 
 // BuildUnits renders the unit set for a product.
 func BuildUnits(p UnitParams) ([]ports.Unit, error) {
-	if p.BackupSchedule == "" {
+	// Each schedule is one line of a root-owned file, so this refuses a value
+	// that could be two. The lifecycle layer validates the one an operator can
+	// set, and this is deliberately a second check rather than a repeat of it:
+	// the guard that matters is the one nearest the write, because it holds
+	// for a caller that has not been written yet. A newline here is a second
+	// directive, and `Unit=` in a [Timer] section names what the timer starts.
+	for _, s := range []struct{ field, value string }{
+		{"backup schedule", p.BackupSchedule},
+		{"update schedule", p.UpdateSchedule},
+		{"fleet schedule", p.FleetSchedule},
+	} {
+		if strings.ContainsAny(s.value, "\n\r") {
+			return nil, domain.Internal(nil,
+				"the %s carries a line break and would add a directive to the unit",
+				s.field)
+		}
+	}
+
+	// Trimmed, not just compared: a whitespace-only schedule is non-empty, so
+	// an exact check on "" would skip the default and render `OnCalendar=`
+	// with nothing after it, which systemd refuses to load.
+	if strings.TrimSpace(p.BackupSchedule) == "" {
 		p.BackupSchedule = DefaultBackupSchedule
 	}
-	if p.UpdateSchedule == "" {
+	if strings.TrimSpace(p.UpdateSchedule) == "" {
 		p.UpdateSchedule = DefaultUpdateSchedule
 	}
-	if p.FleetSchedule == "" {
+	if strings.TrimSpace(p.FleetSchedule) == "" {
 		p.FleetSchedule = DefaultFleetSchedule
 	}
 	if p.Description == "" {

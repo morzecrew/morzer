@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // InstallationSchemaVersion is the second of the three versioned contracts:
@@ -44,7 +45,12 @@ import (
 // record. Losing `previous_keys` is the expensive half: it is the only thing
 // that lets a verifier say "signed by a predecessor of this installation"
 // rather than "unknown signer", and nothing regenerates it.
-const InstallationSchemaVersion = 6
+// Bumped to 7 when `policy.backup_schedule` arrived, and for the write path
+// again: an older manager's `config set` rewrites the whole state, drops the
+// field on the way through, and the next reconciliation renders the default --
+// which is the exact defect persisting the schedule was meant to fix, arriving
+// from the other direction.
+const InstallationSchemaVersion = 7
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -515,7 +521,82 @@ type Policy struct {
 	// StaleBackupAfter is when `doctor` starts warning that the last
 	// backup is too old.
 	StaleBackupAfter Duration `yaml:"stale_backup_after" json:"stale_backup_after,omitempty"`
+
+	// BackupSchedule is when scheduled backups run, as the supervisor's own
+	// expression -- a systemd `OnCalendar` line. Empty takes the
+	// supervisor's default.
+	//
+	// **Here rather than nowhere, which is where it used to live.** It
+	// arrived as an `init` flag and was written straight into a unit file,
+	// so nothing on the machine remembered it: every later reconciliation
+	// rendered the default, and an unrelated `config set` silently moved an
+	// operator's maintenance window. A value the manager re-renders has to
+	// be a value the manager stores.
+	//
+	// In Policy because that is what Policy is -- the operator's
+	// arrangement with the manager, as opposed to what the vendor
+	// declared -- and it puts the schedule beside StaleBackupAfter, which
+	// is the same kind of decision about the same subject. It also makes it
+	// settable, which it never was.
+	BackupSchedule string `yaml:"backup_schedule" json:"backup_schedule,omitempty"`
 }
+
+// ValidateBackupSchedule refuses a schedule that could not safely be rendered.
+//
+// **Not a calendar parser.** Whether `Mon *-*-* 04:00:00` is a valid expression
+// is the supervisor's question, and answering it here would mean this package
+// carrying systemd's grammar and disagreeing with it at the first version that
+// extends it. A wrong-but-well-formed expression is a unit systemd refuses to
+// load, which is visible and local.
+//
+// What this refuses is the shape that is not a schedule at all. The value is
+// rendered into `OnCalendar=` in a root-owned unit file, and it used to arrive
+// only from argv at `init`. Persisting it means every later reconciliation
+// reads it back out of the manager's state file instead -- so it is rendered
+// again and again by a path that never revisits the door it came in through,
+// and a value that got into that file by any means at all (an older binary, a
+// restored or migrated state, an edit of the file itself) is rendered as it
+// stands. A newline in it is a second directive in that unit, and `Unit=` in a
+// [Timer] section names what the timer starts: a way to schedule something as
+// root from a configuration field. Bounding it at the boundary is the same rule
+// every other value that leaves this manager follows.
+func ValidateBackupSchedule(raw string) error {
+	// The raw value, before any trim. This guard runs on load and on save,
+	// where `raw` *is* what gets rendered -- so trimming first and scanning
+	// the copy asked the question about a string nobody stores. A leading
+	// newline vanished into the trim, passed, and arrived at `OnCalendar=`
+	// intact, where it opens a second directive: `Unit=` in a [Timer]
+	// section names what the timer starts, so that is a way to schedule
+	// something else as root from a hand-edited configuration field.
+	//
+	// The input doors trim before they call this, so an operator who pastes
+	// a value with a stray newline at the end still gets a schedule rather
+	// than a refusal. What arrives here untrimmed did not come through them.
+	for _, r := range raw {
+		if r == '\n' || r == '\r' || unicode.IsControl(r) {
+			return ValidationError(nil, "a backup schedule is one line").
+				WithHint("it is rendered into a systemd unit, where a second " +
+					"line is a second directive; use an OnCalendar " +
+					"expression such as `Mon *-*-* 04:00:00`")
+		}
+	}
+
+	schedule := strings.TrimSpace(raw)
+	if schedule == "" {
+		return nil
+	}
+	if len(schedule) > maxBackupScheduleLen {
+		return ValidationError(nil, "a backup schedule is at most %d characters",
+			maxBackupScheduleLen).
+			WithHint("OnCalendar expressions are short; " +
+				"`morzer doctor` reports a unit systemd will not load")
+	}
+	return nil
+}
+
+// maxBackupScheduleLen bounds what reaches the unit file. Generous against any
+// real expression and far short of a payload.
+const maxBackupScheduleLen = 200
 
 // DefaultPolicy is what `init` writes. Safe defaults, explicitly opted out of
 // rather than silently absent.
@@ -589,6 +670,17 @@ func (i Installation) Validate() error {
 			v.add(fmt.Sprintf("notify.targets[%d]", idx), "%s", AsError(err).Message)
 		}
 	}
+	// Checked here as well as at `config set`, and this is the check that
+	// matters. The setting path is one way in; the other is somebody
+	// editing installation.yaml, which is the path the value's whole reason
+	// for being bounded describes -- it is rendered into `OnCalendar=` in a
+	// root-owned unit file, where a second line is a second directive. A
+	// guard that only covered the command would have been a guard over the
+	// door somebody was not coming through.
+	if err := ValidateBackupSchedule(i.Policy.BackupSchedule); err != nil {
+		v.add("policy.backup_schedule", "%s", AsError(err).Message)
+	}
+
 	// An unknown mode is refused rather than read as production. A typo --
 	// `mode: development` -- would otherwise produce a machine that looks
 	// like a sandbox in its own state file and behaves like a production

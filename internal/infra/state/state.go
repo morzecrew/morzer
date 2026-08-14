@@ -245,6 +245,24 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// The same applies to attestation_salt, which is
 			// minted beside it.
 			i.SchemaVersion = 6
+		case 6:
+			// 6 -> 7 added `policy.backup_schedule`. Nothing to
+			// convert, and the absent value reads correctly: an
+			// installation written before the field existed took
+			// the supervisor's default schedule, and an empty
+			// value still means exactly that.
+			//
+			// The bump is for the write path, like 5 and 6. An
+			// older manager reading this state ignores the field
+			// harmlessly -- it renders the default, which is what
+			// it did before the field existed -- but `config set`
+			// rewrites the whole document, unknown fields are
+			// dropped on the way through, and one pass by an older
+			// binary would silently move an operator's maintenance
+			// window back to nightly. That is the exact defect this
+			// field was added to fix, so shipping it without the
+			// bump would leave a second way to reproduce it.
+			i.SchemaVersion = 7
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:
