@@ -508,20 +508,34 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 // decision 3 keeps that available and the view says so on every run. A manifest
 // that declares recipients unusably is a refusal, before any work.
 //
-// The third is the one the design did not have a row for: the release cannot be
-// resolved, so there is no manifest to ask, so a vendor's declaration -- if
-// there is one -- silently does not apply. That happens on exactly the machine
-// this command exists for, and it must not be the case that reads as "your
-// vendor asked for nothing". It produces plaintext, because refusing would take
-// the tool away at the moment it is needed, and an omission naming the reason,
-// because an unstated gap here is the lie meta.json exists to prevent.
+// The third is the one the design did not have a row for: there is no manifest
+// to ask, so a vendor's declaration -- if there is one -- silently does not
+// apply. That happens on exactly the machine this command exists for, and it
+// must not be the case that reads as "your vendor asked for nothing". It
+// produces plaintext, because refusing would take the tool away at the moment
+// it is needed, and an omission naming the reason, because an unstated gap here
+// is the lie meta.json exists to prevent.
+//
+// Two machines reach that third outcome and they are not in the same trouble:
+// one has a release it cannot resolve, the other has never had a release at
+// all. Both get the omission -- a failed first `apply` is exactly a machine
+// whose vendor may have asked for encryption this archive did not get -- but
+// not the same sentence. Telling an operator with no release that resolution
+// failed sends them, and whoever receives the bundle, hunting a broken release
+// directory that was never there.
 func supportRecipients(src *supportSource) ([]string, *SupportOmission, error) {
 	if !src.HasRelease {
+		// `ReleaseProblem` is the resolver's own message and is empty when
+		// there simply is not a release, which is the distinction the two
+		// sentences below are made of.
+		cause := "there is no release installed"
+		if src.ReleaseProblem != "" {
+			cause = "the release could not be resolved"
+		}
 		note := &SupportOmission{
 			Name: "encryption",
-			Reason: "the release could not be resolved, so any support recipients " +
-				"its manifest declares were not applied and this archive is " +
-				"plaintext",
+			Reason: cause + ", so any support recipients a manifest declares " +
+				"were not applied and this archive is plaintext",
 		}
 		return nil, note, nil
 	}
@@ -930,6 +944,7 @@ func supportMeta(report *SupportReport, files []supportFile) supportFile {
 		Product:        report.Product,
 		InstallationID: report.InstallationID,
 		ManagerVersion: report.ManagerVersion,
+		Encrypted:      report.Encrypted,
 		Entries:        entries,
 		Omitted:        report.Omitted,
 	}
@@ -1024,7 +1039,38 @@ func writeSupportArchive(
 	// Ours, made a line ago, and it holds a copy of everything the archive
 	// holds. Leaving it behind would put a second, unencrypted, unnoticed
 	// copy in the system temporary directory.
-	defer func() { _ = os.RemoveAll(staging) }()
+	//
+	// When the archive is encrypted, the tree is overwritten before it is
+	// removed, and this is the only place that happens.
+	//
+	// It holds the plaintext of an archive somebody deliberately asked to be
+	// unreadable, and unlinking a file does not disturb its bytes. The scrub
+	// stood on the success path and only there, which had it protecting the
+	// run that went well and skipping the run that failed -- and a failed run
+	// is the one where the operator gets no archive, thinks no more about it,
+	// and never learns a readable copy of everything was left recoverable
+	// under the system temporary directory. One cleanup path, taken on every
+	// return, is the only shape in which that cannot drift apart again.
+	//
+	// The plaintext branch is deliberately excluded: what it leaves in the
+	// operator's own directory is plaintext by their choice, so scrubbing a
+	// second copy of it protects nothing.
+	//
+	// Best-effort, and that is the important word. On the success path the
+	// archive is finished and correct by the time this runs; failing the
+	// command over a cleanup write would report a bundle that does not exist
+	// while the bundle sits on disk, and a retry would then collide with it.
+	// An advisory write must not outrank the outcome it trails.
+	//
+	// A process killed outright still bypasses this, as it bypasses every
+	// defer. Nothing short of never writing the plaintext down would close
+	// that, and the tar has to exist before it can be encrypted.
+	defer func() {
+		if len(recipients) > 0 {
+			overwriteStagedPlaintext(staging)
+		}
+		_ = os.RemoveAll(staging)
+	}()
 
 	names := make([]string, 0, len(files))
 	for _, f := range files {
@@ -1074,23 +1120,8 @@ func writeSupportArchive(
 	if err := encryptSupportArchive(plain, path, recipients); err != nil {
 		return "", err
 	}
-
-	// The staging tree is overwritten before it is removed, and only on this
-	// branch.
-	//
-	// It holds the plaintext of an archive somebody deliberately asked to be
-	// unreadable, in the system temporary directory, and unlinking a file
-	// does not disturb its bytes. The plaintext branch above does not do
-	// this and should not: what it leaves in the operator's own directory is
-	// plaintext by their choice, so scrubbing a second copy of it protects
-	// nothing.
-	//
-	// Best-effort, and that is the important word. The archive at `path` is
-	// finished and correct by this point; failing the command over a cleanup
-	// write would report a bundle that does not exist while the bundle sits
-	// on disk, and a retry would then collide with it. An advisory write
-	// must not outrank the outcome it trails.
-	overwriteStagedPlaintext(staging)
+	// The staged plaintext is scrubbed by the deferred cleanup above, which
+	// runs on this return and on every failing one.
 	return path, nil
 }
 
@@ -1134,6 +1165,19 @@ func encryptSupportArchive(plain, path string, recipients []string) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return domain.Internal(err, "cannot move the archive into place at %s", path)
 	}
+
+	// The rename is what makes the archive exist, and a rename is only
+	// durable once the directory holding it is. `out.Sync` made the
+	// ciphertext durable and stopped there, which is half of what
+	// `WriteTarZst` does for the plaintext archive -- so a doc comment
+	// claiming to follow that discipline was following it partway. A crash
+	// after this call could otherwise leave the operator a directory entry
+	// that does not resolve, for an archive the command reported writing.
+	//
+	// `SyncDir` reports nothing and cannot fail the command by contract,
+	// which is right here: the bytes are already on disk, and a completed
+	// archive must not become a failed command over its own bookkeeping.
+	atomicfs.SyncDir(filepath.Dir(path))
 	return nil
 }
 

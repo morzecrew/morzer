@@ -551,3 +551,21 @@ line as the ordinary state, when what actually happened is that the declaration
 could not be read. Decision 3a governs a declaration that is present and
 unusable; this is a declaration that could not be reached, and the two fail in
 opposite directions on purpose.
+
+**A13 — "cannot tell" is two machines, and they are told apart (2026-08-15,
+P4a).**
+
+A12's third state was written as one row and is two. A release that will not
+resolve and an installation that has never had a release both arrive as "no
+manifest to ask", and both must produce the omission — a failed first `apply` is
+precisely a machine whose vendor may have asked for encryption this archive did
+not get.
+
+What they do not share is the reason. Telling an operator who has never applied
+a release that resolution *failed* sends them, and whoever receives the bundle,
+hunting a broken release directory that was never there. The resolver's own
+message is the discriminator: `supportSource.ReleaseProblem` is empty when there
+simply is not a release, which is the distinction the two sentences are made of.
+
+The remedy proposed in review — drop the omission when there is no release —
+is refused for the reason above: silence there is the case A12 exists to close.

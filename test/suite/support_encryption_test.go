@@ -3,6 +3,7 @@ package suite
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,7 +153,7 @@ func TestAnEncryptedArchiveIsUnreadableByTheMachineThatWroteIt(t *testing.T) {
 	require.Contains(t, entries, "meta.json")
 }
 
-// A failed write leaves no plaintext behind.
+// A failed write leaves no plaintext behind, wherever in the write it failed.
 //
 // An archive already at that name *is* replaced, deliberately: the plaintext
 // path renames into place and overwrites too, and having the two disagree about
@@ -165,40 +166,87 @@ func TestAnEncryptedArchiveIsUnreadableByTheMachineThatWroteIt(t *testing.T) {
 // other test in this file and would strand a readable copy of everything here,
 // under a name nobody is looking at, on exactly the run that went wrong.
 //
-// The failure has to land *after* the plaintext archive has been assembled,
-// which is the only window in which there is plaintext to strand. A destination
-// that cannot be written to at all fails earlier than that and would prove
+// The failure has to land after the plaintext archive has been assembled, which
+// is the only window in which there is plaintext to strand. A destination that
+// cannot be written to at all fails before that window opens and would prove
 // nothing: it would pass whether the archive were staged in a temporary
 // directory or built here.
 //
-// So the encrypted write is failed at its last step, by occupying the name it
-// renames from with a directory. The harness clock is fixed, so that name is
-// known.
+// Inside that window the encrypted write has two exits and they clean up
+// differently, so both are driven. The harness clock is fixed, so the archive's
+// name is known and either can be occupied.
 func TestAFailedWriteLeavesNoPlaintextInTheOperatorsDirectory(t *testing.T) {
-	h := newHarness(t)
-	h.install()
+	const archiveName = "support-demo-inst_01TESTINSTALLATION-20260803T120000Z.tar.zst" +
+		agecrypt.Extension
 
-	_, vendorPublic := vendorIdentity(t)
-	declareRecipients(t, h, vendorPublic)
+	// failedWrite runs a bundle whose destination has been occupied by occupy,
+	// and returns what the operator's directory holds afterwards along with the
+	// refusal.
+	//
+	// The refusal is returned because each leg has to prove *where* it failed.
+	// An assertion that only reads the directory passes whether the write died
+	// at the step the leg names or at an earlier one -- and a leg that fails
+	// earlier than it claims tests a window that was already closed.
+	failedWrite := func(t *testing.T, occupy func(t *testing.T, archive string)) (string, []string, error) {
+		t.Helper()
+		h := newHarness(t)
+		h.install()
 
-	dir := t.TempDir()
-	archive := filepath.Join(dir,
-		"support-demo-inst_01TESTINSTALLATION-20260803T120000Z.tar.zst"+agecrypt.Extension)
-	require.NoError(t, os.Mkdir(archive+".partial", 0o700))
+		_, vendorPublic := vendorIdentity(t)
+		declareRecipients(t, h, vendorPublic)
 
-	_, err := ops.SupportBundle(context.Background(), h.Deps, ops.SupportOptions{Dir: dir})
-	require.Error(t, err, "the encrypted write reported success it did not achieve")
+		dir := t.TempDir()
+		occupy(t, filepath.Join(dir, archiveName))
 
-	// Whatever is left, none of it is the archive in the clear. The staged
-	// plaintext lives in a temporary directory and dies with it; building it
-	// here instead would leave a readable copy of everything under a name
-	// nobody is looking at, on exactly the run that went wrong.
-	written, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	for _, e := range written {
-		assert.Equal(t, filepath.Base(archive)+".partial", e.Name(),
-			"the failed run left %s behind in the operator's directory", e.Name())
+		_, refusal := ops.SupportBundle(context.Background(), h.Deps, ops.SupportOptions{Dir: dir})
+		require.Error(t, refusal, "the encrypted write reported success it did not achieve")
+
+		written, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		names := make([]string, 0, len(written))
+		for _, e := range written {
+			names = append(names, e.Name())
+		}
+		return dir, names, refusal
 	}
+
+	// The ciphertext file cannot be created, so the encryption never starts --
+	// but the plaintext tar has already been assembled by then, which is the
+	// window this whole arrangement exists to close.
+	t.Run("before the ciphertext exists", func(t *testing.T) {
+		_, names, refusal := failedWrite(t, func(t *testing.T, archive string) {
+			t.Helper()
+			require.NoError(t, os.Mkdir(archive+".partial", 0o700))
+		})
+		assert.Contains(t, domain.AsError(refusal).Message, "cannot create",
+			"this leg no longer fails where it says it does")
+		assert.Equal(t, []string{archiveName + ".partial"}, names,
+			"the failed run left something behind in the operator's directory")
+	})
+
+	// The far end of the same window: encryption runs to completion and the
+	// rename fails, which is the only exit where a finished file exists under
+	// the temporary name. It must not survive -- an operator who found it
+	// would have an archive the command said it had not written, and a `.partial`
+	// nobody can tell apart from a live one.
+	t.Run("after the ciphertext exists, at the rename", func(t *testing.T) {
+		dir, names, refusal := failedWrite(t, func(t *testing.T, archive string) {
+			t.Helper()
+			require.NoError(t, os.Mkdir(archive, 0o700))
+			require.NoError(t, os.WriteFile(
+				filepath.Join(archive, "occupant"), []byte("not the archive"), 0o600))
+		})
+		require.Contains(t, domain.AsError(refusal).Message, "cannot move the archive into place",
+			"this leg failed before the rename, so it proves nothing about it")
+		assert.Equal(t, []string{archiveName}, names,
+			"the failed rename left its temporary file behind")
+
+		// What was standing in the way is untouched, which is the other half
+		// of "the directory is as it was".
+		occupant, err := os.ReadFile(filepath.Join(dir, archiveName, "occupant"))
+		require.NoError(t, err, "the failed run disturbed what stood at the archive's name")
+		assert.Equal(t, "not the archive", string(occupant))
+	})
 }
 
 // Two recipients both open it, which is what a vendor with a rotation plan or
@@ -356,6 +404,62 @@ func TestAPreviewNamesTheRecipientsBeforeTheArchiveExists(t *testing.T) {
 	assert.Empty(t, written, "a preview wrote something")
 }
 
+// The archive's own index agrees with the bytes around it, both ways.
+//
+// `meta.json` is the file somebody opens to decide whether an archive can be
+// passed on, and it carries an `encrypted` field for that decision alone. A
+// reader who trusts a `false` inside ciphertext forwards a bundle a vendor
+// deliberately restricted; a reader who trusts a `true` on a plaintext archive
+// stops protecting one that needs it. Neither direction is worth having half
+// of, so both are asserted here.
+//
+// The field cost nothing to be right about until this phase: it was `false` on
+// every archive the command had ever produced, so the terminal report and the
+// file could not disagree.
+func TestTheArchivesOwnIndexAgreesWithHowItWasWritten(t *testing.T) {
+	encryptionOf := func(t *testing.T, archive string) bool {
+		t.Helper()
+		var meta struct {
+			Encrypted bool `json:"encrypted"`
+		}
+		body, present := archiveEntries(t, archive)["meta.json"]
+		require.True(t, present, "the archive carries no meta.json")
+		require.NoError(t, json.Unmarshal([]byte(body), &meta))
+		return meta.Encrypted
+	}
+
+	t.Run("encrypted", func(t *testing.T) {
+		h := newHarness(t)
+		h.install()
+
+		vendorKey, vendorPublic := vendorIdentity(t)
+		declareRecipients(t, h, vendorPublic)
+
+		report, err := ops.SupportBundle(context.Background(), h.Deps,
+			ops.SupportOptions{Dir: t.TempDir()})
+		require.NoError(t, err)
+		require.True(t, report.Encrypted)
+
+		plain := filepath.Join(t.TempDir(), "support.tar.zst")
+		decryptTo(t, report.Path, vendorKey, plain)
+		assert.True(t, encryptionOf(t, plain),
+			"meta.json inside an encrypted archive reports it as plaintext")
+	})
+
+	t.Run("plaintext", func(t *testing.T) {
+		h := newHarness(t)
+		h.install()
+
+		report, err := ops.SupportBundle(context.Background(), h.Deps,
+			ops.SupportOptions{Dir: t.TempDir()})
+		require.NoError(t, err)
+		require.False(t, report.Encrypted)
+
+		assert.False(t, encryptionOf(t, report.Path),
+			"meta.json in a plaintext archive claims it is encrypted")
+	})
+}
+
 // A release that will not resolve cannot be asked what it declares, and the
 // archive says so rather than reading as "your vendor asked for nothing".
 //
@@ -385,6 +489,65 @@ func TestAnUnresolvableReleaseSaysEncryptionWasNotApplied(t *testing.T) {
 	require.Contains(t, reasons, "encryption",
 		"the archive is plaintext because the manifest could not be read, and does not say so")
 	assert.Contains(t, reasons["encryption"], "not applied")
+}
+
+// An installation that never had a release is not an installation whose release
+// failed, and the archive does not say it was.
+//
+// Both states arrive here as `!HasRelease`, and both genuinely mean no vendor
+// declaration could apply -- so both are stated, because a failed first `apply`
+// is precisely a machine whose vendor may have asked for encryption that this
+// archive did not get. What must not be shared is the *reason*: telling an
+// operator who has never applied a release that resolution failed sends them
+// looking for a broken release directory that does not exist, in the archive
+// they were about to send to somebody who would look for it too.
+func TestAMissingReleaseAndABrokenOneGiveDifferentReasons(t *testing.T) {
+	encryptionReason := func(t *testing.T, report ops.SupportReport) string {
+		t.Helper()
+		for _, o := range report.Omitted {
+			if o.Name == "encryption" {
+				return o.Reason
+			}
+		}
+		t.Fatal("the archive is plaintext with no vendor declaration read, and does not say so")
+		return ""
+	}
+
+	t.Run("never installed", func(t *testing.T) {
+		h := newHarness(t)
+		require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), domain.Installation{
+			SchemaVersion: domain.InstallationSchemaVersion,
+			ID:            "inst_01NORELEASEYET",
+			Product:       "demo",
+			CreatedAt:     domain.NewTime(h.Deps.Now()),
+			Policy:        domain.DefaultPolicy(),
+		}))
+
+		report, err := ops.SupportBundle(context.Background(), h.Deps,
+			ops.SupportOptions{Dir: t.TempDir()})
+		require.NoError(t, err)
+		assert.False(t, report.Encrypted)
+
+		reason := encryptionReason(t, report)
+		assert.NotContains(t, reason, "could not be resolved",
+			"an installation with no release is reported as one whose release broke")
+		assert.Contains(t, reason, "no release")
+		assert.Contains(t, reason, "plaintext")
+	})
+
+	t.Run("broken", func(t *testing.T) {
+		h := newHarness(t)
+		h.install()
+		require.NoError(t, os.WriteFile(
+			filepath.Join(h.Release.Root, "morzer.yaml"), []byte("name: tampered\n"), 0o600))
+
+		report, err := ops.SupportBundle(context.Background(), h.Deps,
+			ops.SupportOptions{Dir: t.TempDir()})
+		require.NoError(t, err)
+
+		assert.Contains(t, encryptionReason(t, report), "could not be resolved",
+			"a release that failed to resolve is reported as one that was never installed")
+	})
 }
 
 // A manifest that declares nobody produces a plaintext archive, on purpose.
