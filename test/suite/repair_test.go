@@ -83,6 +83,24 @@ func TestARepairKeepsWhatTheOperatorConfigured(t *testing.T) {
 	assert.True(t, after.Update.Check)
 	assert.Equal(t, "Mon *-*-* 04:00:00", after.Policy.BackupSchedule)
 
+	// And the other half of that rule: a schedule that *was* given outranks
+	// the carried Policy. Without this the branch above is only ever tested
+	// on its untaken side, so a repair that silently ignored the flag would
+	// pass -- and "carries what it did not create" would have quietly become
+	// "cannot be told anything".
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", Repair: true, RecoveryRecipient: recoveryPub,
+		BackupSchedule: "  Sun *-*-* 05:00:00  ",
+	})
+	require.NoError(t, err)
+
+	after, err = h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "Sun *-*-* 05:00:00", after.Policy.BackupSchedule,
+		"a schedule given to a repair was ignored, or stored with its padding")
+	assert.Equal(t, inst.Backup.Targets, after.Backup.Targets,
+		"setting the window on a repair took the targets away")
+
 	// And the identity half, which already worked and must keep working.
 	assert.Equal(t, inst.ID, after.ID)
 	assert.Equal(t, inst.AttestationSalt, after.AttestationSalt)
@@ -237,6 +255,29 @@ func TestAScheduleCannotSmuggleADirectiveIntoTheUnit(t *testing.T) {
 				"the schedule opened a second directive in the timer unit")
 		})
 	}
+}
+
+// The other two refusals the bound carries, and the override beside them.
+//
+// Both are detection branches: they run only when the value is already wrong,
+// which is exactly the code that must not be dead. Coverage found them; no
+// mutation of the happy path would have.
+func TestTheScheduleBoundRefusesWhatItSaysItRefuses(t *testing.T) {
+	h := newHarness(t)
+	inst := h.install()
+	ctx := context.Background()
+
+	// Long. Not a plausible expression -- which is the point of a bound that
+	// is generous against every real one and far short of a payload.
+	inst.Policy.BackupSchedule = strings.Repeat("*", 201)
+	err := h.Deps.State.SaveInstallation(ctx, inst)
+	require.Error(t, err, "a schedule longer than the bound was written")
+	assert.Contains(t, domain.AsError(err).Message, "at most 200 characters")
+
+	// And the bound is not off by one against a value that fits exactly.
+	inst.Policy.BackupSchedule = strings.Repeat("*", 200)
+	assert.NoError(t, h.Deps.State.SaveInstallation(ctx, inst),
+		"a schedule exactly at the bound was refused")
 }
 
 // The injection, played out against the real unit file.
