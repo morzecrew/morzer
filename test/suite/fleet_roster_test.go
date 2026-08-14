@@ -487,6 +487,81 @@ func TestADryRunPrintsWhatARosterEntryNeeds(t *testing.T) {
 	assert.Empty(t, roster.Unkeyed())
 }
 
+// A timer that is installed and switched off publishes nothing, and says so
+// nowhere.
+//
+// `systemctl disable demo-fleet.timer` leaves the unit loaded, so every check
+// that asks only whether it is *there* passes while the schedule it exists for
+// has stopped. The check calls itself "systemd units are installed and
+// enabled"; until this test it verified the first word only, which is the
+// worst arrangement available -- a machine that quietly stopped publishing,
+// reported healthy by the command an operator runs to ask whether it is.
+func TestDoctorReportsARequiredTimerThatIsSwitchedOff(t *testing.T) {
+	h := newHarness(t)
+	// A target, so this machine is one that should be publishing at all, and
+	// a wired registry, so the reconciliation at the end is the real one.
+	h.withTargets(t)
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+	ctx := context.Background()
+
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo", FleetTimer: true})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+	for _, u := range units {
+		// As a reconciliation leaves them: loaded, and enabled exactly
+		// where the supervisor asked for it.
+		h.Supervisor.States[u.Name] = ports.UnitState{
+			Name: u.Name, Loaded: true, Active: "active", Enabled: u.Enable,
+		}
+	}
+
+	unitsCheck := func(t *testing.T) events.CheckResult {
+		t.Helper()
+		report, err := ops.Doctor(ctx, h.Deps)
+		require.NoError(t, err)
+		for _, c := range report.Results {
+			if c.ID == "system.units" {
+				return c
+			}
+		}
+		t.Fatal("doctor ran no unit check")
+		return events.CheckResult{}
+	}
+
+	got := unitsCheck(t)
+	require.Equal(t, events.CheckOK, got.Status,
+		"a correctly reconciled machine was reported as having a problem: %s", got.Message)
+
+	require.NoError(t, h.Supervisor.Disable(ctx, "demo-fleet.timer"))
+
+	got = unitsCheck(t)
+	assert.Equal(t, events.CheckWarn, got.Status,
+		"the fleet timer was switched off and doctor reported the units healthy")
+	assert.Contains(t, got.Message, "demo-fleet.timer: not enabled")
+
+	// The oneshot service beside it is deliberately never enabled -- enabling
+	// it would run a publish at every boot -- so it must not be reported.
+	assert.NotContains(t, got.Message, "demo-fleet.service: not enabled",
+		"a unit the supervisor deliberately leaves disabled was reported as a problem")
+
+	// And the remedy clears it. The comment on this check earns its place
+	// only if the warning it now emits can be acted on: a warning that fires
+	// forever with a fix that does not fix it is the thing that trains an
+	// operator to stop reading the check. A reconciliation is what
+	// `init --repair --install-units` performs, and it re-enables what the
+	// supervisor asked to have enabled.
+	second := filepath.Join(t.TempDir(), "second")
+	require.NoError(t, os.MkdirAll(second, 0o755))
+	_, err = ops.TargetAdd(ctx, h.Deps, ops.TargetAddOptions{URL: "file://" + second})
+	require.NoError(t, err)
+
+	got = unitsCheck(t)
+	assert.Equal(t, events.CheckOK, got.Status,
+		"a reconciliation did not re-enable the timer, so the warning cannot be cleared: %s",
+		got.Message)
+}
+
 // Doctor asks about the units this installation should have, not every unit
 // this supervisor could ever own.
 //
@@ -507,7 +582,12 @@ func TestDoctorDoesNotDemandUnitsThisMachineShouldNotHave(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
 	for _, u := range units {
-		h.Supervisor.States[u.Name] = ports.UnitState{Name: u.Name, Loaded: true, Active: "active"}
+		// Enabled exactly where the supervisor asked for it, which is what
+		// a reconciliation leaves behind. Marking everything loaded and
+		// nothing enabled describes no machine that has ever existed.
+		h.Supervisor.States[u.Name] = ports.UnitState{
+			Name: u.Name, Loaded: true, Active: "active", Enabled: u.Enable,
+		}
 	}
 
 	unitsCheck := func(t *testing.T) events.CheckResult {

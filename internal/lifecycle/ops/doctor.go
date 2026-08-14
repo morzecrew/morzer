@@ -1199,7 +1199,14 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 			// nobody reads on the run that meant something.
 			var problems []string
 
-			expected := make(map[string]bool)
+			// The unit, not a boolean. Whether a unit should be enabled
+			// is the supervisor's decision and it varies within one
+			// machine: a timer is enabled and the oneshot service beside
+			// it deliberately is not, because enabling a oneshot runs it
+			// at every boot. Reducing this to "expected" would either
+			// miss a switched-off timer or demand enablement of the two
+			// services that must never have it.
+			expected := make(map[string]ports.Unit)
 			units, unitsErr := d.Supervisor.Units(d.unitParams(inst))
 			if unitsErr != nil {
 				// Reported rather than swallowed. An empty expectation
@@ -1211,7 +1218,7 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 						domain.AsError(unitsErr).Message)
 			}
 			for _, u := range units {
-				expected[u.Name] = true
+				expected[u.Name] = u
 			}
 
 			for _, name := range d.Supervisor.ManagedUnitNames(inst.Product) {
@@ -1220,12 +1227,24 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 					problems = append(problems, name+": cannot query")
 					continue
 				}
+				want, wanted := expected[name]
 				if !state.Loaded {
 					// Absent and not wanted is the ordinary state.
-					if expected[name] {
+					if wanted {
 						problems = append(problems, name+": not installed")
 					}
 					continue
+				}
+
+				// Present and switched off. `systemctl disable` leaves
+				// the unit loaded, so a timer that has stopped firing
+				// looks identical to a healthy one to any check that
+				// asks only whether the file is there -- and the thing
+				// that stopped is a schedule, which is silent by nature.
+				// Nobody notices a backup or a fleet row that did not
+				// happen until they need the one that did not.
+				if wanted && want.Enable && !state.Enabled {
+					problems = append(problems, name+": not enabled")
 				}
 				// A unit that is *there* and failing is reported whether
 				// or not this installation wants it: an orphan left by a
