@@ -285,6 +285,15 @@ func TestImportingAsASandboxDropsTheBackupTargets(t *testing.T) {
 		URL:         "s3://backups.example/demo",
 		Credentials: "backup_credentials",
 	}}
+	// The second thing on the drop list, and the one nobody had noticed. A
+	// notify target's endpoint may *be* its credential -- a Slack webhook
+	// URL is a bearer token spelled as a path -- so a sandbox that kept it
+	// would page the customer's on-call about a machine that exists in
+	// order to be broken.
+	inst.Notify.Targets = []domain.NotifyTargetConfig{{
+		Name:      "oncall",
+		URLSecret: "slack_webhook",
+	}}
 	require.NoError(t, origin.Deps.State.SaveInstallation(ctx, inst))
 
 	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
@@ -295,6 +304,8 @@ func TestImportingAsASandboxDropsTheBackupTargets(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, export.Installation.Backup.Targets,
 		"the export must carry the targets, or this test proves nothing")
+	require.NotEmpty(t, export.Installation.Notify.Targets,
+		"the export must carry the notify targets, or this test proves nothing")
 
 	sandbox := newMachine(t, t.TempDir())
 	result, err := ops.Import(ctx, sandbox.Deps, ops.ImportOptions{
@@ -311,20 +322,24 @@ func TestImportingAsASandboxDropsTheBackupTargets(t *testing.T) {
 	assert.True(t, rebuilt.IsDev())
 	assert.Empty(t, rebuilt.Backup.Targets,
 		"the sandbox kept production's backup target, so it can write into it")
+	assert.Empty(t, rebuilt.Notify.Targets,
+		"the sandbox kept production's alerting, so it can page the customer's on-call")
 
 	// Reported, not silent: an operator who believes their sandbox is still
-	// backing up finds out during a recovery that it was not.
+	// backing up -- or still paging them -- finds out during a recovery that
+	// it was not.
 	assert.Contains(t, result.Summary, "backup target")
+	assert.Contains(t, result.Summary, "notify target")
 
-	// And the outcome, for the second thing that rides on this list.
+	// And the outcome, for the thing that rides on this list without being
+	// named by it.
 	//
-	// RFC 0026 §3.5 names the same hazard for fleet rows and expects a
-	// generalised drop list to cover it. There is none: decision 3 reuses
-	// this exact field, so fleet publishing is covered by the drop above
-	// rather than by anything anybody wrote for it. That is precisely the
-	// accident decision 7 exists to stop relying on, so it is asserted as
-	// an outcome -- this keeps passing when the drop becomes a list, and
-	// fails the day fleet targets move off it.
+	// RFC 0026 §3.5 names the same hazard for fleet rows, and decision 3
+	// reuses this exact field -- so fleet publishing is covered by the
+	// backup-target drop rather than by anything written for it. The list
+	// exists now, which is what decision 7 asked for, and this stays an
+	// assertion about the *outcome*: it fails the day fleet targets move
+	// off that field, whatever the list says at the time.
 	if store, ok := sandbox.Deps.Targets.(ports.ObjectStore); ok {
 		sandbox.Deps.Objects = store
 	}
