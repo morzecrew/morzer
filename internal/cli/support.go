@@ -10,11 +10,11 @@ import (
 //
 // A verb of its own rather than `doctor --support-bundle`, which decision 1
 // locks. `doctor`'s contract is "report on this machine, now": it takes no
-// lock, writes nothing, and its output is a view. A support bundle has
-// retention, a redaction policy, encryption recipients and a signature ahead of
-// it, and hanging four new semantics off a diagnostic flag makes `doctor`'s
-// contract a sentence with an exception in it. The same reasoning gave `release
-// pack` its own verb rather than a flag on `build`.
+// lock, writes nothing, and its output is a view. A support bundle has a
+// redaction policy and encryption recipients, with retention and a signature
+// still ahead of it, and hanging four new semantics off a diagnostic flag makes
+// `doctor`'s contract a sentence with an exception in it. The same reasoning
+// gave `release pack` its own verb rather than a flag on `build`.
 
 func newSupportCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -63,8 +63,17 @@ func newSupportBundleCommand(app *App) *cobra.Command {
 			"turn redaction off -- there is no such flag, deliberately -- it removes\n" +
 			"a component rather than removing the filter from it, so it can only\n" +
 			"ever send less.\n\n" +
-			"The archive is plaintext today and says so. Encrypting it to a\n" +
-			"vendor's recipients is RFC 0024 P4.",
+			"If your release declares support recipients, the archive is\n" +
+			"encrypted to them and readable by nobody else -- not by this\n" +
+			"machine, and not by whatever the file passes through on its way.\n" +
+			"It is named `.tar.zst.age` when that happens, and `--preview`\n" +
+			"prints the recipients in full before anything is written, which\n" +
+			"is the only moment checking them against what your vendor\n" +
+			"published is worth anything.\n\n" +
+			"A release that declares nobody produces a plaintext archive and\n" +
+			"says so on every run. A declaration this manager cannot use is\n" +
+			"refused before a single component is collected, rather than\n" +
+			"quietly falling back to writing everything out in the clear.",
 		Example: "  morzer support bundle --preview\n" +
 			"  morzer support bundle\n" +
 			"  morzer support bundle --json | jq -e '.data.entries[].redactions'",
