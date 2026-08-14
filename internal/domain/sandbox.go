@@ -21,9 +21,12 @@ import (
 // fleet rows go to the same targets, so the second thing to drop happened to be
 // the same field as the first. RFC 0026 §10.1 measured that and decision 7
 // exists to stop relying on it. What makes this a mechanism rather than a
-// longer special case is the test beside it: every field of an installation is
-// classified, so a *third* thing to drop cannot be added without somebody
-// saying, in writing, which side it is on.
+// longer special case is the test beside it: every field of an installation,
+// and every field of the structs it holds, is classified -- so a *third* thing
+// to drop cannot be added without somebody saying, in writing, which side it is
+// on. (It stops at slice elements: dropping is by list, never by a field within
+// one, so `notify.targets[].url_secret` is a property of the entry rather than
+// of the document.)
 //
 // The rule that decides membership is **reach**: does keeping this let a
 // throwaway machine act on infrastructure the production machine owns? Not "is

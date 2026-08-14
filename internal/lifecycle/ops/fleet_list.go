@@ -394,11 +394,13 @@ func pluralThem(n int) string {
 // absentRows synthesises a row for every installation the roster expects and no
 // target held.
 //
-// **The row this whole phase exists for.** An object that was never written
-// cannot announce itself, so listing a prefix shows exactly the population that
-// is fine -- which is the failure mode of every fleet view ever built. These
-// are the only rows here that are not derived from something on a target, and
-// they are the ones an operator is looking for.
+// **The row this whole phase exists for**, and the one no listing can produce.
+// A machine that stops publishing leaves its last row behind and staleness
+// catches it; what a listing cannot show is an object that is not there, and
+// neither "never written" nor "somebody removed it" can announce itself. So a
+// table built from a listing is complete by construction, which is the failure
+// mode of every fleet view ever built. These are the only rows here not derived
+// from something on a target, and they are the ones an operator is looking for.
 //
 // Matched on the product and installation id parsed out of the *key*, not on
 // the key string: a key that would not parse produced no product and cannot

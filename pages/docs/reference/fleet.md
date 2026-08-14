@@ -189,10 +189,12 @@ perfectly against itself. Checking a row against its own key therefore
 establishes nothing against the only attacker this design has, which is why it
 is not done at all rather than done and captioned.
 
-**It cannot show an installation that stopped publishing.** An object that was
-never written cannot announce itself, and listing a prefix shows you exactly the
-population that is fine — which is the failure mode of every fleet view ever
-built.
+**It cannot show an installation whose row is not there.** A machine that stops
+publishing leaves its last row behind, and that one goes stale on its own. What
+a listing structurally cannot show is an object that was never written, or one
+somebody removed: neither can announce itself, so a table built from a listing
+is complete by construction and complete-looking tables are the failure mode of
+every fleet view ever built.
 
 One file answers both, because they are one fact: *these installations, signing
 with these keys, are the fleet*.

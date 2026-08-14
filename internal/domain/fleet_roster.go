@@ -10,11 +10,13 @@ import (
 // It answers two questions the target itself structurally cannot, and they turn
 // out to be the same question asked twice.
 //
-// **Which installations are absent.** Listing a prefix shows what is there,
-// which is precisely the population that is fine. An object that was never
-// written cannot announce itself, so the only way to notice a machine that
-// stopped publishing three weeks ago is to hold a list of the machines that
-// should have.
+// **Which installations are absent**, which is a different question from which
+// are stale and the roster is needed only for this one. A machine that stops
+// publishing leaves its last row behind, and the reader calls that row stale
+// without any help. What a listing structurally cannot show is an object that
+// is *not there*: one that was never written, or one somebody removed. Neither
+// can announce itself, so the only way to notice either is to hold a list of
+// the installations that should have published at all.
 //
 // **Which key may speak for an installation.** A row carries the public half of
 // the key that signed it, and checking the signature against that key
