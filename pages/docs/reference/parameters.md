@@ -185,6 +185,12 @@ until it was a setting it could not be changed afterwards at all. Changing it
 rewrites the timer unit; unsetting it returns the default rather than turning
 backups off, because an empty `OnCalendar` is a unit systemd refuses to load.
 
+**There is deliberately no way to say "no scheduled backups".** `systemctl
+disable` on the timer is undone by the next setting change or backup-target
+change, and `systemctl mask` is refused, because the generated unit already
+occupies the path a mask needs. If you back up by some other means, expect the
+timer to run and `morzer doctor` to keep an eye on how old the last backup is.
+
 Settings and parameters are set in separate commands. They run on different
 machinery — one converges a deployment, the other writes a flag — so a mixed
 command is refused rather than half-applied.
