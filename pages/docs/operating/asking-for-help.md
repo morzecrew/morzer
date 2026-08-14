@@ -125,6 +125,13 @@ The manager never transmits the archive. There is no upload, no endpoint, and
 no retry queue — it writes a file, and what happens to that file is yours to
 decide.
 
-Encrypting the archive to a vendor's keys, so that it is unreadable by the
-ticket system it passes through, is designed and not yet built (RFC 0024 P4).
-Until then the archive is plaintext, and the command says so on every run.
+The archive above is plaintext because the release that produced it declares
+nobody to encrypt it to, and the command says so on every run. A release that
+does declare recipients gets an archive readable by them alone —
+[encrypting it to your vendor](../reference/support-bundle.md#encrypting-it-to-your-vendor)
+is that half. It is not something you turn on: whether it happens is your
+vendor's declaration, not a flag of yours.
+
+The manager cannot yet read one back. Opening an encrypted archive takes any
+age implementation and a recipient's key, which is what a vendor holds; a
+`support inspect` that verifies as well as lists is RFC 0024 P4b.

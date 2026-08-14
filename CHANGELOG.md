@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A support bundle can be encrypted to your vendor, and to nobody else.** A release declares who its bundles are for; the archive is then encrypted to those keys alone, gets an `.age` suffix, and is unreadable by the machine that produced it — so an archive sitting in a ticket system, a mail thread or a bucket is not readable by the ticket system, the mail provider, or whoever later takes the host. A declaration the manager cannot use is a refusal before anything is collected, never a quiet fall back to plaintext, and `--preview` prints the recipients in full so the target can be checked against what the vendor published while the archive still does not exist. Declaring nobody still produces a plaintext archive on purpose: posting to a forum is the case the whole feature was built around.
+
 ### Security
 
 - **A backup schedule can no longer add a directive to a systemd unit.** The guard trimmed the value and then inspected the trimmed copy, so a schedule whose *first* character was a newline passed validation and was stored and rendered unchanged — producing `OnCalendar=` followed by a second line of the operator's choosing in a root-owned unit file. `Unit=` in a `[Timer]` section names what the timer starts, so that is a way to have root run something else on a schedule, reachable from an `init` flag or from the manager's own state file. The value is now inspected as given, trimmed before it is stored so what was validated is what is written, and refused a third time by the renderer itself — the guard nearest the file holds for a caller that does not exist yet. Never released: `policy.backup_schedule` is new in this version.

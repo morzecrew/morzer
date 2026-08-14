@@ -16,6 +16,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -97,15 +98,24 @@ type SupportReport struct {
 	// (RFC 0024 §3.3 asks for one; §12 A2 records why this is it).
 	ManagerVersion string `json:"manager_version"`
 
-	// Encrypted is false in every archive this phase produces, and is
-	// reported anyway.
+	// Encrypted says whether the archive at Path can be read by whoever
+	// receives it.
 	//
-	// P4 adds `support.recipients`. Until then an operator has to be able
-	// to tell a plaintext archive from an encrypted one by looking at the
-	// archive rather than by knowing which version of the manager wrote it
-	// -- and a field that appears the day encryption ships is a field every
-	// existing reader treats as absent-means-encrypted.
+	// Reported since P2, when it was always false, so that a reader could
+	// tell the two apart by looking at the archive rather than by knowing
+	// which manager wrote it -- a field appearing on the day encryption
+	// ships is a field every existing reader treats as
+	// absent-means-encrypted.
 	Encrypted bool `json:"encrypted"`
+
+	// Recipients are the age keys the archive is encrypted to, in full.
+	//
+	// Present on a preview too, which is the point of it: decision 3a's
+	// refusal protects against a recipient that cannot be parsed, and
+	// nothing can protect against one that parses and belongs to the wrong
+	// party. Printing them before the archive exists is what lets an
+	// operator check the target against what their vendor published.
+	Recipients []string `json:"recipients,omitempty"`
 
 	Entries    []SupportEntry    `json:"entries"`
 	Omitted    []SupportOmission `json:"omitted,omitempty"`
@@ -388,11 +398,34 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		src.ReleaseProblem = domain.AsError(relErr).Message
 	}
 
+	// Before a single component is collected, and that ordering is the
+	// point rather than an optimisation.
+	//
+	// A malformed declaration is a refusal (decision 3a). Discovering it
+	// after the archive is assembled would mean either throwing away the
+	// work or -- the failure this guards -- writing the plaintext archive
+	// anyway because the encryption step was the only thing that failed.
+	// Doing it here also means `--preview` refuses on the same manifest the
+	// real run would, which is what makes a preview worth running.
+	recipients, recipientNote, err := supportRecipients(src)
+	if err != nil {
+		return SupportReport{}, err
+	}
+
 	report := SupportReport{
 		Preview:        opts.Preview,
 		Product:        inst.Product,
 		InstallationID: inst.ID,
 		ManagerVersion: d.ManagerVersion.String(),
+		Encrypted:      len(recipients) > 0,
+		// In the order the vendor declared them, which is the order an
+		// operator diffing this against the manifest expects. Sorting
+		// them would reorder somebody else's list to no end: it arrives
+		// as a YAML sequence, so it is already stable across runs.
+		Recipients: recipients,
+	}
+	if recipientNote != nil {
+		report.Omitted = append(report.Omitted, *recipientNote)
 	}
 	if !armed {
 		// Precisely what happened, because this line is the reader's
@@ -460,12 +493,74 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		return report, nil
 	}
 
-	path, err := writeSupportArchive(d, inst, files, opts.Dir)
+	path, err := writeSupportArchive(d, inst, files, opts.Dir, recipients)
 	if err != nil {
 		return SupportReport{}, err
 	}
 	report.Path = path
 	return report, nil
+}
+
+// supportRecipients resolves who this archive is encrypted to.
+//
+// Three outcomes, and each one is a different sentence to an operator. A
+// manifest that declares nobody produces a plaintext archive and no note --
+// decision 3 keeps that available and the view says so on every run. A manifest
+// that declares recipients unusably is a refusal, before any work.
+//
+// The third is the one the design did not have a row for: there is no manifest
+// to ask, so a vendor's declaration -- if there is one -- silently does not
+// apply. That happens on exactly the machine this command exists for, and it
+// must not be the case that reads as "your vendor asked for nothing". It
+// produces plaintext, because refusing would take the tool away at the moment
+// it is needed, and an omission naming the reason, because an unstated gap here
+// is the lie meta.json exists to prevent.
+//
+// Two machines reach that third outcome and they are not in the same trouble:
+// one has a release it cannot resolve, the other has never had a release at
+// all. Both get the omission -- a failed first `apply` is exactly a machine
+// whose vendor may have asked for encryption this archive did not get -- but
+// not the same sentence. Telling an operator with no release that resolution
+// failed sends them, and whoever receives the bundle, hunting a broken release
+// directory that was never there.
+func supportRecipients(src *supportSource) ([]string, *SupportOmission, error) {
+	if !src.HasRelease {
+		// `ReleaseProblem` is the resolver's own message and is empty when
+		// there simply is not a release, which is the distinction the two
+		// sentences below are made of.
+		cause := "there is no release installed"
+		if src.ReleaseProblem != "" {
+			cause = "the release could not be resolved"
+		}
+		note := &SupportOmission{
+			Name: "encryption",
+			Reason: cause + ", so any support recipients a manifest declares " +
+				"were not applied and this archive is plaintext",
+		}
+		return nil, note, nil
+	}
+
+	declared, err := src.Release.Manifest.SupportRecipients()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(declared) == 0 {
+		return nil, nil, nil
+	}
+
+	// Each one checked by the parser that will encrypt with it, so a typo
+	// is named here rather than surfacing as a failure after the archive is
+	// built -- or, if this check did not exist, as an encryption step that
+	// fails and leaves the caller deciding what to do with the plaintext.
+	for _, key := range declared {
+		if err := agecrypt.ValidateRecipient(key); err != nil {
+			return nil, nil, domain.ValidationError(err,
+				"`extensions.%q.recipients` names something that is not an age recipient: %s",
+				domain.SupportExtension, domain.AsError(err).Message).
+				WithHintFrom(err)
+		}
+	}
+	return declared, nil, nil
 }
 
 // supportRelease reads the current release, tolerating its absence.
@@ -849,6 +944,7 @@ func supportMeta(report *SupportReport, files []supportFile) supportFile {
 		Product:        report.Product,
 		InstallationID: report.InstallationID,
 		ManagerVersion: report.ManagerVersion,
+		Encrypted:      report.Encrypted,
 		Entries:        entries,
 		Omitted:        report.Omitted,
 	}
@@ -929,7 +1025,13 @@ func jsonFile(name string, v any) ([]supportFile, error) {
 // written for release bundles and are worth as much here: an archive that
 // carries the operator's account name in its headers is an archive that says
 // something about the operator nobody asked it to say.
-func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile, dir string) (string, error) {
+func writeSupportArchive(
+	d *Deps,
+	inst domain.Installation,
+	files []supportFile,
+	dir string,
+	recipients []string,
+) (string, error) {
 	staging, err := os.MkdirTemp("", "morzer-support-")
 	if err != nil {
 		return "", domain.Internal(err, "cannot stage the support bundle")
@@ -937,7 +1039,38 @@ func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile,
 	// Ours, made a line ago, and it holds a copy of everything the archive
 	// holds. Leaving it behind would put a second, unencrypted, unnoticed
 	// copy in the system temporary directory.
-	defer func() { _ = os.RemoveAll(staging) }()
+	//
+	// When the archive is encrypted, the tree is overwritten before it is
+	// removed, and this is the only place that happens.
+	//
+	// It holds the plaintext of an archive somebody deliberately asked to be
+	// unreadable, and unlinking a file does not disturb its bytes. The scrub
+	// stood on the success path and only there, which had it protecting the
+	// run that went well and skipping the run that failed -- and a failed run
+	// is the one where the operator gets no archive, thinks no more about it,
+	// and never learns a readable copy of everything was left recoverable
+	// under the system temporary directory. One cleanup path, taken on every
+	// return, is the only shape in which that cannot drift apart again.
+	//
+	// The plaintext branch is deliberately excluded: what it leaves in the
+	// operator's own directory is plaintext by their choice, so scrubbing a
+	// second copy of it protects nothing.
+	//
+	// Best-effort, and that is the important word. On the success path the
+	// archive is finished and correct by the time this runs; failing the
+	// command over a cleanup write would report a bundle that does not exist
+	// while the bundle sits on disk, and a retry would then collide with it.
+	// An advisory write must not outrank the outcome it trails.
+	//
+	// A process killed outright still bypasses this, as it bypasses every
+	// defer. Nothing short of never writing the plaintext down would close
+	// that, and the tar has to exist before it can be encrypted.
+	defer func() {
+		if len(recipients) > 0 {
+			overwriteStagedPlaintext(staging)
+		}
+		_ = os.RemoveAll(staging)
+	}()
 
 	names := make([]string, 0, len(files))
 	for _, f := range files {
@@ -963,11 +1096,105 @@ func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile,
 		return "", err
 	}
 
-	path := filepath.Join(dir, supportArchiveName(d, inst))
-	if err := atomicfs.WriteTarZst(path, staging, names, d.now()); err != nil {
+	path := filepath.Join(dir, supportArchiveName(d, inst, recipients))
+	if len(recipients) == 0 {
+		if err := atomicfs.WriteTarZst(path, staging, names, d.now()); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+
+	// The plaintext archive is built inside the staging directory, never in
+	// the directory the operator asked for.
+	//
+	// Writing it to `path` and encrypting in place afterwards would put a
+	// readable copy of everything, under the name an operator is watching
+	// for, in a directory they are about to attach a file from -- for
+	// however long the encryption takes, and permanently if the process
+	// dies in between. The archive that appears at `path` has never been
+	// anything but ciphertext.
+	plain := filepath.Join(staging, ".archive.tar.zst")
+	if err := atomicfs.WriteTarZst(plain, staging, names, d.now()); err != nil {
 		return "", err
 	}
+	if err := encryptSupportArchive(plain, path, recipients); err != nil {
+		return "", err
+	}
+	// The staged plaintext is scrubbed by the deferred cleanup above, which
+	// runs on this return and on every failing one.
 	return path, nil
+}
+
+// encryptSupportArchive writes the encrypted archive at path.
+//
+// Written beside the destination and renamed, which is the discipline
+// `WriteTarZst` follows for the plaintext archive and is worth more here: an
+// interrupted encryption that left a truncated file would leave one carrying
+// the name of an encrypted archive and decrypting to nothing, so whoever
+// received it would learn that the operator sent something rather than that
+// they sent nothing. A rename is atomic, so the file is either absent or whole.
+func encryptSupportArchive(plain, path string, recipients []string) error {
+	in, err := os.Open(plain) //nolint:gosec // this function's own staging file
+	if err != nil {
+		return domain.Internal(err, "cannot read the staged support bundle")
+	}
+	defer func() { _ = in.Close() }()
+
+	// 0600 from creation, so the archive is never briefly world-readable --
+	// not even under its temporary name, which lives in the directory the
+	// operator asked for.
+	tmp := path + ".partial"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return domain.Internal(err, "cannot create %s", path)
+	}
+	defer func() {
+		_ = out.Close()
+		_ = os.Remove(tmp)
+	}()
+
+	if err := agecrypt.Encrypt(out, in, recipients); err != nil {
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		return domain.Internal(err, "cannot flush %s to disk", path)
+	}
+	if err := out.Close(); err != nil {
+		return domain.Internal(err, "cannot finish writing %s", path)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return domain.Internal(err, "cannot move the archive into place at %s", path)
+	}
+
+	// The rename is what makes the archive exist, and a rename is only
+	// durable once the directory holding it is. `out.Sync` made the
+	// ciphertext durable and stopped there, which is half of what
+	// `WriteTarZst` does for the plaintext archive -- so a doc comment
+	// claiming to follow that discipline was following it partway. A crash
+	// after this call could otherwise leave the operator a directory entry
+	// that does not resolve, for an archive the command reported writing.
+	//
+	// `SyncDir` reports nothing and cannot fail the command by contract,
+	// which is right here: the bytes are already on disk, and a completed
+	// archive must not become a failed command over its own bookkeeping.
+	atomicfs.SyncDir(filepath.Dir(path))
+	return nil
+}
+
+// overwriteStagedPlaintext writes over every staged file before the directory
+// is removed. Failures are ignored by design -- see the call site.
+func overwriteStagedPlaintext(staging string) {
+	_ = filepath.WalkDir(staging, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			// Walk errors are swallowed rather than propagated: this
+			// is a best-effort scrub of a directory that is about to
+			// be removed either way, and the one thing it must not do
+			// is turn a finished archive into a failed command.
+			return nil //nolint:nilerr // deliberate: see the doc comment
+		}
+		_ = atomicfs.RemoveWithOverwrite(path)
+		return nil
+	})
 }
 
 // archiveDir resolves where the archive goes.
@@ -995,9 +1222,16 @@ func archiveDir(dir string) (string, error) {
 // makes `scp` read everything before the first colon as a hostname. A filename
 // that breaks the tool an operator uses to send it is a bad filename for a file
 // whose purpose is to be sent.
-func supportArchiveName(d *Deps, inst domain.Installation) string {
-	return fmt.Sprintf("support-%s-%s-%s.tar.zst",
+// An encrypted archive gains `.age`, which is what every other encrypted
+// artifact this manager writes is called and what tells the operator, their
+// vendor and `file(1)` what they are holding before anyone tries to open it.
+func supportArchiveName(d *Deps, inst domain.Installation, recipients []string) string {
+	name := fmt.Sprintf("support-%s-%s-%s.tar.zst",
 		inst.Product, inst.ID, d.now().UTC().Format("20060102T150405Z"))
+	if len(recipients) > 0 {
+		name += agecrypt.Extension
+	}
+	return name
 }
 
 // ----------------------------------------------------------------------------
