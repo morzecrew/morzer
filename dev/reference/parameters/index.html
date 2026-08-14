@@ -2420,8 +2420,25 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td><code>update.channel</code></td>
 <td>A mutable reference to follow. See <a href="../../operating/updating/#following-a-channel">following a channel</a>.</td>
 </tr>
+<tr>
+<td><code>update.auto_apply</code></td>
+<td>Install what the channel offers, when the release declares a failure cannot end needing a database restore.</td>
+</tr>
+<tr>
+<td><code>backup.schedule</code></td>
+<td>When scheduled backups run, as a systemd <code>OnCalendar</code> expression. Absent takes the nightly default.</td>
+</tr>
 </tbody>
 </table>
+<p><code>backup.schedule</code> is the same value <code>morzer init --backup-schedule</code> takes, and
+until it was a setting it could not be changed afterwards at all. Changing it
+rewrites the timer unit; unsetting it returns the default rather than turning
+backups off, because an empty <code>OnCalendar</code> is a unit systemd refuses to load.</p>
+<p><strong>There is deliberately no way to say "no scheduled backups".</strong> <code>systemctl
+disable</code> on the timer is undone by the next setting change or backup-target
+change, and <code>systemctl mask</code> is refused, because the generated unit already
+occupies the path a mask needs. If you back up by some other means, expect the
+timer to run and <code>morzer doctor</code> to keep an eye on how old the last backup is.</p>
 <p>Settings and parameters are set in separate commands. They run on different
 machinery — one converges a deployment, the other writes a flag — so a mixed
 command is refused rather than half-applied.</p>
