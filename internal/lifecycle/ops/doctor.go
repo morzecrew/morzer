@@ -1201,11 +1201,11 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 
 			// The unit, not a boolean. Whether a unit should be enabled
 			// is the supervisor's decision and it varies within one
-			// machine: a timer is enabled and the oneshot service beside
-			// it deliberately is not, because enabling a oneshot runs it
-			// at every boot. Reducing this to "expected" would either
-			// miss a switched-off timer or demand enablement of the two
-			// services that must never have it.
+			// machine: each timer is enabled and the oneshot service
+			// beside it deliberately is not, because enabling a oneshot
+			// runs it at every boot. Reducing this to "expected" would
+			// either miss a switched-off timer or demand enablement of
+			// the oneshots that must never have it.
 			expected := make(map[string]ports.Unit)
 			units, unitsErr := d.Supervisor.Units(d.unitParams(inst))
 			if unitsErr != nil {

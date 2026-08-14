@@ -682,8 +682,8 @@ changes a contract shared with the backup readers and is a separate RFC.
 Two things make the current arrangement tolerable in the meantime. A target
 prefix is one the operator chose and, on the arrangements this documents, is
 writable only by the fleet itself — a flood needs the credential the fleet
-already trusts. And ordering the roster's own keys first (A-numbered nowhere;
-it is §3.4's `expectedFirst`) means a flood can only ever truncate objects
-nobody asked about, so the failure mode is a slow read rather than twelve
-machines reported absent. The second of those was the actual bug; the first is
-why the remaining cost is a performance question and not a correctness one.
+already trusts. And ordering the roster's own keys first — `expectedFirst`,
+added in P3 — means a flood can only ever truncate objects nobody asked about,
+so the failure mode is a slow read rather than twelve machines reported absent.
+That second one was the actual bug; the first is why what remains is a
+performance question and not a correctness one.

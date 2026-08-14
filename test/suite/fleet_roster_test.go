@@ -570,6 +570,39 @@ func TestDoctorReportsARequiredTimerThatIsSwitchedOff(t *testing.T) {
 		got.Message)
 }
 
+// A unit check that could not run must not read like one that found nothing.
+//
+// The expectation is built from what the supervisor renders. If that fails the
+// map is empty, every "not installed" below it becomes unreachable, and the
+// check returns ok -- a machine with no units at all reported healthy by the
+// check whose entire job is to notice. Silence and health are the same
+// characters on the screen, which is why this branch says so out loud.
+func TestDoctorSaysSoWhenItCannotWorkOutWhichUnitsAreWanted(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+	h.Supervisor.Fail["Units"] = errors.New("the unit template does not render")
+	ctx := context.Background()
+
+	report, err := ops.Doctor(ctx, h.Deps)
+	require.NoError(t, err)
+
+	var got events.CheckResult
+	for _, c := range report.Results {
+		if c.ID == "system.units" {
+			got = c
+		}
+	}
+	require.NotEmpty(t, got.ID, "doctor ran no unit check")
+
+	assert.Equal(t, events.CheckWarn, got.Status,
+		"a check that could not work reported that nothing is wrong")
+	assert.Contains(t, got.Message, "cannot work out which units")
+	assert.Contains(t, got.Message, "the unit template does not render",
+		"the reason the check could not run was swallowed")
+}
+
 // Doctor asks about the units this installation should have, not every unit
 // this supervisor could ever own.
 //
