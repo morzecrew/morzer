@@ -1,4 +1,4 @@
-4 row(s) on s3://fleet.example/rows
+3 row(s) on s3://fleet.example/rows
   PRODUCT        VERSION  HEALTH  PUBLISHED  DRIFT
   acme           1.4.0    2/2 up  12m0s ago  none
   beta/inst_01   —        —       —          —

@@ -70,7 +70,14 @@ func init() {
 }
 
 func fleetDoc(d *ui.Doc, v Fleet) *ui.Doc {
-	d.Title(fmt.Sprintf("%d row(s) on %s", len(v.Rows), strings.Join(v.Targets, ", ")))
+	// Rows that came off a target, which is what the sentence claims. An
+	// absent row is synthesised from the roster precisely because no target
+	// holds it, so counting it here would make the first line an operator
+	// reads say the bucket holds a row that is missing from it. How much of
+	// the expected fleet reported is the footer's sentence, and it can say
+	// it in words rather than by inflating a total.
+	d.Title(fmt.Sprintf("%d row(s) on %s",
+		len(v.Rows)-fleetAbsent(v), strings.Join(v.Targets, ", ")))
 
 	// The target column earns its place only when there is more than one.
 	// On the ordinary single-target run it would repeat the same string on
