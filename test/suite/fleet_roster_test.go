@@ -3,6 +3,8 @@ package suite
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/target"
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -482,4 +485,146 @@ func TestADryRunPrintsWhatARosterEntryNeeds(t *testing.T) {
 	require.NoError(t, roster.Validate(),
 		"the entry the documented recipe produces is not a valid roster entry")
 	assert.Empty(t, roster.Unkeyed())
+}
+
+// Doctor asks about the units this installation should have, not every unit
+// this supervisor could ever own.
+//
+// ManagedUnitNames is deliberately the superset -- it is what *removal* walks,
+// so a machine that stopped following a channel still has its timer taken away.
+// Checking against it reported the conditional pairs as "not installed" on
+// every ordinary machine, on every run, with a remedy that could not clear
+// them: a warning that always fires and cannot be fixed is a warning nobody
+// reads on the run that meant something. Adding the fleet pair doubled it.
+func TestDoctorDoesNotDemandUnitsThisMachineShouldNotHave(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+	ctx := context.Background()
+
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+	for _, u := range units {
+		h.Supervisor.States[u.Name] = ports.UnitState{Name: u.Name, Loaded: true, Active: "active"}
+	}
+
+	unitsCheck := func(t *testing.T) events.CheckResult {
+		t.Helper()
+		report, err := ops.Doctor(ctx, h.Deps)
+		require.NoError(t, err)
+		for _, c := range report.Results {
+			if c.ID == "system.units" {
+				return c
+			}
+		}
+		t.Fatal("doctor ran no unit check")
+		return events.CheckResult{}
+	}
+
+	got := unitsCheck(t)
+	assert.Equal(t, events.CheckOK, got.Status,
+		"a machine with no channel and no target was told four units are missing: %s", got.Message)
+
+	// And a unit it *should* have and does not is still a finding, or the
+	// fix above would have turned the check off rather than narrowed it.
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	require.NoError(t, os.MkdirAll(offsite, 0o755))
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	got = unitsCheck(t)
+	assert.Equal(t, events.CheckWarn, got.Status,
+		"a target was configured and the missing fleet timer went unreported")
+	assert.Contains(t, got.Message, "demo-fleet.timer")
+}
+
+// A flood cannot hide the fleet.
+//
+// Two bounds written apart, and their interaction is the defect. MaxFleetRows
+// bounds what a writer with access to the prefix can make this reader do;
+// absence is computed from the rows that came back. Left in listing order, a
+// thousand junk keys push the real ones past the cap and the report says the
+// whole roster is absent — turning a nuisance into twelve machines somebody
+// gets out of bed for.
+func TestAFloodCannotMakeTheFleetLookAbsent(t *testing.T) {
+	h := fleetHarness(t)
+	inst, offsite := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	// Junk that sorts before the real row on every transport that answers a
+	// listing in lexical order, and enough of it to fill the cap twice.
+	for i := range ops.MaxFleetRows + 20 {
+		dir := filepath.Join(offsite, "fleet", "aaaa", fmt.Sprintf("inst_%05d", i))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "status.json"),
+			[]byte(`{"schema":1}`), 0o644))
+	}
+
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{Roster: rosterFor(inst)})
+	require.NoError(t, err)
+
+	row := rowAt(t, report, inst.ID)
+	assert.False(t, row.Absent,
+		"a flood of junk keys pushed the fleet past the cap and reported it missing")
+	assert.Equal(t, ops.FleetVerified, row.Signature,
+		"the expected row was found but not read")
+	assert.Zero(t, report.Absent())
+
+	// And the flood is still reported, so the listing does not look whole.
+	var truncated bool
+	for _, r := range report.Rows {
+		if strings.Contains(r.Problem, "listing is incomplete") {
+			truncated = true
+		}
+	}
+	assert.True(t, truncated, "the listing was cut short without saying so")
+}
+
+// A systemd that will not answer does not un-add the target.
+//
+// The reconciliation is derived state and the target is what was asked for, so
+// an error here would describe an outcome that did not happen — and the repair
+// it invites does not exist: re-running `backup target add` meets "already a
+// backup target" and refuses before reaching the reconciliation, so the machine
+// would be stuck exactly as it is with no command to type. `config set` fails
+// on the same error deliberately, because a setting can simply be set again.
+func TestATargetIsAddedEvenWhenTheTimerCannotBe(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	h.Deps.Objects = registry
+	ctx := context.Background()
+
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	require.NoError(t, os.MkdirAll(offsite, 0o755))
+	h.Supervisor.Fail = map[string]error{"InstallUnits": errors.New("systemd is busy")}
+
+	_, err = ops.TargetAdd(ctx, h.Deps, ops.TargetAddOptions{URL: "file://" + offsite})
+	require.NoError(t, err, "a busy systemd made `backup target add` report a failure it did not have")
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	require.Len(t, inst.Backup.Targets, 1, "the target the command reported adding is not there")
+
+	// And re-running is the trap this shape avoids: it refuses, so a
+	// command that had failed would have left nothing to type.
+	_, err = ops.TargetAdd(ctx, h.Deps, ops.TargetAddOptions{URL: "file://" + offsite})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "already a backup target")
 }

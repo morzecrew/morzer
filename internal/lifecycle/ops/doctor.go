@@ -1187,6 +1187,23 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				return preflight.OK("systemd is not in use on this host")
 			}
 
+			// What this installation *should* have, not the superset.
+			//
+			// ManagedUnitNames is what removal walks, so it names every
+			// unit this supervisor may ever own -- including the
+			// conditional pairs a machine with no channel and no target
+			// deliberately does not get. Checking against it reported
+			// four units as "not installed" on an ordinary machine, on
+			// every run, with a remedy that could not clear them. A
+			// warning that fires always and cannot be fixed is a warning
+			// nobody reads on the run that meant something.
+			expected := make(map[string]bool)
+			if units, err := d.Supervisor.Units(d.unitParams(inst)); err == nil {
+				for _, u := range units {
+					expected[u.Name] = true
+				}
+			}
+
 			var problems []string
 			for _, name := range d.Supervisor.ManagedUnitNames(inst.Product) {
 				state, err := d.Supervisor.Status(ctx, name)
@@ -1195,9 +1212,17 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 					continue
 				}
 				if !state.Loaded {
-					problems = append(problems, name+": not installed")
+					// Absent and not wanted is the ordinary state.
+					if expected[name] {
+						problems = append(problems, name+": not installed")
+					}
 					continue
 				}
+				// A unit that is *there* and failing is reported whether
+				// or not this installation wants it: an orphan left by a
+				// reconciliation that did not finish is exactly the thing
+				// somebody needs told about, and it is invisible to a
+				// check that only looks at what it expects.
 				if state.Failed() {
 					// Exit 12 through systemd is the
 					// requires-manual-intervention path, and

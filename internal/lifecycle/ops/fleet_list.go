@@ -476,6 +476,18 @@ func (d *Deps) fleetRowsOn(
 		present[key] = true
 	}
 
+	// The roster's own keys first, and the reason is the interaction
+	// between two bounds that were written apart.
+	//
+	// MaxFleetRows bounds what a writer with access to the prefix can make
+	// this reader do. Absence is computed from the rows that came back. Put
+	// together and left in listing order, a flood of a thousand junk keys
+	// pushes the twelve real ones past the cap and the report says the whole
+	// fleet is absent -- turning a nuisance into twelve machines somebody
+	// gets out of bed for. Ordering the expected keys first costs nothing
+	// and means a flood can only ever truncate objects nobody asked about.
+	keys = expectedFirst(keys, reading.roster)
+
 	var out []FleetRowStatus
 	var fetched int
 
@@ -521,6 +533,42 @@ func (d *Deps) fleetRowsOn(
 		fetched++
 
 		out = append(out, d.fleetRowAt(ctx, target, key, reading, present))
+	}
+	return out
+}
+
+// expectedFirst puts the keys the roster names at the front, keeping the
+// relative order of each group.
+//
+// Stable rather than sorted: the listing's own order is the transport's, the
+// report is sorted at the end anyway, and a second ordering here would be a
+// second thing to keep in step with that one.
+func expectedFirst(keys []string, roster domain.FleetRoster) []string {
+	if !roster.Given() {
+		return keys
+	}
+
+	// Row keys only. A signature is accounted for by the row beside it and
+	// costs no fetch of its own, so its position in the listing decides
+	// nothing.
+	wanted := make(map[string]bool, len(roster.Installations))
+	for _, e := range roster.Installations {
+		// Validate has already refused an entry FleetKey would reject.
+		if key, err := domain.FleetKey(e.Product, e.ID); err == nil {
+			wanted[key] = true
+		}
+	}
+
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if wanted[key] {
+			out = append(out, key)
+		}
+	}
+	for _, key := range keys {
+		if !wanted[key] {
+			out = append(out, key)
+		}
 	}
 	return out
 }

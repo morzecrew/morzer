@@ -132,28 +132,6 @@ func TestAnAbsentRosterIsDistinguishableFromAnEmptyOne(t *testing.T) {
 		"an empty roster parsed as a fleet of nobody, which reads as no roster at all")
 }
 
-// The roster and the publisher cannot disagree about where a row lives.
-func TestARosterExpectsRowsAtTheKeysThePublisherWrites(t *testing.T) {
-	roster := domain.FleetRoster{
-		Schema: domain.FleetRosterSchemaVersion,
-		Installations: []domain.FleetRosterEntry{
-			{Product: "web", ID: "inst_01C"},
-			{Product: "demo", ID: "inst_01A"},
-		},
-	}
-
-	published, err := domain.FleetKey("demo", "inst_01A")
-	require.NoError(t, err)
-	assert.Contains(t, roster.Keys(), published)
-
-	// Sorted, so a roster read twice expects the same list in the same
-	// order -- the property a diff of two runs depends on.
-	assert.Equal(t, []string{
-		"fleet/demo/inst_01A/status.json",
-		"fleet/web/inst_01C/status.json",
-	}, roster.Keys())
-}
-
 func TestARosterAnswersForOneInstallation(t *testing.T) {
 	roster := validRoster()
 

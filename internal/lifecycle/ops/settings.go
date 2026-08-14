@@ -333,6 +333,39 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 	return Result{Summary: "set " + strings.Join(changed, ", ")}, nil
 }
 
+// unitParams is which units this installation should have.
+//
+// One computation, two callers, and the second is why it is a function.
+// `refreshUnits` writes the set and `doctor` checks it; two spellings of "does
+// this machine want a timer" would agree the day they were written and
+// disagree on the day an operator ran `doctor` to find out why the timer they
+// configured is missing. Worse, they disagreed in the direction that trains
+// somebody to ignore the check: doctor walked the *removal* superset and
+// reported the conditional pairs as "not installed" on every ordinary machine.
+func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
+	return ports.UnitParams{
+		Product:     inst.Product,
+		ManagerPath: d.ManagerPath,
+		ConfigPath:  d.Paths.InstallationFile(),
+
+		// Both, not either. A timer exists to poll, and polling is
+		// gated by `update.check` (RFC 0016 §5.6) -- so a machine with a
+		// channel and checking off would install a unit that fails every
+		// night on a refusal, which is how an operator learns to ignore
+		// the unit.
+		UpdateTimer: inst.Update.FollowsChannel() && inst.Update.Check,
+
+		// A target to publish to is the whole precondition (RFC 0026
+		// P4). There is no second flag gating this the way `update.check`
+		// gates the poll: a fleet row is derived entirely from what this
+		// machine already computes, goes to a target the operator chose,
+		// and reveals nothing to anybody who could not already read that
+		// target. The phone-home question that made update checking
+		// opt-in does not arise.
+		FleetTimer: inst.Backup.HasTargets(),
+	}
+}
+
 // refreshUnits makes the installed unit set match what the installation
 // declares.
 //
@@ -364,26 +397,7 @@ func (d *Deps) refreshUnits(ctx context.Context, inst domain.Installation) error
 		return err
 	}
 
-	units, err := d.Supervisor.Units(ports.UnitParams{
-		Product:     inst.Product,
-		ManagerPath: d.ManagerPath,
-		ConfigPath:  d.Paths.InstallationFile(),
-		// Both, not either. A timer exists to poll, and polling is
-		// gated by `update.check` (RFC 0016 §5.6) -- so a machine with a
-		// channel and checking off would install a unit that fails every
-		// night on a refusal, which is how an operator learns to ignore
-		// the unit.
-		UpdateTimer: inst.Update.FollowsChannel() && inst.Update.Check,
-
-		// A target to publish to is the whole precondition (RFC 0026
-		// P4). There is no second flag gating this the way `update.check`
-		// gates the poll: a fleet row is derived entirely from what this
-		// machine already computes, goes to a target the operator chose,
-		// and reveals nothing to anybody who could not already read that
-		// target. The phone-home question that made update checking
-		// opt-in does not arise.
-		FleetTimer: inst.Backup.HasTargets(),
-	})
+	units, err := d.Supervisor.Units(d.unitParams(inst))
 	if err != nil {
 		return err
 	}

@@ -89,25 +89,6 @@ func (r FleetRoster) Entry(product, installationID string) (FleetRosterEntry, bo
 	return FleetRosterEntry{}, false
 }
 
-// Keys lists the object keys this roster expects a row at, sorted.
-//
-// Built through FleetKey rather than formatted here, so the roster and the
-// publisher cannot disagree about where a row lives -- and so a roster entry
-// that could never match any key is impossible by the time this is called,
-// because Validate refuses it.
-func (r FleetRoster) Keys() []string {
-	out := make([]string, 0, len(r.Installations))
-	for _, e := range r.Installations {
-		key, err := FleetKey(e.Product, e.ID)
-		if err != nil {
-			continue
-		}
-		out = append(out, key)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // Unkeyed lists the entries that bind no public key, sorted.
 //
 // The reader turns this into a statement it prints: an operator whose roster is

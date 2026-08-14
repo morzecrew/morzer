@@ -331,7 +331,24 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 			// between the two leaves a timer the next change
 			// reconciles rather than a schedule with nowhere to
 			// publish.
-			return d.refreshUnits(ctx, current)
+			//
+			// **A reconciliation that fails does not fail the add**,
+			// which is the opposite of what `config set` does and for
+			// a reason that only applies here. The target is on disk
+			// and every later command will see it, so an error would
+			// describe an outcome that did not happen -- and the
+			// repair it invites does not exist: re-running `target
+			// add` meets "already a backup target" and refuses before
+			// reaching this line, so the machine would be stuck
+			// exactly as it is with no command to type. `config set`
+			// has no such trap, because a setting can be set again.
+			if err := d.refreshUnits(ctx, current); err != nil {
+				d.warnf("the target was added and its publish timer was not "+
+					"installed: %s; `morzer doctor` reports it until "+
+					"something reconciles the units",
+					domain.AsError(err).Message)
+			}
+			return nil
 		}); err != nil {
 		return Result{}, err
 	}
@@ -422,7 +439,17 @@ func TargetRemove(ctx context.Context, d *Deps, opts Options, url string) (Resul
 			// machine still publishing on a schedule to a target
 			// its operator removed would fail every hour on a
 			// refusal they already made.
-			return d.refreshUnits(ctx, current)
+			//
+			// A warning for the same reason as the add: the target is
+			// gone from the configuration whatever systemd said, and
+			// re-running meets "is not a backup target".
+			if err := d.refreshUnits(ctx, current); err != nil {
+				d.warnf("the target was removed and its publish timer was not "+
+					"taken away: %s; `morzer doctor` reports it until "+
+					"something reconciles the units",
+					domain.AsError(err).Message)
+			}
+			return nil
 		}); err != nil {
 		return Result{}, err
 	}
