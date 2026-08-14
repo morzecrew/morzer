@@ -407,6 +407,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	}
 	inst.Policy.RequireSignature = opts.RequireSignature
 	inst.Policy.SigningKeys = opts.SigningKeys
+	inst.Policy.BackupSchedule = opts.BackupSchedule
 
 	// The key the minting step just produced, so state records what is
 	// actually on disk rather than what a second call to the port would
@@ -450,6 +451,28 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 			inst.Domains = existing.Domains
 		}
 		inst.Policy = existing.Policy
+		if opts.BackupSchedule != "" {
+			// The one field of Policy this command can set, so it
+			// outranks the carried block when it was given -- the
+			// same rule as Profile and Domains above.
+			inst.Policy.BackupSchedule = opts.BackupSchedule
+		}
+
+		// Everything an operator arranged *after* `init`, carried
+		// because this command did not create it and has no business
+		// removing it.
+		//
+		// It used to rebuild all three from a fresh struct, so a repair
+		// -- run precisely because something was already wrong --
+		// silently dropped the backup targets, the notification targets
+		// and the update channel. An operator found out at the next
+		// backup, during a recovery, or never. `--repair` re-creates a
+		// layout; it is not a second `init`, and the fields below are the
+		// difference.
+		inst.Update = existing.Update
+		inst.Notify = existing.Notify
+		inst.Backup = existing.Backup
+
 		// A repair inherits the mode rather than resetting it. `init
 		// --repair` on a sandbox is re-creating directories, not
 		// deciding what the machine is for -- and the state store
@@ -715,12 +738,15 @@ func stepInstallUnits(d *Deps, opts InitOptions) engine.Step {
 			return false, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			units, err := d.Supervisor.Units(ports.UnitParams{
-				Product:        opts.Product,
-				ManagerPath:    d.ManagerPath,
-				ConfigPath:     d.Paths.InstallationFile(),
-				BackupSchedule: opts.BackupSchedule,
-			})
+			// Through the same computation the reconciliation uses,
+			// on the installation this operation just wrote. Two
+			// spellings of "which units does this machine want" is
+			// how `init --repair` came to install a set that did not
+			// match what a later `config set` would install -- and
+			// how the remedy `doctor` prints came to be one that
+			// could not clear the warning it printed.
+			inst := engine.MustGet[domain.Installation](st, engine.KeyInstallation)
+			units, err := d.Supervisor.Units(d.unitParams(inst))
 			if err != nil {
 				return err
 			}

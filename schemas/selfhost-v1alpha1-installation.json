@@ -88,6 +88,9 @@
     "policy": {
       "additionalProperties": false,
       "properties": {
+        "backup_schedule": {
+          "type": "string"
+        },
         "require_signature": {
           "type": "boolean"
         },

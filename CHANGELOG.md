@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`morzer init --repair` no longer drops the backup targets, the notification targets and the update channel.** It rebuilt the installation record from the flags on *that* command line, so everything an operator arranged after `init` was silently discarded — by the command they run precisely because something is already wrong. An operator found out at the next backup, during a recovery, or never. The repair now carries what it did not create, and every field of an installation is classified in a test as carried or rebuilt, so a field added later cannot be forgotten the way these three were.
+- **An unrelated `morzer config set` no longer rewrites the backup window.** The schedule was an `init` flag that nothing persisted, so every later reconciliation of the systemd units rendered the *default* instead: an operator's `Mon *-*-* 04:00:00` became nightly `02:30`, with exit zero and no warning. It is now `policy.backup_schedule` in the installation, which is also what makes it settable.
+- **`morzer doctor` no longer reports units this machine should not have.** It checked against the supervisor's *removal* superset, so the conditional update and fleet pairs read as `not installed` on every ordinary machine, on every run, with a remedy that could not clear them.
+
+### Added
+
+- **`morzer config set backup.schedule`**, which the schedule never was: it arrived as an `init` flag and could not be changed afterwards without re-running `init --repair`. Unsetting it returns the nightly default rather than turning backups off, because an empty `OnCalendar` is a unit systemd refuses to load.
+
+### Changed
+
+- **Installation schema 6 → 7** for `policy.backup_schedule`. Migration is automatic and there is nothing to convert; the bump is for the write path, so an older manager cannot rewrite the state and silently drop the field — which would reproduce the defect the field was added to fix.
+
 ## [0.1.1] - 2026-08-13
 
 Repairs the documented way to install this. 0.1.0 is unaffected as an artifact —

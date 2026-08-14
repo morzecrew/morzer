@@ -77,6 +77,8 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Policy.RetainBackups":          keep("local disk retention"),
 		"Policy.SkipBackupBeforeUpdate": keep("local behaviour"),
 		"Policy.StaleBackupAfter":       keep("when doctor warns; local"),
+		"Policy.BackupSchedule": keep("when scheduled backups run -- local behaviour, and a " +
+			"sandbox with no targets left backs up to its own disk"),
 
 		"Parameters": keep("the operator's choices; a sandbox renders nothing without them, " +
 			"and values reach templates rather than infrastructure"),

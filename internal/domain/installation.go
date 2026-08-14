@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // InstallationSchemaVersion is the second of the three versioned contracts:
@@ -44,7 +45,12 @@ import (
 // record. Losing `previous_keys` is the expensive half: it is the only thing
 // that lets a verifier say "signed by a predecessor of this installation"
 // rather than "unknown signer", and nothing regenerates it.
-const InstallationSchemaVersion = 6
+// Bumped to 7 when `policy.backup_schedule` arrived, and for the write path
+// again: an older manager's `config set` rewrites the whole state, drops the
+// field on the way through, and the next reconciliation renders the default --
+// which is the exact defect persisting the schedule was meant to fix, arriving
+// from the other direction.
+const InstallationSchemaVersion = 7
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -515,7 +521,66 @@ type Policy struct {
 	// StaleBackupAfter is when `doctor` starts warning that the last
 	// backup is too old.
 	StaleBackupAfter Duration `yaml:"stale_backup_after" json:"stale_backup_after,omitempty"`
+
+	// BackupSchedule is when scheduled backups run, as the supervisor's own
+	// expression -- a systemd `OnCalendar` line. Empty takes the
+	// supervisor's default.
+	//
+	// **Here rather than nowhere, which is where it used to live.** It
+	// arrived as an `init` flag and was written straight into a unit file,
+	// so nothing on the machine remembered it: every later reconciliation
+	// rendered the default, and an unrelated `config set` silently moved an
+	// operator's maintenance window. A value the manager re-renders has to
+	// be a value the manager stores.
+	//
+	// In Policy because that is what Policy is -- the operator's
+	// arrangement with the manager, as opposed to what the vendor
+	// declared -- and it puts the schedule beside StaleBackupAfter, which
+	// is the same kind of decision about the same subject. It also makes it
+	// settable, which it never was.
+	BackupSchedule string `yaml:"backup_schedule" json:"backup_schedule,omitempty"`
 }
+
+// ValidateBackupSchedule refuses a schedule that could not safely be rendered.
+//
+// **Not a calendar parser.** Whether `Mon *-*-* 04:00:00` is a valid expression
+// is the supervisor's question, and answering it here would mean this package
+// carrying systemd's grammar and disagreeing with it at the first version that
+// extends it. A wrong-but-well-formed expression is a unit systemd refuses to
+// load, which is visible and local.
+//
+// What this refuses is the shape that is not a schedule at all. The value is
+// rendered into `OnCalendar=` in a root-owned unit file, and it now arrives
+// from installation.yaml -- a file an operator hand-edits and a support bundle
+// carries -- rather than only from argv at `init`. A newline in it is a second
+// directive in that unit, which is a way to run a command as root from a
+// configuration field. Bounding it at the boundary is the same rule every other
+// value that leaves this manager follows.
+func ValidateBackupSchedule(raw string) error {
+	schedule := strings.TrimSpace(raw)
+	if schedule == "" {
+		return nil
+	}
+	for _, r := range schedule {
+		if r == '\n' || r == '\r' || unicode.IsControl(r) {
+			return ValidationError(nil, "a backup schedule is one line").
+				WithHint("it is rendered into a systemd unit, where a second " +
+					"line is a second directive; use an OnCalendar " +
+					"expression such as `Mon *-*-* 04:00:00`")
+		}
+	}
+	if len(schedule) > maxBackupScheduleLen {
+		return ValidationError(nil, "a backup schedule is at most %d characters",
+			maxBackupScheduleLen).
+			WithHint("OnCalendar expressions are short; " +
+				"`morzer doctor` reports a unit systemd will not load")
+	}
+	return nil
+}
+
+// maxBackupScheduleLen bounds what reaches the unit file. Generous against any
+// real expression and far short of a payload.
+const maxBackupScheduleLen = 200
 
 // DefaultPolicy is what `init` writes. Safe defaults, explicitly opted out of
 // rather than silently absent.

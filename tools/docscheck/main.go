@@ -62,6 +62,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/cli"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -396,7 +397,25 @@ func checkContracts(rep *report, root string, pages []page) {
 	checkHookEnv(rep, pages)
 	checkComposeVars(rep, pages)
 	checkTemplateFields(rep, pages)
+	checkSettings(rep, pages)
 	checkClaimedTests(rep, root, pages)
+}
+
+// checkSettings asserts every installation setting is documented.
+//
+// The same contract as a flag, and it was the one published surface with no
+// check: settings are what `morzer config set` accepts, an operator scripts
+// against them, and the list is `ops.SettingNames()` rather than something
+// somebody maintains by hand. `update.auto_apply` had shipped undocumented and
+// was found by eye while adding a fourth, which is the argument for this
+// existing rather than for reading the table more carefully next time.
+func checkSettings(rep *report, pages []page) {
+	rep.checks++
+	for _, name := range ops.SettingNames() {
+		if !mentioned(pages, name) {
+			rep.add("settings", "the `%s` setting is not named by any page", name)
+		}
+	}
 }
 
 // checkErrorCodes asserts every domain.Code value is documented. They are part

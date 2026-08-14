@@ -74,6 +74,22 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Update.AutoApply = false },
 	},
+	"backup.schedule": {
+		Description: "when scheduled backups run, as a systemd OnCalendar expression",
+		Read:        func(i domain.Installation) string { return i.Policy.BackupSchedule },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			schedule := strings.TrimSpace(raw)
+			if err := domain.ValidateBackupSchedule(schedule); err != nil {
+				return err
+			}
+			i.Policy.BackupSchedule = schedule
+			return nil
+		},
+		// Clearing returns the supervisor's default rather than an empty
+		// OnCalendar, which systemd refuses to load -- so unsetting this
+		// is "back to nightly", not "no backups".
+		Clear: func(i *domain.Installation) { i.Policy.BackupSchedule = "" },
+	},
 	"update.channel": {
 		Description: "a mutable reference to follow, e.g. oci://registry.example/demo/bundle:stable",
 		Read:        func(i domain.Installation) string { return i.Update.Channel },
@@ -347,6 +363,12 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		Product:     inst.Product,
 		ManagerPath: d.ManagerPath,
 		ConfigPath:  d.Paths.InstallationFile(),
+
+		// From the installation, which is the whole point of the field
+		// existing there. It used to come from an `init` flag and be
+		// stored nowhere, so every reconciliation after `init` rendered
+		// the default and moved an operator's maintenance window.
+		BackupSchedule: inst.Policy.BackupSchedule,
 
 		// Both, not either. A timer exists to poll, and polling is
 		// gated by `update.check` (RFC 0016 §5.6) -- so a machine with a

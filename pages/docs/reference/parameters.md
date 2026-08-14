@@ -177,6 +177,13 @@ morzer config unset update.channel           # back to absent, which is always t
 | --- | --- |
 | `update.check` | Contact the vendor's registry unprompted, for `doctor` and `status`. Absent means off. |
 | `update.channel` | A mutable reference to follow. See [following a channel](../operating/updating.md#following-a-channel). |
+| `update.auto_apply` | Install what the channel offers, when the release declares a failure cannot end needing a database restore. |
+| `backup.schedule` | When scheduled backups run, as a systemd `OnCalendar` expression. Absent takes the nightly default. |
+
+`backup.schedule` is the same value `morzer init --backup-schedule` takes, and
+until it was a setting it could not be changed afterwards at all. Changing it
+rewrites the timer unit; unsetting it returns the default rather than turning
+backups off, because an empty `OnCalendar` is a unit systemd refuses to load.
 
 Settings and parameters are set in separate commands. They run on different
 machinery — one converges a deployment, the other writes a flag — so a mixed
