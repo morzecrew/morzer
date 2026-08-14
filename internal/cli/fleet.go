@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -110,6 +111,7 @@ func newFleetPublishCommand(app *App) *cobra.Command {
 func newFleetListCommand(app *App) *cobra.Command {
 	var (
 		credentialsFile string
+		rosterFile      string
 		staleAfter      time.Duration
 	)
 
@@ -125,22 +127,30 @@ func newFleetListCommand(app *App) *cobra.Command {
 			"at a key naming a different installation is printed carrying that\n" +
 			"problem. A view that quietly dropped what it could not read would\n" +
 			"report health it never observed, which is worse than no view.\n\n" +
-			"**It cannot authenticate anything, and says so on every run.**\n" +
-			"The `signature` column says a signature is *there*, never\n" +
-			"that it checks out — and checking one against the key the row itself\n" +
-			"carries would establish nothing, because a machine overwriting its\n" +
-			"neighbour's row rewrites the payload, the key and the signature\n" +
-			"together. The anchor is a roster binding an installation id to a\n" +
-			"public key, which also makes absent installations visible. Both\n" +
-			"arrive together, because both have the same cause.\n\n" +
+			"**Without `--expect` it cannot authenticate anything, and says so\n" +
+			"on every run.** The `signature` column then says a signature is\n" +
+			"*there*, never that it checks out — and checking one against the key\n" +
+			"the row itself carries would establish nothing, because a machine\n" +
+			"overwriting its neighbour's row rewrites the payload, the key and\n" +
+			"the signature together.\n\n" +
+			"`--expect` takes a roster: which installations exist, and the public\n" +
+			"key each one signs with. It is the anchor, and it is also the only\n" +
+			"way an installation that stopped publishing can appear at all — an\n" +
+			"object that was never written cannot announce itself. Both answers\n" +
+			"arrive together because both have the same cause.\n\n" +
 			"With no target URL, the installation on this machine names them.",
 		Example: "  morzer fleet ls s3://bucket/prefix\n" +
+			"  morzer fleet ls s3://bucket/prefix --expect ./roster.yaml\n" +
 			"  morzer fleet ls s3://bucket/prefix --credentials-file ./read.yaml\n" +
 			"  morzer fleet ls --stale-after 2h\n" +
-			"  morzer fleet ls --json | jq -r '.data.rows[] | select(.stale) | .product'",
+			"  morzer fleet ls --json | jq -r '.data.rows[] | select(.absent) | .installation_id'",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			creds, err := readCredentialsFile(credentialsFile)
+			if err != nil {
+				return err
+			}
+			roster, err := readRosterFile(rosterFile)
 			if err != nil {
 				return err
 			}
@@ -156,6 +166,7 @@ func newFleetListCommand(app *App) *cobra.Command {
 					Credentials: creds,
 				},
 				StaleAfter: staleAfter,
+				Roster:     roster,
 			})
 			if err != nil {
 				return err
@@ -165,14 +176,15 @@ func newFleetListCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			// Non-zero for a row nobody can read, so this is usable in a
-			// cron job without parsing the output. Staleness is not a
-			// problem in this sense: it is a judgement against a
-			// threshold the reader chose, and a machine that is
-			// deliberately published weekly must not fail a check that
-			// defaults to a day.
+			// Non-zero for a row carrying a problem, so this is usable in
+			// a cron job without parsing the output: a row nobody can
+			// read, one the roster expects and nothing published, and one
+			// signed by a key the roster does not name all count.
+			// Staleness does not: it is a judgement against a threshold
+			// the reader chose, and a machine deliberately published
+			// weekly must not fail a check that defaults to a day.
 			if report.Problems() > 0 {
-				return domain.Preflight(nil, "%d row(s) could not be read", report.Problems())
+				return domain.Preflight(nil, "%d row(s) carry a problem", report.Problems())
 			}
 			return nil
 		},
@@ -181,9 +193,36 @@ func newFleetListCommand(app *App) *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&credentialsFile, "credentials-file", "",
 		"YAML file holding the target's credentials")
+	f.StringVar(&rosterFile, "expect", "",
+		"roster of the installations that should be there, and the key each signs with")
 	f.DurationVar(&staleAfter, "stale-after", 0,
 		"call a row stale once it is this old (default 24h; a negative value judges nothing)")
 	return cmd
+}
+
+// readRosterFile reads the roster `--expect` names.
+//
+// A file rather than repeated flags, and the shape is not a convenience: a
+// roster is the trust anchor for every verdict the reader prints, so it wants
+// to live in version control beside whatever else describes the fleet, be
+// reviewed when a machine joins, and be diffed when one leaves.
+func readRosterFile(path string) (domain.FleetRoster, error) {
+	if path == "" {
+		return domain.FleetRoster{}, nil
+	}
+
+	data, err := os.ReadFile(path) //nolint:gosec // a path the operator named
+	if err != nil {
+		return domain.FleetRoster{}, domain.Usage(
+			"cannot read the roster %s: %v", path, err)
+	}
+	roster, err := ops.ParseFleetRoster(string(data))
+	if err != nil {
+		return domain.FleetRoster{}, domain.Usage(
+			"%s is not a roster: %s", path, domain.AsError(err).Message).
+			WithHint("%s", domain.AsError(err).Hint)
+	}
+	return roster, nil
 }
 
 // fleetView maps the operation's report onto the view that draws it.
@@ -196,6 +235,7 @@ func newFleetListCommand(app *App) *cobra.Command {
 func fleetView(r ops.FleetReport) views.Fleet {
 	out := views.Fleet{
 		Targets:     r.Targets,
+		Expected:    r.Expected,
 		StaleAfter:  r.StaleAfter,
 		Limitations: r.Limitations,
 		Rows:        make([]views.FleetRow, 0, len(r.Rows)),
@@ -208,6 +248,8 @@ func fleetView(r ops.FleetReport) views.Fleet {
 			InstallationID: row.InstallationID,
 			Row:            row.Row,
 			Signature:      string(row.Signature),
+			Expected:       row.Expected,
+			Absent:         row.Absent,
 			Age:            row.Age,
 			Stale:          row.Stale,
 			Problem:        row.Problem,

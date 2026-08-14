@@ -22,10 +22,15 @@ import (
 
 // Fleet is what `fleet ls` prints, and the published `--json` shape.
 type Fleet struct {
-	Targets     []string   `json:"targets"`
-	Rows        []FleetRow `json:"rows"`
-	StaleAfter  string     `json:"stale_after,omitempty"`
-	Limitations []string   `json:"limitations"`
+	Targets []string   `json:"targets"`
+	Rows    []FleetRow `json:"rows"`
+
+	// Expected is how many installations the roster named, zero when none
+	// was given.
+	Expected int `json:"expected,omitempty"`
+
+	StaleAfter  string   `json:"stale_after,omitempty"`
+	Limitations []string `json:"limitations"`
 }
 
 // FleetRow is one installation's line.
@@ -35,11 +40,22 @@ type FleetRow struct {
 	Product        string `json:"product,omitempty"`
 	InstallationID string `json:"installation_id,omitempty"`
 
-	// Row is the payload as published, nil when it could not be read.
+	// Row is the payload as published, nil when it could not be read --
+	// and, once a roster names a key for this installation, nil when it
+	// could not be authenticated either. A payload here has been checked
+	// against the roster; that is what makes the field worth reading.
 	Row *domain.FleetRow `json:"row,omitempty"`
 
-	// Signature says a signature is *there*, never that it checks out.
+	// Signature is what the reader established. Without a roster it says
+	// only that a signature is *there*, never that it checks out.
 	Signature string `json:"signature"`
+
+	// Expected says the roster names this installation.
+	Expected bool `json:"expected,omitempty"`
+
+	// Absent says the roster expects it and no target holds a row. The
+	// line every other line exists to make legible.
+	Absent bool `json:"absent,omitempty"`
 
 	Age     string `json:"age,omitempty"`
 	Stale   bool   `json:"stale,omitempty"`
@@ -82,7 +98,7 @@ func fleetDoc(d *ui.Doc, v Fleet) *ui.Doc {
 			fleetHealth(r),
 			fleetPublished(r),
 			fleetDrift(r),
-			r.Signature,
+			fleetSignature(r),
 		}
 		if multi {
 			cells = append(cells, r.Target)
@@ -103,20 +119,25 @@ func fleetDoc(d *ui.Doc, v Fleet) *ui.Doc {
 	// Rendering only `not checked` in the cell and dropping the sentence
 	// left the operator knowing a measurement is missing and not why --
 	// which, on a fleet screen, means going to each machine to find out.
+	// Sequential rather than a switch, because a row can have more than one
+	// thing to say: a row that failed verification carries its problem, and
+	// a row that passed can still report that the runtime did not answer.
 	var problems [][]string
 	for _, r := range v.Rows {
-		switch {
-		case r.Problem != "":
+		if r.Problem != "" {
 			problems = append(problems, []string{fleetName(r), r.Problem})
-		case r.Row == nil:
-			// Unreachable from FleetList, which sets a problem on every
-			// path that leaves the row nil -- and kept because the
-			// alternative to an unreachable branch here is a nil
-			// dereference in the one command whose whole job is
-			// rendering a listing somebody else can write to. Mutating
-			// it away breaks no test, which is the point: this guards
-			// an invariant rather than a behaviour.
-		default:
+		}
+		// A note rather than a problem, and deliberately not counted as
+		// one: a roster covering three of twelve machines is a legitimate
+		// way to adopt this, and reporting the other nine as findings
+		// would make it unusable on the way in. It is still worth a line
+		// -- an unexpected row is a machine somebody forgot to add, or
+		// one somebody added to the bucket.
+		if v.Expected > 0 && !r.Expected {
+			problems = append(problems, []string{fleetName(r),
+				"the roster does not name this installation"})
+		}
+		if r.Row != nil {
 			if p := r.Row.Health.Problem; p != "" {
 				problems = append(problems, []string{fleetName(r), "health: " + p})
 			}
@@ -133,6 +154,15 @@ func fleetDoc(d *ui.Doc, v Fleet) *ui.Doc {
 			},
 			Rows: problems,
 		})
+	}
+
+	if v.Expected > 0 {
+		// The headline number a roster buys, said as a count rather than
+		// left for somebody to derive from the table. "3 rows" is a fleet
+		// or an incident depending on a denominator only the roster has.
+		d.Blank()
+		d.Text(2, "the roster expects %d installation(s); %d published a row and %d did not",
+			v.Expected, v.Expected-fleetAbsent(v), fleetAbsent(v))
 	}
 
 	if v.StaleAfter != "" {
@@ -215,6 +245,30 @@ func fleetPublished(r FleetRow) string {
 	default:
 		return r.Age
 	}
+}
+
+// fleetAbsent counts the installations the roster expects and no target holds.
+func fleetAbsent(v Fleet) int {
+	var n int
+	for _, r := range v.Rows {
+		if r.Absent {
+			n++
+		}
+	}
+	return n
+}
+
+// fleetSignature renders what the reader established.
+//
+// An absent row gets a dash rather than `unsigned`: there is no row, so there
+// is nothing that could have been signed, and printing the ordinary state of a
+// machine with no key next to an installation that has vanished would be the
+// most reassuring possible spelling of the most alarming line in the table.
+func fleetSignature(r FleetRow) string {
+	if r.Absent {
+		return "—"
+	}
+	return r.Signature
 }
 
 // fleetDrift renders the count, never a diff -- there is none to render.
