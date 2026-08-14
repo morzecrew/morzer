@@ -1197,14 +1197,23 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 			// every run, with a remedy that could not clear them. A
 			// warning that fires always and cannot be fixed is a warning
 			// nobody reads on the run that meant something.
+			var problems []string
+
 			expected := make(map[string]bool)
-			if units, err := d.Supervisor.Units(d.unitParams(inst)); err == nil {
-				for _, u := range units {
-					expected[u.Name] = true
-				}
+			units, unitsErr := d.Supervisor.Units(d.unitParams(inst))
+			if unitsErr != nil {
+				// Reported rather than swallowed. An empty expectation
+				// would make every "not installed" below unreachable,
+				// so a check that could not work would read exactly
+				// like one that found nothing wrong.
+				problems = append(problems,
+					"cannot work out which units this installation should have: "+
+						domain.AsError(unitsErr).Message)
+			}
+			for _, u := range units {
+				expected[u.Name] = true
 			}
 
-			var problems []string
 			for _, name := range d.Supervisor.ManagedUnitNames(inst.Product) {
 				state, err := d.Supervisor.Status(ctx, name)
 				if err != nil {

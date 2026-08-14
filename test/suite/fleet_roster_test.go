@@ -628,3 +628,109 @@ func TestATargetIsAddedEvenWhenTheTimerCannotBe(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Message, "already a backup target")
 }
+
+// failingSignatureFetch is a target whose signatures cannot be read back.
+//
+// The listing names the .minisig and the fetch does not produce it, which is a
+// real shape -- a permission that covers the row and not its neighbour, an
+// object removed between the listing and the read.
+type failingSignatureFetch struct {
+	ports.ObjectStore
+	err error
+}
+
+func (s failingSignatureFetch) GetObject(
+	ctx context.Context, ref ports.TargetRef, key string,
+) ([]byte, error) {
+	if strings.HasSuffix(key, ".minisig") {
+		return nil, s.err
+	}
+	return s.ObjectStore.GetObject(ctx, ref, key)
+}
+
+// A signature that is there and cannot be read is not a verified row.
+//
+// The detection branch a sabotage sweep cannot find, because nothing in the
+// design suggests mutating it: the row itself reads perfectly, so a verdict
+// derived from "did the check pass" rather than "could the check run" would
+// report this as unverifiable only by accident, or as verified by an early
+// return nobody would think to write a test against.
+func TestASignatureThatCannotBeReadIsNotAVerifiedRow(t *testing.T) {
+	h := fleetHarness(t)
+	inst, _ := h.withFleetTarget(t)
+	ctx := context.Background()
+
+	_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	h.Deps.Objects = failingSignatureFetch{ObjectStore: h.Deps.Objects, err: assert.AnError}
+
+	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{Roster: rosterFor(inst)})
+	require.NoError(t, err)
+	require.Len(t, report.Rows, 1)
+
+	assert.Equal(t, ops.FleetUnverifiable, report.Rows[0].Signature)
+	assert.NotEqual(t, ops.FleetVerified, report.Rows[0].Signature,
+		"a row was verified against a signature this reader never read")
+	assert.Contains(t, report.Rows[0].Problem, "could not be read")
+	assert.Equal(t, 1, report.Problems())
+}
+
+// The sentences count correctly, which is the whole reason they are built
+// rather than written.
+//
+// A report saying "the roster binds no key to a, b, so nothing published under
+// it can be authenticated" is a report somebody stops trusting the details of,
+// and the details are all this feature has.
+//
+// Both cases, and the singular is the one that needed finding: every test here
+// happened to leave either none or *all* of the roster unkeyed, so the sentence
+// an operator meets most often -- one machine added before its key was
+// collected -- had no test at all. A sabotage sweep cannot report that; only
+// coverage can, which is why both are run.
+func TestTheReportCountsInPlural(t *testing.T) {
+	entries := func(unkeyed int, inst domain.Installation) []domain.FleetRosterEntry {
+		out := []domain.FleetRosterEntry{
+			{Product: inst.Product, ID: inst.ID, PublicKey: inst.Signing.PublicKey},
+		}
+		for i := range unkeyed {
+			out = append(out, domain.FleetRosterEntry{
+				Product: "demo", ID: fmt.Sprintf("inst_0%dNOKEYCOLLECTEDYET", i),
+			})
+		}
+		return out
+	}
+
+	cases := map[string]struct {
+		unkeyed int
+		says    string
+	}{
+		"one":  {unkeyed: 1, says: "under it can be authenticated"},
+		"more": {unkeyed: 2, says: "under them can be authenticated"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := fleetHarness(t)
+			inst, _ := h.withFleetTarget(t)
+			ctx := context.Background()
+
+			_, err := ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+			require.NoError(t, err)
+
+			roster := domain.FleetRoster{
+				Schema:        domain.FleetRosterSchemaVersion,
+				Installations: entries(tc.unkeyed, inst),
+			}
+			require.NoError(t, roster.Validate())
+			require.Len(t, roster.Unkeyed(), tc.unkeyed)
+
+			report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{Roster: roster})
+			require.NoError(t, err)
+
+			joined := strings.Join(report.Limitations, " ")
+			assert.Containsf(t, joined, tc.says,
+				"%d unkeyed entries described as the wrong number: %s", tc.unkeyed, joined)
+		})
+	}
+}

@@ -12,27 +12,29 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
-// Reading the rows back (RFC 0026 P2).
+// Reading the rows back (RFC 0026 P2 and P3).
 //
 // Stateless: a listing, a fetch per row, a table. No daemon, no database, no
 // cache, and nothing on this machine changes. It runs on a laptop, which is why
 // it takes a target URL and credentials rather than assuming an installation.
 //
-// **What this phase deliberately cannot do**, and says so on every run: it
-// cannot authenticate a row, and it cannot show an installation that never
-// published. The two have one cause -- the roster, which arrives in P3, is both
-// the trust anchor (decision 6b) and the only source of an expected population
-// (decision 5). RFC 0026 §8 makes this acceptable *only* because the reader
-// states it, so the limitations are part of the report rather than a note in
-// the documentation.
+// **Everything here turns on where the anchor comes from.** Without a roster
+// this reader cannot authenticate a row and cannot show an installation that
+// never published -- one cause, because the roster is both the trust anchor
+// (decision 6b) and the only source of an expected population (decision 5). It
+// says both on every run rather than in documentation an operator reading a
+// complete-looking table is not reading, which is the only reason RFC 0026 §8
+// let it ship before the roster existed.
 //
-// The refusal that matters here is the one not written: this reader never
-// checks a signature against the key the row itself carries. That check would
-// pass, would look like verification, and would establish nothing -- the
-// machine overwriting its neighbour's row rewrites payload, key and signature
-// together, and the result verifies perfectly against itself. Reporting that as
-// verified is the defect decision 6b removed, and a phase boundary is not a
-// reason to reintroduce it.
+// With one, the refusal that matters is the one still not written: this reader
+// never *accepts* a signature against the key the row itself carries. That
+// check passes, looks like verification, and establishes nothing -- the machine
+// overwriting its neighbour's row rewrites payload, key and signature together,
+// and the result verifies perfectly against itself. The row's own key is
+// consulted in exactly one place, `fleetVerdict`, and only to name a failure
+// that has already happened: a signature valid under it and invalid under the
+// roster's is what an overwrite looks like from outside, and saying so is worth
+// the extra check. Accepting it would be the defect decision 6b removed.
 
 // DefaultFleetStaleAfter is how old a row may be before it is called stale.
 //
@@ -218,10 +220,16 @@ type FleetRowStatus struct {
 	Product        string `json:"product,omitempty"`
 	InstallationID string `json:"installation_id,omitempty"`
 
-	// Row is the payload, nil when it could not be read or would not
-	// validate. A row this manager refused is refused whole: reading the
-	// fields it happens to recognise out of a document it does not
-	// understand produces something that looks complete and is not.
+	// Row is the payload, nil when it could not be read, would not
+	// validate, or -- once a roster names a key for this installation --
+	// could not be authenticated. A row this manager refused is refused
+	// whole: reading the fields it happens to recognise out of a document
+	// it does not understand produces something that looks complete and is
+	// not, and rendering an impostor's counts beside a caption would be the
+	// caption doing the work.
+	//
+	// So a payload here has passed every check this run was able to make,
+	// which is an invariant a `--json` consumer can build on.
 	Row *domain.FleetRow `json:"row,omitempty"`
 
 	// Signature is what the reader established. Empty on an absent row,
@@ -665,17 +673,19 @@ func (d *Deps) fleetRowAt(
 
 	// The row's own account of who it is, against the key it was found at.
 	//
-	// A check that costs nothing and is the only integrity statement this
-	// phase can make without a roster: a row claiming to be a different
+	// A check that costs nothing and is the only integrity statement a
+	// reader can make *without* a roster: a row claiming to be a different
 	// installation from the one whose key it occupies was either published
 	// to the wrong place or put there by somebody else. Neither is a row to
-	// display as that installation's status.
+	// display as that installation's status. It still runs with a roster,
+	// where it catches the case a signature check cannot -- a row correctly
+	// signed by the machine that wrote it, sitting at somebody else's key.
 	//
 	// **Compared before the row is bounded**, and the order is the check.
 	// Bounding drops control characters, so a row naming `demo\u001b` would
 	// become `demo` and match a key it does not belong at -- sanitising
-	// first would hand an attacker a way through the one check this phase
-	// has. The message is bounded instead, since it quotes what it refused.
+	// first would hand an attacker a way past it. The message is bounded
+	// instead, since it quotes what it refused.
 	if row.Product != product || row.InstallationID != id {
 		status.Problem = domain.BoundedText(
 			"the row says it is " + row.Product + "/" + row.InstallationID +
@@ -767,6 +777,11 @@ func embeddedSigningKey(body []byte) string {
 	var claim struct {
 		SigningKey string `json:"signing_key"`
 	}
+	// The error return is redundant with the caller's `own != ""` guard --
+	// bytes that will not decode produce no key either way, and the verdict
+	// is `unverifiable` in both cases. It is written out rather than
+	// discarded because a swallowed error is a swallowed error, and because
+	// the redundancy is with a guard three lines away in another function.
 	if err := json.Unmarshal(body, &claim); err != nil {
 		return ""
 	}

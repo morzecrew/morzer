@@ -295,10 +295,10 @@ says so under every table.
 ## Publishing on a schedule
 
 An installation with a backup target gets a systemd timer that publishes its
-row, installed alongside the backup and update units. It arrives when the first
-target is added and goes when the last one is removed — a timer with nowhere to
-publish would fail on every tick, and a unit that fails on every tick is one an
-operator learns to ignore.
+row. It arrives when the first target is added and goes when the last one is
+removed — `morzer init` runs before any target exists, so this is not a unit you
+get at install time, and a timer with nowhere to publish would fail on every
+tick. A unit that fails on every tick is one an operator learns to ignore.
 
 | Unit | |
 | --- | --- |

@@ -227,8 +227,19 @@ func TestSandboxedDropsReachAndKeepsEverythingElse(t *testing.T) {
 
 	// The original is untouched, so a caller comparing before and after is
 	// comparing two things rather than one thing twice.
-	assert.Len(t, inst.Backup.Targets, 1)
-	assert.Len(t, inst.Notify.Targets, 1)
+	//
+	// **Contents and not just length.** `out := i` copies the struct and
+	// hands over its slice headers intact, so a drop that cleared a slice
+	// in place rather than replacing the header would reach through into
+	// the caller's installation -- and a length assertion passes for that,
+	// because the elements are still there and merely empty. Found by a
+	// mutation that did exactly this and survived.
+	assert.Equal(t, []domain.BackupTargetConfig{
+		{URL: "s3://customer-bucket/backups", Credentials: "s3"},
+	}, inst.Backup.Targets)
+	assert.Equal(t, []domain.NotifyTargetConfig{
+		{Name: "oncall", URLSecret: "slack_webhook"},
+	}, inst.Notify.Targets)
 
 	require.Len(t, dropped, 2, "the report does not name everything it removed")
 	assert.Equal(t, "backup.targets", dropped[0].Field)
@@ -252,4 +263,23 @@ func TestSandboxedSaysNothingWhenThereWasNothingToDrop(t *testing.T) {
 	assert.Equal(t, domain.ModeDev, sandbox.Mode)
 	assert.Empty(t, dropped)
 	assert.Empty(t, domain.DescribeSandboxDrops(dropped))
+}
+
+// The sentence counts, which is why it is built rather than written.
+//
+// "dropped 2 backup target" reads as a typo, and a summary an operator stops
+// reading the details of is a summary that stops working -- the details are
+// what tell them their sandbox is not wired to production.
+func TestTheDropSummaryAgreesWithItsCount(t *testing.T) {
+	inst := domain.Installation{
+		Backup: domain.BackupConfig{Targets: []domain.BackupTargetConfig{
+			{URL: "s3://one/backups"}, {URL: "s3://two/backups"},
+		}},
+	}
+
+	_, dropped := inst.Sandboxed()
+	require.Len(t, dropped, 1)
+	assert.Equal(t,
+		"dropped 2 backup targets -- a sandbox must not write into production's bucket",
+		domain.DescribeSandboxDrops(dropped))
 }

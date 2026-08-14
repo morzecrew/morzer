@@ -11,7 +11,7 @@ import (
 	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
-// `morzer fleet` — RFC 0026 P1 and P2.
+// `morzer fleet` — RFC 0026, whole.
 //
 // Two verbs and, by decision 2, never a third that acts. There is no `fleet
 // update`, no `fleet exec` and no fan-out, and the fact that updating ten
@@ -57,11 +57,12 @@ func newFleetPublishCommand(app *App) *cobra.Command {
 			"configuration content. Drift is published as a *count* of targets\n" +
 			"that differ, because the number is the signal and the files are on\n" +
 			"this machine for whoever is allowed to look.\n\n" +
-			"Nothing here is scheduled. Run it from cron or from a systemd timer\n" +
-			"and it is safe to repeat: it reads what is already at the key first\n" +
-			"and declines to replace a newer row with an older one, or one a newer\n" +
-			"manager wrote. `--force` overrides both, which is the way back when a\n" +
-			"stray document is sitting at the key. That check is best effort — a\n" +
+			"An installation with a target publishes on an hourly timer, and\n" +
+			"running this by hand is safe at any time and safe to repeat: it\n" +
+			"reads what is already at the key first and declines to replace a\n" +
+			"newer row with an older one, or one a newer manager wrote.\n" +
+			"`--force` overrides both, which is the way back when a stray\n" +
+			"document is sitting at the key. That check is best effort — a\n" +
 			"write-only credential cannot perform it, which is the credential this\n" +
 			"design wants, so the report says when it was skipped rather than\n" +
 			"refusing to publish.\n\n" +

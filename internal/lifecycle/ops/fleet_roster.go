@@ -29,6 +29,12 @@ func ParseFleetRoster(raw string) (domain.FleetRoster, error) {
 	}
 
 	var roster domain.FleetRoster
+	// Both, as every other strict decode in this repository spells it.
+	// `Strict()` already sets the same flag, so the second is redundant
+	// today -- a sabotage that removed it killed nothing, which is how that
+	// was established. Kept because matching the sibling call sites is
+	// worth more than one word, and because the option's own name is what
+	// tells a reader what strictness means here.
 	if err := yaml.UnmarshalWithOptions([]byte(raw), &roster,
 		yaml.Strict(),
 		yaml.DisallowUnknownField(),
