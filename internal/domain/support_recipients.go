@@ -2,7 +2,6 @@ package domain
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -121,22 +120,4 @@ func yamlKindOf(v any) string {
 	default:
 		return fmt.Sprintf("a %T", v)
 	}
-}
-
-// SupportRecipientFingerprints renders recipients for a reader who is about to
-// decide whether to trust them.
-//
-// The whole key, not a hash of it: an age public key *is* its own fingerprint,
-// it is what a vendor publishes, and it is what an operator compares against
-// the string in the email. A truncation would be shorter and would make two
-// keys sharing a prefix look identical in the one output whose job is to let
-// somebody catch that.
-//
-// Sorted, so two runs against one manifest print the same list and a diff of
-// two previews is about the recipients rather than about map order.
-func SupportRecipientFingerprints(recipients []string) []string {
-	out := make([]string, len(recipients))
-	copy(out, recipients)
-	sort.Strings(out)
-	return out
 }

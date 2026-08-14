@@ -80,8 +80,9 @@ func TestSupportBundleEncryptsToTheDeclaredRecipient(t *testing.T) {
 	// what a vendor's intake automation reads.
 	j := r.Run("--json", "support", "bundle", "--dir", t.TempDir()).ExitCode(0)
 	j.FieldEquals("data.encrypted", true)
-	if got := j.Field("data.recipients"); len(got.([]any)) != 1 || got.([]any)[0] != public {
-		t.Errorf("data.recipients is %v, want [%s]", got, public)
+	got, ok := j.Field("data.recipients").([]any)
+	if !ok || len(got) != 1 || got[0] != public {
+		t.Errorf("data.recipients is %v, want [%s]", j.Field("data.recipients"), public)
 	}
 }
 

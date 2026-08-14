@@ -418,7 +418,11 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		InstallationID: inst.ID,
 		ManagerVersion: d.ManagerVersion.String(),
 		Encrypted:      len(recipients) > 0,
-		Recipients:     domain.SupportRecipientFingerprints(recipients),
+		// In the order the vendor declared them, which is the order an
+		// operator diffing this against the manifest expects. Sorting
+		// them would reorder somebody else's list to no end: it arrives
+		// as a YAML sequence, so it is already stable across runs.
+		Recipients: recipients,
 	}
 	if recipientNote != nil {
 		report.Omitted = append(report.Omitted, *recipientNote)
@@ -1070,47 +1074,83 @@ func writeSupportArchive(
 	if err := encryptSupportArchive(plain, path, recipients); err != nil {
 		return "", err
 	}
-	// Overwritten rather than only unlinked, like the backup components
-	// this borrows from: it is the plaintext of an archive somebody
-	// deliberately asked to be unreadable, and the staging directory is
-	// removable but the bytes are not until something writes over them.
-	if err := atomicfs.RemoveWithOverwrite(plain); err != nil {
-		return "", err
-	}
+
+	// The staging tree is overwritten before it is removed, and only on this
+	// branch.
+	//
+	// It holds the plaintext of an archive somebody deliberately asked to be
+	// unreadable, in the system temporary directory, and unlinking a file
+	// does not disturb its bytes. The plaintext branch above does not do
+	// this and should not: what it leaves in the operator's own directory is
+	// plaintext by their choice, so scrubbing a second copy of it protects
+	// nothing.
+	//
+	// Best-effort, and that is the important word. The archive at `path` is
+	// finished and correct by this point; failing the command over a cleanup
+	// write would report a bundle that does not exist while the bundle sits
+	// on disk, and a retry would then collide with it. An advisory write
+	// must not outrank the outcome it trails.
+	overwriteStagedPlaintext(staging)
 	return path, nil
 }
 
-// encryptSupportArchive writes the encrypted archive, and leaves nothing at the
-// destination if it cannot finish.
+// encryptSupportArchive writes the encrypted archive at path.
+//
+// Written beside the destination and renamed, which is the discipline
+// `WriteTarZst` follows for the plaintext archive and is worth more here: an
+// interrupted encryption that left a truncated file would leave one carrying
+// the name of an encrypted archive and decrypting to nothing, so whoever
+// received it would learn that the operator sent something rather than that
+// they sent nothing. A rename is atomic, so the file is either absent or whole.
 func encryptSupportArchive(plain, path string, recipients []string) error {
-	in, err := os.Open(plain) //nolint:gosec // the path is this function's own staging file
+	in, err := os.Open(plain) //nolint:gosec // this function's own staging file
 	if err != nil {
 		return domain.Internal(err, "cannot read the staged support bundle")
 	}
 	defer func() { _ = in.Close() }()
 
-	// 0600 and O_EXCL: created before a byte is written, so the archive is
-	// never briefly world-readable, and an existing file is never silently
-	// replaced.
-	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	// 0600 from creation, so the archive is never briefly world-readable --
+	// not even under its temporary name, which lives in the directory the
+	// operator asked for.
+	tmp := path + ".partial"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return domain.Internal(err, "cannot create %s", path)
 	}
+	defer func() {
+		_ = out.Close()
+		_ = os.Remove(tmp)
+	}()
 
 	if err := agecrypt.Encrypt(out, in, recipients); err != nil {
-		_ = out.Close()
-		// A partial file at the destination is worse than none: it
-		// carries the name of an encrypted archive and decrypts to
-		// nothing, so whoever receives it learns that the operator sent
-		// something rather than that the operator sent nothing.
-		_ = atomicfs.RemoveAll(path)
 		return err
 	}
+	if err := out.Sync(); err != nil {
+		return domain.Internal(err, "cannot flush %s to disk", path)
+	}
 	if err := out.Close(); err != nil {
-		_ = atomicfs.RemoveAll(path)
 		return domain.Internal(err, "cannot finish writing %s", path)
 	}
+	if err := os.Rename(tmp, path); err != nil {
+		return domain.Internal(err, "cannot move the archive into place at %s", path)
+	}
 	return nil
+}
+
+// overwriteStagedPlaintext writes over every staged file before the directory
+// is removed. Failures are ignored by design -- see the call site.
+func overwriteStagedPlaintext(staging string) {
+	_ = filepath.WalkDir(staging, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			// Walk errors are swallowed rather than propagated: this
+			// is a best-effort scrub of a directory that is about to
+			// be removed either way, and the one thing it must not do
+			// is turn a finished archive into a failed command.
+			return nil //nolint:nilerr // deliberate: see the doc comment
+		}
+		_ = atomicfs.RemoveWithOverwrite(path)
+		return nil
+	})
 }
 
 // archiveDir resolves where the archive goes.

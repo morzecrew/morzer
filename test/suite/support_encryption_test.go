@@ -152,8 +152,11 @@ func TestAnEncryptedArchiveIsUnreadableByTheMachineThatWroteIt(t *testing.T) {
 	require.Contains(t, entries, "meta.json")
 }
 
-// A failed write leaves no plaintext behind, and does not replace an archive
-// that is already there.
+// A failed write leaves no plaintext behind.
+//
+// An archive already at that name *is* replaced, deliberately: the plaintext
+// path renames into place and overwrites too, and having the two disagree about
+// that would be a difference nobody could predict from the flag they passed.
 //
 // The staging directory is the whole reason this holds: the plaintext archive
 // is assembled inside it and dies with it, so a failure anywhere in the
@@ -162,9 +165,15 @@ func TestAnEncryptedArchiveIsUnreadableByTheMachineThatWroteIt(t *testing.T) {
 // other test in this file and would strand a readable copy of everything here,
 // under a name nobody is looking at, on exactly the run that went wrong.
 //
-// Forced through `O_EXCL` against a pre-existing archive, which the fixed
-// harness clock makes reproducible -- and which is a refusal worth having on
-// its own: two bundles a second apart must not silently become one.
+// The failure has to land *after* the plaintext archive has been assembled,
+// which is the only window in which there is plaintext to strand. A destination
+// that cannot be written to at all fails earlier than that and would prove
+// nothing: it would pass whether the archive were staged in a temporary
+// directory or built here.
+//
+// So the encrypted write is failed at its last step, by occupying the name it
+// renames from with a directory. The harness clock is fixed, so that name is
+// known.
 func TestAFailedWriteLeavesNoPlaintextInTheOperatorsDirectory(t *testing.T) {
 	h := newHarness(t)
 	h.install()
@@ -173,26 +182,23 @@ func TestAFailedWriteLeavesNoPlaintextInTheOperatorsDirectory(t *testing.T) {
 	declareRecipients(t, h, vendorPublic)
 
 	dir := t.TempDir()
-	occupied := filepath.Join(dir,
+	archive := filepath.Join(dir,
 		"support-demo-inst_01TESTINSTALLATION-20260803T120000Z.tar.zst"+agecrypt.Extension)
-	require.NoError(t, os.WriteFile(occupied, []byte("an archive that is already here"), 0o600))
+	require.NoError(t, os.Mkdir(archive+".partial", 0o700))
 
 	_, err := ops.SupportBundle(context.Background(), h.Deps, ops.SupportOptions{Dir: dir})
-	require.Error(t, err, "an existing archive was silently replaced")
+	require.Error(t, err, "the encrypted write reported success it did not achieve")
 
+	// Whatever is left, none of it is the archive in the clear. The staged
+	// plaintext lives in a temporary directory and dies with it; building it
+	// here instead would leave a readable copy of everything under a name
+	// nobody is looking at, on exactly the run that went wrong.
 	written, err := os.ReadDir(dir)
 	require.NoError(t, err)
-	names := make([]string, 0, len(written))
 	for _, e := range written {
-		names = append(names, e.Name())
+		assert.Equal(t, filepath.Base(archive)+".partial", e.Name(),
+			"the failed run left %s behind in the operator's directory", e.Name())
 	}
-	assert.Equal(t, []string{filepath.Base(occupied)}, names,
-		"the failed run left something behind in the operator's directory")
-
-	// And what was already there is untouched.
-	body, err := os.ReadFile(occupied)
-	require.NoError(t, err)
-	assert.Equal(t, "an archive that is already here", string(body))
 }
 
 // Two recipients both open it, which is what a vendor with a rotation plan or
@@ -236,6 +242,29 @@ func TestAMalformedRecipientDeclarationIsRefusedAndWritesNothing(t *testing.T) {
 		"the block declares no recipients": {
 			block: ns + "    contact: support@vendor.example\n",
 			says:  "declares no recipients",
+		},
+		// The namespace with nothing under it at all, which decodes to a
+		// nil map rather than an empty one -- a different shape reaching
+		// the same lookup, and the one a vendor produces by writing the
+		// key and being interrupted.
+		"the block is empty": {
+			block: ns,
+			says:  "declares no recipients",
+		},
+		// `recipients:` with nothing after it, which is what a vendor
+		// produces by writing the key and stopping. It decodes to nil,
+		// not to an empty list, so it reaches a different branch than
+		// `recipients: []` does.
+		"recipients has no value at all": {
+			block: ns + "    recipients:\n",
+			says:  "not a list",
+		},
+		// The shape an operator actually mistypes: a real key with
+		// characters missing, long enough that the message abbreviates
+		// it rather than quoting the whole line back.
+		"a recipient is a truncated key": {
+			block: ns + "    recipients:\n      - age1kyh0pf3u8hxepjrgy9k4zuv7tua0frkj6vsnn9jld7ms\n",
+			says:  "not an age recipient",
 		},
 		"recipients is a single value": {
 			block: ns + "    recipients: age1notalist\n",
