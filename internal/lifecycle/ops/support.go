@@ -16,6 +16,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -97,15 +98,24 @@ type SupportReport struct {
 	// (RFC 0024 §3.3 asks for one; §12 A2 records why this is it).
 	ManagerVersion string `json:"manager_version"`
 
-	// Encrypted is false in every archive this phase produces, and is
-	// reported anyway.
+	// Encrypted says whether the archive at Path can be read by whoever
+	// receives it.
 	//
-	// P4 adds `support.recipients`. Until then an operator has to be able
-	// to tell a plaintext archive from an encrypted one by looking at the
-	// archive rather than by knowing which version of the manager wrote it
-	// -- and a field that appears the day encryption ships is a field every
-	// existing reader treats as absent-means-encrypted.
+	// Reported since P2, when it was always false, so that a reader could
+	// tell the two apart by looking at the archive rather than by knowing
+	// which manager wrote it -- a field appearing on the day encryption
+	// ships is a field every existing reader treats as
+	// absent-means-encrypted.
 	Encrypted bool `json:"encrypted"`
+
+	// Recipients are the age keys the archive is encrypted to, in full.
+	//
+	// Present on a preview too, which is the point of it: decision 3a's
+	// refusal protects against a recipient that cannot be parsed, and
+	// nothing can protect against one that parses and belongs to the wrong
+	// party. Printing them before the archive exists is what lets an
+	// operator check the target against what their vendor published.
+	Recipients []string `json:"recipients,omitempty"`
 
 	Entries    []SupportEntry    `json:"entries"`
 	Omitted    []SupportOmission `json:"omitted,omitempty"`
@@ -388,11 +398,30 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		src.ReleaseProblem = domain.AsError(relErr).Message
 	}
 
+	// Before a single component is collected, and that ordering is the
+	// point rather than an optimisation.
+	//
+	// A malformed declaration is a refusal (decision 3a). Discovering it
+	// after the archive is assembled would mean either throwing away the
+	// work or -- the failure this guards -- writing the plaintext archive
+	// anyway because the encryption step was the only thing that failed.
+	// Doing it here also means `--preview` refuses on the same manifest the
+	// real run would, which is what makes a preview worth running.
+	recipients, recipientNote, err := supportRecipients(src)
+	if err != nil {
+		return SupportReport{}, err
+	}
+
 	report := SupportReport{
 		Preview:        opts.Preview,
 		Product:        inst.Product,
 		InstallationID: inst.ID,
 		ManagerVersion: d.ManagerVersion.String(),
+		Encrypted:      len(recipients) > 0,
+		Recipients:     domain.SupportRecipientFingerprints(recipients),
+	}
+	if recipientNote != nil {
+		report.Omitted = append(report.Omitted, *recipientNote)
 	}
 	if !armed {
 		// Precisely what happened, because this line is the reader's
@@ -460,12 +489,60 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		return report, nil
 	}
 
-	path, err := writeSupportArchive(d, inst, files, opts.Dir)
+	path, err := writeSupportArchive(d, inst, files, opts.Dir, recipients)
 	if err != nil {
 		return SupportReport{}, err
 	}
 	report.Path = path
 	return report, nil
+}
+
+// supportRecipients resolves who this archive is encrypted to.
+//
+// Three outcomes, and each one is a different sentence to an operator. A
+// manifest that declares nobody produces a plaintext archive and no note --
+// decision 3 keeps that available and the view says so on every run. A manifest
+// that declares recipients unusably is a refusal, before any work.
+//
+// The third is the one the design did not have a row for: the release cannot be
+// resolved, so there is no manifest to ask, so a vendor's declaration -- if
+// there is one -- silently does not apply. That happens on exactly the machine
+// this command exists for, and it must not be the case that reads as "your
+// vendor asked for nothing". It produces plaintext, because refusing would take
+// the tool away at the moment it is needed, and an omission naming the reason,
+// because an unstated gap here is the lie meta.json exists to prevent.
+func supportRecipients(src *supportSource) ([]string, *SupportOmission, error) {
+	if !src.HasRelease {
+		note := &SupportOmission{
+			Name: "encryption",
+			Reason: "the release could not be resolved, so any support recipients " +
+				"its manifest declares were not applied and this archive is " +
+				"plaintext",
+		}
+		return nil, note, nil
+	}
+
+	declared, err := src.Release.Manifest.SupportRecipients()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(declared) == 0 {
+		return nil, nil, nil
+	}
+
+	// Each one checked by the parser that will encrypt with it, so a typo
+	// is named here rather than surfacing as a failure after the archive is
+	// built -- or, if this check did not exist, as an encryption step that
+	// fails and leaves the caller deciding what to do with the plaintext.
+	for _, key := range declared {
+		if err := agecrypt.ValidateRecipient(key); err != nil {
+			return nil, nil, domain.ValidationError(err,
+				"`extensions.%q.recipients` names something that is not an age recipient: %s",
+				domain.SupportExtension, domain.AsError(err).Message).
+				WithHintFrom(err)
+		}
+	}
+	return declared, nil, nil
 }
 
 // supportRelease reads the current release, tolerating its absence.
@@ -929,7 +1006,13 @@ func jsonFile(name string, v any) ([]supportFile, error) {
 // written for release bundles and are worth as much here: an archive that
 // carries the operator's account name in its headers is an archive that says
 // something about the operator nobody asked it to say.
-func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile, dir string) (string, error) {
+func writeSupportArchive(
+	d *Deps,
+	inst domain.Installation,
+	files []supportFile,
+	dir string,
+	recipients []string,
+) (string, error) {
 	staging, err := os.MkdirTemp("", "morzer-support-")
 	if err != nil {
 		return "", domain.Internal(err, "cannot stage the support bundle")
@@ -963,11 +1046,71 @@ func writeSupportArchive(d *Deps, inst domain.Installation, files []supportFile,
 		return "", err
 	}
 
-	path := filepath.Join(dir, supportArchiveName(d, inst))
-	if err := atomicfs.WriteTarZst(path, staging, names, d.now()); err != nil {
+	path := filepath.Join(dir, supportArchiveName(d, inst, recipients))
+	if len(recipients) == 0 {
+		if err := atomicfs.WriteTarZst(path, staging, names, d.now()); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+
+	// The plaintext archive is built inside the staging directory, never in
+	// the directory the operator asked for.
+	//
+	// Writing it to `path` and encrypting in place afterwards would put a
+	// readable copy of everything, under the name an operator is watching
+	// for, in a directory they are about to attach a file from -- for
+	// however long the encryption takes, and permanently if the process
+	// dies in between. The archive that appears at `path` has never been
+	// anything but ciphertext.
+	plain := filepath.Join(staging, ".archive.tar.zst")
+	if err := atomicfs.WriteTarZst(plain, staging, names, d.now()); err != nil {
+		return "", err
+	}
+	if err := encryptSupportArchive(plain, path, recipients); err != nil {
+		return "", err
+	}
+	// Overwritten rather than only unlinked, like the backup components
+	// this borrows from: it is the plaintext of an archive somebody
+	// deliberately asked to be unreadable, and the staging directory is
+	// removable but the bytes are not until something writes over them.
+	if err := atomicfs.RemoveWithOverwrite(plain); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+// encryptSupportArchive writes the encrypted archive, and leaves nothing at the
+// destination if it cannot finish.
+func encryptSupportArchive(plain, path string, recipients []string) error {
+	in, err := os.Open(plain) //nolint:gosec // the path is this function's own staging file
+	if err != nil {
+		return domain.Internal(err, "cannot read the staged support bundle")
+	}
+	defer func() { _ = in.Close() }()
+
+	// 0600 and O_EXCL: created before a byte is written, so the archive is
+	// never briefly world-readable, and an existing file is never silently
+	// replaced.
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return domain.Internal(err, "cannot create %s", path)
+	}
+
+	if err := agecrypt.Encrypt(out, in, recipients); err != nil {
+		_ = out.Close()
+		// A partial file at the destination is worse than none: it
+		// carries the name of an encrypted archive and decrypts to
+		// nothing, so whoever receives it learns that the operator sent
+		// something rather than that the operator sent nothing.
+		_ = atomicfs.RemoveAll(path)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		_ = atomicfs.RemoveAll(path)
+		return domain.Internal(err, "cannot finish writing %s", path)
+	}
+	return nil
 }
 
 // archiveDir resolves where the archive goes.
@@ -995,9 +1138,16 @@ func archiveDir(dir string) (string, error) {
 // makes `scp` read everything before the first colon as a hostname. A filename
 // that breaks the tool an operator uses to send it is a bad filename for a file
 // whose purpose is to be sent.
-func supportArchiveName(d *Deps, inst domain.Installation) string {
-	return fmt.Sprintf("support-%s-%s-%s.tar.zst",
+// An encrypted archive gains `.age`, which is what every other encrypted
+// artifact this manager writes is called and what tells the operator, their
+// vendor and `file(1)` what they are holding before anyone tries to open it.
+func supportArchiveName(d *Deps, inst domain.Installation, recipients []string) string {
+	name := fmt.Sprintf("support-%s-%s-%s.tar.zst",
 		inst.Product, inst.ID, d.now().UTC().Format("20060102T150405Z"))
+	if len(recipients) > 0 {
+		name += agecrypt.Extension
+	}
+	return name
 }
 
 // ----------------------------------------------------------------------------

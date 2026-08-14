@@ -87,6 +87,22 @@ func supportDoc(d *ui.Doc, r ops.SupportReport) *ui.Doc {
 		d.Verbatim(r.Path)
 	}
 
+	// Who can read it, printed in full and on a preview too.
+	//
+	// The refusal in decision 3a catches a recipient that cannot be parsed.
+	// Nothing catches one that parses and belongs to the wrong party, and
+	// the only defence against that is an operator reading the key before
+	// the archive exists and comparing it with what their vendor published.
+	// A truncated key would be shorter and would hide exactly the case this
+	// is for: two keys that share a prefix.
+	if len(r.Recipients) > 0 {
+		d.Blank()
+		d.Text(2, "encrypted to, and readable by, only these recipients")
+		for _, key := range r.Recipients {
+			d.Verbatim(key)
+		}
+	}
+
 	// Said on every run, not once at the end of a long help text.
 	//
 	// Decision 3 keeps plaintext available because the operator posting to

@@ -44,10 +44,9 @@ func Encrypt(dst io.Writer, src io.Reader, recipients []string) error {
 
 	parsed := make([]age.Recipient, 0, len(recipients))
 	for _, key := range recipients {
-		r, err := age.ParseX25519Recipient(strings.TrimSpace(key))
+		r, err := parseRecipient(key)
 		if err != nil {
-			return domain.SecretsError(err, "%q is not a valid age recipient", short(key)).
-				WithHint("age public keys start with `age1` and are 62 characters long")
+			return err
 		}
 		parsed = append(parsed, r)
 	}
@@ -112,6 +111,32 @@ func Decrypt(dst io.Writer, src io.Reader, identityPath string) error {
 		return domain.SecretsError(err, "cannot decrypt")
 	}
 	return nil
+}
+
+// ValidateRecipient reports whether a string is a key this package could
+// encrypt to, without encrypting anything.
+//
+// It exists for the caller that has to refuse *before* it has bytes to write.
+// A support bundle declaring recipients collects an archive's worth of an
+// installation first; discovering the typo at the encrypt call would mean
+// either a refusal after the work or, far worse, a plaintext fallback.
+//
+// Deliberately the same parse `Encrypt` performs, not a second one that agrees
+// with it today. A validator that accepts what the encryptor rejects turns a
+// clean refusal into a failure half way through an operation, and one that
+// rejects what the encryptor accepts invents a failure of its own.
+func ValidateRecipient(key string) error {
+	_, err := parseRecipient(key)
+	return err
+}
+
+func parseRecipient(key string) (age.Recipient, error) {
+	r, err := age.ParseX25519Recipient(strings.TrimSpace(key))
+	if err != nil {
+		return nil, domain.SecretsError(err, "%q is not a valid age recipient", short(key)).
+			WithHint("age public keys start with `age1` and are 62 characters long")
+	}
+	return r, nil
 }
 
 // short abbreviates a key for a message that already says enough.
