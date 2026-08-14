@@ -306,6 +306,11 @@ func TestBuildUnitsRendersTheSetAndItsDefaults(t *testing.T) {
 	if _, ok := byName[systemd.UpdateTimerUnitName("demo")]; ok {
 		t.Error("an installation with no channel got an update timer")
 	}
+	// The same rule for the fleet pair, on the same reasoning: a machine
+	// with no target to publish to would fail on every tick.
+	if _, ok := byName[systemd.FleetTimerUnitName("demo")]; ok {
+		t.Error("an installation with no target got a fleet timer")
+	}
 
 	// The timer is enabled and the oneshot backup service is not: enabling
 	// a oneshot would run it at every boot.
@@ -424,4 +429,117 @@ func TestTheUpdateScheduleIsTheMaintenanceWindow(t *testing.T) {
 		}
 	}
 	t.Fatal("no update timer unit")
+}
+
+// TestTheFleetTimerIsGeneratedOnlyWhenThereIsSomewhereToPublish.
+//
+// RFC 0026 P4, the last phase of that design and last on purpose: a scheduled
+// publisher built before the payload was stable would have put badly-shaped
+// objects in twelve buckets, and objects in buckets are the one thing this
+// design cannot recall.
+func TestTheFleetTimerIsGeneratedOnlyWhenThereIsSomewhereToPublish(t *testing.T) {
+	units, err := systemd.BuildUnits(systemd.UnitParams{
+		Product:     "demo",
+		ManagerPath: "/usr/local/bin/morzer",
+		ConfigPath:  "/etc/demo/installation.yaml",
+		FleetTimer:  true,
+	})
+	if err != nil {
+		t.Fatalf("BuildUnits: %v", err)
+	}
+
+	byName := map[string]ports.Unit{}
+	for _, u := range units {
+		byName[u.Name] = u
+	}
+
+	service, ok := byName[systemd.FleetServiceUnitName("demo")]
+	if !ok {
+		t.Fatal("no fleet service unit")
+	}
+	if !strings.Contains(string(service.Contents), "fleet publish") {
+		t.Errorf("the fleet service does not publish a row:\n%s", service.Contents)
+	}
+	if !strings.Contains(string(service.Contents), "--config /etc/demo/installation.yaml") {
+		t.Errorf("the fleet service does not name the installation it publishes:\n%s",
+			service.Contents)
+	}
+	// A publish that failed is a gap in a view whose subject is fine, and
+	// the next tick carries the current truth. Restarting would retry the
+	// old one thirty seconds later.
+	if strings.Contains(string(service.Contents), "Restart=") {
+		t.Errorf("the fleet service restarts on failure:\n%s", service.Contents)
+	}
+	if service.Enable {
+		t.Error("the oneshot fleet service is enabled, so it would run at every boot")
+	}
+	// After the product's own service: health counts come from the runtime,
+	// and "0/3 up" thirty seconds into a boot is a true statement about a
+	// moment nobody wants a fleet screen showing.
+	if !strings.Contains(string(service.Contents), "After=network-online.target demo.service") {
+		t.Errorf("the fleet service does not wait for the deployment:\n%s", service.Contents)
+	}
+
+	timer, ok := byName[systemd.FleetTimerUnitName("demo")]
+	if !ok {
+		t.Fatal("no fleet timer unit")
+	}
+	if !timer.Enable {
+		t.Error("the fleet timer is not enabled, so nothing would publish")
+	}
+	if !strings.Contains(string(timer.Contents), systemd.DefaultFleetSchedule) {
+		t.Errorf("the fleet timer carries no schedule:\n%s", timer.Contents)
+	}
+	// Twelve machines sharing one prefix must not all write at the same
+	// second, and a machine that was off should publish once at boot rather
+	// than wait for the next hour.
+	if !strings.Contains(string(timer.Contents), "RandomizedDelaySec=") {
+		t.Errorf("the fleet timer has no randomised delay:\n%s", timer.Contents)
+	}
+	if !strings.Contains(string(timer.Contents), "Persistent=true") {
+		t.Errorf("the fleet timer does not catch up a missed run:\n%s", timer.Contents)
+	}
+}
+
+// The fleet schedule is more frequent than the others, and that is a decision.
+//
+// A row's only value is its age. `fleet ls` calls one stale after a day by
+// default, so a publisher on the daily schedule the other timers use would sit
+// at the threshold and report healthy machines as stale whenever jitter went
+// the wrong way.
+func TestTheFleetTimerRunsMoreOftenThanTheBackupOne(t *testing.T) {
+	if systemd.DefaultFleetSchedule == systemd.DefaultBackupSchedule {
+		t.Error("the fleet row is published on the backup's daily schedule, " +
+			"which is the staleness threshold it is read against")
+	}
+	if !strings.Contains(systemd.DefaultFleetSchedule, "*:") {
+		t.Errorf("the default fleet schedule %q is not sub-daily",
+			systemd.DefaultFleetSchedule)
+	}
+}
+
+// Removal walks the superset, so a unit this installation stopped generating is
+// still taken away.
+//
+// The property that lets a machine which once had a target stop having a timer.
+// A list narrowed to what the *current* configuration generates would leave the
+// orphan running -- publishing on a schedule to a target its operator removed.
+func TestUnitNamesIsTheSupersetIncludingTheFleetPair(t *testing.T) {
+	names := map[string]bool{}
+	for _, n := range systemd.UnitNames("demo") {
+		names[n] = true
+	}
+	for _, want := range []string{
+		systemd.ServiceUnitName("demo"),
+		systemd.BackupServiceUnitName("demo"),
+		systemd.BackupTimerUnitName("demo"),
+		systemd.UpdateServiceUnitName("demo"),
+		systemd.UpdateTimerUnitName("demo"),
+		systemd.FleetServiceUnitName("demo"),
+		systemd.FleetTimerUnitName("demo"),
+	} {
+		if !names[want] {
+			t.Errorf("%s is not in the removal set, so an orphan of it would keep running", want)
+		}
+	}
 }

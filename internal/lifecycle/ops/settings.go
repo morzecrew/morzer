@@ -374,6 +374,15 @@ func (d *Deps) refreshUnits(ctx context.Context, inst domain.Installation) error
 		// night on a refusal, which is how an operator learns to ignore
 		// the unit.
 		UpdateTimer: inst.Update.FollowsChannel() && inst.Update.Check,
+
+		// A target to publish to is the whole precondition (RFC 0026
+		// P4). There is no second flag gating this the way `update.check`
+		// gates the poll: a fleet row is derived entirely from what this
+		// machine already computes, goes to a target the operator chose,
+		// and reveals nothing to anybody who could not already read that
+		// target. The phone-home question that made update checking
+		// opt-in does not arise.
+		FleetTimer: inst.Backup.HasTargets(),
 	})
 	if err != nil {
 		return err

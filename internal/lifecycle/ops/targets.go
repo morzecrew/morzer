@@ -319,7 +319,19 @@ func TargetAdd(ctx context.Context, d *Deps, opts TargetAddOptions) (Result, err
 					WithHint("run `morzer backup target list` to see them all")
 			}
 			current.Backup.Targets = append(current.Backup.Targets, cfg)
-			return d.saveInstallation(ctx, current)
+			if err := d.saveInstallation(ctx, current); err != nil {
+				return err
+			}
+			// The first target is what a fleet timer needs to exist
+			// (RFC 0026 P4), so the unit set is reconciled here as
+			// well as after a `config set`. An operator who adds a
+			// target a month after `init` must get the timer, for
+			// the same reason one who configures a channel does --
+			// and after the state rather than before, so a crash
+			// between the two leaves a timer the next change
+			// reconciles rather than a schedule with nowhere to
+			// publish.
+			return d.refreshUnits(ctx, current)
 		}); err != nil {
 		return Result{}, err
 	}
@@ -403,7 +415,14 @@ func TargetRemove(ctx context.Context, d *Deps, opts Options, url string) (Resul
 				remaining = append(remaining, cfg)
 			}
 			current.Backup.Targets = remaining
-			return d.saveInstallation(ctx, current)
+			if err := d.saveInstallation(ctx, current); err != nil {
+				return err
+			}
+			// And the last one going takes the timer with it. A
+			// machine still publishing on a schedule to a target
+			// its operator removed would fail every hour on a
+			// refusal they already made.
+			return d.refreshUnits(ctx, current)
 		}); err != nil {
 		return Result{}, err
 	}

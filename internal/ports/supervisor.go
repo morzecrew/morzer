@@ -77,6 +77,22 @@ type UnitParams struct {
 	// follows no channel: a timer that polls nothing would still appear in
 	// the supervisor's own listing as though it did.
 	UpdateTimer bool
+
+	// FleetSchedule is the schedule expression for publishing this
+	// installation's fleet row.
+	//
+	// More often than the other two, and for a reason the other two do not
+	// have: the row's value is its age. A reader calls a row stale after a
+	// day by default, so a publisher on a daily schedule would spend its
+	// life at the threshold and report a healthy machine as stale whenever
+	// the two drifted apart.
+	FleetSchedule string
+
+	// FleetTimer asks for the fleet pair at all. False on a machine that
+	// configures no target, for the reason UpdateTimer is: a timer with
+	// nowhere to publish would fail on every tick, and a unit that fails
+	// every tick is a unit an operator learns to ignore.
+	FleetTimer bool
 }
 
 // Unit is a supervisor unit to install.

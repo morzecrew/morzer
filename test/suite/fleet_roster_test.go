@@ -12,8 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/adapters/target"
+	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The roster (RFC 0026 P3).
@@ -393,4 +396,47 @@ func TestReadingARosterRefusesTheFileRatherThanTheFleet(t *testing.T) {
 			require.Error(t, err, "a roster that says nothing was accepted as one")
 		})
 	}
+}
+
+// The timer arrives with the first target and leaves with the last.
+//
+// RFC 0026 P4. A unit set installed once at `init` could never do the second
+// half: `init` runs before any target exists, so a machine that gains one a
+// month later must gain the timer then -- and one that removes its last target
+// must stop publishing on a schedule to somewhere its operator deliberately
+// took away.
+func TestTheFleetTimerFollowsTheTargets(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	h.Deps.Objects = registry
+	ctx := context.Background()
+
+	// The machine manages units, which is what makes reconciliation its
+	// business at all: `init --install-units=false` is a supported choice.
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+
+	timer := "demo-fleet.timer"
+	require.NotContains(t, h.Supervisor.Installed, timer,
+		"a machine with no target was given a timer with nowhere to publish")
+
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	require.NoError(t, os.MkdirAll(offsite, 0o755))
+
+	_, err = ops.TargetAdd(ctx, h.Deps, ops.TargetAddOptions{URL: "file://" + offsite})
+	require.NoError(t, err)
+	assert.Contains(t, h.Supervisor.Installed, timer,
+		"a target was added and nothing schedules a publish to it")
+
+	_, err = ops.TargetRemove(ctx, h.Deps, ops.Options{}, "file://"+offsite)
+	require.NoError(t, err)
+	assert.NotContains(t, h.Supervisor.Installed, timer,
+		"the timer outlived the target it was publishing to")
 }
