@@ -79,6 +79,45 @@ func TestADeclarationThatIsNotAListIsNamedByItsShape(t *testing.T) {
 	}
 }
 
+// A block that is present and names nobody usable is a refusal, and each way
+// of naming nobody says which way it was.
+//
+// These share a consequence with an absent block -- nothing to encrypt to --
+// and must not share its outcome. Decision 3a is LOCKED on that: a manifest
+// whose author believed they had asked for encryption must not receive a
+// plaintext archive because the key was misspelt, the list was left empty, or
+// the value was typed and then deleted back to whitespace.
+func TestADeclaredBlockThatNamesNobodyIsRefused(t *testing.T) {
+	for name, tc := range map[string]struct {
+		manifest *domain.Manifest
+		says     string
+	}{
+		// The namespace with no `recipients` under it at all: a
+		// misspelling, or a key indented one level too deep.
+		"no recipients key": {
+			manifest: &domain.Manifest{Extensions: map[string]map[string]any{
+				domain.SupportExtension: {"contact": "support@vendor.example"},
+			}},
+			says: "declares no recipients",
+		},
+		"an empty list": {manifest: manifestDeclaring([]any{}), says: "names nobody"},
+		// Whitespace is the one that would otherwise slip through as a
+		// recipient: it is not an empty string until it is trimmed, and
+		// the trim is what this asserts happens before the check.
+		"a recipient of nothing but spaces": {
+			manifest: manifestDeclaring([]any{"   "}),
+			says:     "recipients[0]` is empty",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := tc.manifest.SupportRecipients()
+			require.Error(t, err, "a block naming nobody was read as no block at all")
+			assert.Contains(t, domain.AsError(err).Message, tc.says)
+			assert.Empty(t, got, "a refusal returned recipients")
+		})
+	}
+}
+
 // A declaration that is usable comes back trimmed and in the vendor's order.
 //
 // The order is the assertion worth having: sorting them would reorder somebody

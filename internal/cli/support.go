@@ -64,16 +64,20 @@ func newSupportBundleCommand(app *App) *cobra.Command {
 			"a component rather than removing the filter from it, so it can only\n" +
 			"ever send less.\n\n" +
 			"If your release declares support recipients, the archive is\n" +
-			"encrypted to them and readable by nobody else -- not by this\n" +
-			"machine, and not by whatever the file passes through on its way.\n" +
-			"It is named `.tar.zst.age` when that happens, and `--preview`\n" +
-			"prints the recipients in full before anything is written, which\n" +
-			"is the only moment checking them against what your vendor\n" +
-			"published is worth anything.\n\n" +
-			"A release that declares nobody produces a plaintext archive and\n" +
-			"says so on every run. A declaration this manager cannot use is\n" +
-			"refused before a single component is collected, rather than\n" +
-			"quietly falling back to writing everything out in the clear.",
+			"encrypted to them and named `.tar.zst.age`. Whoever holds one of\n" +
+			"those keys can read it, and nothing it passes through on the way\n" +
+			"to them can. This machine adds no key of its own, so it cannot\n" +
+			"read a bundle back either -- unless your release names a key it\n" +
+			"already holds.\n\n" +
+			"`--preview` prints the recipients in full before anything is\n" +
+			"written, which is the only moment checking them against what your\n" +
+			"vendor published is worth anything.\n\n" +
+			"A release that declares no recipients at all produces a plaintext\n" +
+			"archive and says so on every run. A declaration that is there and\n" +
+			"unusable -- naming nobody, or naming something this manager cannot\n" +
+			"parse as a key -- is refused before a single component is\n" +
+			"collected, rather than quietly falling back to writing everything\n" +
+			"out in the clear.",
 		Example: "  morzer support bundle --preview\n" +
 			"  morzer support bundle\n" +
 			"  morzer support bundle --json | jq -e '.data.entries[].redactions'",
