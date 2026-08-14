@@ -20,11 +20,13 @@ second table of the same shape is a second set of rows for the same numbers.
 - **[0023 — Runtimes beyond Compose](0023-runtimes-beyond-compose.md).** P1a
   shipped: the leak inventory and the boundary checker. **P1b needs a rootless
   Podman host** — three measurements sit behind it, and nothing else blocks P2.
-- **[0024 — The support bundle](0024-the-support-bundle.md).** P1–P3 and P5
-  shipped: the inventory, the archive, redaction proved against seeded values,
-  and `support redact --check`. **P4 is window-constrained** — §11.4 assumed no
-  tag existed and one now does, so `support.recipients` has to go through 0018's
-  `extensions` namespace or be a break.
+- **[0024 — The support bundle](0024-the-support-bundle.md).** P1–P3, P5 and
+  now P4a shipped: the inventory, the archive, redaction proved against seeded
+  values, `support redact --check`, and an archive encrypted to the vendor and
+  unreadable by the machine that wrote it. The window did close, so the
+  declaration went through 0018's `extensions` namespace — measured against a
+  released binary, where a top-level field refuses the whole bundle. **P4b —
+  signing and `support inspect` — is unscheduled** and no longer blocked.
 - **[0027 — Desired state in a repository](0027-desired-state-in-a-repository.md).**
   P1 shipped as `installation describe`. **P2 is gated on a user who is not the
   author asking for it**, and if that never happens the correct outcome is that

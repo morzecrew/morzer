@@ -98,6 +98,59 @@ one every support article tells you to pass, and then redaction is a
 feature nobody uses; if you genuinely need unredacted output, `morzer
 logs --no-redact` makes that choice one file at a time.
 
+## Encrypting it to your vendor
+
+A release can declare who support bundles are for. When it does, the
+archive is encrypted to those keys **only** — not to this machine — and
+gets an `.age` suffix.
+
+```console
+$ morzer support bundle
+10 component(s), 15.0 KiB
+  FILE               COMPONENT                            SIZE     REDACTIONS
+  manifest.yaml      The resolved manifest                2.8 KiB  0
+  ...
+  meta.json          The archive's own account of itself  1.4 KiB  0
+
+  written
+/home/op/support-demo-op_01M00V78YRZ392YXZY8001V127-20260814T191545Z.tar.zst.age
+
+  encrypted to, and readable by, only these recipients
+age1kyh0pf3u8hxepjrgy9k4zuv7tua0frkj6vsnn9jld7mspgx3qqkq6q34cq
+```
+
+That this machine cannot read it back is the point rather than an
+inconvenience. An archive in a ticket system, a mail thread or a bucket is
+then unreadable by the ticket system, the mail provider, and by anyone who
+later takes this host.
+
+Your vendor declares it in the manifest, under the `extensions` namespace:
+
+```yaml title="manifest.yaml"
+extensions:
+  morzer.dev/support:
+    recipients:
+      - age1kyh0pf3u8hxepjrgy9k4zuv7tua0frkj6vsnn9jld7mspgx3qqkq6q34cq
+```
+
+It sits under `extensions` rather than at the top level so that a bundle
+declaring it still installs on a manager released before this existed. The
+cost is worth stating: such a manager ignores the block, so an operator who
+has not upgraded gets a plaintext archive — and is told so, in the same
+breath as the path, on every run.
+
+**A declaration that cannot be used is refused, and no archive is written.**
+A missing `recipients:` list, an empty one, or a key that is not an age
+recipient all stop the command before anything is collected. Falling back
+to plaintext would hand an unencrypted archive to the operator who most
+clearly asked for an encrypted one, at the moment they are attaching it to
+a ticket.
+
+Run `--preview` first and read the keys. The refusal catches a key that is
+malformed; nothing can catch one that is well-formed and belongs to the
+wrong party, so they are printed in full — compare them against what your
+vendor published, while the archive still does not exist.
+
 ## Checking something you are sending by hand
 
 `morzer support redact` with `--check` runs the same redactor over a file

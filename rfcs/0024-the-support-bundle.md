@@ -11,9 +11,12 @@
   class whose bytes are raw (A3), which is what §11.1's eager-capture defect
   becomes at the scale of an archive; and P5 shipped ahead of P4 because
   decision 7 is `LOCKED` and says it ships alongside the bundle, which §8
-  contradicted (A6). **P4 — `support.recipients`, encryption, signing and
-  `support inspect` — is unscheduled**, and §10's manifest-window question is
-  still open and still has a deadline.
+  contradicted (A6). **P4a shipped 2026-08-14**: a manifest declares who a
+  bundle is for and the archive is encrypted to them alone. §10's manifest
+  window **closed** — v0.1.0 and v0.1.1 are tagged — so the field went to
+  `extensions."morzer.dev/support"`, measured against a released binary rather
+  than argued (A10). **P4b — signing and `support inspect` — is unscheduled**
+  and no longer blocked: 0028 P1 shipped, so the signer exists (A11).
 - **Scope:** One command that exports a complete, redacted, self-contained account
   of an installation — journal, `doctor` results, resolved manifest, config diff,
   version history, container state and bounded logs — in a form safe to hand to a
@@ -252,7 +255,8 @@ first paragraph what the archive never contains.
   `error` wrapping a value — and fail the build if any survives. This phase is
   the one that decides whether the feature is safe; P2 without it is a leak
   generator with a progress bar.
-- **P4 — `support.recipients`, encryption, signing, `support inspect`.** Unscheduled; gated on §10's manifest window (§11.4).
+- **P4a — `support.recipients` and encryption.** ✅ Shipped 2026-08-14. The declaration lives under `extensions."morzer.dev/support"` because the window §11.4 gave the top-level field closed at the first tag; the three candidate placements were measured against a `v0.1.1` binary rather than reasoned about (A10). A declaration that cannot be used is a refusal before anything is collected, never a plaintext fallback (decision 3a), and `--preview` prints the recipients in full because that is the only check available against a key that parses and belongs to the wrong party.
+- **P4b — signing and `support inspect`.** Unscheduled, and no longer gated: 0028 P1 shipped, so decision 4's signer exists. Split from P4a because encryption decides who can read the archive and a signature decides what it proves, which are independent (A11). `inspect` belongs here rather than with encryption: its job is to verify as well as to list.
 - **P5 — `support redact --check`.** ✅ Shipped 2026-08-13, ahead of P4: decision 7 is `LOCKED` and says it ships alongside the bundle (§12 A6).
 
 ## 9. Risks
@@ -271,8 +275,12 @@ first paragraph what the archive never contains.
 
 ## 10. Unresolved questions
 
-- Whether `support.recipients` can be added to the manifest after the pre-1.0
-  sweep, or must arrive before the first tag (§11.4).
+- ~~Whether `support.recipients` can be added to the manifest after the pre-1.0
+  sweep, or must arrive before the first tag (§11.4).~~ **Answered 2026-08-14**:
+  it could not, and did not. The window closed at `v0.1.0`, and the field went
+  to `extensions."morzer.dev/support"` — see A10 for the three placements and
+  what a released manager does with each. Promoting it to the top level remains
+  open, for a version willing to raise the manifest's floor.
 - The byte-size defaults for the log bound, which §11.3 says must be measured
   rather than guessed.
 
@@ -481,3 +489,65 @@ The neighbouring worry resolved the same way and is worth recording because it
 looked more serious: the configuration diff renders each target, and a rendered
 target cannot embed a secret either — `templateData` puts secret *references* in
 the render context, a name to the path of the rendered file, never a value.
+
+**A10 — the manifest window closed, and `support.recipients` went to
+`extensions` (2026-08-14, P4).**
+
+§10 left this open with a deadline and §11.4 said the window "closes at the
+first tag". It closed: `v0.1.0` and `v0.1.1` are tagged. So P4 landed the field
+where 0018 §5.4 said an experimental manager field goes, and the choice was
+measured rather than argued. Against a binary built from `v0.1.1`:
+
+| Declaration | What a released manager does |
+| --- | --- |
+| top-level `support:` | `unknown field "support"` — the whole bundle is refused |
+| top-level `support:` with `min_manager_version` raised | `requires morzer 0.2.0 or newer` — refused, but legibly |
+| `extensions."morzer.dev/support"` | `bundle is valid` |
+
+The first is a break with a message that names the wrong cause. The second is
+honest and costs too much: a vendor could not offer encrypted support bundles
+without dropping support for every older manager, over a diagnostics field. The
+third costs nothing those operators had — a manager without P4 cannot encrypt
+whatever the field is called — so the field's location only ever decided whether
+the bundle installs.
+
+The trade it does carry, recorded rather than buried: an old manager *tolerates*
+the block and ignores it, so a vendor who declares recipients gets plaintext
+archives from operators who have not upgraded. Those operators are told the
+archive is plaintext on every run, which is the same sentence decision 3 already
+required; what they are not told is that their vendor asked for more. Promoting
+the field to the top level is the fix, and it belongs to whatever version is
+willing to raise the manifest's floor.
+
+An early measurement of the middle row was wrong and is worth recording as a
+method note: the binary was built without its version ldflag, reported `dev`,
+and the version gate silently did not fire — so `min_manager_version` looked
+like it did nothing. A gate that compares versions cannot be measured with a
+binary that does not know its own.
+
+**A11 — P4 ships in two halves, and this is the first (2026-08-14).**
+
+§8 lists P4 as one phase: recipients, encryption, signing and `support inspect`.
+Encryption and signing turn out to be independent — 0028 P1 shipped, so nothing
+blocks the signing half — and they answer different questions: encryption
+decides who can read the archive, a signature decides what the archive proves.
+This phase is recipients and encryption. Signing and `support inspect` are the
+second half, and `inspect` belongs with signing rather than with encryption
+because its job is to verify as well as to list.
+
+**A12 — a release that will not resolve cannot be asked what it declares
+(2026-08-14, P4).**
+
+The design has a row for "declared" and a row for "not declared" and no row for
+"cannot tell". That third state is reachable on exactly the machine this command
+exists for: the release directory is unreadable or its digest no longer matches,
+which is when somebody wants a support bundle most.
+
+Refusing would take the tool away at that moment, so the archive is produced,
+plaintext, with the reason stated as an omission in `meta.json` and in the
+report. That is deliberately not silence: an operator whose vendor did declare
+recipients would otherwise read the ordinary "this archive is not encrypted"
+line as the ordinary state, when what actually happened is that the declaration
+could not be read. Decision 3a governs a declaration that is present and
+unusable; this is a declaration that could not be reached, and the two fail in
+opposite directions on purpose.
