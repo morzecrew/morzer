@@ -1,9 +1,6 @@
 package domain
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
 // Who a support bundle is encrypted to (RFC 0024 P4).
 //
@@ -105,12 +102,25 @@ func (m *Manifest) SupportRecipients() ([]string, error) {
 // yamlKindOf names what arrived, for a message that has to tell a vendor which
 // of their lines is wrong. Go's %T would say `map[string]interface {}`, which
 // describes the decoder rather than the document.
+//
+// Every shape a YAML node can decode to is named, including the list -- an
+// over-indented key turns a recipient into a nested list, and that is one of
+// the likelier mistakes rather than an exotic one. It reached the fallback and
+// was reported as `a []interface {}`, which is the leak this function exists to
+// prevent, in the branch written to prevent it.
+//
+// The fallback names no type at all. It is reachable only for a decoder shape
+// this list has not learned about, and at that point the vendor is better
+// served by the path already in the message -- which points at the line -- than
+// by the name of a Go type they did not write.
 func yamlKindOf(v any) string {
 	switch v.(type) {
 	case nil:
 		return "empty"
 	case string:
 		return "a single value"
+	case []any:
+		return "a list"
 	case map[string]any:
 		return "a mapping"
 	case bool:
@@ -118,6 +128,6 @@ func yamlKindOf(v any) string {
 	case int, int64, uint64, float64:
 		return "a number"
 	default:
-		return fmt.Sprintf("a %T", v)
+		return "an unexpected value"
 	}
 }
