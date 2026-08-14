@@ -215,11 +215,19 @@ installations:
 | `schema` | the roster's own version, stated rather than inferred |
 | `product` | which product this installation runs |
 | `id` | its installation id — the one in the key it publishes at |
-| `key` | the minisign public key it signs with; optional, see below |
+| `key` | the minisign public key it signs with — the single base64 line, not the whole `.pub` file; optional, see below |
 
 Keep it in version control beside whatever else describes the fleet. It is the
 anchor for every verdict the reader prints, so it wants reviewing when a machine
 joins and diffing when one leaves.
+
+The file is refused, naming the entry, rather than read into a table: a
+duplicate installation, an id that could never be a key, a schema that is not a
+version, and a key that is not a minisign public key — the `.pub` file pasted in
+whole, a line the terminal wrapped, or one truncated in transit. A key that
+cannot verify anything reports the machine it names as `unverifiable` on every
+run, which is indistinguishable from the attack the roster was added to catch,
+so a typo is worth catching at the file instead.
 
 ### Getting the three fields off a machine
 

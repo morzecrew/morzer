@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/base64"
 	"sort"
 	"strings"
 )
@@ -120,6 +121,15 @@ func (r FleetRoster) Validate() error {
 	case r.Schema == 0:
 		return ValidationError(nil, "the roster states no schema version").
 			WithHint("a roster begins with `schema: %d`", FleetRosterSchemaVersion)
+	case r.Schema < 0:
+		// Separate from the newer-manager case, and not folded into
+		// "states no version" either. Both of those describe something an
+		// operator did; a negative version describes a file that was
+		// generated wrong, and telling them to upgrade the manager would
+		// send them somewhere there is nothing to find.
+		return ValidationError(nil,
+			"the roster states schema %d, which is not a version", r.Schema).
+			WithHint("a roster begins with `schema: %d`", FleetRosterSchemaVersion)
 	case r.Schema > FleetRosterSchemaVersion:
 		return ValidationError(nil,
 			"the roster was written for a newer manager (schema %d, this manager reads %d)",
@@ -141,7 +151,9 @@ func (r FleetRoster) Validate() error {
 		// at a key nothing can ever be published to.
 		key, err := FleetKey(e.Product, e.ID)
 		if err != nil {
-			return ValidationError(err, "roster entry %d is not an installation", i+1)
+			return ValidationError(err,
+				"roster entry %d is not an installation: %s", i+1, AsError(err).Message).
+				WithHintFrom(err)
 		}
 		if prev, dup := seen[key]; dup {
 			return ValidationError(nil,
@@ -152,8 +164,15 @@ func (r FleetRoster) Validate() error {
 		seen[key] = i
 
 		if err := validateRosterKey(e.PublicKey); err != nil {
+			// The reason travels with the refusal, and so does the
+			// remedy. AsError reports the outermost error, so a wrap
+			// that adds only context leaves an operator holding twelve
+			// machines and the sentence "the key is not usable" -- which
+			// names the entry and not one thing they can do about it.
 			return ValidationError(err,
-				"the key for %s/%s is not usable", e.Product, e.ID)
+				"the key for %s/%s is not usable: %s",
+				e.Product, e.ID, AsError(err).Message).
+				WithHintFrom(err)
 		}
 	}
 	return nil
@@ -162,12 +181,22 @@ func (r FleetRoster) Validate() error {
 // validateRosterKey refuses a public key that could never verify anything.
 //
 // Not a cryptographic check -- the domain layer holds no crypto and must not.
-// It refuses the two shapes an operator actually produces: the whole `.pub`
-// file pasted in, comment line and all, and a key with whitespace through it
-// from a terminal that wrapped. Both would report every row from that machine
-// as unverifiable, which reads exactly like the attack this roster exists to
-// detect. A refusal at the file is worth a great deal more than a false alarm
-// in the table.
+// It is an encoding check, and it is the *same* encoding check the verifier
+// makes: minisign decodes a public key as standard base64 and requires exactly
+// 42 bytes, being a two-byte algorithm, an eight-byte key id and the
+// thirty-two-byte key. Anything else is refused by the checker before a
+// signature is examined, so a roster carrying one has already decided that
+// every row from that machine is unverifiable.
+//
+// Which is the reason this is worth a refusal at all. An unusable key does not
+// fail quietly -- it reports the machine it names exactly the way a forged row
+// reports, and the operator who wrote the typo is the one who then has to tell
+// those two apart. A refusal at the file, naming the entry, is worth a great
+// deal more than a false alarm in the table.
+//
+// Deliberately not stricter than the checker. Requiring the algorithm bytes to
+// spell "Ed" would refuse a key minisign itself accepts, and a validator that
+// is stricter than the thing it guards invents failures of its own.
 func validateRosterKey(key string) error {
 	trimmed := strings.TrimSpace(key)
 	if trimmed == "" {
@@ -179,5 +208,23 @@ func validateRosterKey(key string) error {
 				"not the whole public-key file -- `morzer fleet publish " +
 				"--dry-run --json` prints the line on the machine itself")
 	}
+	raw, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil {
+		return ValidationError(nil, "it is not base64").
+			WithHint("a roster key is the one base64 line minisign prints; " +
+				"`morzer fleet publish --dry-run --json` prints it on the " +
+				"machine itself")
+	}
+	if len(raw) != minisignPublicKeyBytes {
+		return ValidationError(nil,
+			"it decodes to %d bytes and a minisign public key is %d",
+			len(raw), minisignPublicKeyBytes).
+			WithHint("a truncated or over-long key verifies nothing, so every " +
+				"row from this installation would read as unverifiable")
+	}
 	return nil
 }
+
+// minisignPublicKeyBytes is what a minisign public key decodes to: two bytes
+// of signature algorithm, eight of key id, thirty-two of key.
+const minisignPublicKeyBytes = 42

@@ -33,6 +33,13 @@ import (
 // TestARowSignedByAnotherMachinesKeyIsNamed. A verifier anchored in the row
 // passes that scenario, which is what makes it the one worth writing first.
 
+// fixtureKey is a key of the shape minisign prints -- standard base64 of
+// exactly 42 bytes -- for the entries whose key is never used to verify
+// anything. Fake, but validly shaped: a roster carrying a key that could never
+// verify anything is refused at the file, because it would otherwise report
+// the machine it names exactly the way a forgery reports.
+const fixtureKey = "RWT6zgAAAAAAAXRoaXMga2V5IGlzIGEgZml4dHVyZSBub3QgYSByZWFs"
+
 // rosterFor builds a roster naming these installations with their real keys.
 func rosterFor(insts ...domain.Installation) domain.FleetRoster {
 	roster := domain.FleetRoster{Schema: domain.FleetRosterSchemaVersion}
@@ -173,7 +180,7 @@ func TestAnExpectedInstallationThatPublishedNothingIsARow(t *testing.T) {
 	roster.Installations = append(roster.Installations, domain.FleetRosterEntry{
 		Product:   "demo",
 		ID:        "inst_01GONEQUIETQUIETQUIETQUIET",
-		PublicKey: "RWQfaKe0000000000000000000000000000000000000000000000",
+		PublicKey: fixtureKey,
 	})
 
 	report, err := ops.FleetList(ctx, h.Deps, ops.FleetListOptions{Roster: roster})
@@ -307,7 +314,7 @@ func TestARowTheRosterDoesNotNameIsShownAndNotFailed(t *testing.T) {
 	roster := domain.FleetRoster{
 		Schema: domain.FleetRosterSchemaVersion,
 		Installations: []domain.FleetRosterEntry{
-			{Product: "web", ID: "inst_01SOMEBODYELSE", PublicKey: "RWQfaKe"},
+			{Product: "web", ID: "inst_01SOMEBODYELSE", PublicKey: fixtureKey},
 		},
 	}
 	require.NoError(t, roster.Validate())
@@ -375,12 +382,13 @@ func TestTheReaderStatesWhatARosterDoesAndDoesNotBuy(t *testing.T) {
 
 // Reading a roster refuses what an operator actually mistypes.
 func TestReadingARosterRefusesTheFileRatherThanTheFleet(t *testing.T) {
-	good := "schema: 1\ninstallations:\n  - product: demo\n    id: inst_01A\n    key: RWQfaKe\n"
+	good := "schema: 1\ninstallations:\n  - product: demo\n    id: inst_01A\n" +
+		"    key: " + fixtureKey + "\n"
 
 	roster, err := ops.ParseFleetRoster(good)
 	require.NoError(t, err)
 	require.Len(t, roster.Installations, 1)
-	assert.Equal(t, "RWQfaKe", roster.Installations[0].PublicKey)
+	assert.Equal(t, fixtureKey, roster.Installations[0].PublicKey)
 
 	cases := map[string]string{
 		// The singular is the mistake somebody makes once; it parses
