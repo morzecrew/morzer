@@ -249,19 +249,22 @@ yet. Running any real operation gives it one.
 ### What a roster changes
 
 ```text
-3 row(s) on file:///tmp/fleet-target
+2 row(s) on file:///tmp/fleet-target
   PRODUCT                          VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
   demo/inst_01ACCEPTANCEWENTQUIET  —        —       —          —      —
-  demo                             1.3.0    2/2 up  2m0s ago   none   verified
-  web                              1.0.0    3/3 up  1m0s ago   none   verified
+  demo                             1.3.0    2/2 up  0s ago     none   verified
+  web                              1.0.0    3/3 up  0s ago     none   verified
   ROW                              WHAT IT SAYS
   demo/inst_01ACCEPTANCEWENTQUIET  the roster expects this installation; no target holds a row
 
   the roster expects 3 installation(s); 2 published a row and 1 did not
 ```
 
-The first line is the one the roster exists for. Nothing on the target says that
-installation should be there; only the roster does.
+The first line of the table is the one the roster exists for. Nothing on the
+target says that installation should be there; only the roster does — which is
+also why the headline counts two rows above a table of three. The count is what
+the target holds, and that line is there precisely because it holds nothing for
+it.
 
 The `signature` column now answers a question rather than reporting a fact:
 

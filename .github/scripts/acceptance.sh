@@ -1037,9 +1037,33 @@ mv "${WORK}/held.minisig" "${FLEET_TARGET}/${FLEET_KEY}.minisig"
 # quotes. A sample nobody captured from a running binary is a sample that drifts
 # the first time a column moves.
 step "the fleet, with a roster, as an operator sees it"
+# The status is captured rather than discarded. `|| true` accepts *any* failure,
+# so a malformed roster, an unreadable target or a panic in the renderer would
+# all have read as the deliberate one -- and this is the only step that exercises
+# the plain rendering at all, so nothing else would have caught it either.
+fleet_plain_status=0
 "${MORZER}" --root "${ROOT}" fleet ls "file://${FLEET_TARGET}" \
-	--expect "${WORK}/roster-gone.yaml" ||
-	true # one installation is deliberately absent, so this exits non-zero
+	--expect "${WORK}/roster-gone.yaml" >"${WORK}/fleet-plain.txt" ||
+	fleet_plain_status=$?
+cat "${WORK}/fleet-plain.txt"
+
+# 3 is the preflight status: one installation is deliberately absent. A 2 here
+# would be the roster being refused, which is a different scenario passing under
+# this one's name.
+[ "${fleet_plain_status}" -eq 3 ] ||
+	fail "plain fleet ls exited ${fleet_plain_status}, expected 3 for an absent installation"
+
+# The table is counted by what the target holds, and the absent installation is
+# a line in it rather than a number in the headline.
+grep -q "^2 row(s) on file://${FLEET_TARGET}$" "${WORK}/fleet-plain.txt" ||
+	fail "the headline is not the two rows the target holds: $(head -1 "${WORK}/fleet-plain.txt")"
+for expected in \
+	"the roster expects this installation; no target holds a row" \
+	"the roster expects 3 installation(s); 2 published a row and 1 did not"; do
+	grep -qF "${expected}" "${WORK}/fleet-plain.txt" ||
+		fail "the plain rendering lost: ${expected}"
+done
+info "plain fleet ls renders the absent installation and exits ${fleet_plain_status}"
 
 # The P4 timer is deliberately not exercised here: this scenario runs
 # `init --install-units=false`, so the machine manages no units at all and
