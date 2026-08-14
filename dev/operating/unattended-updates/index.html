@@ -2379,12 +2379,21 @@ the right amount of ceremony for a machine about to hold real data.</p>
 reproduces an export wholesale:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>import<span class="w"> </span>./demo.export.yaml<span class="w"> </span>--identity<span class="w"> </span>~/recovery.key<span class="w"> </span>--mode<span class="w"> </span>dev
 </code></pre></div>
-<p>That is how you test a customer's backup on a sandbox. <strong>It drops the export's
-backup targets</strong>, and this is not optional: an import keeps the original
-installation id so a lost machine's backups stay restorable, and an export
-carries the backup targets <em>with their credentials</em> so a rebuilt machine can
-reach them. A sandbox that kept them would push throwaway backups into the
-customer's bucket under a matching id. The drop is reported, not silent.</p>
+<p>That is how you test a customer's backup on a sandbox. <strong>It drops everything
+that would let the sandbox act on production's infrastructure</strong>, and this is not
+optional: an import keeps the original installation id so a lost machine's
+backups stay restorable, and an export carries credentials so a rebuilt machine
+can reach what it needs to.</p>
+<ul>
+<li><strong>Backup targets.</strong> A sandbox that kept them would push throwaway backups —
+  and <a href="../../reference/fleet/">fleet rows</a>, which go to the same targets — into
+  the customer's bucket under a matching id.</li>
+<li><strong>Notify targets.</strong> A webhook URL is itself the credential, so a sandbox that
+  kept them would page the customer's on-call about a machine that exists in
+  order to be broken.</li>
+</ul>
+<p>The drop is a <a href="../../reference/fleet/#a-sandbox-must-not-publish-into-a-production-prefix">single list</a>
+rather than a special case per hazard, and it is reported rather than silent.</p>
 <p>Importing a dev export <strong>as production is refused</strong>. With no <code>--mode</code> at all, an
 import reproduces whatever the export was — a lost sandbox comes back a sandbox.</p>
 <h3 id="what-is-not-claimed">What is not claimed<a class="headerlink" href="#what-is-not-claimed" title="Permanent link">&para;</a></h3>
