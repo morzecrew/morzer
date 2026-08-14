@@ -658,3 +658,32 @@ later gains the timer then. There is no second flag gating this the way
 `update.check` gates the poll — a row is derived from what the machine already
 computes and goes to a target the operator chose, so the phone-home question
 RFC 0016 answered does not arise.
+
+### A15 — `MaxFleetRows` bounds fetches, and the listing behind it is unbounded
+
+Review of P3 asked whether the cap bounds what a flood costs. It does not, and
+the distinction is worth writing down rather than leaving to whoever reads the
+constant next.
+
+`MaxFleetRows` bounds *fetches*: how many objects one target contributes to a
+report, which is the expensive part and the part an attacker can multiply by
+writing objects. The listing that precedes it is not bounded, because
+[`ObjectKeys`](../internal/ports/target.go) returns every key under the prefix
+in one slice — a port contract that predates this RFC and that every caller
+shares. A prefix flooded with a million keys therefore costs about 61 MiB in
+the reader before the cap is consulted at all, and `expectedFirst` adds another
+15 MiB of string headers on top; the keys themselves are shared, not copied.
+
+Capping inside `fleetRowsOn` would recover none of that: by the time the
+function has a slice to cap, the allocation has already happened. The fix, if
+this ever matters, is a paginated or bounded `ObjectKeys` on the port, which
+changes a contract shared with the backup readers and is a separate RFC.
+
+Two things make the current arrangement tolerable in the meantime. A target
+prefix is one the operator chose and, on the arrangements this documents, is
+writable only by the fleet itself — a flood needs the credential the fleet
+already trusts. And ordering the roster's own keys first (A-numbered nowhere;
+it is §3.4's `expectedFirst`) means a flood can only ever truncate objects
+nobody asked about, so the failure mode is a slow read rather than twelve
+machines reported absent. The second of those was the actual bug; the first is
+why the remaining cost is a performance question and not a correctness one.
