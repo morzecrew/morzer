@@ -143,12 +143,21 @@ reproduces an export wholesale:
 morzer installation import ./demo.export.yaml --identity ~/recovery.key --mode dev
 ```
 
-That is how you test a customer's backup on a sandbox. **It drops the export's
-backup targets**, and this is not optional: an import keeps the original
-installation id so a lost machine's backups stay restorable, and an export
-carries the backup targets *with their credentials* so a rebuilt machine can
-reach them. A sandbox that kept them would push throwaway backups into the
-customer's bucket under a matching id. The drop is reported, not silent.
+That is how you test a customer's backup on a sandbox. **It drops everything
+that would let the sandbox act on production's infrastructure**, and this is not
+optional: an import keeps the original installation id so a lost machine's
+backups stay restorable, and an export carries credentials so a rebuilt machine
+can reach what it needs to.
+
+- **Backup targets.** A sandbox that kept them would push throwaway backups —
+  and [fleet rows](../reference/fleet.md), which go to the same targets — into
+  the customer's bucket under a matching id.
+- **Notify targets.** A webhook URL is itself the credential, so a sandbox that
+  kept them would page the customer's on-call about a machine that exists in
+  order to be broken.
+
+The drop is a [single list](../reference/fleet.md#a-sandbox-must-not-publish-into-a-production-prefix)
+rather than a special case per hazard, and it is reported rather than silent.
 
 Importing a dev export **as production is refused**. With no `--mode` at all, an
 import reproduces whatever the export was — a lost sandbox comes back a sandbox.

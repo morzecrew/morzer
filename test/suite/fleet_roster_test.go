@@ -440,3 +440,46 @@ func TestTheFleetTimerFollowsTheTargets(t *testing.T) {
 	assert.NotContains(t, h.Supervisor.Installed, timer,
 		"the timer outlived the target it was publishing to")
 }
+
+// The documented way to build a roster entry actually produces one.
+//
+// RFC 0026 §3.6 said the key is obtained from `morzer installation describe`,
+// and it is not: that document is *desired state*, and a signing key is machine
+// identity, which RFC 0027 excludes from it deliberately and RFC 0028 §5.3
+// explains. Nothing else prints the key on its own.
+//
+// A dry-run publish does, and it is the better shape anyway: it mints nothing,
+// and what it shows is exactly the row the roster describes. This pins the
+// recipe the reference page tells an operator to run, so the page cannot go on
+// naming a field that moved.
+func TestADryRunPrintsWhatARosterEntryNeeds(t *testing.T) {
+	h := fleetHarness(t)
+	inst, _ := h.withFleetTarget(t)
+
+	result, err := ops.FleetPublish(context.Background(), h.Deps, ops.FleetPublishOptions{
+		TargetOptions: ops.TargetOptions{Options: ops.Options{DryRun: true}},
+	})
+	require.NoError(t, err)
+
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
+
+	// The three fields of a roster entry, from one command.
+	assert.Equal(t, inst.Product, report.Row.Product)
+	assert.Equal(t, inst.ID, report.Row.InstallationID)
+	assert.Equal(t, inst.Signing.PublicKey, report.Row.SigningKey,
+		"the dry run does not print the key a roster entry has to bind")
+
+	// And the entry it produces is one the roster accepts.
+	roster := domain.FleetRoster{
+		Schema: domain.FleetRosterSchemaVersion,
+		Installations: []domain.FleetRosterEntry{{
+			Product:   report.Row.Product,
+			ID:        report.Row.InstallationID,
+			PublicKey: report.Row.SigningKey,
+		}},
+	}
+	require.NoError(t, roster.Validate(),
+		"the entry the documented recipe produces is not a valid roster entry")
+	assert.Empty(t, roster.Unkeyed())
+}

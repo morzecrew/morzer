@@ -49,8 +49,16 @@ type FleetRosterEntry struct {
 	ID      string `yaml:"id" json:"id"`
 
 	// PublicKey is the minisign public key line this installation signs
-	// with, obtained out of band -- `morzer installation describe` prints
-	// it on the machine itself.
+	// with, obtained out of band: `morzer fleet publish --dry-run --json`
+	// on the machine itself prints the row it would publish, and all three
+	// fields of a roster entry are in it.
+	//
+	// **Not `installation describe`**, which RFC 0026 §3.6 named and which
+	// deliberately does not carry it: that document is desired state, and
+	// a signing key is machine identity (RFC 0027, RFC 0028 §5.3). Nothing
+	// else prints the key on its own, and a dry run is the right shape
+	// anyway -- it mints nothing, and what it shows is exactly the row the
+	// roster is describing.
 	//
 	// Optional, and the choice is deliberate. Requiring it would be the
 	// fail-closed reading, and it would make absence reporting -- the half
@@ -137,8 +145,8 @@ func (r FleetRoster) Validate() error {
 	case len(r.Installations) == 0:
 		return ValidationError(nil, "the roster names no installations").
 			WithHint("each entry is a product, an installation id and the " +
-				"public key it signs with; `morzer installation describe` " +
-				"prints the last two on the machine itself")
+				"public key it signs with; `morzer fleet publish " +
+				"--dry-run --json` prints all three on the machine itself")
 	}
 
 	seen := make(map[string]int, len(r.Installations))
@@ -185,8 +193,8 @@ func validateRosterKey(key string) error {
 	if strings.ContainsAny(trimmed, " \t\r\n") {
 		return ValidationError(nil, "it is not a single line").
 			WithHint("a roster key is the one base64 line minisign prints, " +
-				"not the whole public-key file -- `morzer installation " +
-				"describe` prints the line on the machine itself")
+				"not the whole public-key file -- `morzer fleet publish " +
+				"--dry-run --json` prints the line on the machine itself")
 	}
 	return nil
 }

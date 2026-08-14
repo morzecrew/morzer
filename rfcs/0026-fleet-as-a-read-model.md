@@ -1,11 +1,12 @@
 # RFC 0026 — Fleet as a read model
 
-- **Status:** 🚧 In progress — P1 and P2 shipped 2026-08-13: the payload,
-  `fleet publish`, `fleet ls`, staleness and the unreadable-row rule. P3 (the
-  roster) and P4 (the timer, and the generalised dev-mode drop list) remain, and
-  P2 ships with both of its limitations stated on every run — see §8 and A2.
-  Decision 1 is what the RFC exists to preserve; the timer is deliberately the
-  last phase.
+- **Status:** ✅ Complete — P1 and P2 shipped 2026-08-13 (the payload,
+  `fleet publish`, `fleet ls`, staleness and the unreadable-row rule); P3 and P4
+  shipped 2026-08-14 (the roster, absence, verification anchored in it, the
+  generalised dev-mode drop list, and the timer — last, as §8 required).
+  Decision 1 is what the RFC exists to preserve, and nothing here listens.
+  A reader without a roster still states both of its limitations on every run,
+  and a reader *with* one states what a roster does not buy — see A2 and A12.
 - **Scope:** Making several machines visible without a control plane: each
   installation publishes one small object at a stable key through 0009's
   existing target registry, and a stateless command lists, verifies and renders
@@ -241,23 +242,30 @@ reader checking this list against P1–P2 would otherwise count them as omission
   from one that was not, because nothing here verifies anything. That is not a
   gap in the tests; it is the sentence `fleet ls` prints on every run, and the
   test that pins it is the one below.
-- ⏳ **P3.** **The overwrite, played out**: a second installation with its own
-  valid key rewrites the first's object, its embedded public key and its
-  signature. The row must be reported as signed by a key the roster does not
+- ✅ **P3.** **The overwrite, played out**: a second installation with its own
+  valid key writes a row claiming the first's identity, signed with its own key
+  and carrying it. The row is reported as signed by a key the roster does not
   name. A verifier that trusts the row's own key passes this scenario, which is
-  what makes it the test decision 6b lives or dies by.
+  what makes it the test decision 6b lives or dies by —
+  `TestARowSignedByAnotherMachinesKeyIsNamed`, and the same path is exercised
+  end to end in the acceptance scenario.
 
-  P2 pays its way toward it differently: `TestTheReaderNeverClaimsARowIsVerified`
-  asserts the vocabulary has no word for "verified" at all, so the verifier this
-  test would catch cannot be written by accident in the meantime.
+  P2 paid its way toward it differently: `TestTheReaderNeverClaimsARowIsVerified`
+  asserted the vocabulary had no word for "verified" at all, so the verifier
+  this test would catch could not be written by accident in the meantime.
+
+  Execution added a case the design did not name: a signature *removed* rather
+  than forged. See A11.
 - ✅ **P2.** A reader with no roster says it cannot authenticate, rather than
   showing rows as verified. `TestTheReaderStatesWhatItCannotDo`.
-- ⏳ **P4**, with its outcome half already pinned. The drop list from decision 7
-  gets one test covering every credential-bearing field, so a third thing to
-  drop cannot be added without failing it. There is no list yet (§10.1), so what
-  P1 could assert is the outcome: `TestImportingAsASandboxDropsTheBackupTargets`
-  now also checks that such a sandbox cannot publish a fleet row. §8's note
-  on §3.5 says why that was worth doing before the list exists.
+- ✅ **P4.** The drop list from decision 7 has one test covering every
+  credential-bearing field — `TestEveryInstallationFieldIsClassifiedForASandbox`
+  walks `Installation` by reflection and demands a written verdict per field, so
+  a third thing to drop cannot be added without failing it. The outcome half
+  stays where P1 put it: `TestImportingAsASandboxDropsTheBackupTargets` asserts
+  that such a sandbox cannot publish a fleet row, which keeps passing whatever
+  the list says at the time and fails the day fleet targets move off that field.
+  The list found a second entry immediately — see A13.
 
 ## 7. Docs
 
@@ -266,6 +274,14 @@ including the public key per installation and how it is obtained, since a roster
 written without keys makes every row unauthenticatable — and the operating guide
 says plainly what the absence of a roster means, because a reader who does not
 know that reads a complete-looking table as complete.
+
+**Shipped as one page**, [`reference/fleet.md`](../pages/docs/reference/fleet.md),
+rather than a second one for the roster: the roster is not a format somebody
+adopts on its own, and splitting it out would make an operator hop between two
+pages to answer one question. The absence of a roster is stated by the command
+itself on every run (A2), so the documentation is where the *format* lives
+rather than where the warning does. §3.6's claim about how the key is obtained
+turned out to be wrong; see A10.
 
 ## 8. Phasing
 
@@ -277,9 +293,15 @@ know that reads a complete-looking table as complete.
 - **P2 — `fleet ls`**, staleness, unparseable rows, `--json`. ✅ Shipped
   2026-08-13, with both of its limitations enforced in the report rather than
   documented — see A2.
-- **P3 — The roster and absence reporting** (§3.3).
+- **P3 — The roster and absence reporting** (§3.3). ✅ Shipped 2026-08-14, and
+  it brought verification with it: decision 6b makes the roster the anchor, so
+  the file that answers "who is missing" is the same file that answers "who may
+  sign for this id". A2's discipline did not lapse — a reader *with* a roster
+  states what a roster does not buy (A12).
 - **P4 — The timer**, as a sibling of the backup timer, and the generalised
-  dev-mode drop list (§3.5).
+  dev-mode drop list (§3.5). ✅ Shipped 2026-08-14. The timer is hourly where
+  its siblings are daily (A14), and the drop list found its second entry on the
+  day it was written (A13).
 
 **§3.5's hazard turns out to be covered already, and by luck rather than by
 design.** Decision 3 reuses 0009's target list, and `modeForImport` already sets
@@ -516,3 +538,123 @@ because it is the state a publish interrupted between its two writes leaves —
 and, less innocently, the state left by removing a row and not its signature.
 
 None of the three is authentication, and none of them is presented as any.
+
+### A9 — The roster's key is optional, and the reader names what it cannot check
+
+§3.6 binds a public key to an installation id "at the cost of one field in a
+file the reader already has to maintain", which reads as a required field. Made
+optional in execution, and the reason is adoption rather than laziness:
+requiring it puts twelve public keys, collected by hand over ssh, between an
+operator and the *absence* report — which is the half of the roster they want
+first and the half §3.3 introduced it for.
+
+So an entry with only a product and an id still says the installation is
+expected. What it costs is stated on every run rather than documented: the
+report names the unkeyed entries and says nothing published under them can be
+authenticated. That is A2's discipline applied to a second case, and it is the
+same trade this design makes everywhere — a reader that says what it cannot do
+beats one that refuses to run.
+
+### A10 — §3.6 named the wrong command, and the right one is a dry run
+
+*"It is obtained the way a fingerprint always is, out of band: `morzer
+installation describe` prints it on the machine itself."* That command does not
+print it and should not: RFC 0027 makes the describe document *desired state*,
+and a signing key is machine identity — `installationFieldsNotDescribed` excludes
+`Signing` by name, citing RFC 0028 §5.3, because a rebuilt machine is honestly a
+different signer.
+
+Nothing else prints the key on its own either. What does is
+`morzer fleet publish --dry-run --json`, which prints the row this machine would
+publish — and all three fields of a roster entry are in it, from one command per
+machine. It is the better answer as well as the available one: a dry run mints
+nothing (A8's sibling finding, pinned in P1), and what it shows is exactly the
+row the roster describes. `TestADryRunPrintsWhatARosterEntryNeeds` pins the
+recipe the documentation prints, so the page cannot go on naming a field that
+moved.
+
+### A11 — A signature removed is a finding, which the design did not say
+
+§3.6 names three cases: verified, signed by a key the roster does not name, and
+unsigned or unverifiable. Folding "unsigned" in with "unverifiable" hides a
+downgrade that costs an attacker nothing: forging a signature is hard and
+*deleting* one is a single unlink, so a stripped signature that read as the
+ordinary state of a machine with no key would let anybody with write access
+escape the roster entirely by removing the `.minisig` beside a row they forged.
+
+The roster is what makes this answerable — it says this installation signs — so
+the reader distinguishes `unsigned` (nothing expected a signature) from
+`missing-signature` (the roster binds a key and none arrived), and only the
+second is a finding. `TestARowThatShouldBeSignedAndIsNotIsAFinding`.
+
+### A12 — A roster shortens the limitations and does not empty them
+
+A2 made P2's phase-boundary honesty a property of the report. The obvious
+reading of P3 is that the limitations then go away, and they do not: the anchor
+becomes a file the operator maintains, and a reader that stopped saying so would
+be presenting its own input back as evidence. A key transposed between two
+entries reads *exactly* like a machine overwriting its neighbour's row, and this
+reader does not pretend to tell them apart.
+
+Two further choices the design did not name:
+
+**A row the roster does not name is shown and not failed.** §3.3's three classes
+are reporting, stale, and expected-but-absent; a row from an installation the
+roster says nothing about is none of them. It is noted in the diagnostics and
+deliberately kept out of the exit status, because a roster covering three of
+twelve machines is a legitimate way to adopt this and a reader that reported the
+other nine as findings would be unusable on the way in. The roster's contract is
+"these must be here", not "no others may be".
+
+**A row that fails verification has its payload withheld.** Decision 6 says such
+a row is displayed carrying its problem; execution reads "displayed" as the line
+and not its contents. The row's product and id come from the key either way, and
+`row` being non-nil then means *these bytes were authenticated* — an invariant a
+`--json` consumer can build on. Rendering an impostor's `3/3 up` beside a
+caption would be the caption doing the work.
+
+### A13 — The drop list found its second entry the day it was written
+
+Decision 7 exists because the second thing to drop was the same field as the
+first by luck. The list was written, every field of `Installation` was
+classified against one rule — *does keeping this let a throwaway machine act on
+infrastructure the production machine owns* — and `notify.targets` failed it
+immediately.
+
+A notify target's endpoint may *be* its credential: RFC 0015 spells a Slack or
+Teams webhook URL as `url_secret` precisely because the URL is a bearer token,
+and the secret state holding it travels in the export beside the backup
+credentials. So a sandbox rebuilt from a production export was, until this list
+existed, going to page the customer's on-call about a machine that exists in
+order to be broken. Nobody had noticed, which is the entire argument for
+decision 7.
+
+The classification is the mechanism rather than the list: it is a reflection
+walk over the installation document demanding a written verdict per field, so a
+field added next year fails the build until somebody says which side of the line
+it is on. The rule is reach and not sensitivity — parameters and domains are
+sensitive too, and a sandbox needs them to render anything at all.
+
+### A14 — The fleet timer is hourly, where its siblings are daily
+
+§8 says the timer is a sibling of the backup timer and says nothing about how
+often it runs. It differs in kind rather than in hour: a backup's value does not
+decay between runs and a row's value is nothing but its age. A8 gave the reader
+a 24-hour staleness default, so a publisher on the daily schedule the other two
+timers use would sit exactly at that threshold and report healthy machines as
+stale whenever jitter went the wrong way.
+
+Hourly gives a machine twenty-four chances to be current, so one missed tick is
+not something anybody investigates. `Persistent=true` catches up a machine that
+was off — publishing a fresh row at boot, which is the moment somebody is most
+likely to be looking at the fleet — and `RandomizedDelaySec` spreads twelve
+machines that share one prefix.
+
+The pair is generated only when a target exists, for the reason the update pair
+is generated only when a channel does. That needed a second reconciliation
+point: `init` runs before any target is configured, so `backup target add` and
+`remove` now refresh the unit set, and a machine that gains a target a month
+later gains the timer then. There is no second flag gating this the way
+`update.check` gates the poll — a row is derived from what the machine already
+computes and goes to a target the operator chose, so the phone-home question
+RFC 0016 answered does not arise.

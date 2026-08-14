@@ -52,7 +52,7 @@ func ParseFleetRoster(raw string) (domain.FleetRoster, error) {
 // because an operator meeting two different descriptions of one file format
 // has to work out which is current.
 const rosterHint = "a roster is YAML: `schema: 1` and an `installations:` list of " +
-	"product, id and key -- `morzer installation describe` prints the id and the key " +
+	"product, id and key -- `morzer fleet publish --dry-run --json` prints all three " +
 	"on the machine itself"
 
 // firstLine keeps a decoder's error to its first line.

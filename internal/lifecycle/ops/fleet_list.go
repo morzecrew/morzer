@@ -353,10 +353,15 @@ func (d *Deps) fleetLimitations(roster domain.FleetRoster) []string {
 	}
 
 	if unkeyed := roster.Unkeyed(); len(unkeyed) > 0 {
+		// About the roster rather than about the rows, because it is
+		// computed before any row is read and has to stay true either
+		// way: "rows from it are shown as signed" reads as a statement
+		// about rows that exist, and the entry most likely to be missing
+		// a key is the one whose machine never published.
 		out = append(out, fmt.Sprintf(
-			"the roster binds no key to %s, so rows from %s are shown as signed "+
-				"rather than verified; `morzer installation describe` prints the "+
-				"key on the machine itself",
+			"the roster binds no key to %s, so nothing published under %s can be "+
+				"authenticated; `morzer fleet publish --dry-run --json` prints "+
+				"the key on the machine itself",
 			strings.Join(unkeyed, ", "), pluralThem(len(unkeyed))))
 	}
 
