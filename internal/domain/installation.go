@@ -550,24 +550,40 @@ type Policy struct {
 // load, which is visible and local.
 //
 // What this refuses is the shape that is not a schedule at all. The value is
-// rendered into `OnCalendar=` in a root-owned unit file, and it now arrives
-// from installation.yaml -- a file an operator hand-edits and a support bundle
-// carries -- rather than only from argv at `init`. A newline in it is a second
-// directive in that unit, which is a way to run a command as root from a
-// configuration field. Bounding it at the boundary is the same rule every other
-// value that leaves this manager follows.
+// rendered into `OnCalendar=` in a root-owned unit file, and it used to arrive
+// only from argv at `init`. Persisting it means every later reconciliation
+// reads it back out of the manager's state file instead -- so it is rendered
+// again and again by a path that never revisits the door it came in through,
+// and a value that got into that file by any means at all (an older binary, a
+// restored or migrated state, an edit of the file itself) is rendered as it
+// stands. A newline in it is a second directive in that unit, and `Unit=` in a
+// [Timer] section names what the timer starts: a way to schedule something as
+// root from a configuration field. Bounding it at the boundary is the same rule
+// every other value that leaves this manager follows.
 func ValidateBackupSchedule(raw string) error {
-	schedule := strings.TrimSpace(raw)
-	if schedule == "" {
-		return nil
-	}
-	for _, r := range schedule {
+	// The raw value, before any trim. This guard runs on load and on save,
+	// where `raw` *is* what gets rendered -- so trimming first and scanning
+	// the copy asked the question about a string nobody stores. A leading
+	// newline vanished into the trim, passed, and arrived at `OnCalendar=`
+	// intact, where it opens a second directive: `Unit=` in a [Timer]
+	// section names what the timer starts, so that is a way to schedule
+	// something else as root from a hand-edited configuration field.
+	//
+	// The input doors trim before they call this, so an operator who pastes
+	// a value with a stray newline at the end still gets a schedule rather
+	// than a refusal. What arrives here untrimmed did not come through them.
+	for _, r := range raw {
 		if r == '\n' || r == '\r' || unicode.IsControl(r) {
 			return ValidationError(nil, "a backup schedule is one line").
 				WithHint("it is rendered into a systemd unit, where a second " +
 					"line is a second directive; use an OnCalendar " +
 					"expression such as `Mon *-*-* 04:00:00`")
 		}
+	}
+
+	schedule := strings.TrimSpace(raw)
+	if schedule == "" {
+		return nil
 	}
 	if len(schedule) > maxBackupScheduleLen {
 		return ValidationError(nil, "a backup schedule is at most %d characters",

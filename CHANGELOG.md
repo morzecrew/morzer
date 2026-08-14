@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **A backup schedule can no longer add a directive to a systemd unit.** The guard trimmed the value and then inspected the trimmed copy, so a schedule whose *first* character was a newline passed validation and was stored and rendered unchanged — producing `OnCalendar=` followed by a second line of the operator's choosing in a root-owned unit file. `Unit=` in a `[Timer]` section names what the timer starts, so that is a way to have root run something else on a schedule, reachable from an `init` flag or from the manager's own state file. The value is now inspected as given, trimmed before it is stored so what was validated is what is written, and refused a third time by the renderer itself — the guard nearest the file holds for a caller that does not exist yet. Never released: `policy.backup_schedule` is new in this version.
+
 ### Fixed
 
 - **`morzer init --repair` no longer drops the backup targets, the notification targets and the update channel.** It rebuilt the installation record from the flags on *that* command line, so everything an operator arranged after `init` was silently discarded — by the command they run precisely because something is already wrong. An operator found out at the next backup, during a recovery, or never. The repair now carries what it did not create, and every field of an installation is classified in a test as carried or rebuilt, so a field added later cannot be forgotten the way these three were.

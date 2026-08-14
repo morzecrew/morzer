@@ -395,6 +395,14 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 // it, and restore checks against it, so a new ID would make every existing
 // backup look like it belongs to a different machine.
 func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts InitOptions) (domain.Installation, error) {
+	// Trimmed once, here, because both branches below store it and the
+	// validator refuses what it is given rather than a tidied copy. An
+	// untrimmed value means the guard checked one string and the unit file
+	// received another; a whitespace-only one is *non-empty*, so it slips
+	// past the supervisor's fallback to the nightly default and renders an
+	// `OnCalendar=` with nothing after it. `config set` has always trimmed.
+	backupSchedule := strings.TrimSpace(opts.BackupSchedule)
+
 	inst := domain.Installation{
 		SchemaVersion: domain.InstallationSchemaVersion,
 		Product:       opts.Product,
@@ -407,7 +415,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	}
 	inst.Policy.RequireSignature = opts.RequireSignature
 	inst.Policy.SigningKeys = opts.SigningKeys
-	inst.Policy.BackupSchedule = opts.BackupSchedule
+	inst.Policy.BackupSchedule = backupSchedule
 
 	// The key the minting step just produced, so state records what is
 	// actually on disk rather than what a second call to the port would
@@ -451,11 +459,14 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 			inst.Domains = existing.Domains
 		}
 		inst.Policy = existing.Policy
-		if opts.BackupSchedule != "" {
+		if backupSchedule != "" {
 			// The one field of Policy this command can set, so it
 			// outranks the carried block when it was given -- the
-			// same rule as Profile and Domains above.
-			inst.Policy.BackupSchedule = opts.BackupSchedule
+			// same rule as Profile and Domains above. Tested on the
+			// trimmed value, so `--backup-schedule "   "` is "not
+			// given" rather than an instruction to blank the window
+			// an operator already had.
+			inst.Policy.BackupSchedule = backupSchedule
 		}
 
 		// Everything an operator arranged *after* `init`, carried
