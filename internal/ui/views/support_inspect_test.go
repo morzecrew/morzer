@@ -183,7 +183,12 @@ func TestAnUnreadableArchiveSaysWhyBeforeTheEmptyTable(t *testing.T) {
 			},
 		},
 	}))
-	require.Contains(t, out, "the contents could not be read")
+	// The reason, not only the label. Asserting the prefix alone passes
+	// against a view that drops the reason entirely, which is the whole of
+	// what this line is for -- "the contents could not be read" on its own
+	// tells a reader nothing they did not already see from the empty table.
+	require.Contains(t, out,
+		"the contents could not be read: this archive is encrypted and no identity was given to read it")
 	assert.Less(t, strings.Index(out, "could not be read"), strings.Index(out, "nothing in it"),
 		"the empty table came before the reason it is empty")
 }
