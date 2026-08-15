@@ -7,34 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-15
+
+Three things a machine could not do before: sign statements about itself,
+package the evidence for somebody who is not sitting at its terminal, and be
+seen from outside without a control plane. The signing identity is underneath
+the first and the third; the support archive is the second and needs nothing
+but the files already on disk.
+
+Upgrading is automatic — the installation schema moves 5 → 8 on the first read
+and converts nothing. Going back is not: a manager refuses state written by a
+newer one rather than misreading it, so a 0.1.x binary put back on this machine
+declines the installation rather than quietly dropping what it cannot read.
+
 ### Added
+
+- **`morzer support bundle` writes one archive an operator can hand to a stranger.** A `.tar.zst` carrying the operation journal, `doctor`'s results, the resolved manifest, the parameters, configuration drift, the version history, service state and bounded container logs — everything the conversation with a vendor needs, in a form they open with `tar --zstd -xf` and nothing from this project. Every component is scrubbed against the secret values the installation holds now, rather than trusting the redaction that ran when each file was written months earlier, and the container logs are dropped altogether rather than shipped unfiltered when those values cannot be loaded. Parameter values do travel, because a parameter is not a secret by construction and withholding them would hide the commonest cause of a support question. The age identity, the encrypted secret state, the signing key, the backup credentials, a recovery export and the directory where secrets are rendered in the clear are refused outright — checked against the archive's own bytes, not against the list of things it was asked to collect. `--preview` prints what would be collected, what was left out and why, and writes nothing.
+
+- **`morzer support redact --check` reads a file and reports whether any of this installation's secret values appear in it**, changing nothing. The archive is safe by construction; the terminal output somebody is about to paste into a chat window is not, and that is the paste this command exists for.
 
 - **A support bundle can be encrypted to your vendor, and to nobody else.** A release declares who its bundles are for; the archive is then encrypted to those keys alone, gets an `.age` suffix, and is unreadable by the machine that produced it — so an archive sitting in a ticket system, a mail thread or a bucket is not readable by the ticket system, the mail provider, or whoever later takes the host. A declaration the manager cannot use is a refusal before anything is collected, never a quiet fall back to plaintext, and `--preview` prints the recipients in full so the target can be checked against what the vendor published while the archive still does not exist. Declaring nobody still produces a plaintext archive on purpose: posting to a forum is the case the whole feature was built around.
 
+- **Every installation has a signing key of its own.** Minted at `init`, kept readable only by root, and used to sign statements this machine makes *about itself* — never to verify a release, which stays the vendor's key and stays off deployment hosts. The public half is recorded in the installation state and travels in an export, and `morzer doctor` reports whether the recorded key and the key on disk still agree. A rebuilt machine mints a fresh key and records its predecessor's, so a signature from before the rebuild reads as *signed by a predecessor* rather than as plainly valid — collapsing the two would make rotating after a suspected compromise pointless.
+
+- **Every lifecycle operation writes a signed record of what it did.** `apply`, `update`, `rollback`, `restore` and `config` produce an in-toto statement with a detached minisign signature beside it: the release and its content digest, the images by digest, the names of the parameters that changed, and a digest of the rendered configuration. Parameter *values* never appear; what a failing step said does, scrubbed against the installation's secret values, stripped of control characters and truncated at 300 bytes, because a record that cannot say why an operation failed is not worth pushing anywhere. Failures attest too, since the operation an auditor asks about is the one that went wrong — and an operation refused before it ran files nothing, there being nothing yet to describe.
+
+- **`morzer attest log`, `morzer attest verify` and `morzer attest push`.** `log` reads the record back without asking whether to believe it; `verify` answers three questions separately, because an operator acts on them differently — did a key this installation knows about produce these bytes, do the version-moving statements join up, and, with `--against-live`, does the deployment running right now match the newest statement. Statements are pushed to the backup targets as they are written, `morzer doctor` reports the ones still only on this machine, and `attest push` sends those. A push that fails does not fail the operation: a record that did not leave is a gap whose local copy is still here, and failing an update over bookkeeping would stop the fix an operator was applying.
+
+- **`morzer fleet publish` and `morzer fleet ls`: several machines visible without a control plane.** Each installation publishes one small signed document to a stable key on a backup target it already uses, and a stateless command reads them back — no agent, no listener, no database, and no inbound connection to a managed machine. The row says which installation it is, the release it runs, its mode, what the runtime reports or why that could not be taken, how many configuration targets differ, and what the last operation was — a count of drifted targets and never the diff, no parameter values, no hostnames, no logs and no configuration. `--dry-run` prints the document that would be published rather than a description of it.
+
+- **A roster answers absence and authenticity at once.** `morzer fleet ls --expect roster.yaml` takes the file naming which installations are the fleet and which key may speak for each, so a machine that has stopped publishing is reported as absent instead of quietly missing from a list, and a row signed by another key is reported as a mismatch. A row whose signature has been *removed* is its own verdict rather than an unsigned machine: forging a signature is hard and deleting one is an unlink, so folding the two together would let anyone with write access to the target forge a row and then take away the evidence.
+
+- **An installation with a backup target publishes its fleet row hourly.** A generated systemd timer runs `fleet publish`, so `fleet ls` sees machines nobody has logged into. `morzer backup target add` and `remove` install and take away that pair as the target arrives and goes, and a reconciliation that fails warns rather than failing the command — the target is on disk either way, and re-running would meet "already a backup target" and refuse before reaching the step that failed, leaving an operator an error with nothing to type. The timer shipped after the payload was settled rather than beside it, deliberately: a scheduled publisher built earlier would have put badly shaped objects into every bucket, and objects in buckets are the one thing this design cannot recall.
+
+- **`morzer config set backup.schedule`**, which the schedule never was: it arrived as an `init` flag and could not be changed afterwards without re-running `init --repair`. Unsetting it returns the nightly default rather than turning backups off, because an empty `OnCalendar` is a unit systemd refuses to load.
+
 - **`morzer config set backup.scheduled=false`, for a machine whose backups are handled elsewhere.** The backup service and timer are then not generated at all, and an existing pair is removed — the same mechanism that already takes the update timer away when you stop following a channel. `morzer doctor` and `morzer status` stop asking how old the last backup is, because you have told them the job belongs to something else rather than left them guessing. Taking one by hand still works, and a backup that exists is still expected to reach a target. Unsetting returns to scheduled backups, which is also what an installation that never mentioned the field gets.
+
+- **The tree builds for macOS.** `go build ./cmd/morzer` with Go 1.25 or newer produces a working binary for `darwin/amd64` and `darwin/arm64`, which is a CLI for authoring bundles and looking around. There is no macOS release build and running a deployment stays a Linux server's job, so this is a development host rather than a supported target.
 
 ### Changed
 
 - **`systemctl disable` on a morzer timer now sticks.** Every reconciliation — any `config set`, any backup-target change — re-ran `systemctl enable` on the units it manages, so an operator who switched a timer off had it switched back on by the next unrelated command, with no message. Reconciliation now enables only units it has just created; `morzer init --repair --install-units` is the one command that re-asserts enablement, which is the command whose job is to put a machine right. `morzer doctor` still reports a unit that is installed and switched off, and now names both ways out of that warning: repair it, or declare that this machine's backups are handled elsewhere.
 
-### Security
-
-- **A backup schedule can no longer add a directive to a systemd unit.** The guard trimmed the value and then inspected the trimmed copy, so a schedule whose *first* character was a newline passed validation and was stored and rendered unchanged — producing `OnCalendar=` followed by a second line of the operator's choosing in a root-owned unit file. `Unit=` in a `[Timer]` section names what the timer starts, so that is a way to have root run something else on a schedule, reachable from an `init` flag or from the manager's own state file. The value is now inspected as given, trimmed before it is stored so what was validated is what is written, and refused a third time by the renderer itself — the guard nearest the file holds for a caller that does not exist yet. Never released: `policy.backup_schedule` is new in this version.
+- **Installation schema 5 → 8**, for the machine's signing key and attestation salt, `policy.backup_schedule`, and `policy.skip_scheduled_backups`. Migration is automatic on the first read and converts nothing — an installation arriving at schema 6 has no signing key and mints one the first time something asks it to sign, because acquiring a key is not something loading a file should do. Each number moved for the write path rather than the read path: an older manager rewriting this state would drop the fields it does not know, which is how an operator's maintenance window silently becomes nightly again and how a machine that declared it wants no backup timer gets one. The bump is what stops that happening quietly — a 0.1.x binary put back on this machine declines the installation instead.
 
 ### Fixed
 
 - **`morzer init --repair` no longer drops the backup targets, the notification targets and the update channel.** It rebuilt the installation record from the flags on *that* command line, so everything an operator arranged after `init` was silently discarded — by the command they run precisely because something is already wrong. An operator found out at the next backup, during a recovery, or never. The repair now carries what it did not create, and every field of an installation is classified in a test as carried or rebuilt, so a field added later cannot be forgotten the way these three were.
+
 - **An unrelated `morzer config set` no longer rewrites the backup window.** The schedule was an `init` flag that nothing persisted, so every later reconciliation of the systemd units rendered the *default* instead: an operator's `Mon *-*-* 04:00:00` became nightly `02:30`, with exit zero and no warning. It is now `policy.backup_schedule` in the installation, which is also what makes it settable.
+
 - **`morzer doctor` no longer reports units this machine should not have.** It checked against the supervisor's *removal* superset, so the conditional update and fleet pairs read as `not installed` on every ordinary machine, on every run, with a remedy that could not clear them.
 
-### Added
+- **`install.sh` on macOS no longer gives advice that could not work.** It refused to install, as it still does — the release matrix is Linux only — and told the reader to build from source with Go 1.25 or newer, while the tree did not compile for darwin at all. That is the sentence somebody acts on, and it cost them an hour before failing. The refusal now says what a source build actually gets them.
 
-- **`morzer config set backup.schedule`**, which the schedule never was: it arrived as an `init` flag and could not be changed afterwards without re-running `init --repair`. Unsetting it returns the nightly default rather than turning backups off, because an empty `OnCalendar` is a unit systemd refuses to load.
+### Security
 
-### Changed
+- **A backup schedule can no longer add a directive to a systemd unit.** The guard trimmed the value and then inspected the trimmed copy, so a schedule whose *first* character was a newline passed validation and was stored and rendered unchanged — producing `OnCalendar=` followed by a second line of the operator's choosing in a root-owned unit file. `Unit=` in a `[Timer]` section names what the timer starts, so that is a way to have root run something else on a schedule, reachable from an `init` flag or from the manager's own state file. The value is now inspected as given, trimmed before it is stored so what was validated is what is written, and refused a third time by the renderer itself — the guard nearest the file holds for a caller that does not exist yet. Never released: `policy.backup_schedule` is new in this version.
 
-- **Installation schema 6 → 7** for `policy.backup_schedule`. Migration is automatic and there is nothing to convert; the bump is for the write path, so an older manager cannot rewrite the state and silently drop the field — which would reproduce the defect the field was added to fix.
-- **Installation schema 7 → 8** for `policy.skip_scheduled_backups`. Automatic, nothing to convert, and the bump is for the write path again: an older manager would drop the field on its next `config set` and then install a backup timer on a machine whose operator declared it wanted none.
+- **`morzer installation import --mode dev` now drops the notification targets as well as the backup targets.** An import keeps the original installation id on purpose, and an export carries credentials so a rebuilt machine can reach what it needs, so a sandbox rebuilt from a production export held both. Dropping the backup targets stopped it writing into the customer's bucket; nothing stopped it reporting into the customer's alerting, and a Slack or Teams webhook URL *is* the credential — a machine that exists in order to be broken would page the on-call every time it was. Both are dropped by one list now, and every field of an installation is classified in a test as safe for a sandbox to keep or not, so a third thing to drop does not depend on somebody remembering.
 
 ## [0.1.1] - 2026-08-13
 
@@ -161,6 +193,7 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.1.1...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/morzecrew/morzer/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/morzecrew/morzer/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/morzecrew/morzer/releases/tag/v0.1.0

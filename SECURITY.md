@@ -25,7 +25,8 @@ rather than misreading it.
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x | ✅ |
+| 0.2.x | ✅ |
+| 0.1.x | ❌ — upgrade to 0.2.x |
 | `main` | Fixes land here first; it is not a release |
 
 ## Verifying a release
@@ -92,9 +93,12 @@ resist:
 
 Each installation mints an Ed25519 key at `init`, in minisign format, at
 `/etc/<product>/signing/identity.key` (`0400`, in a `0700` directory). It signs
-statements the machine makes *about itself* — starting with the attestation
-written after each `apply`. The public half is recorded in installation state,
-so `status --json` and an export both carry it.
+statements the machine makes *about itself* — the attestation written after each
+lifecycle operation, and the row it publishes for the fleet view. The public
+half is recorded in installation state, so an export carries it; to read it off
+a running machine, `morzer fleet publish --dry-run --json` prints the key that
+would sign the row and mints nothing. `morzer installation describe` deliberately
+does not: that document is desired state, and a signing key is machine identity.
 
 This does not reverse the rule that keeps release signing off deployment hosts
 ([RFC 0004](rfcs/0004-distribution-and-verification.md) decision 8). That rule
@@ -125,6 +129,13 @@ under `signing.previous_keys`. A signature checking out against one of those is
 validity. Collapsing the two would make rotation useless.
 
 ### Rotation protects the future and repairs nothing
+
+**There is no rotate command yet** ([RFC 0028](rfcs/0028-the-machines-signing-identity.md)
+P2 is unscheduled). The only path that retires a key today is `installation
+import`, which mints a fresh one and records the old one as a predecessor — and
+rebuilding a machine to retire one key is not a remedy anybody should reach for.
+Read the rest of this section as what a rotation will and will not do, rather
+than as something to run.
 
 The sentence to read before rotating after a suspected compromise:
 
@@ -175,11 +186,28 @@ Stated here rather than discovered during an incident:
   when a release is staged and `apply` runs against one already on disk. The
   field is absent rather than `false` in that case, so an auditor cannot read
   "not established" as "checked and failed".
-- Attestations are written locally and are not yet pushed anywhere. A machine
-  that is lost takes its own record with it. See
-  [RFC 0025](rfcs/0025-attesting-an-installation.md) P4.
-- Only `apply` emits an attestation so far, and only on success. The failed
-  operation is the one an auditor asks about, and it is P2 of the same RFC.
+- An attestation leaves the machine as it is written, to the same targets the
+  backups go to, and a push that fails does not fail the operation. So a machine
+  lost between writing a statement and pushing it takes that statement with it;
+  `morzer doctor` reports statements that are still only local, and `morzer
+  attest push` sends them. **An installation with no backup target has nowhere
+  to push**, so its whole record is local and `doctor` says nothing about it —
+  an air-gapped machine has chosen that, and a machine that simply never
+  configured a target has the same exposure without having chosen it.
+- Redaction is bounded by what the manager knows. A support bundle reports zero
+  replacements in a file when no value this installation *currently* holds
+  appeared in it — which is not the same as the file being clean, because a
+  secret that was rotated away, or one that was never declared to the manager,
+  is not something it can recognise. The same bound applies to the text a
+  failing step contributes to an attestation, and that artifact is pushed off
+  the machine automatically.
+- A fleet row cannot be authenticated without a roster. Rows from several
+  machines share one prefix, so a machine that overwrites its neighbour's row
+  rewrites the payload, the embedded key and the signature together, and the
+  result verifies perfectly against itself. A listing also cannot show a row
+  that was never written or that somebody removed. `morzer fleet ls --expect`
+  is what answers both, and without it the `signature` column says a signature
+  is present rather than that it checks out.
 
 ## Dependency advisories with no code change
 
