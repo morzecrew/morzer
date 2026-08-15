@@ -1,12 +1,15 @@
 package suite
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -525,4 +528,117 @@ func TestInspectDoesNotLetTheMachineReadItsOwnEncryptedArchive(t *testing.T) {
 		})
 	require.Error(t, err,
 		"the machine that wrote the archive read it back with its own identity")
+}
+
+// ----------------------------------------------------------------------------
+// What the sabotage sweep found untested.
+
+// A crafted archive whose first `meta.json`-looking entry is a decoy.
+//
+// Found by sabotage: relaxing the index match from "is `meta.json`" to "ends
+// with `meta.json`" passed every other test here, because no fixture had a
+// second file whose name ends that way. This reader takes bytes from strangers
+// and the first matching entry wins -- so a decoy at `logs/meta.json` would be
+// read as the archive's own account of itself, and the real index below it
+// would never be reached.
+func TestADecoyIndexDeeperInTheArchiveIsNotTheIndex(t *testing.T) {
+	h := signingSupportHarness(t)
+
+	realIndex := `{"product":"demo","installation_id":"real","manager_version":"1.0.0",` +
+		`"entries":[{"name":"manifest.yaml","title":"The resolved manifest",` +
+		`"bytes":10,"redactions":0}]}`
+	decoy := `{"product":"demo","installation_id":"decoy","manager_version":"1.0.0",` +
+		`"entries":[]}`
+
+	path := filepath.Join(t.TempDir(), "crafted.tar.zst")
+	writeTarZstByHand(t, path, [][2]string{
+		{"logs/meta.json", decoy},
+		{"meta.json", realIndex},
+	})
+
+	read, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: path})
+	require.NoError(t, err)
+
+	assert.Equal(t, "real", read.InstallationID,
+		"a decoy at logs/meta.json was read as the archive's index")
+	assert.Len(t, read.Entries, 1)
+}
+
+// Inspecting is a read, and a read must not mint cryptographic material.
+//
+// Found by sabotage: swapping the fallback's `PublicKey` for `EnsureKey`
+// survived every test, because each one had already caused a key to exist. The
+// case that matters is the machine that has never signed -- where `EnsureKey`
+// creates the identity every future signature is attributed to, as a side
+// effect of looking at somebody else's file.
+func TestInspectMintsNoSigningKey(t *testing.T) {
+	producer := signingSupportHarness(t)
+	written := bundleInto(t, producer, t.TempDir())
+
+	// A second machine that can sign and never has.
+	reader := signingSupportHarness(t)
+	require.NoFileExists(t, reader.Paths.SigningKeyFile(),
+		"the fixture already has a key, so this test cannot see one being minted")
+
+	read, err := ops.SupportInspect(context.Background(), reader.Deps,
+		ops.SupportInspectOptions{Path: written.Path})
+	require.NoError(t, err)
+
+	assert.NoFileExists(t, reader.Paths.SigningKeyFile(),
+		"`support inspect` minted a signing key while reading somebody else's archive")
+	assert.Equal(t, ops.SignatureSourceNone, read.Signature.Source,
+		"a machine with no key of its own reported checking against one")
+}
+
+// `--key` outranks the installation's own record, and the case where that is
+// observable is the one nothing covered: both anchors present, disagreeing.
+//
+// A vendor who names a key is asking "was this signed by the key my customer
+// gave me". Answering "yes, by one of ours" instead answers a different
+// question with the same word.
+func TestTheNamedKeyOutranksTheInstallationsOwn(t *testing.T) {
+	producer := signingSupportHarness(t)
+	reader := signingSupportHarness(t)
+	ctx := context.Background()
+
+	written := bundleInto(t, producer, t.TempDir())
+
+	// The reader is a fully set-up installation whose own key is not the
+	// one that signed the archive.
+	own, err := reader.Deps.Signer.EnsureKey(ctx)
+	require.NoError(t, err)
+	recordSigningKey(t, reader, own.Line)
+	require.NotEqual(t, written.SigningKey, own.Line)
+
+	read, err := ops.SupportInspect(ctx, reader.Deps, ops.SupportInspectOptions{
+		Path:        written.Path,
+		ExpectedKey: written.SigningKey,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, ops.SignatureSourceExpectedKey, read.Signature.Source,
+		"the installation's own keys were consulted instead of the key that was named")
+	assert.Equal(t, domain.SignedByCurrentKey, read.Signature.Result.Outcome)
+}
+
+// writeTarZstByHand builds an archive with entries in a chosen order, which is
+// the one thing the production writer will not do.
+func writeTarZstByHand(t *testing.T, path string, entries [][2]string) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	zw, err := zstd.NewWriter(&buf)
+	require.NoError(t, err)
+	tw := tar.NewWriter(zw)
+	for _, e := range entries {
+		require.NoError(t, tw.WriteHeader(&tar.Header{
+			Name: e[0], Mode: 0o600, Size: int64(len(e[1])), Typeflag: tar.TypeReg,
+		}))
+		_, err := tw.Write([]byte(e[1]))
+		require.NoError(t, err)
+	}
+	require.NoError(t, tw.Close())
+	require.NoError(t, zw.Close())
+	require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o600))
 }
