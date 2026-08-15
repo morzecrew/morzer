@@ -40,7 +40,7 @@ func TestInstallUnitsWritesReloadsThenEnables(t *testing.T) {
 		{Name: "demo-backup.service", Contents: []byte("[Unit]\n"), Enable: false},
 		{Name: "demo-backup.timer", Contents: []byte("[Timer]\n"), Enable: true},
 	}
-	if err := s.InstallUnits(context.Background(), units); err != nil {
+	if err := s.InstallUnits(context.Background(), units, ports.EnableAll); err != nil {
 		t.Fatalf("InstallUnits: %v", err)
 	}
 
@@ -87,6 +87,137 @@ func TestInstallUnitsWritesReloadsThenEnables(t *testing.T) {
 	}
 }
 
+// The scope decides whether a second install re-enables (RFC 0030 §8.1).
+//
+// This is where row 1 lives, so this is where it is pinned. The measurement in
+// §3.1 was that an unrelated `config set` issued `enable demo-backup.timer`
+// every time, which is what made `systemctl disable` a decision with a
+// half-life. The second install below is that `config set`.
+//
+// The unit *files* are rewritten on both calls in both scopes, and that is
+// asserted too: contents and existence stay the manager's, and a change that
+// bought a durable `disable` by leaving stale unit contents on disk would have
+// answered a different question.
+func TestASecondInstallRespectsTheScope(t *testing.T) {
+	units := []ports.Unit{
+		{Name: "demo.service", Contents: []byte("[Unit]\nX=1\n"), Enable: true},
+		{Name: "demo-backup.service", Contents: []byte("[Unit]\nX=1\n"), Enable: false},
+		{Name: "demo-backup.timer", Contents: []byte("[Timer]\nX=1\n"), Enable: true},
+	}
+	rewritten := []ports.Unit{
+		{Name: "demo.service", Contents: []byte("[Unit]\nX=2\n"), Enable: true},
+		{Name: "demo-backup.service", Contents: []byte("[Unit]\nX=2\n"), Enable: false},
+		{Name: "demo-backup.timer", Contents: []byte("[Timer]\nX=2\n"), Enable: true},
+	}
+
+	for name, tc := range map[string]struct {
+		scope        ports.EnableScope
+		wantSecondly int
+	}{
+		"a reconciliation leaves enablement alone": {ports.EnableNew, 0},
+		"a repair re-asserts it":                   {ports.EnableAll, 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, runner, dir := newSupervisor(t)
+			ctx := context.Background()
+
+			// The first install creates the files, so both scopes
+			// enable here: a unit nobody has seen yet is not a
+			// decision anybody has made.
+			if err := s.InstallUnits(ctx, units, tc.scope); err != nil {
+				t.Fatalf("first install: %v", err)
+			}
+			if got := enablesSince(runner, 0); got != 2 {
+				t.Fatalf("the first install issued %d enable(s), want 2:\n%s",
+					got, runner.CommandLines())
+			}
+
+			afterFirst := len(runner.Calls())
+			if err := s.InstallUnits(ctx, rewritten, tc.scope); err != nil {
+				t.Fatalf("second install: %v", err)
+			}
+			if got := enablesSince(runner, afterFirst); got != tc.wantSecondly {
+				t.Errorf("the second install issued %d enable(s), want %d:\n%s",
+					got, tc.wantSecondly, runner.CommandLines())
+			}
+
+			// Never, in either scope: switching a unit off is the
+			// operator's, and removal is RemoveUnits' job.
+			if runner.Ran("disable") {
+				t.Errorf("an install disabled a unit:\n%s", runner.CommandLines())
+			}
+
+			for _, u := range rewritten {
+				got, err := os.ReadFile(filepath.Join(dir, u.Name))
+				if err != nil {
+					t.Fatalf("%s: %v", u.Name, err)
+				}
+				if string(got) != string(u.Contents) {
+					t.Errorf("%s was not rewritten: %q", u.Name, got)
+				}
+			}
+		})
+	}
+}
+
+// A unit whose file is missing is created and enabled even when its siblings
+// are not, which is the half of row 1 that is easy to lose.
+//
+// `config set update.channel=…` adds the update pair to a machine that already
+// has the other units. Under a rule that skipped enablement whenever *any* unit
+// existed, the new timer would be installed and never switched on -- a timer
+// that exists, is asked for, and does not fire.
+func TestAUnitAddedByAReconciliationIsStillEnabled(t *testing.T) {
+	s, runner, _ := newSupervisor(t)
+	ctx := context.Background()
+
+	existing := []ports.Unit{{Name: "demo.service", Contents: []byte("x"), Enable: true}}
+	if err := s.InstallUnits(ctx, existing, ports.EnableNew); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+
+	afterFirst := len(runner.Calls())
+	if err := s.InstallUnits(ctx, append(existing,
+		ports.Unit{Name: "demo-update.timer", Contents: []byte("y"), Enable: true},
+	), ports.EnableNew); err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+
+	second := runner.Calls()[afterFirst:]
+	if !ranIn(second, "enable demo-update.timer") {
+		t.Errorf("a newly added timer was installed and not enabled:\n%s", runner.CommandLines())
+	}
+	if ranIn(second, "enable demo.service") {
+		t.Errorf("the unit that already existed was re-enabled:\n%s", runner.CommandLines())
+	}
+}
+
+// enablesSince counts `systemctl enable` calls made after the first n calls.
+//
+// Positional rather than a reset on the runner, so the assertion is about one
+// install rather than about everything the test has done so far -- and so a
+// second install that issued its enables *before* the reload would still be
+// counted here and caught by the ordering assertion elsewhere.
+func enablesSince(runner *exec.Scripted, from int) int {
+	n := 0
+	for _, c := range runner.Calls()[from:] {
+		// `enable`, not `is-enabled`: the query is not the assertion.
+		if len(c.Argv) > 1 && c.Argv[1] == "enable" {
+			n++
+		}
+	}
+	return n
+}
+
+func ranIn(calls []exec.Command, match string) bool {
+	for _, c := range calls {
+		if strings.Contains(strings.Join(c.Argv, " "), match) {
+			return true
+		}
+	}
+	return false
+}
+
 // TestInstallUnitsRefusesANameThatIsAPath is the traversal guard. A unit name
 // derives from the product name and reaches both the filesystem and argv.
 func TestInstallUnitsRefusesANameThatIsAPath(t *testing.T) {
@@ -100,7 +231,7 @@ func TestInstallUnitsRefusesANameThatIsAPath(t *testing.T) {
 		"",
 	} {
 		if err := s.InstallUnits(context.Background(),
-			[]ports.Unit{{Name: name, Contents: []byte("x")}}); err == nil {
+			[]ports.Unit{{Name: name, Contents: []byte("x")}}, ports.EnableAll); err == nil {
 			t.Errorf("a unit named %q was accepted", name)
 		}
 	}
@@ -122,7 +253,7 @@ func TestInstallUnitsStopsWhenTheReloadFails(t *testing.T) {
 	})
 
 	err := s.InstallUnits(context.Background(),
-		[]ports.Unit{{Name: "demo.service", Contents: []byte("x"), Enable: true}})
+		[]ports.Unit{{Name: "demo.service", Contents: []byte("x"), Enable: true}}, ports.EnableAll)
 	if err == nil {
 		t.Fatal("a failed daemon-reload was ignored")
 	}

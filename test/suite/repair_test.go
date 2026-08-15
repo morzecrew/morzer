@@ -134,7 +134,7 @@ func TestAnUnrelatedSettingChangeKeepsTheBackupWindow(t *testing.T) {
 		Product: "demo", BackupSchedule: inst.Policy.BackupSchedule,
 	})
 	require.NoError(t, err)
-	require.NoError(t, h.Deps.Supervisor.InstallUnits(ctx, units))
+	require.NoError(t, h.Deps.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
 	require.Equal(t, "OnCalendar=Mon *-*-* 04:00:00", onCalendar(t, unitDir),
 		"the window was not installed, so this test proves nothing")
 
@@ -164,7 +164,7 @@ func TestTheBackupWindowCanBeChangedAfterInit(t *testing.T) {
 
 	units, err := h.Deps.Supervisor.Units(ports.UnitParams{Product: "demo"})
 	require.NoError(t, err)
-	require.NoError(t, h.Deps.Supervisor.InstallUnits(ctx, units))
+	require.NoError(t, h.Deps.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
 
 	_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
 		Set: map[string]string{"backup.schedule": "Sun *-*-* 05:00:00"},
@@ -250,7 +250,7 @@ func TestAScheduleCannotSmuggleADirectiveIntoTheUnit(t *testing.T) {
 				Product: "demo", BackupSchedule: stored,
 			})
 			require.NoError(t, unitsErr)
-			require.NoError(t, real.InstallUnits(ctx, units))
+			require.NoError(t, real.InstallUnits(ctx, units, ports.EnableAll))
 			assert.NotContains(t, unitText(t, unitDir), "\nUnit=attacker.service",
 				"the schedule opened a second directive in the timer unit")
 		})
@@ -318,7 +318,7 @@ func TestALeadingNewlineDoesNotReachTheUnitFile(t *testing.T) {
 	// nothing after it, which systemd refuses to load.
 	units, err := real.Units(ports.UnitParams{Product: "demo", BackupSchedule: "   "})
 	require.NoError(t, err)
-	require.NoError(t, real.InstallUnits(ctx, units))
+	require.NoError(t, real.InstallUnits(ctx, units, ports.EnableAll))
 	assert.Equal(t, "OnCalendar="+systemd.DefaultBackupSchedule, onCalendar(t, unitDir),
 		"a schedule of spaces produced an OnCalendar systemd will not load")
 

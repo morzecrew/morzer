@@ -80,15 +80,30 @@ func (s *Supervisor) Available(ctx context.Context) bool {
 	return true
 }
 
-func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit) error {
+func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope ports.EnableScope) error {
 	if err := atomicfs.MkdirAll(s.unitDir, 0o755); err != nil {
 		return err
 	}
 
+	// Which units this call is about to create, decided before anything is
+	// written, because writing is what destroys the evidence.
+	//
+	// The file's presence is the question and not `is-enabled`: a unit
+	// switched off is still a unit this machine has, and a unit whose file
+	// was never written is one nobody has had the chance to decide about.
+	// Asking systemd instead would also mean a daemon round trip per unit
+	// on a host where the daemon may not be running.
+	fresh := make(map[string]bool, len(units))
 	for _, u := range units {
 		if err := validateUnitName(u.Name); err != nil {
 			return err
 		}
+		if _, err := os.Stat(filepath.Join(s.unitDir, u.Name)); os.IsNotExist(err) {
+			fresh[u.Name] = true
+		}
+	}
+
+	for _, u := range units {
 		path := filepath.Join(s.unitDir, u.Name)
 		if err := atomicfs.WriteFile(path, u.Contents, 0o644); err != nil {
 			return err
@@ -102,10 +117,19 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit) error
 	}
 
 	for _, u := range units {
-		if u.Enable {
-			if err := s.Enable(ctx, u.Name); err != nil {
-				return err
-			}
+		// Never a Disable, in either scope. A unit whose spec does not
+		// ask for enablement is left as the machine has it -- the
+		// oneshots must never be enabled, and if one somehow is, that is
+		// a state to report rather than one to correct behind somebody's
+		// back (RFC 0030 §8.1).
+		if !u.Enable {
+			continue
+		}
+		if scope == ports.EnableNew && !fresh[u.Name] {
+			continue
+		}
+		if err := s.Enable(ctx, u.Name); err != nil {
+			return err
 		}
 	}
 	return nil

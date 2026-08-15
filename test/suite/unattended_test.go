@@ -632,7 +632,7 @@ func TestTheUpdateTimerNeedsBothTheChannelAndPermission(t *testing.T) {
 	// business at all.
 	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
 	require.NoError(t, err)
-	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
 
 	timer := "demo-update.timer"
 
@@ -683,7 +683,7 @@ func TestARetryFinishesAUnitReconciliationThatFailed(t *testing.T) {
 
 	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
 	require.NoError(t, err)
-	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
 
 	set := ops.SetSettingsOptions{Set: map[string]string{
 		"update.check":   "true",

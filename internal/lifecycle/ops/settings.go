@@ -435,7 +435,16 @@ func (d *Deps) refreshUnits(ctx context.Context, inst domain.Installation) error
 		}
 	}
 
-	if err := d.Supervisor.InstallUnits(ctx, units); err != nil {
+	// EnableNew, and this is the line RFC 0030 row 1 is about.
+	//
+	// A reconciliation runs because a *setting* changed -- a channel, a
+	// schedule, a backup target -- and it is here to make unit contents and
+	// unit existence match that. Enablement travelled on the same call, so
+	// `systemctl disable demo-backup.timer` held until the next unrelated
+	// `config set` and was then undone with no message. A unit this call
+	// creates is still enabled, because a timer nobody has seen yet is not
+	// a decision anybody has made.
+	if err := d.Supervisor.InstallUnits(ctx, units, ports.EnableNew); err != nil {
 		return err
 	}
 	if len(stale) == 0 {
