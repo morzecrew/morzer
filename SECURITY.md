@@ -25,7 +25,8 @@ rather than misreading it.
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x | ✅ |
+| 0.2.x | ✅ |
+| 0.1.x | ❌ — upgrade to 0.2.x |
 | `main` | Fixes land here first; it is not a release |
 
 ## Verifying a release
@@ -175,11 +176,23 @@ Stated here rather than discovered during an incident:
   when a release is staged and `apply` runs against one already on disk. The
   field is absent rather than `false` in that case, so an auditor cannot read
   "not established" as "checked and failed".
-- Attestations are written locally and are not yet pushed anywhere. A machine
-  that is lost takes its own record with it. See
-  [RFC 0025](rfcs/0025-attesting-an-installation.md) P4.
-- Only `apply` emits an attestation so far, and only on success. The failed
-  operation is the one an auditor asks about, and it is P2 of the same RFC.
+- An attestation leaves the machine as it is written, to the same targets the
+  backups go to, and a push that fails does not fail the operation. So a machine
+  lost between writing a statement and pushing it takes that statement with it;
+  `morzer doctor` reports statements that are still only local, and `morzer
+  attest push` sends them.
+- A support bundle's redaction count is a smaller claim than it looks. Zero
+  replacements in a file means no value this installation *currently* holds
+  appeared in it — not that the file is clean. A secret that was rotated away,
+  or one that was never declared to the manager, is not something it can
+  recognise.
+- A fleet row cannot be authenticated without a roster. Rows from several
+  machines share one prefix, so a machine that overwrites its neighbour's row
+  rewrites the payload, the embedded key and the signature together, and the
+  result verifies perfectly against itself. A listing also cannot show a row
+  that was never written or that somebody removed. `morzer fleet ls --expect`
+  is what answers both, and without it the `signature` column says a signature
+  is present rather than that it checks out.
 
 ## Dependency advisories with no code change
 
