@@ -90,6 +90,29 @@ var settings = map[string]setting{
 		// is "back to nightly", not "no backups".
 		Clear: func(i *domain.Installation) { i.Policy.BackupSchedule = "" },
 	},
+	"backup.scheduled": {
+		Description: "whether this manager runs backups on a timer at all (RFC 0030 row 4)",
+		Read: func(i domain.Installation) string {
+			return strconv.FormatBool(!i.Policy.SkipScheduledBackups)
+		},
+		// Positive here, negative in the record, and the mismatch is
+		// deliberate at both ends. A field missing from a hand-edited
+		// state file must mean "backups happen", which makes the stored
+		// name the unsafe direction; a command an operator types reads
+		// better as the thing they are turning off. The two meet here
+		// and nowhere else.
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			v, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return domain.Usage("%q is not a boolean (true or false)", raw)
+			}
+			i.Policy.SkipScheduledBackups = !v
+			return nil
+		},
+		// Clearing means scheduled backups, which is the safe direction
+		// and the same one an absent field takes.
+		Clear: func(i *domain.Installation) { i.Policy.SkipScheduledBackups = false },
+	},
 	"update.channel": {
 		Description: "a mutable reference to follow, e.g. oci://registry.example/demo/bundle:stable",
 		Read:        func(i domain.Installation) string { return i.Update.Channel },
@@ -369,6 +392,13 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		// stored nowhere, so every reconciliation after `init` rendered
 		// the default and moved an operator's maintenance window.
 		BackupSchedule: inst.Policy.BackupSchedule,
+
+		// The one unit pair that was unconditional (RFC 0030 row 4). A
+		// machine whose backups are taken at the storage layer declares
+		// it, and then has no timer to disable rather than a timer it
+		// must keep disabling. Same polarity as the field it comes
+		// from, so neither spelling has to be read backwards.
+		SkipBackupTimer: inst.Policy.SkipScheduledBackups,
 
 		// Both, not either. A timer exists to poll, and polling is
 		// gated by `update.check` (RFC 0016 §5.6) -- so a machine with a

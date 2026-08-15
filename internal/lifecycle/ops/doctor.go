@@ -1265,8 +1265,16 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 			}
 
 			if len(problems) > 0 {
+				// Both directions, because since RFC 0030 row 1 a
+				// disabled unit stays disabled: the operator who
+				// meant it needs a way to stop being told, and the
+				// one who did not needs the repair. A warning with
+				// only the second is a warning that fires for ever
+				// at somebody who was right.
 				return preflight.Warn(
-					"run `morzer init --repair --install-units`, or inspect with `systemctl status`",
+					"run `morzer init --repair --install-units` to switch them back on, "+
+						"or `morzer config set backup.scheduled=false` if this machine's "+
+						"backups are handled elsewhere",
 					"%s", strings.Join(problems, "; "))
 			}
 			return preflight.OK("all units loaded")
@@ -1442,6 +1450,24 @@ func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
 		Description: "a recent backup exists",
 		Fatal:       false,
 		Run: func(ctx context.Context) events.CheckResult {
+			// A declaration this manager can read, about a job it was
+			// told is not its own (RFC 0030 row 5).
+			//
+			// A machine backed up at the storage layer takes no
+			// backups through morzer, so the newest one is always
+			// older than the threshold and this warns for ever --
+			// and a warning that fires on every run is how a check
+			// stops being read, including on the run where it means
+			// something. Suppressing it on a guess would be the
+			// manager asserting that backups happen elsewhere, which
+			// it cannot verify. Suppressing it on the operator's own
+			// declaration asserts nothing: it declines to report the
+			// absence of a thing that was declared absent.
+			if inst.Policy.SkipScheduledBackups {
+				return preflight.OK(
+					"not this manager's job: `backup.scheduled` is off")
+			}
+
 			backups, err := d.Backup.List(ctx)
 			if err != nil {
 				return preflight.Warn("", "cannot list backups: %s", domain.AsError(err).Message)

@@ -104,6 +104,17 @@ type UnitParams struct {
 	// BackupSchedule is a supervisor-specific schedule expression.
 	BackupSchedule string
 
+	// SkipBackupTimer leaves the backup pair out (RFC 0030 row 4).
+	//
+	// Named against the grain of UpdateTimer and FleetTimer beside it, and
+	// deliberately: those units do not exist until something is configured,
+	// and this one exists until something is declared. A `BackupTimer bool`
+	// would read more symmetrically and would mean that any caller composing
+	// UnitParams and forgetting a field gets a machine with no scheduled
+	// backups -- the zero value deciding the one thing it must not decide,
+	// which is the defect `SkipBackupBeforeUpdate` was renamed to avoid.
+	SkipBackupTimer bool
+
 	// UpdateSchedule is the schedule expression for the update timer, and
 	// is also the maintenance window: an operator who wants updates only on
 	// Sunday mornings says so here, rather than through a second mechanism

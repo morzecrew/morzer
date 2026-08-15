@@ -312,6 +312,15 @@ type UnitParams struct {
 	// with no channel: the unit would fail on every tick, and a unit that
 	// fails on every tick is one an operator stops reading.
 	FleetTimer bool
+
+	// SkipBackupTimer leaves the backup pair out (RFC 0030 row 4).
+	//
+	// The odd one out by name, and it has to be: the other two conditionals
+	// are units that do not exist until something is configured, and this
+	// is a unit that exists until something is declared. A caller who
+	// forgets this field gets scheduled backups, which is the direction a
+	// forgotten field must fall.
+	SkipBackupTimer bool
 }
 
 // ServiceUnitName and friends derive unit names from the product.
@@ -546,10 +555,35 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 		enable bool
 	}{
 		{ServiceUnitName(p.Product), serviceTemplate, p.Description, true},
-		{BackupServiceUnitName(p.Product), backupServiceTemplate, p.Product + " backup", false},
-		// The timer is enabled, not the backup service: enabling a
-		// oneshot service would run it at every boot.
-		{BackupTimerUnitName(p.Product), backupTimerTemplate, p.Product + " scheduled backup", true},
+	}
+
+	// The backup pair, which used to be as unconditional as the service
+	// above it (RFC 0030 row 4).
+	//
+	// Left out rather than generated-and-disabled, which is the same choice
+	// the update and fleet pairs make: a unit that exists and never fires
+	// still appears in `systemctl list-timers`, still has to be explained,
+	// and is one reconciliation away from being switched on by something
+	// that reads its spec rather than the installation.
+	if !p.SkipBackupTimer {
+		specs = append(specs,
+			struct {
+				name   string
+				tmpl   string
+				desc   string
+				enable bool
+			}{BackupServiceUnitName(p.Product), backupServiceTemplate,
+				p.Product + " backup", false},
+			// The timer is enabled, not the backup service: enabling
+			// a oneshot service would run it at every boot.
+			struct {
+				name   string
+				tmpl   string
+				desc   string
+				enable bool
+			}{BackupTimerUnitName(p.Product), backupTimerTemplate,
+				p.Product + " scheduled backup", true},
+		)
 	}
 
 	if p.UpdateTimer {
@@ -658,16 +692,22 @@ func ManagerPath() string {
 
 // Units renders the unit set for a product, satisfying ports.Supervisor.
 func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
+	// Field by field, and every field: this is the seam where a port field
+	// added later is silently dropped, and the value that goes missing is
+	// read as its zero. `TestTheTwoUnitParamsCarryTheSameFields` fails when
+	// the two structs stop agreeing, which is the half of that a test can
+	// see without knowing what each field means.
 	return BuildUnits(UnitParams{
-		Product:        params.Product,
-		ManagerPath:    params.ManagerPath,
-		ConfigPath:     params.ConfigPath,
-		Description:    params.Description,
-		BackupSchedule: params.BackupSchedule,
-		UpdateSchedule: params.UpdateSchedule,
-		UpdateTimer:    params.UpdateTimer,
-		FleetSchedule:  params.FleetSchedule,
-		FleetTimer:     params.FleetTimer,
+		Product:         params.Product,
+		ManagerPath:     params.ManagerPath,
+		ConfigPath:      params.ConfigPath,
+		Description:     params.Description,
+		BackupSchedule:  params.BackupSchedule,
+		SkipBackupTimer: params.SkipBackupTimer,
+		UpdateSchedule:  params.UpdateSchedule,
+		UpdateTimer:     params.UpdateTimer,
+		FleetSchedule:   params.FleetSchedule,
+		FleetTimer:      params.FleetTimer,
 	})
 }
 

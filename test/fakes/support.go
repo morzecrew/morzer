@@ -658,6 +658,14 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		if strings.Contains(name, "-fleet.") && !params.FleetTimer {
 			continue
 		}
+		// And the backup pair, which is conditional the other way round
+		// (RFC 0030 row 4): present unless the installation declares it
+		// wants none. A fake that always returned it would make a test
+		// about the declaration pass whether the lifecycle layer set the
+		// field or not -- the same vacuum the two lines above avoid.
+		if strings.Contains(name, "-backup.") && params.SkipBackupTimer {
+			continue
+		}
 		out = append(out, ports.Unit{
 			Name:     name,
 			Contents: []byte("# fake unit for " + params.Product + "\n"),

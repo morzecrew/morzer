@@ -246,7 +246,15 @@ func (d *Deps) fillBackupStatus(ctx context.Context, out *Status, inst domain.In
 		Size: latest.Size,
 	}
 
-	if stale := inst.Policy.StaleBackupAfter.Duration(); stale > 0 && age > stale {
+	// The same declaration `doctor`'s backup.freshness honours (RFC 0030
+	// row 5), read here too because `status` is the command run far more
+	// often: a problem printed on every status of a machine whose backups
+	// are somebody else's job is the permanent warning, in the louder place.
+	//
+	// LastBackup above is still reported. The age is a fact; calling it a
+	// problem is the judgement this declines to make.
+	if stale := inst.Policy.StaleBackupAfter.Duration(); stale > 0 && age > stale &&
+		!inst.Policy.SkipScheduledBackups {
 		out.Problems = append(out.Problems,
 			"the most recent backup is "+age.Round(time.Hour).String()+" old")
 	}

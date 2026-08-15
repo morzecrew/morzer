@@ -109,6 +109,9 @@
         "skip_backup_before_update": {
           "type": "boolean"
         },
+        "skip_scheduled_backups": {
+          "type": "boolean"
+        },
         "stale_backup_after": {
           "description": "A duration, e.g. 30s or 10m.",
           "examples": [

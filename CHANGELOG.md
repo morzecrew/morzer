@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A support bundle can be encrypted to your vendor, and to nobody else.** A release declares who its bundles are for; the archive is then encrypted to those keys alone, gets an `.age` suffix, and is unreadable by the machine that produced it — so an archive sitting in a ticket system, a mail thread or a bucket is not readable by the ticket system, the mail provider, or whoever later takes the host. A declaration the manager cannot use is a refusal before anything is collected, never a quiet fall back to plaintext, and `--preview` prints the recipients in full so the target can be checked against what the vendor published while the archive still does not exist. Declaring nobody still produces a plaintext archive on purpose: posting to a forum is the case the whole feature was built around.
 
+- **`morzer config set backup.scheduled=false`, for a machine whose backups are handled elsewhere.** The backup service and timer are then not generated at all, and an existing pair is removed — the same mechanism that already takes the update timer away when you stop following a channel. `morzer doctor` and `morzer status` stop asking how old the last backup is, because you have told them the job belongs to something else rather than left them guessing. Taking one by hand still works, and a backup that exists is still expected to reach a target. Unsetting returns to scheduled backups, which is also what an installation that never mentioned the field gets.
+
+### Changed
+
+- **`systemctl disable` on a morzer timer now sticks.** Every reconciliation — any `config set`, any backup-target change — re-ran `systemctl enable` on the units it manages, so an operator who switched a timer off had it switched back on by the next unrelated command, with no message. Reconciliation now enables only units it has just created; `morzer init --repair --install-units` is the one command that re-asserts enablement, which is the command whose job is to put a machine right. `morzer doctor` still reports a unit that is installed and switched off, and now names both ways out of that warning: repair it, or declare that this machine's backups are handled elsewhere.
+
 ### Security
 
 - **A backup schedule can no longer add a directive to a systemd unit.** The guard trimmed the value and then inspected the trimmed copy, so a schedule whose *first* character was a newline passed validation and was stored and rendered unchanged — producing `OnCalendar=` followed by a second line of the operator's choosing in a root-owned unit file. `Unit=` in a `[Timer]` section names what the timer starts, so that is a way to have root run something else on a schedule, reachable from an `init` flag or from the manager's own state file. The value is now inspected as given, trimmed before it is stored so what was validated is what is written, and refused a third time by the renderer itself — the guard nearest the file holds for a caller that does not exist yet. Never released: `policy.backup_schedule` is new in this version.
@@ -28,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Installation schema 6 → 7** for `policy.backup_schedule`. Migration is automatic and there is nothing to convert; the bump is for the write path, so an older manager cannot rewrite the state and silently drop the field — which would reproduce the defect the field was added to fix.
+- **Installation schema 7 → 8** for `policy.skip_scheduled_backups`. Automatic, nothing to convert, and the bump is for the write path again: an older manager would drop the field on its next `config set` and then install a backup timer on a machine whose operator declared it wanted none.
 
 ## [0.1.1] - 2026-08-13
 
