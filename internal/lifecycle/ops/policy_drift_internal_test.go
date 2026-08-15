@@ -41,6 +41,14 @@ func TestPolicyDriftComparesEveryField(t *testing.T) {
 			case reflect.String:
 				differ.SetString("changed")
 			case reflect.Slice:
+				// Built from the field's own element type rather
+				// than assumed to be []string, so a slice of
+				// something else fails with this message instead
+				// of a reflect panic three frames down.
+				if differ.Type().Elem().Kind() != reflect.String {
+					t.Fatalf("Policy.%s is a slice of %s, which this test cannot vary",
+						field.Name, differ.Type().Elem().Kind())
+				}
 				differ.Set(reflect.ValueOf([]string{"changed"}))
 			default:
 				t.Fatalf("Policy.%s is a %s, which this test cannot vary: "+

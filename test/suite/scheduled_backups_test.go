@@ -274,6 +274,34 @@ func TestTheUnitRemedyNamesBothWaysOut(t *testing.T) {
 	assert.Contains(t, got.Remedy, "backup.scheduled=false")
 }
 
+// A backup unit that was deleted rather than disabled gets the same remedy.
+//
+// Both states warn on every run and the declaration answers both, so a remedy
+// that reached only the disabled one would be permanent for the other. `not
+// installed` is the state an operator reaches by removing the unit file by
+// hand, which is the other thing somebody tries when a timer will not stay off.
+func TestTheUnitRemedyCoversADeletedBackupUnit(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+	ctx := context.Background()
+
+	// Installed without the backup pair, which is what deleting the files
+	// leaves behind: the machine manages units, and those two are gone.
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, []ports.Unit{
+		{Name: "demo.service", Contents: []byte("x"), Enable: true},
+	}, ports.EnableAll))
+
+	report, err := ops.Doctor(ctx, h.Deps)
+	require.NoError(t, err)
+	got := findResult(t, report, "system.units")
+	require.Equal(t, string(events.CheckWarn), got.Status, got.Message)
+	require.Contains(t, got.Message, "demo-backup.timer: not installed")
+	assert.Contains(t, got.Remedy, "backup.scheduled=false",
+		"a deleted backup timer warns for ever with no way to say it was meant")
+}
+
 // And offers it only for the unit it would work on.
 //
 // `backup.scheduled=false` removes the backup pair and nothing else, so

@@ -1241,7 +1241,7 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 			// and nothing else -- the same call already failed loudly
 			// above if it was going to.
 			declarable := map[string]bool{}
-			backupTimerOff := false
+			backupUnitAffected := false
 			if !inst.Policy.SkipScheduledBackups {
 				params := d.unitParams(inst)
 				params.SkipBackupTimer = true
@@ -1269,6 +1269,16 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 					// Absent and not wanted is the ordinary state.
 					if wanted {
 						problems = append(problems, name+": not installed")
+						// A unit somebody deleted by hand
+						// warns on every run just as a
+						// disabled one does, and the
+						// declaration answers it the same
+						// way. The remedy has to reach
+						// both or it is permanent for one
+						// of them.
+						if declarable[name] {
+							backupUnitAffected = true
+						}
 					}
 					continue
 				}
@@ -1289,7 +1299,7 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 					// whose *update* timer is disabled is
 					// advice that would not work.
 					if declarable[name] {
-						backupTimerOff = true
+						backupUnitAffected = true
 					}
 				}
 				// A unit that is *there* and failing is reported whether
@@ -1326,9 +1336,14 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				// check has already been fixed for once.
 				remedy := "run `morzer init --repair --install-units`, " +
 					"or inspect with `systemctl status`"
-				if backupTimerOff {
-					remedy = "run `morzer init --repair --install-units` to switch " +
-						"it back on, or `morzer config set backup.scheduled=false` " +
+				if backupUnitAffected {
+					// "put it back" rather than "switch it back
+					// on": this branch is reached by a unit that
+					// was disabled and by one that was deleted,
+					// and the repair does the right thing for
+					// either.
+					remedy = "run `morzer init --repair --install-units` to put it " +
+						"back, or `morzer config set backup.scheduled=false` " +
 						"if this machine's backups are handled elsewhere"
 				}
 				return preflight.Warn(remedy, "%s", strings.Join(problems, "; "))
