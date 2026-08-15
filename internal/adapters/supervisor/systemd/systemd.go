@@ -121,9 +121,36 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 		}
 	}
 
+	// From here on a failure has to undo what this call created, and the
+	// reason is `fresh` itself.
+	//
+	// A unit written and then left behind by a failed reload is a unit that
+	// *exists* on the retry, so `EnableNew` computes it as not fresh and
+	// skips it -- installed, wanted, switched off, until somebody runs a
+	// repair. That is a transient systemctl failure turning into a permanent
+	// state, and it would break the invariant that re-running converges.
+	//
+	// So the call rolls back to what the machine had: the units it enabled
+	// are disabled again, and the files it created are removed. Files it
+	// *overwrote* stay, because their previous contents are gone either way
+	// and their existence was not this call's doing.
+	var enabled []string
+	rollback := func() {
+		// Best-effort throughout: this runs while returning somebody
+		// else's error, and a cleanup that fails must not replace the
+		// failure that caused it.
+		for _, name := range enabled {
+			_ = s.Disable(ctx, name)
+		}
+		for name := range fresh {
+			_ = os.Remove(filepath.Join(s.unitDir, name))
+		}
+	}
+
 	// One reload after all units are written, not one per unit: systemd
 	// would otherwise briefly see a half-installed set.
 	if err := s.daemonReload(ctx); err != nil {
+		rollback()
 		return err
 	}
 
@@ -140,8 +167,10 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 			continue
 		}
 		if err := s.Enable(ctx, u.Name); err != nil {
+			rollback()
 			return err
 		}
+		enabled = append(enabled, u.Name)
 	}
 	return nil
 }

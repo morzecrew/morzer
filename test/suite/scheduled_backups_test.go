@@ -215,6 +215,44 @@ func TestStatusStopsCallingTheBackupAgeAProblem(t *testing.T) {
 	assert.NotEmpty(t, after.LastBackup.Age)
 }
 
+// `status` and `doctor` answer "is the backup too old" the same way.
+//
+// They resolved the threshold differently: `doctor` fell back to 48 hours when
+// the field was unset, and `status` skipped the problem entirely. Zero is the
+// state of every installation that predates the field, because migrations bump
+// the number and do not fill defaults in -- so on exactly those machines one
+// command warned and the other said nothing about the same backup.
+//
+// Which of the two was wrong is not the interesting part. Two commands
+// disagreeing about one fact is, and it is the shape `unitParams` exists to
+// prevent for units.
+func TestStatusAndDoctorAgreeAboutAStaleBackup(t *testing.T) {
+	h := newHarness(t)
+	inst := h.install()
+	ctx := context.Background()
+
+	// Unset, as a machine older than the field has it.
+	inst.Policy.StaleBackupAfter = 0
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	h.Deps.Backup = backupsOfSize{Backup: h.Backup, refs: []ports.BackupRef{{
+		ID:   "backup-old",
+		At:   domain.NewTime(h.Deps.Now().Add(-30 * 24 * time.Hour)),
+		Size: 1024,
+	}}}
+
+	status, err := ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	report, err := ops.Doctor(ctx, h.Deps)
+	require.NoError(t, err)
+
+	freshness := findResult(t, report, "backup.freshness")
+	assert.NotEqual(t, string(events.CheckOK), freshness.Status,
+		"doctor was content with a 30-day-old backup")
+	assert.Contains(t, status.Problems, "the most recent backup is 720h0m0s old",
+		"`doctor` called the backup stale and `status` did not mention it")
+}
+
 // The unit check does not want a timer nobody declared.
 //
 // Without this the declaration would trade one permanent warning for another:

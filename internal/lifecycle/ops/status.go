@@ -253,7 +253,13 @@ func (d *Deps) fillBackupStatus(ctx context.Context, out *Status, inst domain.In
 	//
 	// LastBackup above is still reported. The age is a fact; calling it a
 	// problem is the judgement this declines to make.
-	if stale := inst.Policy.StaleBackupAfter.Duration(); stale > 0 && age > stale &&
+	// Resolved the way `doctor` resolves it, through the same constant.
+	//
+	// This read the field directly and skipped the problem when it was zero,
+	// which is the state of every installation that predates the field --
+	// migrations do not fill defaults in. So `doctor` warned after 48 hours
+	// and `status` said nothing, about the same backup, on the same machine.
+	if stale := inst.Policy.StaleBackupAfter.Or(domain.DefaultStaleBackupAfter); age > stale &&
 		!inst.Policy.SkipScheduledBackups {
 		out.Problems = append(out.Problems,
 			"the most recent backup is "+age.Round(time.Hour).String()+" old")

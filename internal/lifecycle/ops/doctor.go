@@ -1551,7 +1551,7 @@ func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
 
 			latest := backups[0]
 			age := d.now().Sub(latest.At.Time)
-			stale := inst.Policy.StaleBackupAfter.Or(48 * time.Hour)
+			stale := inst.Policy.StaleBackupAfter.Or(domain.DefaultStaleBackupAfter)
 
 			if age > stale {
 				return preflight.Warn(

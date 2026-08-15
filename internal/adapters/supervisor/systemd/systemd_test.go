@@ -674,3 +674,108 @@ func TestUnitNamesIsTheSupersetIncludingTheFleetPair(t *testing.T) {
 		}
 	}
 }
+
+// A reload failure must not strand a newly written unit as never-enabled.
+//
+// The write succeeds, the reload fails, and the call returns an error. On the
+// retry the file exists, so `EnableNew` computes it as not fresh and skips it
+// -- and the timer the operator just configured is installed, wanted, and off,
+// until somebody runs a repair. Before the scope existed the retry re-enabled
+// everything and this could not happen.
+func TestAFailedReloadDoesNotStrandANewUnitDisabled(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	units := []ports.Unit{{Name: "demo-update.timer", Contents: []byte("x"), Enable: true}}
+
+	// The failing run. A separate runner per attempt, because a scripted
+	// rule cannot be withdrawn -- and two runners over one unit directory is
+	// exactly the situation: the transient failure clears, the files it
+	// wrote do not.
+	failing := exec.NewScripted()
+	failing.OnError("daemon-reload", &exec.ExitError{
+		Argv: []string{"systemctl", "daemon-reload"}, ExitCode: 1,
+		Stderr: "Failed to reload daemon",
+	})
+	first := systemd.New(failing, systemd.WithUnitDir(dir), systemd.WithSystemctl("/usr/bin/systemctl"))
+	if err := first.InstallUnits(ctx, units, ports.EnableNew); err == nil {
+		t.Fatal("a failed daemon-reload was reported as success")
+	}
+
+	// The operator runs the command again once the machine is healthy.
+	healthy := exec.NewScripted()
+	second := systemd.New(healthy, systemd.WithUnitDir(dir), systemd.WithSystemctl("/usr/bin/systemctl"))
+	if err := second.InstallUnits(ctx, units, ports.EnableNew); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+
+	if !healthy.Ran("enable demo-update.timer") {
+		t.Errorf("the retry left the new timer installed and switched off, "+
+			"so re-running does not converge:\n%s", healthy.CommandLines())
+	}
+}
+
+// The rollback removes only what the call created.
+//
+// A unit whose file was already there is one the machine had before this call,
+// and its contents are overwritten either way -- deleting it would turn a
+// failed reload into a machine missing the units it had a moment ago, which is
+// a worse outcome than the one the rollback exists to prevent.
+func TestARollbackLeavesTheUnitsThatWereAlreadyThere(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	existing := []ports.Unit{{Name: "demo.service", Contents: []byte("old"), Enable: true}}
+
+	healthy := exec.NewScripted()
+	first := systemd.New(healthy, systemd.WithUnitDir(dir), systemd.WithSystemctl("/usr/bin/systemctl"))
+	if err := first.InstallUnits(ctx, existing, ports.EnableNew); err != nil {
+		t.Fatal(err)
+	}
+
+	failing := exec.NewScripted()
+	failing.OnError("daemon-reload", &exec.ExitError{
+		Argv: []string{"systemctl", "daemon-reload"}, ExitCode: 1,
+	})
+	second := systemd.New(failing, systemd.WithUnitDir(dir), systemd.WithSystemctl("/usr/bin/systemctl"))
+	if err := second.InstallUnits(ctx, append(existing,
+		ports.Unit{Name: "demo-update.timer", Contents: []byte("new"), Enable: true},
+	), ports.EnableNew); err == nil {
+		t.Fatal("a failed daemon-reload was reported as success")
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "demo.service")); err != nil {
+		t.Errorf("the rollback removed a unit the machine already had: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "demo-update.timer")); !os.IsNotExist(err) {
+		t.Errorf("the unit this call created survived the rollback: %v", err)
+	}
+	// And it did not disable anything, because nothing was enabled before
+	// the reload failed.
+	if failing.Ran("disable") {
+		t.Errorf("a rollback before any enable still disabled a unit:\n%s",
+			failing.CommandLines())
+	}
+}
+
+// An enable that fails part-way leaves nothing half-enabled.
+func TestARollbackDisablesWhatItHadAlreadyEnabled(t *testing.T) {
+	ctx := context.Background()
+	runner := exec.NewScripted()
+	runner.OnError("enable demo-backup.timer", &exec.ExitError{
+		Argv: []string{"systemctl", "enable", "demo-backup.timer"}, ExitCode: 1,
+	})
+	s := systemd.New(runner, systemd.WithUnitDir(t.TempDir()),
+		systemd.WithSystemctl("/usr/bin/systemctl"))
+
+	err := s.InstallUnits(ctx, []ports.Unit{
+		{Name: "demo.service", Contents: []byte("x"), Enable: true},
+		{Name: "demo-backup.timer", Contents: []byte("y"), Enable: true},
+	}, ports.EnableNew)
+	if err == nil {
+		t.Fatal("a failed enable was reported as success")
+	}
+
+	if !runner.Ran("disable demo.service") {
+		t.Errorf("the unit enabled before the failure was left enabled, with its "+
+			"file removed:\n%s", runner.CommandLines())
+	}
+}
