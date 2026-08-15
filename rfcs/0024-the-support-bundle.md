@@ -681,3 +681,44 @@ Recorded because the defect was in the *prose* first. The comment described the
 design correctly and the code did something else, which is the direction that
 survives review: a reader checking whether the input is bounded finds a
 paragraph saying it is.
+
+**A19 — verification moved ahead of decryption, where decision 9 always said it
+was (2026-08-15, P4b, found in review).**
+
+The signature covers the ciphertext so that authenticity can be established
+before anything decrypts. `SupportInspect` read the signature early and
+*verified* it last — after a decryption that fails outright without an identity
+— so the ordering the decision exists for was true of the artifact and not of
+the command that reads it. A vendor's intake, holding no recipient key, could
+not ask the one question decision 9 was designed to let them ask.
+
+Verification now happens on the bytes as they arrived, before decryption. An
+archive that cannot be opened still reports what its signature established, and
+names the contents as unreadable rather than listing none — an empty component
+table reads as an empty archive. The refusal is kept for the case where nothing
+at all was established, because a report with nothing in it is less use than a
+message naming the flag that would have worked.
+
+The lesson generalises past this RFC: the test that covered decision 9 asserted
+the property at the *checker*, which held, rather than through the command,
+which did not.
+
+**A20 — the archive's own bound is discarded, not quoted (2026-08-15, P4b,
+found in review).**
+
+`meta.json` carries `signature_bound`, and the first implementation printed it
+so a reader would see what the producer claimed. RFC 0026 had already decided
+the opposite for a fleet row read off a shared target — `FleetRow.Bounded`
+replaces the bound with this manager's own constant — and the argument is
+stronger here, not weaker.
+
+The bound is the sentence that frames every other line of the report. A crafted
+one ("this signature proves the archive is safe to run") is a payload aimed at
+the reader's judgement rather than at their terminal, and no amount of
+control-character stripping touches it. A document that disagrees with this
+manager about what its own signature proves is telling the reader something they
+must not act on.
+
+Every other string the document carries is stripped and bounded through
+`domain.BoundedText`, at the read boundary rather than in the view, so `--json`
+carries the same bytes the terminal does.

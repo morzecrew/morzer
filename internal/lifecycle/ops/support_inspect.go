@@ -124,10 +124,20 @@ type SupportSignature struct {
 	// the field name says which of the two things it is.
 	ClaimedKey string `json:"claimed_key,omitempty"`
 
-	// Bound is the sentence the archive carries about what its signature
-	// proves, quoted from the archive rather than from this binary, so a
-	// reader is shown what the producer claimed rather than what this
-	// version of the manager would have claimed.
+	// Bound is what a signature over a support archive proves.
+	//
+	// **This manager's sentence, never the archive's.** An earlier draft
+	// quoted `meta.json`'s `signature_bound` so a reader would see what the
+	// producer claimed; `fleet ls` had already decided the opposite for a
+	// row read off a shared target, and it is right. The bound is the
+	// sentence that frames every other line of this report, so a crafted
+	// one -- "this signature proves the archive is safe to run" -- is a
+	// payload aimed at the reader's judgement rather than at their
+	// terminal, and no amount of control-character stripping touches it.
+	//
+	// A document that disagrees with this manager about what its own
+	// signature proves is telling the reader something they must not act
+	// on anyway.
 	Bound string `json:"bound,omitempty"`
 }
 
@@ -159,6 +169,14 @@ type SupportInspectReport struct {
 	// zero in that column is precisely the misreading this feature is built
 	// to prevent. So the size is reported and the row is not invented.
 	IndexBytes int64 `json:"index_bytes"`
+
+	// Unreadable is why the contents are not listed, empty when they are.
+	//
+	// An encrypted archive with no identity to open it still has a
+	// signature worth checking, so the command reports what it established
+	// and says what it could not do -- rather than an empty entry list,
+	// which reads as an empty archive.
+	Unreadable string `json:"unreadable,omitempty"`
 }
 
 // maxInspectArchive bounds the plaintext this will hold.
@@ -210,21 +228,39 @@ func SupportInspect(
 	}
 
 	// The signature covers the file as it lies here -- ciphertext included
-	// (decision 9) -- so it is checked against these bytes, before anything
-	// is decrypted or parsed. That ordering is the point of signing what
-	// leaves rather than what is inside: a reader can establish where the
-	// file came from without holding a key and without feeding a stranger's
-	// bytes to a decompressor first.
+	// (decision 9) -- so it is checked against these bytes before anything
+	// is decrypted or parsed.
+	//
+	// **That ordering is the whole argument for signing what leaves**, and
+	// the first version of this function did not have it: verification came
+	// last, after a decryption that fails outright without an identity. So
+	// the property existed in the artifact and the command did not offer
+	// it -- a vendor's intake, holding no recipient key, could not ask the
+	// one question decision 9 was designed to let them ask.
 	sig, sigErr := readDetachedSignature(opts.Path)
 	if sigErr != nil {
 		return SupportInspectReport{}, sigErr
 	}
+	report.Signature = verifySupportSignature(ctx, d, opts, body, sig)
 
 	plain := body
 	if report.Encrypted {
 		plain, err = decryptSupportArchive(body, opts.IdentityFile)
 		if err != nil {
-			return SupportInspectReport{}, err
+			// A verdict was reached, so the caller asked a question
+			// this answered: report it, and say plainly why the
+			// contents are missing rather than returning an empty
+			// listing somebody could read as an empty archive.
+			//
+			// With no verdict either, nothing was established and the
+			// refusal stands -- it names the flag that would have
+			// worked, which is more use than a report with nothing
+			// in it.
+			if report.Signature.Source == SignatureSourceNone {
+				return SupportInspectReport{}, err
+			}
+			report.Unreadable = domain.AsError(err).Message
+			return report, nil
 		}
 	}
 
@@ -234,6 +270,7 @@ func SupportInspect(
 	}
 	report.IndexBytes = indexBytes
 
+	meta = meta.bounded()
 	report.Product = meta.Product
 	report.InstallationID = meta.InstallationID
 	report.ManagerVersion = meta.ManagerVersion
@@ -243,7 +280,10 @@ func SupportInspect(
 		report.TotalBytes += e.Bytes
 	}
 
-	report.Signature = verifySupportSignature(ctx, d, opts, body, sig, meta)
+	// The claim the archive makes about which key signed it is filled in
+	// after the fact, deliberately: it is reported, never checked against,
+	// so the verdict above must not have been able to see it.
+	report.Signature.ClaimedKey = meta.SigningKey
 	return report, nil
 }
 
@@ -263,6 +303,38 @@ type supportMetaDocument struct {
 	SignatureBound string            `json:"signature_bound"`
 	Entries        []SupportEntry    `json:"entries"`
 	Omitted        []SupportOmission `json:"omitted"`
+}
+
+// bounded strips control characters and truncates every string this document
+// carries.
+//
+// Every one of them was chosen by whoever produced the archive and every one of
+// them reaches a terminal, a log or a web view. `fleet ls` settled this for a
+// row read off a target several machines can write to (RFC 0026, FleetRow.Bounded)
+// and the argument is identical here: the rule RFC 0025 wrote for the text this
+// manager *emits* matters more on the path where the text is somebody else's.
+//
+// Done at the read boundary rather than in the view, so `--json` carries the
+// same bytes the terminal does. A sanitiser in one renderer is a sanitiser the
+// other renderer does not have.
+func (m supportMetaDocument) bounded() supportMetaDocument {
+	m.Product = domain.BoundedText(m.Product)
+	m.InstallationID = domain.BoundedText(m.InstallationID)
+	m.ManagerVersion = domain.BoundedText(m.ManagerVersion)
+	m.SigningKey = domain.BoundedText(m.SigningKey)
+
+	for i, e := range m.Entries {
+		m.Entries[i].Name = domain.BoundedText(e.Name)
+		m.Entries[i].Title = domain.BoundedText(e.Title)
+	}
+	for i, o := range m.Omitted {
+		m.Omitted[i].Name = domain.BoundedText(o.Name)
+		m.Omitted[i].Reason = domain.BoundedText(o.Reason)
+	}
+
+	// SignatureBound is deliberately *not* bounded -- it is discarded. See
+	// where it is replaced, in verifySupportSignature.
+	return m
 }
 
 // readDetachedSignature reads `<archive>.minisig`, absent being a normal state.
@@ -438,13 +510,17 @@ func readSupportMeta(archive []byte) (supportMetaDocument, int64, error) {
 // own record of its keys, or one the caller names.
 func verifySupportSignature(
 	ctx context.Context, d *Deps, opts SupportInspectOptions,
-	body, sig []byte, meta supportMetaDocument,
+	body, sig []byte,
 ) SupportSignature {
 	out := SupportSignature{
-		Present:    len(sig) > 0,
-		Source:     SignatureSourceNone,
-		ClaimedKey: meta.SigningKey,
-		Bound:      meta.SignatureBound,
+		Present: len(sig) > 0,
+		Source:  SignatureSourceNone,
+	}
+	if out.Present {
+		// This manager's, not the archive's. An unsigned archive carries
+		// no bound at all rather than a sentence about a proof that does
+		// not exist.
+		out.Bound = domain.SupportSignatureBound
 	}
 	if !out.Present {
 		out.Result = domain.SignatureResult{Outcome: domain.Unsigned}
@@ -531,24 +607,40 @@ func resolveExpectedKey(value string) (string, error) {
 	// would answer `signature does NOT verify` to somebody who named a
 	// directory or a file they lack permission on -- a verdict about the
 	// archive, produced by a problem with the key.
-	if info, err := os.Stat(value); err == nil {
-		if info.IsDir() {
-			return "", domain.Usage("%s is a directory, not a key file", value)
-		}
-		if info.Size() > maxInspectSignature {
-			return "", domain.Usage("%s is too large to be a key file", value)
+	info, statErr := os.Stat(value)
+	if statErr != nil {
+		// No file of that name, so the value is the key itself. This is
+		// the only branch that may fall through: everything below is a
+		// file that exists, and a file that exists and does not work is
+		// a refusal rather than a candidate key.
+		return value, nil
+	}
+
+	switch {
+	case !info.Mode().IsRegular():
+		return "", domain.Usage("%s is not a regular file, so it is not a key file", value)
+	case info.Size() > maxInspectSignature:
+		return "", domain.Usage("%s is too large to be a key file", value)
+	}
+
+	body, err := os.ReadFile(value) //nolint:gosec // stat-checked immediately above
+	if err != nil {
+		// The case the first version of this guard missed: `Stat`
+		// succeeds on a file the process may not read, so the old code
+		// fell through and offered the *path* as the key. That verifies
+		// against nothing and printed `signature does NOT verify` -- a
+		// finding about the archive, produced by a permission problem.
+		return "", domain.Usage("cannot read the key file at %s: %s",
+			value, domain.AsError(err).Message)
+	}
+
+	// minisign's public key file is two lines: an untrusted comment and
+	// the key. The key is the last non-empty line.
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			return line, nil
 		}
 	}
-	if body, err := os.ReadFile(value); err == nil { //nolint:gosec // stat-checked above
-		// minisign's public key file is two lines: an untrusted comment
-		// and the key. The key is the last non-empty line.
-		lines := strings.Split(strings.TrimSpace(string(body)), "\n")
-		for i := len(lines) - 1; i >= 0; i-- {
-			if line := strings.TrimSpace(lines[i]); line != "" {
-				return line, nil
-			}
-		}
-		return "", domain.Usage("the key file at %s is empty", value)
-	}
-	return value, nil
+	return "", domain.Usage("the key file at %s is empty", value)
 }

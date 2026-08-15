@@ -48,6 +48,12 @@ func inspectSupportDoc(d *ui.Doc, r ops.SupportInspectReport) *ui.Doc {
 		{Label: "written by", Value: r.ManagerVersion},
 	})
 
+	if r.Unreadable != "" {
+		// Above the table rather than below it: an empty component list
+		// reads as an empty archive, and the reader has to meet the
+		// reason before they draw that conclusion.
+		d.Text(2, "the contents could not be read: %s", r.Unreadable)
+	}
 	writeSupportEntries(d, r.Entries, "nothing in it")
 	writeSupportOmissions(d, r.Omitted)
 

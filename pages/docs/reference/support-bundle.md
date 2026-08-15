@@ -178,6 +178,18 @@ what its signature established. Nothing is extracted — the archive is
 read in memory — so inspecting an encrypted bundle leaves no readable
 copy on the machine doing the inspecting.
 
+It is reading a file somebody else produced, so every read is bounded
+and anything past a bound is refused rather than truncated: the archive
+itself, the decrypted plaintext, the zstd window, and the detached
+signature, which is a few hundred bytes or is not a signature. Text the
+archive carries is stripped of control characters before it reaches your
+terminal.
+
+The signature is checked **before** anything is decrypted, because it
+covers the file as it arrived. An encrypted archive you have no key for
+still reports its signature, and says that the contents could not be
+read rather than listing nothing.
+
 ```console
 $ morzer support inspect support-demo-op_01M032R1495VR14NRFX5NFX68T-20260815T160543Z.tar.zst
 9 component(s), 14.2 KiB, plus the index (1.9 KiB)
@@ -208,11 +220,20 @@ have one, on purpose, so it cannot read its own bundle back.
 nothing**: whoever wrote the archive wrote the name beside the signature
 they made, and the two agree with each other perfectly.
 
-So `inspect` never checks against it. It checks against this
-installation's own record of its keys when you run it on the machine that
-produced the archive, or against `--key` when you do not — a key you got
-from the operator rather than from the file. With neither, it says so
-instead of printing a verdict it has not earned:
+So `inspect` never checks against it. It checks against one of three
+keys the archive's producer did not supply, which is the only property
+that matters:
+
+- **this installation's recorded keys**, when you run it on the machine
+  that produced the archive;
+- **`--key`**, a key you got from the operator rather than from the file;
+- **the signing key on this machine's disk**, when installation state
+  records none — which is the state of a machine that has signed without
+  ever running `init --repair`. The verdict says this is what it used,
+  because state did not back it.
+
+With none of the three, it says so instead of printing a verdict it has
+not earned:
 
 ```console
 $ morzer support inspect bundle.tar.zst

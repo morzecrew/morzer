@@ -493,16 +493,48 @@ func TestAnEncryptedArchivesSignatureChecksWithoutTheKeyToReadIt(t *testing.T) {
 			"so the signature covers the plaintext rather than the file that leaves")
 }
 
-// An encrypted archive with no identity is a refusal that says what to pass,
-// not a decoder error about a zstd frame.
-func TestInspectRefusesAnEncryptedArchiveWithNoIdentity(t *testing.T) {
+// An encrypted archive with no identity, on a machine that can still say
+// something about the signature: the verdict is reported and the missing
+// contents are named as missing.
+//
+// Reordered in review. It used to refuse outright, which threw away an answer
+// the caller could have had — and made decision 9's argument untrue of the
+// command that implements it.
+func TestAnEncryptedArchiveWithNoIdentityStillReportsWhatItCan(t *testing.T) {
 	h := signingSupportHarness(t)
 	_, public := vendorIdentity(t)
 	declareRecipients(t, h, public)
 
 	written := bundleInto(t, h, t.TempDir())
 
-	_, err := ops.SupportInspect(context.Background(), h.Deps,
+	read, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: written.Path})
+	require.NoError(t, err)
+
+	assert.NotEqual(t, ops.SignatureSourceNone, read.Signature.Source,
+		"the machine that produced the archive could not check its own signature")
+	assert.Empty(t, read.Entries, "the contents were listed without an identity")
+	assert.Contains(t, read.Unreadable, "encrypted",
+		"an unlistable archive did not say why")
+	assert.Contains(t, strings.ToLower(read.Unreadable), "identity")
+}
+
+// With nothing established at all -- no anchor, no identity -- the refusal
+// stands, because a report with nothing in it is less use than a message
+// naming the flag that would have worked.
+func TestAnEncryptedArchiveWithNothingEstablishedIsRefused(t *testing.T) {
+	producer := signingSupportHarness(t)
+	_, public := vendorIdentity(t)
+	declareRecipients(t, producer, public)
+
+	written := bundleInto(t, producer, t.TempDir())
+
+	// No installation, no signer, no --key: nothing to check against and
+	// nothing to decrypt with.
+	stranger := newHarness(t)
+	stranger.Deps.Checker = signer.NewChecker()
+
+	_, err := ops.SupportInspect(context.Background(), stranger.Deps,
 		ops.SupportInspectOptions{Path: written.Path})
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Message, "encrypted")
@@ -521,13 +553,24 @@ func TestInspectDoesNotLetTheMachineReadItsOwnEncryptedArchive(t *testing.T) {
 
 	written := bundleInto(t, h, t.TempDir())
 
-	_, err := ops.SupportInspect(context.Background(), h.Deps,
+	read, err := ops.SupportInspect(context.Background(), h.Deps,
 		ops.SupportInspectOptions{
 			Path:         written.Path,
 			IdentityFile: h.Paths.AgeIdentityFile(),
 		})
-	require.Error(t, err,
-		"the machine that wrote the archive read it back with its own identity")
+
+	// Either shape is acceptable; what is not is the contents appearing.
+	// The command now reports what it established rather than refusing
+	// outright, so the assertion is on the property rather than on the
+	// error: this machine is not a recipient and cannot read its own
+	// archive back.
+	if err == nil {
+		assert.Empty(t, read.Entries,
+			"the machine that wrote the archive read it back with its own identity")
+		assert.NotEmpty(t, read.Unreadable)
+		return
+	}
+	assert.Contains(t, strings.ToLower(domain.AsError(err).Message), "decrypt")
 }
 
 // ----------------------------------------------------------------------------
@@ -800,4 +843,140 @@ func TestSomethingThatIsNotAFileIsRefused(t *testing.T) {
 		ops.SupportInspectOptions{Path: link})
 	require.Error(t, err, "a symlink to a character device was read")
 	assert.Contains(t, domain.AsError(err).Message, "not a regular file")
+}
+
+// ----------------------------------------------------------------------------
+// Round one of review found these. Every one is a byte from somebody else's
+// archive being trusted for something.
+
+// A crafted archive must not be able to paint the reviewer's terminal.
+//
+// `meta.json` is written by whoever produced the archive, and every string in
+// it reaches a terminal — entry names, titles, omission reasons, the claimed
+// key. RFC 0025 closed this for the text an attestation *writes*; `fleet ls`
+// closed it for the rows it *reads*. This reader is the same shape as the
+// second and had neither.
+func TestACraftedArchiveCannotPaintTheTerminal(t *testing.T) {
+	h := signingSupportHarness(t)
+
+	// Escaped in the JSON source, because a raw control byte inside a JSON
+	// string is invalid JSON -- it arrives as a real escape sequence once
+	// decoded, which is the shape a crafted archive would actually use.
+	esc := `\u001b[31mred\u001b[0m\u0007`
+	meta := `{"product":"` + esc + `","installation_id":"x","manager_version":"` + esc + `",` +
+		`"signing_key":"` + esc + `","signature_bound":"` + esc + `",` +
+		`"entries":[{"name":"` + esc + `","title":"` + esc + `","bytes":1,"redactions":0}],` +
+		`"omitted":[{"name":"` + esc + `","reason":"` + esc + `"}]}`
+
+	path := filepath.Join(t.TempDir(), "crafted.tar.zst")
+	writeTarZstByHand(t, path, [][2]string{{"meta.json", meta}})
+
+	read, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: path})
+	require.NoError(t, err)
+
+	for _, got := range []string{
+		read.Product, read.InstallationID, read.ManagerVersion,
+		read.Signature.ClaimedKey, read.Signature.Bound,
+		read.Entries[0].Name, read.Entries[0].Title,
+		read.Omitted[0].Name, read.Omitted[0].Reason,
+	} {
+		assert.NotContains(t, got, "\x1b",
+			"an escape sequence from the archive reached the report")
+		assert.NotContains(t, got, "\x07",
+			"a control byte from the archive reached the report")
+	}
+}
+
+// The bound shown is this manager's sentence, not the archive's.
+//
+// `fleet ls` decided this for a row read off a shared target: whatever a remote
+// document claims about what its own signature proves, the only text worth
+// showing a reader is the one this manager can vouch for. A support archive is
+// the same document in a different envelope — and the bound is precisely the
+// sentence that frames every other line, so an attacker-supplied one is a
+// payload aimed at the reader's judgement rather than at their terminal.
+func TestTheBoundIsThisManagersOwnSentence(t *testing.T) {
+	h := signingSupportHarness(t)
+	written := bundleInto(t, h, t.TempDir())
+
+	read, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: written.Path})
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.SupportSignatureBound, read.Signature.Bound)
+}
+
+func TestALyingBoundIsReplacedRatherThanQuoted(t *testing.T) {
+	h := signingSupportHarness(t)
+
+	meta := `{"product":"demo","installation_id":"x","signing_key":"RWQx",` +
+		`"signature_bound":"this signature proves the archive is safe to run",` +
+		`"entries":[]}`
+	path := filepath.Join(t.TempDir(), "lying.tar.zst")
+	writeTarZstByHand(t, path, [][2]string{{"meta.json", meta}})
+	// A signature has to be present for a bound to be printed at all.
+	require.NoError(t, os.WriteFile(path+".minisig", []byte("not a real signature\n"), 0o600))
+
+	read, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: path})
+	require.NoError(t, err)
+
+	assert.NotContains(t, read.Signature.Bound, "safe to run",
+		"the archive's own claim about what its signature proves was quoted back")
+}
+
+// **Decision 9's payoff, through the command rather than through the checker.**
+//
+// The whole argument for signing the ciphertext is that a vendor's intake can
+// establish where a file came from *before* handing it to an age
+// implementation. That was asserted at the checker and not through
+// `support inspect`, which decrypted first and failed outright without an
+// identity — so the property existed and the command did not offer it.
+func TestAnEncryptedArchiveIsCheckableWithoutTheKeyToReadIt(t *testing.T) {
+	producer := signingSupportHarness(t)
+	_, public := vendorIdentity(t)
+	declareRecipients(t, producer, public)
+
+	written := bundleInto(t, producer, t.TempDir())
+	require.True(t, written.Encrypted)
+
+	intake := newHarness(t) // no installation, no identity, no recipient key
+	intake.Deps.Checker = signer.NewChecker()
+
+	read, err := ops.SupportInspect(context.Background(), intake.Deps,
+		ops.SupportInspectOptions{Path: written.Path, ExpectedKey: written.SigningKey})
+	require.NoError(t, err,
+		"an intake holding no recipient key could not check the signature at all")
+
+	assert.Equal(t, ops.SignatureSourceExpectedKey, read.Signature.Source)
+	assert.Equal(t, domain.SignedByCurrentKey, read.Signature.Result.Outcome)
+	assert.Empty(t, read.Entries,
+		"the contents were listed without an identity to decrypt them")
+}
+
+// A key file that exists and cannot be read is the operator's problem, and
+// saying "signature does NOT verify" reports it as the archive's.
+//
+// The directory case was fixed during the self-audit and this one was not: the
+// comment claimed both.
+func TestAnUnreadableKeyFileIsNotAVerdict(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, which can read a 0000 file")
+	}
+	producer := signingSupportHarness(t)
+	written := bundleInto(t, producer, t.TempDir())
+
+	locked := filepath.Join(t.TempDir(), "locked.pub")
+	require.NoError(t, os.WriteFile(locked, []byte("RWQsomething\n"), 0o000))
+
+	vendor := newHarness(t)
+	vendor.Deps.Checker = signer.NewChecker()
+
+	read, err := ops.SupportInspect(context.Background(), vendor.Deps,
+		ops.SupportInspectOptions{Path: written.Path, ExpectedKey: locked})
+	require.NoError(t, err)
+
+	assert.Equal(t, ops.SignatureSourceNone, read.Signature.Source,
+		"an unreadable key file produced a verdict about the archive")
 }

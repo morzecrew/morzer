@@ -1,6 +1,7 @@
 package views_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -170,17 +171,21 @@ func TestAVerdictAlwaysNamesItsAnchor(t *testing.T) {
 	}
 }
 
-// The bound travels from the archive to the terminal, so the sentence a reader
-// sees is the one the producer wrote rather than the one this binary would.
-func TestTheArchivesOwnBoundIsWhatIsPrinted(t *testing.T) {
-	out := render(t, 100, ops.SupportInspectReport{
+// An archive that cannot be listed says so before the empty table, not after.
+func TestAnUnreadableArchiveSaysWhyBeforeTheEmptyTable(t *testing.T) {
+	out := flatten(render(t, 100, ops.SupportInspectReport{
+		Unreadable: "this archive is encrypted and no identity was given to read it",
 		Signature: ops.SupportSignature{
 			Present: true,
-			Source:  ops.SignatureSourceNone,
-			Bound:   "a bound written by some other version of this manager",
+			Source:  ops.SignatureSourceExpectedKey,
+			Result: domain.SignatureResult{
+				Outcome: domain.SignedByCurrentKey, Key: "RWQkey",
+			},
 		},
-	})
-	assert.Contains(t, flatten(out), "written by some other version")
+	}))
+	require.Contains(t, out, "the contents could not be read")
+	assert.Less(t, strings.Index(out, "could not be read"), strings.Index(out, "nothing in it"),
+		"the empty table came before the reason it is empty")
 }
 
 // The index is counted out loud, because `support bundle` counts it as a
