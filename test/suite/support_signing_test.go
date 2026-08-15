@@ -726,3 +726,44 @@ func TestInspectWithNoPathSaysWhatToType(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Hint, "support inspect")
 }
+
+// The file is refused by size before it is read, which is the door every byte
+// in this command comes through.
+//
+// Found by re-reading the header comment against the code: it claimed the input
+// was streamed and bounded while the entry point called `os.ReadFile` on
+// whatever the operator named.
+func TestAnArchivePastTheBoundIsRefusedBeforeItIsRead(t *testing.T) {
+	h := signingSupportHarness(t)
+
+	path := filepath.Join(t.TempDir(), "enormous.tar.zst")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	// Sparse: the size is what is checked, and writing 64 MiB of zeroes to
+	// prove that would be a minute of disk for one branch.
+	require.NoError(t, f.Truncate((64<<20)+1))
+	require.NoError(t, f.Close())
+
+	_, err = ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: path})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "past the")
+}
+
+// A `--key` naming a directory is the operator's mistake, and saying "signature
+// does NOT verify" would report it as the archive's.
+func TestAKeyThatNamesADirectoryIsNotAVerdict(t *testing.T) {
+	producer := signingSupportHarness(t)
+	written := bundleInto(t, producer, t.TempDir())
+
+	vendor := newHarness(t)
+	vendor.Deps.Checker = signer.NewChecker()
+
+	read, err := ops.SupportInspect(context.Background(), vendor.Deps,
+		ops.SupportInspectOptions{Path: written.Path, ExpectedKey: t.TempDir()})
+	require.NoError(t, err)
+
+	assert.Equal(t, ops.SignatureSourceNone, read.Signature.Source,
+		"a directory named as a key produced a verdict about the archive")
+	assert.NotEqual(t, domain.Unverifiable, read.Signature.Result.Outcome)
+}

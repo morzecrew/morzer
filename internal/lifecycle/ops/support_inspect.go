@@ -27,11 +27,18 @@ import (
 // operator was handed, or one a vendor received from a stranger, so this is the
 // second-largest parser of untrusted input in the manager after release
 // extraction -- and unlike that one it never writes what it reads to disk.
-// Nothing is extracted: the tar is streamed, one small file is taken out of it,
-// and the plaintext of an encrypted archive exists only in memory. An `inspect`
-// that unpacked into a directory would put a readable copy of an archive
-// somebody deliberately encrypted onto the reviewer's filesystem, which is the
-// property P4a was built for, undone by the command that reads it.
+// Nothing is extracted: one small file is taken out of the tar, and the
+// plaintext of an encrypted archive exists only in memory. An `inspect` that
+// unpacked into a directory would put a readable copy of an archive somebody
+// deliberately encrypted onto the reviewer's filesystem, which is the property
+// P4a was built for, undone by the command that reads it.
+//
+// Held in memory rather than streamed, and the bound is what makes that
+// tolerable: the file is refused by size *before* it is opened, the decrypted
+// plaintext is bounded as it arrives, and the zstd window is capped. An earlier
+// draft of this comment claimed streaming, which read as though the size of the
+// input did not matter -- it does, and the three limits below are where it is
+// made not to.
 
 // SupportInspectOptions are the flags `support inspect` honours.
 type SupportInspectOptions struct {
@@ -183,10 +190,9 @@ func SupportInspect(
 			WithHint("morzer support inspect <file>")
 	}
 
-	body, err := os.ReadFile(opts.Path) //nolint:gosec // the file the operator named
+	body, err := readBoundedFile(opts.Path, maxInspectArchive)
 	if err != nil {
-		return SupportInspectReport{}, domain.Usage("cannot read %s: %s",
-			opts.Path, domain.AsError(err).Message)
+		return SupportInspectReport{}, err
 	}
 
 	report := SupportInspectReport{
@@ -252,7 +258,10 @@ type supportMetaDocument struct {
 
 // readDetachedSignature reads `<archive>.minisig`, absent being a normal state.
 func readDetachedSignature(path string) ([]byte, error) {
-	sig, err := os.ReadFile(path + minisigExt) //nolint:gosec // beside the named archive
+	// Bounded like everything else here. A minisign signature is a few
+	// hundred bytes; a file of that name holding a gigabyte is not a
+	// signature and reading it to find that out is the mistake.
+	sig, err := readBoundedFile(path+minisigExt, maxInspectSignature)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		// An unsigned archive, or a signature that did not travel with
@@ -260,10 +269,42 @@ func readDetachedSignature(path string) ([]byte, error) {
 		// two it cannot tell apart.
 		return nil, nil
 	case err != nil:
-		return nil, domain.Usage("cannot read the signature at %s: %s",
-			path+minisigExt, domain.AsError(err).Message)
+		return nil, err
 	}
 	return sig, nil
+}
+
+// maxInspectSignature bounds the detached signature.
+const maxInspectSignature = 64 << 10
+
+// readBoundedFile refuses by size before it reads.
+//
+// `os.ReadFile` grows a buffer to whatever is on disk, so checking afterwards
+// checks after the damage. This is the same rule the extractor follows for a
+// release bundle -- refuse while the bytes are arriving, not once they have --
+// applied at the one door every byte in this command comes through.
+//
+// The not-exist error is returned unwrapped, because a caller distinguishes it:
+// an archive with no signature beside it is an ordinary state, not a failure.
+func readBoundedFile(path string, limit int64) ([]byte, error) {
+	info, err := os.Stat(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil, err
+	case err != nil:
+		return nil, domain.Usage("cannot read %s: %s", path, domain.AsError(err).Message)
+	case info.IsDir():
+		return nil, domain.Usage("%s is a directory, not a file", path)
+	case info.Size() > limit:
+		return nil, domain.Usage("%s is %d bytes, past the %d this will read",
+			path, info.Size(), limit)
+	}
+
+	body, err := os.ReadFile(path) //nolint:gosec // stat-checked immediately above
+	if err != nil {
+		return nil, domain.Usage("cannot read %s: %s", path, domain.AsError(err).Message)
+	}
+	return body, nil
 }
 
 // decryptSupportArchive decrypts into memory, bounded.
@@ -469,7 +510,21 @@ func verifySupportSignature(
 // so the test is whether a file of that name exists.
 func resolveExpectedKey(value string) (string, error) {
 	value = strings.TrimSpace(value)
-	if body, err := os.ReadFile(value); err == nil { //nolint:gosec // the file the operator named
+
+	// A path that exists and cannot be read is the operator's mistake and
+	// is reported as one. Falling through to "treat the string as a key"
+	// would answer `signature does NOT verify` to somebody who named a
+	// directory or a file they lack permission on -- a verdict about the
+	// archive, produced by a problem with the key.
+	if info, err := os.Stat(value); err == nil {
+		if info.IsDir() {
+			return "", domain.Usage("%s is a directory, not a key file", value)
+		}
+		if info.Size() > maxInspectSignature {
+			return "", domain.Usage("%s is too large to be a key file", value)
+		}
+	}
+	if body, err := os.ReadFile(value); err == nil { //nolint:gosec // stat-checked above
 		// minisign's public key file is two lines: an untrusted comment
 		// and the key. The key is the last non-empty line.
 		lines := strings.Split(strings.TrimSpace(string(body)), "\n")

@@ -202,7 +202,7 @@ bytes — and nothing more. P4 depends on 0028 P1.
 | 8 | Which redactor the bundle uses | LOCKED | One — see §11.2. `logging.Redactor` has two entry points and there is no second implementation to reconcile. |
 | 9 | The signature covers the file that leaves the machine | LOCKED | §12 A14. Ciphertext for an encrypted archive, the tar for a plaintext one. Signing the plaintext would make authenticity checkable only by a party holding a recipient key, which inverts the order every other artifact here is checked in: `minisign -Vm SHA256SUMS` runs before the archive is unpacked. |
 | 10 | Detached, beside the archive, `<archive>.minisig` | LOCKED | It cannot live inside a file it covers. Same shape as an attestation's signature and as a release's `SHA256SUMS.minisig`, so `minisign -Vm <archive> -P <key>` is the same gesture an operator already knows. |
-| 11 | `inspect` never verifies against the key the archive names | LOCKED | §12 A15. `meta.json`'s `signing_key` is a claim to be resolved out of band, never the key to check against — RFC 0026 §3.6's finding in miniature. Verification uses the installation's recorded keys, or `--key`. With neither, `inspect` prints the claim and says the signature was not checked. |
+| 11 | `inspect` never verifies against the key the archive names | LOCKED | §12 A15. `meta.json`'s `signing_key` is a claim to be resolved out of band, never the key to check against — RFC 0026 §3.6's finding in miniature. Verification uses the installation's recorded keys, `--key`, or (A17) the key on this machine's own disk when state records none. With none of the three, `inspect` prints the claim and says the signature was not checked. The test each anchor passes is the same: it was not supplied by whoever produced the archive. |
 | 12 | An archive that cannot be signed is still written | LOCKED | The attestation rule (RFC 0025) for the same reason: withholding evidence from the installation that has the least of it is the wrong failure. The command says the archive is unsigned, and `--preview` says so before anything exists. |
 | 13 | `--preview` resolves the key without minting one | LOCKED | §12 A16. `PublicKey`, not `EnsureKey`, exactly as `fleet publish --dry-run` does. A preview that mints is a documented no-op writing cryptographic material, invisibly. |
 
@@ -639,3 +639,45 @@ this exactly and split the two halves for `fleet publish --dry-run`; this takes
 the same split. A preview asks `PublicKey`, gets `ErrNoSigningKey` on a machine
 with no key, and reports that the archive it describes would be unsigned —
 which is the truth about that machine today.
+
+**A17 — a third trust anchor the design did not have a row for (2026-08-15,
+P4b).**
+
+Decision 11 named two things `inspect` may check against: the installation's
+recorded keys, or `--key`. Execution found a machine that has neither and is
+still the machine that produced the archive.
+
+Installation state records the signing key when `init` writes it. A machine that
+reached schema 6 by migration has no such record — 0028 §5.6 mints on demand and
+only `init` and `init --repair` write the result into state — so it can sign a
+bundle on Tuesday and be unable to say on Wednesday whether it signed it. The
+key is on its own disk, root-owned at `0400` in a `0700` directory, put there by
+this machine.
+
+That is a trust anchor by the only test decision 11 actually applies: it was not
+supplied by whoever produced the archive. So it is used, under a source of its
+own — `machine-key` — and the verdict says which of the two was consulted rather
+than crediting a record that does not exist. An operator who wants the stronger
+claim runs `init --repair`, which is what puts the key in state.
+
+The alternative was to report "not checked" on a machine holding the very key in
+question, which is a worse answer for the same reason decision 11 exists: it
+would push the reader toward the one key that proves nothing.
+
+**A18 — every read is bounded, and the comment that said so was ahead of the
+code (2026-08-15, P4b, found by self-audit).**
+
+The package comment claimed the archive was streamed and bounded. It was neither:
+`SupportInspect` called `os.ReadFile` on whatever path the operator named, so
+the decrypted-plaintext bound and the zstd window cap sat behind a door that
+would read a ten-gigabyte file into memory first.
+
+Three limits now, all refusing before the bytes arrive rather than after: the
+file is refused by `stat` size, the plaintext is bounded as it is decrypted, and
+the detached signature has a bound of its own — a `.minisig` is a few hundred
+bytes, and a file of that name holding a gigabyte is not a signature.
+
+Recorded because the defect was in the *prose* first. The comment described the
+design correctly and the code did something else, which is the direction that
+survives review: a reader checking whether the input is bounded finds a
+paragraph saying it is.
