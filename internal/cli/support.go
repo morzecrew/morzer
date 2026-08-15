@@ -33,6 +33,13 @@ func newSupportCommand(app *App) *cobra.Command {
 	cmd.AddCommand(
 		installationScope(newSupportBundleCommand(app)),
 		installationScope(newSupportRedactCommand(app)),
+		// Machine-scoped, and the difference matters rather than being
+		// bookkeeping: `inspect` acts on a file that was handed to
+		// somebody. The reader this artifact exists for is a vendor on
+		// their own laptop, where there is no installation to select and
+		// refusing to run without one would take the command away from
+		// exactly the audience it was written for.
+		machineScope(newSupportInspectCommand(app)),
 	)
 	return cmd
 }
@@ -105,6 +112,65 @@ func newSupportBundleCommand(app *App) *cobra.Command {
 		"leave container logs out of the archive")
 	cmd.Flags().StringVar(&dir, "dir", "",
 		"write the archive to this directory instead of the working directory")
+	return cmd
+}
+
+// `morzer support inspect <file>` — RFC 0024 P4b.
+//
+// Two answers rather than one: what is in the archive, and what its signature
+// established. §3.5 asks for the listing; decision 11 shapes the verification,
+// and the shape is a refusal — the key `meta.json` names is never the key the
+// signature is checked against, because whoever wrote the archive wrote the
+// name beside it.
+func newSupportInspectCommand(app *App) *cobra.Command {
+	var (
+		identity string
+		key      string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "inspect <file>",
+		Short: "List what is in a support archive, and check its signature",
+		Long: "Reads back an archive `morzer support bundle` wrote — yours, or one\n" +
+			"somebody sent you. It prints the same component table the archive was\n" +
+			"written with, and reports what the signature beside it established.\n\n" +
+			"Nothing is extracted. The archive is read in memory and no part of it\n" +
+			"is written to disk, so inspecting an encrypted bundle does not leave a\n" +
+			"readable copy on the machine doing the inspecting.\n\n" +
+			"An encrypted archive needs `--identity`, holding a key the release\n" +
+			"named as a support recipient. The machine that produced the archive\n" +
+			"does not have one, on purpose.\n\n" +
+			"**The archive names the key that signed it, and that name proves\n" +
+			"nothing.** Whoever wrote the archive wrote the name. So the signature\n" +
+			"is checked against this installation's own record of its keys when\n" +
+			"you run this on the machine that produced it, or against `--key` when\n" +
+			"you do not — a key you got from the operator rather than from the\n" +
+			"file. With neither, the claimed key is printed and the signature is\n" +
+			"reported as unchecked, which is the honest answer rather than a tick\n" +
+			"nobody earned.\n\n" +
+			"`--key` takes the key itself or a file holding one.",
+		Example: "  morzer support inspect support-demo-op_01M0-20260815T101500Z.tar.zst\n" +
+			"  morzer support inspect bundle.tar.zst.age --identity ~/vendor.key\n" +
+			"  morzer support inspect bundle.tar.zst --key RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			report, err := ops.SupportInspect(cmd.Context(), app.Deps,
+				ops.SupportInspectOptions{
+					Path:         args[0],
+					IdentityFile: identity,
+					ExpectedKey:  key,
+				})
+			if err != nil {
+				return err
+			}
+			return app.render(report)
+		},
+	}
+
+	cmd.Flags().StringVar(&identity, "identity", "",
+		"age identity to decrypt an encrypted archive with")
+	cmd.Flags().StringVar(&key, "key", "",
+		"the signing key this archive should carry, or a file holding it")
 	return cmd
 }
 

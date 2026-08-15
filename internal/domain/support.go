@@ -70,6 +70,26 @@ type SupportComponent struct {
 	Sources func(Paths) []string
 }
 
+// SupportSignatureBound is what a signature over a support archive proves, and
+// what it does not.
+//
+// Carried inside `meta.json` rather than left to the documentation, because the
+// reader who most needs it is the one handed the archive in a ticket with no
+// documentation anywhere near it -- the same argument RFC 0025 makes for
+// putting the bound in every attestation.
+//
+// The second sentence is RFC 0024 decision 11 and it is here rather than in a
+// doc because it is the mistake a careful reader makes: the archive names the
+// key that signed it, and checking the signature against that key is checking
+// the archive against itself. Whoever wrote the archive wrote the name.
+const SupportSignatureBound = "This signature proves that a process holding this " +
+	"installation's signing key produced these bytes. It does not prove the archive " +
+	"came from that machine -- a copied key signs from anywhere -- it does not prove " +
+	"nobody edited the contents before the archive was made, and it does not identify " +
+	"the operator. The key named above identifies which key to obtain from the " +
+	"installation's operator; it is not a key to verify against, because this file " +
+	"and that name were written by the same hand."
+
 // SupportInventory is every component, classified.
 //
 // Ordered as an operator reads an archive rather than alphabetically: what the

@@ -65,15 +65,32 @@ func TestSupportBundleEncryptsToTheDeclaredRecipient(t *testing.T) {
 	out.OutputContains("encrypted to, and readable by, only these recipients", public)
 	out.NoOutputContains("this archive is not encrypted")
 
+	// One archive and its detached signature, and nothing else. The pair is
+	// what P4b writes; the assertion stays "exactly one archive" rather than
+	// "exactly one file", because a second *archive* appearing in the
+	// directory an operator is about to attach from is the failure this
+	// guards -- a plaintext copy beside the encrypted one.
 	written, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(written) != 1 {
-		t.Fatalf("expected one archive, found %d: %v", len(written), written)
+	var archives, signatures []string
+	for _, e := range written {
+		switch {
+		case strings.HasSuffix(e.Name(), ".minisig"):
+			signatures = append(signatures, e.Name())
+		default:
+			archives = append(archives, e.Name())
+		}
 	}
-	if !strings.HasSuffix(written[0].Name(), ".tar.zst.age") {
-		t.Errorf("the encrypted archive is not named as one: %s", written[0].Name())
+	if len(archives) != 1 {
+		t.Fatalf("expected one archive, found %d: %v", len(archives), archives)
+	}
+	if !strings.HasSuffix(archives[0], ".tar.zst.age") {
+		t.Errorf("the encrypted archive is not named as one: %s", archives[0])
+	}
+	if len(signatures) != 1 || signatures[0] != archives[0]+".minisig" {
+		t.Errorf("the signature does not sit beside the archive: %v", signatures)
 	}
 
 	// Reported the same way through the machine-readable contract, which is

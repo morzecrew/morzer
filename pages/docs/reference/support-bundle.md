@@ -151,6 +151,86 @@ malformed; nothing can catch one that is well-formed and belongs to the
 wrong party, so they are printed in full — compare them against what your
 vendor published, while the archive still does not exist.
 
+## Signing it, and what that proves
+
+The archive is signed with this installation's own key, and the
+signature lands beside it as `<archive>.minisig`. It covers **the file
+that leaves** — for an encrypted archive that is the ciphertext, not the
+plaintext inside it — so whoever receives one can establish where it came
+from before handing it to anything that decrypts. It is also checkable
+with `minisign -Vm <archive> -P <key>`, the same gesture this project
+already teaches for a release.
+
+What it proves is narrow, and the archive carries the sentence itself in
+`meta.json` so a reader handed the file with no documentation still gets
+it:
+
+> This signature proves that a process holding this installation's signing key produced these bytes. It does not prove the archive came from that machine -- a copied key signs from anywhere -- it does not prove nobody edited the contents before the archive was made, and it does not identify the operator. The key named above identifies which key to obtain from the installation's operator; it is not a key to verify against, because this file and that name were written by the same hand.
+
+A machine that has never minted a signing key still writes the archive,
+unsigned, and says so on the run. Withholding evidence from the
+installation that has the least of it is the wrong failure.
+
+## Reading one back
+
+`morzer support inspect <file>` lists what is in an archive and reports
+what its signature established. Nothing is extracted — the archive is
+read in memory — so inspecting an encrypted bundle leaves no readable
+copy on the machine doing the inspecting.
+
+```console
+$ morzer support inspect support-demo-op_01M032R1495VR14NRFX5NFX68T-20260815T160543Z.tar.zst
+9 component(s), 14.2 KiB, plus the index (1.9 KiB)
+  product       demo
+  installation  op_01M032R1495VR14NRFX5NFX68T
+  written by    0.0.0
+  FILE               COMPONENT                    SIZE     REDACTIONS
+  manifest.yaml      The resolved manifest        2.8 KiB  0
+  ...
+  NOT COLLECTED  WHY
+  logs/          the deployment produced no log output to capture
+
+  signature verified against this installation's recorded keys
+RWQAjdUPyq2+wfrTz2Sea5r7DjoThqJQH69EfC+RnVHvBAchqC0iptOI
+```
+
+It counts one component fewer than `bundle` did, and the difference is
+`meta.json`: the index cannot list itself, so it is reported as the index
+rather than invented as a row with a redaction count nobody could know.
+
+An encrypted archive needs `--identity`, holding a key your release named
+as a support recipient. The machine that produced the archive does not
+have one, on purpose, so it cannot read its own bundle back.
+
+### The key in the archive is a claim, not a check
+
+`meta.json` names the key that signed the archive. **That name proves
+nothing**: whoever wrote the archive wrote the name beside the signature
+they made, and the two agree with each other perfectly.
+
+So `inspect` never checks against it. It checks against this
+installation's own record of its keys when you run it on the machine that
+produced the archive, or against `--key` when you do not — a key you got
+from the operator rather than from the file. With neither, it says so
+instead of printing a verdict it has not earned:
+
+```console
+$ morzer support inspect bundle.tar.zst
+  signature present and NOT checked: there was no key to check it against
+  the archive says this key signed it -- get that key from the operator, not from this file, and
+  pass it with --key
+RWQAjdUPyq2+wfrTz2Sea5r7DjoThqJQH69EfC+RnVHvBAchqC0iptOI
+
+$ morzer support inspect bundle.tar.zst --key RWQAjdUPyq2+wfrTz2Sea5r7DjoThqJQH69EfC+RnVHvBAchqC0iptOI
+  signature verified against the key you named
+RWQAjdUPyq2+wfrTz2Sea5r7DjoThqJQH69EfC+RnVHvBAchqC0iptOI
+```
+
+`--key` takes the key itself or a file holding one. A key this
+installation has **retired** is reported as its own outcome rather than as
+valid — it establishes where the archive came from, not that it is
+current.
+
 ## Checking something you are sending by hand
 
 `morzer support redact` with `--check` runs the same redactor over a file

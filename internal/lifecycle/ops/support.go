@@ -117,6 +117,27 @@ type SupportReport struct {
 	// operator check the target against what their vendor published.
 	Recipients []string `json:"recipients,omitempty"`
 
+	// SigningKey is the public half of the key that signed the archive, as
+	// `minisign -P` accepts it. Empty when this machine cannot sign.
+	//
+	// It travels in `meta.json` as well, and what it is for there is worth
+	// being exact about, because the obvious use of it is refused: it names
+	// the key a reader should go and *obtain*, out of band, from somewhere
+	// that is not this archive. Checking the signature against it would be
+	// checking the archive against itself (decision 11).
+	SigningKey string `json:"signing_key,omitempty"`
+
+	// SignaturePath is the detached `.minisig` beside the archive. Empty on
+	// a preview, and empty when the archive went out unsigned.
+	SignaturePath string `json:"signature_path,omitempty"`
+
+	// Signed is whether a signature was written, kept separate from
+	// SignaturePath being non-empty so a `--json` consumer asks a boolean
+	// rather than inferring one from a string. On a preview it is what
+	// *would* happen, which is the only useful thing a preview can say
+	// about a signature it is not going to make.
+	Signed bool `json:"signed"`
+
 	Entries    []SupportEntry    `json:"entries"`
 	Omitted    []SupportOmission `json:"omitted,omitempty"`
 	TotalBytes int64             `json:"total_bytes"`
@@ -412,12 +433,30 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		return SupportReport{}, err
 	}
 
+	// Resolved before the components are collected, because `meta.json` is
+	// one of them and it names the key that will sign.
+	//
+	// Two resolvers, and which one runs is decision 13. A real run uses
+	// `EnsureKey` through the shared helper, so a machine that reached
+	// schema 6 by migration mints on its first bundle exactly as it does on
+	// its first attestation. A preview uses the read-only half: `--preview`
+	// is documented as writing nothing, and a preview that minted would
+	// write cryptographic material while printing a component table that
+	// says nothing about it.
+	signingKey := d.supportSigningKey(ctx, inst, opts.Preview)
+
 	report := SupportReport{
 		Preview:        opts.Preview,
 		Product:        inst.Product,
 		InstallationID: inst.ID,
 		ManagerVersion: d.ManagerVersion.String(),
 		Encrypted:      len(recipients) > 0,
+		SigningKey:     signingKey,
+		// On a preview this is the claim "an archive written now would be
+		// signed", which is what an operator checking before they send
+		// needs to know. On a real run it is corrected below if signing
+		// fails -- an archive is still written unsigned (decision 12).
+		Signed: signingKey != "",
 		// In the order the vendor declared them, which is the order an
 		// operator diffing this against the manifest expects. Sorting
 		// them would reorder somebody else's list to no end: it arrives
@@ -498,7 +537,100 @@ func SupportBundle(ctx context.Context, d *Deps, opts SupportOptions) (SupportRe
 		return SupportReport{}, err
 	}
 	report.Path = path
+
+	sigPath, err := signSupportArchive(ctx, d, inst, path, signingKey)
+	switch {
+	case err != nil:
+		// The archive exists and is correct; only its signature is
+		// missing. Failing the command here would report no bundle while
+		// a bundle sits in the operator's directory, and the retry would
+		// then collide with it -- the shape RFC 0025 settled for
+		// attestations and RFC 0024 decision 12 adopts.
+		d.warnf("wrote %s unsigned: %s", path, domain.AsError(err).Message)
+		report.Signed = false
+		report.SigningKey = ""
+	case sigPath != "":
+		report.SignaturePath = sigPath
+	}
 	return report, nil
+}
+
+// supportSigningKey resolves the key the archive will name and be signed by.
+//
+// The `planning` split is decision 13 and it is the same split RFC 0026 made
+// for `fleet publish --dry-run`: `EnsureKey` mints on a machine that has never
+// signed, and minting is a side effect a preview must not have. The read-only
+// half returns nothing on such a machine, which is the honest answer for a
+// preview -- an archive written today would go out unsigned.
+//
+// Empty means this machine cannot sign, which is a state rather than a fault:
+// the archive is still written (decision 12), and `meta.json` carries no
+// `signing_key` rather than an empty one.
+func (d *Deps) supportSigningKey(
+	ctx context.Context, inst domain.Installation, planning bool,
+) string {
+	if d.Signer == nil {
+		return ""
+	}
+	if !planning {
+		return d.signingKeyForDocument(ctx, inst, "signing this bundle")
+	}
+	key, err := d.Signer.PublicKey(ctx)
+	if err != nil {
+		// Silent, unlike the publishing path: a machine with no key yet
+		// is the ordinary case for a preview, and `signed: false` in the
+		// report already carries it.
+		return ""
+	}
+	return key.Line
+}
+
+// signSupportArchive writes the detached signature beside the archive.
+//
+// Over the bytes at `path` -- decision 9. For an encrypted archive that is the
+// ciphertext, so whoever receives the file can establish it came from the
+// machine it claims *before* handing it to an age implementation, and an intake
+// holding no recipient key can still do that much. Signing the plaintext would
+// have made authenticity a question only a key holder could ask.
+//
+// Returns an empty path and no error when this machine cannot sign, which the
+// caller has already reported through `signed: false`.
+func signSupportArchive(
+	ctx context.Context, d *Deps, inst domain.Installation, path, signingKey string,
+) (string, error) {
+	if d.Signer == nil || signingKey == "" {
+		return "", nil
+	}
+
+	// Read back rather than signing the buffer that was written: the
+	// encrypted path never holds the ciphertext in memory, and a signature
+	// over what this function *believes* is on disk is a signature that
+	// stops matching the moment those two drift. What a recipient verifies
+	// is the file, so the file is what gets signed.
+	body, err := os.ReadFile(path) //nolint:gosec // the archive this command just wrote
+	if err != nil {
+		return "", domain.Internal(err, "cannot read the archive back to sign it")
+	}
+
+	// One printable line, which `minisign -V` prints on success. Names the
+	// installation rather than the file, because the filename is already in
+	// front of whoever runs the command and the installation id is the thing
+	// a vendor holding three archives needs to tell them apart by.
+	sig, err := d.Signer.Sign(ctx, body, fmt.Sprintf(
+		"morzer support %s %s", inst.Product, inst.ID))
+	if err != nil {
+		return "", err
+	}
+
+	// 0644, as an attestation's signature is written and as the plaintext
+	// archive itself is: a signature is public by construction -- it is the
+	// thing you hand to somebody so they can check the file -- and the pair
+	// travels together to whoever asked for it.
+	sigPath := path + minisigExt
+	if err := atomicfs.WriteFile(sigPath, sig.Encoded, 0o644); err != nil {
+		return "", err
+	}
+	return sigPath, nil
 }
 
 // supportRecipients resolves who this archive is encrypted to.
@@ -938,6 +1070,8 @@ func supportMeta(report *SupportReport, files []supportFile) supportFile {
 		InstallationID string            `json:"installation_id"`
 		ManagerVersion string            `json:"manager_version"`
 		Encrypted      bool              `json:"encrypted"`
+		SigningKey     string            `json:"signing_key,omitempty"`
+		SignatureBound string            `json:"signature_bound,omitempty"`
 		Entries        []SupportEntry    `json:"entries"`
 		Omitted        []SupportOmission `json:"omitted,omitempty"`
 	}{
@@ -945,6 +1079,14 @@ func supportMeta(report *SupportReport, files []supportFile) supportFile {
 		InstallationID: report.InstallationID,
 		ManagerVersion: report.ManagerVersion,
 		Encrypted:      report.Encrypted,
+		SigningKey:     report.SigningKey,
+		// The bound travels in the document, as it does in an
+		// attestation and for the same reason: the reader who most needs
+		// it is the one handed this file without the documentation. It
+		// says what the signature proves *and* the thing decision 11
+		// exists for -- that the key on the line above is a name to go
+		// and look up, not a key to check against.
+		SignatureBound: signatureBoundFor(report.SigningKey),
 		Entries:        entries,
 		Omitted:        report.Omitted,
 	}
@@ -957,6 +1099,19 @@ func supportMeta(report *SupportReport, files []supportFile) supportFile {
 		body = []byte("{}")
 	}
 	return supportFile{Name: supportMetaName, Data: append(body, '\n')}
+}
+
+// signatureBoundFor is the bound, or nothing at all when there is no signature.
+//
+// A bound printed beside an archive nobody signed would describe a proof that
+// does not exist -- the same failure `signature_verified` avoids by being absent
+// rather than `false` in an attestation, one artifact along. An unsigned archive
+// says nothing about signatures, which is exactly what it can honestly say.
+func signatureBoundFor(signingKey string) string {
+	if signingKey == "" {
+		return ""
+	}
+	return domain.SupportSignatureBound
 }
 
 // scrub runs every collected file through the redactor and records what it

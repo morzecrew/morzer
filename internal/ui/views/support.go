@@ -113,6 +113,27 @@ func supportDoc(d *ui.Doc, r ops.SupportReport) *ui.Doc {
 		d.Blank()
 		d.Text(2, "this archive is not encrypted: anyone who receives it can read all of it")
 	}
+
+	// The signature, on both runs, and the unsigned case out loud.
+	//
+	// A missing `.minisig` is invisible to an operator who was not looking
+	// for one, and "unsigned" is the state a machine that has never minted a
+	// key is in -- which is every installation that reached schema 6 by
+	// migration and has not signed anything since. Decision 12 keeps the
+	// archive; this is the half that stops keeping it quietly.
+	d.Blank()
+	switch {
+	case r.Signed && r.Preview:
+		d.Text(2, "an archive written now would be signed by this machine's key")
+		d.Verbatim(r.SigningKey)
+	case r.Signed:
+		d.Text(2, "signed, with the signature beside it")
+		d.Verbatim(r.SignaturePath)
+	case r.Preview:
+		d.Text(2, "an archive written now would be unsigned: this machine has no signing key yet")
+	default:
+		d.Text(2, "this archive is unsigned")
+	}
 	return d
 }
 
