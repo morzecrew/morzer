@@ -20,13 +20,14 @@ second table of the same shape is a second set of rows for the same numbers.
 - **[0023 — Runtimes beyond Compose](0023-runtimes-beyond-compose.md).** P1a
   shipped: the leak inventory and the boundary checker. **P1b needs a rootless
   Podman host** — three measurements sit behind it, and nothing else blocks P2.
-- **[0024 — The support bundle](0024-the-support-bundle.md).** P1–P3, P5 and
-  now P4a shipped: the inventory, the archive, redaction proved against seeded
-  values, `support redact --check`, and an archive encrypted to the vendor and
-  unreadable by the machine that wrote it. The window did close, so the
-  declaration went through 0018's `extensions` namespace — measured against a
-  released binary, where a top-level field refuses the whole bundle. **P4b —
-  signing and `support inspect` — is unscheduled** and no longer blocked.
+- **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
+  inventory, the archive, redaction proved against seeded values, `support
+  redact --check`, an archive encrypted to the vendor and unreadable by the
+  machine that wrote it, and now signed with 0028's key and readable back by
+  `support inspect`. The window did close, so the declaration went through
+  0018's `extensions` namespace — measured against a released binary, where a
+  top-level field refuses the whole bundle. `inspect` will not verify against
+  the key the archive names, which is 0026 §3.6's finding in a second artifact.
 - **[0027 — Desired state in a repository](0027-desired-state-in-a-repository.md).**
   P1 shipped as `installation describe`. **P2 is gated on a user who is not the
   author asking for it**, and if that never happens the correct outcome is that
@@ -92,7 +93,7 @@ number in the filename in sync.
 | [0021](0021-into-the-running-deployment.md) | Into the running deployment | ✅ Complete | The commands for when the deployment is running and something is wrong — logs, process state, resource use, and a command inside a container. |
 | [0022](0022-bootstrapping-the-manager.md) | Bootstrapping the manager | ✅ Complete | Getting the manager onto a machine in the first place: an install script that verifies what it downloaded, and instructions somebody has run. |
 | [0023](0023-runtimes-beyond-compose.md) | Runtimes beyond Compose | 🚧 In progress | Grading the runtime port by writing a second implementation of it — rootless Podman with Quadlet — on the theory that a port with one adapter is a guess rather than an abstraction. |
-| [0024](0024-the-support-bundle.md) | The support bundle | 🚧 In progress | One redacted archive an operator can hand to a stranger, because every command a vendor has runs before the bundle leaves their machine and none after. |
+| [0024](0024-the-support-bundle.md) | The support bundle | ✅ Complete | One redacted archive an operator can hand to a stranger, because every command a vendor has runs before the bundle leaves their machine and none after. |
 | [0025](0025-attesting-an-installation.md) | Attesting an installation | ✅ Complete | Making the manager's evidence leave the machine as a signed statement, and binding the feature to a verifier that can fail for a reason other than corruption. |
 | [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | ✅ Complete | Seeing many machines without a control plane: each publishes one signed row to a bucket, the reader can never act, and a roster names who is expected and which key each signs with. |
 | [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 🚧 In progress | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |

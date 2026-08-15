@@ -1,6 +1,6 @@
 # RFC 0024 — The support bundle
 
-- **Status:** 🚧 In progress — **P1–P3 and P5 shipped (2026-08-13)**. `morzer
+- **Status:** ✅ Complete — **P1–P3 and P5 shipped (2026-08-13)**. `morzer
   support bundle` and `--preview` produce a plaintext archive from eleven
   components, the inclusion list is generated from the code into
   [the reference page](../pages/docs/reference/support-bundle.md), container
@@ -15,8 +15,13 @@
   bundle is for and the archive is encrypted to them alone. §10's manifest
   window **closed** — v0.1.0 and v0.1.1 are tagged — so the field went to
   `extensions."morzer.dev/support"`, measured against a released binary rather
-  than argued (A10). **P4b — signing and `support inspect` — is unscheduled**
-  and no longer blocked: 0028 P1 shipped, so the signer exists (A11).
+  than argued (A10). **P4b shipped 2026-08-15**: the archive is signed with
+  0028's per-installation key and `morzer support inspect` reads one back —
+  listing what is inside and reporting what the signature established, which are
+  two answers rather than one. The signature covers the file that leaves rather
+  than the plaintext inside it (A14), and `inspect` refuses to verify against
+  the key the archive itself names (A15), which is RFC 0026 §3.6's finding
+  arriving in a second artifact. **RFC 0024 is complete.**
 - **Scope:** One command that exports a complete, redacted, self-contained account
   of an installation — journal, `doctor` results, resolved manifest, config diff,
   version history, container state and bounded logs — in a form safe to hand to a
@@ -195,6 +200,11 @@ bytes — and nothing more. P4 depends on 0028 P1.
 | 6 | The manager never transmits | LOCKED | §3.6. |
 | 7 | `support redact --check <file>` ships alongside | LOCKED | So an operator can run the same redactor over a paste they were going to send anyway. Cheap, and the feature most likely to actually prevent a leak. |
 | 8 | Which redactor the bundle uses | LOCKED | One — see §11.2. `logging.Redactor` has two entry points and there is no second implementation to reconcile. |
+| 9 | The signature covers the file that leaves the machine | LOCKED | §12 A14. Ciphertext for an encrypted archive, the tar for a plaintext one. Signing the plaintext would make authenticity checkable only by a party holding a recipient key, which inverts the order every other artifact here is checked in: `minisign -Vm SHA256SUMS` runs before the archive is unpacked. |
+| 10 | Detached, beside the archive, `<archive>.minisig` | LOCKED | It cannot live inside a file it covers. Same shape as an attestation's signature and as a release's `SHA256SUMS.minisig`, so `minisign -Vm <archive> -P <key>` is the same gesture an operator already knows. |
+| 11 | `inspect` never verifies against the key the archive names | LOCKED | §12 A15. `meta.json`'s `signing_key` is a claim to be resolved out of band, never the key to check against — RFC 0026 §3.6's finding in miniature. Verification uses the installation's recorded keys, or `--key`. With neither, `inspect` prints the claim and says the signature was not checked. |
+| 12 | An archive that cannot be signed is still written | LOCKED | The attestation rule (RFC 0025) for the same reason: withholding evidence from the installation that has the least of it is the wrong failure. The command says the archive is unsigned, and `--preview` says so before anything exists. |
+| 13 | `--preview` resolves the key without minting one | LOCKED | §12 A16. `PublicKey`, not `EnsureKey`, exactly as `fleet publish --dry-run` does. A preview that mints is a documented no-op writing cryptographic material, invisibly. |
 
 ## 5. Non-goals, and what reopens each
 
@@ -256,7 +266,7 @@ first paragraph what the archive never contains.
   the one that decides whether the feature is safe; P2 without it is a leak
   generator with a progress bar.
 - **P4a — `support.recipients` and encryption.** ✅ Shipped 2026-08-14. The declaration lives under `extensions."morzer.dev/support"` because the window §11.4 gave the top-level field closed at the first tag; the three candidate placements were measured against a `v0.1.1` binary rather than reasoned about (A10). A declaration that cannot be used is a refusal before anything is collected, never a plaintext fallback (decision 3a), and `--preview` prints the recipients in full because that is the only check available against a key that parses and belongs to the wrong party.
-- **P4b — signing and `support inspect`.** Unscheduled, and no longer gated: 0028 P1 shipped, so decision 4's signer exists. Split from P4a because encryption decides who can read the archive and a signature decides what it proves, which are independent (A11). `inspect` belongs here rather than with encryption: its job is to verify as well as to list.
+- **P4b — signing and `support inspect`.** ✅ Shipped 2026-08-15. Split from P4a because encryption decides who can read the archive and a signature decides what it proves, which are independent (A11). `inspect` belongs here rather than with encryption: its job is to verify as well as to list. Execution answered three things §3.7 left open — which bytes are signed (A14), what `inspect` may verify against (A15), and that a preview must not mint the key it names (A16) — and each is a decision row rather than a note, because each had a plausible wrong answer.
 - **P5 — `support redact --check`.** ✅ Shipped 2026-08-13, ahead of P4: decision 7 is `LOCKED` and says it ships alongside the bundle (§12 A6).
 
 ## 9. Risks
@@ -569,3 +579,63 @@ simply is not a release, which is the distinction the two sentences are made of.
 
 The remedy proposed in review — drop the omission when there is no release —
 is refused for the reason above: silence there is the case A12 exists to close.
+
+**A14 — the signature covers the file that leaves, not the files inside it
+(2026-08-15, P4b).**
+
+§3.7 settled *what* signs and never said *what gets signed*, which is a
+different question and the one with a wrong answer available. For an encrypted
+archive the two candidates are the plaintext tar and the ciphertext, and the
+plaintext reads as the more natural choice: it is what the statement is *about*.
+
+It is the wrong one. Signing the plaintext means a signature cannot be checked
+without first decrypting, so authenticity becomes something only a party holding
+a recipient key can establish — and the party that most wants to establish it
+early is a vendor's intake, which is handling a file that arrived from a
+stranger and would like to know it came from the machine it claims before
+feeding it to an age implementation. Every other artifact this project publishes
+is checked in that order: `minisign -Vm SHA256SUMS` runs before the archive it
+covers is unpacked.
+
+So the signature is over the bytes at the path the command reports, whatever
+they are. On a plaintext archive that is the tar; on an encrypted one it is the
+ciphertext. The bound in decision 4 is unchanged by this and stays exactly as
+0028 §5.5 words it — a process holding this installation's key produced these
+bytes. Which bytes is now stated.
+
+**A15 — `inspect` does not verify against the key the archive names
+(2026-08-15, P4b).**
+
+`meta.json` gained `signing_key`, and the obvious use of it is the one this
+refuses: read the key out of the archive, check the signature against it, print
+a tick. That establishes nothing at all. Anyone who can write an archive can
+write the key beside the signature they made, and the result verifies perfectly
+against itself.
+
+RFC 0026 met the same shape in a fleet row and named it in §3.6 — a row carries
+its own key, several machines share one prefix, so checking a row against the
+key it supplies is not laziness about verification but a check with no content.
+The answer there was a roster supplied out of band. The answer here is the same
+in miniature: `inspect` verifies against the installation's own recorded keys
+when it is run on the machine that produced the archive, or against `--key`
+when it is not, and reports the key the archive names as a *claim* — the thing
+you use to go and find the real key, never the thing you check against.
+
+The consequence is stated at the terminal rather than left to this document: an
+`inspect` with neither source available prints the claimed key and says the
+signature was not checked, instead of a verdict it has not earned.
+
+**A16 — `--preview` asks for the key rather than ensuring it (2026-08-15,
+P4b).**
+
+`meta.json` names the key that will sign, which means the key has to be resolved
+before the components are collected — and the resolver that every other signing
+path uses is `EnsureKey`, which mints one on a machine that has never signed.
+
+A preview that minted would be `--preview` writing cryptographic material while
+documented as writing nothing, and it would do it invisibly: the command prints
+a component table and says nothing about the key it just created. RFC 0026 met
+this exactly and split the two halves for `fleet publish --dry-run`; this takes
+the same split. A preview asks `PublicKey`, gets `ErrNoSigningKey` on a machine
+with no key, and reports that the archive it describes would be unsigned —
+which is the truth about that machine today.
