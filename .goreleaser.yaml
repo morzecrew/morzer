@@ -86,28 +86,22 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
 changelog:
-  # Assembled from conventional commits, which the repository already enforces
-  # by convention. The gitmoji prefix is stripped by the group patterns.
-  use: github
-  sort: asc
-  groups:
-    - title: Features
-      regexp: '^.*?(✨|feat)(\(.+\))??!?:.+$'
-      order: 0
-    - title: Fixes
-      regexp: '^.*?(🐛|🚑|fix)(\(.+\))??!?:.+$'
-      order: 1
-    - title: Security
-      regexp: '^.*?(🔒|🛡)(\(.+\))??!?:.+$'
-      order: 2
-    - title: Other
-      order: 99
-  filters:
-    exclude:
-      - '^.*?(📝|docs)(\(.+\))??!?:'
-      - '^.*?(✅|test)(\(.+\))??!?:'
-      - '^.*?(👷|ci)(\(.+\))??!?:'
-      - "^Merge "
+  # The release body comes from CHANGELOG.md, built by
+  # `.github/scripts/release-notes.sh` and passed as `--release-notes`.
+  #
+  # Disabled rather than configured, because a commit log is the wrong source
+  # for this. It was `use: github` with group patterns and exclude filters, and
+  # the two releases it produced are why it is not any more: v0.1.0 had no
+  # previous tag to diff against and listed every commit in the repository,
+  # `fix(backup): improve volume reporting` and agent-skill commits included;
+  # v0.1.1 listed a single subject and a SHA. No filter fixes that -- a commit
+  # subject is addressed to whoever reads `git log`, and release notes are
+  # addressed to whoever is deciding whether to upgrade.
+  #
+  # `--release-notes` also replaces the body outright, so `release.header` and
+  # `release.footer` never run once it is passed. The footer moved into the
+  # script for that reason; leaving it here would be config that reads as live.
+  disable: true
 
 release:
   draft: true
@@ -120,38 +114,3 @@ release:
   # A release an operator installs is a release a human looked at first. The
   # draft is published by hand after checking the notes.
   prerelease: auto
-  footer: |
-    ## Installing this release
-
-    ```sh
-    curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version {{ .Version }}
-    ```
-
-    The script verifies the checksum always and the signature whenever
-    `minisign` is present; `--require-signature` makes a missing minisign fatal,
-    which is what a production runbook sets. `--print-only` shows everything it
-    detected and would do, and changes nothing. `install.sh` is an asset of this
-    release and is covered by `SHA256SUMS` below.
-
-    ## Verifying this release by hand
-
-    ```sh
-    ARCHIVE=morzer_{{ .Version }}_linux_amd64.tar.zst   # the one you downloaded
-
-    curl -fsSLO https://raw.githubusercontent.com/morzecrew/morzer/main/morzer.pub
-    minisign -Vm SHA256SUMS -p morzer.pub
-    grep " ${ARCHIVE}$" SHA256SUMS | sha256sum -c -
-    ```
-
-    `SHA256SUMS` covers every architecture, so checking it whole fails on the
-    archives you did not download — and `--ignore-missing`, the usual way
-    around that, reports `OK` when *no* archive is present at all. Pulling out
-    the line for the file you have fails when there is nothing to check.
-
-    The signing key is the same for every release. If you have verified a
-    morzer release before, use the copy you already have rather than fetching
-    it again — a key that changes between releases is the thing worth noticing.
-
-    Release bundles are a separate artifact with their own signature and their
-    own key; see
-    https://morzecrew.github.io/morzer/reference/release-commands/#verification
