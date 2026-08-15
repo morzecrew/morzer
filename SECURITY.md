@@ -131,9 +131,11 @@ validity. Collapsing the two would make rotation useless.
 ### Rotation protects the future and repairs nothing
 
 **There is no rotate command yet** ([RFC 0028](rfcs/0028-the-machines-signing-identity.md)
-P2 is unscheduled). What a machine has today is succession: rebuilding it from
-an export mints a fresh key and records the old one as a predecessor, which is
-the same state a rotation would leave and reached the long way round.
+P2 is unscheduled). The only path that retires a key today is `installation
+import`, which mints a fresh one and records the old one as a predecessor — and
+rebuilding a machine to retire one key is not a remedy anybody should reach for.
+Read the rest of this section as what a rotation will and will not do, rather
+than as something to run.
 
 The sentence to read before rotating after a suspected compromise:
 
@@ -188,7 +190,10 @@ Stated here rather than discovered during an incident:
   backups go to, and a push that fails does not fail the operation. So a machine
   lost between writing a statement and pushing it takes that statement with it;
   `morzer doctor` reports statements that are still only local, and `morzer
-  attest push` sends them.
+  attest push` sends them. **An installation with no backup target has nowhere
+  to push**, so its whole record is local and `doctor` says nothing about it —
+  an air-gapped machine has chosen that, and a machine that simply never
+  configured a target has the same exposure without having chosen it.
 - Redaction is bounded by what the manager knows. A support bundle reports zero
   replacements in a file when no value this installation *currently* holds
   appeared in it — which is not the same as the file being clean, because a
