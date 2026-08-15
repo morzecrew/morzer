@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A support bundle is signed, and `morzer support inspect` reads one back.** The signature is this installation's own key and lands beside the archive as a `.minisig`, checkable with `minisign -Vm <archive> -P <key>` like any release. It covers the file that leaves rather than the plaintext inside it, so an encrypted bundle's origin can be established by whoever receives it *before* anything decrypts — and by an intake holding no recipient key at all. A machine that has never minted a key still writes the archive, unsigned and saying so, because withholding evidence from the installation that has the least of it is the wrong failure.
+
+- **`morzer support inspect` will not tell you a bundle is authentic on the bundle's own say-so.** The archive names the key that signed it, and that name proves nothing: whoever wrote the archive wrote the name beside the signature they made. So the check runs against this installation's recorded keys when you inspect your own archive, or against `--key` when somebody sent you one — a key you got from the operator rather than from the file. With neither, it prints the claimed key and says the signature was not checked. Nothing is extracted: an encrypted bundle is read in memory, so inspecting one leaves no readable copy behind.
+
 ## [0.2.0] - 2026-08-15
 
 Three things a machine could not do before: sign statements about itself,

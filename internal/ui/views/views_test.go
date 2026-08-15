@@ -52,6 +52,7 @@ func TestEveryReportTypeHasAView(t *testing.T) {
 		views.Verification{},
 		views.AttestationLog{},
 		ops.SupportReport{},
+		ops.SupportInspectReport{},
 		ops.RedactCheckReport{},
 	}
 

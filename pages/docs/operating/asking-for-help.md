@@ -39,33 +39,44 @@ at is one you will either not send or send too much of.
 
 ```console
 $ morzer support bundle
-11 component(s), 25.1 KiB
-  FILE               COMPONENT                            SIZE      REDACTIONS
-  manifest.yaml      The resolved manifest                2.7 KiB   0
-  installation.yaml  Installation state                   631 B     0
-  parameters.json    Parameters and their values          636 B     0
-  config-diff.txt    Configuration drift                  71 B      0
-  journal.jsonl      The operation journal                10.3 KiB  0
-  doctor.json        Diagnostic checks                    7.5 KiB   0
-  releases.json      Version history                      303 B     0
-  services.json      Service and health state             520 B     0
-  manager.json       Manager version and build            101 B     0
-  logs/app-1.log     Container logs                       1016 B    0
-  meta.json          The archive's own account of itself  1.4 KiB   0
+10 component(s), 16.1 KiB
+  FILE               COMPONENT                            SIZE     REDACTIONS
+  manifest.yaml      The resolved manifest                2.8 KiB  0
+  installation.yaml  Installation state                   521 B    0
+  parameters.json    Parameters and their values          631 B    0
+  config-diff.txt    Configuration drift                  1.2 KiB  0
+  journal.jsonl      The operation journal                899 B    0
+  doctor.json        Diagnostic checks                    7.9 KiB  0
+  releases.json      Version history                      227 B    0
+  services.json      Service and health state             3 B      0
+  manager.json       Manager version and build            25 B     0
+  meta.json          The archive's own account of itself  1.9 KiB  0
+  NOT COLLECTED  WHY
+  logs/          the deployment produced no log output to capture
 
   written
-/home/ops/support-demo-op_01KZY8CK9970RW6V3WFFTX0NSB-20260813T190924Z.tar.zst
+/home/ops/support-demo-op_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst
 
   this archive is not encrypted: anyone who receives it can read all of it
+
+  signed, with the signature beside it
+/home/ops/support-demo-op_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst.minisig
 ```
 
 The path is printed unindented and unwrapped on purpose: it is there to be
 copied into an `scp` or an upload, and a path broken across two lines by a
-narrow terminal is one you paste wrong.
+narrow terminal is one you paste wrong. The signature beside it travels with
+the archive; send both.
 
-That archive is 5,815 bytes compressed, from an installation that had run an
-apply, three configuration changes, a backup, a restore, an update killed
-mid-flight and a resume. Most of it is the journal.
+The deployment behind this run had never started a container, which is why
+`logs/` is listed as a gap rather than as a row. A component that is missing is
+shown as missing — an archive that simply lacked a file would leave whoever
+reads it guessing whether the component does not exist here, failed to collect,
+or was never part of the format.
+
+That archive is 5,132 bytes compressed, from an installation that had run an
+`init` and one configuration change. Most of it is `doctor`'s output; on a
+machine with a longer history, most of it is the journal.
 
 Attach that file wherever you were going to paste a screenshot. Your vendor, or
 a stranger on a forum, can open it with `tar --zstd -xf` — they need nothing
@@ -132,6 +143,27 @@ does declare recipients gets an archive readable by them alone —
 is that half. It is not something you turn on: whether it happens is your
 vendor's declaration, not a flag of yours.
 
-The manager cannot yet read one back. Opening an encrypted archive takes any
-age implementation and a recipient's key, which is what a vendor holds; a
-`support inspect` that verifies as well as lists is RFC 0024 P4b.
+## Reading one back
+
+`morzer support inspect <file>` prints the same table for an archive that
+already exists — yours, or one somebody sent you — and says what the signature
+beside it established.
+
+```console
+$ morzer support inspect support-demo-op_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst
+  signature verified against this installation's recorded keys
+RWSbkfcEJXP0Nt8GsDcJYJaaWlZGC4PFT0OETCB222gEu34G9+PwMepB
+```
+
+**The key printed inside the archive is not what it is checked against.** The
+archive names the key that signed it, and that name proves nothing: whoever
+wrote the archive wrote it. So the check runs against this installation's own
+record when you inspect your own archive, or against `--key` when somebody sent
+you one — a key you got from them, not from the file. With neither, it prints
+the claimed key and says the signature was not checked, which is the honest
+answer rather than a tick nobody earned.
+
+An encrypted archive needs `--identity` to list its contents, and the signature
+is checked before anything is decrypted — so a file you hold no key for still
+tells you where it came from. Nothing is extracted: inspecting an encrypted
+bundle leaves no readable copy on the machine doing the inspecting.
