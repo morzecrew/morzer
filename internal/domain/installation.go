@@ -50,7 +50,21 @@ import (
 // field on the way through, and the next reconciliation renders the default --
 // which is the exact defect persisting the schedule was meant to fix, arriving
 // from the other direction.
-const InstallationSchemaVersion = 7
+// Bumped to 8 for `policy.skip_scheduled_backups` (RFC 0030 row 4). The write
+// path again, and this one is the sharpest of the four: *without* the bump an
+// older manager drops the field on its next `config set`, and its reconciliation
+// does not merely render a default -- it installs a backup timer on a machine
+// that declared it wanted none, on hardware the operator may have arranged to
+// snapshot at the storage layer.
+//
+// What the bump actually does, in both directions, is refuse. `Validate`
+// rejects a schema from the future, so an older manager does not read this
+// state and ignore the field: it declines the installation and says which
+// manager version wrote it. That is the intended outcome and it is worth being
+// exact about, because "an older binary just ignores the new field" is what the
+// paragraphs above describe happening *without* a bump, and it is the reading
+// somebody troubleshooting a rollback will otherwise take from them.
+const InstallationSchemaVersion = 8
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -520,6 +534,12 @@ type Policy struct {
 
 	// StaleBackupAfter is when `doctor` starts warning that the last
 	// backup is too old.
+	//
+	// Zero means unset, not "never warn", and every reader resolves it
+	// through DefaultStaleBackupAfter. `status` used to read it directly
+	// and skip the problem when it was zero, so the two commands gave
+	// different answers about the same backup on any installation that
+	// predates the field -- migrations do not fill defaults in.
 	StaleBackupAfter Duration `yaml:"stale_backup_after" json:"stale_backup_after,omitempty"`
 
 	// BackupSchedule is when scheduled backups run, as the supervisor's own
@@ -539,6 +559,29 @@ type Policy struct {
 	// is the same kind of decision about the same subject. It also makes it
 	// settable, which it never was.
 	BackupSchedule string `yaml:"backup_schedule" json:"backup_schedule,omitempty"`
+
+	// SkipScheduledBackups says this machine's backups are not this
+	// manager's job (RFC 0030 row 4). The backup service and timer are then
+	// not generated at all, and a reconciliation removes them.
+	//
+	// Named for the unsafe direction, as SkipBackupBeforeUpdate is, and for
+	// the same reason: absence must mean the backups happen. A field missing
+	// from a hand-edited file, or from a record written before it existed,
+	// is a machine that gets a backup timer.
+	//
+	// **Not a second spelling of `systemctl disable`, which RFC 0030 row 1
+	// made durable in the same change.** This decides whether the unit
+	// exists; disabling decides whether an existing unit runs. An
+	// installation that declares this is reproduced by `init --repair` and
+	// travels in `installation describe`, which is what the host's own
+	// tools cannot do -- and it is why answering row 1 first mattered:
+	// while `disable` was being silently undone, this would have been a
+	// second switch with different behaviour and no way to tell which was
+	// in force.
+	//
+	// It does not mean "take no backups". `morzer backup` still works, and
+	// a backup that exists is still expected to reach a target.
+	SkipScheduledBackups bool `yaml:"skip_scheduled_backups" json:"skip_scheduled_backups,omitempty"`
 }
 
 // ValidateBackupSchedule refuses a schedule that could not safely be rendered.
@@ -598,12 +641,21 @@ func ValidateBackupSchedule(raw string) error {
 // real expression and far short of a payload.
 const maxBackupScheduleLen = 200
 
+// DefaultStaleBackupAfter is how old the newest backup may be before it is
+// worth telling somebody.
+//
+// Named rather than repeated, because it was repeated: `DefaultPolicy` wrote it
+// and `doctor` fell back to it, and `status` had a third opinion -- no warning
+// at all -- for any installation whose value was zero. One constant is what
+// makes "the most recent backup is too old" one fact instead of three.
+const DefaultStaleBackupAfter = 48 * time.Hour
+
 // DefaultPolicy is what `init` writes. Safe defaults, explicitly opted out of
 // rather than silently absent.
 func DefaultPolicy() Policy {
 	return Policy{
 		RequireSignature: false,
-		StaleBackupAfter: Duration(48 * time.Hour),
+		StaleBackupAfter: Duration(DefaultStaleBackupAfter),
 	}
 }
 

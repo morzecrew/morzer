@@ -1,11 +1,13 @@
 # RFC 0030 — Unit enablement is the operator's
 
-- **Status:** 📝 Draft — design not locked, nothing scheduled. Written because
-  the measurements in §3 were taken and are worth keeping; the decision they
-  point at is §5 and it is deliberately still open. Row 2 was since answered by
-  [#42](https://github.com/morzecrew/morzer/pull/42), which made a disabled unit
-  visible; the other four rows are untouched by that and row 1 is now harder to
-  leave open, not easier.
+- **Status:** 🚧 In progress — **rows 1, 4 and 5 answered and executed
+  2026-08-15**; row 2 was answered by [#42](https://github.com/morzecrew/morzer/pull/42)
+  and **row 3 (the unit directory) stays OPEN**. Reconciliation no longer
+  re-asserts enablement on a unit that already exists, so `systemctl disable`
+  is durable between repairs; `policy.skip_scheduled_backups` is the declarative
+  way to have no backup timer at all; and `backup.freshness` honours that
+  declaration instead of warning for ever. §8 is the design, §5 carries the
+  grades.
 - **Scope:** Who decides whether a generated systemd unit is *enabled*, and
   where the manager's authority over its own units ends. Covers the
   re-enablement the reconciliation performs, the directory the units are
@@ -137,20 +139,21 @@ in a safe direction.
 
 ## 5. Decisions
 
-Nothing here is locked, and only row 2 has been answered — by #42, after this
-table was written. The rest are the questions, with the trade-off each one turns
-on, so that whoever picks this up is not re-deriving them.
+Rows 1, 4 and 5 were answered together on 2026-08-15, in that order, and the
+order is the content: row 4 could only be answered once row 1 was, and §8.2
+records why. Row 3 is untouched and stays OPEN. The trade-off column is left as
+it was written, so that what was traded is legible next to what was chosen.
 
 | # | Question | Grade | The trade-off |
 | --- | --- | --- | --- |
-| 1 | Does the manager re-assert *enablement* on a unit that already exists? | OPEN | Enabling only units this run newly wrote makes `systemctl disable` stick — and means a unit left disabled by a half-finished install is never repaired, which is the case `init --repair` exists for. Enablement is either the operator's or the manager's; it cannot be both, and today it is the manager's — announced, since row 2, but still the manager's. |
+| 1 | Does the manager re-assert *enablement* on a unit that already exists? | ✅ ANSWERED — no (§8.1) | Enabling only units this run newly wrote makes `systemctl disable` stick — and means a unit left disabled by a half-finished install is never repaired, which is the case `init --repair` exists for. Enablement is either the operator's or the manager's; it cannot be both, and today it is the manager's — announced, since row 2, but still the manager's. |
 | 2 | Should `UnitState.Enabled` be reported? | ✅ ANSWERED — yes, in [#42](https://github.com/morzecrew/morzer/pull/42) | Shipped as `<unit>: not enabled` on a loaded unit the supervisor asked to have enabled, with the oneshot services exempt. It was the smallest useful step and it decided nothing about row 1. Its risk was recorded here as hypothetical and is now live: an operator who *meant* to disable a unit gets a warning on every run, clearable only by letting the next reconciliation overrule them. That is the antipattern 0026's audit removed from this very check, arriving by a different door — and it is the strongest argument for answering row 1 rather than leaving it. |
 | 3 | Do the generated units belong in `/etc/systemd/system`? | OPEN | The current choice is deliberate and documented: machine-specific files belong where local configuration lives. §3.2 measured its cost — it consumes the path a mask needs. `/usr/lib/systemd/system` would restore masking and drop-in overrides, and would make row 1 urgent rather than optional, because then a masked unit makes reconciliation fail. |
-| 4 | Should an installation be able to declare "no scheduled backups"? | OPEN | A declarative flag (`policy.skip_scheduled_backups`, named for the unsafe direction as `SkipBackupBeforeUpdate` is) puts the fact in the installation, where `init --repair` reproduces it and 0027's desired-state story can carry it. Against: it is a *second* way to say something the operator can already say, and adding it without answering row 1 leaves the first way broken and the two disagreeing. |
-| 5 | If backups are handled elsewhere, what does `doctor` say? | OPEN | A machine backed up at the storage layer never updates the last-backup timestamp, so `StaleBackupAfter` warns for ever. Suppressing that means the manager asserting a fact it cannot verify. Not suppressing it means a permanent warning — which is precisely how a check stops being read. |
+| 4 | Should an installation be able to declare "no scheduled backups"? | ✅ ANSWERED — yes, `policy.skip_scheduled_backups` (§8.2) | A declarative flag (`policy.skip_scheduled_backups`, named for the unsafe direction as `SkipBackupBeforeUpdate` is) puts the fact in the installation, where `init --repair` reproduces it and 0027's desired-state story can carry it. Against: it is a *second* way to say something the operator can already say, and adding it without answering row 1 leaves the first way broken and the two disagreeing. |
+| 5 | If backups are handled elsewhere, what does `doctor` say? | ✅ ANSWERED — it honours the declaration (§8.3) | A machine backed up at the storage layer never updates the last-backup timestamp, so `StaleBackupAfter` warns for ever. Suppressing that means the manager asserting a fact it cannot verify. Not suppressing it means a permanent warning — which is precisely how a check stops being read. |
 
 **Row 4 is downstream of row 1**, and answering it first is the mistake this RFC
-exists to prevent.
+exists to prevent. It was answered second, and §8.2 records what that bought.
 
 ## 6. Non-goals, and what reopens each
 
@@ -173,6 +176,138 @@ exists to prevent.
   which units happen to be unconditional today. That is a property of the
   current unit set, not of the design, and it changes silently when a unit is
   added.
-- **This RFC being read as a plan.** It is a record of measurements and open
-  questions. Nothing in it is scheduled, and the code it describes is the code
-  as it shipped.
+- **This RFC being read as a plan.** ~~It is a record of measurements and open
+  questions. Nothing in it is scheduled~~ — true until 2026-08-15, when rows 1,
+  4 and 5 were answered and executed. §3's measurements are still the code as it
+  shipped *before* that, which is what makes them worth keeping: they are the
+  evidence for §8 rather than a description of the current behaviour.
+
+## 8. The design
+
+Answered 2026-08-15. Three rows, and they are one design: each of the second and
+third is only available because the one before it was settled.
+
+### 8.1 Enablement is the operator's between repairs (row 1)
+
+`InstallUnits` takes the scope of its enablement from the caller:
+
+```go
+// EnableScope says which of the units in a call may be enabled.
+type EnableScope int
+
+const (
+    // EnableNew enables only units this call created. The zero value.
+    EnableNew EnableScope = iota
+    // EnableAll re-asserts enablement on every unit whose spec asks for it.
+    EnableAll
+)
+
+InstallUnits(ctx context.Context, units []Unit, scope EnableScope) error
+```
+
+Reconciliation — `config set`, `backup target add`, `backup target remove` —
+passes `EnableNew`. `init`, including `init --repair --install-units`, passes
+`EnableAll`.
+
+So `systemctl disable demo-backup.timer` is durable: it survives every setting
+change, and the one thing that reverses it is a command whose entire purpose is
+to reverse things somebody broke. §3.1 measured the old behaviour; the new one
+issues no `enable` at all on a reconciliation whose unit files already exist.
+
+**Why this rather than keeping the authority and adding a switch.** The
+alternative considered was to leave reconciliation as it was and give the
+operator a morzer-shaped way to turn the timer off. It fails on §3's net
+finding: `disable` is undone, `mask` is *refused* because the generated file
+occupies the path a mask needs, and `mask --runtime` evaporates at the next
+boot. A morzer-shaped switch leaves all three standing and only marks the rake.
+A root user's explicit action on their own machine being silently reversed is
+the part that cannot be reasoned about from the host's own tools, and §4 says
+what makes that expensive: it is a property of which units happen to be
+unconditional today, and it changes silently when a unit is added.
+
+**What it costs, stated plainly.** A unit left disabled by a half-finished
+install is no longer repaired by the next unrelated `config set`. That is the
+case `init --repair` exists for, `doctor` already prints it as the remedy, and
+the check from row 2 is what makes the state visible in the first place. The
+zero value being `EnableNew` is deliberate: a caller added later that forgets to
+say gets the conservative behaviour rather than the overruling one.
+
+**What it is not.** Unit *contents* and unit *existence* are still fully the
+manager's, reconciled on every run exactly as before. Enablement was a third
+thing travelling on the same call, and this separates it — it does not weaken
+convergence, it relocates the part of convergence that overrules a person.
+
+### 8.2 The declaration removes the unit (row 4)
+
+`policy.skip_scheduled_backups` — named for the unsafe direction, as
+`SkipBackupBeforeUpdate` is, so that a field absent from a hand-edited file or a
+record written by an older manager means *backups are scheduled*.
+
+When it is set, the backup service and timer are not generated, and
+reconciliation removes them — the mechanism `update.check=false` and the fleet
+pair already use. Settable as `morzer config set backup.scheduled=false`;
+unsetting returns to scheduled, which is the safe direction.
+
+**This is what row 1 bought.** The recorded objection to a flag was that it
+would be "a second way to say something the operator can already say", and it
+was correct while `systemctl disable` was undone — two switches, different
+behaviour, no way to tell which is in force. Now they say different things: the
+declaration decides whether the unit *exists*, `disable` decides whether an
+existing unit *runs*, and both are durable. That is one mechanism per question,
+which is why answering row 4 first would have been the mistake §5 says it is.
+
+### 8.3 `doctor` honours what it can verify (row 5)
+
+`backup.freshness` warns when the newest backup is older than
+`policy.stale_backup_after`. On a machine backed up at the storage layer that
+warning is permanent, and a permanent warning is how a check stops being read.
+
+It now reports, rather than warns, when the installation declares
+`skip_scheduled_backups`. The distinction row 5 turns on is preserved exactly:
+the manager is not asserting that backups happen elsewhere — it is declining to
+assert that they do not, on the strength of a declaration the operator wrote and
+it can read.
+
+**`backup.target-freshness` deliberately does not honour it.** The declaration says no
+backups are *scheduled*; it does not say none are taken. A backup that exists
+and is on no target is still every copy of the data sitting on one machine, and
+that is worth saying however the backup was started.
+
+**The unit check needs no exception.** With the timer no longer generated,
+nothing expects it, so `<unit>: not enabled` cannot fire for it. Row 2's warning
+survives for the case it was written for — a unit this installation *does* want,
+switched off — and it is now clearable in both directions: `init --repair
+--install-units` re-enables it, or the declaration removes the want. Its remedy
+line says both.
+
+## 9. Tests
+
+- The adapter, at the level the scope is implemented: installing a set twice
+  issues `enable` on the first call and none on the second, and `EnableAll`
+  issues it both times. This is where a regression would land.
+- The fake supervisor conforms: an already-installed unit keeps its enablement
+  across an `EnableNew` install, and neither implementation ever disables. A
+  fake that resets enablement on every install would make every suite test agree
+  with a production path that does not.
+- Through the lifecycle: `systemctl disable` survives a `config set`, and
+  `init --repair` re-enables. These are the two sentences §3.1 measured false.
+- The declaration removes both units, `init --repair` reproduces it, and
+  `backup.freshness` stops warning while `backup.target-freshness` does not.
+
+## 10. Docs
+
+The operating page on backups gains the two ways to stop scheduled backups and
+what each one means. The `config set` reference gains `backup.scheduled`. The
+installation reference gains the policy field.
+
+## 11. Phasing
+
+One wave. Row 1 must land before row 4 in the same change, not in a later one:
+shipping the declaration onto a machine where `disable` is still undone is the
+two-switch state §7 names as the risk.
+
+Row 3 (the unit directory) stays OPEN and is deliberately not bundled. It is the
+one row that changes where files are written, it would make masking work, and
+§3.4 measured that it also makes a masked unit fail `config set` outright —
+which is a new failure mode, on a machine the operator has already told to stop.
+That deserves its own decision.

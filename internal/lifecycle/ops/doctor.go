@@ -318,12 +318,22 @@ func installationDifferences(onDisk, recorded domain.Installation) []string {
 
 // policyEqual compares field by field, because Policy holds a slice and is not
 // comparable with ==.
+//
+// **Every field, and a test enforces it.** This list is what decides whether an
+// operator is told their hand-edit did nothing, so a field missing from it is a
+// silent "in step with the recorded state" over a file that disagrees -- which
+// is the exact failure the check exists to report. Two fields were missing when
+// this was written: `BackupSchedule`, the most hand-editable line in the file,
+// and `SkipScheduledBackups`, which arrived with it. `TestPolicyDriftComparesEveryField`
+// fails when the next one is added without a line here.
 func policyEqual(a, b domain.Policy) bool {
 	return a.RequireSignature == b.RequireSignature &&
 		a.RetainReleases == b.RetainReleases &&
 		a.RetainBackups == b.RetainBackups &&
 		a.SkipBackupBeforeUpdate == b.SkipBackupBeforeUpdate &&
 		a.StaleBackupAfter == b.StaleBackupAfter &&
+		a.BackupSchedule == b.BackupSchedule &&
+		a.SkipScheduledBackups == b.SkipScheduledBackups &&
 		strings.Join(a.SigningKeys, ",") == strings.Join(b.SigningKeys, ",")
 }
 
@@ -1221,6 +1231,33 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				expected[u.Name] = u
 			}
 
+			// Which of them the declaration would take away, asked
+			// rather than assumed: this layer does not know what a
+			// supervisor calls its backup timer, and the difference
+			// between the two unit sets answers without it learning.
+			//
+			// It exists for the remedy line alone. An error here
+			// leaves the map empty, which costs a sentence of advice
+			// and nothing else -- the same call already failed loudly
+			// above if it was going to.
+			declarable := map[string]bool{}
+			backupUnitAffected := false
+			if !inst.Policy.SkipScheduledBackups {
+				params := d.unitParams(inst)
+				params.SkipBackupTimer = true
+				if without, err := d.Supervisor.Units(params); err == nil {
+					remaining := make(map[string]bool, len(without))
+					for _, u := range without {
+						remaining[u.Name] = true
+					}
+					for name := range expected {
+						if !remaining[name] {
+							declarable[name] = true
+						}
+					}
+				}
+			}
+
 			for _, name := range d.Supervisor.ManagedUnitNames(inst.Product) {
 				state, err := d.Supervisor.Status(ctx, name)
 				if err != nil {
@@ -1232,6 +1269,16 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 					// Absent and not wanted is the ordinary state.
 					if wanted {
 						problems = append(problems, name+": not installed")
+						// A unit somebody deleted by hand
+						// warns on every run just as a
+						// disabled one does, and the
+						// declaration answers it the same
+						// way. The remedy has to reach
+						// both or it is permanent for one
+						// of them.
+						if declarable[name] {
+							backupUnitAffected = true
+						}
 					}
 					continue
 				}
@@ -1245,6 +1292,15 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				// happen until they need the one that did not.
 				if wanted && want.Enable && !state.Enabled {
 					problems = append(problems, name+": not enabled")
+					// Which unit it was, because the remedy
+					// differs: only the backup pair has a
+					// declarative way to be switched off for
+					// good, and offering that to somebody
+					// whose *update* timer is disabled is
+					// advice that would not work.
+					if declarable[name] {
+						backupUnitAffected = true
+					}
 				}
 				// A unit that is *there* and failing is reported whether
 				// or not this installation wants it: an orphan left by a
@@ -1265,9 +1321,32 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 			}
 
 			if len(problems) > 0 {
-				return preflight.Warn(
-					"run `morzer init --repair --install-units`, or inspect with `systemctl status`",
-					"%s", strings.Join(problems, "; "))
+				// Both directions, because since RFC 0030 row 1 a
+				// disabled unit stays disabled: the operator who
+				// meant it needs a way to stop being told, and the
+				// one who did not needs the repair. A warning with
+				// only the second is a warning that fires for ever
+				// at somebody who was right.
+				//
+				// The declarative half appears only when the unit
+				// that is switched off is one the declaration would
+				// remove. Offering it for a disabled update timer
+				// would be a remedy that cannot clear the warning
+				// it is printed beside, which is the defect this
+				// check has already been fixed for once.
+				remedy := "run `morzer init --repair --install-units`, " +
+					"or inspect with `systemctl status`"
+				if backupUnitAffected {
+					// "put it back" rather than "switch it back
+					// on": this branch is reached by a unit that
+					// was disabled and by one that was deleted,
+					// and the repair does the right thing for
+					// either.
+					remedy = "run `morzer init --repair --install-units` to put it " +
+						"back, or `morzer config set backup.scheduled=false` " +
+						"if this machine's backups are handled elsewhere"
+				}
+				return preflight.Warn(remedy, "%s", strings.Join(problems, "; "))
 			}
 			return preflight.OK("all units loaded")
 		},
@@ -1442,6 +1521,24 @@ func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
 		Description: "a recent backup exists",
 		Fatal:       false,
 		Run: func(ctx context.Context) events.CheckResult {
+			// A declaration this manager can read, about a job it was
+			// told is not its own (RFC 0030 row 5).
+			//
+			// A machine backed up at the storage layer takes no
+			// backups through morzer, so the newest one is always
+			// older than the threshold and this warns for ever --
+			// and a warning that fires on every run is how a check
+			// stops being read, including on the run where it means
+			// something. Suppressing it on a guess would be the
+			// manager asserting that backups happen elsewhere, which
+			// it cannot verify. Suppressing it on the operator's own
+			// declaration asserts nothing: it declines to report the
+			// absence of a thing that was declared absent.
+			if inst.Policy.SkipScheduledBackups {
+				return preflight.OK(
+					"not this manager's job: `backup.scheduled` is off")
+			}
+
 			backups, err := d.Backup.List(ctx)
 			if err != nil {
 				return preflight.Warn("", "cannot list backups: %s", domain.AsError(err).Message)
@@ -1454,7 +1551,7 @@ func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
 
 			latest := backups[0]
 			age := d.now().Sub(latest.At.Time)
-			stale := inst.Policy.StaleBackupAfter.Or(48 * time.Hour)
+			stale := inst.Policy.StaleBackupAfter.Or(domain.DefaultStaleBackupAfter)
 
 			if age > stale {
 				return preflight.Warn(

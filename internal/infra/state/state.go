@@ -263,6 +263,24 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// field was added to fix, so shipping it without the
 			// bump would leave a second way to reproduce it.
 			i.SchemaVersion = 7
+		case 7:
+			// 7 -> 8 added `policy.skip_scheduled_backups`. Nothing
+			// to convert, and the absent value reads correctly in
+			// the only direction that is safe: a machine written
+			// before the field existed had a backup timer, and
+			// `false` is a machine with a backup timer.
+			//
+			// The write path is why the number moves, and this one
+			// is the sharpest of the four bumps that were made for
+			// it. An older manager does not merely ignore the
+			// field -- it drops it on the next `config set` and
+			// then *installs a backup timer* on a machine whose
+			// operator declared it wanted none, having arranged
+			// their backups at the storage layer instead. The
+			// field's whole purpose is to be durable across the
+			// reconciliations that would otherwise put the unit
+			// back.
+			i.SchemaVersion = 8
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

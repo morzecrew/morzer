@@ -80,33 +80,97 @@ func (s *Supervisor) Available(ctx context.Context) bool {
 	return true
 }
 
-func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit) error {
+func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope ports.EnableScope) error {
 	if err := atomicfs.MkdirAll(s.unitDir, 0o755); err != nil {
 		return err
 	}
 
+	// Which units this call is about to create, decided before anything is
+	// written, because writing is what destroys the evidence.
+	//
+	// The file's presence is the question and not `is-enabled`: a unit
+	// switched off is still a unit this machine has, and a unit whose file
+	// was never written is one nobody has had the chance to decide about.
+	// Asking systemd instead would also mean a daemon round trip per unit
+	// on a host where the daemon may not be running.
+	fresh := make(map[string]bool, len(units))
 	for _, u := range units {
 		if err := validateUnitName(u.Name); err != nil {
 			return err
 		}
+		// Only a definite absence counts as fresh. A Stat that fails
+		// some other way -- a permission the manager lost, a directory
+		// that turned into a file -- leaves the unit treated as
+		// pre-existing, so a reconciliation does not enable it.
+		//
+		// That is the safe direction of the two. Guessing "fresh" would
+		// have an unreadable filesystem re-enable units on every run,
+		// which is the behaviour this change exists to remove, arriving
+		// through an error path nobody would look at. Guessing
+		// "existing" leaves a unit unenabled, which `doctor` reports and
+		// `init --repair` fixes.
+		if _, err := os.Stat(filepath.Join(s.unitDir, u.Name)); os.IsNotExist(err) {
+			fresh[u.Name] = true
+		}
+	}
+
+	for _, u := range units {
 		path := filepath.Join(s.unitDir, u.Name)
 		if err := atomicfs.WriteFile(path, u.Contents, 0o644); err != nil {
 			return err
 		}
 	}
 
+	// From here on a failure has to undo what this call created, and the
+	// reason is `fresh` itself.
+	//
+	// A unit written and then left behind by a failed reload is a unit that
+	// *exists* on the retry, so `EnableNew` computes it as not fresh and
+	// skips it -- installed, wanted, switched off, until somebody runs a
+	// repair. That is a transient systemctl failure turning into a permanent
+	// state, and it would break the invariant that re-running converges.
+	//
+	// So the call rolls back to what the machine had: the units it enabled
+	// are disabled again, and the files it created are removed. Files it
+	// *overwrote* stay, because their previous contents are gone either way
+	// and their existence was not this call's doing.
+	var enabled []string
+	rollback := func() {
+		// Best-effort throughout: this runs while returning somebody
+		// else's error, and a cleanup that fails must not replace the
+		// failure that caused it.
+		for _, name := range enabled {
+			_ = s.Disable(ctx, name)
+		}
+		for name := range fresh {
+			_ = os.Remove(filepath.Join(s.unitDir, name))
+		}
+	}
+
 	// One reload after all units are written, not one per unit: systemd
 	// would otherwise briefly see a half-installed set.
 	if err := s.daemonReload(ctx); err != nil {
+		rollback()
 		return err
 	}
 
 	for _, u := range units {
-		if u.Enable {
-			if err := s.Enable(ctx, u.Name); err != nil {
-				return err
-			}
+		// Never a Disable, in either scope. A unit whose spec does not
+		// ask for enablement is left as the machine has it -- the
+		// oneshots must never be enabled, and if one somehow is, that is
+		// a state to report rather than one to correct behind somebody's
+		// back (RFC 0030 §8.1).
+		if !u.Enable {
+			continue
 		}
+		if scope == ports.EnableNew && !fresh[u.Name] {
+			continue
+		}
+		if err := s.Enable(ctx, u.Name); err != nil {
+			rollback()
+			return err
+		}
+		enabled = append(enabled, u.Name)
 	}
 	return nil
 }
@@ -288,6 +352,28 @@ type UnitParams struct {
 	// with no channel: the unit would fail on every tick, and a unit that
 	// fails on every tick is one an operator stops reading.
 	FleetTimer bool
+
+	// SkipBackupTimer leaves the backup pair out (RFC 0030 row 4).
+	//
+	// The odd one out by name, and it has to be: the other two conditionals
+	// are units that do not exist until something is configured, and this
+	// is a unit that exists until something is declared. A caller who
+	// forgets this field gets scheduled backups, which is the direction a
+	// forgotten field must fall.
+	SkipBackupTimer bool
+}
+
+// unitSpec is one unit to render: its name, its template, the description that
+// goes in it, and whether it is enabled at boot.
+//
+// A named type because the alternative was the same four-field anonymous struct
+// written out five times, once per conditional block, with the field list
+// repeated in full each time.
+type unitSpec struct {
+	name   string
+	tmpl   string
+	desc   string
+	enable bool
 }
 
 // ServiceUnitName and friends derive unit names from the product.
@@ -515,59 +601,49 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 		p.Description = p.Product + " (managed by morzer)"
 	}
 
-	specs := []struct {
-		name   string
-		tmpl   string
-		desc   string
-		enable bool
-	}{
+	specs := []unitSpec{
 		{ServiceUnitName(p.Product), serviceTemplate, p.Description, true},
-		{BackupServiceUnitName(p.Product), backupServiceTemplate, p.Product + " backup", false},
-		// The timer is enabled, not the backup service: enabling a
-		// oneshot service would run it at every boot.
-		{BackupTimerUnitName(p.Product), backupTimerTemplate, p.Product + " scheduled backup", true},
+	}
+
+	// The backup pair, which used to be as unconditional as the service
+	// above it (RFC 0030 row 4).
+	//
+	// Left out rather than generated-and-disabled, which is the same choice
+	// the update and fleet pairs make: a unit that exists and never fires
+	// still appears in `systemctl list-timers`, still has to be explained,
+	// and is one reconciliation away from being switched on by something
+	// that reads its spec rather than the installation.
+	if !p.SkipBackupTimer {
+		specs = append(specs,
+			unitSpec{BackupServiceUnitName(p.Product), backupServiceTemplate,
+				p.Product + " backup", false},
+			// The timer is enabled, not the backup service: enabling
+			// a oneshot service would run it at every boot.
+			unitSpec{BackupTimerUnitName(p.Product), backupTimerTemplate,
+				p.Product + " scheduled backup", true},
+		)
 	}
 
 	if p.UpdateTimer {
 		specs = append(specs,
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{UpdateServiceUnitName(p.Product), updateServiceTemplate,
+			unitSpec{UpdateServiceUnitName(p.Product), updateServiceTemplate,
 				p.Product + " update check", false},
 			// The timer is enabled, not the service, for the same
 			// reason the backup pair is: enabling a oneshot would
 			// run it at every boot.
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{UpdateTimerUnitName(p.Product), updateTimerTemplate,
+			unitSpec{UpdateTimerUnitName(p.Product), updateTimerTemplate,
 				p.Product + " scheduled update check", true},
 		)
 	}
 
 	if p.FleetTimer {
 		specs = append(specs,
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{FleetServiceUnitName(p.Product), fleetServiceTemplate,
+			unitSpec{FleetServiceUnitName(p.Product), fleetServiceTemplate,
 				p.Product + " fleet row", false},
 			// The timer is enabled and the service is not, which is the
 			// third time this file says so and the third time it is
 			// load-bearing: enabling a oneshot runs it at every boot.
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{FleetTimerUnitName(p.Product), fleetTimerTemplate,
+			unitSpec{FleetTimerUnitName(p.Product), fleetTimerTemplate,
 				p.Product + " scheduled fleet publish", true},
 		)
 	}
@@ -634,16 +710,22 @@ func ManagerPath() string {
 
 // Units renders the unit set for a product, satisfying ports.Supervisor.
 func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
+	// Field by field, and every field: this is the seam where a port field
+	// added later is silently dropped, and the value that goes missing is
+	// read as its zero. `TestTheTwoUnitParamsCarryTheSameFields` fails when
+	// the two structs stop agreeing, which is the half of that a test can
+	// see without knowing what each field means.
 	return BuildUnits(UnitParams{
-		Product:        params.Product,
-		ManagerPath:    params.ManagerPath,
-		ConfigPath:     params.ConfigPath,
-		Description:    params.Description,
-		BackupSchedule: params.BackupSchedule,
-		UpdateSchedule: params.UpdateSchedule,
-		UpdateTimer:    params.UpdateTimer,
-		FleetSchedule:  params.FleetSchedule,
-		FleetTimer:     params.FleetTimer,
+		Product:         params.Product,
+		ManagerPath:     params.ManagerPath,
+		ConfigPath:      params.ConfigPath,
+		Description:     params.Description,
+		BackupSchedule:  params.BackupSchedule,
+		SkipBackupTimer: params.SkipBackupTimer,
+		UpdateSchedule:  params.UpdateSchedule,
+		UpdateTimer:     params.UpdateTimer,
+		FleetSchedule:   params.FleetSchedule,
+		FleetTimer:      params.FleetTimer,
 	})
 }
 

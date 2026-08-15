@@ -179,17 +179,40 @@ morzer config unset update.channel           # back to absent, which is always t
 | `update.channel` | A mutable reference to follow. See [following a channel](../operating/updating.md#following-a-channel). |
 | `update.auto_apply` | Install what the channel offers, when the release declares a failure cannot end needing a database restore. |
 | `backup.schedule` | When scheduled backups run, as a systemd `OnCalendar` expression. Absent takes the nightly default. |
+| `backup.scheduled` | Whether this manager runs backups on a timer at all. Absent means it does. |
 
 `backup.schedule` is the same value `morzer init --backup-schedule` takes, and
 until it was a setting it could not be changed afterwards at all. Changing it
 rewrites the timer unit; unsetting it returns the default rather than turning
 backups off, because an empty `OnCalendar` is a unit systemd refuses to load.
 
-**There is deliberately no way to say "no scheduled backups".** `systemctl
-disable` on the timer is undone by the next setting change or backup-target
-change, and `systemctl mask` is refused, because the generated unit already
-occupies the path a mask needs. If you back up by some other means, expect the
-timer to run and `morzer doctor` to keep an eye on how old the last backup is.
+## Turning scheduled backups off
+
+Two ways, and they are not the same thing.
+
+```sh
+morzer config set backup.scheduled=false   # this machine's backups are not morzer's job
+systemctl disable --now demo-backup.timer  # this timer, on this machine, stops
+```
+
+The setting decides whether the timer **exists**. Declaring it removes the
+backup service and timer, and `morzer doctor` stops asking how old the last
+backup is — you have told it the job belongs to something else, which is a
+declaration it can read rather than a fact it would be guessing at. It travels
+with the installation, so `morzer init --repair` reproduces it and
+[`installation describe`](installation-commands.md#installation-describe) records it.
+
+`systemctl disable` decides whether an existing timer **runs**, and it now
+sticks: reconciliation no longer re-enables a unit that already exists. Only
+`morzer init --repair --install-units` switches it back on, which is the one
+command whose job is to put a machine right. `doctor` reports a unit you
+disabled as `not enabled`, and names both ways out of that.
+
+`systemctl mask` still does not work on a generated unit — the file morzer
+writes occupies the path a mask needs. Use either of the two above.
+
+Taking a backup by hand is unaffected by both: `morzer backup` still works, and
+a backup that exists is still expected to reach a target.
 
 Settings and parameters are set in separate commands. They run on different
 machinery — one converges a deployment, the other writes a flag — so a mixed

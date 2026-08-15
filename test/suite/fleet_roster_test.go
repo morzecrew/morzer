@@ -432,7 +432,7 @@ func TestTheFleetTimerFollowsTheTargets(t *testing.T) {
 	// business at all: `init --install-units=false` is a supported choice.
 	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
 	require.NoError(t, err)
-	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
 
 	timer := "demo-fleet.timer"
 	require.NotContains(t, h.Supervisor.Installed, timer,
@@ -515,7 +515,7 @@ func TestDoctorReportsARequiredTimerThatIsSwitchedOff(t *testing.T) {
 
 	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo", FleetTimer: true})
 	require.NoError(t, err)
-	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
 	for _, u := range units {
 		// As a reconciliation leaves them: loaded, and enabled exactly
 		// where the supervisor asked for it.
@@ -553,20 +553,37 @@ func TestDoctorReportsARequiredTimerThatIsSwitchedOff(t *testing.T) {
 	assert.NotContains(t, got.Message, "demo-fleet.service: not enabled",
 		"a unit the supervisor deliberately leaves disabled was reported as a problem")
 
-	// And the remedy clears it. The comment on this check earns its place
-	// only if the warning it now emits can be acted on: a warning that fires
-	// forever with a fix that does not fix it is the thing that trains an
-	// operator to stop reading the check. A reconciliation is what
-	// `init --repair --install-units` performs, and it re-enables what the
-	// supervisor asked to have enabled.
+	// A reconciliation does *not* clear it, and that is RFC 0030 row 1.
+	//
+	// This assertion used to run the other way, on the reasoning that a
+	// warning nothing can clear is a warning an operator learns to ignore.
+	// The reasoning holds; what was wrong was the remedy it settled for.
+	// Clearing this by having the next unrelated `backup target add`
+	// silently reverse the operator's `systemctl disable` is not a fix --
+	// it is the same overruling, with the warning removed as evidence.
 	second := filepath.Join(t.TempDir(), "second")
 	require.NoError(t, os.MkdirAll(second, 0o755))
 	_, err = ops.TargetAdd(ctx, h.Deps, ops.TargetAddOptions{URL: "file://" + second})
 	require.NoError(t, err)
 
 	got = unitsCheck(t)
+	assert.Equal(t, events.CheckWarn, got.Status,
+		"adding a backup target re-enabled a timer the operator switched off")
+	assert.Contains(t, got.Message, "demo-fleet.timer: not enabled")
+
+	// The remedy does clear it, which is what keeps the check readable: the
+	// warning has an action, and the action is a command somebody runs
+	// deliberately rather than a side effect of an unrelated one.
+	// `TestARepairReAssertsEnablement` drives the real `init --repair`
+	// through the real adapter; this is the same scope at the port, so that
+	// what `doctor` says afterwards is asserted where `doctor` is.
+	units, err = h.Supervisor.Units(ports.UnitParams{Product: "demo", FleetTimer: true})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
+
+	got = unitsCheck(t)
 	assert.Equal(t, events.CheckOK, got.Status,
-		"a reconciliation did not re-enable the timer, so the warning cannot be cleared: %s",
+		"a repair did not re-enable the timer, so the warning cannot be cleared: %s",
 		got.Message)
 }
 
@@ -621,7 +638,7 @@ func TestDoctorDoesNotDemandUnitsThisMachineShouldNotHave(t *testing.T) {
 
 	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
 	require.NoError(t, err)
-	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
 	for _, u := range units {
 		// Enabled exactly where the supervisor asked for it, which is what
 		// a reconciliation leaves behind. Marking everything loaded and
@@ -730,7 +747,7 @@ func TestATargetIsAddedEvenWhenTheTimerCannotBe(t *testing.T) {
 
 	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
 	require.NoError(t, err)
-	require.NoError(t, h.Supervisor.InstallUnits(ctx, units))
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
 
 	offsite := filepath.Join(t.TempDir(), "offsite")
 	require.NoError(t, os.MkdirAll(offsite, 0o755))

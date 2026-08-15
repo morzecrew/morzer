@@ -14,7 +14,12 @@ type Supervisor interface {
 	Available(ctx context.Context) bool
 
 	// InstallUnits writes unit files atomically and reloads the daemon.
-	InstallUnits(ctx context.Context, units []Unit) error
+	//
+	// The scope decides how far the call's authority over *enablement*
+	// reaches; unit contents and unit existence are always the manager's.
+	// An implementation must never disable a unit here -- removal is what
+	// RemoveUnits is for, and switching one off is the operator's.
+	InstallUnits(ctx context.Context, units []Unit, scope EnableScope) error
 
 	// RemoveUnits deletes previously installed units and reloads.
 	RemoveUnits(ctx context.Context, names []string) error
@@ -49,6 +54,38 @@ type Supervisor interface {
 	InstalledUnits(ctx context.Context, product string) ([]string, error)
 }
 
+// EnableScope says which of the units in an InstallUnits call may be enabled
+// (RFC 0030 §8.1).
+//
+// Enablement is the one part of a unit that is unambiguously a local decision,
+// and it used to travel on the same call as the parts that are not. A
+// reconciliation rewrites contents and reconciles existence on every run, and
+// it re-enabled everything while it was there -- so `systemctl disable` on a
+// managed timer held until the next unrelated `config set` and was then undone
+// with no message. This is the seam that separates the three.
+type EnableScope int
+
+const (
+	// EnableNew enables only units the call created, leaving an existing
+	// unit's enablement exactly as the machine had it.
+	//
+	// The zero value, deliberately. A caller written later that does not
+	// think about this gets the scope that cannot overrule anybody, and the
+	// failure mode of guessing wrong is a unit that is not enabled -- which
+	// `doctor` reports and `init --repair` fixes -- rather than a decision
+	// silently reversed, which nothing reports because nothing knows a
+	// decision was made.
+	EnableNew EnableScope = iota
+
+	// EnableAll re-asserts enablement on every unit whose spec asks for it.
+	//
+	// For `init` and `init --repair`: the first has nothing to overrule, and
+	// the second is a command whose whole purpose is to put right what
+	// somebody found broken. Reversing an operator's `disable` is a
+	// legitimate thing for it to do precisely because they ran it.
+	EnableAll
+)
+
 // UnitParams is what a supervisor needs to render its units.
 type UnitParams struct {
 	Product string
@@ -66,6 +103,17 @@ type UnitParams struct {
 
 	// BackupSchedule is a supervisor-specific schedule expression.
 	BackupSchedule string
+
+	// SkipBackupTimer leaves the backup pair out (RFC 0030 row 4).
+	//
+	// Named against the grain of UpdateTimer and FleetTimer beside it, and
+	// deliberately: those units do not exist until something is configured,
+	// and this one exists until something is declared. A `BackupTimer bool`
+	// would read more symmetrically and would mean that any caller composing
+	// UnitParams and forgetting a field gets a machine with no scheduled
+	// backups -- the zero value deciding the one thing it must not decide,
+	// which is the defect `SkipBackupBeforeUpdate` was renamed to avoid.
+	SkipBackupTimer bool
 
 	// UpdateSchedule is the schedule expression for the update timer, and
 	// is also the maintenance window: an operator who wants updates only on

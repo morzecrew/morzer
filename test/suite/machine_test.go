@@ -239,7 +239,7 @@ func TestTheUnitsColumnCountsWhatIsActuallyInstalled(t *testing.T) {
 
 	units, err := m.Supervisor.Units(ports.UnitParams{Product: "demo", ManagerPath: "/usr/bin/morzer"})
 	require.NoError(t, err)
-	require.NoError(t, m.Supervisor.InstallUnits(context.Background(), units))
+	require.NoError(t, m.Supervisor.InstallUnits(context.Background(), units, ports.EnableAll))
 
 	entries := m.list(t, ops.ListOptions{})
 
@@ -453,7 +453,7 @@ func TestUnitsWithoutReadableStateIsWorthSaying(t *testing.T) {
 
 	units, err := m.Supervisor.Units(ports.UnitParams{Product: "sandbox", ManagerPath: "/usr/bin/morzer"})
 	require.NoError(t, err)
-	require.NoError(t, m.Supervisor.InstallUnits(context.Background(), units))
+	require.NoError(t, m.Supervisor.InstallUnits(context.Background(), units, ports.EnableAll))
 
 	paths := domain.PathsUnder(m.Root, "sandbox")
 	require.NoError(t, os.WriteFile(paths.InstallationState(), []byte("{not json"), 0o640))

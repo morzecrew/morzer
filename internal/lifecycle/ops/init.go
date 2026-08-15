@@ -761,7 +761,13 @@ func stepInstallUnits(d *Deps, opts InitOptions) engine.Step {
 			if err != nil {
 				return err
 			}
-			if err := d.Supervisor.InstallUnits(ctx, units); err != nil {
+			// EnableAll, unlike the reconciliation, and the pair is
+			// the whole of RFC 0030 row 1. `init` has nothing to
+			// overrule; `init --repair` is a command somebody runs
+			// *because* they found this machine wrong, so reversing
+			// a `systemctl disable` is a legitimate thing for it to
+			// do -- and the only place it happens.
+			if err := d.Supervisor.InstallUnits(ctx, units, ports.EnableAll); err != nil {
 				return err
 			}
 			st.Detail("%d unit(s)", len(units))

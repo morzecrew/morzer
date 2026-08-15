@@ -526,15 +526,38 @@ var _ ports.Supervisor = (*Supervisor)(nil)
 
 func (s *Supervisor) Available(ctx context.Context) bool { return s.Present }
 
-func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit) error {
+// InstallUnits models the systemd adapter's enablement rules, not a
+// convenient approximation of them (RFC 0030 §8.1).
+//
+// It used to write `Enabled: u.Enable` for every unit on every call, which is
+// wrong in both directions and both matter here. A unit the operator switched
+// off came back enabled -- so a suite test could not observe the behaviour the
+// whole design turns on -- and a unit whose spec says false was recorded as
+// disabled even though the real adapter never issues a `disable` and would have
+// left it alone.
+//
+// So: enablement changes only where the adapter would run `systemctl enable`,
+// and never anywhere else.
+func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope ports.EnableScope) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.Fail["InstallUnits"]; err != nil {
 		return err
 	}
 	for _, u := range units {
+		_, existed := s.Installed[u.Name]
 		s.Installed[u.Name] = u.Contents
-		s.States[u.Name] = ports.UnitState{Name: u.Name, Loaded: true, Active: "inactive", Enabled: u.Enable}
+
+		state, known := s.States[u.Name]
+		state.Name, state.Loaded = u.Name, true
+		if !known {
+			// A file that has just been written and not yet enabled.
+			state.Active, state.Enabled = "inactive", false
+		}
+		if u.Enable && (scope == ports.EnableAll || !existed) {
+			state.Enabled = true
+		}
+		s.States[u.Name] = state
 	}
 	return nil
 }
@@ -552,30 +575,48 @@ func (s *Supervisor) RemoveUnits(ctx context.Context, names []string) error {
 	return nil
 }
 
+// Enable and Disable decide whether a unit comes back at boot; Start and Stop
+// decide whether it is running now. This fake used to answer both with one
+// field: `Stop` and `Start` passed `enabled: true`, so stopping a unit enabled
+// it.
+//
+// That stayed invisible because the one caller that stops a managed unit is
+// RemoveUnits, which disables immediately afterwards and then deletes the file.
+// It stops being invisible the moment anything asserts that a disabled unit
+// stays disabled, which is the whole of RFC 0030 row 1.
 func (s *Supervisor) Enable(ctx context.Context, unit string) error {
-	return s.setActive(unit, "", true)
+	return s.setEnabled(unit, true)
 }
+
 func (s *Supervisor) Disable(ctx context.Context, unit string) error {
-	return s.setActive(unit, "", false)
+	return s.setEnabled(unit, false)
 }
 
 func (s *Supervisor) Start(ctx context.Context, unit string) error {
-	return s.setActive(unit, "active", true)
+	return s.setActive(unit, "active")
 }
 
 func (s *Supervisor) Stop(ctx context.Context, unit string) error {
-	return s.setActive(unit, "inactive", true)
+	return s.setActive(unit, "inactive")
 }
 
-func (s *Supervisor) setActive(unit, active string, enabled bool) error {
+func (s *Supervisor) setActive(unit, active string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.States[unit]
 	st.Name = unit
 	st.Loaded = true
-	if active != "" {
-		st.Active = active
-	}
+	st.Active = active
+	s.States[unit] = st
+	return nil
+}
+
+func (s *Supervisor) setEnabled(unit string, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.States[unit]
+	st.Name = unit
+	st.Loaded = true
 	st.Enabled = enabled
 	s.States[unit] = st
 	return nil
@@ -615,6 +656,14 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 			continue
 		}
 		if strings.Contains(name, "-fleet.") && !params.FleetTimer {
+			continue
+		}
+		// And the backup pair, which is conditional the other way round
+		// (RFC 0030 row 4): present unless the installation declares it
+		// wants none. A fake that always returned it would make a test
+		// about the declaration pass whether the lifecycle layer set the
+		// field or not -- the same vacuum the two lines above avoid.
+		if strings.Contains(name, "-backup.") && params.SkipBackupTimer {
 			continue
 		}
 		out = append(out, ports.Unit{
