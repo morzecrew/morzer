@@ -93,9 +93,12 @@ resist:
 
 Each installation mints an Ed25519 key at `init`, in minisign format, at
 `/etc/<product>/signing/identity.key` (`0400`, in a `0700` directory). It signs
-statements the machine makes *about itself* — starting with the attestation
-written after each `apply`. The public half is recorded in installation state,
-so `status --json` and an export both carry it.
+statements the machine makes *about itself* — the attestation written after each
+lifecycle operation, and the row it publishes for the fleet view. The public
+half is recorded in installation state, so an export carries it; to read it off
+a running machine, `morzer fleet publish --dry-run --json` prints the key that
+would sign the row and mints nothing. `morzer installation describe` deliberately
+does not: that document is desired state, and a signing key is machine identity.
 
 This does not reverse the rule that keeps release signing off deployment hosts
 ([RFC 0004](rfcs/0004-distribution-and-verification.md) decision 8). That rule
@@ -126,6 +129,11 @@ under `signing.previous_keys`. A signature checking out against one of those is
 validity. Collapsing the two would make rotation useless.
 
 ### Rotation protects the future and repairs nothing
+
+**There is no rotate command yet** ([RFC 0028](rfcs/0028-the-machines-signing-identity.md)
+P2 is unscheduled). What a machine has today is succession: rebuilding it from
+an export mints a fresh key and records the old one as a predecessor, which is
+the same state a rotation would leave and reached the long way round.
 
 The sentence to read before rotating after a suspected compromise:
 
