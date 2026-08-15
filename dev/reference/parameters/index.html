@@ -1616,6 +1616,23 @@
   
 </li>
         
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#turning-scheduled-backups-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Turning scheduled backups off
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Turning scheduled backups off">
+      <ul class="md-nav__list">
+        
           <li class="md-nav__item">
   <a href="#it-re-creates-it-does-not-restart" class="md-nav__link">
     <span class="md-ellipsis">
@@ -2124,6 +2141,23 @@
   
 </li>
         
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#turning-scheduled-backups-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Turning scheduled backups off
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Turning scheduled backups off">
+      <ul class="md-nav__list">
+        
           <li class="md-nav__item">
   <a href="#it-re-creates-it-does-not-restart" class="md-nav__link">
     <span class="md-ellipsis">
@@ -2428,17 +2462,36 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td><code>backup.schedule</code></td>
 <td>When scheduled backups run, as a systemd <code>OnCalendar</code> expression. Absent takes the nightly default.</td>
 </tr>
+<tr>
+<td><code>backup.scheduled</code></td>
+<td>Whether this manager runs backups on a timer at all. Absent means it does.</td>
+</tr>
 </tbody>
 </table>
 <p><code>backup.schedule</code> is the same value <code>morzer init --backup-schedule</code> takes, and
 until it was a setting it could not be changed afterwards at all. Changing it
 rewrites the timer unit; unsetting it returns the default rather than turning
 backups off, because an empty <code>OnCalendar</code> is a unit systemd refuses to load.</p>
-<p><strong>There is deliberately no way to say "no scheduled backups".</strong> <code>systemctl
-disable</code> on the timer is undone by the next setting change or backup-target
-change, and <code>systemctl mask</code> is refused, because the generated unit already
-occupies the path a mask needs. If you back up by some other means, expect the
-timer to run and <code>morzer doctor</code> to keep an eye on how old the last backup is.</p>
+<h2 id="turning-scheduled-backups-off">Turning scheduled backups off<a class="headerlink" href="#turning-scheduled-backups-off" title="Permanent link">&para;</a></h2>
+<p>Two ways, and they are not the same thing.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>backup.scheduled<span class="o">=</span><span class="nb">false</span><span class="w">   </span><span class="c1"># this machine&#39;s backups are not morzer&#39;s job</span>
+systemctl<span class="w"> </span>disable<span class="w"> </span>--now<span class="w"> </span>demo-backup.timer<span class="w">  </span><span class="c1"># this timer, on this machine, stops</span>
+</code></pre></div>
+<p>The setting decides whether the timer <strong>exists</strong>. Declaring it removes the
+backup service and timer, and <code>morzer doctor</code> stops asking how old the last
+backup is — you have told it the job belongs to something else, which is a
+declaration it can read rather than a fact it would be guessing at. It travels
+with the installation, so <code>morzer init --repair</code> reproduces it and
+<a href="../installation-commands/#installation-describe"><code>installation describe</code></a> records it.</p>
+<p><code>systemctl disable</code> decides whether an existing timer <strong>runs</strong>, and it now
+sticks: reconciliation no longer re-enables a unit that already exists. Only
+<code>morzer init --repair --install-units</code> switches it back on, which is the one
+command whose job is to put a machine right. <code>doctor</code> reports a unit you
+disabled as <code>not enabled</code>, and names both ways out of that.</p>
+<p><code>systemctl mask</code> still does not work on a generated unit — the file morzer
+writes occupies the path a mask needs. Use either of the two above.</p>
+<p>Taking a backup by hand is unaffected by both: <code>morzer backup</code> still works, and
+a backup that exists is still expected to reach a target.</p>
 <p>Settings and parameters are set in separate commands. They run on different
 machinery — one converges a deployment, the other writes a flag — so a mixed
 command is refused rather than half-applied.</p>
