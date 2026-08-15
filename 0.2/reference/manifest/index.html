@@ -1,0 +1,3750 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Lifecycle management for a self-hosted product on a single machine">
+      
+      
+        <meta name="author" content="Lev Litvinov">
+      
+      
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/0.2/reference/manifest/">
+      
+      
+        <link rel="prev" href="../parameters/">
+      
+      
+        <link rel="next" href="../variables/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>Manifest - morzer</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#release-manifest" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="morzer" class="md-header__button md-logo" aria-label="morzer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            morzer
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Manifest
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/morzecrew/morzer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    morzer
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../get-started/installation/" class="md-tabs__link">
+          
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../operating/updating/" class="md-tabs__link">
+          
+  
+  Operating
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../authoring/" class="md-tabs__link">
+          
+  
+  Authoring
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../explanation/architecture/" class="md-tabs__link">
+          
+  
+  Explanation
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="morzer" class="md-nav__button md-logo" aria-label="morzer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    morzer
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/morzecrew/morzer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    morzer
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Get started
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Get started
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/installation/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-download" viewBox="0 0 24 24"><path d="M12 15V3M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Installing morzer
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/first-deployment/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-rocket" viewBox="0 0 24 24"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09"/><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first deployment
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Operating
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Operating
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/updating/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-up-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Updating
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/rolling-back/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-down-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Rolling back
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/secrets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing secrets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/backups/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backups and restore
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/changing-configuration/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Changing configuration
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/installing-offline/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01M8.5 16.429a5 5 0 0 1 7 0M5 12.859a10 10 0 0 1 5.17-2.69M19 12.859a10 10 0 0 0-2.007-1.523M2 8.82a15 15 0 0 1 4.177-2.643M22 8.82a15 15 0 0 0-11.288-3.764M2 2l20 20"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Installing without a network
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/notifications/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Notifications
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/looking-inside/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Looking inside
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/asking-for-help/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Asking for help
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/several-installations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Several installations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Recovering a lost machine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Authoring
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Authoring
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a bundle is
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/your-first-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/a-three-tier-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  A three-tier bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Writing hooks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/bundled-images/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-container" viewBox="0 0 24 24"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1M10 14l11.9-6.9M14 19.8v-8.1M18 17.5V9.4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundled images
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/publishing/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-upload" viewBox="0 0 24 24"><path d="M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Signing and publishing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Every command
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Commands
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backup-targets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backup target URLs
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secret-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  secret
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  release
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  installation
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../exit-codes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-modes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Output modes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../parameters/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Parameters
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Manifest
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Manifest
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Top level
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        metadata
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        providers
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        runtime
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        requirements
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        bundle
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        parameters
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        required
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#images" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        images
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="images">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-the-bytes-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where the bytes come from
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        configuration
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        secrets
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        operations
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        health
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        compatibility
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="compatibility">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#database_schema_produces-is-what-opts-a-release-into-unattended-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>database_schema_produces</code> is what opts a release into unattended updates
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        retention
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        extensions
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-secret-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The secret schema
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validating-a-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Validating a manifest
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A complete example
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../variables/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Variables
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Hook ABI
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../attestations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-signature" viewBox="0 0 24 24"><path d="M14.364 13.634a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506l4.013-4.009a1 1 0 0 0-3.004-3.004zM14.487 7.858A1 1 0 0 1 14 7V2"/><path d="M20 19.645V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l2.516 2.516M8 18h1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Attestations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../support-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a support bundle contains
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-network" viewBox="0 0 24 24"><rect width="6" height="6" x="16" y="16" rx="1"/><rect width="6" height="6" x="2" y="16" rx="1"/><rect width="6" height="6" x="9" y="2" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The fleet view
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Explanation
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Explanation
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Architecture
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/the-step-engine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list-checks" viewBox="0 0 24 24"><path d="M13 5h8M13 12h8M13 19h8M3 17l2 2 4-4M3 7l2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The step engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/secrets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The secrets model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/what-is-tested/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What is tested
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Top level
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        metadata
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        providers
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        runtime
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        requirements
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        bundle
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        parameters
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        required
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#images" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        images
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="images">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-the-bytes-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where the bytes come from
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        configuration
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        secrets
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        operations
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        health
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        compatibility
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="compatibility">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#database_schema_produces-is-what-opts-a-release-into-unattended-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>database_schema_produces</code> is what opts a release into unattended updates
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        retention
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        extensions
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-secret-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The secret schema
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validating-a-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Validating a manifest
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A complete example
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+  
+
+
+<h1 id="release-manifest">Release manifest<a class="headerlink" href="#release-manifest" title="Permanent link">&para;</a></h1>
+<p><code>manifest.yaml</code> is the release contract: everything the manager needs to know
+about a product, declared by the vendor rather than configured by the operator.</p>
+<div class="highlight"><pre><span></span><code>release/
+├── manifest.yaml       api_version: selfhost/v1alpha1
+├── compose/            service topology
+├── templates/          configuration + the secret schema
+├── hooks/              migrate · smoke-test · backup · restore · check-db
+└── VERSION
+</code></pre></div>
+<p>The schema is versioned independently of the manager. <code>morzer version --json</code>
+reports which <code>api_version</code> values a given binary can read; a previously
+published version stays readable until it is explicitly deprecated.</p>
+<div class="admonition info">
+<p class="admonition-title">Unknown fields are an error</p>
+<p>Not a warning, and not silently ignored. A typo must not fall back to a
+default — the failure would surface as behaviour nobody asked for, days
+later. Vendor-specific keys go under <code>extensions.&lt;namespace&gt;</code>.</p>
+</div>
+<h2 id="top-level">Top level<a class="headerlink" href="#top-level" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>api_version</code></td>
+<td>string</td>
+<td style="text-align: center;">✅</td>
+<td>Manifest schema version. <code>selfhost/v1alpha1</code> is the only one currently supported.</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>string</td>
+<td style="text-align: center;">✅</td>
+<td>Must be <code>application-release</code>.</td>
+</tr>
+<tr>
+<td><code>metadata</code></td>
+<td>table</td>
+<td style="text-align: center;">✅</td>
+<td>Identity of the release.</td>
+</tr>
+<tr>
+<td><code>providers</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>Which port implementation to use for each capability.</td>
+</tr>
+<tr>
+<td><code>runtime</code></td>
+<td>table</td>
+<td style="text-align: center;">✅</td>
+<td>The Compose project and its files.</td>
+</tr>
+<tr>
+<td><code>requirements</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>What the machine must provide.</td>
+</tr>
+<tr>
+<td><code>parameters</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Knobs an operator may set, typed and defaulted. See <a href="../parameters/">Parameters</a>.</td>
+</tr>
+<tr>
+<td><code>images</code></td>
+<td>map</td>
+<td style="text-align: center;">✅</td>
+<td>Container images, pinned by digest.</td>
+</tr>
+<tr>
+<td><code>configuration</code></td>
+<td>list</td>
+<td style="text-align: center;"></td>
+<td>Templates rendered to absolute paths on the host.</td>
+</tr>
+<tr>
+<td><code>secrets</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>Where the encrypted state lives and where it renders.</td>
+</tr>
+<tr>
+<td><code>operations</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Named lifecycle operations: migrate, smoke test, backup, restore.</td>
+</tr>
+<tr>
+<td><code>backup</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>What the manager may do about the project's volumes.</td>
+</tr>
+<tr>
+<td><code>bundle</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>What the release says about its own packaging, as distinct from what it needs of the host.</td>
+</tr>
+<tr>
+<td><code>health</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>How to tell whether the product is working.</td>
+</tr>
+<tr>
+<td><code>compatibility</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>What this release can be installed over, and rolled back from.</td>
+</tr>
+<tr>
+<td><code>retention</code></td>
+<td>table</td>
+<td style="text-align: center;"></td>
+<td>How many releases and backups to keep.</td>
+</tr>
+<tr>
+<td><code>extensions</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Namespaced vendor data the manager passes through untouched.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="metadata">metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td style="text-align: center;">✅</td>
+<td>Product name. Drives <code>/etc/&lt;name&gt;/</code>, <code>/var/lib/&lt;name&gt;/</code>, <code>/run/&lt;name&gt;/</code>, <code>/opt/&lt;name&gt;/</code> and the hook environment prefix.</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>semver</td>
+<td style="text-align: center;">✅</td>
+<td>Release version.</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>One line, shown by <code>release show</code>.</td>
+</tr>
+<tr>
+<td><code>vendor</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>Who publishes this.</td>
+</tr>
+<tr>
+<td><code>release_notes</code></td>
+<td>path</td>
+<td style="text-align: center;"></td>
+<td>Bundle-relative path to what changed in this release, conventionally <code>RELEASE.md</code>.</td>
+</tr>
+<tr>
+<td><code>support_url</code></td>
+<td>https URL</td>
+<td style="text-align: center;"></td>
+<td>Where an operator goes when something is wrong.</td>
+</tr>
+</tbody>
+</table>
+<p><code>release_notes</code> is <strong>declared, not discovered</strong>. Every other path a bundle
+ships is declared and existence-checked, and a declared-but-missing file fails
+<code>release verify</code>; there is deliberately no fallback to looking for a
+<code>RELEASE.md</code> that nothing points at, because a convention layered under a
+declaration reintroduces the ambiguity the declaration removes.</p>
+<p><code>support_url</code> must be <code>https</code>. It is shown by <code>status</code> and by <code>doctor</code> <strong>when a
+check fails</strong> — not appended to every error hint, which would put a vendor URL
+in every log line. The operator of a self-hosted product is usually not its
+vendor, and "where do I get help" otherwise has no home.</p>
+<h2 id="providers">providers<a class="headerlink" href="#providers" title="Permanent link">&para;</a></h2>
+<p>Each entry selects a port implementation by <code>name</code>, with an optional <code>version</code>
+constraint. New capabilities arrive as new provider names, never as changes to
+the core.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Accepted</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>runtime</code></td>
+<td><code>compose</code></td>
+<td><code>compose</code></td>
+</tr>
+<tr>
+<td><code>secrets</code></td>
+<td><code>sops-age</code></td>
+<td><code>sops-age</code></td>
+</tr>
+<tr>
+<td><code>backup</code></td>
+<td><code>hooks</code></td>
+<td><code>hooks</code></td>
+</tr>
+<tr>
+<td><code>health</code></td>
+<td></td>
+<td><code>http</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="runtime">runtime<a class="headerlink" href="#runtime" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>project</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>Compose project name. Defaults to <code>metadata.name</code>.</td>
+</tr>
+<tr>
+<td><code>files</code></td>
+<td>list</td>
+<td style="text-align: center;">✅</td>
+<td>Base Compose files, release-relative.</td>
+</tr>
+<tr>
+<td><code>profiles</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Named deployment topologies; each is a list of <em>additional</em> Compose files.</td>
+</tr>
+</tbody>
+</table>
+<p>An unknown profile is an error rather than a silent fall back to the base files.
+Deploying the wrong topology quietly is worse than refusing.</p>
+<h2 id="requirements">requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
+<p>Checked in preflight and reported by <code>doctor</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>architectures</code></td>
+<td>list</td>
+<td>Accepted machine architectures, e.g. <code>[amd64, arm64]</code>.</td>
+</tr>
+<tr>
+<td><code>os</code></td>
+<td>list</td>
+<td>Accepted distributions. Each entry has an <code>id</code> and a <code>version</code> constraint.</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td>map</td>
+<td>Version constraints for external tools, e.g. <code>docker: "&gt;=24"</code>.</td>
+</tr>
+<tr>
+<td><code>memory</code></td>
+<td>size</td>
+<td>Minimum RAM, e.g. <code>2GiB</code>.</td>
+</tr>
+<tr>
+<td><code>disk</code></td>
+<td>size</td>
+<td>Minimum free disk, e.g. <code>5GiB</code>.</td>
+</tr>
+<tr>
+<td><code>cpus</code></td>
+<td>int</td>
+<td>Logical CPUs the release wants. A cgroup quota is honoured where one is in force, so a containerised manager sees what it may actually use rather than what the host has.</td>
+</tr>
+<tr>
+<td><code>ports</code></td>
+<td>list</td>
+<td>TCP ports the release binds, checked for conflicts. A literal number, or <code>"{{ .Parameters.&lt;name&gt; }}"</code> so the check follows the port the deployment actually publishes.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="bundle">bundle<a class="headerlink" href="#bundle" title="Permanent link">&para;</a></h2>
+<p>What the release says about its own packaging, as distinct from what it needs
+of the host.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uncompressed_size</code></td>
+<td>size</td>
+<td>What the archive expands to, e.g. <code>12GiB</code>. Raises the extraction ceiling for a bundle carrying container images.</td>
+</tr>
+</tbody>
+</table>
+<p>A separate block from <code>requirements</code> on purpose: everything there describes the
+<em>host</em>, and this describes the <em>artefact</em>.</p>
+<div class="admonition warning">
+<p class="admonition-title">It can only ever lower the limit</p>
+<p>This value is read out of the tar stream <strong>before the signature is
+checked</strong>, so it is attacker-controlled input in the strictest sense. The
+effective limit is <code>min(declared, hard cap)</code> — a declaration is a request
+for a smaller budget than the manager allows, never permission to exceed
+it. A bundle needing more than the cap is refused, and raising the cap is a
+change to morzer rather than something a bundle can ask for.</p>
+<p>Omitting it means the <strong>default</strong> ceiling, not "unbounded". A missing field
+must never be the permissive reading of anything that gates untrusted
+bytes.</p>
+</div>
+<h2 id="parameters">parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h2>
+<p>What an operator may change, and nothing else. Each entry declares a <code>type</code>, an
+optional <code>default</code>, and — for an enum — the <code>values</code> it accepts.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">parameters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">http_port</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">port</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">18080</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Port the application is published on</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">log_level</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">enum</span>
+<span class="w">    </span><span class="nt">values</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">debug</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">info</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">warn</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">error</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td style="text-align: center;">✅</td>
+<td>One of <code>port</code>, <code>int</code>, <code>bool</code>, <code>string</code>, <code>enum</code>, <code>duration</code>, <code>bytes</code>.</td>
+</tr>
+<tr>
+<td><code>default</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>Used when the operator sets nothing. Validated against <code>type</code> at <code>release verify</code>.</td>
+</tr>
+<tr>
+<td><code>required</code></td>
+<td>bool</td>
+<td style="text-align: center;"></td>
+<td>The operator must supply a value. Declaring it alongside a <code>default</code> is a validation error.</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>Shown when a value is refused, so the operator learns what is accepted.</td>
+</tr>
+<tr>
+<td><code>values</code></td>
+<td>list</td>
+<td style="text-align: center;"></td>
+<td>The permitted set. Required for <code>enum</code>, an error for anything else.</td>
+</tr>
+<tr>
+<td><code>services</code></td>
+<td>list</td>
+<td style="text-align: center;"></td>
+<td>Services to restart when the value changes. Empty means the change needs a full <code>apply</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>A declared parameter reaches three places, all under the same name:</p>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Form</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Compose files</td>
+<td><code>&lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;</code></td>
+</tr>
+<tr>
+<td>Configuration templates</td>
+<td><code>.Parameters.&lt;name&gt;</code></td>
+</tr>
+<tr>
+<td>Hooks</td>
+<td><code>&lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p>Every declared parameter is always exported, holding its default when the
+operator has set nothing — so a Compose file's <code>:-</code> fallback is belt-and-braces
+rather than the actual source of the value.</p>
+<div class="admonition danger">
+<p class="admonition-title">Parameters are not secrets</p>
+<p>A parameter's value is visible in <code>docker inspect</code>, in <code>status --json</code>, in
+the journal, and in <code>installation.yaml</code> in the clear. Anything that must
+not be is a <a href="../../authoring/">secret</a>, which has its own declared,
+audited path and is rendered to tmpfs as a file.</p>
+</div>
+<h3 id="required">required<a class="headerlink" href="#required" title="Permanent link">&para;</a></h3>
+<p>Without it, a parameter with no default resolves silently to the empty string —
+so a vendor could declare a knob that exists to be an operator choice and had
+no way to say the choice was not optional, while a <em>secret</em> could be required
+all along.</p>
+<p><code>required: true</code> <strong>and</strong> a <code>default</code> is refused. It is a vendor saying two
+contradictory things, and picking a winner silently would leave them believing
+they had made the choice mandatory.</p>
+<p>An unset required parameter fails preflight, so it is refused by <code>init</code>, by
+<code>config unset</code>, and by <code>apply</code>. That last one is deliberate: a release that
+introduces a required parameter fails to deploy rather than deploying with an
+empty value the product then misreads, and the currently running release keeps
+serving. Set the value first:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">admin_email</span><span class="o">=</span>ops@example
+morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.4.0.tar.zst
+</code></pre></div>
+<p>See <a href="../parameters/">Parameters</a> for the operator's side.</p>
+<h2 id="images">images<a class="headerlink" href="#images" title="Permanent link">&para;</a></h2>
+<p>A map of logical name to image reference. <strong>Every reference must be pinned by
+digest</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">images</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry.example/demo/app@sha256:0000…0001</span>
+</code></pre></div>
+<p>A bare tag is rejected. An unpinned image makes a release mutable, and a mutable
+release makes rollback meaningless — the same version could produce a different
+system on a different day.</p>
+<p><strong>The key</strong> is lowercase letters, digits and hyphens, starting and ending with a
+letter or digit — the same rule parameters carry, and for the same reason: it
+becomes the tail of <code>&lt;PRODUCT&gt;_IMAGE_&lt;NAME&gt;</code>, which your Compose file
+interpolates. Dots and underscores are refused because the variable name folds
+both to <code>_</code>, so <code>web-ui</code> and <code>web.ui</code> would name the same variable and one
+pinned reference would silently overwrite the other.</p>
+<h3 id="where-the-bytes-come-from">Where the bytes come from<a class="headerlink" href="#where-the-bytes-come-from" title="Permanent link">&para;</a></h3>
+<p>An entry may instead be a mapping, which adds one field:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">images</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">db</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgres@sha256:0000…0002</span><span class="w">              </span><span class="c1"># pulled, as above</span>
+<span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry.example/demo/app@sha256:0000…0001</span>
+<span class="w">    </span><span class="nt">from</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bundle</span><span class="w">                             </span><span class="c1"># travels inside the bundle</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ref</code></td>
+<td>string</td>
+<td>The image reference, pinned by digest. Same rule as the scalar spelling.</td>
+</tr>
+<tr>
+<td><code>from</code></td>
+<td>string</td>
+<td><code>registry</code> (default) or <code>bundle</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Both spellings exist because most images are never bundled, and making every one
+of them carry a <code>from:</code> to say so is noise in the file you read most.</p>
+<p><code>from: bundle</code> means the image travels in the bundle as an <abbr title="Open Container Initiative">OCI</abbr> layout under
+<code>images/</code>, covered by the same <code>SHA256SUMS</code> and signature as every other file —
+so a customer installs a release containing your private images without ever
+holding credentials for the registry they came from. <strong>Per-image</strong>, so a release
+bundles what is private and keeps pulling <code>postgres</code> from Docker Hub.</p>
+<p><code>ref</code> stays a real image reference in both spellings. It is interpolated into
+Compose as <code>&lt;PRODUCT&gt;_IMAGE_&lt;NAME&gt;</code>, so it must remain something the daemon can
+resolve — which is why the source is a separate field rather than a scheme on
+the reference the way <code>update</code> references are spelled.</p>
+<p>An unrecognised <code>from</code> is refused rather than defaulted. The two plausible
+typos — <code>bundled</code>, and <code>from</code> under the wrong image — both fail towards a
+release you believe ships its own bytes and does not, which surfaces as a
+credential failure on your customer's machine.</p>
+<p>See <a href="../../authoring/bundled-images/">bundled images</a> for the layout, what
+<code>release verify</code> checks, and how to produce one.</p>
+<h2 id="configuration">configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>A list of templates rendered onto the host.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>template</code></td>
+<td>path</td>
+<td style="text-align: center;">✅</td>
+<td>Release-relative template file.</td>
+</tr>
+<tr>
+<td><code>target</code></td>
+<td>path</td>
+<td style="text-align: center;">✅</td>
+<td>Absolute destination on the host.</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td>quoted octal</td>
+<td style="text-align: center;"></td>
+<td>File mode. Default <code>"0640"</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Rendered files contain <em>paths</em> to secrets, never secret values.</p>
+<p>The quotes on <code>mode</code> are load-bearing. <abbr title="YAML Ain't Markup Language">YAML</abbr> reads an unquoted <code>0640</code> as the
+decimal number 416, which is the permission <code>0416</code> — owner read-only, group
+execute-only, other read/write. Unquoted modes are refused rather than applied,
+so a manifest that gets this wrong fails to load instead of installing a file
+with permissions nobody chose.</p>
+<h2 id="secrets">secrets<a class="headerlink" href="#secrets" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source</code></td>
+<td>path</td>
+<td>Absolute path to the encrypted state, e.g. <code>/etc/demo/secrets.sops.yaml</code>.</td>
+</tr>
+<tr>
+<td><code>render_to</code></td>
+<td>path</td>
+<td>Absolute tmpfs directory the decrypted values are written to.</td>
+</tr>
+<tr>
+<td><code>schema</code></td>
+<td>path</td>
+<td>Release-relative <a href="#the-secret-schema">secret schema</a>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="operations">operations<a class="headerlink" href="#operations" title="Permanent link">&para;</a></h2>
+<p>A map of well-known name to how it runs. The manager looks up <code>migrate</code>,
+<code>smoke_test</code>, <code>backup</code>, <code>restore</code> and <code>preflight</code> by convention.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kind</code></td>
+<td>enum</td>
+<td><code>hook</code> — an executable in the release, run under the <a href="../hooks/">hook <abbr title="Application Binary Interface">ABI</abbr></a>; or <code>runtime-service</code> — a one-shot container from the Compose project.</td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td>list</td>
+<td>For <code>hook</code>: argv, release-relative. Not allowed for <code>runtime-service</code>.</td>
+</tr>
+<tr>
+<td><code>service</code></td>
+<td>string</td>
+<td>For <code>runtime-service</code>: the Compose service to run. Not allowed for <code>hook</code>.</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>duration</td>
+<td>Time budget. Default <code>10m</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>The two kinds are not collapsed into one field because their failure semantics
+differ: a hook runs on the host and sees the host's filesystem, a runtime
+service runs on the application network and sees the container's.</p>
+<h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
+<p>What the manager may do about the project's named volumes, which it captures
+itself rather than through the backup hook.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>volumes</code></td>
+<td>map</td>
+<td>Keyed by the volume's name in the Compose <code>volumes:</code> block.</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry takes one field, and it is <strong>required</strong> — an entry that names a
+volume without saying anything about it is refused at load. Leaving the volume
+out of the map entirely is how you ask for the default:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>consistency</code></td>
+<td>enum</td>
+<td style="text-align: center;">✅</td>
+<td><code>cold</code>, <code>hot</code> or <code>exclude</code>.</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cold</code></td>
+<td>The services mounting the volume are stopped for the copy. The default, and correct for every volume.</td>
+</tr>
+<tr>
+<td><code>hot</code></td>
+<td>The vendor claims a copy taken while the product runs is usable. True for write-once files, false for anything with a write-ahead log.</td>
+</tr>
+<tr>
+<td><code>exclude</code></td>
+<td>The manager never reads or writes this volume. Expected for a database's storage, which the backup hook owns.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><span class="nt">backup</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">uploads</span><span class="p">:</span><span class="w">    </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">caddy_data</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">pgdata</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">exclude</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p>The map is partial: declare only the volumes that need something other than the
+default of <code>cold</code>. A volume named here that the project does not declare is
+ignored by the backup, and reported by <code>morzer doctor</code> — a typo in this map
+otherwise does nothing at all, which for an intended <code>exclude</code> means the
+manager captures a database volume the hook already owns.</p>
+<p><code>hot</code> is a claim about the product, not a performance hint — see
+<a href="../../authoring/backing-up-volumes/">declaring volume consistency</a> for what it
+commits a vendor to. Bind mounts are never captured and have no declaration.</p>
+<h2 id="health">health<a class="headerlink" href="#health" title="Permanent link">&para;</a></h2>
+<p><code>checks</code> is a list; each entry has a unique <code>name</code>, a <code>type</code>, a <code>timeout</code>
+(default <code>120s</code>) and an optional <code>start_period</code>.</p>
+<table>
+<thead>
+<tr>
+<th><code>type</code></th>
+<th>Additional field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>http</code></td>
+<td><code>url</code></td>
+<td>Considered healthy on a 2xx response.</td>
+</tr>
+<tr>
+<td><code>tcp</code></td>
+<td><code>address</code></td>
+<td>Considered healthy when the connection is accepted.</td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td><code>command</code></td>
+<td>Considered healthy on exit 0. Release-relative argv.</td>
+</tr>
+</tbody>
+</table>
+<p><code>timeout</code> bounds a <strong>single attempt</strong>. <code>start_period</code> is different: it is how
+long the check may keep failing before the failure means anything.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">health</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">checks</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api</span>
+<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http</span>
+<span class="w">      </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://127.0.0.1:18080/health</span>
+<span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5s</span>
+<span class="w">      </span><span class="nt">start_period</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">90s</span>
+</code></pre></div>
+<p>Without it, a product with a ninety-second first boot and a product that is
+dead are the same observation, and the only lever is a timeout long enough to
+delay noticing the second. With it, <code>apply</code> stops waiting once every
+still-failing check has outlived its own declared period, and says so in
+different words from a plain timeout — "the vendor said how long this takes and
+it took longer" is acted on differently from "we ran out of time".</p>
+<p>Omitted means the waiter keeps trying for as long as the operation allows,
+which is what it has always done. A check that declares none also holds the
+wait open for the checks beside it, so adding <code>start_period</code> to one check never
+shortens the wait for another.</p>
+<h2 id="compatibility">compatibility<a class="headerlink" href="#compatibility" title="Permanent link">&para;</a></h2>
+<p>The declarations that make <code>update</code> and <code>rollback</code> decidable without running
+anything.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>database_schema_min</code></td>
+<td>int</td>
+<td>Oldest schema this release can read.</td>
+</tr>
+<tr>
+<td><code>database_schema_max</code></td>
+<td>int</td>
+<td>Newest schema this release can read.</td>
+</tr>
+<tr>
+<td><code>database_schema_produces</code></td>
+<td>int</td>
+<td>What this release's migrations leave the database at. Optional; see below.</td>
+</tr>
+<tr>
+<td><code>rollback_safe</code></td>
+<td>bool</td>
+<td>Whether this release's migrations can be undone by returning to the previous one.</td>
+</tr>
+<tr>
+<td><code>min_manager_version</code></td>
+<td>semver</td>
+<td>Oldest manager that may install this release.</td>
+</tr>
+<tr>
+<td><code>upgrade_from</code></td>
+<td>constraint</td>
+<td>Which currently-installed versions this may be installed over, e.g. <code>"&gt;=1.0.0 &lt;2.0.0"</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><code>rollback_safe: false</code> is how a vendor says "going back needs a restore". The
+manager takes it literally and refuses the rollback, naming the backup instead.</p>
+<h3 id="database_schema_produces-is-what-opts-a-release-into-unattended-updates"><code>database_schema_produces</code> is what opts a release into unattended updates<a class="headerlink" href="#database_schema_produces-is-what-opts-a-release-into-unattended-updates" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">rollback_safe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">database_schema_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+<span class="w">  </span><span class="nt">database_schema_max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">14</span>
+<span class="w">  </span><span class="nt">database_schema_produces</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">14</span><span class="w">   </span><span class="c1"># what my migrations leave the database at</span>
+</code></pre></div>
+<p>The other three fields describe what a release can <em>read</em>. This one states what
+it <em>writes</em>, and it exists so the manager can answer a question before an update
+rather than after one: if this release is installed and then has to be rolled
+back, would the previous release still understand the database?</p>
+<p><strong>Omitting it is a valid and conservative choice.</strong> A release that does not
+declare it is never installed unattended — the manager will fetch it, verify it,
+stage it and notify the operator, and stop there. If you do not want customers
+running your releases without a human present, declare nothing and nothing
+changes for you.</p>
+<p>Declaring it is not sufficient on its own. See
+<a href="../../operating/unattended-updates/">unattended updates</a> for the whole gate,
+and for what the promise is and is not.</p>
+<h2 id="retention">retention<a class="headerlink" href="#retention" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>releases</code></td>
+<td>int</td>
+<td>3</td>
+<td>Non-active releases kept in the store. Must be at least 1.</td>
+</tr>
+<tr>
+<td><code>backups</code></td>
+<td>int</td>
+<td>7</td>
+<td>Backups kept. Must be at least 1.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="extensions">extensions<a class="headerlink" href="#extensions" title="Permanent link">&para;</a></h2>
+<p>Namespaced free-form data, passed through untouched:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">extensions</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">example.com/telemetry</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://telemetry.example/ingest</span>
+</code></pre></div>
+<p>The namespace must contain a <code>.</code> or a <code>/</code>, so a typo'd core field cannot hide
+inside a vendor block.</p>
+<hr />
+<h2 id="the-secret-schema">The secret schema<a class="headerlink" href="#the-secret-schema" title="Permanent link">&para;</a></h2>
+<p>The document <code>secrets.schema</code> names — <code>secrets.schema.yaml</code> at the bundle root
+by convention — declares what secrets exist, so <code>init</code> can provision them and
+<code>doctor</code> can audit them without the manager knowing anything about the product.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>api_version</code></td>
+<td>string</td>
+<td>Same version vocabulary as the manifest.</td>
+</tr>
+<tr>
+<td><code>secrets</code></td>
+<td>list</td>
+<td>The declarations below.</td>
+</tr>
+</tbody>
+</table>
+<p>Each declaration:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>Secret name, as <code>morzer secret</code> refers to it.</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>string</td>
+<td>Shown by <code>secret list</code>.</td>
+</tr>
+<tr>
+<td><code>required</code></td>
+<td>bool</td>
+<td>Whether <code>doctor</code> reports its absence as a failure.</td>
+</tr>
+<tr>
+<td><code>generator</code></td>
+<td>table</td>
+<td>How the manager may produce it: <code>kind</code>, <code>length</code>, <code>alphabet</code>.</td>
+</tr>
+<tr>
+<td><code>file</code></td>
+<td>string</td>
+<td>Filename under the render directory. Defaults to <code>name</code>.</td>
+</tr>
+<tr>
+<td><code>services</code></td>
+<td>list</td>
+<td>Compose services that consume it. A rotation restarts exactly these.</td>
+</tr>
+<tr>
+<td><code>rotation_period</code></td>
+<td>duration</td>
+<td>Advisory; <code>doctor</code> warns when a secret is older.</td>
+</tr>
+</tbody>
+</table>
+<p>Generator <code>kind</code> is one of <code>password</code>, <code>hex</code>, <code>base64</code>, <code>uuid</code>, <code>age-key</code>, or
+absent — meaning the operator must supply the value.</p>
+<p>The default password alphabet excludes characters that are ambiguous read aloud
+or that need shell quoting. Secrets get copied by humans more often than anyone
+plans for.</p>
+<hr />
+<h2 id="validating-a-manifest">Validating a manifest<a class="headerlink" href="#validating-a-manifest" title="Permanent link">&para;</a></h2>
+<p>A <abbr title="JavaScript Object Notation">JSON</abbr> Schema for <code>selfhost/v1alpha1</code> ships with every release, generated from
+the Go types that enforce the contract rather than written alongside them:</p>
+<div class="highlight"><pre><span></span><code>schemas/selfhost-v1alpha1-manifest.json
+schemas/selfhost-v1alpha1-secrets.json
+</code></pre></div>
+<p>Point an editor at it for completion and typo-catching, or validate in CI
+without installing the manager. It is regenerated by <code>just schemas</code>, and a test
+fails the build when the checked-in copy no longer matches the types — two
+descriptions of one contract disagree eventually, and the one a vendor validates
+against is usually the more permissive.</p>
+<p>The schema describes <strong>shape</strong>, not rules. Images must be pinned by digest,
+paths may not escape the release root, an unknown field is an error — none of
+that is expressible here, and all of it is enforced by the loader. The schema
+catches a typo in an editor; <code>morzer release verify</code> catches everything:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./bundle
+</code></pre></div>
+<h2 id="a-complete-example">A complete example<a class="headerlink" href="#a-complete-example" title="Permanent link">&para;</a></h2>
+<p>This is <code>testdata/bundle/manifest.yaml</code>, included from the repository rather
+than transcribed: the manifest loader, the step engine and the contract suites
+all run against it, so it cannot drift from what the manager actually accepts.</p>
+<div class="highlight"><span class="filename">testdata/bundle/manifest.yaml</span><pre><span></span><code><span class="c1"># yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json</span>
+<span class="c1"># Example release bundle exercised by the test suite.</span>
+<span class="c1">#</span>
+<span class="c1"># It is a real, valid bundle: the manifest loader, the step engine and the</span>
+<span class="c1"># contract suites all run against it, so a change that breaks the release</span>
+<span class="c1"># contract fails a test rather than a deployment.</span>
+<span class="nt">api_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">selfhost/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application-release</span>
+
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
+<span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.2.0</span>
+<span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Demo self-hosted bundle used by the test suite</span>
+<span class="w">  </span><span class="nt">vendor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example</span>
+<span class="w">  </span><span class="nt">release_notes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RELEASE.md</span>
+<span class="w">  </span><span class="nt">support_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://support.example/demo</span>
+
+<span class="nt">providers</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">runtime</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">compose</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">secrets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">sops-age</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">backup</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">hooks</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">health</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">}</span>
+
+<span class="nt">runtime</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
+<span class="w">  </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
+<span class="w">  </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
+
+<span class="nt">requirements</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">architectures</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">amd64</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">arm64</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">os</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">ubuntu</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=22.04&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">debian</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=12&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">tools</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">docker</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=24&quot;</span>
+<span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span>
+<span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2GiB</span>
+<span class="w">  </span><span class="nt">disk</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5GiB</span>
+<span class="w">  </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">  </span><span class="c1"># Follows the parameter rather than restating it: preflight has to check the</span>
+<span class="w">  </span><span class="c1"># port this deployment will actually publish, not the one the vendor chose.</span>
+<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}&quot;</span><span class="p p-Indicator">]</span>
+
+<span class="c1"># What an operator may change, and nothing else. Each reaches Compose as</span>
+<span class="c1"># &lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;, templates as .Parameters.&lt;name&gt;, and hooks the same</span>
+<span class="c1"># way as Compose. Parameters are not secrets: their values are visible in</span>
+<span class="c1"># `docker inspect` and in `status --json`.</span>
+<span class="nt">parameters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">http_port</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">port</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">18080</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Port the application is published on</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">log_level</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">enum</span>
+<span class="w">    </span><span class="nt">values</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">debug</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">info</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">warn</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">error</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Application log verbosity</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+
+<span class="nt">images</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001</span>
+<span class="w">  </span><span class="nt">db</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">registry.example/demo/db@sha256:0000000000000000000000000000000000000000000000000000000000000002</span>
+
+<span class="nt">configuration</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml.tmpl</span>
+<span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/application.yaml</span>
+<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0640&quot;</span>
+
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/secrets.sops.yaml</span>
+<span class="w">  </span><span class="nt">render_to</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/run/demo/secrets</span>
+<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secrets.schema.yaml</span>
+
+<span class="nt">operations</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">migrate</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/migrate&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
+<span class="w">  </span><span class="nt">smoke_test</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/smoke-test&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="w">  </span><span class="nt">backup</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/backup&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60m</span>
+<span class="w">  </span><span class="nt">restore</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/restore&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">120m</span>
+
+<span class="c1"># What the manager may do about this project&#39;s named volumes, which it captures</span>
+<span class="c1"># itself rather than through the backup hook above.</span>
+<span class="c1">#</span>
+<span class="c1"># A volume left out of this map is captured *cold*: the services that mount it</span>
+<span class="c1"># are stopped for the copy. That is correct for every volume and slow for some,</span>
+<span class="c1"># so a vendor declares only where they want something else.</span>
+<span class="c1">#</span>
+<span class="c1"># `consistency: hot` is a claim that a copy taken while the product is running</span>
+<span class="c1"># is a usable one -- true for files written once and never modified, false for</span>
+<span class="c1"># anything with a write-ahead log. It is the vendor&#39;s claim, not the manager&#39;s</span>
+<span class="c1"># guess, and every backup manifest records which one applied.</span>
+<span class="nt">backup</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">uploads</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="p p-Indicator">}</span>
+
+<span class="nt">health</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">checks</span><span class="p">:</span>
+<span class="w">    </span><span class="c1"># Follows the parameter too. A probe on a port the deployment does not</span>
+<span class="w">    </span><span class="c1"># publish is an `apply` that fails at &quot;wait for health&quot; on a system that</span>
+<span class="w">    </span><span class="c1"># is working.</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}/health/ready&quot;</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">command</span><span class="p p-Indicator">,</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/check-db&quot;</span><span class="p p-Indicator">],</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">15s</span><span class="p p-Indicator">}</span>
+
+<span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">database_schema_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">  </span><span class="nt">database_schema_max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+<span class="w">  </span><span class="nt">rollback_safe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.0.0&quot;</span>
+<span class="w">  </span><span class="nt">upgrade_from</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=1.0.0</span><span class="nv"> </span><span class="s">&lt;2.0.0&quot;</span>
+
+<span class="nt">retention</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">releases</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">  </span><span class="nt">backups</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">7</span>
+
+<span class="nt">extensions</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">example.com/telemetry</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://telemetry.example/ingest</span>
+</code></pre></div>
+<p>And its secret schema:</p>
+<div class="highlight"><span class="filename">testdata/bundle/secrets.schema.yaml</span><pre><span></span><code><span class="c1"># yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-secrets.json</span>
+<span class="c1"># Declares what secrets exist, so `init` can provision them and `doctor` can</span>
+<span class="c1"># audit them without the manager knowing anything about the product.</span>
+<span class="nt">api_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">selfhost/v1alpha1</span>
+
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db_password</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PostgreSQL password for the application role</span>
+<span class="w">    </span><span class="nt">required</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">generator</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">password</span>
+<span class="w">      </span><span class="nt">length</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">32</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">rotation_period</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2160h</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">session_key</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Key used to sign session cookies</span>
+<span class="w">    </span><span class="nt">required</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">generator</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hex</span>
+<span class="w">      </span><span class="nt">length</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">64</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">smtp_password</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Password for outbound mail; optional</span>
+<span class="w">    </span><span class="nt">required</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../parameters/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Parameters">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Parameters
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../variables/" class="md-footer__link md-footer__link--next" aria-label="Next: Variables">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Variables
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      &copy; 2026 Lev Litvinov and contributors
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["search.highlight","navigation.footer","navigation.instant","navigation.instant.progress","navigation.tabs","navigation.sections","navigation.path","navigation.top","toc.follow","content.code.copy","content.code.select","content.code.annotate","content.tooltips"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+    
+  </body>
+</html>
