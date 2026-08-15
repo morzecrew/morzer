@@ -96,6 +96,33 @@ func TestUnsettingTheDeclarationRestoresScheduledBackups(t *testing.T) {
 		"clearing the setting left backups switched off")
 }
 
+// A value that is not a boolean is refused, and nothing is written.
+//
+// `backup.scheduled=off` and `=no` are what somebody types who has used other
+// tools. Accepting either as false would be bad; accepting it as *true* while
+// they believed they had switched backups off would be worse, and a silent
+// no-op worst of all -- so it is a refusal that names what the field takes.
+func TestABackupScheduledValueThatIsNotABooleanIsRefused(t *testing.T) {
+	for _, raw := range []string{"off", "no", "", "1.5"} {
+		t.Run(raw, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			ctx := context.Background()
+
+			_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+				Set: map[string]string{"backup.scheduled": raw},
+			})
+			require.Error(t, err, "%q was accepted as a boolean", raw)
+			assert.Contains(t, domain.AsError(err).Message, "not a boolean")
+
+			after, err := h.Deps.State.LoadInstallation(ctx)
+			require.NoError(t, err)
+			assert.False(t, after.Policy.SkipScheduledBackups,
+				"a refused value still reached the installation")
+		})
+	}
+}
+
 // `doctor` stops reporting an age it was told is not its business.
 //
 // A machine backed up at the storage layer takes no backups through morzer, so
@@ -245,6 +272,40 @@ func TestTheUnitRemedyNamesBothWaysOut(t *testing.T) {
 	require.Equal(t, string(events.CheckWarn), got.Status, got.Message)
 	assert.Contains(t, got.Remedy, "init --repair --install-units")
 	assert.Contains(t, got.Remedy, "backup.scheduled=false")
+}
+
+// And offers it only for the unit it would work on.
+//
+// `backup.scheduled=false` removes the backup pair and nothing else, so
+// printing it beside a disabled *update* timer is a remedy that cannot clear
+// the warning it is printed with -- the same defect this check was fixed for
+// once already, when it walked the removal superset and told operators to
+// repair units their machine was never meant to have.
+func TestTheUnitRemedyDoesNotOfferBackupAdviceForAnotherTimer(t *testing.T) {
+	h := newHarness(t)
+	inst := h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+	ctx := context.Background()
+
+	inst.Update.Channel = "oci://registry.example/demo/bundle:stable"
+	inst.Update.Check = true
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo", UpdateTimer: true})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
+	require.NoError(t, h.Supervisor.Disable(ctx, "demo-update.timer"))
+
+	report, err := ops.Doctor(ctx, h.Deps)
+	require.NoError(t, err)
+	got := findResult(t, report, "system.units")
+	require.Equal(t, string(events.CheckWarn), got.Status, got.Message)
+	require.Contains(t, got.Message, "demo-update.timer: not enabled")
+	assert.NotContains(t, got.Remedy, "backup.scheduled",
+		"an operator whose update timer is off was told to turn off scheduled backups")
+	assert.Contains(t, got.Remedy, "systemctl status",
+		"the general remedy was dropped along with the backup-specific one")
 }
 
 // The declaration survives the command that rebuilds an installation.

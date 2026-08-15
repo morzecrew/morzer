@@ -98,6 +98,17 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 		if err := validateUnitName(u.Name); err != nil {
 			return err
 		}
+		// Only a definite absence counts as fresh. A Stat that fails
+		// some other way -- a permission the manager lost, a directory
+		// that turned into a file -- leaves the unit treated as
+		// pre-existing, so a reconciliation does not enable it.
+		//
+		// That is the safe direction of the two. Guessing "fresh" would
+		// have an unreadable filesystem re-enable units on every run,
+		// which is the behaviour this change exists to remove, arriving
+		// through an error path nobody would look at. Guessing
+		// "existing" leaves a unit unenabled, which `doctor` reports and
+		// `init --repair` fixes.
 		if _, err := os.Stat(filepath.Join(s.unitDir, u.Name)); os.IsNotExist(err) {
 			fresh[u.Name] = true
 		}
@@ -321,6 +332,19 @@ type UnitParams struct {
 	// forgets this field gets scheduled backups, which is the direction a
 	// forgotten field must fall.
 	SkipBackupTimer bool
+}
+
+// unitSpec is one unit to render: its name, its template, the description that
+// goes in it, and whether it is enabled at boot.
+//
+// A named type because the alternative was the same four-field anonymous struct
+// written out five times, once per conditional block, with the field list
+// repeated in full each time.
+type unitSpec struct {
+	name   string
+	tmpl   string
+	desc   string
+	enable bool
 }
 
 // ServiceUnitName and friends derive unit names from the product.
@@ -548,12 +572,7 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 		p.Description = p.Product + " (managed by morzer)"
 	}
 
-	specs := []struct {
-		name   string
-		tmpl   string
-		desc   string
-		enable bool
-	}{
+	specs := []unitSpec{
 		{ServiceUnitName(p.Product), serviceTemplate, p.Description, true},
 	}
 
@@ -567,65 +586,35 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	// that reads its spec rather than the installation.
 	if !p.SkipBackupTimer {
 		specs = append(specs,
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{BackupServiceUnitName(p.Product), backupServiceTemplate,
+			unitSpec{BackupServiceUnitName(p.Product), backupServiceTemplate,
 				p.Product + " backup", false},
 			// The timer is enabled, not the backup service: enabling
 			// a oneshot service would run it at every boot.
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{BackupTimerUnitName(p.Product), backupTimerTemplate,
+			unitSpec{BackupTimerUnitName(p.Product), backupTimerTemplate,
 				p.Product + " scheduled backup", true},
 		)
 	}
 
 	if p.UpdateTimer {
 		specs = append(specs,
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{UpdateServiceUnitName(p.Product), updateServiceTemplate,
+			unitSpec{UpdateServiceUnitName(p.Product), updateServiceTemplate,
 				p.Product + " update check", false},
 			// The timer is enabled, not the service, for the same
 			// reason the backup pair is: enabling a oneshot would
 			// run it at every boot.
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{UpdateTimerUnitName(p.Product), updateTimerTemplate,
+			unitSpec{UpdateTimerUnitName(p.Product), updateTimerTemplate,
 				p.Product + " scheduled update check", true},
 		)
 	}
 
 	if p.FleetTimer {
 		specs = append(specs,
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{FleetServiceUnitName(p.Product), fleetServiceTemplate,
+			unitSpec{FleetServiceUnitName(p.Product), fleetServiceTemplate,
 				p.Product + " fleet row", false},
 			// The timer is enabled and the service is not, which is the
 			// third time this file says so and the third time it is
 			// load-bearing: enabling a oneshot runs it at every boot.
-			struct {
-				name   string
-				tmpl   string
-				desc   string
-				enable bool
-			}{FleetTimerUnitName(p.Product), fleetTimerTemplate,
+			unitSpec{FleetTimerUnitName(p.Product), fleetTimerTemplate,
 				p.Product + " scheduled fleet publish", true},
 		)
 	}

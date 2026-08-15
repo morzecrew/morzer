@@ -318,12 +318,22 @@ func installationDifferences(onDisk, recorded domain.Installation) []string {
 
 // policyEqual compares field by field, because Policy holds a slice and is not
 // comparable with ==.
+//
+// **Every field, and a test enforces it.** This list is what decides whether an
+// operator is told their hand-edit did nothing, so a field missing from it is a
+// silent "in step with the recorded state" over a file that disagrees -- which
+// is the exact failure the check exists to report. Two fields were missing when
+// this was written: `BackupSchedule`, the most hand-editable line in the file,
+// and `SkipScheduledBackups`, which arrived with it. `TestPolicyDriftComparesEveryField`
+// fails when the next one is added without a line here.
 func policyEqual(a, b domain.Policy) bool {
 	return a.RequireSignature == b.RequireSignature &&
 		a.RetainReleases == b.RetainReleases &&
 		a.RetainBackups == b.RetainBackups &&
 		a.SkipBackupBeforeUpdate == b.SkipBackupBeforeUpdate &&
 		a.StaleBackupAfter == b.StaleBackupAfter &&
+		a.BackupSchedule == b.BackupSchedule &&
+		a.SkipScheduledBackups == b.SkipScheduledBackups &&
 		strings.Join(a.SigningKeys, ",") == strings.Join(b.SigningKeys, ",")
 }
 
@@ -1221,6 +1231,33 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				expected[u.Name] = u
 			}
 
+			// Which of them the declaration would take away, asked
+			// rather than assumed: this layer does not know what a
+			// supervisor calls its backup timer, and the difference
+			// between the two unit sets answers without it learning.
+			//
+			// It exists for the remedy line alone. An error here
+			// leaves the map empty, which costs a sentence of advice
+			// and nothing else -- the same call already failed loudly
+			// above if it was going to.
+			declarable := map[string]bool{}
+			backupTimerOff := false
+			if !inst.Policy.SkipScheduledBackups {
+				params := d.unitParams(inst)
+				params.SkipBackupTimer = true
+				if without, err := d.Supervisor.Units(params); err == nil {
+					remaining := make(map[string]bool, len(without))
+					for _, u := range without {
+						remaining[u.Name] = true
+					}
+					for name := range expected {
+						if !remaining[name] {
+							declarable[name] = true
+						}
+					}
+				}
+			}
+
 			for _, name := range d.Supervisor.ManagedUnitNames(inst.Product) {
 				state, err := d.Supervisor.Status(ctx, name)
 				if err != nil {
@@ -1245,6 +1282,15 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				// happen until they need the one that did not.
 				if wanted && want.Enable && !state.Enabled {
 					problems = append(problems, name+": not enabled")
+					// Which unit it was, because the remedy
+					// differs: only the backup pair has a
+					// declarative way to be switched off for
+					// good, and offering that to somebody
+					// whose *update* timer is disabled is
+					// advice that would not work.
+					if declarable[name] {
+						backupTimerOff = true
+					}
 				}
 				// A unit that is *there* and failing is reported whether
 				// or not this installation wants it: an orphan left by a
@@ -1271,11 +1317,21 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				// one who did not needs the repair. A warning with
 				// only the second is a warning that fires for ever
 				// at somebody who was right.
-				return preflight.Warn(
-					"run `morzer init --repair --install-units` to switch them back on, "+
-						"or `morzer config set backup.scheduled=false` if this machine's "+
-						"backups are handled elsewhere",
-					"%s", strings.Join(problems, "; "))
+				//
+				// The declarative half appears only when the unit
+				// that is switched off is one the declaration would
+				// remove. Offering it for a disabled update timer
+				// would be a remedy that cannot clear the warning
+				// it is printed beside, which is the defect this
+				// check has already been fixed for once.
+				remedy := "run `morzer init --repair --install-units`, " +
+					"or inspect with `systemctl status`"
+				if backupTimerOff {
+					remedy = "run `morzer init --repair --install-units` to switch " +
+						"it back on, or `morzer config set backup.scheduled=false` " +
+						"if this machine's backups are handled elsewhere"
+				}
+				return preflight.Warn(remedy, "%s", strings.Join(problems, "; "))
 			}
 			return preflight.OK("all units loaded")
 		},

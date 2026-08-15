@@ -268,7 +268,7 @@ the manager is not asserting that backups happen elsewhere — it is declining t
 assert that they do not, on the strength of a declaration the operator wrote and
 it can read.
 
-**`backup.on-target` deliberately does not honour it.** The declaration says no
+**`backup.target-freshness` deliberately does not honour it.** The declaration says no
 backups are *scheduled*; it does not say none are taken. A backup that exists
 and is on no target is still every copy of the data sitting on one machine, and
 that is worth saying however the backup was started.
@@ -292,7 +292,7 @@ line says both.
 - Through the lifecycle: `systemctl disable` survives a `config set`, and
   `init --repair` re-enables. These are the two sentences §3.1 measured false.
 - The declaration removes both units, `init --repair` reproduces it, and
-  `backup.freshness` stops warning while `backup.on-target` does not.
+  `backup.freshness` stops warning while `backup.target-freshness` does not.
 
 ## 10. Docs
 
