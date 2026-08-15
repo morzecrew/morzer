@@ -767,3 +767,37 @@ func TestAKeyThatNamesADirectoryIsNotAVerdict(t *testing.T) {
 		"a directory named as a key produced a verdict about the archive")
 	assert.NotEqual(t, domain.Unverifiable, read.Signature.Result.Outcome)
 }
+
+// Re-audit of the bounding fix: the fix itself lost the refusal's shape.
+//
+// Returning the bare not-exist sentinel is what lets a missing `.minisig` read
+// as an ordinary state, and passing that same error straight out of the command
+// put `stat ...: no such file or directory` in front of an operator who had
+// mistyped a filename.
+func TestAMissingArchiveIsAUsageError(t *testing.T) {
+	h := signingSupportHarness(t)
+
+	_, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: filepath.Join(t.TempDir(), "nope.tar.zst")})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "there is no file at",
+		"a mistyped filename surfaced a raw stat error")
+	assert.NotEmpty(t, domain.AsError(err).Hint)
+}
+
+// A path that is not a regular file is refused before it is read.
+//
+// `Stat` follows symlinks, so a character device reports a size of zero: the
+// size bound passes and the read never returns. Found by re-reading the fix
+// that added the size bound.
+func TestSomethingThatIsNotAFileIsRefused(t *testing.T) {
+	h := signingSupportHarness(t)
+
+	link := filepath.Join(t.TempDir(), "archive.tar.zst")
+	require.NoError(t, os.Symlink("/dev/zero", link))
+
+	_, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: link})
+	require.Error(t, err, "a symlink to a character device was read")
+	assert.Contains(t, domain.AsError(err).Message, "not a regular file")
+}

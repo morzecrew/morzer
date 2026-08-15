@@ -191,6 +191,15 @@ func SupportInspect(
 	}
 
 	body, err := readBoundedFile(opts.Path, maxInspectArchive)
+	if errors.Is(err, os.ErrNotExist) {
+		// Translated here rather than in the helper, because the two
+		// callers mean different things by "absent": an archive that is
+		// not there is the operator's typo, and a signature that is not
+		// there is an ordinary state. Returning the sentinel from the
+		// helper is what lets each say so.
+		return SupportInspectReport{}, domain.Usage("there is no file at %s", opts.Path).
+			WithHint("name the archive `morzer support bundle` wrote")
+	}
 	if err != nil {
 		return SupportInspectReport{}, err
 	}
@@ -293,8 +302,14 @@ func readBoundedFile(path string, limit int64) ([]byte, error) {
 		return nil, err
 	case err != nil:
 		return nil, domain.Usage("cannot read %s: %s", path, domain.AsError(err).Message)
-	case info.IsDir():
-		return nil, domain.Usage("%s is a directory, not a file", path)
+	case !info.Mode().IsRegular():
+		// Not merely "is a directory". `Stat` follows symlinks, so a
+		// path pointing at a character device reports a size of zero and
+		// then reads forever -- the size check would pass and
+		// `os.ReadFile` would never return. Anything that is not a
+		// regular file is refused, which is the same rule the archive
+		// extractor applies to entries.
+		return nil, domain.Usage("%s is not a regular file", path)
 	case info.Size() > limit:
 		return nil, domain.Usage("%s is %d bytes, past the %d this will read",
 			path, info.Size(), limit)
