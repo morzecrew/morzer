@@ -34,46 +34,8 @@ func supportDoc(d *ui.Doc, r ops.SupportReport) *ui.Doc {
 		d.Title(fmt.Sprintf("%d component(s), %s", len(r.Entries), humanBytes(r.TotalBytes)))
 	}
 
-	rows := make([][]string, 0, len(r.Entries))
-	for _, e := range r.Entries {
-		rows = append(rows, []string{
-			e.Name,
-			e.Title,
-			humanBytes(e.Bytes),
-			// Always a number, never a blank. A column that is empty
-			// when nothing was scrubbed reads as "not checked" on the
-			// one file where the difference matters.
-			fmt.Sprintf("%d", e.Redactions),
-		})
-	}
-	d.Table(2, ui.Table{
-		Columns: []ui.Column{
-			{Header: "file", Essential: true},
-			{Header: "component", Essential: true},
-			{Header: "size", Essential: true},
-			{Header: "redactions"},
-		},
-		Rows:  rows,
-		Empty: "nothing collected",
-	})
-
-	// Omissions are printed, always, and below the table rather than
-	// folded into it: a component that is missing is not a row with a zero
-	// in it, and an operator deciding whether this archive answers the
-	// question they were asked needs to see the gaps as gaps.
-	if len(r.Omitted) > 0 {
-		omitted := make([][]string, 0, len(r.Omitted))
-		for _, o := range r.Omitted {
-			omitted = append(omitted, []string{o.Name, o.Reason})
-		}
-		d.Table(2, ui.Table{
-			Columns: []ui.Column{
-				{Header: "not collected", Essential: true},
-				{Header: "why", Essential: true},
-			},
-			Rows: omitted,
-		})
-	}
+	writeSupportEntries(d, r.Entries, "nothing collected")
+	writeSupportOmissions(d, r.Omitted)
 
 	if r.Path != "" {
 		// Verbatim rather than a field, because this value exists to be
@@ -135,6 +97,60 @@ func supportDoc(d *ui.Doc, r ops.SupportReport) *ui.Doc {
 		d.Text(2, "this archive is unsigned")
 	}
 	return d
+}
+
+// writeSupportEntries renders the component table.
+//
+// One function, called by `support bundle` and by `support inspect`, because
+// the two are describing the same archive to two people who are about to
+// compare notes across a ticket. A column that meant something else on one of
+// those screens is the failure this exists to prevent -- and it was a real
+// risk, not a hypothetical: the second copy was written before this was
+// extracted, and the comment above it already claimed the reuse this now does.
+func writeSupportEntries(d *ui.Doc, entries []ops.SupportEntry, empty string) {
+	rows := make([][]string, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, []string{
+			e.Name,
+			e.Title,
+			humanBytes(e.Bytes),
+			// Always a number, never a blank. A column that is empty
+			// when nothing was scrubbed reads as "not checked" on the
+			// one file where the difference matters.
+			fmt.Sprintf("%d", e.Redactions),
+		})
+	}
+	d.Table(2, ui.Table{
+		Columns: []ui.Column{
+			{Header: "file", Essential: true},
+			{Header: "component", Essential: true},
+			{Header: "size", Essential: true},
+			{Header: "redactions"},
+		},
+		Rows:  rows,
+		Empty: empty,
+	})
+}
+
+// writeSupportOmissions prints the gaps, always, and below the table rather
+// than folded into it: a component that is missing is not a row with a zero in
+// it, and an operator deciding whether this archive answers the question they
+// were asked needs to see the gaps as gaps.
+func writeSupportOmissions(d *ui.Doc, omitted []ops.SupportOmission) {
+	if len(omitted) == 0 {
+		return
+	}
+	rows := make([][]string, 0, len(omitted))
+	for _, o := range omitted {
+		rows = append(rows, []string{o.Name, o.Reason})
+	}
+	d.Table(2, ui.Table{
+		Columns: []ui.Column{
+			{Header: "not collected", Essential: true},
+			{Header: "why", Essential: true},
+		},
+		Rows: rows,
+	})
 }
 
 // humanBytes renders a size an operator can weigh against an email attachment

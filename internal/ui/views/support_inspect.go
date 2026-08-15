@@ -12,12 +12,13 @@ import (
 
 // `support inspect`'s view (RFC 0024 P4b).
 //
-// The listing half reuses the bundle's own table function, so an archive
+// The listing half calls the bundle view's own table functions, so an archive
 // described by the machine that wrote it and the same archive described by
 // whoever received it cannot be described differently. That is not tidiness:
 // the two readers are comparing notes across a ticket, and a column that meant
-// something else on one of the two screens is the failure this shares code to
-// avoid.
+// something else on one of the two screens is the failure sharing the code
+// avoids. (This comment claimed the sharing before the sharing existed --
+// found by the self-audit, along with the copy it was describing.)
 //
 // The verification half is where the care goes, because it is the half a reader
 // will take a verdict from.
@@ -47,39 +48,8 @@ func inspectSupportDoc(d *ui.Doc, r ops.SupportInspectReport) *ui.Doc {
 		{Label: "written by", Value: r.ManagerVersion},
 	})
 
-	rows := make([][]string, 0, len(r.Entries))
-	for _, e := range r.Entries {
-		rows = append(rows, []string{
-			e.Name,
-			e.Title,
-			humanBytes(e.Bytes),
-			fmt.Sprintf("%d", e.Redactions),
-		})
-	}
-	d.Table(2, ui.Table{
-		Columns: []ui.Column{
-			{Header: "file", Essential: true},
-			{Header: "component", Essential: true},
-			{Header: "size", Essential: true},
-			{Header: "redactions"},
-		},
-		Rows:  rows,
-		Empty: "nothing in it",
-	})
-
-	if len(r.Omitted) > 0 {
-		omitted := make([][]string, 0, len(r.Omitted))
-		for _, o := range r.Omitted {
-			omitted = append(omitted, []string{o.Name, o.Reason})
-		}
-		d.Table(2, ui.Table{
-			Columns: []ui.Column{
-				{Header: "not collected", Essential: true},
-				{Header: "why", Essential: true},
-			},
-			Rows: omitted,
-		})
-	}
+	writeSupportEntries(d, r.Entries, "nothing in it")
+	writeSupportOmissions(d, r.Omitted)
 
 	d.Blank()
 	inspectSignature(d, r.Signature)
