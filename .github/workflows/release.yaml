@@ -44,6 +44,18 @@ jobs:
       - name: Refuse a tag that is not on main
         run: .github/scripts/ensure-tag-on-main.sh
 
+      # Beside that refusal and for the same reason: before anything is built,
+      # not after. A tag whose version has no changelog section costs a re-run
+      # here, and a published release with the wrong notes costs a re-release.
+      - name: Build the release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          .github/scripts/release-notes.sh > "${RUNNER_TEMP}/release-notes.md"
+          echo "RELEASE_NOTES=${RUNNER_TEMP}/release-notes.md" >> "$GITHUB_ENV"
+          echo "::group::release notes"
+          cat "${RUNNER_TEMP}/release-notes.md"
+          echo "::endgroup::"
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -70,6 +82,8 @@ jobs:
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
           version: '~> v2'
-          args: release --clean ${{ env.MINISIGN_KEY_FILE == '' && '--skip=sign' || '' }}
+          args: >-
+            release --clean --release-notes=${{ env.RELEASE_NOTES }}
+            ${{ env.MINISIGN_KEY_FILE == '' && '--skip=sign' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
