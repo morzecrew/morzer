@@ -189,11 +189,13 @@ Stated here rather than discovered during an incident:
   lost between writing a statement and pushing it takes that statement with it;
   `morzer doctor` reports statements that are still only local, and `morzer
   attest push` sends them.
-- A support bundle's redaction count is a smaller claim than it looks. Zero
-  replacements in a file means no value this installation *currently* holds
-  appeared in it — not that the file is clean. A secret that was rotated away,
-  or one that was never declared to the manager, is not something it can
-  recognise.
+- Redaction is bounded by what the manager knows. A support bundle reports zero
+  replacements in a file when no value this installation *currently* holds
+  appeared in it — which is not the same as the file being clean, because a
+  secret that was rotated away, or one that was never declared to the manager,
+  is not something it can recognise. The same bound applies to the text a
+  failing step contributes to an attestation, and that artifact is pushed off
+  the machine automatically.
 - A fleet row cannot be authenticated without a roster. Rows from several
   machines share one prefix, so a machine that overwrites its neighbour's row
   rewrites the payload, the embedded key and the signature together, and the
