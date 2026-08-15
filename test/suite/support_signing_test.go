@@ -642,3 +642,87 @@ func writeTarZstByHand(t *testing.T, path string, entries [][2]string) {
 	require.NoError(t, zw.Close())
 	require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o600))
 }
+
+// ----------------------------------------------------------------------------
+// Detection branches: the code that only runs when something is already wrong.
+
+// A `meta.json` past the bound is refused rather than read, which is the branch
+// that only executes when an archive is hostile or broken.
+func TestAnOversizedIndexIsRefused(t *testing.T) {
+	h := signingSupportHarness(t)
+
+	// Just past the 8 MiB the reader will take. Built by hand because the
+	// production writer will never produce one.
+	huge := `{"product":"demo","installation_id":"x","entries":[],"pad":"` +
+		strings.Repeat("a", 8<<20) + `"}`
+	path := filepath.Join(t.TempDir(), "huge.tar.zst")
+	writeTarZstByHand(t, path, [][2]string{{"meta.json", huge}})
+
+	_, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: path})
+	require.Error(t, err, "an index past the bound was read anyway")
+	assert.Contains(t, domain.AsError(err).Message, "past the")
+}
+
+// An archive with no index is not a support bundle, and the refusal says which
+// of the two problems it is rather than quoting a decoder.
+func TestAnArchiveWithNoIndexIsRefused(t *testing.T) {
+	h := signingSupportHarness(t)
+	path := filepath.Join(t.TempDir(), "other.tar.zst")
+	writeTarZstByHand(t, path, [][2]string{{"readme.txt", "not a bundle"}})
+
+	_, err := ops.SupportInspect(context.Background(), h.Deps,
+		ops.SupportInspectOptions{Path: path})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "no meta.json")
+}
+
+// A `--key` file with nothing in it is the operator's mistake, and it is
+// reported as one -- the listing still prints, because the archive is fine and
+// only the check did not happen.
+func TestAnEmptyKeyFileLeavesTheSignatureUnchecked(t *testing.T) {
+	producer := signingSupportHarness(t)
+	written := bundleInto(t, producer, t.TempDir())
+
+	empty := filepath.Join(t.TempDir(), "empty.pub")
+	require.NoError(t, os.WriteFile(empty, []byte("   \n\n"), 0o600))
+
+	vendor := newHarness(t)
+	vendor.Deps.Checker = signer.NewChecker()
+
+	read, err := ops.SupportInspect(context.Background(), vendor.Deps,
+		ops.SupportInspectOptions{Path: written.Path, ExpectedKey: empty})
+	require.NoError(t, err, "an unusable --key failed the whole command")
+
+	assert.NotEmpty(t, read.Entries, "the listing was withheld over a key problem")
+	assert.Equal(t, ops.SignatureSourceNone, read.Signature.Source,
+		"an unusable --key produced a verdict")
+}
+
+// A build with no signature checker answers "not checked" rather than
+// "unverifiable", which would name a finding that nothing established.
+func TestABuildWithNoCheckerSaysItDidNotCheck(t *testing.T) {
+	producer := signingSupportHarness(t)
+	written := bundleInto(t, producer, t.TempDir())
+
+	reader := signingSupportHarness(t)
+	reader.Deps.Checker = nil
+
+	read, err := ops.SupportInspect(context.Background(), reader.Deps,
+		ops.SupportInspectOptions{Path: written.Path, ExpectedKey: written.SigningKey})
+	require.NoError(t, err)
+
+	assert.True(t, read.Signature.Present)
+	assert.Equal(t, ops.SignatureSourceNone, read.Signature.Source)
+	assert.NotEqual(t, domain.Unverifiable, read.Signature.Result.Outcome,
+		"a build that cannot check reported the archive as unverifiable, "+
+			"which is a finding about the archive rather than about the build")
+}
+
+// No path at all is a usage error naming the shape of the command.
+func TestInspectWithNoPathSaysWhatToType(t *testing.T) {
+	h := signingSupportHarness(t)
+	_, err := ops.SupportInspect(context.Background(), h.Deps, ops.SupportInspectOptions{})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Hint, "support inspect")
+}
