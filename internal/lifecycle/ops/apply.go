@@ -39,15 +39,13 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	// The release this deployment is already running, which is the only
-	// honest baseline for an installation created before schema 10. See
-	// adoptRuntimeOptions -- and note it is the *current* release here, not
-	// a candidate: adopting from what is being introduced would record the
-	// change as the baseline and defeat the refusal on the one operation
-	// that needs it.
-	if inst, err = d.adoptRuntimeOptions(ctx, inst, rel, opts.DryRun); err != nil {
-		return Result{}, err
-	}
+	// What this deployment is running under, carried on the in-memory copy
+	// so every later check -- including the one inside runtimeConfig -- asks
+	// the same question the refusal below asked. `apply` converges the
+	// release it is already on, so the baseline and the candidate are the
+	// same manifest and this can only refuse a hand-edited record.
+	baseline := runtimeBaseline(inst, rel)
+	inst.RuntimeOptions = baseline
 	if err := d.refuseRuntimeOptionChange(inst, rel); err != nil {
 		return Result{}, err
 	}
@@ -74,6 +72,13 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeApply, opts, func(ctx context.Context) error {
+		// Under the lock, because it is a read-modify-write of a record
+		// `config set` and `init --repair` also write.
+		if !opts.DryRun {
+			if err := d.persistRuntimeBaseline(ctx, baseline); err != nil {
+				return err
+			}
+		}
 		// Re-checked under the lock: with --wait, another process can
 		// journal a wreck between the early check and this acquisition,
 		// then die -- and the whole point of the gate is not driving

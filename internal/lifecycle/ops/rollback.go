@@ -71,9 +71,13 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	}
 	// From the release being rolled *off*, for the reason update takes it
 	// from the one being updated *from*: the target is what might differ.
-	if inst, err = d.adoptRuntimeOptions(ctx, inst, currentRel, opts.DryRun); err != nil {
-		return Result{}, err
-	}
+	//
+	// Derived rather than written here, so a `--dry-run` compares the same
+	// baseline the real rollback will. Skipping the derivation on a plan left
+	// the comparison with nothing to compare, and the plan reported a
+	// rollback that would then be refused.
+	baseline := runtimeBaseline(inst, currentRel)
+	inst.RuntimeOptions = baseline
 
 	previousRel, err := release.Load(previous.Root)
 	if err != nil {
@@ -134,6 +138,13 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeRollback, opts.Options, func(ctx context.Context) error {
+		// Under the lock, because it is a read-modify-write of a record
+		// `config set` and `init --repair` also write.
+		if !opts.DryRun {
+			if err := d.persistRuntimeBaseline(ctx, baseline); err != nil {
+				return err
+			}
+		}
 		// Re-checked under the lock; see the same recheck in Apply.
 		if err := d.gateUnfinished(ctx, ""); err != nil {
 			return err

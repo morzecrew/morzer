@@ -622,45 +622,55 @@ func (d *Deps) drivesRuntime(inst domain.Installation) (drives string, ok bool) 
 	return have, inst.RuntimeName() == have
 }
 
-// adoptRuntimeOptions records what an installation created before schema 10 is
-// actually running under.
+// runtimeBaseline resolves what this installation is running under: the options
+// it recorded, or -- for one created before schema 10, which recorded none --
+// the ones the release it is currently running declares.
 //
-// The migration could not do this: it runs on a state file with no release in
-// hand, and writing an empty map there would be a claim -- "this deployment
-// declared no options" -- that the next release to set one would be refused
-// against. So the baseline is written by the first operation that knows both
-// halves, and what it writes is the release the deployment is already running,
-// which is the only honest answer available.
+// Derived and persisted separately, and the split is the point. Three findings
+// came out of doing both at once. A plan must not write, so a dry run that
+// skipped the write also skipped the baseline and then accepted a target it
+// would refuse for real. The write happened before the deployment lock, so it
+// could clobber a concurrent `config set`. And a release that could not be
+// resolved silently produced *no* baseline, which reads as "created before
+// schema 10" and waves the change through -- on the update path, which is how a
+// rename actually arrives.
 //
-// Only where a deployment is converged, never from a read path: `doctor` and
-// `status` resolve the same pair and must not write state to answer a question.
-// The consequence is that an installation nobody applies stays unprotected, and
-// that is the right shape -- nothing has changed underneath it either.
-func (d *Deps) adoptRuntimeOptions(
-	ctx context.Context, inst domain.Installation, rel domain.Release, dryRun bool,
-) (domain.Installation, error) {
+// So this answers the question and nothing else. `running` is the release the
+// deployment is on, never the one being introduced: adopting from a candidate
+// would record the change as the baseline and refuse nothing.
+func runtimeBaseline(inst domain.Installation, running domain.Release) map[string]string {
 	if inst.RuntimeOptions != nil {
-		return inst, nil
+		return inst.RuntimeOptions
 	}
-	// A plan writes nothing, including this. It is a one-line exception and
-	// it was a defect first: `morzer apply --dry-run` on a machine created
-	// before schema 10 recorded the baseline and reported that it had
-	// changed nothing.
-	if dryRun {
-		return inst, nil
-	}
-	declared, _ := rel.Manifest.DeclaredRuntimes()
+	declared, _ := running.Manifest.DeclaredRuntimes()
 
-	adopted := map[string]string{}
+	baseline := map[string]string{}
 	for key, value := range declared[inst.RuntimeName()].Options {
-		adopted[key] = value
+		baseline[key] = value
 	}
-	inst.RuntimeOptions = adopted
+	return baseline
+}
 
-	if err := d.saveInstallation(ctx, inst); err != nil {
-		return domain.Installation{}, err
+// persistRuntimeBaseline writes a derived baseline into installation state.
+//
+// Called under the deployment lock and nowhere else, because it is a
+// read-modify-write of a record other operations also write: `config set` and
+// `init --repair` change fields this one does not, and a save built on a copy
+// read minutes earlier would put them back as they were.
+//
+// Re-reads under the lock and writes only when the field is still absent, so
+// two operations racing to adopt the same installation agree rather than
+// overwrite. Never called on a dry run: a plan that writes is not a plan.
+func (d *Deps) persistRuntimeBaseline(ctx context.Context, baseline map[string]string) error {
+	inst, err := d.State.LoadInstallation(ctx)
+	if err != nil {
+		return err
 	}
-	return inst, nil
+	if inst.RuntimeOptions != nil {
+		return nil
+	}
+	inst.RuntimeOptions = baseline
+	return d.saveInstallation(ctx, inst)
 }
 
 // refuseRuntimeOptionChange is checkRuntimeOptions asked about a whole release,

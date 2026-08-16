@@ -60,13 +60,22 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// An installation created before schema 10 has no recorded options, and
 	// an update is exactly the operation that can change them -- so the
 	// baseline has to be taken from what is installed, while it still is.
-	if !from.IsZero() {
-		if rel, relErr := d.resolveCurrentRelease(ctx, from); relErr == nil {
-			if inst, err = d.adoptRuntimeOptions(ctx, inst, rel, opts.DryRun); err != nil {
-				return Result{}, err
-			}
+	//
+	// **The resolution error is returned, not skipped.** Skipping it left
+	// the baseline nil, which reads as "created before schema 10" and waves
+	// any change through -- so an installation whose release tree had been
+	// pruned or damaged was the one case where a renamed project could still
+	// take a deployment's volumes away from it. Reproduced, then fixed:
+	// TestAnUpdateWithNoResolvableBaselineIsRefused.
+	baseline := inst.RuntimeOptions
+	if baseline == nil && !from.IsZero() {
+		running, relErr := d.resolveCurrentRelease(ctx, from)
+		if relErr != nil {
+			return Result{}, relErr
 		}
+		baseline = runtimeBaseline(inst, running)
 	}
+	inst.RuntimeOptions = baseline
 
 	source, staged, cleanup, err := d.resolveUpdateTarget(ctx, opts)
 	// Whatever had to be brought down to read the bundle is scratch, and
@@ -109,6 +118,13 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeUpdate, opts.Options, func(ctx context.Context) error {
+		// Under the lock, because it is a read-modify-write of a record
+		// `config set` and `init --repair` also write.
+		if !opts.DryRun {
+			if err := d.persistRuntimeBaseline(ctx, baseline); err != nil {
+				return err
+			}
+		}
 		// Re-checked under the lock; see the same rechecks in Apply.
 		var err error
 		if opts.Resume {

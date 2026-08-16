@@ -142,11 +142,12 @@ func TestAnUpdateThatRenamesTheProjectIsRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "project")
 	assert.Equal(t, domain.ExitIncompatible, domain.ExitCode(err))
 
-	// And the baseline it adopted is the release it is running, never the
-	// one that was refused.
+	// A refused operation writes nothing, including the baseline it derived
+	// to refuse with. The derivation is in memory; only an operation that
+	// reaches its lock records it.
 	after, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "demo", after.RuntimeOptions["project"])
+	assert.Nil(t, after.RuntimeOptions, "a refusal before the lock must leave state untouched")
 
 	current, err := h.Deps.State.CurrentRelease(ctx)
 	require.NoError(t, err)
@@ -182,4 +183,72 @@ func renameProjectIn(t *testing.T, bundleRoot, project string) {
 	rewritten := strings.Replace(string(data), "  project: demo\n", "  project: "+project+"\n", 1)
 	require.NotEqual(t, string(data), rewritten, "the fixture must carry a project line to rewrite")
 	require.NoError(t, os.WriteFile(path, []byte(rewritten), 0o644))
+}
+
+// The baseline for an installation created before schema 10 comes from the
+// release it is running, so an unreadable one leaves the comparison with
+// nothing to compare. That case used to be skipped silently -- and it is the
+// one where a renamed project could still take a deployment's volumes away,
+// because "no baseline" reads exactly like "created before the field".
+//
+// Reported by two reviewers on PR #52, reproduced red before the fix.
+func TestAnUpdateWithNoResolvableBaselineIsRefused(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	// Back to a pre-schema-10 record, then break the release it is running.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.RuntimeOptions = nil
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	live := filepath.Join(h.Paths.ReleasesDir(), "1.2.0")
+	require.NoError(t, os.Remove(filepath.Join(live, "manifest.yaml")))
+
+	src := stageUpgradeSource(t, h)
+	renameProjectIn(t, src, "renamed")
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err, "an update with no resolvable baseline must not rename the project")
+	// The refusal names the release it could not read, which is the thing an
+	// operator has to fix; the project is not their problem yet.
+	assert.Contains(t, err.Error(), "1.2.0")
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String(), "nothing may have moved")
+}
+
+// A rollback plan compares the same baseline the rollback will, so it cannot
+// report a target that the real operation then refuses. The derivation used to
+// be skipped on a dry run along with the write, which left nothing to compare
+// against and made every target look acceptable.
+func TestARollbackPlanRefusesWhatTheRollbackWouldRefuse(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	src := stageUpgradeSource(t, h)
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+
+	// The release now running declares a project the previous one does not,
+	// which is what a rollback would move away from. Recorded directly,
+	// since what matters is that the plan and the operation agree.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.RuntimeOptions = map[string]string{"project": "was-renamed"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	_, planErr := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{Options: ops.Options{DryRun: true}})
+	_, runErr := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+
+	require.Error(t, planErr, "the plan must refuse what the rollback refuses")
+	require.Error(t, runErr)
+	assert.Contains(t, planErr.Error(), "project")
 }

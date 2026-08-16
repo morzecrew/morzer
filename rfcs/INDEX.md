@@ -37,8 +37,8 @@ second table of the same shape is a second set of rows for the same numbers.
   every volume of any deployment whose project was not its product name.
   Runtimes now take an opaque `options` map, the installation records what it
   was created with and refuses a release that changes it, and
-  `COMPOSE_PROJECT` is supplied by the runtime rather than promised by the core
-  hook ABI. The leak inventory is **17**, down from 19 at P1. What remains is
+  `<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime rather than promised by
+  the core hook ABI. The leak inventory is **17**, down from 19 at P1. What remains is
   that `runtime:` is deprecated and nothing warns — no mechanism exists for
   deprecating a *field* (D-017).
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
