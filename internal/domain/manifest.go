@@ -689,8 +689,20 @@ func (m *Manifest) Validate() error {
 		}
 	}
 
+	// Computed before the providers block below, which needs to know how
+	// many runtimes are declared to know whether one name can be true.
+	declaredRuntimes, fromLegacy := m.DeclaredRuntimes()
+
 	// providers
-	if m.Providers.Runtime.Name == "" {
+	//
+	// Required only where a single value can be true. ApplyDefaults derives
+	// this field from a single declared runtime and deliberately leaves it
+	// empty for a release declaring two, because no one name is honest about
+	// the other -- so requiring it unconditionally made every two-runtime
+	// manifest unvalidatable, and the shape decision 8 settled unreachable.
+	// The field stays required for the single-runtime case, where it is what
+	// it has always been.
+	if m.Providers.Runtime.Name == "" && len(declaredRuntimes) != 2 {
 		v.add("providers.runtime.name", "is required")
 	}
 
@@ -705,7 +717,6 @@ func (m *Manifest) Validate() error {
 		v.add("runtimes", "cannot be used together with the deprecated `runtime:` block; "+
 			"move the files under `runtimes."+LegacyRuntimeName+".files` and delete `runtime:`")
 	}
-	declaredRuntimes, fromLegacy := m.DeclaredRuntimes()
 	if len(declaredRuntimes) == 0 {
 		// Both spellings named, because with nothing declared there is
 		// no signal for which one the vendor is writing -- and the
@@ -716,6 +727,16 @@ func (m *Manifest) Validate() error {
 	}
 	for _, name := range declaredRuntimes.Names() {
 		decl := declaredRuntimes[name]
+		// An empty key is the sharp one. It validates, `runtimeForRelease`
+		// records "", and `Installation.RuntimeName` reads "" as the
+		// legacy runtime -- so a release that declared something else
+		// entirely installs as Compose, and every later message agrees
+		// with the wrong answer. Named as a key rather than a value,
+		// because that is what the vendor has to go and find.
+		if strings.TrimSpace(name) == "" {
+			v.add("runtimes", "declares a runtime with an empty name")
+			continue
+		}
 		// The field path a vendor can search for in their own file.
 		base := "runtimes." + name
 		if fromLegacy {

@@ -226,3 +226,59 @@ func TestARuntimesOnlyReleaseSurvivesDefaultingAndValidation(t *testing.T) {
 	assert.False(t, fromLegacy)
 	assert.Equal(t, []string{"compose"}, declared.Names())
 }
+
+// A two-runtime manifest must survive its own defaulting.
+//
+// ApplyDefaults leaves `providers.runtime.name` empty for a release declaring
+// two runtimes, and Validate required it unconditionally -- so the shape
+// decision 8 settled could not validate, and the `init` refusal that is
+// supposed to meet it was unreachable. The earlier test proved only that the
+// field stays empty, which is true of a manifest nothing can load.
+func TestATwoRuntimeManifestValidatesAfterItsOwnDefaulting(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Providers.Runtime.Name = ""
+	m.Runtimes = Runtimes{
+		"compose": {Files: []string{"compose.yaml"}},
+		"quadlet": {Files: []string{"app.container"}},
+	}
+
+	m.ApplyDefaults()
+
+	require.NoError(t, m.Validate(),
+		"a release declaring two runtimes must be loadable, or decision 8's shape does not exist")
+	assert.Empty(t, m.Providers.Runtime.Name)
+}
+
+// A single-runtime release still has to name its provider, because there the
+// field means what it always meant and a missing one is a vendor's omission.
+func TestASingleRuntimeManifestStillRequiresTheProviderName(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Providers.Runtime.Name = ""
+	m.Runtimes = Runtimes{"compose": {Files: []string{"compose.yaml"}}}
+
+	// Deliberately not ApplyDefaults: that would derive the name. This is
+	// the manifest as a vendor could hand it to `release verify`.
+	err := m.Validate()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "providers.runtime.name")
+}
+
+// An empty runtime name resolves to the legacy runtime three layers later, so
+// a release declaring something else installs as Compose with every message
+// agreeing. Refused where the vendor can see the key.
+func TestARuntimeWithAnEmptyNameIsRefused(t *testing.T) {
+	for _, name := range []string{"", "   "} {
+		m := validManifest()
+		m.Runtime = RuntimeSpec{}
+		m.Providers.Runtime.Name = "compose"
+		m.Runtimes = Runtimes{name: {Files: []string{"compose.yaml"}}}
+
+		err := m.Validate()
+
+		require.Error(t, err, "a runtime named %q must be refused", name)
+		assert.Contains(t, err.Error(), "empty name")
+	}
+}
