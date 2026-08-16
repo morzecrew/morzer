@@ -710,7 +710,17 @@ func (d *Deps) runtimeForNewInstallation(st *engine.State) (string, error) {
 	if !ok {
 		return "", nil
 	}
+	return runtimeForRelease(r)
+}
 
+// runtimeForRelease is the decision itself, split from the state plumbing above
+// so it can be tested without an engine run.
+//
+// Not a stylistic split: `engine.State` has no exported constructor, so a test
+// of the rule would otherwise have to drive a whole operation to reach three
+// lines of `switch`. A decision that can only be exercised through the machinery
+// around it is a decision that gets exercised once, by the happy path.
+func runtimeForRelease(r domain.Release) (string, error) {
 	declared, _ := r.Manifest.DeclaredRuntimes()
 	names := declared.Names()
 	switch len(names) {

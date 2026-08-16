@@ -460,6 +460,9 @@ different thing and is said so in each.
 - **Class:** `spec-gap`.
 - **Consequence:** the manifest can express a two-runtime release before the
   manager can install one. That gap closes with the second adapter.
+- **Proposed row (RFC 0023, row 12):** `ASSUMED` — a release declaring several
+  runtimes is refused at `init`. Graded `ASSUMED` rather than `LOCKED` because it
+  expires: P3 brings a second adapter and with it a real basis for choosing.
 
 ## D-013 — The state migration loop could hang rather than refuse
 
@@ -479,17 +482,33 @@ different thing and is said so in each.
 
 ## Decision-row outcomes
 
-**Outstanding.** D-008 through D-012 propose five rows against RFC 0023 and none
-has been ruled on; D-009's *substance* was ruled on before implementation, but
-the row itself is still a proposal. D-013 proposes nothing — it is a defect fixed
+**Ruled 2026-08-16. All four proposals accepted, and a fifth row added for
+D-012 at the author's direction.** D-013 proposes nothing — it is a defect fixed
 in the code it belongs to.
+
+**Recorded against this section's own process failure:** rows 8–11 were written
+into the RFC's decision table as `LOCKED` in the same pass that amended the
+phasing, before any of them had been put to the author. The ruling below makes
+them legitimate; it does not make the sequence correct, and the entry stays here
+because a log that only records outcomes cannot show that a proposal was adopted
+before it was offered. D-012's row was the one written in the right order — put
+first, accepted, then added.
 
 | RFC | Row | Outcome | Grade | Decision | From |
 |---|---|---|---|---|---|
-| 0023 | 8 | Outstanding | `LOCKED` | `runtimes:`' keys are the declaration; the provider name is derived or empty | D-008 |
-| 0023 | 9 | Outstanding | `LOCKED` | `runtimes:` added, `runtime:` deprecated and still read, no api_version bump | D-009 |
-| 0023 | 10 | Outstanding | `LOCKED` | One `files` key per runtime; per-runtime key names cannot be validated without a forbidden branch | D-010 |
-| 0023 | 11 | Outstanding | `LOCKED` | The runtime is a new installation field at schema 9, not `Providers` | D-011 |
+| 0023 | 8 | **Accepted** | `LOCKED` | `runtimes:`' keys are the declaration; the provider name is derived or empty | D-008 |
+| 0023 | 9 | **Accepted** | `LOCKED` | `runtimes:` added, `runtime:` deprecated and still read, no api_version bump | D-009 |
+| 0023 | 10 | **Accepted** | `LOCKED` | One `files` key per runtime; per-runtime key names cannot be validated without a forbidden branch | D-010 |
+| 0023 | 11 | **Accepted** | `LOCKED` | The runtime is a new installation field at schema 9, not `Providers` | D-011 |
+| 0023 | 12 | **Accepted** | `ASSUMED` | A release declaring several runtimes is refused at `init`, until P3 gives a basis for choosing | D-012 |
+
+**Two alternatives were declined and are recorded here, since nothing else
+carries a refusal.** Keeping §4.1's `units:` key per runtime, which would have
+let `compose: {units: [...]}` pass domain validation and fail only at the
+adapter — refused because it moves the error further from the vendor who caused
+it. And deleting `Installation.Providers` in this wave rather than leaving it
+beside its replacement — refused because removing a serialised field is its own
+schema question, and it is carried forward instead.
 
 ## Audit findings — 2026-08-16
 
@@ -540,8 +559,10 @@ killed by timeout rather than by assertion, which is A-3 demonstrating itself.
 
 - **The rest of P2**: `installation import`, `doctor`, and §14's two unspelled
   leaks (`RuntimeSpec.Project`, `doctor.go`'s hard-coded `tools.Docker`).
-- **`Installation.Providers`** — delete it or give it a meaning. Removing a
-  serialised field is its own schema question and did not belong in this wave.
+- **`Installation.Providers`** — delete it or give it a meaning. Deleting it in
+  this wave was put to the author on 2026-08-16 and declined: removing a
+  serialised field is its own schema question, and widening the branch after its
+  audit is how an audited branch stops being audited.
 - **The field-deprecation gap**: `runtime:` is deprecated and nothing warns. The
   only deprecation mechanism is keyed by `api_version`, and this is a field.
 - **A named removal release for `runtime:`**, without which "deprecated" is a
