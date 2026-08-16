@@ -4,9 +4,12 @@
   came to 19 mentions in three classes, and `tools/runtimecheck` now enforces the
   boundary depguard cannot see. It reversed §12.2's cost estimate along the way:
   the expensive leaks are a published environment variable and a default, not a
-  category. P1b
-  — a rootless Podman host and the three measurements behind it — is open, and is
-  the only thing between here and P2.
+  category. **P1b is partly answered as of 2026-08-16**: a rootless Podman host
+  exists, §12 items 5 and 6 are measured against it, and item 4 is restated —
+  it wanted a cold boot rather than a host, and the host it has cannot supply
+  one. P1b stays open on that item alone, and **item 4 gates P3 rather than P2**:
+  the claim that P1b blocked P2 was withdrawn on 2026-08-16 (D-005), so **P2 is
+  the next phase available** and the Podman programme is not waiting on hardware.
 - **Scope:** Grading the `ports.Runtime` seam by writing a second implementation
   of it — rootless Podman with Quadlet — and recording every place the port had
   to change to accommodate one. Covers the manifest's runtime dimension, the
@@ -204,7 +207,9 @@ runtime's name, not prose containing one.
   the example's project name happens to equal its product name.
 - **0010's volume capture** stops "only the services mounting that volume". In
   Quadlet a service is a unit and a volume is a `.volume`; rootless volumes live
-  under the user's storage root, not `/var/lib/docker/volumes`.
+  under the user's storage root, not `/var/lib/docker/volumes`. The storage-root
+  half is measured and harmless (§12 item 5) — the capture never names a host
+  path. The *stopping* half is untouched by that measurement and still open.
 - **`Supervisor` and `Runtime` overlap.** The manager already renders systemd
   units (the backup timer). Under Quadlet, the runtime *is* systemd. Two ports
   will be issuing `systemctl` at the same host.
@@ -367,16 +372,33 @@ for the declared runtime's presence, which is where an operator meets decision 5
   No adapter. The classification came out as three classes rather than two
   (decision 7c), the number was 19 on the day, and the rule from decision 7 is
   `tools/runtimecheck` in CI. §2.1–2.3.
-- **P1b — The Podman host.** ⏳ §12 items 4–6: the `EnvironmentFile`-on-tmpfs
-  question, rootless volume paths against 0010's staging, and whether 0011's
-  in-process registry is reachable over plain HTTP. One task, not three, and the
-  only thing between here and P2. Split out because P1a turned out to be
-  answerable from a laptop and P1b is not — keeping them one phase would have
-  meant either blocking a finished deliverable or reporting a phase complete with
-  half of its questions open.
+- **P1b — The Podman host.** ⏳ **Partly answered 2026-08-16.** §12 items 5 and 6
+  are measured: rootless volume paths do not break 0010's staging, because 0010
+  has no path to break, and 0011's registry is reachable over plain HTTP with
+  `--tls-verify=false`. Item 4 — the `EnvironmentFile`-on-tmpfs question — is
+  open, and the reason is worth carrying: it was written as needing a host, and
+  a host is not what it needs. It needs somewhere that can be booted on demand.
+
+  **"One task, not three" was wrong, and the way it was wrong is instructive.**
+  The three were grouped by what they were blocked on, which looked like one
+  thing — a Podman host. Two of them were, and closed within an afternoon of one
+  existing. The third was blocked on something the grouping never named, so it
+  inherited a completion criterion that had nothing to do with it. A phase
+  boundary drawn around a shared blocker holds only as long as the blocker was
+  identified correctly for every member.
 - **P2 — Manifest and state.** `runtimes:` map, decision 8 resolved, kind fixed at
   `init`, carried by `installation import`, refused on mismatch, reported by
-  `doctor`.
+  `doctor`. **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
+  D-005. None of §12's three measurements is consumed by anything on this list:
+  items 5 and 6 are volume capture and image ingest, both P3, and item 4 is
+  §4.3's parameter delivery, also P3. What P2 did need from P1b is the list of
+  what "this machine can run the declared runtime" means — decision 5's refusal
+  and §9's `doctor` check both rest on it — and that list **arrived alongside
+  items 5 and 6 rather than out of them**. §11's two rootless preconditions and
+  the finding that a present binary can still be unusable are discoveries of the
+  host work itself, recorded in §11 and EXECUTION-LOG.md D-006; none of them is
+  an answer to item 5 or item 6. What unblocks P2 is that they are written down,
+  not which measurement produced them.
 - **P3 — The adapter.** Quadlet against the contract suite. Volume capture (0010)
   and bundled images (0011) are the two places to expect the design to come back —
   0012 already found that `oras-go` demands TLS where `docker pull` does not, and
@@ -393,7 +415,25 @@ for the declared runtime's presence, which is where an operator meets decision 5
   ports layer is not a small rename.
 - **Rootless port binding below 1024** requires `net.ipv4.ip_unprivileged_port_start`
   or a proxy. 0007 made ports the operator parameter that matters most, so this is
-  on the critical path, not an edge case. `doctor` must check it.
+  on the critical path, not an edge case. `doctor` must check it. **Measured
+  2026-08-16 on the development host: `1024`, the kernel default**, so the risk
+  is live exactly as written rather than mitigated by a distribution that ships
+  a lower value.
+- **Rootless units do not start at boot unless the account is lingering**, which
+  `loginctl enable-linger` sets. That lingering is opt-in is documented rather
+  than measured here — `loginctl(1)` describes it as what causes a user manager
+  to be *"spawned for the user at boot and kept around after logouts"* — and
+  what was measured is that the development host has it on. Found while
+  measuring, and it is a second `doctor` check rather than a footnote to the
+  first: a machine without it installs, runs, converges and passes every check
+  the manager makes, and then does not come back after a reboot. That is the
+  worst shape a precondition can have, because the failure is separated from its
+  cause by however long the machine stays up.
+
+  It also contaminates §12 item 4, and the venue has to account for it: the
+  development host has `Linger=yes` set for unrelated reasons, so a measurement
+  taken there answers the boot question *with lingering already on* and cannot
+  see the case a fresh machine is in.
 - **Quadlet requires `systemctl daemon-reload` after unit changes**, which is a
   step with a failure mode (a partially reloaded generator) that has no Compose
   analogue and therefore no existing fault-injection point.
@@ -440,19 +480,69 @@ Taken 2026-08-12, against the code rather than the documentation.
    Nothing else issues it, so the collision is entirely prospective — which is why
    decision 6 is graded ASSUMED rather than LOCKED.
 4. **Whether an `EnvironmentFile` on tmpfs can be read by a unit at boot** (§4.3).
-   **Not measured — needs a machine with Podman, which this repository's test
-   lanes do not have.** It stays the item most likely to change the design, and
-   P1 may not report complete without it.
+   **Still not measured, and this item asked for the wrong thing.** It was
+   written as needing "a machine with Podman"; a machine with Podman is not
+   enough, because the question is about the state of a tmpfs at boot and a
+   host that is already up cannot be asked. What it needs is a *venue* that can
+   be booted on demand — and a workstation is the worst of them, since the
+   answer costs a reboot per attempt. It remains the item most likely to change
+   the design, and P1b may not report complete without it.
+
+   Two halves, worth separating because only one of them needs the venue. The
+   mechanism — what systemd does with an `EnvironmentFile=` that is absent when
+   the unit starts, and whether the `-` prefix's silence is worse than the
+   failure — is answerable on any host. The ordering — whether the file is
+   there by the time a product unit starts, given that `apply --startup` is what
+   renders it — is a dependency-graph question about units this project already
+   generates. The venue is needed to confirm the graph, not to discover it.
 5. **Whether rootless Podman's volume paths break 0010's staging assumptions.**
-   Not measured; needs the same machine.
+   **Measured 2026-08-16: they do not, and the item's premise was wrong.**
+   0010 has no host-path assumption to break. `CaptureVolume` runs a helper
+   container with the volume mounted read-only and tars to *stdout*, which the
+   manager writes itself; the volume's host path is never named, so it is free
+   to move. The round trip was run under rootless Podman with the adapter's own
+   argv and its own pinned helper image, `DefaultHelperImage`: a dotfile, a
+   `0600` mode and a nested directory survived capture, and the restore's
+   wipe-then-extract removed a planted file rather than merging around it.
+
+   **What did change is a property, not a path — and it is narrower than it
+   first looked.** A rootless volume lives under
+   `~/.local/share/containers/storage/volumes/<name>/_data`, where Docker's
+   lives under `/var/lib/docker/volumes` and answers `Permission denied` to an
+   unprivileged manager. But "readable by the manager" holds only for what
+   *container root* wrote. Rootless maps container uid 0 to the invoking user
+   and every other container uid to a subordinate one, so measured 2026-08-16:
+   a file written by container root is owned by the manager's own user and
+   reads; a file written by container uid 1000 is owned by subuid `100999` at
+   mode `0600` and answers `Permission denied`. The helper container reads both,
+   because it is inside the namespace where those ids mean something.
+
+   **So the helper is not merely still correct under rootless — it is the only
+   thing that works.** A capture reading the host path directly would succeed
+   against a product running as root and fail against one that drops privileges,
+   which is the configuration a security-conscious vendor ships. That is a
+   sharper argument for the existing design than the one `CaptureVolume`'s
+   comment gives, and it is not the argument the comment gives: it cites a
+   root-owned file the manager cannot clean up, which is a Docker concern.
 6. **Whether 0011's in-process registry is reachable by Podman over plain HTTP.**
-   Not measured; 0012's TLS finding predicts it is not.
+   **Measured 2026-08-16: not by default, and yes with one flag.** 0012's
+   prediction holds in direction — Podman sends a TLS ClientHello to
+   `127.0.0.1` and refuses with `http: server gave HTTP response to HTTPS
+   client`, where Docker falls back to HTTP for loopback unprompted. With
+   `--tls-verify=false` Podman falls back too, and a pull from `ociserve`
+   itself completes: blobs copied, no digest mismatch, no serve error.
 
-Items 4–6 all need one thing: a rootless Podman host in the test lanes. Standing
-that up is the true first task of P1, ahead of the inventory, because three of the
-six unknowns are behind it.
+   So the cost is a flag on one command rather than a `registries.conf` the
+   manager would have to write into somebody's home directory — the cheap end
+   of what §10's P3 warned about. The flag is also the sharp edge: on the
+   general `Pull` path it would disable verification against a real registry,
+   which is the one place it must never be off.
 
-**Status after P1 (2026-08-12): items 1–3 answered, 4–6 not, and P1 is therefore
+Item 4 alone still needs something this repository does not have, and it is a
+bootable venue rather than a host. Items 5 and 6 needed only the host, which is
+why they closed the day one existed.
+
+**Status after P1a (2026-08-12): items 1–3 answered, 4–6 not, and P1 is therefore
 not closed.** The inventory and the enforcement shipped; the Podman host did not,
 because the development environment has no Podman and this project does not
 report a lane it has never run as a lane that works — the rule that already
@@ -460,8 +550,20 @@ stopped the acceptance and container suites being described as CI's problem.
 Writing a Podman job into CI from here would produce exactly that: a green badge
 nobody has watched go red.
 
-So the remaining three measurements are all that stands between P1 and P2, and
-they are one task rather than three. §14 records the split.
+**Status after P1b-partial (2026-08-16): items 5 and 6 answered, item 4 open.**
+A rootless Podman host now exists on the development machine — not in the test
+lanes, and the paragraph above still governs that distinction: nothing here has
+been written into CI, because nothing here has been watched go red. The
+measurements were taken by hand against that host and are reproducible from what
+§12 records rather than from a lane that claims to run them.
+
+One measurement therefore stands between P1b and closure rather than three, and
+**it does not stand between here and P2**. That claim was this document's, it was
+made before any Podman host existed, and it was re-examined and withdrawn on
+2026-08-16 — see EXECUTION-LOG.md D-005 and §10's P2 bullet. Item 4 gates P3,
+where §4.3 consumes its answer. P1b stays open on it rather than being closed by
+moving it, because a phase held open on one item is a legible statement that the
+architecture test is not yet de-risked.
 
 ## 13. Amendments
 
@@ -484,9 +586,45 @@ cheap" on the strength of two symbols it called published ABIs. One of them is
 not (§2.1). The RFC's cost estimate moves from *a category of bundle-breaking
 renames* to *one published environment variable*.
 
+**2026-08-16 — P1b answered two of its three measurements, and item 4's blocker
+was misidentified.** §12 items 5 and 6 are measured against a rootless Podman
+host; item 4 is restated, because it was never blocked on the host it named. The
+consequences are not written into §5 — they are put to the author as proposed
+rows in EXECUTION-LOG.md: **D-001, D-002, D-003 and D-006, all outstanding.**
+D-005 is not among them and proposes no row; it records the accepted phase-gate
+ruling, which is a different kind of entry and is listed as such. The log is also
+where the two findings belonging to other documents live: Podman's native `oci:`
+transport bears on RFC 0011's decision 19, and the rootless volume's readability
+on RFC 0010. Neither is this RFC's row to write.
+
+**2026-08-16 — P1b no longer gates P2.** The document asserted in three places
+that P1b was "the only thing between here and P2", and execution found that P2
+consumes none of the three measurements — items 5 and 6 belong to P3's volume
+capture and image ingest, item 4 to §4.3, also P3. What P2 needed was the host
+precondition list behind decision 5's refusal, and that arrived. Put to the
+author as EXECUTION-LOG.md D-005 and accepted; the phasing prose in §10 and §12
+carries it, and no decision row was added, because a phase gate is not a design
+decision. The declined alternative — closing P1b by folding item 4 into P3 — is
+recorded in the log beside the ruling, since a refusal is written down nowhere
+else.
+
+**2026-08-16 — §12 item 5's premise was void, and it was void before any host
+existed.** The item asked whether rootless volume *paths* break 0010's staging.
+`CaptureVolume` names no path — it mounts the volume into a helper container and
+takes the tar off stdout — so the question could have been answered by reading
+the adapter on the day §12 was written, four days before a Podman host existed
+to answer it against. Recorded because the failure is not a wrong answer but a
+wrong question sitting on the list that defines what is unknown, where it read
+as blocked on hardware. §2.1 already warns that "a checker cannot see this" is a
+claim worth attacking before writing it down; "a host is needed for this" is the
+same claim about a different obstacle, and it went unattacked.
+
 ## 14. What P1 leaves for whoever picks this up
 
-- **P1b, above.** Three measurements behind one Podman host.
+- **P1b, above.** ~~Three measurements behind one Podman host.~~ One
+  measurement — item 4 — behind a bootable venue, as of 2026-08-16. Struck
+  rather than rewritten, because the sentence was the reason the phase was
+  scoped the way it was and a reader tracing that scope needs to see it.
 - **The two unspelled leaks** in §2.2 — `RuntimeSpec.Project` and `doctor.go`'s
   hard-coded `tools.Docker` — are not in the inventory, because the inventory is
   what a checker can see and these are not. They are P2's, and they are the ones
