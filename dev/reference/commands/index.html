@@ -3099,6 +3099,10 @@ does not — pointing at <code>rotate</code> there would point at a command that
 <td><code>images.bundled</code></td>
 <td>An image the release marks <code>from: bundle</code> is not in the local image store. Fatal, and <code>apply</code> refuses on it: a bundled image is deployed under a tag the manager creates, and letting a converge proceed without it would send the deployment to the vendor's registry for whatever that tag pointed at. <code>morzer release ingest</code> loads it out of the bundle, with no network.</td>
 </tr>
+<tr>
+<td><code>runtime.declared</code></td>
+<td>The runtime this installation is fixed to, and whether this manager drives it. Ok reports the name. It fails when they differ — a state file that arrived from a machine running something else, by import or by hand — and that failure is the one with no fix on this machine: the runtime is chosen when the installation is created and never transitions, so the way out is a manager built for it, or a fresh <code>init</code> and a <code>restore</code>. On a machine with no installation yet, <code>doctor</code> instead checks the tools that runtime needs, which is what <code>init</code> will want next.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="logs">logs<a class="headerlink" href="#logs" title="Permanent link">&para;</a></h2>

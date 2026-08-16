@@ -2432,6 +2432,12 @@ machine's key.</p>
 <p>It prints what it assumed and what to do next. If the identity you passed cannot
 open the export, it says so before creating anything, and names the keys that
 would work.</p>
+<p>It also refuses, before creating anything, if the lost machine ran a runtime
+this manager does not drive. An installation is fixed to its runtime when it is
+created and never moves, so a rebuild here would produce a machine no command
+could operate. The refusal names both runtimes: install a manager built for the
+one your export needs, or <code>init</code> a new installation and <code>restore</code> the data into
+it.</p>
 <h3 id="3-reinstall-the-release">3. Reinstall the release<a class="headerlink" href="#3-reinstall-the-release" title="Permanent link">&para;</a></h3>
 <p>The export records which version was running:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./demo-1.2.0<span class="w">     </span><span class="c1"># confirm the digest matches the export</span>
