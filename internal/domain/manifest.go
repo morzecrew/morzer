@@ -52,9 +52,34 @@ type Manifest struct {
 	APIVersion APIVersion `yaml:"api_version" json:"api_version"`
 	Kind       string     `yaml:"kind" json:"kind"`
 
-	Metadata      Metadata                 `yaml:"metadata" json:"metadata"`
-	Providers     Providers                `yaml:"providers" json:"providers"`
-	Runtime       RuntimeSpec              `yaml:"runtime" json:"runtime"`
+	Metadata  Metadata  `yaml:"metadata" json:"metadata"`
+	Providers Providers `yaml:"providers" json:"providers"`
+
+	// Runtime is the Compose-shaped block, and it is deprecated.
+	//
+	// Kept readable rather than replaced. RFC 0023 §4.1 specified a
+	// replacement and argued it on the strength of landing "before the
+	// first tag"; 0.1.0 and 0.2.0 are cut, and under strict decoding a
+	// replacement makes `runtime:` an unknown field -- so every bundle
+	// already built would stop parsing to buy a tidier surface.
+	// DeclaredRuntimes folds it into Runtimes[LegacyRuntimeName] on read.
+	//
+	// Carries no `omitempty`, which would be the obvious way to stop a
+	// `runtimes:`-only release announcing an empty `"runtime": {}`: it does
+	// nothing on a struct field. Backup and Bundle below reach for
+	// `omitzero` for exactly that reason, and this one does not follow them
+	// because a deprecated block that disappears from `release show --json`
+	// is harder to notice than one that shows up empty.
+	Runtime RuntimeSpec `yaml:"runtime" json:"runtime"`
+
+	// Runtimes is the runtime dimension: which runtimes this release
+	// supports, and what each is declared with.
+	//
+	// A release declaring one installs only where that runtime is present,
+	// and a release declaring two carries both sets with the vendor owning
+	// their equivalence -- the manager asserts nothing about it and must
+	// not pretend to (RFC 0023 decision 4).
+	Runtimes      Runtimes                 `yaml:"runtimes" json:"runtimes,omitempty"`
 	Requirements  Requirements             `yaml:"requirements" json:"requirements"`
 	Parameters    map[string]ParameterSpec `yaml:"parameters" json:"parameters,omitempty"`
 	Images        map[string]ImageSpec     `yaml:"images" json:"images"`
@@ -88,6 +113,29 @@ type Manifest struct {
 	Compatibility Compatibility             `yaml:"compatibility" json:"compatibility"`
 	Retention     Retention                 `yaml:"retention" json:"retention"`
 	Extensions    map[string]map[string]any `yaml:"extensions" json:"extensions,omitempty"`
+}
+
+// DeclaredRuntimes returns the runtimes this release supports, and whether
+// they came from the deprecated `runtime:` block.
+//
+// Derived on every call rather than normalised once into a field, and that is
+// the whole point. The first version of this stored the synthesis in
+// ApplyDefaults, which made it a snapshot: anything that touched `runtime:`
+// afterwards was silently ignored, and `Validate` called without
+// ApplyDefaults checked an empty map -- so a `runtime.files` entry of
+// `/etc/passwd` passed validation. A path-escape check that holds only when
+// another method ran first is not a check.
+func (m Manifest) DeclaredRuntimes() (Runtimes, bool) {
+	if len(m.Runtimes) > 0 {
+		return m.Runtimes, false
+	}
+	if m.Runtime.isZero() {
+		return nil, false
+	}
+	return Runtimes{LegacyRuntimeName: RuntimeDecl{
+		Files:    m.Runtime.Files,
+		Profiles: m.Runtime.Profiles,
+	}}, true
 }
 
 type Metadata struct {
@@ -163,6 +211,85 @@ func (r RuntimeSpec) ComposeFiles(profile string) ([]string, error) {
 		}
 	}
 	return files, nil
+}
+
+// RuntimeDecl is what one runtime needs from the bundle: the files it is
+// declared with, and the extra files each deployment profile adds.
+//
+// One `files` field, not a differently named key per runtime. RFC 0023 §4.1
+// sketched `units:` for Quadlet beside `files:` for Compose, and that sketch
+// cannot be validated here: deciding which key is legal means asking which
+// runtime this is, and a branch on a runtime's name above `internal/adapters`
+// is what decision 7 forbids and `tools/runtimecheck` fails the build over.
+// What the files *mean* is the adapter's to know -- a `.container` unit and a
+// `compose.yaml` are both paths into the bundle from here.
+type RuntimeDecl struct {
+	Files    []string            `yaml:"files" json:"files"`
+	Profiles map[string][]string `yaml:"profiles" json:"profiles,omitempty"`
+}
+
+// FilesFor returns this runtime's files for a deployment profile.
+//
+// The same rule RuntimeSpec.ComposeFiles applies, and deliberately the same
+// text: an unknown profile refuses rather than falling back to base, because
+// deploying the wrong topology quietly is worse than stopping.
+func (d RuntimeDecl) FilesFor(profile string) ([]string, error) {
+	files := append([]string(nil), d.Files...)
+	if profile == "" {
+		return files, nil
+	}
+	extra, ok := d.Profiles[profile]
+	if !ok {
+		known := make([]string, 0, len(d.Profiles))
+		for name := range d.Profiles {
+			known = append(known, name)
+		}
+		sort.Strings(known)
+		return nil, ValidationError(nil, "unknown deployment profile %q", profile).
+			WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
+	}
+	for _, f := range extra {
+		if !containsString(files, f) {
+			files = append(files, f)
+		}
+	}
+	return files, nil
+}
+
+// LegacyRuntimeName is the runtime a manifest declares when it uses the old
+// `runtime:` block and says nothing else.
+//
+// This is RFC 0023 §2.1's second expensive leak, and it is deliberately still
+// here: `tools/runtimecheck` carries it in the inventory because the statement
+// it makes is about history rather than about dispatch. A manifest written
+// before `runtimes:` existed does declare Compose -- that is what the block
+// meant -- and a manager that would not say so could not read a released
+// bundle at all. It leaves when the legacy block does, and not before.
+const LegacyRuntimeName = "compose"
+
+// isZero reports whether the legacy block was written at all. Files rather
+// than Project, because ApplyDefaults fills Project from the product name and
+// so a defaulted manifest is never zero by that measure.
+func (r RuntimeSpec) isZero() bool { return len(r.Files) == 0 && len(r.Profiles) == 0 }
+
+// Runtimes maps a runtime's name to what that runtime is declared with.
+//
+// The keys are the declaration (RFC 0023 decision 8). `providers.runtime.name`
+// is not the selector and cannot be: it is a single `Provider` beside
+// `secrets` and `backup`, so it holds one value, and §4.1 requires a bundle to
+// be able to declare two runtimes at once -- which decision 4's
+// `--render-check` then renders both of.
+type Runtimes map[string]RuntimeDecl
+
+// Names returns the declared runtimes, sorted, so every message that lists
+// them lists them in the same order.
+func (r Runtimes) Names() []string {
+	names := make([]string, 0, len(r))
+	for name := range r {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 type OSRequirement struct {
@@ -448,8 +575,16 @@ func (m *Manifest) ApplyDefaults() {
 	if !m.Retention.declared.backups {
 		m.Retention.Backups = DefaultRetentionBackups
 	}
-	if m.Providers.Runtime.Name == "" {
-		m.Providers.Runtime.Name = "compose"
+	// Derived, not stored: DeclaredRuntimes folds the legacy block in on
+	// every call, so nothing here can go stale against a later edit.
+	declared, _ := m.DeclaredRuntimes()
+	if m.Providers.Runtime.Name == "" && len(declared) == 1 {
+		// Derived rather than hardcoded. A single-runtime release
+		// leaves the field meaning what it always meant; a
+		// two-runtime release leaves it empty, because there is no
+		// one value it could take that would not be a lie about the
+		// other one.
+		m.Providers.Runtime.Name = declared.Names()[0]
 	}
 	if m.Providers.Secrets.Name == "" {
 		m.Providers.Secrets.Name = "sops-age"
@@ -485,6 +620,33 @@ func (m *Manifest) ApplyDefaults() {
 // bare tag, a floating `latest` -- is rejected: an unpinned image makes a
 // release mutable, and a mutable release makes rollback meaningless.
 var digestRef = regexp.MustCompile(`^[^\s@]+@sha256:[a-f0-9]{64}$`)
+
+// runtimeName is the grammar of a runtime's name. It is deliberately not a list
+// of them.
+//
+// What this can check and what it cannot is the whole point. It rejects a name
+// that is empty, padded, capitalised, or carrying anything a terminal would
+// interpret -- and that matters, because this value is read out of a file
+// somebody may have hand-edited and then printed in error messages. It cannot
+// reject `quadlt`, and nothing at this layer could: whether a runtime exists is
+// not a fact the domain has, and a list of known names here would be the
+// runtime catalogue above `internal/adapters` that decision 7 exists to
+// prevent.
+//
+// The name that is well-formed and wrong is caught where the knowledge is: the
+// adapter reports its own name, and an installation whose runtime disagrees is
+// refused before any operation runs. Two checks, each at the layer that can
+// actually make it.
+//
+// Shaped after productNamePattern, which answers the same question about a
+// different identifier.
+var runtimeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// ValidRuntimeName reports whether a name is well-formed. Exported because both
+// the manifest's keys and the installation's recorded runtime are the same kind
+// of token and must agree about what one looks like -- two spellings of this
+// rule would let a manifest declare a name the state could not record.
+func ValidRuntimeName(name string) bool { return runtimeName.MatchString(name) }
 
 // Validate checks every rule in the manifest contract and reports all
 // violations at once. Bundle authors iterate faster when one run surfaces
@@ -554,24 +716,78 @@ func (m *Manifest) Validate() error {
 		}
 	}
 
+	// Computed before the providers block below, which needs to know how
+	// many runtimes are declared to know whether one name can be true.
+	declaredRuntimes, fromLegacy := m.DeclaredRuntimes()
+
 	// providers
-	if m.Providers.Runtime.Name == "" {
+	//
+	// Required only where a single value can be true. ApplyDefaults derives
+	// this field from a single declared runtime and deliberately leaves it
+	// empty for a release declaring two, because no one name is honest about
+	// the other -- so requiring it unconditionally made every two-runtime
+	// manifest unvalidatable, and the shape decision 8 settled unreachable.
+	// The field stays required for the single-runtime case, where it is what
+	// it has always been.
+	if m.Providers.Runtime.Name == "" && len(declaredRuntimes) != 2 {
 		v.add("providers.runtime.name", "is required")
 	}
 
-	// runtime
-	if len(m.Runtime.Files) == 0 {
-		v.add("runtime.files", "must list at least one compose file")
+	// runtimes
+	//
+	// ApplyDefaults has already folded a legacy `runtime:` block into the
+	// map, so there is one shape to check. What it cannot fold is a
+	// manifest carrying both: merging them would pick a winner the vendor
+	// never nominated, and picking the wrong one deploys a topology nobody
+	// asked for.
+	if len(m.Runtimes) > 0 && !m.Runtime.isZero() {
+		v.add("runtimes", "cannot be used together with the deprecated `runtime:` block; "+
+			"move the files under `runtimes."+LegacyRuntimeName+".files` and delete `runtime:`")
 	}
-	for i, f := range m.Runtime.Files {
-		v.checkRelPath(fmt.Sprintf("runtime.files[%d]", i), f)
+	if len(declaredRuntimes) == 0 {
+		// Both spellings named, because with nothing declared there is
+		// no signal for which one the vendor is writing -- and the
+		// per-runtime messages below, which do name the right field,
+		// never run for a manifest that declares nothing at all.
+		v.add("runtimes", "must declare at least one runtime, each listing at least one file; "+
+			"a release still using the deprecated `runtime:` block lists them under `runtime.files`")
 	}
-	for profile, files := range m.Runtime.Profiles {
-		if len(files) == 0 {
-			v.add("runtime.profiles."+profile, "must list at least one compose file")
+	for _, name := range declaredRuntimes.Names() {
+		decl := declaredRuntimes[name]
+		// An empty key is the sharp one. It validates, `runtimeForRelease`
+		// records "", and `Installation.RuntimeName` reads "" as the
+		// legacy runtime -- so a release that declared something else
+		// entirely installs as Compose, and every later message agrees
+		// with the wrong answer. Named as a key rather than a value,
+		// because that is what the vendor has to go and find.
+		if !ValidRuntimeName(name) {
+			if strings.TrimSpace(name) == "" {
+				v.add("runtimes", "declares a runtime with an empty name")
+			} else {
+				v.add("runtimes."+name,
+					"is not a usable runtime name: lower-case letters, digits and "+
+						"hyphens, starting with a letter, at most 32 characters")
+			}
+			continue
 		}
-		for i, f := range files {
-			v.checkRelPath(fmt.Sprintf("runtime.profiles.%s[%d]", profile, i), f)
+		// The field path a vendor can search for in their own file.
+		base := "runtimes." + name
+		if fromLegacy {
+			base = "runtime"
+		}
+		if len(decl.Files) == 0 {
+			v.add(base+".files", "must list at least one file")
+		}
+		for i, f := range decl.Files {
+			v.checkRelPath(fmt.Sprintf("%s.files[%d]", base, i), f)
+		}
+		for profile, files := range decl.Profiles {
+			if len(files) == 0 {
+				v.add(base+".profiles."+profile, "must list at least one file")
+			}
+			for i, f := range files {
+				v.checkRelPath(fmt.Sprintf("%s.profiles.%s[%d]", base, profile, i), f)
+			}
 		}
 	}
 

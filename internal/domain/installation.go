@@ -64,7 +64,16 @@ import (
 // exact about, because "an older binary just ignores the new field" is what the
 // paragraphs above describe happening *without* a bump, and it is the reading
 // somebody troubleshooting a rollback will otherwise take from them.
-const InstallationSchemaVersion = 8
+// Bumped to 9 for `runtime` (RFC 0023 P2), and this one is the read direction
+// rather than the write — the first of the bumps that is. An older manager
+// reading a state file that names a runtime it has never heard of does not
+// merely lose a field: it has exactly one adapter, so it would take an
+// installation created against Quadlet and drive it with Compose. That is not
+// a wrong default or a dropped setting, it is the manager operating the wrong
+// substrate while reporting success, which is the failure decision 5 exists to
+// refuse. Refusing the state file is the only answer that holds, and the
+// refusal is what the bump buys.
+const InstallationSchemaVersion = 9
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -214,6 +223,20 @@ func (m Mode) Describe() string {
 // default for every value nobody thought of.
 func (i Installation) IsDev() bool { return i.Mode == ModeDev }
 
+// RuntimeName is the runtime this installation runs on.
+//
+// Empty means an installation created before the field existed, and those
+// machines ran the legacy runtime because it was the only one. Read through
+// this rather than off the field, so the pre-schema-9 case is answered in one
+// place instead of at every call site — the shape where one caller forgets and
+// resolves a runtime named "" against a release that declares two.
+func (i Installation) RuntimeName() string {
+	if i.Runtime == "" {
+		return LegacyRuntimeName
+	}
+	return i.Runtime
+}
+
 // Installation is the machine-specific state of one deployment. It is the
 // only place operator intent is recorded; everything else is derived from it
 // plus the release.
@@ -247,6 +270,31 @@ type Installation struct {
 
 	// Profile selects the deployment topology from runtime.profiles.
 	Profile string `yaml:"profile" json:"profile,omitempty"`
+
+	// Runtime is which runtime this installation was created against, and
+	// it never transitions (RFC 0023 decision 3).
+	//
+	// Not a setting. The state directory records volume names, image
+	// references and -- once a second adapter exists -- unit names, all of
+	// which are runtime-specific, so changing this is a migration of
+	// everything the manager knows rather than an edit. `config` may not
+	// touch it, for the same reason and by the same mechanism as Mode.
+	//
+	// Empty on every installation created before schema 9, which is read as
+	// the legacy runtime: those machines were created when there was one,
+	// and it was that one. Deliberately not defaulted on write -- an empty
+	// value means "predates the field", and filling it in would erase the
+	// distinction on the first `config set`.
+	//
+	// It is *not* stored in Providers.Runtime, which would be the obvious
+	// home. That field is declared, serialised, and has never been written
+	// or read by anything -- describe.go calls it "declared by the release
+	// manifest", a test calls it "from the flags", and it comes from
+	// neither. Recording the runtime there would give a field with two
+	// contradictory documented meanings a third, real one, and an older
+	// manager reading it would find a name it understands and no reason to
+	// stop.
+	Runtime string `yaml:"runtime" json:"runtime,omitempty"`
 
 	// Domains are the public names the product is served under. The first
 	// is canonical and becomes the public URL in `status`.
@@ -708,6 +756,21 @@ func (i Installation) Validate() error {
 			"installation was written by a newer manager (schema %d, this manager reads %d)",
 			i.SchemaVersion, InstallationSchemaVersion).
 			WithHint("upgrade the manager; state migrations only run forward")
+	}
+	// Empty is valid and means "created before schema 9"; anything else has
+	// to be a well-formed name. This is a grammar check, not an existence
+	// check -- the domain cannot know which runtimes exist, and the one that
+	// is well-formed and wrong is refused by the adapter before any operation
+	// runs.
+	//
+	// It earns its place on a different argument than tidiness: this value is
+	// read out of a file an operator may have hand-edited, and it is printed
+	// back in error messages. A name carrying control characters is a terminal
+	// escape in a diagnostic, which is the same shape as the bounds on fleet
+	// rows and attested text.
+	if i.Runtime != "" && !ValidRuntimeName(i.Runtime) {
+		v.add("runtime", "is not a usable runtime name: lower-case letters, digits "+
+			"and hyphens, starting with a letter, at most 32 characters")
 	}
 	if i.ID == "" {
 		v.add("id", "is required")

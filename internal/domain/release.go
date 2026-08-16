@@ -47,9 +47,27 @@ func (r Release) Path(rel string) (string, error) {
 	return joined, nil
 }
 
-// ComposeFilePaths resolves the Compose files for a profile to absolute paths.
-func (r Release) ComposeFilePaths(profile string) ([]string, error) {
-	rels, err := r.Manifest.Runtime.ComposeFiles(profile)
+// RuntimeFilePaths resolves one runtime's declared files for a profile to
+// absolute paths.
+//
+// Named for the runtime rather than for Compose (RFC 0023 §2.1 inventoried the
+// old name as a leak), and taking the runtime as an argument rather than
+// reading it from anywhere: which runtime this installation uses is the
+// caller's fact, and a function that looked it up would be this layer deciding
+// a runtime, which is what decision 7 forbids.
+//
+// An undeclared runtime refuses and names what the release does declare. That
+// is decision 5 at the point a caller would otherwise get an empty file list
+// and deploy nothing while reporting success.
+func (r Release) RuntimeFilePaths(runtime, profile string) ([]string, error) {
+	declared, _ := r.Manifest.DeclaredRuntimes()
+	decl, ok := declared[runtime]
+	if !ok {
+		return nil, ValidationError(nil,
+			"this release does not support the %s runtime", runtime).
+			WithHint("it declares: %s", strings.Join(declared.Names(), ", "))
+	}
+	rels, err := decl.FilesFor(profile)
 	if err != nil {
 		return nil, err
 	}

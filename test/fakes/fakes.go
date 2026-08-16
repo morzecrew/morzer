@@ -27,6 +27,12 @@ import (
 type Runtime struct {
 	mu sync.Mutex
 
+	// RuntimeName is what this fake reports as its runtime. Empty means the
+	// legacy one, so every existing test keeps the manager it had. Settable
+	// because a manager configured for a runtime the installation does not
+	// use is the only way to reach the refusal in runtimeConfig.
+	RuntimeName string
+
 	// Services is the simulated project state.
 	Services map[string]ports.ServiceState
 
@@ -164,6 +170,14 @@ func (r *Runtime) record(method string) error {
 		hook(method)
 	}
 	return err
+}
+
+// Name reports the runtime this fake stands in for.
+func (r *Runtime) Name() string {
+	if r.RuntimeName == "" {
+		return "compose"
+	}
+	return r.RuntimeName
 }
 
 func (r *Runtime) Validate(ctx context.Context, cfg ports.RuntimeConfig) (ports.Rendered, error) {

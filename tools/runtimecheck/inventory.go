@@ -134,12 +134,6 @@ var inventory = []Entry{
 			"the files happen to be Compose's today",
 		Removes: "renaming to the runtime-neutral form. The yaml key is already `files`",
 	},
-	{
-		File: "internal/domain/release.go", Symbol: "func ComposeFilePaths", Class: PortShaped,
-		Why:     "resolves the above to absolute paths through Release.Path",
-		Removes: "the same rename",
-	},
-
 	// ---- internal/infra ----
 	{
 		File: "internal/infra/tools/registry.go", Symbol: "name Docker", Class: Catalogue,

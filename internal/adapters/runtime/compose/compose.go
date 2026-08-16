@@ -112,6 +112,13 @@ func (r *Runtime) command(cfg ports.RuntimeConfig, timeout time.Duration, argv .
 	}
 }
 
+// Name is the key a manifest declares this runtime under.
+//
+// The literal lives here rather than above `internal/adapters` deliberately:
+// this is the layer that is allowed to know a runtime's name, and the whole
+// point of the port method is that nothing higher up has to.
+func (r *Runtime) Name() string { return "compose" }
+
 // Validate parses and checks the merged configuration without side effects.
 //
 // `docker compose config` does the merging, interpolation, and schema

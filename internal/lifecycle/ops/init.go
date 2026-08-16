@@ -187,14 +187,34 @@ func initSteps(d *Deps, opts InitOptions) []engine.Step {
 		// the public half. The other order would leave state claiming
 		// no key on a machine that has one.
 		stepCreateSigningKey(d),
-		stepWriteInstallation(d, opts),
 	}
 
+	// Staging puts the bundle on disk and the release into the engine's
+	// state, and it runs *before* the installation is written.
+	//
+	// That order used to be the other way round, and the reason it changed
+	// is worth keeping: the installation records which runtime it is fixed
+	// to, and the only place that fact exists is the release's manifest. A
+	// write that ran first could not read it, so every installation recorded
+	// an empty runtime -- which `Installation.RuntimeName` reads as the
+	// legacy one, quietly resolving a release declared for another runtime
+	// against the wrong adapter.
+	//
+	// Nothing is lost by the swap. The old order was justified by a `--set`
+	// the manifest does not declare failing during staging, so the engine
+	// unwound the installation the previous step had written; staging first
+	// means there is no installation to unwind, which is the same outcome
+	// reached earlier.
 	if opts.ReleasePath != "" {
-		// Staging puts the bundle on disk and the release into the
-		// engine's state; ingest reads it back from there, because
+		steps = append(steps, stepStageRelease(d, opts))
+	}
+
+	steps = append(steps, stepWriteInstallation(d, opts))
+
+	if opts.ReleasePath != "" {
+		// Ingest reads the release back out of engine state, because
 		// this list is built before anything has been resolved.
-		steps = append(steps, stepStageRelease(d, opts), stepIngestImages(d, stagedRelease()))
+		steps = append(steps, stepIngestImages(d, stagedRelease()))
 	}
 
 	steps = append(steps,
@@ -413,6 +433,12 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		Policy:        domain.DefaultPolicy(),
 		Parameters:    opts.Parameters,
 	}
+	runtime, err := d.runtimeForNewInstallation(st)
+	if err != nil {
+		return domain.Installation{}, err
+	}
+	inst.Runtime = runtime
+
 	inst.Policy.RequireSignature = opts.RequireSignature
 	inst.Policy.SigningKeys = opts.SigningKeys
 	inst.Policy.BackupSchedule = backupSchedule
@@ -434,6 +460,18 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	if existing, err := d.State.LoadInstallation(ctx); err == nil && existing.ID != "" {
 		inst.ID = existing.ID
 		inst.CreatedAt = existing.CreatedAt
+
+		// The runtime is carried, never rebuilt (RFC 0023 decision 3).
+		//
+		// Rebuilding it from the release looks harmless and is the
+		// transition the decision forbids, arriving by the back door: a
+		// vendor who moved from one runtime to another between releases
+		// would have `init --repair` silently re-point an installation
+		// whose volumes and image references belong to the old one.
+		// Carried even when empty, because empty is what a machine
+		// created before schema 9 records and rewriting it would erase
+		// the difference between "predates the field" and "chose this".
+		inst.Runtime = existing.Runtime
 
 		// A repair keeps the signing identity and the salt. Both are
 		// carried rather than regenerated for the same reason the
@@ -559,10 +597,10 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			}
 
 			// Before the release is adopted: a `--set` the manifest
-			// does not declare fails here, and the engine unwinds
-			// the installation written by the previous step rather
-			// than leaving one configured with a value that decides
-			// nothing.
+			// does not declare fails here, and no installation has
+			// been written yet -- so there is nothing configured
+			// with a value that decides nothing, and nothing for the
+			// engine to unwind.
 			if _, err := domain.ResolveParameters(rel.Manifest.Parameters, opts.Parameters); err != nil {
 				return err
 			}
@@ -665,6 +703,58 @@ func stepInitSecrets(d *Deps, opts InitOptions) engine.Step {
 			}
 			return nil
 		},
+	}
+}
+
+// runtimeForNewInstallation decides which runtime this installation is fixed
+// to, and refuses rather than guessing (RFC 0023 decisions 3 and 5).
+//
+// The rule is deliberately narrow while there is one adapter. A release
+// declaring exactly one runtime fixes the installation to it. A release
+// declaring several is refused, because choosing between them means knowing
+// which this manager can actually drive, and the only honest answers to that
+// today are a branch on a runtime's name -- which decision 7 forbids and
+// `tools/runtimecheck` fails the build over -- or a name injected at the
+// composition root that every test would set and no test would exercise as
+// production leaves it. Refusing costs a bundle nobody ships yet; either
+// alternative costs the architecture test this RFC exists to run.
+//
+// An installation created with no release at all records nothing, and
+// Installation.RuntimeName reads that as the legacy runtime.
+func (d *Deps) runtimeForNewInstallation(st *engine.State) (string, error) {
+	rel, ok := st.Get(engine.KeyRelease)
+	if !ok {
+		return "", nil
+	}
+	r, ok := rel.(domain.Release)
+	if !ok {
+		return "", nil
+	}
+	return runtimeForRelease(r)
+}
+
+// runtimeForRelease is the decision itself, split from the state plumbing above
+// so it can be tested without an engine run.
+//
+// Not a stylistic split: `engine.State` has no exported constructor, so a test
+// of the rule would otherwise have to drive a whole operation to reach three
+// lines of `switch`. A decision that can only be exercised through the machinery
+// around it is a decision that gets exercised once, by the happy path.
+func runtimeForRelease(r domain.Release) (string, error) {
+	declared, _ := r.Manifest.DeclaredRuntimes()
+	names := declared.Names()
+	switch len(names) {
+	case 0:
+		return "", nil
+	case 1:
+		return names[0], nil
+	default:
+		return "", domain.ValidationError(nil,
+			"this release declares %d runtimes and the manager cannot yet choose between them",
+			len(names)).
+			WithHint("it declares: %s — installing a release that declares more than one "+
+				"arrives with the second runtime adapter (RFC 0023 P3)",
+				strings.Join(names, ", "))
 	}
 }
 

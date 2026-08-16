@@ -389,12 +389,30 @@ func checkReferencedFiles(rel domain.Release) error {
 	// nothing at the moment they were told to read something.
 	check("metadata.release_notes", rel.Manifest.Metadata.ReleaseNotes)
 
-	for i, f := range rel.Manifest.Runtime.Files {
-		check(fmt.Sprintf("runtime.files[%d]", i), f)
-	}
-	for profile, files := range rel.Manifest.Runtime.Profiles {
-		for i, f := range files {
-			check(fmt.Sprintf("runtime.profiles.%s[%d]", profile, i), f)
+	// Every declared runtime, not just the deprecated block. Walking only
+	// `runtime:` meant a release using `runtimes:` had none of its files
+	// checked at all -- so a missing one loaded clean and surfaced three
+	// steps into a deployment, which is the failure this function exists to
+	// move earlier.
+	//
+	// The field names follow the spelling the vendor used, for the same
+	// reason Validate's do: naming `runtimes.compose.files` to somebody whose
+	// manifest says `runtime.files` sends them looking for a block that is
+	// not there.
+	declared, fromLegacy := rel.Manifest.DeclaredRuntimes()
+	for _, name := range declared.Names() {
+		base := "runtimes." + name
+		if fromLegacy {
+			base = "runtime"
+		}
+		decl := declared[name]
+		for i, f := range decl.Files {
+			check(fmt.Sprintf("%s.files[%d]", base, i), f)
+		}
+		for profile, files := range decl.Profiles {
+			for i, f := range files {
+				check(fmt.Sprintf("%s.profiles.%s[%d]", base, profile, i), f)
+			}
 		}
 	}
 	for i, c := range rel.Manifest.Configuration {

@@ -36,7 +36,7 @@ func TestTheThreeTierExampleIsValid(t *testing.T) {
 	assert.Equal(t, "1.0.0", rel.Version().String())
 
 	for _, profile := range []string{"embedded", "external-db"} {
-		files, err := rel.ComposeFilePaths(profile)
+		files, err := rel.RuntimeFilePaths(domain.LegacyRuntimeName, profile)
 		require.NoError(t, err, "profile %q must resolve", profile)
 		assert.Len(t, files, 2, "the base file plus the profile's own")
 	}

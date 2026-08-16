@@ -352,6 +352,12 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 
 		"Providers": "from the flags: which adapters to use is what `init` decides",
 
+		"Runtime": "carried from the existing state, always. Rebuilding it from " +
+			"the release would let a vendor who changed runtimes between " +
+			"releases re-point an installation whose volumes and image " +
+			"references belong to the old one -- the transition RFC 0023 " +
+			"decision 3 forbids, arriving as a repair",
+
 		// One verdict for the block, because it is carried as a block.
 		// The sandbox table classifies Policy field by field for a
 		// different question; here the question is whether a repair
@@ -466,4 +472,46 @@ func TestAHandEditedScheduleIsRefusedOnLoad(t *testing.T) {
 	err = h.Deps.State.SaveInstallation(ctx, inst)
 	require.Error(t, err, "an installation carrying a second unit directive was written")
 	assert.Contains(t, domain.AsError(err).Message, "backup_schedule")
+}
+
+// A repair must not re-point an installation at a different runtime.
+//
+// RFC 0023 decision 3 fixes the runtime when the installation is created and
+// forbids a transition, because the state directory records volume names and
+// image references that belong to one runtime. `init --repair` re-runs every
+// step of an init, and the first version of this branch rebuilt the runtime
+// from the release -- so a vendor who moved between runtimes would have a
+// repair silently adopt the new one, against volumes belonging to the old.
+//
+// The classification table above says "carried". This is what makes that a
+// claim about the code rather than a sentence somebody wrote: removing the
+// carry passes the table and fails here.
+func TestARepairKeepsTheRecordedRuntime(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	_, recoveryPub := generateRecoveryKey(t)
+	h := initOriginMachine(t, ctx, recoveryPub)
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+
+	// A runtime this machine was created against and the release does not
+	// declare. Contrived on purpose: it is the only shape where "carried"
+	// and "rebuilt from the release" give different answers, and every
+	// natural fixture makes them agree.
+	inst.Runtime = "quadlet"
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", Repair: true, RecoveryRecipient: recoveryPub,
+	})
+	require.NoError(t, err)
+
+	after, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, "quadlet", after.Runtime,
+		"the repair re-pointed the installation at the release's runtime, "+
+			"which is the transition decision 3 forbids arriving as a repair")
 }

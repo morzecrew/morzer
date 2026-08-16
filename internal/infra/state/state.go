@@ -174,6 +174,18 @@ func (s *Store) checkModeUnchanged(ctx context.Context, next domain.Installation
 // by Installation.Validate, which rejects a schema version from the future.
 func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 	for i.SchemaVersion < domain.InstallationSchemaVersion {
+		// Where the loop was before this guard: a case that does not
+		// raise the version spins forever, because the condition it is
+		// tested against never changes. Found by sabotage -- the
+		// mutation that stopped `case 8` advancing did not fail a test,
+		// it hung the run until the timeout killed it.
+		//
+		// The failure that matters is not the developer's test run. It
+		// is that every load of installation state goes through here, so
+		// a mistyped case number is a manager that stops responding on a
+		// machine rather than one that says what is wrong. Refusing
+		// costs one comparison and turns a hang into a sentence.
+		before := i.SchemaVersion
 		switch i.SchemaVersion {
 		case 2:
 			// 2 -> 3 added backup.targets. There is nothing to
@@ -281,12 +293,39 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// reconciliations that would otherwise put the unit
 			// back.
 			i.SchemaVersion = 8
+		case 8:
+			// 8 -> 9 added `runtime` (RFC 0023 P2). Nothing to
+			// convert, and nothing to fill in: a machine written
+			// before the field existed ran the only runtime there
+			// was, and `Installation.RuntimeName` reads an empty
+			// value as exactly that.
+			//
+			// Deliberately not written here. Filling it in during
+			// migration would be indistinguishable, ever after,
+			// from a machine that was created against that runtime
+			// on purpose -- and the difference is what lets a later
+			// manager tell "predates the field" from "chose this",
+			// which is the question a runtime transition would have
+			// to ask.
+			//
+			// The bump is for the *read* path, which none of 5
+			// through 8 were. An older manager meeting a state file
+			// that names a runtime it has never heard of has one
+			// adapter and would drive the installation with it --
+			// operating the wrong substrate while reporting
+			// success. Refusing the file is the only answer that
+			// holds.
+			i.SchemaVersion = 9
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:
 			return i, domain.InstallationError(nil,
 				"no migration path from installation schema %d to %d",
 				i.SchemaVersion, domain.InstallationSchemaVersion)
+		}
+		if i.SchemaVersion <= before {
+			return i, domain.Internal(nil,
+				"installation schema migration from %d made no progress", before)
 		}
 	}
 	return i, nil

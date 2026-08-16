@@ -23,6 +23,22 @@ import (
 //
 // v1 is compose. Later: podman-compose, systemd-quadlet, single-node k3s.
 type Runtime interface {
+	// Name reports which runtime this adapter is, matching the key a
+	// manifest declares it under.
+	//
+	// It exists so the lifecycle layer can refuse an installation whose
+	// recorded runtime this adapter is not (RFC 0023 decision 5). The
+	// alternative was comparing against a literal up there, which is the
+	// branch on a runtime's name decision 7 forbids -- an adapter reporting
+	// its own name is data, and the comparison stays a comparison of two
+	// values neither of which the lifecycle layer has to recognise.
+	//
+	// Thirteenth method on this port. §6's escape hatch counts new methods
+	// forced by the *second adapter*, and this one is forced by the refusal
+	// rather than by Quadlet; recorded so the count is honest when that test
+	// is applied.
+	Name() string
+
 	// Validate parses and checks the runtime configuration without any
 	// side effects, returning the fully resolved form for the plan view.
 	Validate(ctx context.Context, cfg RuntimeConfig) (Rendered, error)

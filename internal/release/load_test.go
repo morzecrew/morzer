@@ -412,3 +412,48 @@ func TestTheManagerVersionCheckIsSkippedWhenUnknown(t *testing.T) {
 		t.Errorf("an unknown manager version must not change what is reported: %v", err)
 	}
 }
+
+// A release declaring `runtimes:` gets its files checked at load, like one
+// using the deprecated block.
+//
+// checkReferencedFiles walked only `runtime:`, so a manifest using the new
+// spelling had none of its paths checked at all -- a missing compose file
+// loaded clean and surfaced three steps into a deployment, which is the
+// failure this check exists to move earlier. The vendor's own spelling is
+// asserted in the message for the same reason validation uses it: a field name
+// pointing at a block they do not have sends them looking for the wrong thing.
+func TestAMissingFileIsCaughtUnderTheRuntimesSpelling(t *testing.T) {
+	dir := bundle(t, func(dir string) {
+		edit(t, filepath.Join(dir, "manifest.yaml"), func(s string) string {
+			// The whole legacy block is replaced, profiles included:
+			// leaving any of it behind declares both spellings, which
+			// is refused before the file check is reached.
+			return strings.Replace(s, `runtime:
+  project: demo
+  files:
+    - compose/compose.yaml
+  profiles:
+    embedded: [compose/compose.embedded.yaml]
+    external-db: [compose/compose.external-db.yaml]`, `runtimes:
+  compose:
+    files:
+      - compose/compose.yaml
+      - compose/missing.yaml
+    profiles:
+      embedded: [compose/compose.embedded.yaml]
+      external-db: [compose/compose.external-db.yaml]`, 1)
+		})
+	})
+
+	_, err := release.Load(dir)
+
+	if err == nil {
+		t.Fatal("a release naming a file it does not ship must not load")
+	}
+	if !strings.Contains(err.Error(), "compose/missing.yaml") {
+		t.Errorf("the missing file is not named: %v", err)
+	}
+	if !strings.Contains(err.Error(), "runtimes.compose.files") {
+		t.Errorf("the field named must be the one the vendor wrote: %v", err)
+	}
+}
