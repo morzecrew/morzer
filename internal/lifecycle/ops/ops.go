@@ -572,6 +572,23 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		profile = inst.Profile
 	}
 
+	// Decision 5: an installation whose runtime this manager cannot drive is
+	// refused, never quietly driven with the adapter that happens to be
+	// wired. Without this the recorded runtime is a label -- `init` would
+	// store "quadlet", every later operation would hand `.container` files
+	// to Compose, and the deployment would fail somewhere far away from the
+	// sentence explaining why.
+	//
+	// Two values compared, neither of which this layer has to recognise:
+	// one comes out of installation state, the other out of the adapter.
+	if want, have := inst.RuntimeName(), d.Runtime.Name(); want != have {
+		return ports.RuntimeConfig{}, domain.InstallationError(nil,
+			"this installation runs on the %s runtime and this manager is configured for %s",
+			want, have).
+			WithHint("the runtime is fixed when an installation is created and does not " +
+				"transition; a manager built for a different runtime cannot operate it")
+	}
+
 	files, err := rel.RuntimeFilePaths(inst.RuntimeName(), profile)
 	if err != nil {
 		return ports.RuntimeConfig{}, err

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // Which runtime an installation is fixed to, at the moment it is fixed.
@@ -110,4 +111,45 @@ func TestTheInstallationIsStillWrittenWithoutARelease(t *testing.T) {
 	}
 	assert.Contains(t, ids, "write-installation")
 	assert.NotContains(t, ids, "stage-release")
+}
+
+// Decision 5, at the point every operation passes through.
+//
+// Without this, the recorded runtime is a label: `init` stores "quadlet", and
+// every later operation hands `.container` files to the Compose adapter that
+// happens to be wired. The deployment fails somewhere far away from the
+// sentence that would have explained it.
+func TestAnInstallationIsRefusedByAManagerBuiltForAnotherRuntime(t *testing.T) {
+	d := &Deps{Runtime: &fakes.Runtime{RuntimeName: "compose"}}
+	inst := domain.Installation{Runtime: "quadlet"}
+	rel := domain.Release{
+		Manifest: domain.Manifest{Runtimes: domain.Runtimes{
+			"quadlet": {Files: []string{"app.container"}},
+		}},
+		Root: "/opt/demo/releases/1",
+	}
+
+	_, err := d.runtimeConfig(rel, inst, "")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runs on the quadlet runtime")
+	assert.Contains(t, err.Error(), "configured for compose")
+}
+
+// And the matching case still builds a configuration, so the refusal above is
+// about disagreement rather than about the check being unconditional.
+func TestAMatchingRuntimeStillBuildsAConfiguration(t *testing.T) {
+	d := &Deps{Runtime: &fakes.Runtime{RuntimeName: "compose"}}
+	inst := domain.Installation{Runtime: "compose", Product: "demo"}
+	rel := domain.Release{
+		Manifest: domain.Manifest{Runtimes: domain.Runtimes{
+			"compose": {Files: []string{"compose.yaml"}},
+		}},
+		Root: "/opt/demo/releases/1",
+	}
+
+	cfg, err := d.runtimeConfig(rel, inst, "")
+
+	require.NoError(t, err)
+	assert.Len(t, cfg.Files, 1)
 }

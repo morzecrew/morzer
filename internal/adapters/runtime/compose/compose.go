@@ -118,6 +118,13 @@ func (r *Runtime) command(cfg ports.RuntimeConfig, timeout time.Duration, argv .
 // validation that Compose itself will do later, so a configuration error
 // surfaces during preflight rather than at the moment containers are being
 // started.
+// Name is the key a manifest declares this runtime under.
+//
+// The literal lives here rather than above `internal/adapters` deliberately:
+// this is the layer that is allowed to know a runtime's name, and the whole
+// point of the port method is that nothing higher up has to.
+func (r *Runtime) Name() string { return "compose" }
+
 func (r *Runtime) Validate(ctx context.Context, cfg ports.RuntimeConfig) (ports.Rendered, error) {
 	cmd := r.command(cfg, 60*time.Second, r.args(cfg, "config", "--format", "json")...)
 	// The merged config is data, not progress: streaming it into the live
