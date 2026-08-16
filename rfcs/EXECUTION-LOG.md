@@ -569,6 +569,21 @@ being tested where it runs.
 was comparing against a literal above `internal/adapters` — the branch decision 7
 forbids.
 
+**One finding is acknowledged and not fixed.** `Installation.Validate` does not
+check `Runtime`, so a hand-edited state file naming a runtime that does not exist
+loads and surfaces later. The adapter-mismatch refusal added here catches it at
+the first operation rather than at deploy, which is a different check in a
+different place and does not make the file invalid. Validating it properly means
+deciding what a valid runtime name *is* in the domain layer, and any answer
+shaped as a list of known runtimes puts a runtime catalogue above
+`internal/adapters`. Deliberately carried rather than answered in a review round.
+
+**A process failure worth recording against this round.** Five of the six thread
+replies cited commit hashes written from memory rather than read from `git log`;
+four of them pointed at nothing. Corrected on the threads. A reviewer following a
+fabricated reference finds no commit and has no way to tell a wrong hash from a
+fix that was never made.
+
 ## Rules distilled
 
 - **A validator that reads a normalised field is only as good as the guarantee
@@ -586,6 +601,9 @@ forbids.
 - **A test that asserts a field is empty has not asserted the object is
   usable.** The two-runtime manifest satisfied its test and could not load.
   (R-2)
+- **Read the hash, never recall it.** A commit reference is a claim like any
+  other, and one written from memory is unfalsifiable to the reader who follows
+  it and finds nothing.
 - **A design sketch loses to a `LOCKED` row.** When the illustration cannot be
   implemented without violating a decision, the illustration is what gives way,
   and the departure is recorded rather than argued. (D-010)
@@ -598,6 +616,9 @@ forbids.
   this wave was put to the author on 2026-08-16 and declined: removing a
   serialised field is its own schema question, and widening the branch after its
   audit is how an audited branch stops being audited.
+- **`Installation.Runtime` is not validated** against anything, so a hand-edited
+  state file naming a nonexistent runtime loads. Needs a domain-layer answer to
+  "what is a valid runtime name" that is not a catalogue above the adapters.
 - **The field-deprecation gap**: `runtime:` is deprecated and nothing warns. The
   only deprecation mechanism is keyed by `api_version`, and this is a field.
 - **A named removal release for `runtime:`**, without which "deprecated" is a
