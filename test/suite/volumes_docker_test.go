@@ -103,7 +103,10 @@ func startVolumeProject(t *testing.T, spec domain.BackupSpec) *volumeLab {
 				Name:    "demo",
 				Version: domain.MustParseVersion("1.2.0"),
 			},
-			Runtime: domain.RuntimeSpec{Project: cfg.Project},
+			// Declared the way a release declares it now: the
+			// project is an option the adapter reads, and the
+			// legacy block folds into exactly that.
+			Runtime: domain.RuntimeSpec{Project: cfg.Options["project"]},
 			Backup:  spec,
 		},
 	}
@@ -350,7 +353,7 @@ func (l *volumeLab) pause(t *testing.T, verb string) error {
 	defer cancel()
 
 	cmd := osexec.CommandContext(ctx, "docker", "compose",
-		"--project-name", l.cfg.Project,
+		"--project-name", l.cfg.Options["project"],
 		"--project-directory", l.cfg.WorkingDir,
 		"--file", l.cfg.Files[0], verb, "app", "sidecar")
 	out, err := cmd.CombinedOutput()

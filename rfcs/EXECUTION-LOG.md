@@ -989,10 +989,21 @@ vendor editing `runtime.project` — exactly as it was.
 ## Self-audit — 2026-08-16
 
 Scope: the whole branch, code, tests, docs, schemas and records. `just ci`
-green, `just coverage-union` above its floor, full acceptance, all three demo
-lanes, `just test-docker`. `runtime-check` **17 mentions (7 port-shaped, 2
-compose-shaped, 8 catalogue), 0 branches** — down from 18/3, and the fall is the
-point: an inventory that only grows is a list nobody has to shrink.
+green at **86.5%** (floor 84), full acceptance, all three demo lanes, and
+`docs-check` at 41 pages / **55** checks — one more than before, because the
+runtime half of the hook ABI needed a gate of its own. `runtime-check` **17
+mentions (7 port-shaped, 2 compose-shaped, 8 catalogue), 0 branches** — down
+from 18/3, and the fall is the point: an inventory that only grows is a list
+nobody has to shrink.
+
+**Two lanes are reported rather than claimed.** `just test-docker` has one
+failing test and `just coverage-union` cannot finish, both for the same reason
+and neither for this branch's: another project's development server on this
+host holds `127.0.0.1:18443`, which `TestTheStatementCarriesNamesAndTheBound
+AndNoValues` needs. Every other test in the container lane passes, and the five
+update tests that failed on an earlier run — port 18080, held at the time by a
+different process — pass in isolation now that it is free. Killing somebody
+else's process to make a lane green is not a way to make a lane green.
 
 | # | Severity | Finding | Status |
 |---|---|---|---|
@@ -1000,6 +1011,11 @@ point: an inventory that only grows is a list nobody has to shrink.
 | A-2 | Major | The refusal fired inside a step, so the engine compensated and the operation exited 11 ("back where it started") — burying the exit code and the remedy in a record. A precondition reported as a step failure is a precondition nobody can act on. | Fixed — asked before the operation in all three converge paths; the in-step check stays as the unbypassable one |
 | A-3 | Medium | The first version documented that a `project:` left beside `runtimes:` would be *ignored*. That is the hazard with a comment on it. | Fixed — refused, naming where the value goes |
 | A-4 | Low | The end-to-end test edited the release in place, which trips the digest guard first, so it was asserting a different refusal than it claimed. | Fixed — the disagreement is driven from the state side, and the comment says why |
+| A-6 | Medium | Two files behind the `docker` build tag still used the removed `RuntimeConfig.Project`, and every untagged lane was green. | Fixed — both updated; the tagged build is now part of the pass |
+| A-5 | Major | **Deleting the update path's adoption killed nothing.** The whole path a vendor actually ships a rename through — a new bundle, arriving by `update` — was untested, and so was the ordering that makes it work: adopting from the *candidate* would record the change as the baseline and refuse nothing. | Fixed — an update that renames is refused end to end, and both mutations now fail it |
+
+**Sabotage sweep: 11 mutations, 11 killed — one only after being made
+killable — plus the new `docs-check` gate verified by perturbation.**
 
 **A-1 and A-2 are the same kind of finding**: both are about *where* a correct
 check runs rather than whether it is correct. Neither would have been found by
@@ -1016,6 +1032,10 @@ user sees.
 - **The adoption of a baseline is a state write on a converge path.** It is
   skipped on a dry run and idempotent afterwards, and it is still a write that
   did not happen before this wave.
+- **A docker-tagged file went uncompiled by every untagged build.**
+  `test/dockerlab` and one `_docker_test.go` still referenced the removed field
+  and `just ci` was green throughout; only the container lane found them. Any
+  build-tagged tree is invisible to the fast loop.
 
 ## Rules distilled
 
@@ -1030,8 +1050,16 @@ user sees.
   Compensation rewrites the outcome, and the exit code an operator scripts
   against becomes "nothing happened". Ask before the operation; keep the
   in-operation check for the paths that bypass the door. (A-2)
+- **A build tag hides a compile error from every lane that does not set it.**
+  Two files referencing a removed field survived `go build ./...`, `go vet` and
+  `just ci`; the fast loop cannot see a tagged tree, so the tagged build is its
+  own check. (A-6)
 - **A plan must be audited for writes, not just for output.** The adoption was
   correct, idempotent and invisible — and it happened during `--dry-run`. (A-1)
+- **The path a defect actually arrives by is the one to test.** Every refusal
+  here was covered from the `apply` side, and the sweep found the `update` side
+  — a new bundle from a vendor — carrying no test at all. That is how the
+  hazard reaches a real machine. (A-5)
 - **When a fix moves an ABI, check whether it moved out of a gate.** Making the
   hook variable runtime-supplied would have silently created a second,
   undocumented ABI beside the one RFC 0007 built gates for. (D-020)
