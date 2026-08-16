@@ -566,6 +566,27 @@ func (d *Deps) parameters(rel domain.Release, inst domain.Installation) (domain.
 	return domain.ResolveParameters(rel.Manifest.Parameters, inst.Parameters)
 }
 
+// drivesRuntime reports whether the wired adapter is the runtime an
+// installation is fixed to, and which one it is when it is not.
+//
+// Two values compared, neither of which this layer has to recognise: one comes
+// out of installation state, the other out of the adapter (decision 7). One
+// implementation, because the comparison is now asked in three places -- every
+// operation, `doctor`, and `installation import` -- and three spellings of it
+// is how one of them comes to disagree.
+//
+// No runtime wired is not a mismatch. A Deps without one cannot contradict
+// anything, and the paths that need a runtime fail on their own terms; deciding
+// here that they cannot proceed would make `installation import` refuse on a
+// machine that has yet to be given an adapter.
+func (d *Deps) drivesRuntime(inst domain.Installation) (drives string, ok bool) {
+	if d.Runtime == nil {
+		return "", true
+	}
+	have := d.Runtime.Name()
+	return have, inst.RuntimeName() == have
+}
+
 // runtimeConfig builds the runtime configuration for a release and profile.
 func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profile string) (ports.RuntimeConfig, error) {
 	if profile == "" {
@@ -578,13 +599,10 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 	// store "quadlet", every later operation would hand `.container` files
 	// to Compose, and the deployment would fail somewhere far away from the
 	// sentence explaining why.
-	//
-	// Two values compared, neither of which this layer has to recognise:
-	// one comes out of installation state, the other out of the adapter.
-	if want, have := inst.RuntimeName(), d.Runtime.Name(); want != have {
+	if have, ok := d.drivesRuntime(inst); !ok {
 		return ports.RuntimeConfig{}, domain.InstallationError(nil,
 			"this installation runs on the %s runtime and this manager is configured for %s",
-			want, have).
+			inst.RuntimeName(), have).
 			WithHint("the runtime is fixed when an installation is created and does not " +
 				"transition; a manager built for a different runtime cannot operate it")
 	}
