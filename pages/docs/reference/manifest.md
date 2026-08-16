@@ -36,7 +36,8 @@ published version stays readable until it is explicitly deprecated.
 | `kind` | string | ✅ | Must be `application-release`. |
 | `metadata` | table | ✅ | Identity of the release. |
 | `providers` | table | | Which port implementation to use for each capability. |
-| `runtime` | table | ✅ | The Compose project and its files. |
+| `runtime` | table | | **Deprecated.** The Compose project and its files. Superseded by `runtimes`, and still read. |
+| `runtimes` | map | ✅ | Which runtimes this release supports, keyed by runtime name, and the files each is declared with. |
 | `requirements` | table | | What the machine must provide. |
 | `parameters` | map | | Knobs an operator may set, typed and defaulted. See [Parameters](parameters.md). |
 | `images` | map | ✅ | Container images, pinned by digest. |
@@ -85,7 +86,45 @@ the core.
 | `backup` | `hooks` | `hooks` |
 | `health` | | `http` |
 
-## runtime
+## runtimes
+
+Which runtimes this release supports. The keys are the declaration: a release
+declaring one runtime installs only where that runtime is present, and one
+declaring several carries a set of files for each.
+
+```yaml
+runtimes:
+  compose:
+    files: [compose.yaml]
+    profiles:
+      external-db: [compose.external-db.yaml]
+```
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `files` | list | ✅ | The files this runtime is declared with, release-relative. |
+| `profiles` | map | | Named deployment topologies; each is a list of *additional* files. |
+
+One `files` field for every runtime, rather than a differently named key per
+runtime. What the files mean is the runtime's business — a Compose file and a
+systemd unit are both paths into the release from here — and a manifest whose
+shape changed per runtime could only be validated by asking which runtime it
+was, which is the coupling the manager does not have.
+
+An unknown profile is an error rather than a silent fall back to the base files.
+Deploying the wrong topology quietly is worse than refusing.
+
+**Which runtime an installation uses is fixed when it is created** and never
+transitions. The state directory records volume names and image references that
+belong to one runtime, so changing it is a migration of everything the manager
+knows rather than a setting. A release that does not declare the runtime an
+installation was created against is refused rather than run on a substitute.
+
+## runtime (deprecated)
+
+The original single-runtime block. Still read, so releases built before
+`runtimes` existed keep installing; a manifest declaring both is refused,
+because merging them would pick a winner the vendor never nominated.
 
 | Field | Type | Required | Meaning |
 | --- | --- | :---: | --- |
@@ -93,8 +132,10 @@ the core.
 | `files` | list | ✅ | Base Compose files, release-relative. |
 | `profiles` | map | | Named deployment topologies; each is a list of *additional* Compose files. |
 
-An unknown profile is an error rather than a silent fall back to the base files.
-Deploying the wrong topology quietly is worse than refusing.
+A release still using this block is read as declaring the `compose` runtime and
+nothing else. Adopting `runtimes` means moving these files under
+`runtimes.compose` and deleting the old block — and, per the versioning rules,
+raising `compatibility.min_manager_version` to a manager that knows the field.
 
 ## requirements
 

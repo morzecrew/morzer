@@ -352,6 +352,12 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 
 		"Providers": "from the flags: which adapters to use is what `init` decides",
 
+		"Runtime": "carried from the existing state, always. Rebuilding it from " +
+			"the release would let a vendor who changed runtimes between " +
+			"releases re-point an installation whose volumes and image " +
+			"references belong to the old one -- the transition RFC 0023 " +
+			"decision 3 forbids, arriving as a repair",
+
 		// One verdict for the block, because it is carried as a block.
 		// The sandbox table classifies Policy field by field for a
 		// different question; here the question is whether a repair

@@ -441,6 +441,18 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		inst.ID = existing.ID
 		inst.CreatedAt = existing.CreatedAt
 
+		// The runtime is carried, never rebuilt (RFC 0023 decision 3).
+		//
+		// Rebuilding it from the release looks harmless and is the
+		// transition the decision forbids, arriving by the back door: a
+		// vendor who moved from one runtime to another between releases
+		// would have `init --repair` silently re-point an installation
+		// whose volumes and image references belong to the old one.
+		// Carried even when empty, because empty is what a machine
+		// created before schema 9 records and rewriting it would erase
+		// the difference between "predates the field" and "chose this".
+		inst.Runtime = existing.Runtime
+
 		// A repair keeps the signing identity and the salt. Both are
 		// carried rather than regenerated for the same reason the
 		// installation id is: re-minting the salt breaks the digest
