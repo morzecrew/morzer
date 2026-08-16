@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -181,5 +184,32 @@ func TestASchemaFiveInstallationStillLoadsAndMintsNothing(t *testing.T) {
 	// validation on the empty block it was just given.
 	if err := inst.Validate(); err != nil {
 		t.Errorf("a migrated installation does not validate: %v", err)
+	}
+}
+
+// A migration case that fails to raise the version must refuse, not spin.
+//
+// The loop runs while the version is below current, so a case that does not
+// advance it never terminates -- and every load of installation state goes
+// through here, which makes a mistyped case number a manager that stops
+// responding rather than one that says what is wrong. Found by sabotage: the
+// mutation that stopped `case 8` advancing did not fail a test, it hung the run
+// until the timeout killed it.
+//
+// Asserted through the one case reachable without editing the switch: a schema
+// below every case falls to the default and refuses there. The timeout is the
+// real assertion -- a regression here hangs rather than returning a wrong value.
+func TestAnUnmigratableSchemaRefusesRatherThanSpinning(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		_, err := migrateInstallation(domain.Installation{SchemaVersion: 1})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "schema 1 has no migration path and must say so")
+	case <-time.After(5 * time.Second):
+		t.Fatal("migrateInstallation did not return: no case advanced the version and none refused")
 	}
 }

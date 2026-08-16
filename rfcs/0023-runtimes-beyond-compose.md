@@ -312,7 +312,10 @@ refusal, which is also the first test that the refusal path is reachable.
 | 7a | What enforces decision 7 | LOCKED | Resolved by P1: [`tools/runtimecheck`](../tools/runtimecheck), an AST walk rather than `forbidigo`, because the rule needs to tell a comparison from a concatenation and a declared name from a mention in prose — §2.3 — and a pattern matcher cannot. Two rules: an allowlisted vocabulary rule whose allowlist is the inventory, and an un-allowlistable branch rule. `just runtime-check`, in CI beside the linter, with failing fixtures for both. |
 | 7b | The vocabulary rule names `podman` and `quadlet` before either exists | LOCKED | The measured Compose leak is inventoried and meant to shrink; the leak worth preventing is the *second* adapter teaching the layers above it a second private language. A rule naming only the incumbent would have permitted exactly that, and would have been added after the first `if kind == "quadlet"` was already load-bearing. |
 | 7c | A runtime named as data is not a leak | LOCKED | §2.1. `tools.Docker` is a key in a probe catalogue matching `requirements.tools`; a second runtime adds a row rather than contradicting one. Eight of the nineteen are this, and classing them as leaks would have roughly doubled the apparent problem and sent P2 renaming a lookup table. |
-| 8 | How the runtime is named in the manifest | OPEN | §4.1. `providers.runtime.name` already exists; P2 chooses and records here. |
+| 8 | How the runtime is named in the manifest | LOCKED | Resolved by P2, 2026-08-16, and not the way §4.1 predicted. `runtimes:`' keys are the declaration; `providers.runtime.name` is derived from them when a release declares one runtime and left empty when it declares two. §4.1 called the other option "smaller and reads better" — measured against the struct, `Providers.Runtime` is a single `Provider` beside `secrets` and `backup`, so it holds one value and cannot express the two-runtime bundle §4.1 itself requires and decision 4 renders both halves of. Consequence: the manifest's `"compose"` default (§2.1's second expensive leak) is gone, replaced by a value derived from what the vendor declared. See EXECUTION-LOG.md D-008. |
+| 9 | `runtimes:` is added; `runtime:` stays readable and deprecated | LOCKED | §4.1 specified a replacement and argued it on landing "before the first tag". 0.1.0 and 0.2.0 are cut, and under strict decoding a replacement makes `runtime:` an unknown field — so every bundle already built would stop parsing to buy a tidier surface. A manifest declaring both is refused rather than merged, because merging nominates a winner the vendor did not. Consequence: two spellings to maintain until a named removal release, and no `api_version` bump — 0018 decision 1's `min_manager_version` carries the cost, which is what that mechanism is for. See D-009. |
+| 10 | One `files` key per runtime, not a key named per runtime | LOCKED | §4.1 sketched `units:` for Quadlet beside `files:` for Compose. Validating that means asking which runtime a block belongs to, and a branch on a runtime's name above `internal/adapters` is what decision 7 forbids and `tools/runtimecheck` fails the build over. What the files mean is the adapter's to know. Consequence: a vendor writes `runtimes.quadlet.files: [app.container]`, which are files. See D-010. |
+| 11 | The runtime is recorded in a new installation field, not `Providers` | LOCKED | `Installation.Providers` is the obvious home and is a field with zero writers and zero readers, carrying two contradictory documented meanings — `describe.go` calls it "declared by the release manifest", a repair test calls it "from the flags". Recording the runtime there would give it a third, real one, and an older manager would find a name it understands and no reason to refuse. Schema 8 → 9 instead, and the bump is for the *read* path, which none of 5–8 were. See D-011. |
 
 ## 6. The escape hatch, restated after measurement
 
@@ -386,9 +389,12 @@ for the declared runtime's presence, which is where an operator meets decision 5
   inherited a completion criterion that had nothing to do with it. A phase
   boundary drawn around a shared blocker holds only as long as the blocker was
   identified correctly for every member.
-- **P2 — Manifest and state.** `runtimes:` map, decision 8 resolved, kind fixed at
-  `init`, carried by `installation import`, refused on mismatch, reported by
-  `doctor`. **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
+- **P2 — Manifest and state.** 🚧 **Partly shipped 2026-08-16.** `runtimes:` map,
+  decision 8 resolved (and decisions 9–11 added), kind fixed at `init` and
+  carried through `--repair`, an undeclared runtime refused rather than
+  substituted. **Still open in P2:** `installation import` carrying the kind,
+  `doctor` reporting it, and §14's two unspelled leaks — `RuntimeSpec.Project`
+  and `doctor.go`'s hard-coded `tools.Docker`. **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
   D-005. None of §12's three measurements is consumed by anything on this list:
   items 5 and 6 are volume capture and image ingest, both P3, and item 4 is
   §4.3's parameter delivery, also P3. What P2 did need from P1b is the list of
