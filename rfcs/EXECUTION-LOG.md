@@ -195,20 +195,28 @@ sat on a list that said hardware was required.
   Whether `init` refuses outright is left to P2, where it belongs beside decision
   5's refusal shape rather than being settled by the phase that found it.
 
-## Decision-row outcomes
+## Decision-row outcomes — 2026-08-16
 
-**Nothing has been ruled on yet.** D-001, D-002, D-003 and D-006 carry proposals
-outstanding as of 2026-08-16; D-004 and D-005 propose no row. This section exists
-without an accepted entry on purpose — a proposal nobody has accepted or refused
-should be visible as such, and a log without this heading cannot tell that state
-from a proposal that was quietly adopted.
+**One ruling, four proposals still outstanding.** D-005's phasing question was put
+to the author and answered; D-001, D-002, D-003 and D-006 were not. The
+outstanding rows are listed rather than omitted, because a proposal nobody has
+accepted or refused should be visible as such — a log that only records
+acceptances cannot tell that state from a proposal quietly adopted.
 
 | RFC | Row | Outcome | Grade | Decision | From |
 |---|---|---|---|---|---|
+| 0023 | — | **Accepted** | — | P2 is not gated on P1b: it consumes none of the three measurements, and what it did need — the host precondition list for decision 5's refusal and §9's `doctor` — landed with items 5 and 6. P1b stays open on item 4, which gates P3. No decision row; §10's phasing prose carries it. | D-005 |
 | 0023 | — | Outstanding | — | Ingest pulls with TLS verification disabled, scoped to the loopback command | D-001 |
 | 0011 | — | Outstanding | — | Registry or `oci:` transport for a Quadlet ingest, pending digest fidelity | D-002 |
 | 0010 | — | Outstanding | — | Helper-container capture under every runtime; unreadability is the runtime's, not the design's | D-003 |
 | 0023 | — | Outstanding | — | A rootless runtime requires a lingering account; `doctor` reports its absence | D-006 |
+
+**The alternative that was declined is worth recording**, since nothing else
+would carry it: closing P1b outright by folding item 4 into P3, where its answer
+is consumed. Refused because it recreates the grouping error D-004 had just
+found — item 4 would again inherit a completion criterion belonging to other
+work — and because a phase left open on one item is a visible statement that the
+architecture test is not yet de-risked, which folding it away would erase.
 
 ## Audit findings — 2026-08-16
 
@@ -274,8 +282,12 @@ softening the sentence to match the run that happened.
   one asked (D-006).
 - **Digest fidelity of Podman's `oci:` transport**, measured on a store that does
   not already hold the image — the half of D-002 that decides it.
-- **Whether P2 is gated at all** (D-005), which is the author's call and which
-  changes what the next wave even is.
+- ~~**Whether P2 is gated at all** (D-005), which is the author's call and which
+  changes what the next wave even is.~~ **Ruled 2026-08-16: it is not.** The next
+  wave is RFC 0023 P2 — the manifest's runtime dimension and decision 8 — and it
+  starts with a constraint this unit did not go looking for: `Providers.Runtime`
+  is a single `Provider`, so decision 8's better-reading option cannot express a
+  bundle declaring two runtimes, which §4.1 requires and decision 4 assumes.
 - **The development machine's Docker daemon is 29.6.2 while its client is
   29.7.2** — a live upgrade that has not been restarted into, caught in the
   User-Agent on the wire during D-001's measurement. `just test-docker` and `just

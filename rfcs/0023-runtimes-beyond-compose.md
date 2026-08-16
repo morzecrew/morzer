@@ -7,7 +7,9 @@
   category. **P1b is partly answered as of 2026-08-16**: a rootless Podman host
   exists, §12 items 5 and 6 are measured against it, and item 4 is restated —
   it wanted a cold boot rather than a host, and the host it has cannot supply
-  one. P1b stays open on that item alone.
+  one. P1b stays open on that item alone, and **item 4 gates P3 rather than P2**:
+  the claim that P1b blocked P2 was withdrawn on 2026-08-16 (D-005), so **P2 is
+  the next phase available** and the Podman programme is not waiting on hardware.
 - **Scope:** Grading the `ports.Runtime` seam by writing a second implementation
   of it — rootless Podman with Quadlet — and recording every place the port had
   to change to accommodate one. Covers the manifest's runtime dimension, the
@@ -386,7 +388,14 @@ for the declared runtime's presence, which is where an operator meets decision 5
   identified correctly for every member.
 - **P2 — Manifest and state.** `runtimes:` map, decision 8 resolved, kind fixed at
   `init`, carried by `installation import`, refused on mismatch, reported by
-  `doctor`.
+  `doctor`. **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
+  D-005. None of §12's three measurements is consumed by anything on this list:
+  items 5 and 6 are volume capture and image ingest, both P3, and item 4 is
+  §4.3's parameter delivery, also P3. What P2 did need from P1b is the list of
+  what "this machine can run the declared runtime" means — decision 5's refusal
+  and §9's `doctor` check both rest on it — and that arrived with items 5 and 6
+  (§11's two rootless preconditions, and the finding that a present binary can
+  still be unusable).
 - **P3 — The adapter.** Quadlet against the contract suite. Volume capture (0010)
   and bundled images (0011) are the two places to expect the design to come back —
   0012 already found that `oras-go` demands TLS where `docker pull` does not, and
@@ -533,10 +542,13 @@ been written into CI, because nothing here has been watched go red. The
 measurements were taken by hand against that host and are reproducible from what
 §12 records rather than from a lane that claims to run them.
 
-One measurement therefore stands between P1b and closure rather than three.
-Whether it also stands between here and P2 is a separate question this document
-asserts an answer to and has not re-examined since a Podman host existed — items
-5 and 6 both landed on P3's territory, not P2's. See EXECUTION-LOG.md D-005.
+One measurement therefore stands between P1b and closure rather than three, and
+**it does not stand between here and P2**. That claim was this document's, it was
+made before any Podman host existed, and it was re-examined and withdrawn on
+2026-08-16 — see EXECUTION-LOG.md D-005 and §10's P2 bullet. Item 4 gates P3,
+where §4.3 consumes its answer. P1b stays open on it rather than being closed by
+moving it, because a phase held open on one item is a legible statement that the
+architecture test is not yet de-risked.
 
 ## 13. Amendments
 
@@ -567,6 +579,17 @@ rows in EXECUTION-LOG.md, D-001 through D-005, which is also where the two
 findings that belong to other documents live: Podman's native `oci:` transport
 bears on RFC 0011's decision 19, and the rootless volume's readability bears on
 RFC 0010. Neither is this RFC's row to write.
+
+**2026-08-16 — P1b no longer gates P2.** The document asserted in three places
+that P1b was "the only thing between here and P2", and execution found that P2
+consumes none of the three measurements — items 5 and 6 belong to P3's volume
+capture and image ingest, item 4 to §4.3, also P3. What P2 needed was the host
+precondition list behind decision 5's refusal, and that arrived. Put to the
+author as EXECUTION-LOG.md D-005 and accepted; the phasing prose in §10 and §12
+carries it, and no decision row was added, because a phase gate is not a design
+decision. The declined alternative — closing P1b by folding item 4 into P3 — is
+recorded in the log beside the ruling, since a refusal is written down nowhere
+else.
 
 **2026-08-16 — §12 item 5's premise was void, and it was void before any host
 existed.** The item asked whether rootless volume *paths* break 0010's staging.
