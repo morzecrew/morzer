@@ -8,7 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/domain"
+	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -181,6 +184,10 @@ func TestDoctorAsksTheRuntimeWhichToolsInitWillNeed(t *testing.T) {
 	for _, r := range report.Results {
 		ids[r.ID] = true
 	}
+	// Without this the loop below passes by never running, which is the
+	// shape of a test that asserts a runtime advertising nothing is
+	// checked for nothing.
+	require.NotEmpty(t, h.Runtime.RequiredTools())
 	for _, want := range h.Runtime.RequiredTools() {
 		assert.True(t, ids["tools."+want],
 			"the runtime asked for %q and doctor did not check it", want)
@@ -210,3 +217,29 @@ func TestARuntimeThatNamesNoToolsIsNotGuessedAt(t *testing.T) {
 }
 
 type runtimeWithoutTools struct{ ports.Runtime }
+
+// The adapter names tools; the registry probes them. Nothing else asserts that
+// the two vocabularies are the same one, and a name the catalogue has no probe
+// for does not fail quietly -- it produces an internal error wearing a doctor
+// check, telling an operator their machine is unfit over a typo in this repo.
+//
+// The real adapter and the real registry, because a fake of either would be
+// asserting the agreement it was written from. Whether the tools are actually
+// installed here is beside the point and deliberately not asserted: this
+// machine may have neither.
+func TestEveryToolTheRuntimeAsksForHasAProbe(t *testing.T) {
+	ctx := context.Background()
+	registry := tools.NewRegistry(infraexec.New())
+
+	runtime := compose.New(infraexec.New())
+	names := runtime.RequiredTools()
+	require.NotEmpty(t, names)
+
+	for _, name := range names {
+		_, err := registry.Lookup(ctx, name)
+		if err != nil {
+			assert.NotContains(t, err.Error(), "no version probe is defined",
+				"the runtime asks for %q and the tool catalogue has never heard of it", name)
+		}
+	}
+}
