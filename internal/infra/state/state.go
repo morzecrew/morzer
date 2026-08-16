@@ -281,6 +281,29 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// reconciliations that would otherwise put the unit
 			// back.
 			i.SchemaVersion = 8
+		case 8:
+			// 8 -> 9 added `runtime` (RFC 0023 P2). Nothing to
+			// convert, and nothing to fill in: a machine written
+			// before the field existed ran the only runtime there
+			// was, and `Installation.RuntimeName` reads an empty
+			// value as exactly that.
+			//
+			// Deliberately not written here. Filling it in during
+			// migration would be indistinguishable, ever after,
+			// from a machine that was created against that runtime
+			// on purpose -- and the difference is what lets a later
+			// manager tell "predates the field" from "chose this",
+			// which is the question a runtime transition would have
+			// to ask.
+			//
+			// The bump is for the *read* path, which none of 5
+			// through 8 were. An older manager meeting a state file
+			// that names a runtime it has never heard of has one
+			// adapter and would drive the installation with it --
+			// operating the wrong substrate while reporting
+			// success. Refusing the file is the only answer that
+			// holds.
+			i.SchemaVersion = 9
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

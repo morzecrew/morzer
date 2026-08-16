@@ -61,8 +61,8 @@ type Manifest struct {
 	// replacement and argued it on the strength of landing "before the
 	// first tag"; 0.1.0 and 0.2.0 are cut, and under strict decoding a
 	// replacement makes `runtime:` an unknown field -- so every bundle
-	// already built would stop parsing to buy a tidier surface. It
-	// normalises into Runtimes[LegacyRuntimeName] at ApplyDefaults.
+	// already built would stop parsing to buy a tidier surface.
+	// DeclaredRuntimes folds it into Runtimes[LegacyRuntimeName] on read.
 	//
 	// Carries no `omitempty`, which would be the obvious way to stop a
 	// `runtimes:`-only release announcing an empty `"runtime": {}`: it does

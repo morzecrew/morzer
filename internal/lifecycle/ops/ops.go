@@ -572,7 +572,7 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		profile = inst.Profile
 	}
 
-	files, err := rel.ComposeFilePaths(profile)
+	files, err := rel.RuntimeFilePaths(inst.RuntimeName(), profile)
 	if err != nil {
 		return ports.RuntimeConfig{}, err
 	}

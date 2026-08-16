@@ -59,6 +59,10 @@ func sandboxClassification() map[string]sandboxVerdict {
 
 		"Mode": set("this is what makes it a sandbox"),
 
+		"Runtime": keep("which runtime the installation runs on; a sandbox that " +
+			"lost it would be rebuilt against whatever the release " +
+			"happens to declare first, which is a different machine"),
+
 		"Profile": keep("which topology to deploy; a sandbox needs one to run"),
 		"Domains": keep("the names the product is served under -- a sandbox that " +
 			"lost them renders nothing, and it cannot serve them anyway " +

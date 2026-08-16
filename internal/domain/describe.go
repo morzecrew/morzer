@@ -46,6 +46,12 @@ type InstallationDocument struct {
 
 	Release DescribedRelease `yaml:"release" json:"release"`
 
+	// Runtime is which runtime this installation is fixed to. Described
+	// rather than excluded: it is not a choice an operator typed, but it is
+	// the one fact that decides whether a given release can be installed
+	// here at all, and an operator comparing two machines needs to see it.
+	Runtime string `yaml:"runtime,omitempty" json:"runtime,omitempty"`
+
 	Profile string   `yaml:"profile,omitempty" json:"profile,omitempty"`
 	Domains []string `yaml:"domains,omitempty" json:"domains,omitempty"`
 
@@ -128,6 +134,7 @@ func (i Installation) Describe(release DescribedRelease, secretNames []string) I
 		Product:    i.Product,
 		Mode:       i.Mode,
 		Release:    release,
+		Runtime:    i.RuntimeName(),
 		Profile:    i.Profile,
 		Domains:    append([]string(nil), i.Domains...),
 		Parameters: copyStringMap(i.Parameters),
