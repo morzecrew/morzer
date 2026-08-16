@@ -23,7 +23,7 @@ type cannot quietly acquire a new exit code by being handled somewhere else.
 | 6 | `secrets` | A secrets error: the state could not be decrypted, a required secret is absent. |
 | 7 | `runtime` | The container runtime failed — `docker` or `docker compose`. |
 | 8 | `health` | A health check or the release's smoke test failed. |
-| 9 | `incompatible` | The release cannot be installed over, or rolled back to, what is running. |
+| 9 | `incompatible` | The release cannot be installed over, or rolled back to, what is running — or this manager cannot read what it was handed: state written by a newer manager, or an export from an installation whose runtime this build does not drive. |
 | 10 | `backup` | A backup or restore failed. |
 | 11 | `compensated` | The operation failed and compensation succeeded. The system is back where it started. |
 | 12 | `manual-intervention` | The operation mutated something it could not undo. A human has to look. |
