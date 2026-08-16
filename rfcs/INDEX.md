@@ -24,8 +24,11 @@ second table of the same shape is a second set of rows for the same numbers.
   0011's registry is reachable over plain HTTP with `--tls-verify=false`.
   **Item 4 is open and was never blocked on a host**: it asks what a tmpfs holds
   at boot, which needs somewhere bootable on demand. It gates P3, not P2 — the
-  claim that P1b blocked P2 was withdrawn on 2026-08-16 (EXECUTION-LOG.md D-005),
-  so **P2, the manifest's runtime dimension, is the next phase available.**
+  claim that P1b blocked P2 was withdrawn on 2026-08-16 (EXECUTION-LOG.md D-005).
+  **P2 is partly shipped**: the manifest gained `runtimes:` with `runtime:`
+  deprecated and still read, decision 8 resolved against the option §4.1
+  preferred, and the runtime fixed at `init` at installation schema 9. `import`,
+  `doctor` and §14's two unspelled leaks remain.
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
   inventory, the archive, redaction proved against seeded values, `support
   redact --check`, an archive encrypted to the vendor and unreadable by the
