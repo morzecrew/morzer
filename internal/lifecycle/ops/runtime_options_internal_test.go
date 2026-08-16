@@ -16,6 +16,9 @@ import (
 // What the runtime was told, and what happens when a release changes its mind.
 // RFC 0023 decision 15.
 
+// recorded is an installation fixed to the legacy runtime with a given
+// baseline. Nil options mean one created before schema 10, which is a different
+// case from an empty map and the tables below rely on the distinction.
 func recorded(options map[string]string) domain.Installation {
 	return domain.Installation{
 		SchemaVersion:  domain.InstallationSchemaVersion,

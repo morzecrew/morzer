@@ -99,6 +99,8 @@ func TestARuntimeOptionIsBoundedInShapeAndNotInMeaning(t *testing.T) {
 	}
 }
 
+// manifestWithOptions is the smallest valid manifest carrying one runtime's
+// options, so a table asserts the option rules and nothing else.
 func manifestWithOptions(options map[string]string) Manifest {
 	m := Manifest{
 		APIVersion: APIVersionV1Alpha1,
