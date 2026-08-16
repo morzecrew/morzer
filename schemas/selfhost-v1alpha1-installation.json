@@ -156,6 +156,12 @@
     "runtime": {
       "type": "string"
     },
+    "runtime_options": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
     "secrets": {
       "items": {
         "type": "string"

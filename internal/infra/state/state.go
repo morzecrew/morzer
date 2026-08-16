@@ -316,6 +316,27 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// success. Refusing the file is the only answer that
 			// holds.
 			i.SchemaVersion = 9
+		case 9:
+			// 9 -> 10 added `runtime_options` (RFC 0023 P2), and
+			// leaving it nil is the whole of the migration.
+			//
+			// There is nothing here to fill it from: the options
+			// live in a release manifest, and a migration runs on a
+			// state file with no release in hand. Writing an empty
+			// map would be worse than writing nothing, because
+			// empty is a *claim* -- "this deployment was created
+			// with no options declared" -- and the next release to
+			// set one would be refused as a change from a baseline
+			// nobody established. Nil says "created before the
+			// field", which is true, and the first operation that
+			// knows both the installation and the release it is
+			// running records what it is actually running under.
+			//
+			// The read-path argument is schema 9's, one degree
+			// sharper: an older manager ignoring these does not
+			// lose a label, it deploys under a different namespace
+			// and brings the product up against empty volumes.
+			i.SchemaVersion = 10
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

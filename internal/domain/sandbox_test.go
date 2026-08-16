@@ -63,6 +63,11 @@ func sandboxClassification() map[string]sandboxVerdict {
 			"lost it would be rebuilt against whatever the release " +
 			"happens to declare first, which is a different machine"),
 
+		"RuntimeOptions": keep("what the runtime was told when the installation was " +
+			"created; a sandbox that lost them would deploy under a " +
+			"different project and rehearse a restore against volumes " +
+			"the real machine does not use"),
+
 		"Profile": keep("which topology to deploy; a sandbox needs one to run"),
 		"Domains": keep("the names the product is served under -- a sandbox that " +
 			"lost them renders nothing, and it cannot serve them anyway " +

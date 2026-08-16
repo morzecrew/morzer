@@ -222,3 +222,46 @@ func TestAFetchInProgressIsNotSweptAsDebris(t *testing.T) {
 		t.Error("the interrupted backup beside it was left behind")
 	}
 }
+
+// A backup or restore hook reads `<PRODUCT>_COMPOSE_PROJECT` like any other
+// hook, and this engine builds their environment itself rather than through the
+// lifecycle layer. So the runtime's contribution has to be obtained here too --
+// it used to come from the manifest's deprecated block, which returns nothing
+// for a release on the `runtimes:` spelling.
+//
+// Two cases, because the capability is optional: a runtime that supplies
+// variables, and one that supplies none. A backup that covers only what the
+// hook produces is a supported configuration, and inventing a project name for
+// it would be this adapter guessing another one's answer.
+func TestBackupHooksGetTheRuntimesOwnVariables(t *testing.T) {
+	e := New(Config{
+		Paths:        domain.PathsUnder(t.TempDir(), "demo"),
+		Installation: domain.Installation{Product: "demo", ID: "inst_01"},
+		Runtime:      hookVarRuntime{project: "myapp"},
+	})
+
+	env := e.hookEnv(ports.PhaseBackup, "/backups/one")
+	if got := env.Extra["DEMO_COMPOSE_PROJECT"]; got != "myapp" {
+		t.Errorf("hook env carries %q, want the runtime's project namespaced for the product", got)
+	}
+
+	quiet := New(Config{
+		Paths:        domain.PathsUnder(t.TempDir(), "demo"),
+		Installation: domain.Installation{Product: "demo", ID: "inst_01"},
+	})
+	if len(quiet.hookEnv(ports.PhaseBackup, "/backups/one").Extra) != 0 {
+		t.Error("with no runtime wired there is nothing to supply, and nothing may be invented")
+	}
+}
+
+// hookVarRuntime is a ports.Runtime that answers only the capability under
+// test. Embedding the interface rather than a fake keeps every other method
+// nil: a test that reached one would panic rather than pass on a stub.
+type hookVarRuntime struct {
+	ports.Runtime
+	project string
+}
+
+func (r hookVarRuntime) HookVars(ports.RuntimeConfig) map[string]string {
+	return map[string]string{"COMPOSE_PROJECT": r.project}
+}

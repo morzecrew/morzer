@@ -261,7 +261,7 @@ func TestRuntimeContract_Fake(t *testing.T) {
 				CPUPercent: 1.5, MemoryBytes: 64 << 20},
 		}
 
-		return rt, ports.RuntimeConfig{Project: "demo"}
+		return rt, ports.RuntimeConfig{Product: "demo"}
 	})
 }
 

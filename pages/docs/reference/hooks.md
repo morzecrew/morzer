@@ -41,13 +41,27 @@ the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`.
 | `<PRODUCT>_BACKUP_DIR` | Where a backup hook writes, and a restore hook reads. Its contents are an ABI — see [below](#what-is-in-backup_dir). |
 | `<PRODUCT>_SECRETS_DIR` | The tmpfs directory secrets are rendered to. |
 | `<PRODUCT>_CONFIG_FILE` | The rendered configuration file. |
-| `<PRODUCT>_COMPOSE_PROJECT` | The Compose project name, for a hook that shells out to `docker compose`. |
 | `<PRODUCT>_LOG_LEVEL` | The manager's current log level. |
 | `<PRODUCT>_DRY_RUN` | `1` during a plan, `0` otherwise. |
 | `<PRODUCT>_RESULT_FD` | The descriptor to write the structured result to. Always `3`. |
 
 `DRY_RUN` is **always present**, including as `0`. A hook that tested for the
 variable's existence rather than its value would otherwise mutate during a plan.
+
+### What the runtime adds
+
+The table above is what every installation gets. A runtime contributes its own
+variables on top, and which ones depends on the runtime the installation is
+fixed to — so a hook that needs one should test for it rather than assume it.
+
+| Variable | Runtime | Meaning |
+| --- | --- | --- |
+| `<PRODUCT>_COMPOSE_PROJECT` | `compose` | The Compose project name, for a hook that shells out to `docker compose`. Set from `runtimes.compose.options.project`, or the product name. |
+
+Absent under a runtime that has no such notion. A project is Compose's grouping
+primitive; a runtime without one would have to invent a value, and a hook
+branching on a variable that is always set cannot tell the two situations
+apart.
 
 ### Phases
 

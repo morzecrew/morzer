@@ -509,7 +509,6 @@ func (d *Deps) hookEnv(
 		BackupDir:       d.Paths.BackupsDir(),
 		SecretsDir:      d.Paths.SecretsRenderDir(),
 		ConfigFile:      d.Paths.ApplicationFile(),
-		ComposeProject:  rel.Manifest.Runtime.Project,
 		DryRun:          dryRun,
 		LogLevel:        "info",
 		// Best effort: a hook environment is built on paths that do
@@ -518,7 +517,43 @@ func (d *Deps) hookEnv(
 		// Failing here would turn a bad parameter into a crash in the
 		// middle of building a log line.
 		Parameters: d.parametersOrEmpty(rel, inst),
+		Extra:      d.runtimeHookVars(rel, inst),
 	}
+}
+
+// runtimeHookVars asks the runtime what it adds to the hook ABI.
+//
+// `<PRODUCT>_COMPOSE_PROJECT` comes from here now rather than from a field on
+// HookEnv. The variable is unchanged for a Compose installation; what changed
+// is that a runtime with no project supplies nothing instead of the core ABI
+// promising a value it cannot mean (RFC 0023 §2.2).
+//
+// Best effort, like the parameters beside it: a hook environment is built for a
+// log line as often as for an execution, and a release whose files cannot be
+// resolved is already refused by the steps that matter. Returning nothing here
+// costs a variable; failing would cost the diagnostic that says why.
+func (d *Deps) runtimeHookVars(rel domain.Release, inst domain.Installation) map[string]string {
+	supplier, ok := d.Runtime.(ports.HookVarSupplier)
+	if !ok {
+		return nil
+	}
+	cfg, err := d.runtimeConfig(rel, inst, "")
+	if err != nil {
+		return nil
+	}
+	supplied := supplier.HookVars(cfg)
+	if len(supplied) == 0 {
+		return nil
+	}
+	// Namespaced here, because the namespace is the manager's. An adapter
+	// that built `DEMO_COMPOSE_PROJECT` itself would be a second
+	// implementation of HookEnv.Var, and the two would drift the first time
+	// a product name needed a character escaped.
+	named := make(map[string]string, len(supplied))
+	for suffix, value := range supplied {
+		named[ports.HookEnv{Product: inst.Product}.Var(suffix)] = value
+	}
+	return named
 }
 
 // parametersOrEmpty resolves parameters, returning nothing on failure.
@@ -585,6 +620,123 @@ func (d *Deps) drivesRuntime(inst domain.Installation) (drives string, ok bool) 
 	}
 	have := d.Runtime.Name()
 	return have, inst.RuntimeName() == have
+}
+
+// runtimeBaseline resolves what this installation is running under: the options
+// it recorded, or -- for one created before schema 10, which recorded none --
+// the ones the release it is currently running declares.
+//
+// Derived and persisted separately, and the split is the point. Three findings
+// came out of doing both at once. A plan must not write, so a dry run that
+// skipped the write also skipped the baseline and then accepted a target it
+// would refuse for real. The write happened before the deployment lock, so it
+// could clobber a concurrent `config set`. And a release that could not be
+// resolved silently produced *no* baseline, which reads as "created before
+// schema 10" and waves the change through -- on the update path, which is how a
+// rename actually arrives.
+//
+// So this answers the question and nothing else. `running` is the release the
+// deployment is on, never the one being introduced: adopting from a candidate
+// would record the change as the baseline and refuse nothing.
+func runtimeBaseline(inst domain.Installation, running domain.Release) map[string]string {
+	if inst.RuntimeOptions != nil {
+		return inst.RuntimeOptions
+	}
+	declared, _ := running.Manifest.DeclaredRuntimes()
+
+	baseline := map[string]string{}
+	for key, value := range declared[inst.RuntimeName()].Options {
+		baseline[key] = value
+	}
+	return baseline
+}
+
+// persistRuntimeBaseline writes a derived baseline into installation state.
+//
+// Called under the deployment lock and nowhere else, because it is a
+// read-modify-write of a record other operations also write: `config set` and
+// `init --repair` change fields this one does not, and a save built on a copy
+// read minutes earlier would put them back as they were.
+//
+// Re-reads under the lock and writes only when the field is still absent, so
+// two operations racing to adopt the same installation agree rather than
+// overwrite. Never called on a dry run: a plan that writes is not a plan.
+func (d *Deps) persistRuntimeBaseline(ctx context.Context, baseline map[string]string) error {
+	inst, err := d.State.LoadInstallation(ctx)
+	if err != nil {
+		return err
+	}
+	if inst.RuntimeOptions != nil {
+		return nil
+	}
+	inst.RuntimeOptions = baseline
+	return d.saveInstallation(ctx, inst)
+}
+
+// refuseRuntimeOptionChange is checkRuntimeOptions asked about a whole release,
+// before an operation begins.
+//
+// The same comparison runs inside runtimeConfig, which is what makes it
+// unbypassable -- every path that touches the runtime goes through it. This one
+// exists because a precondition discovered *inside* a step is reported as a
+// step failure: the engine compensates, the operation exits 11 ("back where it
+// started"), and the exit code and remedy that say what is actually wrong are
+// buried in a record. Asked here, it is a refusal with nothing started.
+func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Release) error {
+	declared, _ := rel.Manifest.DeclaredRuntimes()
+	return checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
+}
+
+// checkRuntimeOptions refuses a release that would change what the runtime was
+// told when this installation was created.
+//
+// The options name durable things. Under Compose, `project` is the prefix on
+// every volume, network and container — measured: `--project-name alpha`
+// resolves a volume named `alpha_data`, and `beta` resolves `beta_data`. So a
+// release that changes one does not reconfigure a deployment, it points it at
+// storage nothing has ever written to, brings the product up empty, and leaves
+// the real data on the disk with nothing referring to it. Nothing else in this
+// manager would notice: the backup that runs afterwards captures the new empty
+// volumes, and `doctor` reports them covered.
+//
+// Every option is treated as durable, because the manager cannot tell which are
+// — only the adapter knows what any of them mean, and asking it "is this one
+// dangerous" would be a second question with a second wrong answer available.
+// Refusing a harmless change costs a message; permitting a harmful one costs
+// the data.
+//
+// A nil record means the installation predates schema 10, and there is nothing
+// to compare against: those adopt on the next operation that knows both halves
+// rather than being refused for a baseline nobody wrote down.
+func checkRuntimeOptions(inst domain.Installation, declared map[string]string) error {
+	if inst.RuntimeOptions == nil {
+		return nil
+	}
+
+	changed := make([]string, 0, len(declared)+len(inst.RuntimeOptions))
+	for key, was := range inst.RuntimeOptions {
+		if now, ok := declared[key]; !ok || now != was {
+			changed = append(changed, key)
+		}
+	}
+	for key := range declared {
+		if _, ok := inst.RuntimeOptions[key]; !ok {
+			changed = append(changed, key)
+		}
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	sort.Strings(changed)
+
+	return domain.IncompatibleError(nil,
+		"this release changes runtime options this installation was created with: %s",
+		strings.Join(changed, ", ")).
+		WithHint("these name what the runtime creates -- under compose the project is the " +
+			"prefix on every volume -- so applying this would deploy against storage " +
+			"that does not exist yet and leave the current data unreferenced. Either " +
+			"the release restores the values, or take a backup, `init` a fresh " +
+			"installation and `restore` into it")
 }
 
 // runtimeConfig builds the runtime configuration for a release and profile.
@@ -673,8 +825,18 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		env[envName(inst.Product, "IMAGE_"+imageVarName(name))] = spec.RuntimeRef()
 	}
 
+	declared, _ := rel.Manifest.DeclaredRuntimes()
+
+	if err := checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options); err != nil {
+		return ports.RuntimeConfig{}, err
+	}
+
 	return ports.RuntimeConfig{
-		Project:    rel.Manifest.Runtime.Project,
+		// The product this deployment is, and the settings the vendor
+		// declared for this runtime -- carried, never read. What the
+		// adapter names things is its own decision from these two.
+		Product:    inst.Product,
+		Options:    declared[inst.RuntimeName()].Options,
 		Files:      files,
 		WorkingDir: rel.Root,
 		Env:        env,

@@ -31,10 +31,16 @@ second table of the same shape is a second set of rows for the same numbers.
   now refuses a runtime this manager cannot drive, `doctor` reports the one an
   installation is fixed to, and the `tools.Docker` leak is closed by an optional
   capability rather than a rename — there was no name in it to rename.
-  **One item of P2 remains**, and it grew: `runtimes:` gives a vendor no way to
-  name a project while the deprecated block's default supplies one anyway, so
-  `RuntimeSpec.Project` is a decision about a published hook ABI rather than a
-  tidy-up (EXECUTION-LOG.md D-016).
+  **P2 is complete but for one thing.** Its last item turned out to be a data
+  path rather than a tidy-up: `runtimes:` could not express a project while the
+  deprecated block's default supplied one, so the documented migration renamed
+  every volume of any deployment whose project was not its product name.
+  Runtimes now take an opaque `options` map, the installation records what it
+  was created with and refuses a release that changes it, and
+  `<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime rather than promised by
+  the core hook ABI. The leak inventory is **17**, down from 19 at P1. What remains is
+  that `runtime:` is deprecated and nothing warns — no mechanism exists for
+  deprecating a *field* (D-017).
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
   inventory, the archive, redaction proved against seeded values, `support
   redact --check`, an archive encrypted to the vendor and unreadable by the

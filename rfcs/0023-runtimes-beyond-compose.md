@@ -318,6 +318,9 @@ refusal, which is also the first test that the refusal path is reachable.
 | 11 | The runtime is recorded in a new installation field, not `Providers` | LOCKED | `Installation.Providers` is the obvious home and is a field with zero writers and zero readers, carrying two contradictory documented meanings — `describe.go` calls it "declared by the release manifest", a repair test calls it "from the flags". Recording the runtime there would give it a third, real one, and an older manager would find a name it understands and no reason to refuse. Schema 8 → 9 instead, and the bump is for the *read* path, which none of 5–8 were. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-011. |
 | 12 | A release declaring several runtimes is refused at `init` | ASSUMED | §4.1 lets a bundle declare two runtimes and never says which one the manager installs with. Choosing needs to know which runtime this manager can drive, and today the only answers are a branch on a runtime's name — decision 7 forbids it — or a name injected at the composition root that every test would set and no test would exercise as production leaves it. Refusing costs a bundle nobody ships yet; either alternative costs the architecture test this RFC exists to run. Graded ASSUMED rather than LOCKED because it expires: P3 brings the second adapter and with it a real basis for choosing. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-012. |
 | 13 | `installation import` refuses an export whose runtime this manager does not drive, before anything is created | LOCKED | §4.2 said the second creation path must carry the kind and stopped there. Decision 3 makes the runtime immutable, so an imported record naming a runtime with no adapter here is a machine where every command fails and nothing can correct it. Refusing costs an operator one sentence during a rebuild; proceeding costs them the discovery one command later, in the same incident. Consequence: this is the one thing an import refuses about the *manager* rather than about the document, and it sits beside `ManagerVersion`, which is deliberately never enforced — the difference is that a version mismatch still leaves a working machine. It exits 9, the code the schema-from-the-future refusal on the same path already uses. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-015. |
+| 15 | Per-runtime settings are an opaque `options` map; the adapter validates them | LOCKED | §4.1 gave a runtime a file list and nothing else, and decision 10 removed the per-runtime *key name*. What went with it, unnoticed, was `project` — so `runtimes:` gave a vendor no way to name one while `ApplyDefaults` supplied it from the deprecated block anyway (D-016). A map the manager bounds in shape and never reads is the only form that survives a second runtime: `project` is Compose's grouping primitive and Quadlet's equivalent question has a different name, so a typed field would put one runtime's vocabulary in the shape both share. Consequence: an unknown key can only be refused by the adapter, from `Validate`, and a manifest surface exists that the manager cannot check the meaning of. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-018. |
+| 16 | The installation records the options it was created with, and a release that changes them is refused | LOCKED | These name durable things: measured, `--project-name alpha` resolves a volume called `alpha_data` and `beta` resolves `beta_data`. A changed project is not a reconfiguration, it is a deployment pointed at storage nothing has written to, with the operator's data still on the disk and nothing referring to it — and no other check would notice, since the backup that follows captures the new empty volumes and `doctor` reports them covered. Every option is treated as durable because only the adapter knows which are. Consequence: installation schema 9 → 10, a refusal on a path that has never had one, and an installation created before the field adopts what it is running on its next converge rather than being refused for a baseline nobody wrote. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-019. |
+| 17 | `<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime, not promised by the core hook ABI | LOCKED | §2.2 called it the expensive leak and P1's inventory named the shape of the fix: *"the variable stays for Compose installations and is absent under another runtime, which makes it a runtime-supplied variable rather than a core one"*. Renaming it was never available — the name is what every vendor hook already writes. Consequence: the hook ABI is two lists rather than one, `docs-check` gained a gate for the second so it does not become the undocumented surface RFC 0007 §13 found the Compose interpolation set in, and a hook that needs the variable should test for it. Byte-identical for every installation that exists today, since all of them are Compose. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-020. |
 
 ## 6. The escape hatch, restated after measurement
 
@@ -399,10 +402,14 @@ for the declared runtime's presence, which is where an operator meets decision 5
   and `doctor.go`'s hard-coded `tools.Docker`.~~ **Three of those four shipped
   2026-08-16**: import carries the kind and refuses one this manager cannot
   drive, `doctor` gains `runtime.declared`, and the `tools.Docker` leak is
-  closed by an optional capability rather than by a rename. **Still open in
+  closed by an optional capability rather than by a rename. ~~**Still open in
   P2:** `RuntimeSpec.Project`, which is a published hook ABI and its own unit of
   work (EXECUTION-LOG.md D-016), and the deprecation of `runtime:`, which has no
-  mechanism — 0018's is keyed by `api_version` and this is a field (D-017). **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
+  mechanism.~~ `RuntimeSpec.Project` shipped 2026-08-16 as decisions 15–17, and
+  **P2 is complete** but for one thing that is decision 9's cost rather than a
+  phase's work: `runtime:` is deprecated and nothing warns, because the only
+  deprecation mechanism this project has is keyed by `api_version` and this is a
+  field (D-017, carried). **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
   D-005. None of §12's three measurements is consumed by anything on this list:
   items 5 and 6 are volume capture and image ingest, both P3, and item 4 is
   §4.3's parameter delivery, also P3. What P2 did need from P1b is the list of
@@ -655,20 +662,38 @@ is a disaster-recovery path that deliberately refuses almost nothing, and
 reason. The difference is that a version mismatch still leaves a working
 machine and this does not.
 
+**2026-08-16 — §2.2's list is empty, and the last item on it was bigger than
+the entry said.** `RuntimeSpec.Project` was described as a Compose primitive
+wearing a neutral name, with three readers. Execution found a fourth fact the
+entry did not carry: `runtimes:` had no way to express a project at all, while
+`ApplyDefaults` supplied one from the deprecated block to every manifest —
+including those that never wrote it. The documented migration ("move these files
+under `runtimes.compose` and delete the old block") therefore renamed every
+volume, network and container of any deployment whose project was not its
+product name. Measured on the development host: `--project-name alpha` resolves
+a volume named `alpha_data`, `beta` resolves `beta_data`. Rows 15, 16 and 17
+carry the fix; the leak inventory falls **18 → 17**, and its compose-shaped
+class **3 → 2**.
+
+**2026-08-16 — the hook ABI is two lists.** Everything §4.3 and RFC 0007 say
+about it assumed one. A runtime now contributes variables through
+`ports.HookVarSupplier`, and `docs-check` gained a gate for that half —
+otherwise the fix would have created exactly the ungated ABI RFC 0007 §13 built
+these gates to end, one layer along.
+
 ## 14. What P1 leaves for whoever picks this up
 
 - **P1b, above.** ~~Three measurements behind one Podman host.~~ One
   measurement — item 4 — behind a bootable venue, as of 2026-08-16. Struck
   rather than rewritten, because the sentence was the reason the phase was
   scoped the way it was and a reader tracing that scope needs to see it.
-- **The two unspelled leaks** in §2.2 — `RuntimeSpec.Project` and ~~`doctor.go`'s
+- ~~**The two unspelled leaks** in §2.2 — `RuntimeSpec.Project` and `doctor.go`'s
   hard-coded `tools.Docker`~~ — are not in the inventory, because the inventory is
   what a checker can see and these are not. They are P2's, and they are the ones
-  most likely to be forgotten precisely because nothing fails when they are. The
-  second is closed (§13, 2026-08-16). The first is not, and is larger than this
-  line implies: `runtimes:` gives a vendor no way to set a project at all, so
-  every release on the new spelling takes the product name through a field on
-  the deprecated block — EXECUTION-LOG.md D-016.
+  most likely to be forgotten precisely because nothing fails when they are.
+  **Both are closed** (§13, 2026-08-16), and the sentence above proved true of
+  the second one twice over: nothing failed when it was wrong, and what nothing
+  failed on was a documented migration that renamed an operator's volumes.
 - **The renames themselves are not P1's.** P1 classified; it changed no name. A
   rename sweep that lands before the manifest work of P2 would churn the same
   files twice.

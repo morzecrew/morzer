@@ -153,7 +153,7 @@ func newVolumeFixtureWithHook(
 			Paths:          paths,
 			ManagerVersion: "0.0.0-test",
 			Runtime:        runtime,
-			RuntimeConfig:  ports.RuntimeConfig{Project: "demo"},
+			RuntimeConfig:  ports.RuntimeConfig{Product: "demo"},
 			AllowDowntime:  allowDowntime,
 			Now:            func() time.Time { return time.Now().UTC() },
 			FreeSpace:      free,

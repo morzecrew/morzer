@@ -138,8 +138,14 @@ func Project(t *testing.T, composeYAML string) ports.RuntimeConfig {
 		t.Fatal(err)
 	}
 
+	// Named through the option rather than a field, because that is how a
+	// manifest names one now: the manager carries `project` and the adapter
+	// reads it. A lab that set it any other way would be exercising a path
+	// no release takes.
+	project := Name(t)
 	cfg := ports.RuntimeConfig{
-		Project:    Name(t),
+		Product:    project,
+		Options:    map[string]string{"project": project},
 		Files:      []string{file},
 		WorkingDir: dir,
 	}
@@ -147,11 +153,11 @@ func Project(t *testing.T, composeYAML string) ports.RuntimeConfig {
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		out, err := run(ctx, "docker", "compose", "--project-name", cfg.Project,
+		out, err := run(ctx, "docker", "compose", "--project-name", project,
 			"--project-directory", dir, "--file", file,
 			"down", "--volumes", "--remove-orphans", "--timeout", "5")
 		if err != nil {
-			t.Logf("tearing down %s: %v\n%s", cfg.Project, err, out)
+			t.Logf("tearing down %s: %v\n%s", project, err, out)
 		}
 	})
 

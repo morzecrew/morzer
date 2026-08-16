@@ -100,19 +100,6 @@ var inventory = []Entry{
 		Why:     "renders the fixed set for a product; it calls HookEnv.Var and knows nothing about Compose",
 		Removes: "the same rename",
 	},
-	{
-		File: "internal/ports/hooks.go", Symbol: "field ComposeProject", Class: ComposeShaped,
-		Why: "the expensive one. A Compose project is Compose's grouping primitive, " +
-			"and Quadlet has no equivalent -- a unit prefix is a naming convention, " +
-			"not a handle. It reaches every vendor hook as <PRODUCT>_COMPOSE_PROJECT " +
-			"and the reference page documents it as being for a hook that shells out " +
-			"to `docker compose`, so it is a published ABI whose *meaning* is absent " +
-			"under a second runtime, not merely whose name is",
-		Removes: "nothing cheap. The variable stays for Compose installations and is " +
-			"absent under another runtime, which makes it a runtime-supplied variable " +
-			"rather than a core one -- a change to what the hook ABI promises, and " +
-			"therefore a decision for P2 rather than a rename",
-	},
 
 	// ---- internal/domain ----
 	{

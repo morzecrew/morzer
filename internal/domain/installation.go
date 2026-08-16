@@ -73,7 +73,18 @@ import (
 // substrate while reporting success, which is the failure decision 5 exists to
 // refuse. Refusing the state file is the only answer that holds, and the
 // refusal is what the bump buys.
-const InstallationSchemaVersion = 9
+// Bumped to 10 for `runtime_options`, and the read direction again -- the
+// second bump that is, for a sharper version of schema 9's reason. The options
+// decide what a runtime names durable things: under Compose the project is the
+// prefix on every volume, network and container. An older manager reading a
+// state file that records them does not merely lose a field, it operates the
+// deployment under whatever the release currently says -- and if that differs,
+// Compose creates a fresh, empty set of volumes beside the real ones and brings
+// the product up against them, reporting success. Measured:
+// `--project-name alpha` resolves a volume named `alpha_data` and `beta`
+// resolves `beta_data`. Refusing the file is the only answer that keeps the
+// data attached to the deployment.
+const InstallationSchemaVersion = 10
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -295,6 +306,27 @@ type Installation struct {
 	// manager reading it would find a name it understands and no reason to
 	// stop.
 	Runtime string `yaml:"runtime" json:"runtime,omitempty"`
+
+	// RuntimeOptions is what the runtime was told when this installation was
+	// created -- the manifest's per-runtime options, verbatim and
+	// uninterpreted.
+	//
+	// Recorded because these name things that outlive an operation. The
+	// compose runtime's `project` is the prefix on every volume, network and
+	// container it creates, so a release that changes it points the
+	// deployment at storage that does not exist yet, and the old data stays
+	// on the disk with nothing referring to it. The manager cannot tell
+	// which options are like that -- only the adapter knows what any of them
+	// mean -- so it treats all of them as durable and refuses a change,
+	// which fails safe in the direction that keeps data attached.
+	//
+	// **No `omitempty`, deliberately, and it is load-bearing.** An empty map
+	// means "this release declared no options", and nil means "created
+	// before the field existed". Those lead to different answers: a release
+	// that now sets `project` is a change from the first and an unknown
+	// baseline from the second. omitempty would serialise both as absent and
+	// erase the distinction on the first write.
+	RuntimeOptions map[string]string `yaml:"runtime_options" json:"runtime_options"`
 
 	// Domains are the public names the product is served under. The first
 	// is canonical and becomes the public URL in `status`.
@@ -771,6 +803,21 @@ func (i Installation) Validate() error {
 	if i.Runtime != "" && !ValidRuntimeName(i.Runtime) {
 		v.add("runtime", "is not a usable runtime name: lower-case letters, digits "+
 			"and hyphens, starting with a letter, at most 32 characters")
+	}
+	// The same bounds the manifest puts on them, checked again here for the
+	// same reason the backup schedule is: this file is hand-editable, and
+	// the values reach an adapter's argv. A grammar, never a meaning -- what
+	// the keys are for is the adapter's answer.
+	for _, key := range sortedStringKeys(i.RuntimeOptions) {
+		if !optionName.MatchString(key) {
+			v.add("runtime_options",
+				"%q is not a usable option name: lower-case letters, digits "+
+					"and underscores, starting with a letter, at most 32 characters", key)
+			continue
+		}
+		if err := ValidateSingleLine(i.RuntimeOptions[key], maxRuntimeOptionLen); err != nil {
+			v.add("runtime_options."+key, "%s", AsError(err).Message)
+		}
 	}
 	if i.ID == "" {
 		v.add("id", "is required")

@@ -272,7 +272,12 @@ func TestApplyDefaults(t *testing.T) {
 	assert.Equal(t, DefaultRetentionReleases, m.Retention.Releases)
 	assert.Equal(t, DefaultRetentionBackups, m.Retention.Backups)
 	assert.Equal(t, "compose", m.Providers.Runtime.Name)
-	assert.Equal(t, "demo", m.Runtime.Project, "the project defaults to the product name")
+	// The project is no longer defaulted here, and that is the point: it
+	// used to be filled in for every manifest, including ones that never
+	// wrote a `runtime:` block, so a release on the `runtimes:` spelling
+	// silently carried a grouping name from the deprecated one. What a
+	// runtime falls back to is the adapter's answer now.
+	assert.Empty(t, m.Runtime.Project, "the project is the runtime's to default, not the manifest's")
 	assert.Equal(t, DefaultConfigMode, m.Configuration[0].Mode)
 	assert.Equal(t, Duration(DefaultOperationTimeout), m.Operations["backup"].Timeout)
 	assert.Equal(t, Duration(DefaultHealthTimeout), m.Health.Checks[0].Timeout)

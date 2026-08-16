@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -25,7 +26,7 @@ func newRuntime() (*compose.Runtime, *exec.Scripted) {
 
 func cfg() ports.RuntimeConfig {
 	return ports.RuntimeConfig{
-		Project:    "demo",
+		Product:    "demo",
 		Files:      []string{"/rel/compose.yaml"},
 		WorkingDir: "/rel",
 		Env:        map[string]string{"DEMO_PARAM_HTTP_PORT": "18080"},
@@ -348,5 +349,74 @@ func TestTheRuntimeNeedsTheDaemonAndTheCLIPlugin(t *testing.T) {
 	got := r.RequiredTools()
 	if len(got) != 2 || got[0] != "docker" || got[1] != "compose" {
 		t.Errorf("RequiredTools() = %v, want the daemon and the plugin", got)
+	}
+}
+
+// The project is this adapter's to resolve, and the option is how a vendor
+// says so. Asserted through argv rather than through the resolver, because
+// argv is what actually decides which volumes a deployment gets.
+func TestTheProjectComesFromTheOptionAndFallsBackToTheProduct(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("config", `{"services":{"web":{}}}`)
+
+	cfg := ports.RuntimeConfig{Product: "demo", Files: []string{"/rel/compose.yaml"}}
+	if _, err := r.Validate(context.Background(), cfg); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got := strings.Join(runner.Calls()[0].Argv, " "); !strings.Contains(got, "--project-name demo") {
+		t.Errorf("argv = %q, want the product name as the project", got)
+	}
+
+	r, runner = newRuntime()
+	runner.OnOutput("config", `{"services":{"web":{}}}`)
+	cfg.Options = map[string]string{"project": "myapp"}
+	if _, err := r.Validate(context.Background(), cfg); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got := strings.Join(runner.Calls()[0].Argv, " "); !strings.Contains(got, "--project-name myapp") {
+		t.Errorf("argv = %q, want the declared project", got)
+	}
+}
+
+// An option this runtime has never heard of is refused rather than ignored.
+// The manager cannot make this refusal -- it holds no list of what any runtime
+// understands -- so if it does not happen here it does not happen, and a
+// mistyped `project` silently deploys under the product name instead.
+func TestAnUnknownOptionIsRefused(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("config", `{"services":{"web":{}}}`)
+
+	_, err := r.Validate(context.Background(), ports.RuntimeConfig{
+		Product: "demo",
+		Files:   []string{"/rel/compose.yaml"},
+		Options: map[string]string{"porject": "myapp"},
+	})
+	if err == nil {
+		t.Fatal("an unknown runtime option must be refused")
+	}
+	if !strings.Contains(err.Error(), "porject") {
+		t.Errorf("error = %q, want it to name the option the vendor wrote", err)
+	}
+	if !strings.Contains(domain.AsError(err).Hint, "project") {
+		t.Errorf("hint = %q, want it to name what this runtime does understand",
+			domain.AsError(err).Hint)
+	}
+}
+
+// The hook variable vendors have always read, under the name they read it by.
+// What changed is who supplies it: the core ABI stopped promising a value a
+// runtime without projects cannot mean.
+func TestTheProjectIsSuppliedToHooksUnderItsPublishedName(t *testing.T) {
+	r, _ := newRuntime()
+
+	vars := r.HookVars(ports.RuntimeConfig{Product: "demo", Options: map[string]string{"project": "myapp"}})
+	if vars["COMPOSE_PROJECT"] != "myapp" {
+		t.Errorf("HookVars = %v, want COMPOSE_PROJECT=myapp", vars)
+	}
+	// Unprefixed: the product namespace is the manager's to apply, and an
+	// adapter that built `DEMO_COMPOSE_PROJECT` would be a second
+	// implementation of HookEnv.Var.
+	if _, prefixed := vars["DEMO_COMPOSE_PROJECT"]; prefixed {
+		t.Error("HookVars must return suffixes, not namespaced names")
 	}
 }

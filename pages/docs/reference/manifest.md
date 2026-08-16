@@ -104,6 +104,7 @@ runtimes:
 | --- | --- | :---: | --- |
 | `files` | list | ✅ | The files this runtime is declared with, release-relative. |
 | `profiles` | map | | Named deployment topologies; each is a list of *additional* files. |
+| `options` | map | | Settings this runtime understands and the manager does not. Keys are lower-case identifiers, values one short line. |
 
 One `files` field for every runtime, rather than a differently named key per
 runtime. What the files mean is the runtime's business — a Compose file and a
@@ -113,6 +114,33 @@ was, which is the coupling the manager does not have.
 
 An unknown profile is an error rather than a silent fall back to the base files.
 Deploying the wrong topology quietly is worse than refusing.
+
+### Options
+
+The manager carries `options` and never reads them. It checks the shape — a key
+is a lower-case identifier, a value is one line of at most 200 characters,
+because these are handed to a runtime that puts them in a command line — and the
+runtime refuses any key it does not understand. A mistyped option is an error,
+not a setting that quietly does nothing.
+
+The compose runtime understands one:
+
+| Option | Meaning |
+| --- | --- |
+| `project` | The Compose project name: the namespace containers, networks and volumes are created in. Defaults to `metadata.name`. |
+
+**Changing it renames every volume.** Compose prefixes a named volume with the
+project, so `project: alpha` and `project: beta` are two different sets of
+storage. An installation records the options it was created with, and a release
+that changes them is refused rather than applied — the deployment would come up
+against volumes nothing has ever written to, with the real data still on the
+disk and nothing referring to it. If you mean it, the path is a backup, a fresh
+`init` and a `restore`.
+
+Options are per runtime because their meaning is. A project is Compose's idea of
+grouping; another runtime answers the same question differently or not at all,
+which is why this is a map the manager passes through rather than a field it
+defines.
 
 **Which runtime an installation uses is fixed when it is created** and never
 transitions. The state directory records volume names and image references that
@@ -133,9 +161,19 @@ because merging them would pick a winner the vendor never nominated.
 | `profiles` | map | | Named deployment topologies; each is a list of *additional* Compose files. |
 
 A release still using this block is read as declaring the `compose` runtime and
-nothing else. Adopting `runtimes` means moving these files under
-`runtimes.compose` and deleting the old block — and, per the versioning rules,
-raising `compatibility.min_manager_version` to a manager that knows the field.
+nothing else, with `project` read as `runtimes.compose.options.project`.
+
+Adopting `runtimes` means moving the files under `runtimes.compose`, **moving
+`project` to `runtimes.compose.options.project`**, and deleting the old block —
+and, per the versioning rules, raising `compatibility.min_manager_version` to a
+manager that knows the field.
+
+Do not drop `project` on the way. It is the namespace every volume, network and
+container of a running deployment lives in, so a release that loses it points
+existing installations at storage that does not exist. A `project:` left behind
+beside `runtimes:` is refused rather than ignored, for the same reason, and a
+manager that has recorded what an installation was created with refuses the
+change as well.
 
 ## requirements
 

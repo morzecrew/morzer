@@ -1167,7 +1167,7 @@ func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) prefl
 			if len(services) == 0 {
 				return preflight.Warn(
 					"run `morzer apply` to start the product",
-					"no containers exist for project %q", cfg.Project)
+					"the runtime reports no containers for this deployment")
 			}
 
 			var down []string

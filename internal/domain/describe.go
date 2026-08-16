@@ -52,6 +52,17 @@ type InstallationDocument struct {
 	// here at all, and an operator comparing two machines needs to see it.
 	Runtime string `yaml:"runtime,omitempty" json:"runtime,omitempty"`
 
+	// RuntimeOptions are what that runtime was told, and they are here for
+	// the same reason Runtime is: not a choice an operator typed, and the
+	// difference between two machines that refuse and accept the same
+	// release. An operator comparing a sandbox with production needs to see
+	// that one of them is deployed under a different project.
+	//
+	// Values, not just keys: what they are is the whole point, and they
+	// carry no secret -- a manifest is readable by anyone who has the
+	// bundle.
+	RuntimeOptions map[string]string `yaml:"runtime_options,omitempty" json:"runtime_options,omitempty"`
+
 	Profile string   `yaml:"profile,omitempty" json:"profile,omitempty"`
 	Domains []string `yaml:"domains,omitempty" json:"domains,omitempty"`
 
@@ -128,21 +139,22 @@ func (i Installation) Describe(release DescribedRelease, secretNames []string) I
 	sort.Strings(names)
 
 	return InstallationDocument{
-		APIVersion: APIVersionV1Alpha1,
-		Kind:       KindInstallationDocument,
-		ID:         i.ID,
-		Product:    i.Product,
-		Mode:       i.Mode,
-		Release:    release,
-		Runtime:    i.RuntimeName(),
-		Profile:    i.Profile,
-		Domains:    append([]string(nil), i.Domains...),
-		Parameters: copyStringMap(i.Parameters),
-		Secrets:    names,
-		Policy:     copyPolicy(i.Policy),
-		Update:     i.Update,
-		Notify:     copyNotify(i.Notify),
-		Backup:     copyBackup(i.Backup),
+		APIVersion:     APIVersionV1Alpha1,
+		Kind:           KindInstallationDocument,
+		ID:             i.ID,
+		Product:        i.Product,
+		Mode:           i.Mode,
+		Release:        release,
+		Runtime:        i.RuntimeName(),
+		RuntimeOptions: copyStringMap(i.RuntimeOptions),
+		Profile:        i.Profile,
+		Domains:        append([]string(nil), i.Domains...),
+		Parameters:     copyStringMap(i.Parameters),
+		Secrets:        names,
+		Policy:         copyPolicy(i.Policy),
+		Update:         i.Update,
+		Notify:         copyNotify(i.Notify),
+		Backup:         copyBackup(i.Backup),
 	}
 }
 

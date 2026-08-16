@@ -60,6 +60,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/cli"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
@@ -395,6 +396,7 @@ func checkContracts(rep *report, root string, pages []page) {
 	checkExitCodes(rep, root, pages)
 	checkSchemaFields(rep, pages)
 	checkHookEnv(rep, pages)
+	checkRuntimeHookVars(rep, pages)
 	checkComposeVars(rep, pages)
 	checkTemplateFields(rep, pages)
 	checkSettings(rep, pages)
@@ -602,7 +604,6 @@ func checkHookEnv(rep *report, pages []page) {
 		BackupDir:       "backup",
 		SecretsDir:      "secrets",
 		ConfigFile:      "config",
-		ComposeProject:  "project",
 		LogLevel:        "info",
 	})
 
@@ -615,6 +616,49 @@ func checkHookEnv(rep *report, pages []page) {
 	for _, key := range keys {
 		if !namedWithPrefix(pages, key) {
 			rep.add("hook ABI", "environment variable `%s` is not documented", key)
+		}
+	}
+}
+
+// checkRuntimeHookVars asserts every variable a *runtime* adds to the hook ABI
+// is documented.
+//
+// The hook environment is no longer one list. A runtime supplies its own
+// variables through ports.HookVarSupplier -- `COMPOSE_PROJECT` is the first,
+// moved out of the core set because a runtime without projects cannot mean it
+// (RFC 0023 §2.2). Without this check that half of the ABI would be
+// undocumented and ungated, which is precisely the state RFC 0007 §13 found the
+// Compose interpolation set in and built these gates to end.
+//
+// The names come from the adapters themselves rather than from a list here,
+// because a list here is what drifts. The adapters are named in a table for the
+// same reason the tool catalogue names one: a runtime as *data* is not a leak
+// (RFC 0023 decision 7c), and this file has to construct one to ask it
+// anything.
+func checkRuntimeHookVars(rep *report, pages []page) {
+	rep.checks++
+
+	suppliers := map[string]ports.HookVarSupplier{
+		compose.Name: compose.New(nil),
+	}
+
+	names := make([]string, 0, len(suppliers))
+	for name := range suppliers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		// A populated configuration, so a supplier that returns nothing
+		// for an empty one still answers. Product rather than an option,
+		// because that is the path every release without an override
+		// takes.
+		vars := suppliers[name].HookVars(ports.RuntimeConfig{Product: "product"})
+		for suffix := range vars {
+			if !namedWithPrefix(pages, suffix) {
+				rep.add("hook ABI", "environment variable `%s`, supplied by the %s runtime, is not documented",
+					suffix, name)
+			}
 		}
 	}
 }

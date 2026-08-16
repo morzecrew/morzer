@@ -438,6 +438,16 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		return domain.Installation{}, err
 	}
 	inst.Runtime = runtime
+	// What the runtime was told, recorded beside which runtime it is. These
+	// name the volumes, so a later release that changes them is a release
+	// pointing this deployment at storage it has never written to -- and the
+	// refusal that catches it needs a baseline, which is this.
+	//
+	// An empty map when the release declared none, never nil: empty is the
+	// claim "nothing was declared", which is a fact about this installation,
+	// and nil means "created before schema 10", which is a fact about the
+	// manager that wrote it.
+	inst.RuntimeOptions = runtimeOptionsFor(st, runtime)
 
 	inst.Policy.RequireSignature = opts.RequireSignature
 	inst.Policy.SigningKeys = opts.SigningKeys
@@ -472,6 +482,14 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		// created before schema 9 records and rewriting it would erase
 		// the difference between "predates the field" and "chose this".
 		inst.Runtime = existing.Runtime
+
+		// And what it was told, carried for the same reason and with a
+		// sharper consequence. Rebuilding the options from the release
+		// during a repair would adopt a renamed project in the one
+		// command an operator runs *because* something is already
+		// wrong, and the deployment would come up against empty
+		// volumes with the real ones still on the disk.
+		inst.RuntimeOptions = existing.RuntimeOptions
 
 		// A repair keeps the signing identity and the salt. Both are
 		// carried rather than regenerated for the same reason the
@@ -731,6 +749,29 @@ func (d *Deps) runtimeForNewInstallation(st *engine.State) (string, error) {
 		return "", nil
 	}
 	return runtimeForRelease(r)
+}
+
+// runtimeOptionsFor reads the staged release's options for one runtime.
+//
+// Always non-nil for an installation this manager creates, including when the
+// release declares nothing: see the field's own documentation for why the empty
+// map and the absent one have to stay distinguishable.
+func runtimeOptionsFor(st *engine.State, runtime string) map[string]string {
+	options := map[string]string{}
+
+	rel, ok := st.Get(engine.KeyRelease)
+	if !ok {
+		return options
+	}
+	r, ok := rel.(domain.Release)
+	if !ok {
+		return options
+	}
+	declared, _ := r.Manifest.DeclaredRuntimes()
+	for key, value := range declared[runtime].Options {
+		options[key] = value
+	}
+	return options
 }
 
 // runtimeForRelease is the decision itself, split from the state plumbing above
