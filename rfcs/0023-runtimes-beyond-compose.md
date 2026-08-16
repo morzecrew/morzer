@@ -393,9 +393,15 @@ for the declared runtime's presence, which is where an operator meets decision 5
 - **P2 — Manifest and state.** 🚧 **Partly shipped 2026-08-16.** `runtimes:` map,
   decision 8 resolved (and decisions 9–11 added), kind fixed at `init` and
   carried through `--repair`, an undeclared runtime refused rather than
-  substituted. **Still open in P2:** `installation import` carrying the kind,
+  substituted. ~~**Still open in P2:** `installation import` carrying the kind,
   `doctor` reporting it, and §14's two unspelled leaks — `RuntimeSpec.Project`
-  and `doctor.go`'s hard-coded `tools.Docker`. **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
+  and `doctor.go`'s hard-coded `tools.Docker`.~~ **Three of those four shipped
+  2026-08-16**: import carries the kind and refuses one this manager cannot
+  drive, `doctor` gains `runtime.declared`, and the `tools.Docker` leak is
+  closed by an optional capability rather than by a rename. **Still open in
+  P2:** `RuntimeSpec.Project`, which is a published hook ABI and its own unit of
+  work (EXECUTION-LOG.md D-016), and the deprecation of `runtime:`, which has no
+  mechanism — 0018's is keyed by `api_version` and this is a field (D-017). **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
   D-005. None of §12's three measurements is consumed by anything on this list:
   items 5 and 6 are volume capture and image ingest, both P3, and item 4 is
   §4.3's parameter delivery, also P3. What P2 did need from P1b is the list of
@@ -626,16 +632,42 @@ as blocked on hardware. §2.1 already warns that "a checker cannot see this" is 
 claim worth attacking before writing it down; "a host is needed for this" is the
 same claim about a different obstacle, and it went unattacked.
 
+**2026-08-16 — §2.2's second unspelled leak is closed, and the mechanism is an
+optional capability rather than a rename.** `doctor`'s no-installation branch
+named `tools.Docker` directly; it now asks the wired adapter through
+`ports.ToolRequirer`. The leak was the lifecycle layer deciding which runtime
+this machine will use, so a rename could never have fixed it — the sentence had
+no runtime's name in it to rename, which is why the inventory could not hold it.
+§4.5's optional-capability pattern is what the fix is built on, and the port
+grows no method, so §6's count is unchanged at thirteen. The one leak §2.2 still
+lists is `RuntimeSpec.Project`, and execution found more of it than §2.2
+described — see EXECUTION-LOG.md D-016, outstanding.
+
+**2026-08-16 — `installation import` refuses a runtime this manager cannot
+drive.** §4.2 said the second creation path "must carry the kind" and stopped
+there. It carries it, because an export holds the installation whole; what was
+unspecified is what an import does when the kind names a runtime this binary has
+no adapter for. Put to the author as EXECUTION-LOG.md D-015 and accepted:
+refused before anything is created. The tension is worth recording — an import
+is a disaster-recovery path that deliberately refuses almost nothing, and
+`ManagerVersion` sits in the same document explicitly unenforced for that
+reason. The difference is that a version mismatch still leaves a working
+machine and this does not.
+
 ## 14. What P1 leaves for whoever picks this up
 
 - **P1b, above.** ~~Three measurements behind one Podman host.~~ One
   measurement — item 4 — behind a bootable venue, as of 2026-08-16. Struck
   rather than rewritten, because the sentence was the reason the phase was
   scoped the way it was and a reader tracing that scope needs to see it.
-- **The two unspelled leaks** in §2.2 — `RuntimeSpec.Project` and `doctor.go`'s
-  hard-coded `tools.Docker` — are not in the inventory, because the inventory is
+- **The two unspelled leaks** in §2.2 — `RuntimeSpec.Project` and ~~`doctor.go`'s
+  hard-coded `tools.Docker`~~ — are not in the inventory, because the inventory is
   what a checker can see and these are not. They are P2's, and they are the ones
-  most likely to be forgotten precisely because nothing fails when they are.
+  most likely to be forgotten precisely because nothing fails when they are. The
+  second is closed (§13, 2026-08-16). The first is not, and is larger than this
+  line implies: `runtimes:` gives a vendor no way to set a project at all, so
+  every release on the new spelling takes the product name through a field on
+  the deprecated block — EXECUTION-LOG.md D-016.
 - **The renames themselves are not P1's.** P1 classified; it changed no name. A
   rename sweep that lands before the manifest work of P2 would churn the same
   files twice.

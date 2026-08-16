@@ -88,6 +88,12 @@ func TestAnImportRefusesARuntimeThisManagerCannotDrive(t *testing.T) {
 	assert.Contains(t, domain.AsError(err).Hint, "restore",
 		"a refusal with no way forward is where a recovery stops")
 
+	// The same exit code an export from a newer manager already produces on
+	// this path. Both are "this document was written for a manager you do
+	// not have", and a script that handles one should not have to learn a
+	// second number for the other.
+	assert.Equal(t, domain.ExitIncompatible, domain.ExitCode(err))
+
 	// Refused with nothing created, like every other refusal about what
 	// this machine can be. A half-built machine is the worst outcome
 	// available during a rebuild.

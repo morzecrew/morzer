@@ -342,8 +342,17 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	// at the worst possible moment. This one is not that -- proceeding here
 	// hands them a rebuilt machine that cannot run, discovered one command
 	// later, during the same incident.
+	//
+	// Incompatible rather than an installation error, which is the kind the
+	// same comparison raises during an operation. The subject here is not a
+	// broken installation on this machine -- there is none yet -- it is a
+	// document written for a manager this binary is not, which is exactly
+	// what the schema-from-the-future refusal a few lines up in
+	// export.Validate already exits 9 for. Two spellings of "wrong manager"
+	// leaving Import with two exit codes is what an operator's script would
+	// trip over.
 	if have, ok := d.drivesRuntime(export.Installation); !ok {
-		return Result{}, domain.InstallationError(nil,
+		return Result{}, domain.IncompatibleError(nil,
 			"this export is from an installation on the %s runtime and this manager "+
 				"is configured for %s", export.Installation.RuntimeName(), have).
 			WithHint("the runtime is fixed when an installation is created and does " +

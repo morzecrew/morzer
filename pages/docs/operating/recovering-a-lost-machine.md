@@ -141,6 +141,13 @@ It prints what it assumed and what to do next. If the identity you passed cannot
 open the export, it says so before creating anything, and names the keys that
 would work.
 
+It also refuses, before creating anything, if the lost machine ran a runtime
+this manager does not drive. An installation is fixed to its runtime when it is
+created and never moves, so a rebuild here would produce a machine no command
+could operate. The refusal names both runtimes: install a manager built for the
+one your export needs, or `init` a new installation and `restore` the data into
+it.
+
 ### 3. Reinstall the release
 
 The export records which version was running:

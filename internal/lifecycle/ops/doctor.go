@@ -1057,8 +1057,9 @@ func (d *Deps) checkDeclaredRuntime(inst domain.Installation) preflight.Check {
 		Description: "the runtime this installation is fixed to",
 		Fatal:       true,
 		Run: func(ctx context.Context) events.CheckResult {
-			want, have := inst.RuntimeName(), d.Runtime.Name()
-			if want == have {
+			want := inst.RuntimeName()
+			have, ok := d.drivesRuntime(inst)
+			if ok {
 				return preflight.OK("%s", want)
 			}
 			return preflight.Fail(
