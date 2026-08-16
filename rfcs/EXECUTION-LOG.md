@@ -569,14 +569,29 @@ being tested where it runs.
 was comparing against a literal above `internal/adapters` — the branch decision 7
 forbids.
 
-**One finding is acknowledged and not fixed.** `Installation.Validate` does not
-check `Runtime`, so a hand-edited state file naming a runtime that does not exist
-loads and surfaces later. The adapter-mismatch refusal added here catches it at
-the first operation rather than at deploy, which is a different check in a
-different place and does not make the file invalid. Validating it properly means
-deciding what a valid runtime name *is* in the domain layer, and any answer
-shaped as a list of known runtimes puts a runtime catalogue above
-`internal/adapters`. Deliberately carried rather than answered in a review round.
+**R-7, taken after the round rather than carried.** `Installation.Validate`
+ignored `Runtime` entirely, so a hand-edited state file naming a runtime that
+does not exist loaded clean.
+
+The answer is that "validate the runtime" is two questions and only one of them
+belongs here. **Whether a name is well-formed** is a grammar, and the domain
+already has that shape for images, parameters and product names — so
+`ValidRuntimeName` joins them, rejecting empty, padded, capitalised,
+underscored, over-long, and anything carrying a terminal escape. **Whether a
+runtime exists** is not a fact this layer has, and any answer shaped as a list
+of known names is the runtime catalogue above `internal/adapters` that decision
+7 exists to prevent; the well-formed-but-wrong name is refused by R-4's adapter
+comparison, which is the only place that knows.
+
+The security half is what made it worth doing now rather than later: the value
+is read from a file an operator may have hand-edited and is printed back in
+error messages, so a name carrying an escape sequence is a diagnostic that moves
+the cursor — the same shape as the bounds on fleet rows and attested text, and
+the same argument.
+
+**The limit is asserted, not merely described.** A test requires that `quadlt`
+*passes* domain validation, so a later reader who adds a catalogue here has to
+delete a test that says why there isn't one.
 
 **A process failure worth recording against this round.** Five of the six thread
 replies cited commit hashes written from memory rather than read from `git log`;
@@ -601,6 +616,12 @@ fix that was never made.
 - **A test that asserts a field is empty has not asserted the object is
   usable.** The two-runtime manifest satisfied its test and could not load.
   (R-2)
+- **"Validate X" is often two questions at two layers.** Split them before
+  reaching for the check: the shape of a value is usually knowable where it is
+  defined, and its truth usually is not. (R-7)
+- **Assert the limit of a check, not just its coverage.** A test requiring that
+  a plausible-looking wrong value *passes* is what stops the next reader
+  "fixing" the omission by adding the thing the architecture forbids. (R-7)
 - **Read the hash, never recall it.** A commit reference is a claim like any
   other, and one written from memory is unfalsifiable to the reader who follows
   it and finds nothing.
@@ -616,9 +637,6 @@ fix that was never made.
   this wave was put to the author on 2026-08-16 and declined: removing a
   serialised field is its own schema question, and widening the branch after its
   audit is how an audited branch stops being audited.
-- **`Installation.Runtime` is not validated** against anything, so a hand-edited
-  state file naming a nonexistent runtime loads. Needs a domain-layer answer to
-  "what is a valid runtime name" that is not a catalogue above the adapters.
 - **The field-deprecation gap**: `runtime:` is deprecated and nothing warns. The
   only deprecation mechanism is keyed by `api_version`, and this is a field.
 - **A named removal release for `runtime:`**, without which "deprecated" is a
