@@ -393,9 +393,12 @@ for the declared runtime's presence, which is where an operator meets decision 5
   items 5 and 6 are volume capture and image ingest, both P3, and item 4 is
   §4.3's parameter delivery, also P3. What P2 did need from P1b is the list of
   what "this machine can run the declared runtime" means — decision 5's refusal
-  and §9's `doctor` check both rest on it — and that arrived with items 5 and 6
-  (§11's two rootless preconditions, and the finding that a present binary can
-  still be unusable).
+  and §9's `doctor` check both rest on it — and that list **arrived alongside
+  items 5 and 6 rather than out of them**. §11's two rootless preconditions and
+  the finding that a present binary can still be unusable are discoveries of the
+  host work itself, recorded in §11 and EXECUTION-LOG.md D-006; none of them is
+  an answer to item 5 or item 6. What unblocks P2 is that they are written down,
+  not which measurement produced them.
 - **P3 — The adapter.** Quadlet against the contract suite. Volume capture (0010)
   and bundled images (0011) are the two places to expect the design to come back —
   0012 already found that `oras-go` demands TLS where `docker pull` does not, and
@@ -502,13 +505,25 @@ Taken 2026-08-12, against the code rather than the documentation.
    `0600` mode and a nested directory survived capture, and the restore's
    wipe-then-extract removed a planted file rather than merging around it.
 
-   **What did change is a property, not a path.** A rootless volume lives under
-   `~/.local/share/containers/storage/volumes/<name>/_data` and is readable by
-   the manager's own user; Docker's lives under `/var/lib/docker/volumes` and
-   answers `Permission denied`. `CaptureVolume`'s comment justifies the helper
-   container with the manager not *needing* to touch the volume directly — true
-   either way, but under rootless Podman it can, always, and no design choice
-   here can take that back.
+   **What did change is a property, not a path — and it is narrower than it
+   first looked.** A rootless volume lives under
+   `~/.local/share/containers/storage/volumes/<name>/_data`, where Docker's
+   lives under `/var/lib/docker/volumes` and answers `Permission denied` to an
+   unprivileged manager. But "readable by the manager" holds only for what
+   *container root* wrote. Rootless maps container uid 0 to the invoking user
+   and every other container uid to a subordinate one, so measured 2026-08-16:
+   a file written by container root is owned by the manager's own user and
+   reads; a file written by container uid 1000 is owned by subuid `100999` at
+   mode `0600` and answers `Permission denied`. The helper container reads both,
+   because it is inside the namespace where those ids mean something.
+
+   **So the helper is not merely still correct under rootless — it is the only
+   thing that works.** A capture reading the host path directly would succeed
+   against a product running as root and fail against one that drops privileges,
+   which is the configuration a security-conscious vendor ships. That is a
+   sharper argument for the existing design than the one `CaptureVolume`'s
+   comment gives, and it is not the argument the comment gives: it cites a
+   root-owned file the manager cannot clean up, which is a Docker concern.
 6. **Whether 0011's in-process registry is reachable by Podman over plain HTTP.**
    **Measured 2026-08-16: not by default, and yes with one flag.** 0012's
    prediction holds in direction — Podman sends a TLS ClientHello to
@@ -575,10 +590,12 @@ renames* to *one published environment variable*.
 was misidentified.** §12 items 5 and 6 are measured against a rootless Podman
 host; item 4 is restated, because it was never blocked on the host it named. The
 consequences are not written into §5 — they are put to the author as proposed
-rows in EXECUTION-LOG.md, D-001 through D-005, which is also where the two
-findings that belong to other documents live: Podman's native `oci:` transport
-bears on RFC 0011's decision 19, and the rootless volume's readability bears on
-RFC 0010. Neither is this RFC's row to write.
+rows in EXECUTION-LOG.md: **D-001, D-002, D-003 and D-006, all outstanding.**
+D-005 is not among them and proposes no row; it records the accepted phase-gate
+ruling, which is a different kind of entry and is listed as such. The log is also
+where the two findings belonging to other documents live: Podman's native `oci:`
+transport bears on RFC 0011's decision 19, and the rootless volume's readability
+on RFC 0010. Neither is this RFC's row to write.
 
 **2026-08-16 — P1b no longer gates P2.** The document asserted in three places
 that P1b was "the only thing between here and P2", and execution found that P2

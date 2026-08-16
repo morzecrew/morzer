@@ -31,12 +31,19 @@ the deliverable is measurements and the record of them.
 helped considerably by this unit writing no code, which is worth saying rather
 than letting a clean number imply more than it earned.
 
-Three of the six entries are `spec-gap` (D-003, D-004, D-005) and all three are
-findings against the design process rather than against this unit. Recorded as
-such rather than softened to `discovery`, which is the class an executor grading
-their own work reaches for: every one of them was answerable from the repository
-before a Podman host existed, and the reason they were not answered is that each
-sat on a list that said hardware was required.
+Four of the seven entries are `spec-gap` (D-003, D-004, D-005, D-007), recorded
+as such rather than softened to `discovery`, which is the class an executor
+grading their own work reaches for. Three are findings against the design
+process: each was answerable from the repository before a Podman host existed,
+and went unanswered because it sat on a list asserting that hardware was
+required.
+
+**D-007 is a finding against this unit**, and against D-003 specifically — a
+result measured in one configuration and written down as "always". It came from
+review rather than from the audit that preceded it, which is worth noting: the
+audit checked whether each claim matched the run that produced it, and this claim
+did. What it did not ask was whether the run covered the cases the claim spoke
+for.
 
 ## D-001 — Podman does not exempt loopback from TLS; the ingest pull needs a flag
 
@@ -122,6 +129,11 @@ sat on a list that said hardware was required.
   directly is a property of a rootful runtime rather than a guarantee this
   design makes.
 
+**Refined by D-007.** The readability claim as written above is too broad, and
+the proposed row's second clause is weaker than what the refinement supports.
+Left standing rather than rewritten — the entry records what was believed when
+it was written, and the correction is the next entry's job.
+
 ## D-004 — Item 4 needed a bootable venue, not a Podman host
 
 - **Touches:** RFC 0023 §12 item 4, §10's P1b bullet, §14. Also this unit's own
@@ -195,6 +207,43 @@ sat on a list that said hardware was required.
   Whether `init` refuses outright is left to P2, where it belongs beside decision
   5's refusal shape rather than being settled by the phase that found it.
 
+## D-007 — The manager reads only what container root wrote, which makes the helper necessary rather than merely correct
+
+- **Touches:** RFC 0023 §12 item 5; RFC 0010. Refines D-003, raised in review of
+  PR #49 by CodeRabbit, which asked for the readability claim to be scoped to the
+  configuration it was measured in.
+- **D-003 said:** under rootless Podman the manager can read a volume directly,
+  *"always"*.
+- **Measured 2026-08-16**, varying the one axis D-003 held fixed — the uid the
+  writing container runs as:
+
+  | Written by | Host owner | Manager reads it |
+  |---|---|---|
+  | container root | the invoking user | yes |
+  | container uid 1000 | subuid `100999`, mode `0600` | `Permission denied` |
+
+  The helper container captured both, being inside the namespace where those ids
+  mean something.
+- **Because:** rootless maps container uid 0 to the invoking user and every other
+  container uid into the subordinate range. D-003 measured a `busybox` running as
+  root and generalised from it.
+- **Class:** `spec-gap` against D-003 rather than `discovery` — the mapping is how
+  rootless works, and one probe run as a non-root user would have found it. The
+  reviewer was right that a single configuration had been generalised; the
+  correction is larger than the one requested, because the direction of the
+  conclusion changes rather than its confidence.
+- **Consequence:** the argument runs the other way from D-003's. A capture that
+  read the host path directly would succeed against a product running as root and
+  fail against one that drops privileges — the configuration a security-conscious
+  vendor ships — so the helper container is **the only mechanism that works
+  under rootless**, not merely one that still works. D-003's proposed row
+  understates this, and the row below replaces it.
+- **Proposed row (RFC 0010), superseding D-003's:** `ASSUMED` — the
+  helper-container capture is the mechanism under every runtime, and under a
+  rootless one it is the only mechanism: the manager's own credentials reach only
+  files written by container root, so a host-path capture would silently depend
+  on the product not dropping privileges.
+
 ## Decision-row outcomes — 2026-08-16
 
 **One ruling, four proposals still outstanding.** D-005's phasing question was put
@@ -208,8 +257,9 @@ acceptances cannot tell that state from a proposal quietly adopted.
 | 0023 | — | **Accepted** | — | P2 is not gated on P1b: it consumes none of the three measurements, and what it did need — the host precondition list for decision 5's refusal and §9's `doctor` — landed with items 5 and 6. P1b stays open on item 4, which gates P3. No decision row; §10's phasing prose carries it. | D-005 |
 | 0023 | — | Outstanding | — | Ingest pulls with TLS verification disabled, scoped to the loopback command | D-001 |
 | 0011 | — | Outstanding | — | Registry or `oci:` transport for a Quadlet ingest, pending digest fidelity | D-002 |
-| 0010 | — | Outstanding | — | Helper-container capture under every runtime; unreadability is the runtime's, not the design's | D-003 |
+| 0010 | — | ~~Outstanding~~ **Superseded by D-007** | — | ~~Helper-container capture under every runtime; unreadability is the runtime's, not the design's~~ | D-003 |
 | 0023 | — | Outstanding | — | A rootless runtime requires a lingering account; `doctor` reports its absence | D-006 |
+| 0010 | — | Outstanding | — | Helper-container capture is the only mechanism under rootless: the manager's credentials reach only what container root wrote | D-007 |
 
 **The alternative that was declined is worth recording**, since nothing else
 would carry it: closing P1b outright by folding item 4 into P3, where its answer
@@ -249,7 +299,11 @@ softening the sentence to match the run that happened.
   is the same distinction §12's own closing paragraph draws about CI, and it
   applies to the measurements as much as to a job.
 - **One host, one storage configuration.** The rootless volume path and its
-  readability were observed on this machine's setup, and neither was varied.
+  readability were observed on this machine's setup. **One axis has since been
+  varied — the uid the writing container runs as — and varying it reversed the
+  conclusion (D-007).** The storage driver, the graph root's filesystem and the
+  subuid range's size have not been varied, and the same lesson applies to each:
+  a result from one configuration is a result about that configuration.
 
 ## Rules distilled
 
@@ -269,6 +323,11 @@ softening the sentence to match the run that happened.
 - **Update the counts, propose the claim.** When a document's facts go stale and
   its argument becomes doubtful in the same edit, only the first is the
   executor's to change. (D-005)
+- **"Does the claim match the run?" is a weaker question than "does the run cover
+  what the claim speaks for?"** The audit asked the first of D-003 and got yes;
+  the second would have caught it, and review did. A measurement generalised past
+  the one configuration it was taken in fails no check that compares it to its own
+  evidence. (D-007)
 - **A precondition whose absence survives every check is worse than one that
   fails loudly**, and it is found by asking what happens after a reboot rather
   than by testing the install. Lingering passes install, converge and `doctor`,
