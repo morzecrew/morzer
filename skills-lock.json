@@ -13,6 +13,12 @@
       "skillPath": "skills/distill-the-rule/SKILL.md",
       "computedHash": "df6a18d271886a7e294a0b74bfa467ff32ee0f0f3968ad3b0525a58367fb0a91"
     },
+    "flag-dont-flip": {
+      "source": "morzecrew/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/flag-dont-flip/SKILL.md",
+      "computedHash": "ec5f549919bc7d03857772d0bb64fe204f92a9aafede3b6cbe1d1872d10f85b2"
+    },
     "gitmoji-conventional": {
       "source": "morzecrew/agent-skills",
       "sourceType": "github",
@@ -29,7 +35,7 @@
       "source": "samber/cc-skills-golang",
       "sourceType": "github",
       "skillPath": "skills/golang-lint/SKILL.md",
-      "computedHash": "ea282d6b3a39d02fc468ef66615830de75f720c66ac72e899c4479868bea6c76"
+      "computedHash": "9cf0adee79596b0541853dc1b292e34efe8f02cf9f8df8f11ef90a6050dbd606"
     },
     "golang-performance": {
       "source": "samber/cc-skills-golang",
@@ -107,7 +113,7 @@
       "source": "morzecrew/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/pr-review-loop/SKILL.md",
-      "computedHash": "72d7954e700121c53ee082b0944d00df08cdb54ac696d433fc8e2780d78e991d"
+      "computedHash": "920e64657a063c4203fbe1443d591782bc1f7af42f53d5879e20b4264beeacdc"
     },
     "reading-isnt-proof": {
       "source": "morzecrew/agent-skills",
@@ -125,13 +131,13 @@
       "source": "morzecrew/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/rfc-writer/SKILL.md",
-      "computedHash": "1048601ec78d4a7e7aaaac5b38b479ad5d02ee70b928228760ed040f3382605f"
+      "computedHash": "d782072d829a6a125f3b51fac5e22e5522e4a77857d78dc6e7e2a4004a6f8bb1"
     },
     "self-audit": {
       "source": "morzecrew/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/self-audit/SKILL.md",
-      "computedHash": "61a3171a779c3dc0cc7f8d12161a2f8e9922597d036055de9ff87ef756774f18"
+      "computedHash": "2793db4e0a627c6defb9734a5cb89c0a3039fb1cad00a9c6193435bb4311ffd0"
     }
   }
 }
