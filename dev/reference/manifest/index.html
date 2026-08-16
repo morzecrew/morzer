@@ -1609,6 +1609,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="runtimes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Options
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2254,6 +2271,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="runtimes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Options
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2819,6 +2853,12 @@ declaring several carries a set of files for each.</p>
 <td style="text-align: center;"></td>
 <td>Named deployment topologies; each is a list of <em>additional</em> files.</td>
 </tr>
+<tr>
+<td><code>options</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Settings this runtime understands and the manager does not. Keys are lower-case identifiers, values one short line.</td>
+</tr>
 </tbody>
 </table>
 <p>One <code>files</code> field for every runtime, rather than a differently named key per
@@ -2828,6 +2868,38 @@ shape changed per runtime could only be validated by asking which runtime it
 was, which is the coupling the manager does not have.</p>
 <p>An unknown profile is an error rather than a silent fall back to the base files.
 Deploying the wrong topology quietly is worse than refusing.</p>
+<h3 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h3>
+<p>The manager carries <code>options</code> and never reads them. It checks the shape — a key
+is a lower-case identifier, a value is one line of at most 200 characters,
+because these are handed to a runtime that puts them in a command line — and the
+runtime refuses any key it does not understand. A mistyped option is an error,
+not a setting that quietly does nothing.</p>
+<p>The compose runtime understands one:</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>project</code></td>
+<td>The Compose project name: the namespace containers, networks and volumes are created in. Defaults to <code>metadata.name</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Changing it renames every volume.</strong> Compose prefixes a named volume with the
+project, so <code>project: alpha</code> and <code>project: beta</code> are two different sets of
+storage. An installation records the options it was created with, and a release
+that changes them is refused rather than applied — the deployment would come up
+against volumes nothing has ever written to, with the real data still on the
+disk and nothing referring to it. If you mean it, the path is a backup, a fresh
+<code>init</code> and a <code>restore</code>.</p>
+<p>Options are per runtime because their meaning is. A project is Compose's idea of
+grouping; another runtime answers the same question differently or not at all,
+which is why this is a map the manager passes through rather than a field it
+defines.</p>
 <p><strong>Which runtime an installation uses is fixed when it is created</strong> and never
 transitions. The state directory records volume names and image references that
 belong to one runtime, so changing it is a migration of everything the manager
@@ -2868,9 +2940,17 @@ because merging them would pick a winner the vendor never nominated.</p>
 </tbody>
 </table>
 <p>A release still using this block is read as declaring the <code>compose</code> runtime and
-nothing else. Adopting <code>runtimes</code> means moving these files under
-<code>runtimes.compose</code> and deleting the old block — and, per the versioning rules,
-raising <code>compatibility.min_manager_version</code> to a manager that knows the field.</p>
+nothing else, with <code>project</code> read as <code>runtimes.compose.options.project</code>.</p>
+<p>Adopting <code>runtimes</code> means moving the files under <code>runtimes.compose</code>, <strong>moving
+<code>project</code> to <code>runtimes.compose.options.project</code></strong>, and deleting the old block —
+and, per the versioning rules, raising <code>compatibility.min_manager_version</code> to a
+manager that knows the field.</p>
+<p>Do not drop <code>project</code> on the way. It is the namespace every volume, network and
+container of a running deployment lives in, so a release that loses it points
+existing installations at storage that does not exist. A <code>project:</code> left behind
+beside <code>runtimes:</code> is refused rather than ignored, for the same reason, and a
+manager that has recorded what an installation was created with refuses the
+change as well.</p>
 <h2 id="requirements">requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
 <p>Checked in preflight and reported by <code>doctor</code>.</p>
 <table>

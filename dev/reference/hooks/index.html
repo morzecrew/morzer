@@ -1638,6 +1638,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#what-the-runtime-adds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What the runtime adds
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phases" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2076,6 +2087,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#what-the-runtime-adds" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What the runtime adds
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phases" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2332,10 +2354,6 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 <td>The rendered configuration file.</td>
 </tr>
 <tr>
-<td><code>&lt;PRODUCT&gt;_COMPOSE_PROJECT</code></td>
-<td>The Compose project name, for a hook that shells out to <code>docker compose</code>.</td>
-</tr>
-<tr>
 <td><code>&lt;PRODUCT&gt;_LOG_LEVEL</code></td>
 <td>The manager's current log level.</td>
 </tr>
@@ -2351,6 +2369,30 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 </table>
 <p><code>DRY_RUN</code> is <strong>always present</strong>, including as <code>0</code>. A hook that tested for the
 variable's existence rather than its value would otherwise mutate during a plan.</p>
+<h3 id="what-the-runtime-adds">What the runtime adds<a class="headerlink" href="#what-the-runtime-adds" title="Permanent link">&para;</a></h3>
+<p>The table above is what every installation gets. A runtime contributes its own
+variables on top, and which ones depends on the runtime the installation is
+fixed to — so a hook that needs one should test for it rather than assume it.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Runtime</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;PRODUCT&gt;_COMPOSE_PROJECT</code></td>
+<td><code>compose</code></td>
+<td>The Compose project name, for a hook that shells out to <code>docker compose</code>. Set from <code>runtimes.compose.options.project</code>, or the product name.</td>
+</tr>
+</tbody>
+</table>
+<p>Absent under a runtime that has no such notion. A project is Compose's grouping
+primitive; a runtime without one would have to invent a value, and a hook
+branching on a variable that is always set cannot tell the two situations
+apart.</p>
 <h3 id="phases">Phases<a class="headerlink" href="#phases" title="Permanent link">&para;</a></h3>
 <p><code>PHASE</code> is one of <code>preflight</code>, <code>pre-update</code>, <code>post-update</code>, <code>migrate</code>,
 <code>smoke-test</code>, <code>backup</code>, <code>restore</code>, <code>health-check</code>.</p>
