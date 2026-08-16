@@ -1601,10 +1601,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#runtime" class="md-nav__link">
+  <a href="#runtimes" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        runtime
+        runtimes
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-deprecated" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        runtime (deprecated)
       </span>
     </span>
   </a>
@@ -2235,10 +2246,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#runtime" class="md-nav__link">
+  <a href="#runtimes" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        runtime
+        runtimes
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-deprecated" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        runtime (deprecated)
       </span>
     </span>
   </a>
@@ -2589,8 +2611,14 @@ later. Vendor-specific keys go under <code>extensions.&lt;namespace&gt;</code>.<
 <tr>
 <td><code>runtime</code></td>
 <td>table</td>
+<td style="text-align: center;"></td>
+<td><strong>Deprecated.</strong> The Compose project and its files. Superseded by <code>runtimes</code>, and still read.</td>
+</tr>
+<tr>
+<td><code>runtimes</code></td>
+<td>map</td>
 <td style="text-align: center;">✅</td>
-<td>The Compose project and its files.</td>
+<td>Which runtimes this release supports, keyed by runtime name, and the files each is declared with.</td>
 </tr>
 <tr>
 <td><code>requirements</code></td>
@@ -2759,7 +2787,56 @@ the core.</p>
 </tr>
 </tbody>
 </table>
-<h2 id="runtime">runtime<a class="headerlink" href="#runtime" title="Permanent link">&para;</a></h2>
+<h2 id="runtimes">runtimes<a class="headerlink" href="#runtimes" title="Permanent link">&para;</a></h2>
+<p>Which runtimes this release supports. The keys are the declaration: a release
+declaring one runtime installs only where that runtime is present, and one
+declaring several carries a set of files for each.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">runtimes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">compose</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">files</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose.external-db.yaml</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>files</code></td>
+<td>list</td>
+<td style="text-align: center;">✅</td>
+<td>The files this runtime is declared with, release-relative.</td>
+</tr>
+<tr>
+<td><code>profiles</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Named deployment topologies; each is a list of <em>additional</em> files.</td>
+</tr>
+</tbody>
+</table>
+<p>One <code>files</code> field for every runtime, rather than a differently named key per
+runtime. What the files mean is the runtime's business — a Compose file and a
+systemd unit are both paths into the release from here — and a manifest whose
+shape changed per runtime could only be validated by asking which runtime it
+was, which is the coupling the manager does not have.</p>
+<p>An unknown profile is an error rather than a silent fall back to the base files.
+Deploying the wrong topology quietly is worse than refusing.</p>
+<p><strong>Which runtime an installation uses is fixed when it is created</strong> and never
+transitions. The state directory records volume names and image references that
+belong to one runtime, so changing it is a migration of everything the manager
+knows rather than a setting. A release that does not declare the runtime an
+installation was created against is refused rather than run on a substitute.</p>
+<h2 id="runtime-deprecated">runtime (deprecated)<a class="headerlink" href="#runtime-deprecated" title="Permanent link">&para;</a></h2>
+<p>The original single-runtime block. Still read, so releases built before
+<code>runtimes</code> existed keep installing; a manifest declaring both is refused,
+because merging them would pick a winner the vendor never nominated.</p>
 <table>
 <thead>
 <tr>
@@ -2790,8 +2867,10 @@ the core.</p>
 </tr>
 </tbody>
 </table>
-<p>An unknown profile is an error rather than a silent fall back to the base files.
-Deploying the wrong topology quietly is worse than refusing.</p>
+<p>A release still using this block is read as declaring the <code>compose</code> runtime and
+nothing else. Adopting <code>runtimes</code> means moving these files under
+<code>runtimes.compose</code> and deleting the old block — and, per the versioning rules,
+raising <code>compatibility.min_manager_version</code> to a manager that knows the field.</p>
 <h2 id="requirements">requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
 <p>Checked in preflight and reported by <code>doctor</code>.</p>
 <table>
