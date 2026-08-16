@@ -27,8 +27,14 @@ second table of the same shape is a second set of rows for the same numbers.
   claim that P1b blocked P2 was withdrawn on 2026-08-16 (EXECUTION-LOG.md D-005).
   **P2 is partly shipped**: the manifest gained `runtimes:` with `runtime:`
   deprecated and still read, decision 8 resolved against the option §4.1
-  preferred, and the runtime fixed at `init` at installation schema 9. `import`,
-  `doctor` and §14's two unspelled leaks remain.
+  preferred, and the runtime fixed at `init` at installation schema 9. `import`
+  now refuses a runtime this manager cannot drive, `doctor` reports the one an
+  installation is fixed to, and the `tools.Docker` leak is closed by an optional
+  capability rather than a rename — there was no name in it to rename.
+  **One item of P2 remains**, and it grew: `runtimes:` gives a vendor no way to
+  name a project while the deprecated block's default supplies one anyway, so
+  `RuntimeSpec.Project` is a decision about a published hook ABI rather than a
+  tidy-up (EXECUTION-LOG.md D-016).
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
   inventory, the archive, redaction proved against seeded values, `support
   redact --check`, an archive encrypted to the vendor and unreadable by the
