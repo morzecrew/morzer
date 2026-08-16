@@ -70,9 +70,10 @@ sat on a list that said hardware was required.
 
 - **Touches:** RFC 0011 decision 19; RFC 0023 §10's P3 bullet. Cross-document,
   and unlisted in both.
-- **RFC said:** `ociserve`'s own rationale, which RFC 0011 adopted — `docker
-  load` discards the registry digest and `docker tag` refuses to create a digest
-  reference, so *"what remains is a pull, which needs something to pull from"*.
+- **RFC said:** the rationale RFC 0011 adopted, written down at
+  `internal/adapters/runtime/compose/ingest.go:32` — `docker load` discards the
+  registry digest and `docker tag` refuses to create a digest reference, so
+  *"What remains is a pull, which needs something to pull from."*
 - **Measured:** `podman pull oci:<layout>` ingests a layout directly. The
   mechanism the package comment says does not exist, exists — under the other
   runtime.
@@ -208,6 +209,39 @@ from a proposal that was quietly adopted.
 | 0011 | — | Outstanding | — | Registry or `oci:` transport for a Quadlet ingest, pending digest fidelity | D-002 |
 | 0010 | — | Outstanding | — | Helper-container capture under every runtime; unreadability is the runtime's, not the design's | D-003 |
 | 0023 | — | Outstanding | — | A rootless runtime requires a lingering account; `doctor` reports its absence | D-006 |
+
+## Audit findings — 2026-08-16
+
+Scope: the whole branch as of `15ebb0f`, three files — `0023`, `INDEX.md` and
+this log. No production code, so the audit is a fidelity pass: every claim traced
+back to something actually run, every quotation to the file it is in, every
+number to where it came from. Pinned to a commit rather than described as "the
+branch", since the fixes below add one and a scope that drifts is a scope that
+claims to have covered them.
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| A-1 | High | §12 item 5 said the round trip used "the adapter's own argv", but the probe ran a *tagged* `busybox` while the adapter pins `DefaultHelperImage` by digest. The argv matched; the image did not, so the sentence claimed a fidelity the run did not have. | Fixed — re-run with the pinned digest, same result, and §12 now names the constant |
+| A-2 | Medium | D-002 attributed *"What remains is a pull…"* to `ociserve`'s rationale; it is in `internal/adapters/runtime/compose/ingest.go:32`. A reader checking the quote at the named place would not find it. | Fixed — attributed to the file and line |
+| A-3 | Low | §11 stated lingering is "off by default" in the same breath as measured findings, so a reader would take it as measured. It is documented behaviour; what was measured is that this host has it *on*. | Fixed — the documented half and the measured half are now separated |
+
+**No sabotage sweep.** There is no code on this branch to mutate, and a sweep
+reported against prose would be theatre. The equivalent discipline here is A-1's:
+re-running the measurement under the conditions the sentence claims, rather than
+softening the sentence to match the run that happened.
+
+**What remains distrusted.**
+
+- **Item 4, entirely.** Nothing about it was measured.
+- **D-002's digest fidelity**, which is the half that decides whether the `oci:`
+  transport can replace the registry. Stated as unmeasured in the entry itself.
+- **Every measurement here is hand-run against one host, and nothing re-runs
+  them.** They are reproducible from what §12 records, which is not the same as
+  being watched: if Podman's loopback behaviour changes, no lane goes red. This
+  is the same distinction §12's own closing paragraph draws about CI, and it
+  applies to the measurements as much as to a job.
+- **One host, one storage configuration.** The rootless volume path and its
+  readability were observed on this machine's setup, and neither was varied.
 
 ## Rules distilled
 

@@ -408,7 +408,10 @@ for the declared runtime's presence, which is where an operator meets decision 5
   is live exactly as written rather than mitigated by a distribution that ships
   a lower value.
 - **Rootless units do not start at boot unless the account is lingering**, which
-  `loginctl enable-linger` sets and which is off by default. Found while
+  `loginctl enable-linger` sets. That lingering is opt-in is documented rather
+  than measured here — `loginctl(1)` describes it as what causes a user manager
+  to be *"spawned for the user at boot and kept around after logouts"* — and
+  what was measured is that the development host has it on. Found while
   measuring, and it is a second `doctor` check rather than a footnote to the
   first: a machine without it installs, runs, converges and passes every check
   the manager makes, and then does not come back after a reboot. That is the
@@ -486,9 +489,9 @@ Taken 2026-08-12, against the code rather than the documentation.
    container with the volume mounted read-only and tars to *stdout*, which the
    manager writes itself; the volume's host path is never named, so it is free
    to move. The round trip was run under rootless Podman with the adapter's own
-   argv: a dotfile, a `0600` mode and a nested directory survived capture, and
-   the restore's wipe-then-extract removed a planted file rather than merging
-   around it.
+   argv and its own pinned helper image, `DefaultHelperImage`: a dotfile, a
+   `0600` mode and a nested directory survived capture, and the restore's
+   wipe-then-extract removed a planted file rather than merging around it.
 
    **What did change is a property, not a path.** A rootless volume lives under
    `~/.local/share/containers/storage/volumes/<name>/_data` and is readable by
