@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A release can set per-runtime options with `runtimes.<name>.options`.** The compose runtime reads `project` there — the namespace its volumes, networks and containers live in — and defaults to the product name. The manager carries these without interpreting them, and the runtime refuses a key it does not understand.
+
 - **`morzer doctor` reports the runtime an installation is fixed to**, and fails when this manager drives a different one. There is no fix on the machine, since a runtime never transitions, so the check names the two ways out instead. With no installation yet, it asks the runtime which tools `init` will need.
 
 - **A support bundle is signed, and `morzer support inspect` reads one back.** The signature is this installation's own key and lands beside the archive as a `.minisig`, checkable with `minisign -Vm <archive> -P <key>` like any release. It covers the file that leaves rather than the plaintext inside it, so an encrypted bundle's origin can be established by whoever receives it *before* anything decrypts — and by an intake holding no recipient key at all. A machine that has never minted a key still writes the archive, unsigned and saying so, because withholding evidence from the installation that has the least of it is the wrong failure.
@@ -16,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`morzer support inspect` will not tell you a bundle is authentic on the bundle's own say-so.** The archive names the key that signed it, and that name proves nothing: whoever wrote the archive wrote the name beside the signature they made. So the check runs against this installation's recorded keys when you inspect your own archive, or against `--key` when somebody sent you one — a key you got from the operator rather than from the file. With neither, it prints the claimed key and says the signature was not checked. Nothing is extracted: an encrypted bundle is read in memory, so inspecting one leaves no readable copy behind.
 
 ### Changed
+
+- **A release that changes a runtime option an installation was created with is refused.** Under Compose the project prefixes every volume, so such a release would bring the product up against storage nothing has written to and leave the real data unreferenced. The way through is a backup, a fresh `init` and a `restore`.
+
+- **`<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime rather than by the core hook ABI.** Unchanged for every Compose installation, and absent under a runtime that has no projects instead of carrying a value it cannot mean. Hooks that need it should test for it.
 
 - **`morzer installation import` refuses an export whose runtime this manager does not drive**, before anything on the new host is created. A runtime is fixed when an installation is created and never transitions, so importing one this binary cannot operate would rebuild a machine no command could use.
 
