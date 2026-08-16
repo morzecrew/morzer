@@ -62,7 +62,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// baseline has to be taken from what is installed, while it still is.
 	if !from.IsZero() {
 		if rel, relErr := d.resolveCurrentRelease(ctx, from); relErr == nil {
-			if inst, err = d.adoptRuntimeOptions(ctx, inst, rel); err != nil {
+			if inst, err = d.adoptRuntimeOptions(ctx, inst, rel, opts.DryRun); err != nil {
 				return Result{}, err
 			}
 		}
@@ -74,6 +74,15 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// copied into the store by then.
 	defer cleanup()
 	if err != nil {
+		return Result{}, err
+	}
+
+	// The release about to be introduced, against what this installation was
+	// created with. Before the operation rather than inside it: a
+	// precondition found mid-step is reported as a compensated failure, and
+	// the sentence that says the project changed would arrive under an exit
+	// code meaning "nothing happened".
+	if err := d.refuseRuntimeOptionChange(inst, staged); err != nil {
 		return Result{}, err
 	}
 

@@ -196,6 +196,18 @@ func (r *Runtime) namespace(cfg ports.RuntimeConfig) string {
 	return cfg.Product
 }
 
+// HookVars is the hook-ABI contribution of the runtime this fake stands in for.
+//
+// The same variable the compose adapter supplies, under the same name: a fake
+// that supplied nothing would make every test of the hook environment agree
+// with a manager that had quietly stopped publishing it.
+func (r *Runtime) HookVars(cfg ports.RuntimeConfig) map[string]string {
+	if p := r.namespace(cfg); p != "" {
+		return map[string]string{"COMPOSE_PROJECT": p}
+	}
+	return nil
+}
+
 // RequiredTools names what the runtime this fake stands in for needs on a
 // host, matching the compose adapter it substitutes for.
 //

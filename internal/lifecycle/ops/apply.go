@@ -45,7 +45,10 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 	// a candidate: adopting from what is being introduced would record the
 	// change as the baseline and defeat the refusal on the one operation
 	// that needs it.
-	if inst, err = d.adoptRuntimeOptions(ctx, inst, rel); err != nil {
+	if inst, err = d.adoptRuntimeOptions(ctx, inst, rel, opts.DryRun); err != nil {
+		return Result{}, err
+	}
+	if err := d.refuseRuntimeOptionChange(inst, rel); err != nil {
 		return Result{}, err
 	}
 

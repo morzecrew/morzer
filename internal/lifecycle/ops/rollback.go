@@ -71,7 +71,7 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	}
 	// From the release being rolled *off*, for the reason update takes it
 	// from the one being updated *from*: the target is what might differ.
-	if inst, err = d.adoptRuntimeOptions(ctx, inst, currentRel); err != nil {
+	if inst, err = d.adoptRuntimeOptions(ctx, inst, currentRel, opts.DryRun); err != nil {
 		return Result{}, err
 	}
 
@@ -80,6 +80,12 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		return Result{}, domain.InstallationError(err,
 			"the previous release at %s cannot be read", previous.Root).
 			WithHint("it may have been pruned; restore from a backup instead")
+	}
+
+	// The release being rolled back *to*: an older bundle can carry an older
+	// project just as a newer one can carry a new one.
+	if err := d.refuseRuntimeOptionChange(inst, previousRel); err != nil {
+		return Result{}, err
 	}
 
 	report := RollbackReport{

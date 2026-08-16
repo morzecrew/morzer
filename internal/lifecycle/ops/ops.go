@@ -637,9 +637,16 @@ func (d *Deps) drivesRuntime(inst domain.Installation) (drives string, ok bool) 
 // The consequence is that an installation nobody applies stays unprotected, and
 // that is the right shape -- nothing has changed underneath it either.
 func (d *Deps) adoptRuntimeOptions(
-	ctx context.Context, inst domain.Installation, rel domain.Release,
+	ctx context.Context, inst domain.Installation, rel domain.Release, dryRun bool,
 ) (domain.Installation, error) {
 	if inst.RuntimeOptions != nil {
+		return inst, nil
+	}
+	// A plan writes nothing, including this. It is a one-line exception and
+	// it was a defect first: `morzer apply --dry-run` on a machine created
+	// before schema 10 recorded the baseline and reported that it had
+	// changed nothing.
+	if dryRun {
 		return inst, nil
 	}
 	declared, _ := rel.Manifest.DeclaredRuntimes()
@@ -654,6 +661,20 @@ func (d *Deps) adoptRuntimeOptions(
 		return domain.Installation{}, err
 	}
 	return inst, nil
+}
+
+// refuseRuntimeOptionChange is checkRuntimeOptions asked about a whole release,
+// before an operation begins.
+//
+// The same comparison runs inside runtimeConfig, which is what makes it
+// unbypassable -- every path that touches the runtime goes through it. This one
+// exists because a precondition discovered *inside* a step is reported as a
+// step failure: the engine compensates, the operation exits 11 ("back where it
+// started"), and the exit code and remedy that say what is actually wrong are
+// buried in a record. Asked here, it is a refusal with nothing started.
+func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Release) error {
+	declared, _ := rel.Manifest.DeclaredRuntimes()
+	return checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
 }
 
 // checkRuntimeOptions refuses a release that would change what the runtime was
