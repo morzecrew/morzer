@@ -1,12 +1,15 @@
 package ops
 
 import (
+	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/state"
 	"github.com/morzecrew/morzer/test/fakes"
 )
 
@@ -118,4 +121,36 @@ func TestTheRuntimesHookVariablesReachTheHookEnvironment(t *testing.T) {
 
 	assert.Equal(t, "myapp", env.Extra["DEMO_COMPOSE_PROJECT"],
 		"the variable is unchanged for a compose installation; only who supplies it moved")
+}
+
+// The baseline write is a read-modify-write of a record other operations also
+// write, so it re-reads under the lock and yields to whatever it finds.
+//
+// Two things are asserted, and the second is the one a race would break: it
+// writes when the field is absent, and it leaves an already-recorded value
+// alone rather than replacing it with the copy this operation read minutes
+// earlier.
+func TestTheBaselineWriteYieldsToWhatIsAlreadyRecorded(t *testing.T) {
+	ctx := context.Background()
+	paths := domain.PathsUnder(t.TempDir(), "demo")
+	for _, dir := range paths.ManagedDirs() {
+		require.NoError(t, os.MkdirAll(dir.Path, os.FileMode(dir.Mode)))
+	}
+	d := &Deps{Paths: paths, State: state.New(paths)}
+
+	inst := recorded(nil)
+	require.NoError(t, d.State.SaveInstallation(ctx, inst))
+
+	require.NoError(t, d.persistRuntimeBaseline(ctx, map[string]string{"project": "myapp"}))
+	after, err := d.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "myapp", after.RuntimeOptions["project"], "an absent baseline is written")
+
+	// Another operation got there first with a different answer. This one
+	// must not put its own back.
+	require.NoError(t, d.persistRuntimeBaseline(ctx, map[string]string{"project": "stale"}))
+	after, err = d.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "myapp", after.RuntimeOptions["project"],
+		"a recorded baseline is never overwritten by a copy read before the lock")
 }

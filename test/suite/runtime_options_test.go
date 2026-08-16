@@ -223,9 +223,13 @@ func TestAnUpdateWithNoResolvableBaselineIsRefused(t *testing.T) {
 }
 
 // A rollback plan compares the same baseline the rollback will, so it cannot
-// report a target that the real operation then refuses. The derivation used to
-// be skipped on a dry run along with the write, which left nothing to compare
-// against and made every target look acceptable.
+// report a target the real operation then refuses.
+//
+// The installation records nothing, which is the case that matters: the plan
+// has to *derive* the baseline from the release it is running. Skipping the
+// derivation on a dry run -- which is what happened when derivation and
+// persistence were one step -- left nothing to compare against, and every
+// target looked acceptable.
 func TestARollbackPlanRefusesWhatTheRollbackWouldRefuse(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
@@ -237,18 +241,22 @@ func TestARollbackPlanRefusesWhatTheRollbackWouldRefuse(t *testing.T) {
 	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
 	require.NoError(t, err)
 
-	// The release now running declares a project the previous one does not,
-	// which is what a rollback would move away from. Recorded directly,
-	// since what matters is that the plan and the operation agree.
+	// The release now running names a different project from the one it
+	// would roll back to, and the installation predates schema 10 -- so the
+	// only baseline available is the one derived from what is running.
+	installed := filepath.Join(h.Paths.ReleasesDir(), "1.3.0")
+	renameProjectIn(t, installed, "renamed")
+
 	inst, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
-	inst.RuntimeOptions = map[string]string{"project": "was-renamed"}
+	inst.RuntimeOptions = nil
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 
 	_, planErr := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{Options: ops.Options{DryRun: true}})
-	_, runErr := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
-
 	require.Error(t, planErr, "the plan must refuse what the rollback refuses")
-	require.Error(t, runErr)
 	assert.Contains(t, planErr.Error(), "project")
+
+	after, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, after.RuntimeOptions, "and it must still have written nothing")
 }
