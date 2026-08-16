@@ -187,14 +187,34 @@ func initSteps(d *Deps, opts InitOptions) []engine.Step {
 		// the public half. The other order would leave state claiming
 		// no key on a machine that has one.
 		stepCreateSigningKey(d),
-		stepWriteInstallation(d, opts),
 	}
 
+	// Staging puts the bundle on disk and the release into the engine's
+	// state, and it runs *before* the installation is written.
+	//
+	// That order used to be the other way round, and the reason it changed
+	// is worth keeping: the installation records which runtime it is fixed
+	// to, and the only place that fact exists is the release's manifest. A
+	// write that ran first could not read it, so every installation recorded
+	// an empty runtime -- which `Installation.RuntimeName` reads as the
+	// legacy one, quietly resolving a release declared for another runtime
+	// against the wrong adapter.
+	//
+	// Nothing is lost by the swap. The old order was justified by a `--set`
+	// the manifest does not declare failing during staging, so the engine
+	// unwound the installation the previous step had written; staging first
+	// means there is no installation to unwind, which is the same outcome
+	// reached earlier.
 	if opts.ReleasePath != "" {
-		// Staging puts the bundle on disk and the release into the
-		// engine's state; ingest reads it back from there, because
+		steps = append(steps, stepStageRelease(d, opts))
+	}
+
+	steps = append(steps, stepWriteInstallation(d, opts))
+
+	if opts.ReleasePath != "" {
+		// Ingest reads the release back out of engine state, because
 		// this list is built before anything has been resolved.
-		steps = append(steps, stepStageRelease(d, opts), stepIngestImages(d, stagedRelease()))
+		steps = append(steps, stepIngestImages(d, stagedRelease()))
 	}
 
 	steps = append(steps,
@@ -577,10 +597,10 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			}
 
 			// Before the release is adopted: a `--set` the manifest
-			// does not declare fails here, and the engine unwinds
-			// the installation written by the previous step rather
-			// than leaving one configured with a value that decides
-			// nothing.
+			// does not declare fails here, and no installation has
+			// been written yet -- so there is nothing configured
+			// with a value that decides nothing, and nothing for the
+			// engine to unwind.
 			if _, err := domain.ResolveParameters(rel.Manifest.Parameters, opts.Parameters); err != nil {
 				return err
 			}

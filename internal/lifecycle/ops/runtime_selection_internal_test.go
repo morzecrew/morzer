@@ -67,3 +67,47 @@ func TestAReleaseDeclaringNoRuntimeRecordsNothing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
+
+// The step order that makes the recorded runtime possible at all.
+//
+// `stepWriteInstallation` reads the release out of engine state, and only
+// `stepStageRelease` puts it there. When the write ran first the release was
+// never present, so every installation recorded an empty runtime -- which
+// `Installation.RuntimeName` reads as the legacy one, resolving a release
+// declared for another runtime against the wrong adapter, silently.
+//
+// Asserted on the step list rather than through a full init, because the defect
+// was in the ordering and an end-to-end test that happened to pass would not say
+// which order it passed under.
+func TestStagingPrecedesTheInstallationWriteWhenThereIsARelease(t *testing.T) {
+	steps := initSteps(&Deps{}, InitOptions{Product: "demo", ReleasePath: "bundle.tar.zst"})
+
+	var stage, write int = -1, -1
+	for i, s := range steps {
+		switch s.ID {
+		case "stage-release":
+			stage = i
+		case "write-installation":
+			write = i
+		}
+	}
+
+	require.NotEqual(t, -1, stage, "the release is staged")
+	require.NotEqual(t, -1, write, "the installation is written")
+	assert.Less(t, stage, write,
+		"the installation write reads the release from engine state, so staging must "+
+			"have put it there first; the other order records an empty runtime for "+
+			"every installation")
+}
+
+// And with no release there is nothing to stage, so the write still happens.
+func TestTheInstallationIsStillWrittenWithoutARelease(t *testing.T) {
+	steps := initSteps(&Deps{}, InitOptions{Product: "demo"})
+
+	var ids []string
+	for _, s := range steps {
+		ids = append(ids, s.ID)
+	}
+	assert.Contains(t, ids, "write-installation")
+	assert.NotContains(t, ids, "stage-release")
+}
