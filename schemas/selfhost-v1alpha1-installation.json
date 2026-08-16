@@ -153,6 +153,9 @@
       },
       "type": "object"
     },
+    "runtime": {
+      "type": "string"
+    },
     "secrets": {
       "items": {
         "type": "string"

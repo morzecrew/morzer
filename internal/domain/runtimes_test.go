@@ -1,0 +1,228 @@
+package domain
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// The runtime dimension, RFC 0023 P2.
+//
+// What is being pinned here is mostly *refusals*: the manifest gained a second
+// way to say which files a release ships, and the expensive failures are the
+// ones where the manager picks one of two answers and proceeds. Every test
+// below that asserts an error asserts which error, because "it failed" is
+// satisfied by a validator that fails for the wrong reason.
+
+func TestALegacyRuntimeBlockDeclaresTheLegacyRuntime(t *testing.T) {
+	m := validManifest()
+	m.Runtimes = nil
+	m.Runtime.Files = []string{"compose.yaml"}
+
+	declared, fromLegacy := m.DeclaredRuntimes()
+
+	require.True(t, fromLegacy, "a release using the old block must be reported as doing so")
+	assert.Equal(t, []string{LegacyRuntimeName}, declared.Names())
+	assert.Equal(t, []string{"compose.yaml"}, declared[LegacyRuntimeName].Files)
+}
+
+func TestARuntimesMapDeclaresItsOwnKeys(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Runtimes = Runtimes{
+		"quadlet": {Files: []string{"app.container"}},
+		"compose": {Files: []string{"compose.yaml"}},
+	}
+
+	declared, fromLegacy := m.DeclaredRuntimes()
+
+	assert.False(t, fromLegacy)
+	// Sorted, so every message that lists runtimes lists them alike.
+	assert.Equal(t, []string{"compose", "quadlet"}, declared.Names())
+}
+
+// Both blocks is a refusal rather than a merge. Merging would pick a winner
+// the vendor never nominated, and the losing block is a topology somebody
+// wrote on purpose.
+func TestDeclaringBothBlocksIsRefused(t *testing.T) {
+	m := validManifest()
+	m.Runtime.Files = []string{"compose.yaml"}
+	m.Runtimes = Runtimes{"compose": {Files: []string{"other.yaml"}}}
+
+	err := m.Validate()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be used together with the deprecated `runtime:` block",
+		"the refusal must say which two things collided")
+}
+
+// The regression that made DeclaredRuntimes derived rather than stored.
+//
+// ApplyDefaults used to normalise the legacy block into a field. That made it
+// a snapshot: Validate called on its own saw an empty map and checked no
+// paths, so an escaping path in the legacy block passed. This asserts the
+// check holds without ApplyDefaults having run, which is the only version of
+// it that is a check.
+func TestLegacyRuntimePathsAreCheckedWithoutApplyingDefaults(t *testing.T) {
+	for _, path := range []string{"/etc/passwd", "../outside/compose.yaml", "a/../../escape.yaml"} {
+		t.Run(path, func(t *testing.T) {
+			m := validManifest()
+			m.Runtimes = nil
+			m.Runtime.Files = []string{path}
+
+			err := m.Validate()
+
+			require.Error(t, err, "%q must be rejected", path)
+			assert.Contains(t, err.Error(), "runtime.files",
+				"the refusal must name the field the vendor actually wrote")
+		})
+	}
+}
+
+func TestRuntimesMapPathsAreCheckedAndNamedByRuntime(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Runtimes = Runtimes{"quadlet": {Files: []string{"/etc/passwd"}}}
+
+	err := m.Validate()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runtimes.quadlet.files",
+		"a vendor must be able to search their own file for the field named")
+}
+
+// A manifest declaring nothing has no signal for which spelling its author is
+// using, so the refusal names both. The per-runtime messages that would name
+// the right one never run when there is nothing to iterate.
+func TestDeclaringNoRuntimeNamesBothSpellings(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Runtimes = nil
+
+	err := m.Validate()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runtimes")
+	assert.Contains(t, err.Error(), "runtime.files")
+}
+
+// `providers.runtime.name` is no longer a hardcoded "compose". It is derived
+// from what the release declares, and only when there is one thing to derive
+// it from -- decision 8, and the death of §2.1's second expensive leak.
+func TestTheProviderNameIsDerivedFromASingleDeclaredRuntime(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Providers.Runtime.Name = ""
+	m.Runtimes = Runtimes{"quadlet": {Files: []string{"app.container"}}}
+
+	m.ApplyDefaults()
+
+	assert.Equal(t, "quadlet", m.Providers.Runtime.Name,
+		"a single-runtime release still fills the field, and not with the incumbent's name")
+}
+
+func TestTheProviderNameStaysEmptyForATwoRuntimeRelease(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Providers.Runtime.Name = ""
+	m.Runtimes = Runtimes{
+		"compose": {Files: []string{"compose.yaml"}},
+		"quadlet": {Files: []string{"app.container"}},
+	}
+
+	m.ApplyDefaults()
+
+	assert.Empty(t, m.Providers.Runtime.Name,
+		"there is no one value the field could take that would not be a lie about the other runtime")
+}
+
+// Decision 5 at the point a caller would otherwise receive an empty file list
+// and deploy nothing while reporting success.
+func TestResolvingAnUndeclaredRuntimeRefusesAndSaysWhatIsDeclared(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Runtimes = Runtimes{"compose": {Files: []string{"compose.yaml"}}}
+	rel := Release{Manifest: m, Root: "/opt/demo/releases/1"}
+
+	_, err := rel.RuntimeFilePaths("quadlet", "")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not support the quadlet runtime")
+	// The list lands in the hint, which is where the operator reads it --
+	// asserting it against Error() would pass on a hint that was never set.
+	var domErr *Error
+	require.ErrorAs(t, err, &domErr)
+	assert.Contains(t, domErr.Hint, "compose", "the refusal must name what the release does declare")
+}
+
+func TestResolvingADeclaredRuntimeReturnsItsFiles(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Runtimes = Runtimes{"quadlet": {Files: []string{"app.container"}}}
+	rel := Release{Manifest: m, Root: "/opt/demo/releases/1"}
+
+	paths, err := rel.RuntimeFilePaths("quadlet", "")
+
+	require.NoError(t, err)
+	require.Len(t, paths, 1)
+	assert.Contains(t, paths[0], "app.container")
+}
+
+// An unknown profile refuses rather than falling back to base, under the new
+// declaration exactly as under the old one.
+func TestAnUnknownProfileRefusesUnderARuntimeDeclaration(t *testing.T) {
+	decl := RuntimeDecl{
+		Files:    []string{"compose.yaml"},
+		Profiles: map[string][]string{"prod": {"compose.prod.yaml"}},
+	}
+
+	_, err := decl.FilesFor("staging")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown deployment profile")
+	var domErr *Error
+	require.ErrorAs(t, err, &domErr)
+	assert.Contains(t, domErr.Hint, "prod", "the refusal must list what is declared")
+}
+
+func TestAProfileFileAlreadyListedIsNotPassedTwice(t *testing.T) {
+	decl := RuntimeDecl{
+		Files:    []string{"compose.yaml", "shared.yaml"},
+		Profiles: map[string][]string{"prod": {"shared.yaml", "compose.prod.yaml"}},
+	}
+
+	files, err := decl.FilesFor("prod")
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"compose.yaml", "shared.yaml", "compose.prod.yaml"}, files,
+		"a file in both lists would otherwise be merged with itself")
+}
+
+// An installation written before schema 9 has no runtime recorded, and it ran
+// the only runtime there was. Read in one place so no call site has to
+// remember, because the one that forgot would resolve "" against a release.
+func TestAnInstallationWithNoRecordedRuntimeReadsAsTheLegacyOne(t *testing.T) {
+	assert.Equal(t, LegacyRuntimeName, Installation{}.RuntimeName())
+	assert.Equal(t, "quadlet", Installation{Runtime: "quadlet"}.RuntimeName())
+}
+
+// ApplyDefaults fills RuntimeSpec.Project from the product name unconditionally,
+// including for a release that never wrote a `runtime:` block. That makes the
+// legacy struct non-zero on a manifest whose author only used `runtimes:` --
+// which would read as "declared both" and refuse the release, if isZero looked
+// at Project. It looks at Files and Profiles, and this is what says so.
+func TestARuntimesOnlyReleaseSurvivesDefaultingAndValidation(t *testing.T) {
+	m := validManifest()
+	m.Runtime = RuntimeSpec{}
+	m.Runtimes = Runtimes{"compose": {Files: []string{"compose.yaml"}}}
+
+	m.ApplyDefaults()
+	require.NotEmpty(t, m.Runtime.Project, "defaulting still fills the grouping name")
+
+	require.NoError(t, m.Validate(), "a defaulted project must not read as a declared legacy block")
+
+	declared, fromLegacy := m.DeclaredRuntimes()
+	assert.False(t, fromLegacy)
+	assert.Equal(t, []string{"compose"}, declared.Names())
+}
