@@ -39,6 +39,16 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
+	// The release this deployment is already running, which is the only
+	// honest baseline for an installation created before schema 10. See
+	// adoptRuntimeOptions -- and note it is the *current* release here, not
+	// a candidate: adopting from what is being introduced would record the
+	// change as the baseline and defeat the refusal on the one operation
+	// that needs it.
+	if inst, err = d.adoptRuntimeOptions(ctx, inst, rel); err != nil {
+		return Result{}, err
+	}
+
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
 	if opts.Resume {

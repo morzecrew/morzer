@@ -215,7 +215,7 @@ func TestAHelperImageThatIsNotPinnedByDigestIsRefused(t *testing.T) {
 	require.NoError(t, os.WriteFile(src, []byte("tar"), 0o600))
 
 	ctx := context.Background()
-	cfg := ports.RuntimeConfig{Project: "demo"}
+	cfg := ports.RuntimeConfig{Product: "demo"}
 	calls := map[string]func() error{
 		"capture": func() error {
 			return r.CaptureVolume(ctx, cfg, "demo_uploads", filepath.Join(dir, "out.tar"))
@@ -279,7 +279,7 @@ func helperArgv(t *testing.T, runner *exec.Scripted) string {
 func TestAVolumeIsReadThroughAReadOnlyMount(t *testing.T) {
 	r, runner := helperLab(t)
 
-	require.NoError(t, r.CaptureVolume(context.Background(), ports.RuntimeConfig{Project: "demo"},
+	require.NoError(t, r.CaptureVolume(context.Background(), ports.RuntimeConfig{Product: "demo"},
 		"demo_uploads", filepath.Join(t.TempDir(), "uploads.tar")))
 
 	argv := helperArgv(t, runner)
@@ -302,7 +302,7 @@ func TestAVolumeIsRestoredThroughAWritableMount(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "uploads.tar")
 	require.NoError(t, os.WriteFile(src, []byte("tar"), 0o600))
 
-	require.NoError(t, r.RestoreVolume(context.Background(), ports.RuntimeConfig{Project: "demo"},
+	require.NoError(t, r.RestoreVolume(context.Background(), ports.RuntimeConfig{Product: "demo"},
 		"demo_uploads", src))
 
 	argv := helperArgv(t, runner)
@@ -707,7 +707,7 @@ func TestACancelledMeasurementIsAnInterruptionRatherThanAnUnmeasuredVolume(t *te
 func TestQuiescingUsesStopAndStartRatherThanDownAndUp(t *testing.T) {
 	runner := exec.NewScripted()
 	r := New(runner)
-	cfg := ports.RuntimeConfig{Project: "demo"}
+	cfg := ports.RuntimeConfig{Product: "demo"}
 
 	require.NoError(t, r.Stop(context.Background(), cfg, []string{"app", "worker"}, 30*1e9))
 	require.NoError(t, r.Start(context.Background(), cfg, []string{"app", "worker"}))

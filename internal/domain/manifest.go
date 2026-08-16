@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // APIVersion identifies the manifest schema. It is the first of the three
@@ -132,11 +133,33 @@ func (m Manifest) DeclaredRuntimes() (Runtimes, bool) {
 	if m.Runtime.isZero() {
 		return nil, false
 	}
-	return Runtimes{LegacyRuntimeName: RuntimeDecl{
+	decl := RuntimeDecl{
 		Files:    m.Runtime.Files,
 		Profiles: m.Runtime.Profiles,
-	}}, true
+	}
+	// The legacy block's project becomes the legacy runtime's `project`
+	// option, so a bundle built before `runtimes:` existed keeps the
+	// namespace its volumes are already in. Dropping it here would rename
+	// every volume, network and container of a running deployment on the
+	// next `apply` -- measured: `--project-name alpha` resolves a volume
+	// named `alpha_data` and `beta` resolves `beta_data`.
+	//
+	// The option's name is spelled here for the same reason
+	// LegacyRuntimeName is: the old block *is* Compose's, that is what it
+	// meant, and a manager that would not say so could not read a released
+	// bundle. It leaves when the block does.
+	if m.Runtime.Project != "" {
+		decl.Options = map[string]string{legacyProjectOption: m.Runtime.Project}
+	}
+	return Runtimes{LegacyRuntimeName: decl}, true
 }
+
+// legacyProjectOption is what `runtime.project` becomes under `runtimes:`.
+//
+// See DeclaredRuntimes. It is a Compose word above `internal/adapters` and it
+// is deliberate: this is the translation of a released manifest surface, not a
+// manager deciding what a runtime needs.
+const legacyProjectOption = "project"
 
 type Metadata struct {
 	Name        string  `yaml:"name" json:"name"`
@@ -226,6 +249,24 @@ func (r RuntimeSpec) ComposeFiles(profile string) ([]string, error) {
 type RuntimeDecl struct {
 	Files    []string            `yaml:"files" json:"files"`
 	Profiles map[string][]string `yaml:"profiles" json:"profiles,omitempty"`
+
+	// Options are settings this runtime understands and the manager does
+	// not. They are carried, bounded and compared here, and never
+	// interpreted: what `project` means is Compose's business, and a
+	// manager that knew would be branching on a runtime's name to find out
+	// (decision 7).
+	//
+	// Opaque rather than a field per setting, and that is the whole design.
+	// A `project:` key beside `files:` would be one runtime's vocabulary in
+	// the shape every runtime shares -- exactly what decision 10 took
+	// `units:` out of -- and Quadlet's equivalent question ("what do the
+	// units get called") has a different answer with a different name.
+	//
+	// The manager bounds the *shape*: keys are identifiers, values are one
+	// line and short, because these reach an adapter's argv. Whether a key
+	// is one this runtime has heard of is the adapter's answer, given by
+	// Validate, because nothing up here can know the list.
+	Options map[string]string `yaml:"options,omitempty" json:"options,omitempty"`
 }
 
 // FilesFor returns this runtime's files for a deployment profile.
@@ -267,9 +308,15 @@ func (d RuntimeDecl) FilesFor(profile string) ([]string, error) {
 // bundle at all. It leaves when the legacy block does, and not before.
 const LegacyRuntimeName = "compose"
 
-// isZero reports whether the legacy block was written at all. Files rather
-// than Project, because ApplyDefaults fills Project from the product name and
-// so a defaulted manifest is never zero by that measure.
+// isZero reports whether the legacy block was written at all.
+//
+// Files and profiles rather than every field: a manifest may set `project:`
+// alone -- that was the only way to name one before `runtimes.<name>.options`
+// existed -- and reading that as "the legacy block was written" would refuse a
+// release that declares `runtimes:` and nothing else. What it costs is that
+// `runtime: {project: x}` beside `runtimes:` is ignored rather than refused,
+// which the both-declared message cannot help with because there is no file
+// list to move.
 func (r RuntimeSpec) isZero() bool { return len(r.Files) == 0 && len(r.Profiles) == 0 }
 
 // Runtimes maps a runtime's name to what that runtime is declared with.
@@ -592,9 +639,13 @@ func (m *Manifest) ApplyDefaults() {
 	if m.Providers.Backup.Name == "" {
 		m.Providers.Backup.Name = "hooks"
 	}
-	if m.Runtime.Project == "" {
-		m.Runtime.Project = m.Metadata.Name
-	}
+	// The project is deliberately *not* defaulted here any more. It used to
+	// become the product name for every manifest, including ones that never
+	// wrote a `runtime:` block -- so a release on the new spelling was
+	// silently grouped by a field on the deprecated one, and nothing said so.
+	// What a runtime calls its grouping, and what it falls back to, is the
+	// adapter's answer now; RuntimeConfig carries the product name so it has
+	// something to fall back to.
 	for i := range m.Configuration {
 		if m.Configuration[i].Mode == 0 {
 			m.Configuration[i].Mode = DefaultConfigMode
@@ -641,6 +692,41 @@ var digestRef = regexp.MustCompile(`^[^\s@]+@sha256:[a-f0-9]{64}$`)
 // Shaped after productNamePattern, which answers the same question about a
 // different identifier.
 var runtimeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// optionName is the grammar for a runtime option's key.
+//
+// Underscores rather than hyphens, matching parameter names: these are settings
+// somebody writes in YAML beside parameters, and two spellings of "identifier"
+// in one file is a rule nobody remembers. The manager checks the shape and
+// stops -- which keys exist is the adapter's answer.
+var optionName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+
+// maxRuntimeOptionLen bounds a runtime option's value. Generous against any
+// real setting -- a project name, a unit prefix -- and far short of a payload.
+const maxRuntimeOptionLen = 200
+
+// ValidateSingleLine refuses a value that could not safely be handed to
+// something that renders or executes it.
+//
+// The rule every value leaving this manager follows, in one place: no newline,
+// no carriage return, no control character, and a length bound. A newline in a
+// value that reaches argv or a unit file is a second argument or a second
+// directive, and the shape is identical whether the value came from a manifest,
+// a hand-edited state file, or a restored backup.
+//
+// It says nothing about meaning. A well-formed value that is wrong is the
+// adapter's refusal, not this one.
+func ValidateSingleLine(raw string, max int) error {
+	for _, r := range raw {
+		if r == '\n' || r == '\r' || unicode.IsControl(r) {
+			return ValidationError(nil, "must be one line, with no control characters")
+		}
+	}
+	if len(raw) > max {
+		return ValidationError(nil, "must be at most %d characters", max)
+	}
+	return nil
+}
 
 // ValidRuntimeName reports whether a name is well-formed. Exported because both
 // the manifest's keys and the installation's recorded runtime are the same kind
@@ -744,6 +830,23 @@ func (m *Manifest) Validate() error {
 		v.add("runtimes", "cannot be used together with the deprecated `runtime:` block; "+
 			"move the files under `runtimes."+LegacyRuntimeName+".files` and delete `runtime:`")
 	}
+	// A project left behind by a half-finished migration. The block is not
+	// "declared" by isZero's measure -- it lists no files -- so nothing above
+	// catches it, and folding it in would be the merge the refusal beside
+	// this one exists to prevent.
+	//
+	// It refuses rather than ignores because ignoring it is the expensive
+	// direction: the option decides the namespace Compose puts volumes,
+	// networks and containers in, so dropping it renames all of them and the
+	// deployment comes up against empty storage with the old data still on
+	// the disk, unreferenced. Measured: `--project-name alpha` resolves a
+	// volume named `alpha_data`, `beta` resolves `beta_data`.
+	if len(m.Runtimes) > 0 && m.Runtime.Project != "" {
+		v.add("runtime.project", "is set while `runtimes:` declares this release's runtimes, "+
+			"where it would be ignored; move it to `runtimes."+LegacyRuntimeName+
+			".options.project` and delete `runtime:`. Dropping it renames every volume, "+
+			"network and container of any deployment already running this product")
+	}
 	if len(declaredRuntimes) == 0 {
 		// Both spellings named, because with nothing declared there is
 		// no signal for which one the vendor is writing -- and the
@@ -787,6 +890,26 @@ func (m *Manifest) Validate() error {
 			}
 			for i, f := range files {
 				v.checkRelPath(fmt.Sprintf("%s.profiles.%s[%d]", base, profile, i), f)
+			}
+		}
+		for _, key := range sortedStringKeys(decl.Options) {
+			field := base + ".options." + key
+			if !optionName.MatchString(key) {
+				v.add(base+".options",
+					"%q is not a usable option name: lower-case letters, digits "+
+						"and underscores, starting with a letter, at most 32 characters", key)
+				continue
+			}
+			// The value's shape, never its meaning. It is handed to an
+			// adapter that puts it in argv, so the bound is the same one
+			// every value that leaves this manager gets: one line, no
+			// control characters, and short enough not to be a payload.
+			// Whether the adapter has heard of the key is its own answer,
+			// given by Validate -- there is no list up here to check
+			// against, and inventing one would be this layer deciding
+			// what a runtime understands.
+			if err := ValidateSingleLine(decl.Options[key], maxRuntimeOptionLen); err != nil {
+				v.add(field, "%s", AsError(err).Message)
 			}
 		}
 	}

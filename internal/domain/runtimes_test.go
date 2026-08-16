@@ -219,7 +219,8 @@ func TestARuntimesOnlyReleaseSurvivesDefaultingAndValidation(t *testing.T) {
 	m.Runtimes = Runtimes{"compose": {Files: []string{"compose.yaml"}}}
 
 	m.ApplyDefaults()
-	require.NotEmpty(t, m.Runtime.Project, "defaulting still fills the grouping name")
+	require.Empty(t, m.Runtime.Project,
+		"a release on the new spelling must not inherit a grouping name from the deprecated block")
 
 	require.NoError(t, m.Validate(), "a defaulted project must not read as a declared legacy block")
 

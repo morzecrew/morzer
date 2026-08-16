@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -45,6 +46,41 @@ func init() {
 	})
 }
 
+// runtimeSummary names the runtimes a release declares, with each one's
+// options.
+//
+// It used to read `providers.runtime.name` and note the Compose project beside
+// it, which said the wrong thing twice over: the provider field is derived and
+// is empty for a release declaring two runtimes, and the project came from a
+// field on the deprecated block, so a release on the `runtimes:` spelling
+// showed one it had not set. The options are printed as the vendor wrote them
+// because this layer does not know what any of them mean.
+func runtimeSummary(m domain.Manifest) string {
+	declared, _ := m.DeclaredRuntimes()
+	if len(declared) == 0 {
+		return "none declared"
+	}
+	parts := make([]string, 0, len(declared))
+	for _, name := range declared.Names() {
+		options := declared[name].Options
+		if len(options) == 0 {
+			parts = append(parts, name)
+			continue
+		}
+		keys := make([]string, 0, len(options))
+		for key := range options {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		settings := make([]string, 0, len(keys))
+		for _, key := range keys {
+			settings = append(settings, key+"="+options[key])
+		}
+		parts = append(parts, name+" ("+strings.Join(settings, ", ")+")")
+	}
+	return strings.Join(parts, ", ")
+}
+
 func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 	t := d.Theme()
 	m := r.Manifest
@@ -59,8 +95,7 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 		{Label: "api version", Value: string(m.APIVersion)},
 		{Label: "digest", Value: r.Digest},
 		{Label: "root", Value: r.Root},
-		{Label: "runtime", Value: m.Providers.Runtime.Name,
-			Note: "(project " + m.Runtime.Project + ")"},
+		{Label: "runtime", Value: runtimeSummary(m)},
 	})
 
 	d.Heading("images")

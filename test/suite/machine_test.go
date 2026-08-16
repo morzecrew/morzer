@@ -195,18 +195,18 @@ type perProjectRuntime struct {
 }
 
 func (r *perProjectRuntime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.ServiceState, error) {
-	if cfg.Project == r.BlockProject {
+	if cfg.Product == r.BlockProject {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	if cfg.Project == r.FailProject {
+	if cfg.Product == r.FailProject {
 		return nil, domain.RuntimeError(nil, "cannot connect to the Docker daemon")
 	}
 
-	out := make([]ports.ServiceState, 0, r.Total[cfg.Project])
-	for i := range r.Total[cfg.Project] {
+	out := make([]ports.ServiceState, 0, r.Total[cfg.Product])
+	for i := range r.Total[cfg.Product] {
 		s := ports.ServiceState{Name: "svc" + itoa(i), State: "exited"}
-		if i < r.Running[cfg.Project] {
+		if i < r.Running[cfg.Product] {
 			s.State = "running"
 		}
 		out = append(out, s)

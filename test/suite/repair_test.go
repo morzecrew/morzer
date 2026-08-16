@@ -358,6 +358,14 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 			"references belong to the old one -- the transition RFC 0023 " +
 			"decision 3 forbids, arriving as a repair",
 
+		"RuntimeOptions": "carried from the existing state, and the consequence of " +
+			"rebuilding is sharper than Runtime's. These name what the " +
+			"runtime creates -- under compose, the project prefixing every " +
+			"volume -- so a repair that took them from the release would " +
+			"adopt a renamed project in the one command an operator runs " +
+			"because something is already wrong, and bring the deployment " +
+			"up against empty storage",
+
 		// One verdict for the block, because it is carried as a block.
 		// The sandbox table classifies Policy field by field for a
 		// different question; here the question is whether a repair

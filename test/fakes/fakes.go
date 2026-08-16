@@ -180,6 +180,22 @@ func (r *Runtime) Name() string {
 	return r.RuntimeName
 }
 
+// namespace is what this fake names containers after, resolved the way the
+// compose adapter resolves a project: the option when the manifest set one, the
+// product otherwise.
+//
+// Duplicated from the adapter deliberately and narrowly. A fake that read the
+// option and a fake that ignored it would produce the same container names for
+// every test that does not set one, so the copy is what lets a test about the
+// option assert anything at all -- and the adapter's own test is what holds the
+// original honest.
+func (r *Runtime) namespace(cfg ports.RuntimeConfig) string {
+	if p := cfg.Options["project"]; p != "" {
+		return p
+	}
+	return cfg.Product
+}
+
 // RequiredTools names what the runtime this fake stands in for needs on a
 // host, matching the compose adapter it substitutes for.
 //
@@ -226,7 +242,7 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 			// is what attributes a log line to a service and a fake
 			// that left it empty would make every structured record
 			// unattributed while the real runtime attributed them.
-			Container: cfg.Project + "-" + name + "-1",
+			Container: r.namespace(cfg) + "-" + name + "-1",
 		}
 	}
 	return nil

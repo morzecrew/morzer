@@ -1152,8 +1152,36 @@ func (e *Engine) hookEnv(phase ports.HookPhase, backupDir string) ports.HookEnv 
 		BackupDir:      backupDir,
 		SecretsDir:     e.paths.SecretsRenderDir(),
 		ConfigFile:     e.paths.ApplicationFile(),
-		ComposeProject: e.release.Manifest.Runtime.Project,
+		Extra:          e.runtimeHookVars(),
 	}
+}
+
+// runtimeHookVars asks the runtime for its half of the hook ABI.
+//
+// Backup and restore hooks read `<PRODUCT>_COMPOSE_PROJECT` like any other, and
+// this engine builds their environment itself rather than through the lifecycle
+// layer -- so the variable has to be obtained here too, from the same capability
+// and with the same namespacing. Reading the manifest's deprecated block, which
+// is what this used to do, now returns nothing for a release on the `runtimes:`
+// spelling.
+//
+// Nothing when no runtime is wired: a backup that covers only what the hook
+// produces is a supported configuration (see the runtime field), and inventing
+// a project name for it would be this adapter guessing another one's answer.
+func (e *Engine) runtimeHookVars() map[string]string {
+	supplier, ok := e.runtime.(ports.HookVarSupplier)
+	if !ok {
+		return nil
+	}
+	supplied := supplier.HookVars(e.runtimeConfig)
+	if len(supplied) == 0 {
+		return nil
+	}
+	named := make(map[string]string, len(supplied))
+	for suffix, value := range supplied {
+		named[ports.HookEnv{Product: e.installation.Product}.Var(suffix)] = value
+	}
+	return named
 }
 
 // sweepStagedPlaintext removes restore staging directories a dead process

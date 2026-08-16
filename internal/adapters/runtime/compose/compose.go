@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -82,8 +83,8 @@ var _ ports.Runtime = (*Runtime)(nil)
 // project selection is how a command ends up acting on the wrong deployment.
 func (r *Runtime) args(cfg ports.RuntimeConfig, rest ...string) []string {
 	argv := []string{r.docker, "compose"}
-	if cfg.Project != "" {
-		argv = append(argv, "--project-name", cfg.Project)
+	if p := r.project(cfg); p != "" {
+		argv = append(argv, "--project-name", p)
 	}
 	if cfg.WorkingDir != "" {
 		argv = append(argv, "--project-directory", cfg.WorkingDir)
@@ -119,6 +120,86 @@ func (r *Runtime) command(cfg ports.RuntimeConfig, timeout time.Duration, argv .
 // point of the port method is that nothing higher up has to.
 func (r *Runtime) Name() string { return "compose" }
 
+// OptionProject is the manifest option naming this deployment's Compose
+// project -- the namespace containers, networks and volumes are created in.
+//
+// Declared here because this is the layer that knows what a project is. The
+// manager carries the option and bounds its shape; it does not know that
+// `project` means anything, and a manager that did would be branching on a
+// runtime's name to find out (RFC 0023 decision 7).
+const OptionProject = "project"
+
+// project resolves the Compose project name for a configuration.
+//
+// The option when the vendor set one, the product name otherwise. The fallback
+// lives here rather than in the manifest's defaults, where it used to: filling
+// it in up there made every release carry a project whether or not it had asked
+// for one, and a release on the `runtimes:` spelling inherited it from a field
+// on the deprecated block.
+//
+// It is the namespace durable things are created in, so changing it between
+// releases points a deployment at different volumes. That is the manager's
+// refusal to make, not this adapter's -- the installation records what it was
+// created with.
+func (r *Runtime) project(cfg ports.RuntimeConfig) string {
+	if p := cfg.Options[OptionProject]; p != "" {
+		return p
+	}
+	return cfg.Product
+}
+
+// checkOptions refuses a manifest option this runtime has never heard of.
+//
+// The manager cannot make this refusal -- it has no list, and building one up
+// there would be the layer above the adapters holding a catalogue of what each
+// runtime understands. So an unknown key survives until here, and here it
+// stops, from Validate: the path `apply`, `doctor` and `release verify
+// --render-check` all run before anything is deployed.
+//
+// Refused rather than ignored, because ignoring fails silently and expensively.
+// A vendor who mistypes `project` deploys under the product name instead of the
+// one they chose, and Compose creates a fresh set of volumes for it without
+// complaint -- the same rename this whole wave exists to stop.
+func checkOptions(options map[string]string) error {
+	known := map[string]bool{OptionProject: true}
+
+	unknown := make([]string, 0, len(options))
+	for key := range options {
+		if !known[key] {
+			unknown = append(unknown, key)
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	sort.Strings(unknown)
+
+	names := make([]string, 0, len(known))
+	for key := range known {
+		names = append(names, key)
+	}
+	sort.Strings(names)
+
+	return domain.ValidationError(nil,
+		"this release sets runtime options the compose runtime does not know: %s",
+		strings.Join(unknown, ", ")).
+		WithHint("it understands: %s", strings.Join(names, ", "))
+}
+
+// HookVars is this runtime's contribution to the hook ABI.
+//
+// One variable, and the same one vendors' hooks have always read. It is
+// supplied rather than core because a project is Compose's own idea: under a
+// runtime that has none, the variable is absent rather than empty, which a hook
+// can test for (RFC 0023 §2.2).
+func (r *Runtime) HookVars(cfg ports.RuntimeConfig) map[string]string {
+	p := r.project(cfg)
+	if p == "" {
+		return nil
+	}
+	return map[string]string{"COMPOSE_PROJECT": p}
+}
+
 // RequiredTools names what has to be on the host before this runtime can do
 // anything, in the order an operator should read them.
 //
@@ -139,6 +220,9 @@ func (r *Runtime) RequiredTools() []string { return []string{"docker", "compose"
 // surfaces during preflight rather than at the moment containers are being
 // started.
 func (r *Runtime) Validate(ctx context.Context, cfg ports.RuntimeConfig) (ports.Rendered, error) {
+	if err := checkOptions(cfg.Options); err != nil {
+		return ports.Rendered{}, err
+	}
 	cmd := r.command(cfg, 60*time.Second, r.args(cfg, "config", "--format", "json")...)
 	// The merged config is data, not progress: streaming it into the live
 	// view would flood it with YAML.

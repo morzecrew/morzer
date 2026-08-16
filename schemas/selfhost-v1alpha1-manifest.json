@@ -496,6 +496,12 @@
             },
             "type": "array"
           },
+          "options": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "profiles": {
             "additionalProperties": {
               "items": {

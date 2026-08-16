@@ -25,7 +25,7 @@ func newRuntime() (*compose.Runtime, *exec.Scripted) {
 
 func cfg() ports.RuntimeConfig {
 	return ports.RuntimeConfig{
-		Project:    "demo",
+		Product:    "demo",
 		Files:      []string{"/rel/compose.yaml"},
 		WorkingDir: "/rel",
 		Env:        map[string]string{"DEMO_PARAM_HTTP_PORT": "18080"},

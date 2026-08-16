@@ -69,6 +69,12 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	if err != nil {
 		return Result{}, err
 	}
+	// From the release being rolled *off*, for the reason update takes it
+	// from the one being updated *from*: the target is what might differ.
+	if inst, err = d.adoptRuntimeOptions(ctx, inst, currentRel); err != nil {
+		return Result{}, err
+	}
+
 	previousRel, err := release.Load(previous.Root)
 	if err != nil {
 		return Result{}, domain.InstallationError(err,

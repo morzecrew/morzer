@@ -56,6 +56,18 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		return Result{}, err
 	}
 
+	// Before the new bundle is resolved, and from the release running now.
+	// An installation created before schema 10 has no recorded options, and
+	// an update is exactly the operation that can change them -- so the
+	// baseline has to be taken from what is installed, while it still is.
+	if !from.IsZero() {
+		if rel, relErr := d.resolveCurrentRelease(ctx, from); relErr == nil {
+			if inst, err = d.adoptRuntimeOptions(ctx, inst, rel); err != nil {
+				return Result{}, err
+			}
+		}
+	}
+
 	source, staged, cleanup, err := d.resolveUpdateTarget(ctx, opts)
 	// Whatever had to be brought down to read the bundle is scratch, and
 	// goes when the operation does. The release itself has already been

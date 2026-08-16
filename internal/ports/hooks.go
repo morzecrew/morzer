@@ -57,8 +57,6 @@ type HookEnv struct {
 	SecretsDir string
 	ConfigFile string
 
-	ComposeProject string
-
 	DryRun   bool
 	LogLevel string
 
@@ -68,7 +66,14 @@ type HookEnv struct {
 	// port the same way.
 	Parameters map[string]string
 
-	// Extra carries operation-specific variables, already fully named.
+	// Extra carries variables the core ABI does not define, already fully
+	// named: operation-specific ones, and whatever the runtime supplies.
+	//
+	// `COMPOSE_PROJECT` arrives this way now. It was a field here until RFC
+	// 0023 P2 -- a core promise to every hook, naming Compose's grouping
+	// primitive, which a runtime without projects cannot mean. The variable
+	// is unchanged on a Compose installation and absent elsewhere; what
+	// changed is that the runtime supplies it (ports.HookVarSupplier).
 	Extra map[string]string
 }
 
@@ -115,7 +120,6 @@ func HookEnvVars(e HookEnv) map[string]string {
 	set("BACKUP_DIR", e.BackupDir)
 	set("SECRETS_DIR", e.SecretsDir)
 	set("CONFIG_FILE", e.ConfigFile)
-	set("COMPOSE_PROJECT", e.ComposeProject)
 	set("LOG_LEVEL", e.LogLevel)
 
 	for name, value := range e.Parameters {

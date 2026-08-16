@@ -127,9 +127,25 @@ type Runtime interface {
 // per call rather than held in the adapter so one adapter instance can serve
 // several projects, and so the adapter holds no mutable state.
 type RuntimeConfig struct {
-	// Project is the Compose project name -- the namespace for containers,
-	// networks and volumes.
-	Project string
+	// Product is what this deployment is called, and it is here so an
+	// adapter has something to name things after.
+	//
+	// It replaces the Compose project name this struct used to carry. A
+	// project is Compose's grouping primitive and Quadlet has none -- a unit
+	// prefix is a naming convention, not a handle -- so a field spelling one
+	// runtime's answer was this layer deciding a question only the adapter
+	// can be asked. What the manager knows is the product's name; what the
+	// runtime does with it, including whether an option overrides it, is the
+	// adapter's (RFC 0023 §2.2).
+	Product string
+
+	// Options are the manifest's per-runtime settings, verbatim.
+	//
+	// Bounded in shape by domain validation -- identifier keys, single-line
+	// values -- and uninterpreted from there to here. An adapter reads the
+	// keys it knows and refuses the ones it does not from Validate, which is
+	// the only place the question can be answered.
+	Options map[string]string
 
 	// Files are absolute paths to the Compose files, in merge order.
 	Files []string
@@ -433,6 +449,29 @@ type ToolRequirer interface {
 	// RequiredTools names the tools, in the order an operator should see
 	// them. Empty means the same as not implementing the interface.
 	RequiredTools() []string
+}
+
+// HookVarSupplier names the hook variables this runtime contributes.
+//
+// The hook ABI has a core set every installation gets, and this is how a
+// runtime adds to it. `<PRODUCT>_COMPOSE_PROJECT` used to be core: it is
+// Compose's grouping primitive, published to every vendor hook, and absent
+// under a runtime with no projects — so the core ABI was promising a value one
+// runtime could not mean (RFC 0023 §2.2, which called it the expensive one).
+//
+// Supplied rather than renamed. The name is what a vendor's hook already
+// writes, and it stays exactly that on a Compose installation; what changes is
+// who promises it. On a runtime that supplies nothing, the variable is absent,
+// which is the honest answer and the one a hook can test for.
+//
+// Keys are unprefixed suffixes — `COMPOSE_PROJECT`, not
+// `DEMO_COMPOSE_PROJECT`. The caller applies the product's namespace, because
+// the namespace is the manager's and an adapter that built it would be a second
+// implementation of HookEnv.Var.
+type HookVarSupplier interface {
+	// HookVars returns this runtime's contribution for one configuration.
+	// An empty map and a nil map mean the same thing: nothing to add.
+	HookVars(cfg RuntimeConfig) map[string]string
 }
 
 // ImageIngester loads the images a bundle carries into the local image store.
