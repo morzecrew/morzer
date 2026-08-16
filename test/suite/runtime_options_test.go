@@ -2,6 +2,9 @@ package suite
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -114,4 +117,69 @@ func TestAPlanDoesNotAdoptTheBaseline(t *testing.T) {
 	after, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
 	assert.Nil(t, after.RuntimeOptions, "a plan must not write what an apply would")
+}
+
+// The hazard as a vendor actually ships it: a new bundle whose project differs
+// from the running one. This is the path the whole wave exists for -- and the
+// one where adopting from the wrong release would defeat the check, since the
+// candidate is the thing being refused.
+//
+// The installation deliberately starts with no recorded options, which is every
+// machine that existed before schema 10: it has to adopt from what it is
+// running before the candidate is examined, or there is nothing to compare.
+func TestAnUpdateThatRenamesTheProjectIsRefused(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	inst := h.install()
+	require.Nil(t, inst.RuntimeOptions)
+	h.setHookEnv()
+
+	src := stageUpgradeSource(t, h)
+	renameProjectIn(t, src, "renamed")
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err, "an update that renames the project must be refused, not applied")
+	assert.Contains(t, err.Error(), "project")
+	assert.Equal(t, domain.ExitIncompatible, domain.ExitCode(err))
+
+	// And the baseline it adopted is the release it is running, never the
+	// one that was refused.
+	after, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "demo", after.RuntimeOptions["project"])
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String(), "nothing may have moved")
+}
+
+// An update that keeps the project goes through, so the refusal is not simply
+// "updates are refused".
+func TestAnUpdateThatKeepsTheProjectIsApplied(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+
+	src := stageUpgradeSource(t, h)
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
+}
+
+// renameProjectIn rewrites a staged bundle's project, the way a vendor
+// publishing the next release would.
+func renameProjectIn(t *testing.T, bundleRoot, project string) {
+	t.Helper()
+
+	path := filepath.Join(bundleRoot, "manifest.yaml")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	rewritten := strings.Replace(string(data), "  project: demo\n", "  project: "+project+"\n", 1)
+	require.NotEqual(t, string(data), rewritten, "the fixture must carry a project line to rewrite")
+	require.NoError(t, os.WriteFile(path, []byte(rewritten), 0o644))
 }
