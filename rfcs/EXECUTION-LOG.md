@@ -864,6 +864,11 @@ adapter's method *is* executed, by nothing that checks what it returns.
 - **`RuntimeSpec.Project` and the `COMPOSE_PROJECT` ABI** — D-016, the last of
   §2.2's unspelled leaks and the only item of P2 still open. It needs its own
   decision about whether a published ABI moves.
+- **R-4: an option made explicit is not a change.** Comparing effective rather
+  than declared options needs the adapter to resolve them, which is a capability
+  and a decision row.
+- **The acceptance script's `assert_running` has no settle window**, and flaked
+  once on this PR. It counts running containers immediately after a stop.
 - **The field-deprecation gap** — D-017. `runtime:` is deprecated, nothing warns,
   and the mechanism has to be chosen first.
 - **A named removal release for `runtime:`**, without which "deprecated" is a
@@ -1036,6 +1041,45 @@ user sees.
   `test/dockerlab` and one `_docker_test.go` still referenced the removed field
   and `just ci` was green throughout; only the container lane found them. Any
   build-tagged tree is invisible to the fast loop.
+
+## Review findings — 2026-08-16
+
+Five findings on PR #52, four valid and one acknowledged out of scope. Three of
+the four were the same seam: the baseline was derived and written in one step.
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| R-1 | Critical | An update whose current release could not be resolved **skipped the derivation silently**, so the baseline stayed nil, read as "created before schema 10", and waved the rename through. On the update path — which is how a vendor actually ships one. | Fixed — the resolution error is returned; reproduced red first |
+| R-2 | Major | A rollback `--dry-run` skipped the derivation along with the write, so the plan accepted a target the operation would then refuse. | Fixed — derivation is pure, and the plan compares what the run compares |
+| R-3 | Major | The baseline write ran **before the deployment lock**, so it could put back fields a concurrent `config set` had just changed. | Fixed — a read-modify-write under the lock that yields to whatever it finds |
+| R-4 | Major | An installation created without an explicit project records `{}`; a later release that makes the *same* value explicit is refused as a change, though the namespace is identical. | Acknowledged, out of scope — see below |
+| R-5 | Minor | `rfcs/INDEX.md` named `COMPOSE_PROJECT` where the variable is `<PRODUCT>_COMPOSE_PROJECT`. | Fixed |
+
+**R-1, R-2 and R-3 are one defect wearing three hats**, and the shape is worth
+keeping: *deriving* a value and *recording* it are different acts with different
+rules. Derivation must happen on every path, including a plan; recording must
+happen on none of the read paths, and only under the lock. Fusing them made each
+rule break the other — the dry-run exception took the derivation with it, the
+write escaped the lock because the derivation had to happen early, and the path
+that could not derive silently recorded nothing at all.
+
+**R-4 is real and is not fixed here.** Comparing *effective* options rather than
+declared ones means asking the adapter to resolve them — only it knows that
+`project` falls back to the product name — which is a fourth capability on a
+port whose surface this wave has already grown twice, and a decision row nobody
+has ruled. The refusal is in the safe direction, names the key, and a vendor can
+clear it by leaving the redundant value out. Carried.
+
+**One process failure, recorded rather than fixed quietly.** `git checkout --`
+during the sweep ate the three uncommitted fixes for R-1 to R-3, and they had to
+be written twice. That is the third time this project's own rule — *commit
+before you sabotage* — has been broken by the same command, in the same way.
+
+**One CI flake, not this branch's.** `Acceptance (real Docker)` failed on
+`assert_running 0` immediately after `docker compose -p demo stop` reported both
+containers stopped; a re-run of the same commit passed, and the same script
+passes locally. The assertion has no settle window between the stop and the
+count. Carried as a fragility rather than fixed here.
 
 ## Rules distilled
 
