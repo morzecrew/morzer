@@ -83,7 +83,7 @@ func TestAReleaseDeclaringNoRuntimeRecordsNothing(t *testing.T) {
 func TestStagingPrecedesTheInstallationWriteWhenThereIsARelease(t *testing.T) {
 	steps := initSteps(&Deps{}, InitOptions{Product: "demo", ReleasePath: "bundle.tar.zst"})
 
-	var stage, write int = -1, -1
+	stage, write := -1, -1
 	for i, s := range steps {
 		switch s.ID {
 		case "stage-release":

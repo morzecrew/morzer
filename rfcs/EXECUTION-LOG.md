@@ -540,6 +540,35 @@ killed by timeout rather than by assertion, which is A-3 demonstrating itself.
 - **`Installation.Providers` is still unwritten**, and now sits beside a field
   doing its apparent job (D-011).
 
+## Review findings — 2026-08-16
+
+Six findings on PR #50, all valid, none refuted. Two were raised by both bots.
+The first two matter most, because each meant an accepted decision did not hold
+in code.
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| R-1 | Critical | `stepWriteInstallation` ran before `stepStageRelease`, the only thing that puts the release into engine state — so `runtimeForNewInstallation` found none and **every installation recorded an empty runtime**, read as the legacy one. The feature recorded nothing. | Fixed — staging moved first; ordering asserted on the step list |
+| R-2 | Critical | `Validate` required `providers.runtime.name` unconditionally while `ApplyDefaults` deliberately leaves it empty for two runtimes, so **a two-runtime manifest could not validate** and decision 8's shape did not exist. | Fixed — required only where one name can be true |
+| R-3 | Major | An empty runtime key validated; `runtimeForRelease` recorded `""`; `RuntimeName()` read that as the legacy runtime, so a release declaring something else installed as Compose with every later message agreeing. | Fixed — empty and whitespace keys refused |
+| R-4 | Major | Nothing refused an installation whose runtime this manager has no adapter for, so the recorded runtime was a label (decision 5). | Fixed — `ports.Runtime` gains `Name()`; the comparison is two values, not a literal |
+| R-5 | Major | `checkReferencedFiles` walked only the deprecated block, so a `runtimes:` release loaded clean with a missing file and failed three steps into a deployment. | Fixed — walks every declared runtime, naming the vendor's own spelling |
+| R-6 | Medium | The no-progress guard's test started at schema 1, which falls to the switch default and returns before the loop body runs twice — it never reached the guard, so a case that stopped advancing would still hang while the test stayed green. | Fixed — every supported schema migrated forward; the timeout is the assertion |
+
+**Both critical findings are the same shape, and it is the shape this branch's
+own audit was blind to.** R-1 and R-2 each passed every test written for them,
+because each test exercised the piece rather than the path: `runtimeForRelease`
+was tested directly and never through an `init`, and the two-runtime manifest
+was asserted to leave a field empty without ever being asked to load. The seam
+extracted to make a decision testable is the seam that stopped the decision
+being tested where it runs.
+
+**Port growth, recorded so §6's count stays honest.** `ports.Runtime` gains
+`Name()`, its thirteenth method. §6's escape hatch counts methods forced by the
+*second adapter*; this one is forced by decision 5's refusal, and the alternative
+was comparing against a literal above `internal/adapters` — the branch decision 7
+forbids.
+
 ## Rules distilled
 
 - **A validator that reads a normalised field is only as good as the guarantee
@@ -551,6 +580,12 @@ killed by timeout rather than by assertion, which is A-3 demonstrating itself.
 - **A loop whose exit condition is only changed inside its own body needs a
   progress guard**, or a missing case is a hang rather than an error — and a
   hang on a load path is the least diagnosable failure there is. (D-013)
+- **A seam extracted for testability is a seam where the production path stops
+  being tested.** Both critical review findings sat exactly there: the unit
+  passed, and nothing asked whether the caller reached it. (R-1, R-2)
+- **A test that asserts a field is empty has not asserted the object is
+  usable.** The two-runtime manifest satisfied its test and could not load.
+  (R-2)
 - **A design sketch loses to a `LOCKED` row.** When the illustration cannot be
   implemented without violating a decision, the illustration is what gives way,
   and the departure is recorded rather than argued. (D-010)
