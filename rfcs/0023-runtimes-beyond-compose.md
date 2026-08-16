@@ -317,6 +317,7 @@ refusal, which is also the first test that the refusal path is reachable.
 | 10 | One `files` key per runtime, not a key named per runtime | LOCKED | §4.1 sketched `units:` for Quadlet beside `files:` for Compose. Validating that means asking which runtime a block belongs to, and a branch on a runtime's name above `internal/adapters` is what decision 7 forbids and `tools/runtimecheck` fails the build over. What the files mean is the adapter's to know. Consequence: a vendor writes `runtimes.quadlet.files: [app.container]`, which are files. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-010. |
 | 11 | The runtime is recorded in a new installation field, not `Providers` | LOCKED | `Installation.Providers` is the obvious home and is a field with zero writers and zero readers, carrying two contradictory documented meanings — `describe.go` calls it "declared by the release manifest", a repair test calls it "from the flags". Recording the runtime there would give it a third, real one, and an older manager would find a name it understands and no reason to refuse. Schema 8 → 9 instead, and the bump is for the *read* path, which none of 5–8 were. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-011. |
 | 12 | A release declaring several runtimes is refused at `init` | ASSUMED | §4.1 lets a bundle declare two runtimes and never says which one the manager installs with. Choosing needs to know which runtime this manager can drive, and today the only answers are a branch on a runtime's name — decision 7 forbids it — or a name injected at the composition root that every test would set and no test would exercise as production leaves it. Refusing costs a bundle nobody ships yet; either alternative costs the architecture test this RFC exists to run. Graded ASSUMED rather than LOCKED because it expires: P3 brings the second adapter and with it a real basis for choosing. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-012. |
+| 13 | `installation import` refuses an export whose runtime this manager does not drive, before anything is created | LOCKED | §4.2 said the second creation path must carry the kind and stopped there. Decision 3 makes the runtime immutable, so an imported record naming a runtime with no adapter here is a machine where every command fails and nothing can correct it. Refusing costs an operator one sentence during a rebuild; proceeding costs them the discovery one command later, in the same incident. Consequence: this is the one thing an import refuses about the *manager* rather than about the document, and it sits beside `ManagerVersion`, which is deliberately never enforced — the difference is that a version mismatch still leaves a working machine. It exits 9, the code the schema-from-the-future refusal on the same path already uses. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-015. |
 
 ## 6. The escape hatch, restated after measurement
 
@@ -393,9 +394,15 @@ for the declared runtime's presence, which is where an operator meets decision 5
 - **P2 — Manifest and state.** 🚧 **Partly shipped 2026-08-16.** `runtimes:` map,
   decision 8 resolved (and decisions 9–11 added), kind fixed at `init` and
   carried through `--repair`, an undeclared runtime refused rather than
-  substituted. **Still open in P2:** `installation import` carrying the kind,
+  substituted. ~~**Still open in P2:** `installation import` carrying the kind,
   `doctor` reporting it, and §14's two unspelled leaks — `RuntimeSpec.Project`
-  and `doctor.go`'s hard-coded `tools.Docker`. **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
+  and `doctor.go`'s hard-coded `tools.Docker`.~~ **Three of those four shipped
+  2026-08-16**: import carries the kind and refuses one this manager cannot
+  drive, `doctor` gains `runtime.declared`, and the `tools.Docker` leak is
+  closed by an optional capability rather than by a rename. **Still open in
+  P2:** `RuntimeSpec.Project`, which is a published hook ABI and its own unit of
+  work (EXECUTION-LOG.md D-016), and the deprecation of `runtime:`, which has no
+  mechanism — 0018's is keyed by `api_version` and this is a field (D-017). **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
   D-005. None of §12's three measurements is consumed by anything on this list:
   items 5 and 6 are volume capture and image ingest, both P3, and item 4 is
   §4.3's parameter delivery, also P3. What P2 did need from P1b is the list of
@@ -626,16 +633,42 @@ as blocked on hardware. §2.1 already warns that "a checker cannot see this" is 
 claim worth attacking before writing it down; "a host is needed for this" is the
 same claim about a different obstacle, and it went unattacked.
 
+**2026-08-16 — §2.2's second unspelled leak is closed, and the mechanism is an
+optional capability rather than a rename.** `doctor`'s no-installation branch
+named `tools.Docker` directly; it now asks the wired adapter through
+`ports.ToolRequirer`. The leak was the lifecycle layer deciding which runtime
+this machine will use, so a rename could never have fixed it — the sentence had
+no runtime's name in it to rename, which is why the inventory could not hold it.
+§4.5's optional-capability pattern is what the fix is built on, and the port
+grows no method, so §6's count is unchanged at thirteen. The one leak §2.2 still
+lists is `RuntimeSpec.Project`, and execution found more of it than §2.2
+described — see EXECUTION-LOG.md D-016, outstanding.
+
+**2026-08-16 — `installation import` refuses a runtime this manager cannot
+drive.** §4.2 said the second creation path "must carry the kind" and stopped
+there. It carries it, because an export holds the installation whole; what was
+unspecified is what an import does when the kind names a runtime this binary has
+no adapter for. Put to the author as EXECUTION-LOG.md D-015 and accepted:
+refused before anything is created. The tension is worth recording — an import
+is a disaster-recovery path that deliberately refuses almost nothing, and
+`ManagerVersion` sits in the same document explicitly unenforced for that
+reason. The difference is that a version mismatch still leaves a working
+machine and this does not.
+
 ## 14. What P1 leaves for whoever picks this up
 
 - **P1b, above.** ~~Three measurements behind one Podman host.~~ One
   measurement — item 4 — behind a bootable venue, as of 2026-08-16. Struck
   rather than rewritten, because the sentence was the reason the phase was
   scoped the way it was and a reader tracing that scope needs to see it.
-- **The two unspelled leaks** in §2.2 — `RuntimeSpec.Project` and `doctor.go`'s
-  hard-coded `tools.Docker` — are not in the inventory, because the inventory is
+- **The two unspelled leaks** in §2.2 — `RuntimeSpec.Project` and ~~`doctor.go`'s
+  hard-coded `tools.Docker`~~ — are not in the inventory, because the inventory is
   what a checker can see and these are not. They are P2's, and they are the ones
-  most likely to be forgotten precisely because nothing fails when they are.
+  most likely to be forgotten precisely because nothing fails when they are. The
+  second is closed (§13, 2026-08-16). The first is not, and is larger than this
+  line implies: `runtimes:` gives a vendor no way to set a project at all, so
+  every release on the new spelling takes the product name through a field on
+  the deprecated block — EXECUTION-LOG.md D-016.
 - **The renames themselves are not P1's.** P1 classified; it changed no name. A
   rename sweep that lands before the manifest work of P2 would churn the same
   files twice.

@@ -119,6 +119,19 @@ func (r *Runtime) command(cfg ports.RuntimeConfig, timeout time.Duration, argv .
 // point of the port method is that nothing higher up has to.
 func (r *Runtime) Name() string { return "compose" }
 
+// RequiredTools names what has to be on the host before this runtime can do
+// anything, in the order an operator should read them.
+//
+// Both, and the second is not redundant: the daemon and the CLI plugin are
+// separately installable and separately versioned, and a host with `docker` but
+// no `compose` plugin is a real machine that fails at the first operation with
+// an error about an unknown subcommand. They are also two entries in the tool
+// catalogue with two different probes, so naming one would check one.
+//
+// The names are the catalogue's, spelled here because this is the layer allowed
+// to know them -- the same argument as Name above.
+func (r *Runtime) RequiredTools() []string { return []string{"docker", "compose"} }
+
 // Validate parses and checks the merged configuration without side effects.
 //
 // `docker compose config` does the merging, interpolation, and schema

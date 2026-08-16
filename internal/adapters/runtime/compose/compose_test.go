@@ -333,3 +333,20 @@ func TestHasImageDistinguishesPresentFromAbsent(t *testing.T) {
 		t.Errorf("HasImage(absent) = %v, %v; absence is not an error", ok, err)
 	}
 }
+
+// The tools this adapter needs are its own answer to a question `doctor` asks
+// before an installation exists. Asserted here because everything above this
+// package sees the answer through a fake, and a fake with its own list is a
+// list nobody has checked against the adapter that ships.
+//
+// Both names, in order. The daemon and the CLI plugin are separately
+// installable and separately versioned -- a host with `docker` and no
+// `compose` plugin is a machine that passes preflight and fails at the first
+// operation with an error about an unknown subcommand.
+func TestTheRuntimeNeedsTheDaemonAndTheCLIPlugin(t *testing.T) {
+	r, _ := newRuntime()
+	got := r.RequiredTools()
+	if len(got) != 2 || got[0] != "docker" || got[1] != "compose" {
+		t.Errorf("RequiredTools() = %v, want the daemon and the plugin", got)
+	}
+}

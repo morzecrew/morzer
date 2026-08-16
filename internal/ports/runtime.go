@@ -411,6 +411,30 @@ type ImageInspector interface {
 	HasImage(ctx context.Context, imageRef string) (bool, error)
 }
 
+// ToolRequirer names the host tools this runtime needs before there is
+// anything to run.
+//
+// It exists for one question `doctor` has to answer with no installation on the
+// machine: what does `init` need next. That branch used to name a tool
+// directly, which was the lifecycle layer stating which runtime this machine
+// will use -- a leak with no runtime's name in it, and therefore one no checker
+// can see (RFC 0023 §2.2). Asking the wired adapter turns it back into data the
+// adapter owns.
+//
+// Optional and type-asserted like the capabilities around it, and here the
+// decline is a real answer rather than a courtesy: a runtime that is not a
+// separate binary on this host -- one built into the manager, or reached over a
+// socket -- has no tool to name, and a mandatory method would make it invent
+// one. A caller that gets no answer checks nothing rather than guessing.
+//
+// The names are the same vocabulary `requirements.tools` uses, because they are
+// looked up in the same catalogue.
+type ToolRequirer interface {
+	// RequiredTools names the tools, in the order an operator should see
+	// them. Empty means the same as not implementing the interface.
+	RequiredTools() []string
+}
+
 // ImageIngester loads the images a bundle carries into the local image store.
 //
 // Optional and type-asserted, like the capabilities above, and for a sharper

@@ -327,6 +327,40 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 		return Result{}, err
 	}
 
+	// First of the two refusals about what this machine can be, and first
+	// because it is the one nothing can work around: an installation fixed
+	// to a runtime this manager does not drive is a machine where `apply`,
+	// `update`, `status` and `restore` all fail, each with a message about
+	// the operation they were attempting. RFC 0023 decision 3 makes the
+	// runtime immutable, so importing it would produce a record that can
+	// only ever be deleted.
+	//
+	// The one refusal an import makes about the *manager* rather than about
+	// the export, and the distinction is why ManagerVersion next to it is
+	// deliberately never enforced: a version that differs still leaves an
+	// operator with a working machine, and refusing on it would be a refusal
+	// at the worst possible moment. This one is not that -- proceeding here
+	// hands them a rebuilt machine that cannot run, discovered one command
+	// later, during the same incident.
+	//
+	// Incompatible rather than an installation error, which is the kind the
+	// same comparison raises during an operation. The subject here is not a
+	// broken installation on this machine -- there is none yet -- it is a
+	// document written for a manager this binary is not, which is exactly
+	// what the schema-from-the-future refusal a few lines up in
+	// export.Validate already exits 9 for. Two spellings of "wrong manager"
+	// leaving Import with two exit codes is what an operator's script would
+	// trip over.
+	if have, ok := d.drivesRuntime(export.Installation); !ok {
+		return Result{}, domain.IncompatibleError(nil,
+			"this export is from an installation on the %s runtime and this manager "+
+				"is configured for %s", export.Installation.RuntimeName(), have).
+			WithHint("the runtime is fixed when an installation is created and does " +
+				"not transition, so importing it here would rebuild a machine " +
+				"nothing could operate; import it with a manager built for that " +
+				"runtime, or `init` a new installation and `restore` into it")
+	}
+
 	// Before the directories, the key check and the lock: a refusal about
 	// what this machine is for should arrive with nothing created.
 	imported, dropped, err := modeForImport(export.Installation, opts.Mode, opts.ModeSet)

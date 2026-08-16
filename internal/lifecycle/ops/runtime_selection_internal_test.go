@@ -153,3 +153,31 @@ func TestAMatchingRuntimeStillBuildsAConfiguration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, cfg.Files, 1)
 }
+
+// A Deps with no runtime wired cannot contradict an installation, and must not
+// pretend to.
+//
+// The branch is defensive today -- every production wiring has an adapter --
+// and it is asserted anyway, because the alternative reading of "no runtime" is
+// "no runtime matches", which would make `installation import` refuse every
+// export on a machine that has yet to be given one. That is a rebuild stopped
+// by a nil check, and nothing else in the process would say so.
+func TestNoRuntimeWiredIsNotAMismatch(t *testing.T) {
+	d := &Deps{}
+	have, ok := d.drivesRuntime(domain.Installation{Runtime: "quadlet"})
+
+	assert.True(t, ok, "a manager with no adapter cannot disagree about the runtime")
+	assert.Empty(t, have, "and it has no name to offer instead")
+}
+
+// The comparison is between the recorded value and the adapter's, with the
+// pre-schema-9 reading applied to the record. An installation created before
+// the field existed ran the legacy runtime, and a manager driving it is not a
+// mismatch -- which is every installation on every machine upgrading to this
+// version.
+func TestAnInstallationFromBeforeTheFieldIsNotAMismatch(t *testing.T) {
+	d := &Deps{Runtime: fakes.NewRuntime()}
+	_, ok := d.drivesRuntime(domain.Installation{})
+
+	assert.True(t, ok, "an empty runtime means the legacy one, which is what this manager drives")
+}

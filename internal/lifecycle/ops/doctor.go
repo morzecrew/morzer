@@ -127,10 +127,16 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		// every remaining question is about a deployment that does not
 		// exist yet. Tool availability is still useful, though, because
 		// it is what `init` will need next.
-		return append(checks,
-			preflight.Tool(d.Tools, tools.Docker, domain.Constraint{}),
-			preflight.Tool(d.Tools, tools.SOPS, domain.Constraint{}),
-		)
+		//
+		// Which tools those are is asked of the wired adapter rather than
+		// named here. This branch used to say `tools.Docker`, which is the
+		// lifecycle layer deciding which runtime this machine will use --
+		// RFC 0023 §2.2 listed it as one of the two leaks a vocabulary
+		// checker structurally cannot find, because the sentence contains
+		// no runtime's name. `sops` stays spelled: the secret provider is
+		// not the runtime, and nothing about a second runtime changes it.
+		checks = append(checks, d.runtimeToolChecks()...)
+		return append(checks, preflight.Tool(d.Tools, tools.SOPS, domain.Constraint{}))
 	}
 
 	checks = append(checks,
@@ -186,6 +192,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	// Inside that branch, a broken release silently removed the check.
 	checks = append(checks, d.checkUpdateAvailable(inst))
 	checks = append(checks, checkMode(inst))
+	if d.Runtime != nil {
+		checks = append(checks, d.checkDeclaredRuntime(inst))
+	}
 
 	if d.Supervisor != nil {
 		checks = append(checks, d.checkUnits(inst))
@@ -998,6 +1007,67 @@ func checkMode(inst domain.Installation) preflight.Check {
 				"this installation is a %s sandbox: relaxed retention, no "+
 					"pre-update backup guarantee, prereleases admissible",
 				inst.Mode)
+		},
+	}
+}
+
+// runtimeToolChecks asks the wired runtime what it needs on this host.
+//
+// Nothing when no runtime is wired, and nothing when the adapter declines to
+// answer -- an adapter that is not a separate binary has no tool to name, and
+// checking a guess would report a machine unfit for an installation it could
+// run perfectly well. `doctor` says less rather than something untrue.
+func (d *Deps) runtimeToolChecks() []preflight.Check {
+	requirer, ok := d.Runtime.(ports.ToolRequirer)
+	if !ok {
+		return nil
+	}
+	names := requirer.RequiredTools()
+	out := make([]preflight.Check, 0, len(names))
+	for _, name := range names {
+		// No constraint: with no installation there is no manifest, so
+		// there is no version anybody has asked for. Presence is the
+		// whole question.
+		out = append(out, preflight.Tool(d.Tools, name, domain.Constraint{}))
+	}
+	return out
+}
+
+// checkDeclaredRuntime reports the runtime this installation is fixed to, and
+// fails when this manager drives a different one.
+//
+// This is where an operator meets decision 5 (RFC 0023 §9). Every operation
+// that touches the runtime already refuses on the same comparison, but it
+// refuses in the middle of `apply`, attached to whatever that operation was
+// trying to do. `doctor` is where the question "can this manager operate this
+// machine at all" is supposed to be answerable on its own, before the answer
+// costs anybody an outage.
+//
+// Fatal, because there is no operation that works past it. It is also the one
+// doctor check with no remedy on this machine: the runtime does not transition
+// (decision 3), so the fix is a manager built for it, and saying that plainly
+// beats offering a command that cannot exist.
+//
+// Two values compared, neither of which this layer recognises: one out of
+// installation state, one out of the adapter (decision 7).
+func (d *Deps) checkDeclaredRuntime(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.declared",
+		Category:    preflight.CategoryRuntime,
+		Description: "the runtime this installation is fixed to",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			want := inst.RuntimeName()
+			have, ok := d.drivesRuntime(inst)
+			if ok {
+				return preflight.OK("%s", want)
+			}
+			return preflight.Fail(
+				"the runtime is fixed when an installation is created and does "+
+					"not transition; this needs a manager built for "+want+
+					", or a fresh install and a restore from backup",
+				"this installation runs on the %s runtime and this manager is "+
+					"configured for %s", want, have)
 		},
 	}
 }

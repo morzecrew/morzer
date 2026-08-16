@@ -180,6 +180,15 @@ func (r *Runtime) Name() string {
 	return r.RuntimeName
 }
 
+// RequiredTools names what the runtime this fake stands in for needs on a
+// host, matching the compose adapter it substitutes for.
+//
+// Fixed rather than settable: a field every test sets is a field no test
+// exercises as production leaves it. A test that needs a runtime naming no
+// tools wraps this one in a type that does not implement the capability, which
+// is also the only honest way to model an adapter that declines.
+func (r *Runtime) RequiredTools() []string { return []string{"docker", "compose"} }
+
 func (r *Runtime) Validate(ctx context.Context, cfg ports.RuntimeConfig) (ports.Rendered, error) {
 	if err := r.record("Validate"); err != nil {
 		return ports.Rendered{}, err
