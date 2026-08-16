@@ -757,6 +757,21 @@ func (i Installation) Validate() error {
 			i.SchemaVersion, InstallationSchemaVersion).
 			WithHint("upgrade the manager; state migrations only run forward")
 	}
+	// Empty is valid and means "created before schema 9"; anything else has
+	// to be a well-formed name. This is a grammar check, not an existence
+	// check -- the domain cannot know which runtimes exist, and the one that
+	// is well-formed and wrong is refused by the adapter before any operation
+	// runs.
+	//
+	// It earns its place on a different argument than tidiness: this value is
+	// read out of a file an operator may have hand-edited, and it is printed
+	// back in error messages. A name carrying control characters is a terminal
+	// escape in a diagnostic, which is the same shape as the bounds on fleet
+	// rows and attested text.
+	if i.Runtime != "" && !ValidRuntimeName(i.Runtime) {
+		v.add("runtime", "is not a usable runtime name: lower-case letters, digits "+
+			"and hyphens, starting with a letter, at most 32 characters")
+	}
 	if i.ID == "" {
 		v.add("id", "is required")
 	}

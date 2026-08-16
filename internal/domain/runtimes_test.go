@@ -2,6 +2,7 @@ package domain
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -281,4 +282,71 @@ func TestARuntimeWithAnEmptyNameIsRefused(t *testing.T) {
 		require.Error(t, err, "a runtime named %q must be refused", name)
 		assert.Contains(t, err.Error(), "empty name")
 	}
+}
+
+// The grammar of a runtime name, and the line it deliberately does not cross.
+//
+// Two checks exist because two different things can be wrong and only one is
+// knowable here. A name that is malformed is refused by the domain; a name that
+// is well-formed and simply is not this manager's runtime is refused by the
+// adapter, which is the only thing that knows. A list of known names at this
+// layer would be the runtime catalogue above `internal/adapters` that decision
+// 7 exists to prevent.
+func TestARuntimeNameMustBeWellFormed(t *testing.T) {
+	valid := []string{"compose", "quadlet", "podman-compose", "k3s", "a", "x9"}
+	for _, name := range valid {
+		assert.True(t, ValidRuntimeName(name), "%q is a usable runtime name", name)
+	}
+
+	invalid := map[string]string{
+		"empty":           "",
+		"whitespace":      "   ",
+		"padded":          " compose",
+		"trailing space":  "compose ",
+		"capitalised":     "Compose",
+		"leading digit":   "9lives",
+		"leading hyphen":  "-compose",
+		"underscore":      "podman_compose",
+		"path traversal":  "../etc",
+		"terminal escape": "compose\x1b[31m",
+		"newline":         "compose\nX",
+		"absurdly long":   "a123456789012345678901234567890123",
+	}
+	for why, name := range invalid {
+		assert.False(t, ValidRuntimeName(name), "%s: %q must be refused", why, name)
+	}
+}
+
+// The state file is read from disk and its runtime is printed back in error
+// messages, so a name carrying a terminal escape is a diagnostic that moves the
+// cursor. Same shape as the bounds on fleet rows and attested text.
+func TestAnInstallationRefusesAMalformedRecordedRuntime(t *testing.T) {
+	base := func() Installation {
+		return Installation{
+			SchemaVersion: InstallationSchemaVersion,
+			ID:            "11111111-1111-1111-1111-111111111111",
+			Product:       "demo",
+			CreatedAt:     NewTime(time.Now()),
+		}
+	}
+
+	i := base()
+	i.Runtime = "compose\x1b[31m"
+	err := i.Validate()
+	require.Error(t, err, "a runtime name carrying a terminal escape must be refused")
+	assert.Contains(t, err.Error(), "runtime")
+
+	// Empty stays valid: it is what every installation created before schema
+	// 9 records, and RuntimeName reads it as the legacy runtime.
+	ok := base()
+	ok.Runtime = ""
+	assert.NoError(t, ok.Validate())
+
+	// And a well-formed name this manager may not be able to drive is *not*
+	// the domain's to refuse. That is the adapter's, and refusing it here
+	// would need a list of known runtimes above internal/adapters.
+	unknown := base()
+	unknown.Runtime = "quadlt"
+	assert.NoError(t, unknown.Validate(),
+		"a typo that is well-formed is caught by the adapter mismatch, not here")
 }

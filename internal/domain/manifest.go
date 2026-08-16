@@ -621,6 +621,33 @@ func (m *Manifest) ApplyDefaults() {
 // release mutable, and a mutable release makes rollback meaningless.
 var digestRef = regexp.MustCompile(`^[^\s@]+@sha256:[a-f0-9]{64}$`)
 
+// runtimeName is the grammar of a runtime's name. It is deliberately not a list
+// of them.
+//
+// What this can check and what it cannot is the whole point. It rejects a name
+// that is empty, padded, capitalised, or carrying anything a terminal would
+// interpret -- and that matters, because this value is read out of a file
+// somebody may have hand-edited and then printed in error messages. It cannot
+// reject `quadlt`, and nothing at this layer could: whether a runtime exists is
+// not a fact the domain has, and a list of known names here would be the
+// runtime catalogue above `internal/adapters` that decision 7 exists to
+// prevent.
+//
+// The name that is well-formed and wrong is caught where the knowledge is: the
+// adapter reports its own name, and an installation whose runtime disagrees is
+// refused before any operation runs. Two checks, each at the layer that can
+// actually make it.
+//
+// Shaped after productNamePattern, which answers the same question about a
+// different identifier.
+var runtimeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// ValidRuntimeName reports whether a name is well-formed. Exported because both
+// the manifest's keys and the installation's recorded runtime are the same kind
+// of token and must agree about what one looks like -- two spellings of this
+// rule would let a manifest declare a name the state could not record.
+func ValidRuntimeName(name string) bool { return runtimeName.MatchString(name) }
+
 // Validate checks every rule in the manifest contract and reports all
 // violations at once. Bundle authors iterate faster when one run surfaces
 // every problem instead of the first.
@@ -733,8 +760,14 @@ func (m *Manifest) Validate() error {
 		// entirely installs as Compose, and every later message agrees
 		// with the wrong answer. Named as a key rather than a value,
 		// because that is what the vendor has to go and find.
-		if strings.TrimSpace(name) == "" {
-			v.add("runtimes", "declares a runtime with an empty name")
+		if !ValidRuntimeName(name) {
+			if strings.TrimSpace(name) == "" {
+				v.add("runtimes", "declares a runtime with an empty name")
+			} else {
+				v.add("runtimes."+name,
+					"is not a usable runtime name: lower-case letters, digits and "+
+						"hyphens, starting with a letter, at most 32 characters")
+			}
 			continue
 		}
 		// The field path a vendor can search for in their own file.
