@@ -18,8 +18,13 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 - **[0023 — Runtimes beyond Compose](0023-runtimes-beyond-compose.md).** P1a
-  shipped: the leak inventory and the boundary checker. **P1b needs a rootless
-  Podman host** — three measurements sit behind it, and nothing else blocks P2.
+  shipped: the leak inventory and the boundary checker. **P1b is two-thirds
+  answered.** A rootless Podman host settled §12 items 5 and 6 — 0010's volume
+  capture names no host path, so rootless storage roots break nothing, and
+  0011's registry is reachable over plain HTTP with `--tls-verify=false`.
+  **Item 4 is open and was never blocked on a host**: it asks what a tmpfs holds
+  at boot, which needs somewhere bootable on demand. Whether anything still
+  blocks P2 is itself in question — see EXECUTION-LOG.md D-005.
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
   inventory, the archive, redaction proved against seeded values, `support
   redact --check`, an archive encrypted to the vendor and unreadable by the
@@ -56,6 +61,19 @@ and its row in the index below carries it from then on. The file never moves and
 is never deleted: 330 cross-references between RFCs use bare filenames, a
 rejection that leaves no record gets re-proposed, and a shipped design is the
 only account of why the code is shaped the way it is.
+
+## Where execution disagreed
+
+[EXECUTION-LOG.md](EXECUTION-LOG.md) records the places building something
+disagreed with the design for it, grouped by the wave that found them and
+classified by whether the design could have known. It is deliberately not part of
+any RFC: an RFC edited to match what was built is a document that has stopped
+recording that a decision ever changed, and a separate file is the only way the
+change stays visible from both ends.
+
+It carries no number, has no status, and does not appear in the table below —
+the one resident of this directory that is not an RFC. Its decision rows are
+proposals until an author accepts or refuses them, and the log says which.
 
 ## Allocating a number
 
