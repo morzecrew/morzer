@@ -3,11 +3,13 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -187,29 +189,46 @@ func TestASchemaFiveInstallationStillLoadsAndMintsNothing(t *testing.T) {
 	}
 }
 
-// A migration case that fails to raise the version must refuse, not spin.
+// Every migratable schema reaches the current one, and does so by returning.
 //
-// The loop runs while the version is below current, so a case that does not
-// advance it never terminates -- and every load of installation state goes
-// through here, which makes a mistyped case number a manager that stops
-// responding rather than one that says what is wrong. Found by sabotage: the
-// mutation that stopped `case 8` advancing did not fail a test, it hung the run
-// until the timeout killed it.
+// This replaces a test that started at schema 1, which falls straight to the
+// switch default and returns an error before the loop body runs twice -- so it
+// never reached the guard it claimed to cover, and a case that stopped
+// advancing would have hung real installation loads while it stayed green. Its
+// own comment said it took the default path, which is the tell.
 //
-// Asserted through the one case reachable without editing the switch: a schema
-// below every case falls to the default and refuses there. The timeout is the
-// real assertion -- a regression here hangs rather than returning a wrong value.
-func TestAnUnmigratableSchemaRefusesRatherThanSpinning(t *testing.T) {
-	done := make(chan error, 1)
-	go func() {
-		_, err := migrateInstallation(domain.Installation{SchemaVersion: 1})
-		done <- err
-	}()
+// Starting from each supported schema is what actually exercises the loop. A
+// case that fails to raise the version cannot finish, so the timeout is the
+// assertion: the failure mode being guarded against is a hang, and a hang is
+// not observable by comparing return values.
+func TestEverySupportedSchemaMigratesForwardAndTerminates(t *testing.T) {
+	for from := 2; from < domain.InstallationSchemaVersion; from++ {
+		t.Run(fmt.Sprintf("schema %d", from), func(t *testing.T) {
+			done := make(chan domain.Installation, 1)
+			errs := make(chan error, 1)
+			go func() {
+				got, err := migrateInstallation(domain.Installation{SchemaVersion: from})
+				done <- got
+				errs <- err
+			}()
 
-	select {
-	case err := <-done:
-		require.Error(t, err, "schema 1 has no migration path and must say so")
-	case <-time.After(5 * time.Second):
-		t.Fatal("migrateInstallation did not return: no case advanced the version and none refused")
+			select {
+			case got := <-done:
+				require.NoError(t, <-errs)
+				assert.Equal(t, domain.InstallationSchemaVersion, got.SchemaVersion,
+					"migration from %d stopped short", from)
+			case <-time.After(10 * time.Second):
+				t.Fatalf("migrating from schema %d never returned: a case raised no "+
+					"version, and every load of installation state goes through here", from)
+			}
+		})
 	}
+}
+
+// A schema with no path forward refuses by name rather than spinning.
+func TestAnUnmigratableSchemaRefuses(t *testing.T) {
+	_, err := migrateInstallation(domain.Installation{SchemaVersion: 1})
+
+	require.Error(t, err, "schema 1 has no migration path and must say so")
+	assert.Contains(t, err.Error(), "no migration path")
 }
