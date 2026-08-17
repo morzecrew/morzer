@@ -1374,3 +1374,90 @@ The narrow shape was in the reviewer's first suggestion.
   product.
 - ~~**The field-deprecation gap (D-017)**~~ — closed by this wave. **P2 is
   complete.**
+
+# Wave 30 · The options as the runtime reads them
+
+Branch `feature/wave-30-effective-runtime-options`. RFC 0023, against decisions
+15 and 16. Closes R-4, carried from wave 28.
+
+**Drift count: 0.** Nothing the RFC settled was built otherwise. One entry
+(D-024), and it amends §6 rather than departing from a row — with the author's
+ruling, before the code was written.
+
+**The readiness gate did not fire.** Two load-bearing decisions rather than
+three, so this was two questions and not a halt. Both were put before any code
+existed and both came back as recommended. Worth recording that the gate not
+firing is also a result: three waves of firing had made it the expected outcome,
+and a practice whose alarm is always on is one nobody reads.
+
+## D-024 — The comparison runs on resolved options, and §6 was measuring the wrong surface
+
+- **Touches:** RFC 0023 decisions 15 and 16 (`LOCKED`), decision 7 (`LOCKED`),
+  §6.
+- **RFC said:** decision 16 refuses a release that changes a recorded option.
+  It did not say *which* form of the option is compared, because until the
+  adapter gained a default there was only one form.
+- **Built:** `ports.OptionResolver`, an optional capability. Both the recorded
+  baseline and the candidate go through it before they meet, so what is compared
+  is what the runtime will read. A runtime that declines keeps the old
+  declared-against-declared comparison.
+- **Because:** an installation created with no `project` is already running
+  under its product name, so a release writing that name out in full renames
+  nothing — and the manager refused it, telling a vendor to restore a value that
+  was never doing any work. The manager cannot see this alone: knowing that
+  `project` falls back to the product is precisely the knowledge decision 7
+  keeps out of these layers.
+- **Class:** `spec-gap`.
+- **Consequence:** the recorded baseline stays as the vendor declared it, so no
+  schema bump, no migration, and `installation describe` publishes what it
+  always did — at the cost that a future change to an adapter's default moves
+  *both* sides of the comparison and a real rename would pass unnoticed. And the
+  port gained its eighth optional capability, which is the second half of this
+  entry.
+- **Deliberately not applied:** recording the *effective* options at schema 11,
+  put to the author. Refused because the migration cannot run where the state
+  package lives — `internal/infra/state` has no adapter to ask — and because it
+  changes a published artifact.
+- **The second half.** §6's escape hatch fires when "the second adapter forces
+  more than two new methods onto `ports.Runtime`". Measured while adding this
+  one: **13 core methods and 8 optional capabilities**, against 12 and 5 when §6
+  was written. One of its two spare method slots is spent (`Name()`, P2) and
+  every other growth has gone where the instrument does not look. Amended to
+  count both halves, with today's numbers as the baseline P3 is measured
+  against. The condition is unchanged and still forward-looking — *what the
+  second adapter forces* — so recording a larger surface does not fire the
+  hatch; it makes it able to fire.
+- **Proposed row (RFC 0023, row 20):** `LOCKED`. **Amendment to §6**, recorded
+  in §13.
+
+## Decision-row outcomes
+
+**Ruled 2026-08-17, before any code was written.** Two questions, both accepted
+as recommended.
+
+| RFC | Row | Outcome | Grade | Decision | From |
+|---|---|---|---|---|---|
+| 0023 | 20 | **Accepted** | `LOCKED` | The comparison runs on resolved options; the installation keeps recording what was declared | D-024 |
+| 0023 | §6 | **Accepted** | — | The escape hatch counts core methods and optional capabilities alike | D-024 |
+
+**One alternative was declined:** recording effective options at installation
+schema 11.
+
+**Row 14 is still outstanding**, and was not put again for the third wave
+running. It has now been carried longer than it took to build everything it
+generalises, which is itself the argument for either putting it or dropping it.
+
+## Rules distilled
+
+- **A comparison between what somebody typed and what the machine does needs a
+  translator, and only one layer has it.** Declared and effective are different
+  values, and the layer holding the record is deliberately the one that cannot
+  tell them apart. (D-024)
+- **An instrument that measures one half of a surface reports health while the
+  other half grows.** §6 counted methods; seven of the eight things added to the
+  port since were capabilities. Ask what a threshold *cannot* see before
+  trusting that it has not been crossed. (D-024)
+- **A fake that duplicates an adapter's rule needs a battery that asks both the
+  same question.** The lifecycle layer may not import an adapter, so its tests
+  run against a copy of the rule — and a copy that drifts makes those tests
+  agree with a manager that refuses the wrong releases. (D-024)

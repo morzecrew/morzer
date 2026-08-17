@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The `runtime:` manifest block will stop being read in 0.4.0.** It still works, and `morzer release verify` says so before a bundle is published, as do `init` and `update` when an operator installs one. Moving to `runtimes:` relocates the files and `project`, and raises `min_manager_version` to `0.3.0`.
 
+### Fixed
+
+- **A release that spells out a runtime option already in force is no longer refused.** An installation created without a `project` runs under its product name, so a release declaring that same name changes nothing, and dropping such a redundant line is equally harmless. The comparison runs on what the runtime resolves; a value that really changes the namespace is refused as before.
+
 ## [0.2.0] - 2026-08-15
 
 Three things a machine could not do before: sign statements about itself,

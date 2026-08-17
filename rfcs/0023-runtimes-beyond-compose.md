@@ -327,6 +327,7 @@ refusal, which is also the first test that the refusal path is reachable.
 | 17 | `<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime, not promised by the core hook ABI | LOCKED | §2.2 called it the expensive leak and P1's inventory named the shape of the fix: *"the variable stays for Compose installations and is absent under another runtime, which makes it a runtime-supplied variable rather than a core one"*. Renaming it was never available — the name is what every vendor hook already writes. Consequence: the hook ABI is two lists rather than one, `docs-check` gained a gate for the second so it does not become the undocumented surface RFC 0007 §13 found the Compose interpolation set in, and a hook that needs the variable should test for it. Byte-identical for every installation that exists today, since all of them are Compose. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-020. |
 | 18 | `runtime:` stops being read in 0.4.0, and the deprecation warns at `release verify`, `init` and `update` only | LOCKED | Decision 9 accepted "two spellings to maintain until a named removal release" and named none, so the cost ran with no clock on it and no signal to a vendor that one was running (D-017). A field cannot be deprecated by the `api_version` mechanism, which is a map keyed by value: a field is deprecated by being written at all, which only the manifest can answer. The three surfaces are the moments somebody can act — a vendor before publishing, an operator while choosing a bundle. Refused: a `doctor` check, because every installation that exists runs a `runtime:` bundle, so it would warn on every machine, permanently, about a file the operator did not write and cannot change. Consequence: an operator who runs neither `init` nor `update` before 0.4.0 is never warned, bounded by 0.4.0 refusing at `update` rather than breaking a running deployment. Added by execution 2026-08-17, accepted the same day — see EXECUTION-LOG.md D-021. |
 | 19 | `morzer release new` writes `runtimes:` and stamps the `min_manager_version` it needs | LOCKED | The scaffold emitted `runtime:` until this wave, so every bundle authored from the documented starting point was born on the spelling the manager was about to stop reading — a project that warns about a field its own scaffold writes has deprecated nothing. The floor beside it is not bookkeeping: `runtimes:` is an unknown field to every released manager and strict decoding refuses the whole manifest over one, so without it the vendor's customer is told about a typo rather than an upgrade requirement, which is the conversion 0018 decision 1 exists to perform. Consequence: a bundle scaffolded today cannot be installed by any released manager, because the manager it declares is not released — and the floor exposed that a build between tags understates its own version, which had to be fixed before the binary would accept its own output (EXECUTION-LOG.md D-023). Added by execution 2026-08-17, accepted the same day — see EXECUTION-LOG.md D-022. |
+| 20 | The option comparison runs on the values the runtime resolves, not the ones the manifest declares | LOCKED | Decision 16 refuses a release that changes a recorded option, and it compared declared maps. Declared is not what the runtime reads: an installation created with no `project` is already running under its product name, so a release writing that name out in full renames nothing, and the manager refused it and told the vendor to restore a value that was never doing any work (EXECUTION-LOG.md wave 28 R-4). Only the adapter can tell those apart — knowing that `project` falls back to the product is exactly what decision 7 keeps out of these layers — so it is asked, through `ports.OptionResolver`. Refused: recording the *effective* options instead, which pins the namespace against an adapter later changing its defaults but costs installation schema 11, a migration that cannot run where the state package lives because it has no adapter to ask, and a change to what `installation describe` publishes. Consequence: the recorded baseline stays as declared, so a future change to an adapter's default silently moves both sides of the comparison with it; and the port gains its 8th optional capability, which is what prompted §6's amendment. Added by execution 2026-08-17, accepted the same day — see EXECUTION-LOG.md D-024. |
 
 ## 6. The escape hatch, restated after measurement
 
@@ -342,8 +343,15 @@ fire on day one and therefore useless.
 Restated, so it can still do its job:
 
 > **The RFC closes as partially wrong if the second adapter forces more than two
-> new methods onto `ports.Runtime`, or forces any existing method that the Quadlet
-> adapter can only stub.**
+> new additions to the port surface — core methods and optional capabilities
+> alike — or forces any existing method that the Quadlet adapter can only stub.**
+
+**Amended 2026-08-17** (§13): the original counted methods on `ports.Runtime`
+only, and every growth but one has gone into optional capabilities instead. The
+surface today is **13 core methods and 8 optional capabilities**, against 12 and
+5 when this section was written; that is the baseline P3 is measured against.
+The condition is still about what the *second adapter* forces, so the larger
+count does not fire the hatch — it makes it able to.
 
 A stub is the signal, not the count: a method one implementation cannot mean is
 the proof that the interface describes Compose rather than "starting services".
@@ -599,6 +607,19 @@ moving it, because a phase held open on one item is a legible statement that the
 architecture test is not yet de-risked.
 
 ## 13. Amendments
+
+**2026-08-17 — §6's escape hatch counts the whole port surface, not only
+`ports.Runtime`'s methods.** As written it fires when "the second adapter forces
+more than two new methods onto `ports.Runtime`", and every growth since it was
+restated has gone somewhere else. Measured today: **13 core methods** — one of
+the two spare slots spent, on `Name()` in P2 — and **8 optional capabilities**,
+against 12 and 5 when §6 was written. A capability only Compose implements is
+the same evidence a Compose-shaped method is; it just does not trip a counter
+aimed at the other half of the interface. The threshold now reads over both, and
+today's numbers are the baseline P3 is measured against. Note the condition is
+unchanged and still forward-looking — *what the second adapter forces* — so
+recording a larger surface today does not fire the hatch, it makes it capable of
+firing. Added by execution 2026-08-17 — see EXECUTION-LOG.md D-024.
 
 **2026-08-12 — P1 split into P1a and P1b.** The phase was written as one task
 whose deliverable was "a list and a number", with §12 separately asserting that
