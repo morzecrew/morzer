@@ -1252,8 +1252,8 @@ two documentation pages, and the tests. `just ci` green at **86.5%** (floor 84),
 `docs-check` 41 pages / 55 checks, `runtime-check` **17 mentions, 0 branches**,
 unchanged: this wave added no runtime vocabulary above the adapters.
 
-**Sabotage sweep: 21 mutations, 21 killed — two only after being made
-killable, and four added by the review round.** Full acceptance passed. The container lane failed once on
+**Sabotage sweep: 22 mutations, 22 killed — three only after being made
+killable, and five added by the review rounds.** Full acceptance passed. The container lane failed once on
 `TestTCPProbeAgainstRedis` and passed on a re-run; it is a settle-window
 fragility of that test rather than anything this branch touches — see *Carried*.
 
@@ -1302,6 +1302,8 @@ One finding on PR #53, and it was valid.
 | # | Severity | Finding | Status |
 |---|---|---|---|
 | R-2 | Medium | Codecov named `warnDeprecations` at 44% patch, and the uncovered lines were the **api_version branch** — dead in every test because `DeprecatedAPIVersions` is empty, on this path and on the one the code was moved from. A detection branch nothing runs is one nobody knows works, and this one only ever runs on the day it matters. | Fixed — the branch is driven by injecting a stale version, as `manifest_test.go` already does; both it and the nil-bus guard are sabotaged and killed |
+| R-3 | Minor | `TestBothKindsOfDeprecationAreReported` asserted only that **two** warnings were published, which an implementation emitting the same warning twice also satisfies — the test's name claimed more than its assertion checked. | Fixed — both warnings are named; the mutation that published the api_version one twice is now killed |
+| R-4 | Minor | The api_version tests overwrote a package-global map entry and deleted it unconditionally, so a pre-existing entry would be destroyed on the way out. | Fixed — a helper saves and restores. Not reproducible today, and deliberately so: the map is empty by construction, and "the map is empty" is a property of production code the test should not depend on |
 | R-1 | Major | The untagged-build exemption (D-023) was written as **"any prerelease"**, which also exempts a deliberately versioned one — `0.2.0-rc.1` really is older than a 0.3.0 floor. The comment justifying it claimed the strict decode would still refuse such a bundle; that holds only when the floor stands in for an unknown field. A vendor may raise it for a *behavioural* reason, and then the manifest parses on the old manager and this check is the only thing refusing it. | Fixed — the exemption matches the shape `git describe` produces and nothing else; reproduced red first |
 
 **R-1 is a defect in the reasoning rather than in the code**, which is the kind
