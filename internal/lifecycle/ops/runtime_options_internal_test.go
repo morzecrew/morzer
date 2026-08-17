@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"maps"
 	"os"
 	"testing"
 
@@ -44,6 +45,47 @@ type noResolver struct{ ports.Runtime }
 
 // decliningDeps is a manager wired to a runtime with no defaults to fill in.
 func decliningDeps() *Deps { return &Deps{Runtime: noResolver{fakes.NewRuntime()}} }
+
+// inPlaceResolver fills in its default by writing into the map it was handed
+// instead of into a copy of it.
+//
+// It is a runtime that breaks ports.OptionResolver's contract, which is exactly
+// why it belongs here: the adapters in this repository are well-behaved, so a
+// boundary that relies on their good behaviour looks correct under every test
+// that uses them. This one does not rely on it.
+type inPlaceResolver struct{ ports.Runtime }
+
+func (r inPlaceResolver) ResolveOptions(cfg ports.RuntimeConfig) map[string]string {
+	if _, ok := cfg.Options["project"]; !ok {
+		cfg.Options["project"] = cfg.Product
+	}
+	return cfg.Options
+}
+
+// mutatingDeps is a manager wired to a runtime that resolves in place.
+func mutatingDeps() *Deps { return &Deps{Runtime: inPlaceResolver{fakes.NewRuntime()}} }
+
+// defaultingResolver fills an absent `project` with a default of its choosing,
+// standing in for an adapter whose default is not the product name.
+type defaultingResolver struct {
+	ports.Runtime
+	def string
+}
+
+func (r defaultingResolver) ResolveOptions(cfg ports.RuntimeConfig) map[string]string {
+	resolved := maps.Clone(cfg.Options)
+	if resolved == nil {
+		resolved = map[string]string{}
+	}
+	if _, ok := resolved["project"]; !ok {
+		resolved["project"] = r.def
+	}
+	return resolved
+}
+
+func defaultingDeps(def string) *Deps {
+	return &Deps{Runtime: defaultingResolver{Runtime: fakes.NewRuntime(), def: def}}
+}
 
 func TestAChangedRuntimeOptionIsRefused(t *testing.T) {
 	cases := map[string]struct {
@@ -246,4 +288,53 @@ func TestComparingOptionsLeavesTheRecordedBaselineAlone(t *testing.T) {
 
 	assert.Equal(t, map[string]string{}, inst.RuntimeOptions,
 		"the comparison is a question, and a question does not edit the record it reads")
+}
+
+// The same guarantee, held against a runtime that does not cooperate.
+//
+// The test above passes because every resolver in this repository copies before
+// it writes. That makes it a test of the adapters, not of the boundary: it
+// would keep passing if this layer handed out its caller's map and simply got
+// lucky. Here the runtime writes in place deliberately, so only the copy in
+// resolveRuntimeOptions can keep the record intact.
+//
+// What breaks without it is not the comparison but the record: the map reaches
+// the resolver as inst.RuntimeOptions itself, and persistRuntimeBaseline writes
+// that map back -- so an installation that declared no project acquires one,
+// on disk, from a check that was only ever asked a question.
+func TestARuntimeThatResolvesInPlaceCannotEditTheRecord(t *testing.T) {
+	inst := recorded(map[string]string{})
+
+	require.NoError(t, mutatingDeps().checkRuntimeOptions(inst, map[string]string{"project": "demo"}))
+
+	assert.Equal(t, map[string]string{}, inst.RuntimeOptions,
+		"a misbehaving runtime must not be able to write through the boundary into the record")
+}
+
+// The known blind spot of RFC 0023 decision 20, pinned so it is a fact in the
+// suite rather than a paragraph in a document.
+//
+// The baseline is recorded as the vendor declared it, and both sides are
+// resolved at comparison time by whatever adapter is installed *now*. So if an
+// adapter's default changes between the day an installation was created and the
+// day it is updated, both sides move together and the comparison sees no change
+// -- while the volumes still sit under the old default.
+//
+// This test asserts that permissive behaviour deliberately. It is not an
+// endorsement: it fails the moment somebody makes the manager stricter here,
+// which is the point. Closing it means either freezing adapter defaults for
+// existing installations or recording resolved options, and recording resolved
+// options is what decision 20 declined -- so it is the author's call in the RFC,
+// not a fix to slip into the layer.
+func TestADefaultThatChangesUnderAnInstallationIsNotDetected(t *testing.T) {
+	// Created when the adapter's default was `alpha`, declaring nothing, so
+	// its volumes live under `alpha`.
+	inst := recorded(map[string]string{})
+
+	// The adapter now defaults to `beta`, and the release writes it out.
+	err := defaultingDeps("beta").checkRuntimeOptions(inst, map[string]string{"project": "beta"})
+
+	require.NoError(t, err,
+		"documented gap: both sides resolve through today's adapter, so a default "+
+			"that moved since the installation was created is invisible here")
 }

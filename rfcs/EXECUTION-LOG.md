@@ -1513,7 +1513,55 @@ quietly replaced by the second.
 - **Two settle-window fragilities**, carried from waves 28 and 29: the
   acceptance suite's `assert_running`, and `TestTCPProbeAgainstRedis`.
 - **`init --dry-run` plans against a bundle it has not read** (wave 29 A-4).
-- **The contract battery cannot exercise a pure capability without Docker**, new
-  here — the whole real-adapter leg is behind one build tag.
+- ~~**The contract battery cannot exercise a pure capability without Docker**~~ —
+  closed in review, see D-025.
 - ~~**R-4, an option made explicit with the adapter's own default**~~ — closed by
   this wave.
+
+## Review round, PR #54 — appended after the group closed
+
+The sections above were written when the branch was pushed. What follows was
+found afterwards, by review, and is appended rather than folded in: an entry
+moved up into the execution record would claim the wave noticed it, and the
+wave did not.
+
+**Drift count: still 0** — nothing here was settled by the RFC and built
+otherwise. Both findings are gaps the RFC never covered.
+
+## D-025 — A boundary that trusted its adapters, found in review
+
+- **Touches:** RFC 0023 decision 20, PR #54 review round 2
+- **RFC said:** nothing; the port documents the rule and the battery checks it
+- **Built:** `resolveRuntimeOptions` now hands the adapter a copy, and the
+  option half of the contract battery runs untagged against the real adapter
+- **Because:** two findings, both correct, both against code this wave added:
+  - `checkRuntimeOptions` passed `inst.RuntimeOptions` to the resolver
+    directly. Every resolver in this repository copies before it writes, so
+    the boundary looked correct under every test that used one — a test of the
+    adapters wearing the shape of a test of the boundary. Reproduced with a
+    resolver that writes in place: the installation's record gained a `project`
+    it never declared, from a check that only asked a question, and
+    `persistRuntimeBaseline` would have written it to disk.
+  - `ResolveOptions` needs no daemon, but the real-adapter leg of the battery
+    is behind `docker` wholesale, so the shared rule was only ever checked
+    against the real adapter where Docker was present. This is the item this
+    same wave recorded as carried; review found it independently, which is the
+    argument for closing it now rather than later.
+- **Class:** spec-gap — both were knowable before the code existed. The first
+  is the sharper one: the wave's own sabotage sweep found the *adapter* could
+  mutate and fixed it there, and stopped. It never asked what the layer would
+  do if an adapter misbehaved anyway.
+- **Consequence:** one map copied per comparison. The port now states the
+  non-mutation rule and states that the manager does not rely on it.
+- **Deliberately not applied:** the same review asked that row 20 be reopened —
+  an adapter that changes its default between an installation's creation and
+  its update moves both sides of the comparison together, and the volumes stay
+  under the old default. That is real, it is the consequence row 20 already
+  records, and it is the cost of the ruling that declined schema 11. It is not
+  reversed in review. `TestADefaultThatChangesUnderAnInstallationIsNotDetected`
+  now pins the permissive behaviour so the gap is a failing test the day
+  somebody closes it, rather than a paragraph.
+
+**Rule distilled:** *a contract the boundary cannot enforce is one every future
+implementation can break* — and a suite whose only implementations are
+well-behaved cannot tell a guarded boundary from a lucky one. (D-025)
