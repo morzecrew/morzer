@@ -714,7 +714,29 @@ func (d *Deps) persistRuntimeBaseline(ctx context.Context, baseline map[string]s
 // buried in a record. Asked here, it is a refusal with nothing started.
 func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Release) error {
 	declared, _ := rel.Manifest.DeclaredRuntimes()
-	return checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
+	return d.checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
+}
+
+// resolveRuntimeOptions returns options as the runtime will actually read them.
+//
+// The adapter's answer when it has one, and the map unchanged when it does not.
+// Declining is a supported answer (ports.OptionResolver): a runtime with no
+// defaults to fill in leaves the comparison exactly where it was before this
+// existed, which over-refuses rather than under-refuses.
+//
+// Both sides of the comparison go through here, and that is the whole trick.
+// The recorded baseline stays as the vendor declared it -- no schema change, no
+// migration, and `installation describe` keeps publishing what was written --
+// while the values actually compared are the ones the runtime will use.
+func (d *Deps) resolveRuntimeOptions(inst domain.Installation, options map[string]string) map[string]string {
+	resolver, ok := d.Runtime.(ports.OptionResolver)
+	if !ok {
+		return options
+	}
+	return resolver.ResolveOptions(ports.RuntimeConfig{
+		Product: inst.Product,
+		Options: options,
+	})
 }
 
 // checkRuntimeOptions refuses a release that would change what the runtime was
@@ -738,19 +760,28 @@ func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Re
 // A nil record means the installation predates schema 10, and there is nothing
 // to compare against: those adopt on the next operation that knows both halves
 // rather than being refused for a baseline nobody wrote down.
-func checkRuntimeOptions(inst domain.Installation, declared map[string]string) error {
+//
+// Both maps are resolved through the adapter before they meet, so what is
+// compared is what the runtime will read rather than what the vendor typed. A
+// release that writes out a value already in force -- `project: demo` on a
+// deployment whose product is `demo` -- changes nothing and is applied; the
+// same key with a different value is the rename this exists to stop.
+func (d *Deps) checkRuntimeOptions(inst domain.Installation, declared map[string]string) error {
 	if inst.RuntimeOptions == nil {
 		return nil
 	}
 
-	changed := make([]string, 0, len(declared)+len(inst.RuntimeOptions))
-	for key, was := range inst.RuntimeOptions {
-		if now, ok := declared[key]; !ok || now != was {
+	was := d.resolveRuntimeOptions(inst, inst.RuntimeOptions)
+	now := d.resolveRuntimeOptions(inst, declared)
+
+	changed := make([]string, 0, len(now)+len(was))
+	for key, before := range was {
+		if after, ok := now[key]; !ok || after != before {
 			changed = append(changed, key)
 		}
 	}
-	for key := range declared {
-		if _, ok := inst.RuntimeOptions[key]; !ok {
+	for key := range now {
+		if _, ok := was[key]; !ok {
 			changed = append(changed, key)
 		}
 	}
@@ -857,7 +888,7 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 
 	declared, _ := rel.Manifest.DeclaredRuntimes()
 
-	if err := checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options); err != nil {
+	if err := d.checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options); err != nil {
 		return ports.RuntimeConfig{}, err
 	}
 

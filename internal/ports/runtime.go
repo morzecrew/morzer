@@ -474,6 +474,38 @@ type HookVarSupplier interface {
 	HookVars(cfg RuntimeConfig) map[string]string
 }
 
+// OptionResolver answers what a runtime will actually read from the options it
+// is given.
+//
+// The manager records the options an installation was created with and refuses
+// a release that changes them, because they name durable things -- under
+// Compose the project is the prefix on every volume (RFC 0023 decision 16).
+// That comparison was made against the *declared* map, and declared is not what
+// the runtime reads: a value the vendor omitted and a value the vendor wrote
+// out in full can name the same thing, and the manager cannot tell, because
+// knowing that `project` falls back to the product name is exactly the
+// knowledge decision 7 keeps out of these layers.
+//
+// So the adapter is asked. Given a configuration it returns the options as it
+// will read them, with its own defaults filled in, and the manager compares
+// those. A release that spells out a value that was already in force is applied
+// rather than refused; a release that changes one is refused as before.
+//
+// Optional and type-asserted like the capabilities around it. A runtime that
+// declines has no defaults worth naming, and the manager falls back to
+// comparing what was declared -- the behaviour before this interface existed,
+// which over-refuses rather than under-refuses.
+type OptionResolver interface {
+	// ResolveOptions returns cfg.Options with this runtime's defaults
+	// applied.
+	//
+	// Every key it was given must survive, including ones this runtime does
+	// not understand: an unknown key is still compared, and a resolver that
+	// dropped one would hide a change rather than resolve it. Refusing an
+	// unknown key is Validate's job, and happens later.
+	ResolveOptions(cfg RuntimeConfig) map[string]string
+}
+
 // ImageIngester loads the images a bundle carries into the local image store.
 //
 // Optional and type-asserted, like the capabilities above, and for a sharper

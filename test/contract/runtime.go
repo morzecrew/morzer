@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -144,6 +145,7 @@ func RunRuntimeSuite(t *testing.T, newRuntime RuntimeFactory) {
 	runQuiesceSuite(t, newRuntime)
 	runVolumeSuite(t, newRuntime)
 	runInspectionSuite(t, newRuntime)
+	runOptionSuite(t, newRuntime)
 }
 
 // runInspectionSuite covers what `morzer logs`, `ps` and `stats` read.
@@ -629,4 +631,75 @@ func sortedNames(files map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// runOptionSuite exercises ports.OptionResolver.
+//
+// It exists because the manager decides whether to refuse a release on what
+// this returns (RFC 0023 decision 16), and there are two implementations of the
+// rule: the compose adapter, and the fake that stands in for it in every unit
+// test of the comparison. A fake resolving differently from the adapter would
+// make those tests agree with a manager that refuses the wrong releases -- and
+// the layering forbids the lifecycle package from importing the adapter, so
+// this battery is the only place both can be asked the same questions.
+//
+// A runtime that declines the capability is a supported answer, and is reported
+// rather than skipped silently: "no implementation" and "an implementation
+// nobody ran" look identical in a pass list otherwise.
+func runOptionSuite(t *testing.T, newRuntime RuntimeFactory) {
+	t.Helper()
+
+	rt, _ := newRuntime(t)
+	resolver, ok := rt.(ports.OptionResolver)
+	if !ok {
+		t.Log("this runtime declines ports.OptionResolver; the manager compares declared options")
+		return
+	}
+
+	t.Run("every declared key survives resolution", func(t *testing.T) {
+		_, cfg := newRuntime(t)
+		cfg.Options = map[string]string{"a_key_no_runtime_knows": "kept"}
+
+		resolved := resolver.ResolveOptions(cfg)
+		assert.Equal(t, "kept", resolved["a_key_no_runtime_knows"],
+			"a resolver that drops what it does not understand hides a change "+
+				"the manager treats as durable; refusing an unknown key is Validate's job")
+	})
+
+	t.Run("resolution does not mutate what it was given", func(t *testing.T) {
+		_, cfg := newRuntime(t)
+		cfg.Options = map[string]string{"kept": "value"}
+
+		before := maps.Clone(cfg.Options)
+		resolver.ResolveOptions(cfg)
+		assert.Equal(t, before, cfg.Options,
+			"the declared map is the installation's record; resolving must copy, not edit")
+	})
+
+	t.Run("resolution is stable", func(t *testing.T) {
+		_, cfg := newRuntime(t)
+
+		first := resolver.ResolveOptions(cfg)
+		assert.Equal(t, first, resolver.ResolveOptions(cfg),
+			"the comparison runs on every converge; a resolver that answers "+
+				"differently twice would refuse a release at random")
+	})
+
+	t.Run("a resolved value is already in force", func(t *testing.T) {
+		_, cfg := newRuntime(t)
+		cfg.Options = nil
+
+		defaults := resolver.ResolveOptions(cfg)
+		if len(defaults) == 0 {
+			t.Log("this runtime fills in no defaults; nothing to compare against")
+			return
+		}
+
+		// The whole point of the capability: declaring the value the
+		// runtime would have used anyway must resolve to the same thing,
+		// or the manager still refuses what it was taught to allow.
+		cfg.Options = maps.Clone(defaults)
+		assert.Equal(t, defaults, resolver.ResolveOptions(cfg),
+			"writing out a default must resolve identically to omitting it")
+	})
 }

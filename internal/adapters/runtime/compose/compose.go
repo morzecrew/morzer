@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -74,7 +75,10 @@ func WithRedaction(values []string) Option {
 	return func(r *Runtime) { r.redact = values }
 }
 
-var _ ports.Runtime = (*Runtime)(nil)
+var (
+	_ ports.Runtime        = (*Runtime)(nil)
+	_ ports.OptionResolver = (*Runtime)(nil)
+)
 
 // args builds a `docker compose` invocation for a project.
 //
@@ -146,6 +150,25 @@ func (r *Runtime) project(cfg ports.RuntimeConfig) string {
 		return p
 	}
 	return cfg.Product
+}
+
+// ResolveOptions reports the options as this runtime will read them.
+//
+// One default to fill in, and it is the one that matters: an absent `project`
+// means the product name, so a release that writes that name out in full is
+// declaring what was already in force rather than renaming anything. The
+// manager compares these rather than the declared map, which is what lets it
+// tell those two apart (ports.OptionResolver).
+//
+// Everything else is copied through untouched, including keys this runtime does
+// not understand. They are still compared, and Validate is where an unknown one
+// is refused -- dropping it here would turn "this release changed a setting you
+// cannot see" into silence.
+func (r *Runtime) ResolveOptions(cfg ports.RuntimeConfig) map[string]string {
+	resolved := make(map[string]string, len(cfg.Options)+1)
+	maps.Copy(resolved, cfg.Options)
+	resolved[OptionProject] = r.project(cfg)
+	return resolved
 }
 
 // checkOptions refuses a manifest option this runtime has never heard of.

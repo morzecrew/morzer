@@ -41,6 +41,18 @@ func recordProject(t *testing.T, h *harness, project string) {
 	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
 }
 
+// recordNoOptions puts the installation back to declaring no runtime options,
+// which is what a deployment created from a bundle that never named a project
+// looks like. Distinct from nil, which means "created before schema 10".
+func recordNoOptions(t *testing.T, h *harness) {
+	t.Helper()
+
+	inst, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	inst.RuntimeOptions = map[string]string{}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+}
+
 func TestAReleaseThatRenamesTheProjectIsRefused(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
@@ -259,4 +271,58 @@ func TestARollbackPlanRefusesWhatTheRollbackWouldRefuse(t *testing.T) {
 	after, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
 	assert.Nil(t, after.RuntimeOptions, "and it must still have written nothing")
+}
+
+// R-4, carried from wave 28 and closed here. A vendor who spells out the value
+// their deployment is already running under is not renaming anything, and until
+// now the manager refused the release and told them to put back a value that was
+// never doing any work.
+//
+// Driven end to end rather than at the comparison, because the claim is about
+// what an operator meets: the update goes through and the version moves.
+func TestAReleaseThatSpellsOutTheDefaultProjectIsApplied(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	// Created declaring no project at all, which for product `demo` means
+	// the runtime is already using `demo`.
+	recordNoOptions(t, h)
+
+	// The stock 1.3.0 fixture declares `project: demo`, so it says out loud
+	// what was already true -- no rewrite needed, and that is the point.
+	src := stageUpgradeSource(t, h)
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err,
+		"the namespace is identical, so there is nothing to refuse")
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
+}
+
+// And the guard is intact: the same shape with a value that is not the default
+// is still the rename this whole mechanism exists to stop.
+func TestAReleaseThatNamesADifferentProjectIsStillRefused(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	recordNoOptions(t, h)
+
+	src := stageUpgradeSource(t, h)
+	renameProjectIn(t, src, "elsewhere")
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err, "`elsewhere` is not what this deployment's volumes are prefixed with")
+	assert.Equal(t, domain.ExitIncompatible, domain.ExitCode(err))
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String(), "nothing may have moved")
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
@@ -419,4 +421,47 @@ func TestTheProjectIsSuppliedToHooksUnderItsPublishedName(t *testing.T) {
 	if _, prefixed := vars["DEMO_COMPOSE_PROJECT"]; prefixed {
 		t.Error("HookVars must return suffixes, not namespaced names")
 	}
+}
+
+// The adapter's half of ports.OptionResolver, asserted here rather than only in
+// the contract battery: the battery's real-adapter leg is behind the `docker`
+// build tag, and a tagged tree is invisible to every lane that does not set it.
+//
+// What the manager does with this is refuse a release or apply it, so the rule
+// is worth stating twice.
+func TestResolveOptionsFillsInTheProjectTheRuntimeWouldUse(t *testing.T) {
+	r, _ := newRuntime()
+
+	t.Run("an absent project resolves to the product", func(t *testing.T) {
+		resolved := r.ResolveOptions(ports.RuntimeConfig{Product: "demo"})
+		assert.Equal(t, "demo", resolved[compose.OptionProject],
+			"this is the value a deployment created without a project is already running under")
+	})
+
+	t.Run("a declared project is left alone", func(t *testing.T) {
+		resolved := r.ResolveOptions(ports.RuntimeConfig{
+			Product: "demo",
+			Options: map[string]string{compose.OptionProject: "elsewhere"},
+		})
+		assert.Equal(t, "elsewhere", resolved[compose.OptionProject])
+	})
+
+	t.Run("writing out the default resolves the same as omitting it", func(t *testing.T) {
+		omitted := r.ResolveOptions(ports.RuntimeConfig{Product: "demo"})
+		explicit := r.ResolveOptions(ports.RuntimeConfig{
+			Product: "demo",
+			Options: map[string]string{compose.OptionProject: "demo"},
+		})
+		assert.Equal(t, omitted, explicit,
+			"the manager compares these two, and refusing the second is the defect this closes")
+	})
+
+	t.Run("a key the runtime does not know survives", func(t *testing.T) {
+		resolved := r.ResolveOptions(ports.RuntimeConfig{
+			Product: "demo",
+			Options: map[string]string{"unit_prefix": "a"},
+		})
+		assert.Equal(t, "a", resolved["unit_prefix"],
+			"dropping it would hide a change the manager treats as durable")
+	})
 }
