@@ -233,6 +233,36 @@ func (d *Deps) newOpID() string {
 	return NewOperationID(d.now())
 }
 
+// warnDeprecations announces what the bundle being installed is written with
+// that this manager will stop reading.
+//
+// Called from `init` and `update` and from nowhere else, which is the whole of
+// the decision. A deprecation warning is only useful at the moment somebody is
+// choosing this bundle -- they can decline it, or ask the vendor for one
+// written the new way. Every other operator command meets the same manifest
+// again and again with no such choice available, and `release.Load` says why it
+// refuses to be the place this happens: a warning about a file the operator did
+// not write and cannot change is how a project teaches people to ignore its
+// warnings.
+//
+// Both kinds are published here. The api_version warning used to be on the
+// update path alone, so a *first install* of a deprecated bundle said nothing
+// at all -- found while adding the second kind, and fixed rather than
+// reproduced.
+func (d *Deps) warnDeprecations(m domain.Manifest) {
+	if d.Bus == nil {
+		return
+	}
+	if warning, deprecated := m.DeprecationWarning(); deprecated {
+		d.Bus.Publish(events.Message(events.LevelWarn,
+			"this bundle's api_version %s is deprecated: %s", m.APIVersion, warning))
+	}
+	for _, f := range m.DeprecatedFields() {
+		d.Bus.Publish(events.Message(events.LevelWarn,
+			"this bundle uses %s", f.Message()))
+	}
+}
+
 // engineOptions translates operation options into engine options.
 func (d *Deps) engineOptions(opts Options, installationID string, prior *domain.OperationRecord) engine.Options {
 	return engine.Options{

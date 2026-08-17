@@ -613,6 +613,7 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			if err != nil {
 				return err
 			}
+			d.warnDeprecations(rel.Manifest)
 
 			// Before the release is adopted: a `--set` the manifest
 			// does not declare fails here, and no installation has

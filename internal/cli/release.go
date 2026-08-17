@@ -165,6 +165,14 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 					"warning: api_version %s is deprecated: %s\n",
 					rel.Manifest.APIVersion, warning)
 			}
+			// Warnings, not failures, and deliberately: `verify`
+			// answers "is this bundle installable", and a deprecated
+			// field still is until the release that stops reading it.
+			// A vendor who wants the clock enforced has the exit code
+			// of their own CI to spend on it.
+			for _, f := range rel.Manifest.DeprecatedFields() {
+				fmt.Fprintf(app.Stream.Err, "warning: %s\n", f.Message())
+			}
 
 			if err := checkBundleIntegrity(rel); err != nil {
 				return err

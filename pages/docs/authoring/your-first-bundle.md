@@ -38,14 +38,27 @@ metadata:
   description: Demo self-hosted bundle used by the test suite
   vendor: example
 
-runtime:
-  project: demo
-  files:
-    - compose/compose.yaml
-  profiles:
-    embedded: [compose/compose.embedded.yaml]
-    external-db: [compose/compose.external-db.yaml]
+runtimes:
+  compose:
+    files:
+      - compose/compose.yaml
+    profiles:
+      embedded: [compose/compose.embedded.yaml]
+      external-db: [compose/compose.external-db.yaml]
+    options:
+      project: demo
 ```
+
+**`runtimes` names which runtimes this release supports**, and its keys are the
+declaration — there is no separate field saying which one. `options` holds
+settings that runtime understands and the manager does not; `project` is
+Compose's, and it is the namespace every volume, network and container of the
+deployment lives in, so it is the one field here you must not change after a
+release has shipped.
+
+The older spelling is a single `runtime:` block with the files directly under
+it. It is still read, and it stops being read in 0.4.0 — `release verify` says
+so when it meets one.
 
 **That first line is worth typing.** It is a comment, so a manifest without it
 behaves identically and an editor that ignores it loses nothing — but every
@@ -146,7 +159,7 @@ compatibility:
   database_schema_min: 10
   database_schema_max: 12
   rollback_safe: true
-  min_manager_version: "0.0.0"
+  min_manager_version: "0.3.0"
   upgrade_from: ">=1.0.0 <2.0.0"
 ```
 
@@ -156,7 +169,10 @@ The four declarations that make an update decidable without running it:
 - **`database_schema_min`/`max`** — which schemas this release can read. The
   manager knows the running schema because your migrate hook reported it.
 - **`rollback_safe`** — whether returning to the previous release is safe.
-- **`min_manager_version`** — the oldest manager that may install this.
+- **`min_manager_version`** — the oldest manager that may install this. `0.3.0`
+  here because the manifest above uses `runtimes`, which older managers do not
+  know: an unknown field refuses the whole manifest under strict decoding, and
+  this is what turns that refusal into a sentence naming the real problem.
 
 Set `rollback_safe: false` when your migrations are one-way. The manager will
 refuse the rollback and name the pre-update backup instead, which is the honest
