@@ -59,6 +59,20 @@ func TestAManifestOnTheCurrentSpellingReportsNothing(t *testing.T) {
 		"a vendor who has already migrated must not be warned about a block they deleted")
 }
 
+// The empty case, decided rather than inherited. A manifest declaring no
+// runtime at all is refused by Validate, but DeprecatedFields is reachable from
+// anything holding a Manifest -- including the zero value -- and a warning
+// about a block nobody wrote would be worse than silence.
+func TestAManifestDeclaringNoRuntimeAtAllReportsNothing(t *testing.T) {
+	assert.Empty(t, domain.Manifest{}.DeprecatedFields(),
+		"the zero manifest declares nothing, so it has deprecated nothing")
+
+	bare := currentManifest()
+	bare.Runtimes = nil
+	assert.Empty(t, bare.DeprecatedFields(),
+		"a manifest with neither spelling names no deprecated field")
+}
+
 // The predicate is DeclaredRuntimes' own `fromLegacy`, deliberately. A second
 // look at the struct could disagree with the loader about which spelling a
 // bundle is written in, and the disagreement would be invisible: the warning

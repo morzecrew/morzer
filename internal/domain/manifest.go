@@ -78,14 +78,16 @@ type FieldDeprecation struct {
 	// that is not there.
 	Field string
 
-	// Replacement is what to write instead, and it is required. A
-	// deprecation that names no successor is a complaint.
+	// Replacement is what to write instead. Nothing here enforces that it
+	// is set -- the type cannot -- but a deprecation naming no successor is
+	// a complaint rather than an instruction, and the tests that read
+	// Message assert it is there.
 	Replacement string
 }
 
 // Message is the sentence shown to whoever met the manifest. One sentence,
-// carrying all three things they need: what is deprecated, when it stops
-// working, and what to write instead.
+// carrying all three things they need: what is deprecated, when it stops being
+// read, and what to write instead.
 func (f FieldDeprecation) Message() string {
 	return fmt.Sprintf("`%s` is deprecated and will stop being read in %s; use %s",
 		f.Field, FieldRemovalRelease, f.Replacement)

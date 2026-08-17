@@ -1253,13 +1253,16 @@ two documentation pages, and the tests. `just ci` green at **86.5%** (floor 84),
 unchanged: this wave added no runtime vocabulary above the adapters.
 
 **Sabotage sweep: 17 mutations, 17 killed — two only after being made
-killable.**
+killable.** Full acceptance passed. The container lane failed once on
+`TestTCPProbeAgainstRedis` and passed on a re-run; it is a settle-window
+fragility of that test rather than anything this branch touches — see *Carried*.
 
 | # | Severity | Finding | Status |
 |---|---|---|---|
 | A-1 | Major | **The shipped binary refused its own scaffold.** `morzer release new` reported "a bug in the scaffold" and `release verify` exited 9, because the floor the scaffold stamps is above the version an untagged build reports for itself. | Fixed — D-023, verified red |
 | A-2 | Major | **Deleting `min_manager_version` from the scaffold killed nothing.** The half of the ruling the question was actually about had no test, so the floor could have been dropped by any later edit in silence. | Fixed — the floor is asserted from the scaffold's real output, and so is the refusal an older released manager gets |
 | A-3 | Medium | Every test left `managerVersion` at zero, and zero is the one value that skips the comparison — so the entire floor mechanism was inert under `go test` while broken in the binary. This is why A-1 survived to the point of being measured by hand. | Fixed — the new tests drive the loader with a non-zero version, in three positions relative to the floor |
+| A-4 | Low | `init --dry-run` reports a plan for a bundle it never opens: the product name and domain in its closing line come out empty, and the deprecation warning cannot reach it. Pre-existing, and this wave is what made it visible. | Open — recorded below and carried; the fix moves init's fetch out of the operation |
 
 **A-1 and A-2 are one finding seen from two ends.** The sweep found that nothing
 held the floor; running the real binary found that the floor was wrong. Neither
@@ -1277,6 +1280,13 @@ pinning the broken behaviour.
 - **`git describe` versions understate by construction**, and the fix here
   declines rather than corrects. A tagged 0.3.0 satisfies the floor; a build one
   commit later does not, and now silently skips the check instead.
+- **`init --dry-run` does not warn**, and cannot. The warning is published from
+  `stepStageRelease`, and the engine returns from its plan branch before any
+  step runs — so an init plan says nothing about a deprecated bundle while an
+  update plan does. `update` can warn because `resolveUpdateTarget` materialises
+  the bundle *before* the engine; `init` fetches inside the step. Making the two
+  agree means moving init's fetch out of the operation, which changes what a
+  plan does on the network and is not this wave's to do.
 
 **One process failure, recorded rather than fixed quietly.** `git checkout --`
 ate the D-023 fix during the verify-red step — the **fifth** time this command
@@ -1309,6 +1319,12 @@ file's saved contents rather than by asking git what HEAD says.
 - **`git checkout --` restores to HEAD, so it eats every fix written after the
   last commit.** Restore a mutated file from its own saved bytes; the sweep must
   not consult git at all. (fifth occurrence)
+- **An assertion that something has gone away is a timeout, not a signal, and a
+  timeout is a race with whatever else the machine is doing.** Two now in this
+  project — a container count after `compose stop`, and a TCP probe after a
+  shutdown — both green alone and both failing under a full lane. The published
+  port outlives the process behind it. (carried from wave 28, second instance
+  here)
 
 ## Carried into the next unit
 
@@ -1322,6 +1338,16 @@ file's saved contents rather than by asking git what HEAD says.
 - **R-4 from wave 28** — an option made explicit with the adapter's own default
   is refused as a change; needs a resolve-options capability and a decision row.
 - **The acceptance suite's `assert_running` has no settle window**, carried from
-  wave 28 as a fragility.
+  wave 28 as a fragility — and **`TestTCPProbeAgainstRedis` is a second of the
+  same kind**, found by this wave's container lane. It waits 30 seconds for a
+  shut-down Redis to stop accepting connections and failed at 30.8s under a full
+  lane, then passed alone in 0.6s. A published port keeps accepting while the
+  proxy is torn down, so the probe is measuring Docker's teardown rather than
+  the service. Neither is this branch's, and both are now two instances of one
+  shape: an assertion about a service going away, with a timeout instead of a
+  signal.
+- **`init --dry-run` plans against a bundle it has not read** (A-4), which is why
+  it cannot carry the deprecation warning and why its closing line names no
+  product.
 - ~~**The field-deprecation gap (D-017)**~~ — closed by this wave. **P2 is
   complete.**
