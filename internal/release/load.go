@@ -282,6 +282,23 @@ func checkManagerVersion(data []byte, source string) error {
 	if managerVersion.IsZero() {
 		return nil
 	}
+	// A build between tags cannot be compared against a floor, because its
+	// stamp understates by construction: `git describe` derives it from the
+	// *last* tag, so the build that first understood a new field reports
+	// itself as a prerelease of the release before the one that ships it.
+	// Measured: this tree, which added `runtimes:`, describes as
+	// 0.2.0-N-g<sha>, and semver reads that as older than the 0.3.0 floor --
+	// so the manager refused the bundle its own scaffold had just written,
+	// and `release new` reported it as a bug in the scaffold.
+	//
+	// Declining is the same move this function makes for every other
+	// question it cannot answer honestly, and it is safe for the same
+	// reason: the strict decode still runs and still refuses a manifest this
+	// build really cannot read. What is given up is the clearer error, for
+	// developers running an untagged build, who know what they built.
+	if managerVersion.Prerelease() != "" {
+		return nil
+	}
 
 	var p manifestPreamble
 	if err := yaml.Unmarshal(data, &p); err != nil {
