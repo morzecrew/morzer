@@ -145,8 +145,10 @@ in a safe direction.
 
 Rows 1, 4 and 5 were answered together on 2026-08-15, in that order, and the
 order is the content: row 4 could only be answered once row 1 was, and §8.2
-records why. Row 3 is untouched and stays OPEN. The trade-off column is left as
-it was written, so that what was traded is legible next to what was chosen.
+records why. Row 3 was answered last, on 2026-08-17, and §8.4 records why it
+could not be answered until the move was priced — which closes this RFC. The
+trade-off column is left as it was written, so that what was traded is legible
+next to what was chosen.
 
 | # | Question | Grade | The trade-off |
 | --- | --- | --- | --- |
@@ -349,8 +351,10 @@ One wave. Row 1 must land before row 4 in the same change, not in a later one:
 shipping the declaration onto a machine where `disable` is still undone is the
 two-switch state §7 names as the risk.
 
-Row 3 (the unit directory) stays OPEN and is deliberately not bundled. It is the
-one row that changes where files are written, it would make masking work, and
-§3.4 measured that it also makes a masked unit fail `config set` outright —
-which is a new failure mode, on a machine the operator has already told to stop.
-That deserves its own decision.
+Row 3 (the unit directory) was deliberately not bundled, and got its own wave on
+2026-08-17. Keeping it separate was right for a reason the row did not state at
+the time: it is the one row that changes where files are written, so it is the
+one row with a migration, and §8.4 is that migration priced. It was answered
+"they stay" — no files move, so the phasing question it posed dissolves rather
+than resolving. §3.4's measurement, that a masked unit would fail `config set`
+outright once units moved, is now permanently hypothetical.

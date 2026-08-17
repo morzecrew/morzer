@@ -1648,11 +1648,20 @@ reconciliation backlog: RFC 0023 row 14, outstanding since wave 27.
 - **Touches:** `internal/adapters/supervisor/systemd`, found by wave 31's sweep
 - **RFC said:** nothing.
 - **Built:** `TestRemoveUnitsReportsAFailureThatIsNotAMissingFile`.
-- **Because:** `RemoveUnits` deliberately separates two outcomes — a unit that is
-  already gone is tolerated, and every other failure is reported. Three tests
-  covered removal, and all three exercised the tolerant half, so deleting the
-  strict half survived the sweep. The why is the finding: a distinction is only
-  tested when both sides of it are.
+- **Because:** `os.Remove` has three outcomes here and the code treats each
+  differently — the file went away (removed), it was already gone (tolerated),
+  anything else (reported). Two were covered:
+  `TestRemoveUnitsStopsAndDisablesBeforeDeleting` writes the unit and deletes it
+  successfully, and `TestRemoveUnitsToleratesAUnitThatWasNeverInstalled` takes
+  the missing-file branch. The third — a removal that fails for any other reason
+  — had no test, so deleting the branch that reports it survived the sweep. The
+  why is the finding: a three-way outcome tested twice looks fully covered, and
+  the untested one is the only branch that carries an error.
+
+  Corrected in review: the first pass of this entry said all three existing
+  tests took the tolerant branch, which is wrong — one takes the success path
+  and a third refuses the name before removal is reached. The conclusion held
+  and the evidence for it did not, which is the more embarrassing of the two.
 - **Class:** spec-gap.
 - **Consequence:** a removal that genuinely fails now says so instead of
   reporting the unit gone. What a swallowed failure left behind is a unit file
@@ -1661,6 +1670,22 @@ reconciliation backlog: RFC 0023 row 14, outstanding since wave 27.
   by a different route. The fixture is a non-empty directory standing where the
   unit file should be, which makes `os.Remove` fail for a reason that is not
   "not there", without root.
+
+## D-030 — A row answered in three places and stale in three others
+
+- **Touches:** RFC 0030 §5, §11, review round 1 of PR #55
+- **RFC said:** row 3 is `OPEN`, in the decision table, in §5's preamble, in
+  §11's phasing, in the status header, in the index entry and in the index row.
+- **Built:** all six updated.
+- **Because:** answering a row means editing the row, and a document repeats its
+  own status wherever a reader might need it without scrolling. Review caught
+  §5's preamble; re-grepping for the claim rather than trusting the fix caught
+  §11's phasing, which no reviewer had flagged.
+- **Class:** spec-gap — knowable, and knowable mechanically. The RFC's own
+  redundancy is a feature for readers and a hazard for editors.
+- **Consequence:** the check that finds this is grepping the *claim* after the
+  change, not re-reading the diff. A diff shows what moved; only a search shows
+  what should have moved and did not.
 
 ## Reconciliation — 2026-08-17
 
@@ -1696,9 +1721,12 @@ the migration is priced.
 - **A seam that makes a thing testable is a seam that hides what production
   uses.** Every test relocated the unit directory, which is what let them run
   without root — and left the real value unexercised by all of them. (D-027)
-- **A distinction is only tested when both of its sides are.** `RemoveUnits`
-  separates "already gone" from "could not be removed"; every test took the
-  first branch, so the second was deletable in silence. (D-029)
+- **Grep the claim, not the diff.** A status repeated in six places is edited in
+  three and stays wrong in the others; the diff looks complete because every
+  line in it is right. (D-030)
+- **A branch tested twice out of three reads as covered.** `os.Remove` is
+  handled three ways and two had tests, so the only branch carrying an error was
+  the one nobody had written. Count the outcomes, not the tests. (D-029)
 - **A fixture is specified by the failing path, not the passing one.** A test
   whose guard holds never reaches the code that needed the fixture, so the
   omission only shows up the day the guard breaks. (D-028)

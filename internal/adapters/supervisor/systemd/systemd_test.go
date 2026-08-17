@@ -320,11 +320,14 @@ func TestRemoveUnitsToleratesAUnitThatWasNeverInstalled(t *testing.T) {
 	}
 }
 
-// The other half of the distinction the test above exercises.
+// The third of os.Remove's three outcomes, and the only one that carries an
+// error.
 //
-// RemoveUnits tolerates a unit that is already gone and reports every other
-// failure, and only the tolerant half was covered -- so deleting the strict half
-// changed nothing any test could see. It matters because of what a swallowed
+// The file went away, it was already gone, or removal failed for some other
+// reason -- and RemoveUnits treats each differently. The first two have tests
+// above: one deletes a unit it wrote, the other takes the missing-file branch.
+// The third had none, so deleting the code that reports it changed nothing any
+// test could see. It matters because of what a swallowed
 // failure leaves: a unit file still on disk after an uninstall said it was gone,
 // which systemd goes on honouring. A timer that survives the removal of the
 // product it belongs to is the same class of problem as an old unit shadowing a
