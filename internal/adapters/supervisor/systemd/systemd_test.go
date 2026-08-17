@@ -320,6 +320,35 @@ func TestRemoveUnitsToleratesAUnitThatWasNeverInstalled(t *testing.T) {
 	}
 }
 
+// The other half of the distinction the test above exercises.
+//
+// RemoveUnits tolerates a unit that is already gone and reports every other
+// failure, and only the tolerant half was covered -- so deleting the strict half
+// changed nothing any test could see. It matters because of what a swallowed
+// failure leaves: a unit file still on disk after an uninstall said it was gone,
+// which systemd goes on honouring. A timer that survives the removal of the
+// product it belongs to is the same class of problem as an old unit shadowing a
+// new one (RFC 0030 §8.4), reached by a different route.
+//
+// A non-empty directory standing where the unit file should be is the way to
+// make os.Remove fail for a reason that is not "not there", without root.
+func TestRemoveUnitsReportsAFailureThatIsNotAMissingFile(t *testing.T) {
+	s, _, dir := newSupervisor(t)
+
+	occupied := filepath.Join(dir, "demo.service")
+	if err := os.MkdirAll(filepath.Join(occupied, "in the way"), 0o755); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+
+	err := s.RemoveUnits(context.Background(), []string{"demo.service"})
+	if err == nil {
+		t.Fatal("a unit that could not be deleted was reported as removed")
+	}
+	if !strings.Contains(err.Error(), "demo.service") {
+		t.Errorf("the failure must name the unit it could not remove; got %v", err)
+	}
+}
+
 func TestRemoveUnitsRefusesAPathName(t *testing.T) {
 	s, _, _ := newSupervisor(t)
 	if err := s.RemoveUnits(context.Background(), []string{"../../etc/passwd"}); err == nil {

@@ -1643,6 +1643,25 @@ reconciliation backlog: RFC 0023 row 14, outstanding since wave 27.
   corrupted record actually looks like: `schema_version: 0`, empty id, empty
   product, carrying the baseline that was being adopted.
 
+## D-029 — A distinction with only one half tested
+
+- **Touches:** `internal/adapters/supervisor/systemd`, found by wave 31's sweep
+- **RFC said:** nothing.
+- **Built:** `TestRemoveUnitsReportsAFailureThatIsNotAMissingFile`.
+- **Because:** `RemoveUnits` deliberately separates two outcomes — a unit that is
+  already gone is tolerated, and every other failure is reported. Three tests
+  covered removal, and all three exercised the tolerant half, so deleting the
+  strict half survived the sweep. The why is the finding: a distinction is only
+  tested when both sides of it are.
+- **Class:** spec-gap.
+- **Consequence:** a removal that genuinely fails now says so instead of
+  reporting the unit gone. What a swallowed failure left behind is a unit file
+  surviving the uninstall that claimed to remove it, which systemd goes on
+  honouring — the same class as an old unit shadowing a new one (D-026), reached
+  by a different route. The fixture is a non-empty directory standing where the
+  unit file should be, which makes `os.Remove` fail for a reason that is not
+  "not there", without root.
+
 ## Reconciliation — 2026-08-17
 
 | RFC | Row | Outcome | Grade | Decision | From |
@@ -1670,6 +1689,9 @@ the migration is priced.
 - **A seam that makes a thing testable is a seam that hides what production
   uses.** Every test relocated the unit directory, which is what let them run
   without root — and left the real value unexercised by all of them. (D-027)
+- **A distinction is only tested when both of its sides are.** `RemoveUnits`
+  separates "already gone" from "could not be removed"; every test took the
+  first branch, so the second was deletable in silence. (D-029)
 - **A fixture is specified by the failing path, not the passing one.** A test
   whose guard holds never reaches the code that needed the fixture, so the
   omission only shows up the day the guard breaks. (D-028)
