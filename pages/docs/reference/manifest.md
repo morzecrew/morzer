@@ -137,6 +137,14 @@ against volumes nothing has ever written to, with the real data still on the
 disk and nothing referring to it. If you mean it, the path is a backup, a fresh
 `init` and a `restore`.
 
+**What is compared is the value the runtime resolves, not the line you typed.**
+Omitting `project` and setting it to your product's name are the same
+deployment, so a release that starts spelling out the default is applied rather
+than refused, and so is one that stops. Only a value that actually changes the
+namespace is a change. The runtime decides this, which is why an option a
+runtime does not understand is compared exactly as written — the manager has no
+way to know what it would have meant.
+
 Options are per runtime because their meaning is. A project is Compose's idea of
 grouping; another runtime answers the same question differently or not at all,
 which is why this is a map the manager passes through rather than a field it

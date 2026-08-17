@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"sort"
 	"strings"
@@ -154,6 +155,7 @@ var (
 	_ ports.ImageIngester   = (*Runtime)(nil)
 	_ ports.VolumeInspector = (*Runtime)(nil)
 	_ ports.VolumeCapturer  = (*Runtime)(nil)
+	_ ports.OptionResolver  = (*Runtime)(nil)
 )
 
 func (r *Runtime) record(method string) error {
@@ -206,6 +208,21 @@ func (r *Runtime) HookVars(cfg ports.RuntimeConfig) map[string]string {
 		return map[string]string{"COMPOSE_PROJECT": p}
 	}
 	return nil
+}
+
+// ResolveOptions reports the options as the runtime this fake stands in for
+// would read them, over the same namespace rule as HookVars.
+//
+// The copy is deliberate and narrow, like namespace above: a fake that returned
+// the declared map unchanged would make every test of the option comparison
+// agree with a manager that had stopped resolving. The contract battery in
+// test/contract runs the same assertions against this and against the real
+// Compose adapter, which is what stops the two drifting.
+func (r *Runtime) ResolveOptions(cfg ports.RuntimeConfig) map[string]string {
+	resolved := make(map[string]string, len(cfg.Options)+1)
+	maps.Copy(resolved, cfg.Options)
+	resolved["project"] = r.namespace(cfg)
+	return resolved
 }
 
 // RequiredTools names what the runtime this fake stands in for needs on a
