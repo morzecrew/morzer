@@ -32,6 +32,28 @@ func newSupervisor(t *testing.T) (*systemd.Supervisor, *exec.Scripted, string) {
 	), runner, dir
 }
 
+// The unit directory is a decision, not a default (RFC 0030 row 3), and this is
+// the only test that reads the value production uses.
+//
+// It exists because relocating the directory is what makes every other test in
+// this file runnable without root -- so the constant they all replace is the one
+// thing they cannot check. Measured before writing this: changing it to
+// `/usr/lib/systemd/system` and running the entire suite passes.
+//
+// What the value buys, and what it costs, are both settled: `/etc` is where an
+// administrator's units live, which is what these are, and systemd loads it in
+// preference to `/usr/lib` -- so the manager's file is the one that takes
+// effect. The cost is that `systemctl mask` needs this exact path for its
+// symlink and finds it occupied (RFC 0030 §3.2). Moving to `/usr/lib` would buy
+// masking back and cost the precedence, which is the trade row 3 declined.
+func TestGeneratedUnitsLiveWhereAnAdministratorsUnitsLive(t *testing.T) {
+	if systemd.UnitDir != "/etc/systemd/system" {
+		t.Fatalf("unit directory is %q; RFC 0030 row 3 answers /etc/systemd/system, "+
+			"and moving it shadows every unit already installed on an existing "+
+			"machine -- change the RFC before changing this", systemd.UnitDir)
+	}
+}
+
 func TestInstallUnitsWritesReloadsThenEnables(t *testing.T) {
 	s, runner, dir := newSupervisor(t)
 

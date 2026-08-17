@@ -148,7 +148,7 @@ it was written, so that what was traded is legible next to what was chosen.
 | --- | --- | --- | --- |
 | 1 | Does the manager re-assert *enablement* on a unit that already exists? | ✅ ANSWERED — no (§8.1) | Enabling only units this run newly wrote makes `systemctl disable` stick — and means a unit left disabled by a half-finished install is never repaired, which is the case `init --repair` exists for. Enablement is either the operator's or the manager's; it cannot be both, and today it is the manager's — announced, since row 2, but still the manager's. |
 | 2 | Should `UnitState.Enabled` be reported? | ✅ ANSWERED — yes, in [#42](https://github.com/morzecrew/morzer/pull/42) | Shipped as `<unit>: not enabled` on a loaded unit the supervisor asked to have enabled, with the oneshot services exempt. It was the smallest useful step and it decided nothing about row 1. Its risk was recorded here as hypothetical and is now live: an operator who *meant* to disable a unit gets a warning on every run, clearable only by letting the next reconciliation overrule them. That is the antipattern 0026's audit removed from this very check, arriving by a different door — and it is the strongest argument for answering row 1 rather than leaving it. |
-| 3 | Do the generated units belong in `/etc/systemd/system`? | OPEN | The current choice is deliberate and documented: machine-specific files belong where local configuration lives. §3.2 measured its cost — it consumes the path a mask needs. `/usr/lib/systemd/system` would restore masking and drop-in overrides, and would make row 1 urgent rather than optional, because then a masked unit makes reconciliation fail. |
+| 3 | Do the generated units belong in `/etc/systemd/system`? | ✅ ANSWERED — yes, they stay (§8.4) | Answered by what moving them would cost, which was never priced when this row was written. systemd loads `/etc/systemd/system` in preference to `/usr/lib/systemd/system` (systemd.unit(5), measured on systemd 261), so on every machine that already has units the old copy would keep winning and the manager would write files that have no effect. Worse, `InstallUnits` computes freshness from the file's presence in the unit directory, so a move makes every unit fresh at once and `EnableNew` re-enables the lot — undoing every `systemctl disable` an operator made, which is precisely the harm row 1 shipped to prevent, arriving through a migration. Against: `systemctl mask` stays unavailable (§3.2), and drop-in overrides stay awkward. That cost is now bounded rather than open-ended, because rows 1 and 4 gave the operator two working ways to say "off" — a `disable` that sticks, and `policy.skip_scheduled_backups` — so masking is a mechanism for an intent that is already expressible. Consequence: the path is now a decided value rather than a default, and is pinned by a test, because relocating it is what makes every other test in that adapter runnable without root. Added by execution 2026-08-17 — see EXECUTION-LOG.md D-026. |
 | 4 | Should an installation be able to declare "no scheduled backups"? | ✅ ANSWERED — yes, `policy.skip_scheduled_backups` (§8.2) | A declarative flag (`policy.skip_scheduled_backups`, named for the unsafe direction as `SkipBackupBeforeUpdate` is) puts the fact in the installation, where `init --repair` reproduces it and 0027's desired-state story can carry it. Against: it is a *second* way to say something the operator can already say, and adding it without answering row 1 leaves the first way broken and the two disagreeing. |
 | 5 | If backups are handled elsewhere, what does `doctor` say? | ✅ ANSWERED — it honours the declaration (§8.3) | A machine backed up at the storage layer never updates the last-backup timestamp, so `StaleBackupAfter` warns for ever. Suppressing that means the manager asserting a fact it cannot verify. Not suppressing it means a permanent warning — which is precisely how a check stops being read. |
 
@@ -279,6 +279,45 @@ survives for the case it was written for — a unit this installation *does* wan
 switched off — and it is now clearable in both directions: `init --repair
 --install-units` re-enables it, or the declaration removes the want. Its remedy
 line says both.
+
+### 8.4 The units stay in `/etc/systemd/system` (row 3)
+
+Row 3 asked whether the units belong there. It is answered by pricing the move,
+which the row never did: it named what `/usr/lib/systemd/system` would buy and
+what it would make urgent, but not what it would break on a machine that already
+exists.
+
+Two things, and the second is the one that decides it.
+
+**The old copy keeps winning.** systemd's load path puts `/etc/systemd/system`
+above `/usr/lib/systemd/system` — files higher in the list override files of the
+same name lower down (systemd.unit(5), read on systemd 261). Every machine
+running today has its units in `/etc`. After a move the manager would write to
+`/usr/lib` and systemd would go on loading the `/etc` copy, so every later change
+— a new schedule, the exit-12 rule — would look applied and not be. Nothing in
+this RFC said who deletes the old file, or when, and a migration that forgets it
+is indistinguishable from one that worked.
+
+**The move re-enables what the operator switched off.** `InstallUnits` decides
+freshness by whether the file is already in the unit directory, and enables only
+the fresh ones under `EnableNew`. That is row 1's guarantee. On the first run
+after a move, no unit is in the new directory, so *every* unit is fresh and every
+unit is enabled — silently reversing every `systemctl disable` on the machine.
+That is the antipattern row 2 describes arriving by a different door, and it
+would arrive once per machine, unannounced.
+
+So they stay, and the cost is accepted with its name written down: `systemctl
+mask` cannot be used on a generated unit, because a mask is a symlink at exactly
+the path the unit occupies (§3.2). What changed since the row was written is that
+the cost is now bounded. Rows 1 and 4 gave the operator two ways to say "off"
+that work — a `disable` that sticks, and a declaration that removes the timer
+outright — so masking is a mechanism for an intent already expressible, rather
+than the only way to express it.
+
+**What was deliberately not built:** a `doctor` check that notices an attempted
+mask. It would fire on no healthy machine and could not detect the case anyway —
+a failed `mask` leaves nothing behind to find — and §3's own argument against
+permanent warnings applies to checks that cannot see what they claim to.
 
 ## 9. Tests
 
