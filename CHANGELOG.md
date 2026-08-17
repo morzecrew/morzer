@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A release that spells out a runtime option already in force is no longer refused.** An installation created without a `project` runs under its product name, so a release declaring that same name changes nothing, and dropping such a redundant line is equally harmless. The comparison runs on what the runtime resolves; a value that really changes the namespace is refused as before.
+- **A release that spells out a runtime option already in force is no longer refused.** An installation with no `project` runs under its product name, so a release naming that same value changes nothing, and dropping such a line is equally harmless. A value that really changes the namespace is refused as before.
 
 ## [0.2.0] - 2026-08-15
 
