@@ -209,10 +209,24 @@ metadata:
 providers:
   runtime: {name: compose}
 
-runtime:
-  project: __NAME__
-  files:
-    - compose/compose.yaml
+runtimes:
+  compose:
+    files:
+      - compose/compose.yaml
+    options:
+      # The namespace Compose puts every volume, network and container in.
+      # Changing it later points the deployment at storage nothing has written
+      # to, so a manager that has recorded it refuses the change.
+      project: __NAME__
+
+compatibility:
+  # ` + "`runtimes:`" + ` is not a field a manager older than this one knows, and under
+  # strict decoding an unknown field refuses the whole manifest. Declaring the
+  # floor is what turns that into "you need a newer manager" instead of a
+  # report about a typo.
+  min_manager_version: ` + domain.RuntimesMinManagerVersion + `
+  # rollback_safe: true
+  # upgrade_from: ">=0.1.0"
 
 requirements:
   memory: 512MiB
@@ -231,10 +245,6 @@ configuration:
 secrets:
   source: /etc/__NAME__/secrets.sops.yaml
   schema: secrets.schema.yaml
-
-# compatibility:
-#   rollback_safe: true
-#   upgrade_from: ">=0.1.0"
 
 # health:
 #   checks:

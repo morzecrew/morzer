@@ -45,6 +45,73 @@ func (m Manifest) DeprecationWarning() (string, bool) {
 	return warning, deprecated
 }
 
+// RuntimesMinManagerVersion is the manager release that added `runtimes:`.
+//
+// A bundle written with it is refused outright by anything older, because
+// strict decoding makes an unknown field fatal -- so a manifest using it has to
+// declare this as its `compatibility.min_manager_version` or the vendor's
+// customer gets a report about a typo instead of an upgrade requirement (RFC
+// 0018 decision 1). Kept beside FieldRemovalRelease so the whole migration's
+// clock reads in one place: the new spelling arrives here and the old one stops
+// being read there.
+const RuntimesMinManagerVersion = "0.3.0"
+
+// FieldRemovalRelease is the release that stops reading the fields
+// DeprecatedFields reports.
+//
+// A deprecation without one is a word in a document: it tells a vendor that
+// something will happen and gives them nothing to plan against. RFC 0023
+// decision 9 accepted "two spellings to maintain until a named removal
+// release" as its cost, and this is the name.
+const FieldRemovalRelease = "0.4.0"
+
+// FieldDeprecation is a manifest field this manager still reads and will stop
+// reading at FieldRemovalRelease.
+//
+// Separate from DeprecatedAPIVersions because a field cannot be a map key: an
+// api_version is deprecated by its value, and a field is deprecated by being
+// written at all, which only the manifest itself can answer.
+type FieldDeprecation struct {
+	// Field is spelled the way the vendor spelled it, for the same reason
+	// Validate's paths are: naming `runtimes.compose.files` to somebody
+	// whose manifest says `runtime.files` sends them looking for a block
+	// that is not there.
+	Field string
+
+	// Replacement is what to write instead. Nothing here enforces that it
+	// is set -- the type cannot -- but a deprecation naming no successor is
+	// a complaint rather than an instruction, and the tests that read
+	// Message assert it is there.
+	Replacement string
+}
+
+// Message is the sentence shown to whoever met the manifest. One sentence,
+// carrying all three things they need: what is deprecated, when it stops being
+// read, and what to write instead.
+func (f FieldDeprecation) Message() string {
+	return fmt.Sprintf("`%s` is deprecated and will stop being read in %s; use %s",
+		f.Field, FieldRemovalRelease, f.Replacement)
+}
+
+// DeprecatedFields reports the deprecated fields this manifest actually uses.
+//
+// Computed on demand for the reason DeprecationWarning is, and derived from
+// DeclaredRuntimes rather than from a second look at the struct: "this
+// release's runtimes came from the deprecated block" is already decided in one
+// place, and a predicate that asks the question its own way is a predicate
+// that can disagree with the loader about which spelling a bundle is written
+// in.
+func (m Manifest) DeprecatedFields() []FieldDeprecation {
+	var out []FieldDeprecation
+	if _, fromLegacy := m.DeclaredRuntimes(); fromLegacy {
+		out = append(out, FieldDeprecation{
+			Field:       "runtime",
+			Replacement: "`runtimes." + LegacyRuntimeName + "`",
+		})
+	}
+	return out
+}
+
 const KindApplicationRelease = "application-release"
 
 // Manifest is the typed release contract. Field order follows the spec's

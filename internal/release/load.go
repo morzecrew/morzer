@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -269,6 +270,22 @@ type manifestPreamble struct {
 	} `yaml:"compatibility"`
 }
 
+// untaggedBuild matches the prerelease `git describe --tags` produces on a
+// commit that is not itself a tag: the number of commits since the tag, the
+// abbreviated object name, and `-dirty` when the tree has uncommitted changes.
+//
+// Written as the exact shape rather than "has any prerelease" because the two
+// are different claims. This one means "this stamp is derived, and understates
+// the build"; a prerelease like `rc.1` means "this build really is older than
+// the release it names", which a version floor must still be allowed to refuse.
+var untaggedBuild = regexp.MustCompile(`^[0-9]+-g[0-9a-f]{7,}(-dirty)?$`)
+
+// isUntaggedBuild reports whether this manager's own version came from a commit
+// between tags, and so cannot be honestly compared against anything.
+func isUntaggedBuild(v domain.Version) bool {
+	return untaggedBuild.MatchString(v.Prerelease())
+}
+
 // checkManagerVersion refuses a manifest that declares it needs a newer
 // manager than this one, before strict decoding gets a chance to blame a typo.
 //
@@ -280,6 +297,24 @@ type manifestPreamble struct {
 // pass would have accepted, which is what makes running it first safe.
 func checkManagerVersion(data []byte, source string) error {
 	if managerVersion.IsZero() {
+		return nil
+	}
+	// A build between tags cannot be compared against a floor, because its
+	// stamp understates by construction: `git describe` derives it from the
+	// *last* tag, so the build that first understood a new field reports
+	// itself as a prerelease of the release before the one that ships it.
+	// Measured: this tree, which added `runtimes:`, describes as
+	// 0.2.0-N-g<sha>, and semver reads that as older than the 0.3.0 floor --
+	// so the manager refused the bundle its own scaffold had just written,
+	// and `release new` reported it as a bug in the scaffold.
+	//
+	// Only that shape. A deliberately versioned prerelease -- 0.2.0-rc.1 --
+	// says what it is and really is older than a 0.3.0 floor, and exempting
+	// it would be a real hole rather than a lost error message: a vendor may
+	// raise the floor for a behavioural reason, in which case the manifest
+	// parses on the old manager and this check is the only thing that
+	// refuses it.
+	if isUntaggedBuild(managerVersion) {
 		return nil
 	}
 

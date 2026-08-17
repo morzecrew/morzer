@@ -148,11 +148,18 @@ belong to one runtime, so changing it is a migration of everything the manager
 knows rather than a setting. A release that does not declare the runtime an
 installation was created against is refused rather than run on a substitute.
 
-## runtime (deprecated)
+## runtime (deprecated, removed in 0.4.0)
 
 The original single-runtime block. Still read, so releases built before
 `runtimes` existed keep installing; a manifest declaring both is refused,
 because merging them would pick a winner the vendor never nominated.
+
+**It stops being read in 0.4.0.** Until then a bundle using it installs
+normally, and says so at the two moments somebody can act on it: `release
+verify`, so a vendor's CI reports it before the bundle is published, and `init`
+and `update`, so an operator choosing this bundle can ask their vendor for one
+written the new way. No other command warns — a manifest an operator did not
+write and cannot change is not something to be told about on every invocation.
 
 | Field | Type | Required | Meaning |
 | --- | --- | :---: | --- |
@@ -165,8 +172,11 @@ nothing else, with `project` read as `runtimes.compose.options.project`.
 
 Adopting `runtimes` means moving the files under `runtimes.compose`, **moving
 `project` to `runtimes.compose.options.project`**, and deleting the old block —
-and, per the versioning rules, raising `compatibility.min_manager_version` to a
-manager that knows the field.
+and raising `compatibility.min_manager_version` to `0.3.0`, the manager that
+added the field. That last step is not optional bookkeeping: `runtimes` is an
+unknown field to anything older, and under strict decoding an unknown field
+refuses the whole manifest, so without the floor your customer gets a report
+about a typo instead of an upgrade requirement.
 
 Do not drop `project` on the way. It is the namespace every volume, network and
 container of a running deployment lives in, so a release that loses it points

@@ -19,11 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`morzer release new` scaffolds a bundle using `runtimes:` rather than the deprecated `runtime:` block**, and declares the manager version that spelling needs. A bundle scaffolded now therefore requires 0.3.0 or newer, which is stated by the manifest rather than discovered as a decoding error.
+
 - **A release that changes a runtime option an installation was created with is refused.** Under Compose the project prefixes every volume, so such a release would bring the product up against storage nothing has written to and leave the real data unreferenced. The way through is a backup, a fresh `init` and a `restore`.
 
 - **`<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime rather than by the core hook ABI.** Unchanged for every Compose installation, and absent under a runtime that has no projects instead of carrying a value it cannot mean. Hooks that need it should test for it.
 
 - **`morzer installation import` refuses an export whose runtime this manager does not drive**, before anything on the new host is created. A runtime is fixed when an installation is created and never transitions, so importing one this binary cannot operate would rebuild a machine no command could use.
+
+### Deprecated
+
+- **The `runtime:` manifest block will stop being read in 0.4.0.** It still works, and `morzer release verify` says so before a bundle is published, as do `init` and `update` when an operator installs one. Moving to `runtimes:` relocates the files and `project`, and raises `min_manager_version` to `0.3.0`.
 
 ## [0.2.0] - 2026-08-15
 

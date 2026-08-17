@@ -1,0 +1,75 @@
+package clitest_test
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/test/clitest"
+)
+
+// A vendor's CI is one of the two places a deprecation warning can still change
+// a bundle: here, before it is published, and at the moment an operator chooses
+// to install it. Every other command meets the same manifest with no choice
+// available, which is why `release.Load` refuses to be the place this happens.
+
+// The example bundle is written the old way -- deliberately, since it is the
+// fixture for the deprecated read path -- so `verify` has something to warn
+// about that a released bundle really looks like.
+func TestReleaseVerifyWarnsAboutTheDeprecatedRuntimeBlock(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("release", "verify", r.Bundle).ExitCode(0).
+		StderrContains("`runtime` is deprecated", domain.FieldRemovalRelease, "runtimes.compose")
+}
+
+// A warning, not a failure. `verify` answers "is this bundle installable", and
+// a deprecated field still is until the release that stops reading it -- a
+// vendor who wants the clock enforced has their own CI's exit code to spend.
+func TestADeprecatedFieldDoesNotFailVerification(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("release", "verify", r.Bundle, "--render-check").ExitCode(0).
+		StdoutContains("demo 1.2.0")
+}
+
+// The other of the two moments: an operator choosing this bundle. They cannot
+// edit it, but they can decline it and ask their vendor for one written the new
+// way -- which is the whole reason the warning is here and not on every command
+// that later reads the same manifest.
+//
+// `init` specifically. The api_version warning lived on the update path alone,
+// so a first install said nothing at all; found while adding the field warning
+// beside it, and this is the assertion that keeps both on this path.
+func TestAFirstInstallWarnsAboutADeprecatedBundle(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("init",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+	).ExitCode(0).
+		StderrContains("`runtime` is deprecated", domain.FieldRemovalRelease)
+}
+
+// The update path is asserted in the suite, where an update runs to completion
+// against a fake runtime; see TestAnUpdateWarnsAboutADeprecatedBundle.
+
+// The ratchet this wave turns. A project that warns about a field its own
+// scaffold writes has deprecated nothing, and the scaffold emitted `runtime:`
+// until this wave -- so every bundle authored with the documented starting
+// point was born on the spelling the manager was about to stop reading.
+//
+// Asserted against the generator's real output rather than by reading the
+// template, so a later edit that reintroduces the block fails here.
+func TestTheScaffoldWritesNothingItWillWarnAbout(t *testing.T) {
+	r := clitest.New(t)
+	dir := filepath.Join(t.TempDir(), "my-product")
+
+	r.Run("release", "new", dir, "--vendor", "example").ExitCode(0)
+
+	r.Run("release", "verify", dir, "--render-check").ExitCode(0).
+		NoOutputContains("deprecated")
+}
