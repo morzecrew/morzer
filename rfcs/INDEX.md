@@ -64,15 +64,6 @@ second table of the same shape is a second set of rows for the same numbers.
   P1 shipped: the key exists and signs an artifact, which is why it shipped
   beside its consumer rather than ahead of it. P2 is rotation, wanted the first
   time somebody believes a host was compromised.
-- **[0030 — Unit enablement is the operator's](0030-unit-enablement-is-the-operators.md).**
-  Rows 1, 4 and 5 shipped: reconciliation no longer re-asserts enablement, so
-  `systemctl disable` is durable and `init --repair` is the one command that
-  reverses it; `policy.skip_scheduled_backups` removes the timer outright; and
-  `backup.freshness` honours that declaration rather than warning for ever.
-  Answering row 1 first is what made row 4 a different question rather than a
-  second switch. **Row 3 — whether the generated units belong in
-  `/etc/systemd/system` — stays OPEN**, and §3.2's measurement is the reason it
-  is not free: that directory consumes the path `systemctl mask` needs.
 - **[0029 — macOS as a development host](0029-macos-as-a-development-host.md).**
   P1 shipped: the tree compiles and vets for darwin on both architectures, gated
   in CI, and `install.sh`'s "build from source" advice is true. P2 — a published
@@ -140,7 +131,7 @@ number in the filename in sync.
 | [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 🚧 In progress | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |
 | [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | 🚧 In progress | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |
 | [0029](0029-macos-as-a-development-host.md) | macOS as a development host | 🚧 In progress | Making `GOOS=darwin` compile, and then bounding what that means: a tier for authoring and evaluating bundles on a Mac, never for running a production installation. |
-| [0030](0030-unit-enablement-is-the-operators.md) | Unit enablement is the operator's | 🚧 In progress | Where the manager's authority over its own units ends: `systemctl disable` sticks until `init --repair`, and an installation can declare no backup timer. The directory that blocks masking is open. |
+| [0030](0030-unit-enablement-is-the-operators.md) | Unit enablement is the operator's | ✅ Complete | Where the manager's authority over its own units ends: `systemctl disable` sticks until `init --repair`, an installation can declare no backup timer, and the units stay in `/etc/systemd/system`. |
 
 ## Status legend
 

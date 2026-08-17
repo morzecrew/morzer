@@ -1669,6 +1669,13 @@ reconciliation backlog: RFC 0023 row 14, outstanding since wave 27.
 | 0030 | 3 | **Accepted** | ✅ ANSWERED | Generated units stay in `/etc/systemd/system`; `systemctl mask` stays unavailable | D-026 |
 | 0023 | 14 | **Accepted** | `ASSUMED` | Where the manager would state which runtime a machine uses, it asks the adapter; an optional capability is the mechanism | D-014 |
 
+**RFC 0030 is complete.** Row 3 was its last open question, so answering it
+closed the document: every row now carries an outcome. Its status, its index row
+and its place in the live-design list were all updated in the same change, which
+is the half of reconciliation that gets forgotten — a row answered in a table
+while the header still says "in progress" is drift of the kind this log exists to
+prevent, arriving in the document rather than in the code.
+
 **Row 14 is closed after four waves.** It was proposed by wave 27 and carried by
 28, 29 and 30, each of which added an instance rather than a reason. What settled
 it was noticing that the three instances — `ToolRequirer`, `HookVarSupplier`,

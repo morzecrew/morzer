@@ -1,13 +1,17 @@
 # RFC 0030 — Unit enablement is the operator's
 
-- **Status:** 🚧 In progress — **rows 1, 4 and 5 answered and executed
-  2026-08-15**; row 2 was answered by [#42](https://github.com/morzecrew/morzer/pull/42)
-  and **row 3 (the unit directory) stays OPEN**. Reconciliation no longer
-  re-asserts enablement on a unit that already exists, so `systemctl disable`
-  is durable between repairs; `policy.skip_scheduled_backups` is the declarative
-  way to have no backup timer at all; and `backup.freshness` honours that
-  declaration instead of warning for ever. §8 is the design, §5 carries the
-  grades.
+- **Status:** ✅ Complete — **every row is answered.** Rows 1, 4 and 5 were
+  answered and executed 2026-08-15; row 2 by
+  [#42](https://github.com/morzecrew/morzer/pull/42); **row 3 on 2026-08-17**,
+  which closes the RFC. Reconciliation no longer re-asserts enablement on a unit
+  that already exists, so `systemctl disable` is durable between repairs;
+  `policy.skip_scheduled_backups` is the declarative way to have no backup timer
+  at all; `backup.freshness` honours that declaration instead of warning for
+  ever; and the generated units stay in `/etc/systemd/system`, answered by
+  pricing the move rather than by preferring a directory (§8.4). `systemctl
+  mask` remains unavailable on a generated unit — settled, not pending, and
+  bounded by the two working ways rows 1 and 4 give an operator to say "off".
+  §8 is the design, §5 carries the grades.
 - **Scope:** Who decides whether a generated systemd unit is *enabled*, and
   where the manager's authority over its own units ends. Covers the
   re-enablement the reconciliation performs, the directory the units are
