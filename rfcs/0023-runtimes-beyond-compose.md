@@ -8,8 +8,12 @@
   exists, §12 items 5 and 6 are measured against it, and item 4 is restated —
   it wanted a cold boot rather than a host, and the host it has cannot supply
   one. P1b stays open on that item alone, and **item 4 gates P3 rather than P2**:
-  the claim that P1b blocked P2 was withdrawn on 2026-08-16 (D-005), so **P2 is
-  the next phase available** and the Podman programme is not waiting on hardware.
+  the claim that P1b blocked P2 was withdrawn on 2026-08-16 (D-005), so ~~**P2 is
+  the next phase available**~~ and the Podman programme is not waiting on
+  hardware. **P2 is complete as of 2026-08-17**: `runtime:` now names 0.4.0 as
+  the release that stops reading it and warns where somebody can act on it, and
+  `release new` writes the current spelling (decisions 18–19). What remains of
+  this RFC is P1b item 4 and everything after it.
 - **Scope:** Grading the `ports.Runtime` seam by writing a second implementation
   of it — rootless Podman with Quadlet — and recording every place the port had
   to change to accommodate one. Covers the manifest's runtime dimension, the
@@ -321,6 +325,8 @@ refusal, which is also the first test that the refusal path is reachable.
 | 15 | Per-runtime settings are an opaque `options` map; the adapter validates them | LOCKED | §4.1 gave a runtime a file list and nothing else, and decision 10 removed the per-runtime *key name*. What went with it, unnoticed, was `project` — so `runtimes:` gave a vendor no way to name one while `ApplyDefaults` supplied it from the deprecated block anyway (D-016). A map the manager bounds in shape and never reads is the only form that survives a second runtime: `project` is Compose's grouping primitive and Quadlet's equivalent question has a different name, so a typed field would put one runtime's vocabulary in the shape both share. Consequence: an unknown key can only be refused by the adapter, from `Validate`, and a manifest surface exists that the manager cannot check the meaning of. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-018. |
 | 16 | The installation records the options it was created with, and a release that changes them is refused | LOCKED | These name durable things: measured, `--project-name alpha` resolves a volume called `alpha_data` and `beta` resolves `beta_data`. A changed project is not a reconfiguration, it is a deployment pointed at storage nothing has written to, with the operator's data still on the disk and nothing referring to it — and no other check would notice, since the backup that follows captures the new empty volumes and `doctor` reports them covered. Every option is treated as durable because only the adapter knows which are. Consequence: installation schema 9 → 10, a refusal on a path that has never had one, and an installation created before the field adopts what it is running on its next converge rather than being refused for a baseline nobody wrote. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-019. |
 | 17 | `<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime, not promised by the core hook ABI | LOCKED | §2.2 called it the expensive leak and P1's inventory named the shape of the fix: *"the variable stays for Compose installations and is absent under another runtime, which makes it a runtime-supplied variable rather than a core one"*. Renaming it was never available — the name is what every vendor hook already writes. Consequence: the hook ABI is two lists rather than one, `docs-check` gained a gate for the second so it does not become the undocumented surface RFC 0007 §13 found the Compose interpolation set in, and a hook that needs the variable should test for it. Byte-identical for every installation that exists today, since all of them are Compose. Added by execution 2026-08-16, accepted the same day — see EXECUTION-LOG.md D-020. |
+| 18 | `runtime:` stops being read in 0.4.0, and the deprecation warns at `release verify`, `init` and `update` only | LOCKED | Decision 9 accepted "two spellings to maintain until a named removal release" and named none, so the cost ran with no clock on it and no signal to a vendor that one was running (D-017). A field cannot be deprecated by the `api_version` mechanism, which is a map keyed by value: a field is deprecated by being written at all, which only the manifest can answer. The three surfaces are the moments somebody can act — a vendor before publishing, an operator while choosing a bundle. Refused: a `doctor` check, because every installation that exists runs a `runtime:` bundle, so it would warn on every machine, permanently, about a file the operator did not write and cannot change. Consequence: an operator who runs neither `init` nor `update` before 0.4.0 is never warned, bounded by 0.4.0 refusing at `update` rather than breaking a running deployment. Added by execution 2026-08-17, accepted the same day — see EXECUTION-LOG.md D-021. |
+| 19 | `morzer release new` writes `runtimes:` and stamps the `min_manager_version` it needs | LOCKED | The scaffold emitted `runtime:` until this wave, so every bundle authored from the documented starting point was born on the spelling the manager was about to stop reading — a project that warns about a field its own scaffold writes has deprecated nothing. The floor beside it is not bookkeeping: `runtimes:` is an unknown field to every released manager and strict decoding refuses the whole manifest over one, so without it the vendor's customer is told about a typo rather than an upgrade requirement, which is the conversion 0018 decision 1 exists to perform. Consequence: a bundle scaffolded today cannot be installed by any released manager, because the manager it declares is not released — and the floor exposed that a build between tags understates its own version, which had to be fixed before the binary would accept its own output (EXECUTION-LOG.md D-023). Added by execution 2026-08-17, accepted the same day — see EXECUTION-LOG.md D-022. |
 
 ## 6. The escape hatch, restated after measurement
 
@@ -406,10 +412,16 @@ for the declared runtime's presence, which is where an operator meets decision 5
   P2:** `RuntimeSpec.Project`, which is a published hook ABI and its own unit of
   work (EXECUTION-LOG.md D-016), and the deprecation of `runtime:`, which has no
   mechanism.~~ `RuntimeSpec.Project` shipped 2026-08-16 as decisions 15–17, and
-  **P2 is complete** but for one thing that is decision 9's cost rather than a
+  ~~**P2 is complete** but for one thing that is decision 9's cost rather than a
   phase's work: `runtime:` is deprecated and nothing warns, because the only
   deprecation mechanism this project has is keyed by `api_version` and this is a
-  field (D-017, carried). **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
+  field (D-017, carried).~~ **P2 is complete as of 2026-08-17.** The deprecation
+  names 0.4.0 as the release that stops reading `runtime:` and says so at
+  `release verify`, `init` and `update` (decision 18), and `release new` writes
+  the current spelling rather than the deprecated one (decision 19). Building
+  the second half found that a manager built between tags understates its own
+  version and so refused the bundle its own scaffold had just written — fixed
+  against RFC 0018's mechanism, EXECUTION-LOG.md D-023. **No longer gated on P1b** — decided 2026-08-16, see EXECUTION-LOG.md
   D-005. None of §12's three measurements is consumed by anything on this list:
   items 5 and 6 are volume capture and image ingest, both P3, and item 4 is
   §4.3's parameter delivery, also P3. What P2 did need from P1b is the list of

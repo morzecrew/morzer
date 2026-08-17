@@ -38,9 +38,16 @@ second table of the same shape is a second set of rows for the same numbers.
   Runtimes now take an opaque `options` map, the installation records what it
   was created with and refuses a release that changes it, and
   `<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime rather than promised by
-  the core hook ABI. The leak inventory is **17**, down from 19 at P1. What remains is
-  that `runtime:` is deprecated and nothing warns — no mechanism exists for
-  deprecating a *field* (D-017).
+  the core hook ABI. The leak inventory is **17**, down from 19 at P1.
+  **P2 is complete.** The deprecation of `runtime:` finally says something: it
+  stops being read in **0.4.0**, and `release verify`, `init` and `update` say so
+  — no other command does, because a manifest the operator did not write and
+  cannot change is not something to be told about on every invocation. The
+  scaffold, which had been emitting the deprecated block all along, now writes
+  `runtimes:` and declares the manager version it needs. That declaration is what
+  exposed a manager built between tags understating its own version badly enough
+  to refuse the bundle its own scaffold had just written. **What remains of this
+  RFC is P1b item 4, and P3 behind it.**
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
   inventory, the archive, redaction proved against seeded values, `support
   redact --check`, an archive encrypted to the vendor and unreadable by the
