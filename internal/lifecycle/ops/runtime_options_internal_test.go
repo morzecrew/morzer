@@ -231,3 +231,19 @@ func TestTheBaselineWriteYieldsToWhatIsAlreadyRecorded(t *testing.T) {
 	assert.Equal(t, "myapp", after.RuntimeOptions["project"],
 		"a recorded baseline is never overwritten by a copy read before the lock")
 }
+
+// The consequence side of the same hazard, and adapter-independent: whatever a
+// runtime does inside ResolveOptions, the installation's recorded baseline must
+// come out of a comparison exactly as it went in.
+//
+// It matters because persistRuntimeBaseline writes that map. A runtime that
+// resolved in place would turn an installation declaring no project into one
+// declaring the adapter's default -- written to disk, by a read-only check.
+func TestComparingOptionsLeavesTheRecordedBaselineAlone(t *testing.T) {
+	inst := recorded(map[string]string{})
+
+	require.NoError(t, resolvingDeps().checkRuntimeOptions(inst, map[string]string{"project": "demo"}))
+
+	assert.Equal(t, map[string]string{}, inst.RuntimeOptions,
+		"the comparison is a question, and a question does not edit the record it reads")
+}

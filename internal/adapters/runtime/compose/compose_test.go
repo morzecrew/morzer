@@ -465,3 +465,29 @@ func TestResolveOptionsFillsInTheProjectTheRuntimeWouldUse(t *testing.T) {
 			"dropping it would hide a change the manager treats as durable")
 	})
 }
+
+// The declared map belongs to the caller, and under `apply` it is the
+// installation's own recorded baseline: `resolveRuntimeOptions` hands it in
+// directly and `persistRuntimeBaseline` writes it back. An adapter that filled
+// the project in place would therefore convert a deployment that declared no
+// project into one that declares its own default, on disk, silently.
+//
+// Found by a sabotage that survived: the contract battery asserts this, but its
+// real-adapter leg is behind the `docker` build tag, so no untagged lane ran it.
+func TestResolveOptionsDoesNotEditTheCallersMap(t *testing.T) {
+	r, _ := newRuntime()
+
+	declared := map[string]string{"unit_prefix": "a"}
+	resolved := r.ResolveOptions(ports.RuntimeConfig{Product: "demo", Options: declared})
+
+	assert.Equal(t, map[string]string{"unit_prefix": "a"}, declared,
+		"the caller's map must come back untouched")
+	assert.Equal(t, "demo", resolved[compose.OptionProject],
+		"and the copy must carry the resolved value")
+
+	// A nil map is the other shape a caller can hand over, and it must not
+	// become a map the caller now shares with the adapter.
+	assert.NotPanics(t, func() {
+		r.ResolveOptions(ports.RuntimeConfig{Product: "demo"})
+	})
+}
