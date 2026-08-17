@@ -145,7 +145,7 @@ func RunRuntimeSuite(t *testing.T, newRuntime RuntimeFactory) {
 	runQuiesceSuite(t, newRuntime)
 	runVolumeSuite(t, newRuntime)
 	runInspectionSuite(t, newRuntime)
-	runOptionSuite(t, newRuntime)
+	RunOptionSuite(t, newRuntime)
 }
 
 // runInspectionSuite covers what `morzer logs`, `ps` and `stats` read.
@@ -633,7 +633,7 @@ func sortedNames(files map[string]string) []string {
 	return out
 }
 
-// runOptionSuite exercises ports.OptionResolver.
+// RunOptionSuite exercises ports.OptionResolver.
 //
 // It exists because the manager decides whether to refuse a release on what
 // this returns (RFC 0023 decision 16), and there are two implementations of the
@@ -646,7 +646,13 @@ func sortedNames(files map[string]string) []string {
 // A runtime that declines the capability is a supported answer, and is reported
 // rather than skipped silently: "no implementation" and "an implementation
 // nobody ran" look identical in a pass list otherwise.
-func runOptionSuite(t *testing.T, newRuntime RuntimeFactory) {
+//
+// Exported separately from RunRuntimeSuite because resolving options is pure:
+// it needs no daemon, while the rest of the battery does. A caller that has a
+// real adapter but no Docker can run this half, which is what keeps the shared
+// rule enforced in the lane that runs on every commit rather than only in the
+// tagged one.
+func RunOptionSuite(t *testing.T, newRuntime RuntimeFactory) {
 	t.Helper()
 
 	rt, _ := newRuntime(t)
