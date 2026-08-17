@@ -1252,8 +1252,8 @@ two documentation pages, and the tests. `just ci` green at **86.5%** (floor 84),
 `docs-check` 41 pages / 55 checks, `runtime-check` **17 mentions, 0 branches**,
 unchanged: this wave added no runtime vocabulary above the adapters.
 
-**Sabotage sweep: 17 mutations, 17 killed — two only after being made
-killable.** Full acceptance passed. The container lane failed once on
+**Sabotage sweep: 19 mutations, 19 killed — two only after being made
+killable, and two added by the review round.** Full acceptance passed. The container lane failed once on
 `TestTCPProbeAgainstRedis` and passed on a re-run; it is a settle-window
 fragility of that test rather than anything this branch touches — see *Carried*.
 
@@ -1295,8 +1295,28 @@ waves. "Commit before you sabotage" was followed for the sweep and then broken
 by a fix written *after* the commit. The sweep now restores by writing back the
 file's saved contents rather than by asking git what HEAD says.
 
+## Review findings — 2026-08-17
+
+One finding on PR #53, and it was valid.
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| R-1 | Major | The untagged-build exemption (D-023) was written as **"any prerelease"**, which also exempts a deliberately versioned one — `0.2.0-rc.1` really is older than a 0.3.0 floor. The comment justifying it claimed the strict decode would still refuse such a bundle; that holds only when the floor stands in for an unknown field. A vendor may raise it for a *behavioural* reason, and then the manifest parses on the old manager and this check is the only thing refusing it. | Fixed — the exemption matches the shape `git describe` produces and nothing else; reproduced red first |
+
+**R-1 is a defect in the reasoning rather than in the code**, which is the kind
+worth writing down. D-023 was found by measuring the real binary, and the fix
+was written against the one case measurement had produced. "Any prerelease"
+covered that case and a second one nobody had asked about — and the comment
+beside it asserted a safety property that was true of the measured case only.
+The narrow shape was in the reviewer's first suggestion.
+
 ## Rules distilled
 
+- **A fix written from one measurement generalises to exactly one case.** The
+  untagged-build exemption was correct for the build that produced it and wrong
+  for `0.2.0-rc.1`, because "the stamp understates" and "this build is older"
+  wear the same syntax. Name the shape you measured, not the category it is
+  in. (R-1)
 - **A deprecation with no removal release is a complaint.** "Deprecated" tells a
   vendor something will happen; only a version tells them when, and the warning
   has nowhere to put a date the project never chose. (D-021)

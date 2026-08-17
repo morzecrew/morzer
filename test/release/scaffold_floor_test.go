@@ -99,6 +99,65 @@ func TestABuildBetweenTagsIsNotRefusedByItsOwnScaffold(t *testing.T) {
 			"comparison rather than refuse a bundle it can in fact read")
 }
 
+// A floor is not only a proxy for "this manifest has fields you do not know".
+// A vendor may raise it for a behavioural reason, and then the manifest parses
+// perfectly on the old manager and `checkManagerVersion` is the only thing
+// standing between the operator and a release built for a manager they do not
+// have.
+//
+// So the untagged-build exemption has to be narrow. `0.2.0-rc.1` is a
+// deliberately versioned prerelease, not a build between tags, and it really is
+// older than a 0.3.0 floor.
+//
+// Reported by codeant-ai on PR #53, reproduced red before the fix.
+func TestADeliberatePrereleaseIsStillHeldToTheFloor(t *testing.T) {
+	r := clitest.New(t)
+	dir := raiseFloor(t, r.Bundle, "0.3.0")
+
+	release.SetManagerVersion(domain.MustParseVersion("0.2.0-rc.1"))
+	t.Cleanup(func() { release.SetManagerVersion(domain.Version{}) })
+
+	_, err := release.Load(dir)
+	require.Error(t, err,
+		"an rc of 0.2.0 is below a 0.3.0 floor, and the manifest parses -- so nothing "+
+			"else would refuse it")
+	assert.Contains(t, domain.AsError(err).Message, "0.3.0")
+	assert.Equal(t, domain.ExitIncompatible, domain.ExitCode(err))
+}
+
+// And the exemption still covers what it was written for: a build between tags,
+// against a bundle it can in fact read.
+func TestTheExemptionCoversOnlyBuildsBetweenTags(t *testing.T) {
+	r := clitest.New(t)
+	dir := raiseFloor(t, r.Bundle, "0.3.0")
+
+	release.SetManagerVersion(domain.MustParseVersion("0.2.0-9-gab19822-dirty"))
+	t.Cleanup(func() { release.SetManagerVersion(domain.Version{}) })
+
+	_, err := release.Load(dir)
+	require.NoError(t, err, "a build between tags understates itself and must not be refused on it")
+}
+
+// raiseFloor copies a bundle and rewrites its declared minimum manager, the way
+// a vendor adopting a newer manifest feature would.
+func raiseFloor(t *testing.T, src, floor string) string {
+	t.Helper()
+
+	dst := filepath.Join(t.TempDir(), "bundle")
+	require.NoError(t, os.CopyFS(dst, os.DirFS(src)))
+
+	path := filepath.Join(dst, "manifest.yaml")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	rewritten := strings.Replace(string(data),
+		`min_manager_version: "0.0.0"`, `min_manager_version: "`+floor+`"`, 1)
+	require.NotEqual(t, string(data), rewritten,
+		"the fixture must carry a min_manager_version to raise")
+	require.NoError(t, os.WriteFile(path, []byte(rewritten), 0o644))
+	return dst
+}
+
 // And the floor does not refuse the manager that wrote it: a vendor scaffolding
 // on a current build must be able to load their own bundle.
 func TestTheFloorAdmitsTheReleaseThatAddedTheField(t *testing.T) {
