@@ -2476,7 +2476,7 @@ for a shared bucket should be write-only and prefix-scoped, and a write-only
 credential cannot perform this read. Refusing to publish would make the safer
 credential the one that breaks the feature, so the row is published and the
 report says the check did not happen:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>fleet<span class="w"> </span>publish<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.data.targets[] | select(.unchecked) | .url&#39;</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>fleet<span class="w"> </span>publish<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.data.targets[] | select(.unchecked) | .url'</span>
 </code></pre></div>
 <h2 id="reading">Reading<a class="headerlink" href="#reading" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>fleet<span class="w"> </span>ls<span class="w"> </span>s3://bucket/prefix
@@ -2673,10 +2673,10 @@ so a typo is worth catching at the file instead.</p>
 <h3 id="getting-the-three-fields-off-a-machine">Getting the three fields off a machine<a class="headerlink" href="#getting-the-three-fields-off-a-machine" title="Permanent link">&para;</a></h3>
 <p>A dry-run publish prints the row a machine <em>would</em> publish, and all three fields
 of a roster entry are in it:</p>
-<div class="highlight"><pre><span></span><code>ssh<span class="w"> </span>box<span class="w"> </span><span class="s1">&#39;morzer fleet publish --dry-run --json&#39;</span><span class="w"> </span><span class="p">|</span>
-<span class="w">  </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;&quot;  - product: &quot; + .data.row.product,</span>
-<span class="s1">         &quot;    id: &quot;      + .data.row.installation_id,</span>
-<span class="s1">         &quot;    key: &quot;     + .data.row.signing_key&#39;</span>
+<div class="highlight"><pre><span></span><code>ssh<span class="w"> </span>box<span class="w"> </span><span class="s1">'morzer fleet publish --dry-run --json'</span><span class="w"> </span><span class="p">|</span>
+<span class="w">  </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'"  - product: " + .data.row.product,</span>
+<span class="s1">         "    id: "      + .data.row.installation_id,</span>
+<span class="s1">         "    key: "     + .data.row.signing_key'</span>
 </code></pre></div>
 <p>The key has to arrive out of band — that is the whole point of it being the
 anchor. A dry run mints nothing, so this is safe to run on a machine that has

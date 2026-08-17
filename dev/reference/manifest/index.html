@@ -1629,10 +1629,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#runtime-deprecated" class="md-nav__link">
+  <a href="#runtime-deprecated-removed-in-040" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        runtime (deprecated)
+        runtime (deprecated, removed in 0.4.0)
       </span>
     </span>
   </a>
@@ -2291,10 +2291,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#runtime-deprecated" class="md-nav__link">
+  <a href="#runtime-deprecated-removed-in-040" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        runtime (deprecated)
+        runtime (deprecated, removed in 0.4.0)
       </span>
     </span>
   </a>
@@ -2905,10 +2905,16 @@ transitions. The state directory records volume names and image references that
 belong to one runtime, so changing it is a migration of everything the manager
 knows rather than a setting. A release that does not declare the runtime an
 installation was created against is refused rather than run on a substitute.</p>
-<h2 id="runtime-deprecated">runtime (deprecated)<a class="headerlink" href="#runtime-deprecated" title="Permanent link">&para;</a></h2>
+<h2 id="runtime-deprecated-removed-in-040">runtime (deprecated, removed in 0.4.0)<a class="headerlink" href="#runtime-deprecated-removed-in-040" title="Permanent link">&para;</a></h2>
 <p>The original single-runtime block. Still read, so releases built before
 <code>runtimes</code> existed keep installing; a manifest declaring both is refused,
 because merging them would pick a winner the vendor never nominated.</p>
+<p><strong>It stops being read in 0.4.0.</strong> Until then a bundle using it installs
+normally, and says so at the two moments somebody can act on it: <code>release
+verify</code>, so a vendor's CI reports it before the bundle is published, and <code>init</code>
+and <code>update</code>, so an operator choosing this bundle can ask their vendor for one
+written the new way. No other command warns — a manifest an operator did not
+write and cannot change is not something to be told about on every invocation.</p>
 <table>
 <thead>
 <tr>
@@ -2943,8 +2949,11 @@ because merging them would pick a winner the vendor never nominated.</p>
 nothing else, with <code>project</code> read as <code>runtimes.compose.options.project</code>.</p>
 <p>Adopting <code>runtimes</code> means moving the files under <code>runtimes.compose</code>, <strong>moving
 <code>project</code> to <code>runtimes.compose.options.project</code></strong>, and deleting the old block —
-and, per the versioning rules, raising <code>compatibility.min_manager_version</code> to a
-manager that knows the field.</p>
+and raising <code>compatibility.min_manager_version</code> to <code>0.3.0</code>, the manager that
+added the field. That last step is not optional bookkeeping: <code>runtimes</code> is an
+unknown field to anything older, and under strict decoding an unknown field
+refuses the whole manifest, so without the floor your customer gets a report
+about a typo instead of an upgrade requirement.</p>
 <p>Do not drop <code>project</code> on the way. It is the namespace every volume, network and
 container of a running deployment lives in, so a release that loses it points
 existing installations at storage that does not exist. A <code>project:</code> left behind
@@ -3649,7 +3658,7 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="w">  </span><span class="nt">support_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://support.example/demo</span>
 
 <span class="nt">providers</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">runtime</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">compose</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">runtime</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">compose</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=2.30"</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">secrets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">sops-age</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">backup</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">hooks</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">health</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">}</span>
@@ -3665,17 +3674,17 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="nt">requirements</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">architectures</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">amd64</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">arm64</span><span class="p p-Indicator">]</span>
 <span class="w">  </span><span class="nt">os</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">ubuntu</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=22.04&quot;</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">debian</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=12&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">ubuntu</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=22.04"</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">debian</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=12"</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">tools</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">docker</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=24&quot;</span>
-<span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span>
+<span class="w">    </span><span class="nt">docker</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=24"</span>
+<span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=2.30"</span>
 <span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2GiB</span>
 <span class="w">  </span><span class="nt">disk</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5GiB</span>
 <span class="w">  </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="w">  </span><span class="c1"># Follows the parameter rather than restating it: preflight has to check the</span>
 <span class="w">  </span><span class="c1"># port this deployment will actually publish, not the one the vendor chose.</span>
-<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}"</span><span class="p p-Indicator">]</span>
 
 <span class="c1"># What an operator may change, and nothing else. Each reaches Compose as</span>
 <span class="c1"># &lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;, templates as .Parameters.&lt;name&gt;, and hooks the same</span>
@@ -3701,7 +3710,7 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="nt">configuration</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml.tmpl</span>
 <span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/application.yaml</span>
-<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0640&quot;</span>
+<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">"0640"</span>
 
 <span class="nt">secrets</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/secrets.sops.yaml</span>
@@ -3711,22 +3720,22 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="nt">operations</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">migrate</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/migrate&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/migrate"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
 <span class="w">  </span><span class="nt">smoke_test</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/smoke-test&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/smoke-test"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
 <span class="w">  </span><span class="nt">backup</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/backup&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/backup"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60m</span>
 <span class="w">  </span><span class="nt">restore</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/restore&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/restore"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">120m</span>
 
-<span class="c1"># What the manager may do about this project&#39;s named volumes, which it captures</span>
+<span class="c1"># What the manager may do about this project's named volumes, which it captures</span>
 <span class="c1"># itself rather than through the backup hook above.</span>
 <span class="c1">#</span>
 <span class="c1"># A volume left out of this map is captured *cold*: the services that mount it</span>
@@ -3735,7 +3744,7 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="c1">#</span>
 <span class="c1"># `consistency: hot` is a claim that a copy taken while the product is running</span>
 <span class="c1"># is a usable one -- true for files written once and never modified, false for</span>
-<span class="c1"># anything with a write-ahead log. It is the vendor&#39;s claim, not the manager&#39;s</span>
+<span class="c1"># anything with a write-ahead log. It is the vendor's claim, not the manager's</span>
 <span class="c1"># guess, and every backup manifest records which one applied.</span>
 <span class="nt">backup</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
@@ -3744,17 +3753,17 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="nt">health</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">checks</span><span class="p">:</span>
 <span class="w">    </span><span class="c1"># Follows the parameter too. A probe on a port the deployment does not</span>
-<span class="w">    </span><span class="c1"># publish is an `apply` that fails at &quot;wait for health&quot; on a system that</span>
+<span class="w">    </span><span class="c1"># publish is an `apply` that fails at "wait for health" on a system that</span>
 <span class="w">    </span><span class="c1"># is working.</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}/health/ready&quot;</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">command</span><span class="p p-Indicator">,</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/check-db&quot;</span><span class="p p-Indicator">],</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">15s</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">"http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}/health/ready"</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">command</span><span class="p p-Indicator">,</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/check-db"</span><span class="p p-Indicator">],</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">15s</span><span class="p p-Indicator">}</span>
 
 <span class="nt">compatibility</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">database_schema_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
 <span class="w">  </span><span class="nt">database_schema_max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
 <span class="w">  </span><span class="nt">rollback_safe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.0.0&quot;</span>
-<span class="w">  </span><span class="nt">upgrade_from</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=1.0.0</span><span class="nv"> </span><span class="s">&lt;2.0.0&quot;</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.0.0"</span>
+<span class="w">  </span><span class="nt">upgrade_from</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=1.0.0</span><span class="nv"> </span><span class="s">&lt;2.0.0"</span>
 
 <span class="nt">retention</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">releases</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>

@@ -2410,7 +2410,7 @@ failed read is not evidence that there are none.</p>
 <p><strong><code>machine.ports</code></strong> warns when two installations declare the same host port:</p>
 <div class="highlight"><pre><span></span><code>! no two installations publish the same port
   two installations want the same host port: 18080 (demo, sandbox)
-  they cannot both run; change one release&#39;s port parameter with
+  they cannot both run; change one release's port parameter with
   `morzer --product &lt;name&gt; config set`, or keep only one started
 </code></pre></div>
 <p>They cannot both run. Without this check the second one's <code>apply</code> fails inside

@@ -2220,7 +2220,7 @@ detail.</p>
 <div class="highlight"><span class="filename">manifest.yaml</span><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">migrate</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/migrate&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/migrate"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
 </code></pre></div>
 <p>A hook is a file in your bundle with the executable bit set. A declared hook
@@ -2232,10 +2232,10 @@ work. The command is resolved against the release root too: a hook named
 name.</p>
 <h2 id="what-a-hook-is-told">What a hook is told<a class="headerlink" href="#what-a-hook-is-told" title="Permanent link">&para;</a></h2>
 <p>Everything arrives as environment variables namespaced with your product name:</p>
-<div class="highlight"><pre><span></span><code><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">&quot;</span>
-<span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_BACKUP_DIR</span><span class="p">:?</span><span class="si">}</span><span class="s2">&quot;</span>
-<span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_SECRETS_DIR</span><span class="p">:?</span><span class="si">}</span><span class="s2">&quot;</span>
-<span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">&quot;</span>
+<div class="highlight"><pre><span></span><code><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">"</span>
+<span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_BACKUP_DIR</span><span class="p">:?</span><span class="si">}</span><span class="s2">"</span>
+<span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_SECRETS_DIR</span><span class="p">:?</span><span class="si">}</span><span class="s2">"</span>
+<span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">"</span>
 </code></pre></div>
 <p>Use <code>:?</code> as above. A hook that silently does nothing because a variable was
 empty is much worse than one that fails loudly with the variable's name.</p>
@@ -2270,8 +2270,8 @@ readable.</p>
 <p>Structured output goes to <strong>file descriptor 3</strong>, not stdout — stdout is your
 log, and a hook whose logging is constrained by the manager's parsing is a hook
 you will fight with:</p>
-<div class="highlight"><pre><span></span><code><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;{&quot;message&quot;:&quot;migrated %s -&gt; %s&quot;,&quot;schema_version&quot;:%s}&#39;</span><span class="w"> </span><span class="se">\</span>
-<span class="w">    </span><span class="s2">&quot;</span><span class="nv">$current</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$target</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$target</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">&quot;</span>
+<div class="highlight"><pre><span></span><code><span class="nb">printf</span><span class="w"> </span><span class="s1">'{"message":"migrated %s -&gt; %s","schema_version":%s}'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="s2">"</span><span class="nv">$current</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$target</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$target</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">"</span>
 </code></pre></div>
 <h2 id="the-migrate-hook">The migrate hook<a class="headerlink" href="#the-migrate-hook" title="Permanent link">&para;</a></h2>
 <p>The most consequential one, because what it reports decides whether a rollback
@@ -2284,23 +2284,23 @@ is allowed later:</p>
 <span class="c1"># later reason about compatibility without re-running this tooling.</span>
 <span class="nb">set</span><span class="w"> </span>-eu
 
-<span class="nv">marker</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">/.schema&quot;</span>
+<span class="nv">marker</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">/.schema"</span>
 <span class="nv">target</span><span class="o">=</span><span class="m">12</span>
 
-mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>dirname<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$marker</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>dirname<span class="w"> </span><span class="s2">"</span><span class="nv">$marker</span><span class="s2">"</span><span class="k">)</span><span class="s2">"</span>
 <span class="nv">current</span><span class="o">=</span><span class="m">0</span>
-<span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$marker</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">current</span><span class="o">=</span><span class="k">$(</span>cat<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$marker</span><span class="s2">&quot;</span><span class="k">)</span>
+<span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="nv">$marker</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">current</span><span class="o">=</span><span class="k">$(</span>cat<span class="w"> </span><span class="s2">"</span><span class="nv">$marker</span><span class="s2">"</span><span class="k">)</span>
 
-<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$current</span><span class="s2">&quot;</span><span class="w"> </span>-ge<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$target</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
-<span class="w">    </span><span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;{&quot;message&quot;:&quot;schema already at %s&quot;,&quot;schema_version&quot;:%s,&quot;skipped&quot;:true}&#39;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$current</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$current</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">&quot;</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;schema already at </span><span class="nv">$current</span><span class="s2">&quot;</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">"</span><span class="nv">$current</span><span class="s2">"</span><span class="w"> </span>-ge<span class="w"> </span><span class="s2">"</span><span class="nv">$target</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'{"message":"schema already at %s","schema_version":%s,"skipped":true}'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$current</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$current</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"schema already at </span><span class="nv">$current</span><span class="s2">"</span>
 <span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">2</span>
 <span class="k">fi</span>
 
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;migrating schema </span><span class="nv">$current</span><span class="s2"> -&gt; </span><span class="nv">$target</span><span class="s2">&quot;</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$target</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$marker</span><span class="s2">&quot;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"migrating schema </span><span class="nv">$current</span><span class="s2"> -&gt; </span><span class="nv">$target</span><span class="s2">"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$target</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$marker</span><span class="s2">"</span>
 
-<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;{&quot;message&quot;:&quot;migrated %s -&gt; %s&quot;,&quot;schema_version&quot;:%s}&#39;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$current</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$target</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$target</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">'{"message":"migrated %s -&gt; %s","schema_version":%s}'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$current</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$target</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$target</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">"</span>
 </code></pre></div>
 <p>Three things to copy from it:</p>
 <ol>
@@ -2324,29 +2324,29 @@ a human clears it. Write migrations that fail cleanly.</p>
 <div class="highlight"><span class="filename">testdata/bundle/hooks/backup</span><pre><span></span><code><span class="ch">#!/bin/sh</span>
 <span class="c1"># Backup hook.</span>
 <span class="c1">#</span>
-<span class="c1"># The manager creates and owns BACKUP_DIR; this hook writes the product&#39;s own</span>
+<span class="c1"># The manager creates and owns BACKUP_DIR; this hook writes the product's own</span>
 <span class="c1"># data into it and reports what it produced, with checksums, on the result</span>
 <span class="c1"># descriptor.</span>
 <span class="nb">set</span><span class="w"> </span>-eu
 
-<span class="nv">dir</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_BACKUP_DIR</span><span class="p">:?DEMO_BACKUP_DIR is required</span><span class="si">}</span><span class="s2">&quot;</span>
-<span class="nv">data</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="nv">dir</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_BACKUP_DIR</span><span class="p">:?DEMO_BACKUP_DIR is required</span><span class="si">}</span><span class="s2">"</span>
+<span class="nv">data</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">"</span>
 
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;dumping database&quot;</span>
-<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$data</span><span class="s2">/.schema&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
-<span class="w">    </span>cp<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$data</span><span class="s2">/.schema&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$dir</span><span class="s2">/database.sql&quot;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"dumping database"</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="nv">$data</span><span class="s2">/.schema"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span>cp<span class="w"> </span><span class="s2">"</span><span class="nv">$data</span><span class="s2">/.schema"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$dir</span><span class="s2">/database.sql"</span>
 <span class="k">else</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;-- empty database&quot;</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$dir</span><span class="s2">/database.sql&quot;</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"-- empty database"</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$dir</span><span class="s2">/database.sql"</span>
 <span class="k">fi</span>
 
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;archiving files&quot;</span>
-tar<span class="w"> </span>-cf<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$dir</span><span class="s2">/files.tar&quot;</span><span class="w"> </span>-C<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$data</span><span class="s2">&quot;</span><span class="w"> </span>.<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span>tar<span class="w"> </span>-cf<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$dir</span><span class="s2">/files.tar&quot;</span><span class="w"> </span>-T<span class="w"> </span>/dev/null
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"archiving files"</span>
+tar<span class="w"> </span>-cf<span class="w"> </span><span class="s2">"</span><span class="nv">$dir</span><span class="s2">/files.tar"</span><span class="w"> </span>-C<span class="w"> </span><span class="s2">"</span><span class="nv">$data</span><span class="s2">"</span><span class="w"> </span>.<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span>tar<span class="w"> </span>-cf<span class="w"> </span><span class="s2">"</span><span class="nv">$dir</span><span class="s2">/files.tar"</span><span class="w"> </span>-T<span class="w"> </span>/dev/null
 
 <span class="nv">schema</span><span class="o">=</span><span class="m">0</span>
-<span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$data</span><span class="s2">/.schema&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">schema</span><span class="o">=</span><span class="k">$(</span>cat<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$data</span><span class="s2">/.schema&quot;</span><span class="k">)</span>
+<span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="nv">$data</span><span class="s2">/.schema"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">schema</span><span class="o">=</span><span class="k">$(</span>cat<span class="w"> </span><span class="s2">"</span><span class="nv">$data</span><span class="s2">/.schema"</span><span class="k">)</span>
 
-<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;{&quot;message&quot;:&quot;backup complete&quot;,&quot;schema_version&quot;:%s,&quot;artifacts&quot;:[{&quot;name&quot;:&quot;database&quot;,&quot;path&quot;:&quot;database.sql&quot;},{&quot;name&quot;:&quot;files&quot;,&quot;path&quot;:&quot;files.tar&quot;}]}&#39;</span><span class="w"> </span><span class="se">\</span>
-<span class="w">    </span><span class="s2">&quot;</span><span class="nv">$schema</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">'{"message":"backup complete","schema_version":%s,"artifacts":[{"name":"database","path":"database.sql"},{"name":"files","path":"files.tar"}]}'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="s2">"</span><span class="nv">$schema</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">"</span>
 </code></pre></div>
 <p>The manager creates and owns <code>BACKUP_DIR</code>; you write into it and report what you
 produced, with checksums, so the backup manifest is self-describing and
@@ -2360,24 +2360,24 @@ from the operator:</p>
 <span class="c1"># runs.</span>
 <span class="nb">set</span><span class="w"> </span>-eu
 
-<span class="nv">dir</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_BACKUP_DIR</span><span class="p">:?DEMO_BACKUP_DIR is required</span><span class="si">}</span><span class="s2">&quot;</span>
-<span class="nv">data</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="nv">dir</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_BACKUP_DIR</span><span class="p">:?DEMO_BACKUP_DIR is required</span><span class="si">}</span><span class="s2">"</span>
+<span class="nv">data</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">"</span>
 
-mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$data</span><span class="s2">&quot;</span>
+mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$data</span><span class="s2">"</span>
 
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;restoring files&quot;</span>
-<span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$dir</span><span class="s2">/files.tar&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>tar<span class="w"> </span>-xf<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$dir</span><span class="s2">/files.tar&quot;</span><span class="w"> </span>-C<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$data</span><span class="s2">&quot;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"restoring files"</span>
+<span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="nv">$dir</span><span class="s2">/files.tar"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>tar<span class="w"> </span>-xf<span class="w"> </span><span class="s2">"</span><span class="nv">$dir</span><span class="s2">/files.tar"</span><span class="w"> </span>-C<span class="w"> </span><span class="s2">"</span><span class="nv">$data</span><span class="s2">"</span>
 
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;restoring database&quot;</span>
-<span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$dir</span><span class="s2">/database.sql&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$dir</span><span class="s2">/database.sql&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$data</span><span class="s2">/.schema&quot;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"restoring database"</span>
+<span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="nv">$dir</span><span class="s2">/database.sql"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span><span class="s2">"</span><span class="nv">$dir</span><span class="s2">/database.sql"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$data</span><span class="s2">/.schema"</span>
 
-<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;{&quot;message&quot;:&quot;restore complete&quot;}&#39;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">'{"message":"restore complete"}'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">"</span>
 </code></pre></div>
 <h2 id="health-checks">Health checks<a class="headerlink" href="#health-checks" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nt">health</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">checks</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:18080/health/ready&quot;</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">command</span><span class="p p-Indicator">,</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/check-db&quot;</span><span class="p p-Indicator">],</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">15s</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">"http://127.0.0.1:18080/health/ready"</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">command</span><span class="p p-Indicator">,</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/check-db"</span><span class="p p-Indicator">],</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">15s</span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>An <code>http</code> check runs from the <strong>host</strong>, so the port has to be published by your
 Compose file. A <code>command</code> check is a hook, for anything HTTP cannot answer:</p>
@@ -2386,12 +2386,12 @@ Compose file. A <code>command</code> check is a hook, for anything HTTP cannot a
 <span class="c1"># the version the running release expects.</span>
 <span class="nb">set</span><span class="w"> </span>-eu
 
-<span class="nv">marker</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">/.schema&quot;</span>
-<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>!<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$marker</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;schema marker is missing&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="nv">marker</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_DATA_DIR</span><span class="p">:?DEMO_DATA_DIR is required</span><span class="si">}</span><span class="s2">/.schema"</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>!<span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="nv">$marker</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"schema marker is missing"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
 <span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
 <span class="k">fi</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;schema at </span><span class="k">$(</span>cat<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$marker</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"schema at </span><span class="k">$(</span>cat<span class="w"> </span><span class="s2">"</span><span class="nv">$marker</span><span class="s2">"</span><span class="k">)</span><span class="s2">"</span>
 </code></pre></div>
 <h2 id="the-smoke-test">The smoke test<a class="headerlink" href="#the-smoke-test" title="Permanent link">&para;</a></h2>
 <p>Runs after health passes, and answers a different question: not "is it up" but
@@ -2400,17 +2400,17 @@ Compose file. A <code>command</code> check is a hook, for anything HTTP cannot a
 <span class="c1"># Smoke test: verifies the product is not merely up but behaving.</span>
 <span class="nb">set</span><span class="w"> </span>-eu
 
-<span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_CONFIG_FILE</span><span class="p">:?DEMO_CONFIG_FILE is required</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;configuration file is missing&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_CONFIG_FILE</span><span class="p">:?DEMO_CONFIG_FILE is required</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"configuration file is missing"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
 <span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
 <span class="o">}</span>
-<span class="nb">test</span><span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_SECRETS_DIR</span><span class="p">:?DEMO_SECRETS_DIR is required</span><span class="si">}</span><span class="s2">/db_password&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;db_password was not rendered&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="nb">test</span><span class="w"> </span>-r<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_SECRETS_DIR</span><span class="p">:?DEMO_SECRETS_DIR is required</span><span class="si">}</span><span class="s2">/db_password"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"db_password was not rendered"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
 <span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
 <span class="o">}</span>
 
-<span class="nb">printf</span><span class="w"> </span><span class="s1">&#39;{&quot;message&quot;:&quot;smoke test passed&quot;}&#39;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">&quot;</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;smoke test passed&quot;</span>
+<span class="nb">printf</span><span class="w"> </span><span class="s1">'{"message":"smoke test passed"}'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"smoke test passed"</span>
 </code></pre></div>
 <p>A smoke-test failure fails the <code>apply</code>, and on an update that means the release
 pointer goes back. Make it check something that would actually be broken by a

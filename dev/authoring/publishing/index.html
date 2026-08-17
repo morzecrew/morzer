@@ -2340,11 +2340,11 @@ has to produce a bundle. Two rules it must keep, both of which the commands
 above keep for you:</p>
 <div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>./my-product
 find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS<span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span>SHA256SUMS.minisig<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>-exec<span class="w"> </span>sha256sum<span class="w"> </span><span class="o">{}</span><span class="w"> </span>+<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">&#39;s| \./| |&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>SHA256SUMS
+<span class="w">    </span>-exec<span class="w"> </span>sha256sum<span class="w"> </span><span class="o">{}</span><span class="w"> </span>+<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">'s| \./| |'</span><span class="w"> </span>&gt;<span class="w"> </span>SHA256SUMS
 minisign<span class="w"> </span>-Sm<span class="w"> </span>SHA256SUMS
 
 <span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span>manifest.yaml
-<span class="w">  </span>find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>!<span class="w"> </span>-path<span class="w"> </span>./manifest.yaml<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">&#39;s|^\./||&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="nv">LC_ALL</span><span class="o">=</span>C<span class="w"> </span>sort
+<span class="w">  </span>find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>!<span class="w"> </span>-path<span class="w"> </span>./manifest.yaml<span class="w"> </span><span class="p">|</span><span class="w"> </span>sed<span class="w"> </span><span class="s1">'s|^\./||'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="nv">LC_ALL</span><span class="o">=</span>C<span class="w"> </span>sort
 <span class="o">}</span><span class="w"> </span>&gt;<span class="w"> </span>../entries.txt
 tar<span class="w"> </span>--zstd<span class="w"> </span>-cf<span class="w"> </span>../demo-1.3.0.tar.zst<span class="w"> </span>--no-recursion<span class="w"> </span>-T<span class="w"> </span>../entries.txt
 </code></pre></div>

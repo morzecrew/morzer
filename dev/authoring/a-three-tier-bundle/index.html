@@ -2286,7 +2286,7 @@ change waits for the next <code>apply</code> rather than claiming it took effect
 <span class="w">  </span><span class="nt">frontend</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${WEB_IMAGE_FRONTEND:-…}</span>
 <span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;${WEB_PARAM_HTTP_PORT:-18080}:8080&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"${WEB_PARAM_HTTP_PORT:-18080}:8080"</span>
 <span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
 <span class="w">      </span><span class="nt">WEB_LOG_LEVEL</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${WEB_PARAM_LOG_LEVEL:-info}</span>
 <span class="w">      </span><span class="nt">WEB_API_URL</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://backend:8080</span>
@@ -2296,7 +2296,7 @@ change waits for the next <code>apply</code> rather than claiming it took effect
 <span class="w">  </span><span class="nt">backend</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${WEB_IMAGE_BACKEND:-…}</span>
 <span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;${WEB_PARAM_API_PORT:-18081}:8080&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"${WEB_PARAM_API_PORT:-18081}:8080"</span>
 <span class="w">    </span><span class="nt">secrets</span><span class="p">:</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db_password</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">session_key</span>
@@ -2308,13 +2308,13 @@ reach from outside needs publishing at all.</p>
 <p>Both, for both tiers:</p>
 <div class="highlight"><pre><span></span><code><span class="nt">requirements</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">ports</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}&quot;</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.Parameters.api_port</span><span class="nv"> </span><span class="s">}}&quot;</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"{{</span><span class="nv"> </span><span class="s">.Parameters.api_port</span><span class="nv"> </span><span class="s">}}"</span>
 
 <span class="nt">health</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">checks</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">web</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}/health/ready&quot;</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.api_port</span><span class="nv"> </span><span class="s">}}/health/ready&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">web</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">"http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}/health/ready"</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">"http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.api_port</span><span class="nv"> </span><span class="s">}}/health/ready"</span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>Writing a literal here is the mistake this exists to prevent: the deployment
 publishes the port the operator chose, preflight checks the one you wrote, and

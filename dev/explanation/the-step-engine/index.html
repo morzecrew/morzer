@@ -2252,7 +2252,7 @@ which destroys the value of the one signal meant to stop them.</p>
 <p>Migrations and restores declare it. Health checks do not.</p>
 <h2 id="the-journal">The journal<a class="headerlink" href="#the-journal" title="Permanent link">&para;</a></h2>
 <p>Every transition is written <strong>before and after</strong> the work:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="s2">&quot;op_01KZ…&quot;</span><span class="p">,</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="s2">&quot;update&quot;</span><span class="p">,</span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="s2">&quot;running&quot;</span><span class="p">,</span><span class="nt">&quot;steps&quot;</span><span class="p">:[</span><span class="err">…</span><span class="p">]}</span>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"id"</span><span class="p">:</span><span class="s2">"op_01KZ…"</span><span class="p">,</span><span class="nt">"type"</span><span class="p">:</span><span class="s2">"update"</span><span class="p">,</span><span class="nt">"status"</span><span class="p">:</span><span class="s2">"running"</span><span class="p">,</span><span class="nt">"steps"</span><span class="p">:[</span><span class="err">…</span><span class="p">]}</span>
 </code></pre></div>
 <p>Before, so a crash mid-step leaves a record saying which step was in flight.
 After, so a completed step is known to be complete. That is what makes <code>--resume</code>

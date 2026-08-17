@@ -2184,7 +2184,7 @@ they only upper-case.</p>
 <span class="w">  </span><span class="nt">app</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${DEMO_IMAGE_APP:-registry.example/demo/app@sha256:…}</span>
 <span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;${DEMO_PARAM_HTTP_PORT:-18080}:8080&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"${DEMO_PARAM_HTTP_PORT:-18080}:8080"</span>
 <span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${DEMO_CONFIG_FILE:-/etc/demo/application.yaml}:/etc/demo/application.yaml:ro</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${DEMO_DATA_DIR:-/var/lib/demo/data}:/var/lib/demo:rw</span>
@@ -2248,7 +2248,7 @@ available:</p>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code><span class="nt">server</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">.Installation.URL | default &quot;http</span><span class="p p-Indicator">:</span><span class="nv">//localhost</span><span class="p p-Indicator">:</span><span class="nv">8080&quot;</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">.Installation.URL | default "http</span><span class="p p-Indicator">:</span><span class="nv">//localhost</span><span class="p p-Indicator">:</span><span class="nv">8080"</span><span class="w"> </span><span class="p p-Indicator">}}</span>
 <span class="w">  </span><span class="nt">http_port</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">.Parameters.http_port</span><span class="w"> </span><span class="p p-Indicator">}}</span>
 <span class="w">  </span><span class="nt">domains</span><span class="p">:</span>
 <span class="p p-Indicator">{{</span><span class="nv">- range .Domains</span><span class="w"> </span><span class="p p-Indicator">}}</span>
@@ -2263,7 +2263,7 @@ available:</p>
 <span class="w">  </span><span class="nt">data</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">.Paths.Data</span><span class="w"> </span><span class="p p-Indicator">}}</span>
 
 <span class="nt">secrets</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">db_password_file</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">secretFile .Secrets &quot;db_password&quot;</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+<span class="w">  </span><span class="nt">db_password_file</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">secretFile .Secrets "db_password"</span><span class="w"> </span><span class="p p-Indicator">}}</span>
 </code></pre></div>
 <p><code>secretFile</code> is a helper that fails loudly when the named secret is not
 declared, rather than rendering an empty path a service would then fail to open

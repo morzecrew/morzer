@@ -2231,16 +2231,16 @@ configured, so its output is the reference to copy — checking it beats assumin
 morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>https://releases.example/demo-1.3.0.tar.zst
 <span class="c1"># or download it directly; the file is what matters, not how it arrived.</span>
 
-<span class="c1"># 2. The manager&#39;s volume helper image, which is not in the manifest and does</span>
+<span class="c1"># 2. The manager's volume helper image, which is not in the manifest and does</span>
 <span class="c1">#    not travel in any bundle. Take the exact reference from `morzer doctor` --</span>
 <span class="c1">#    it is busybox unless MORZER_VOLUME_HELPER_IMAGE names another.</span>
 <span class="nv">HELPER</span><span class="o">=</span><span class="k">$(</span>morzer<span class="w"> </span>doctor<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span>
-<span class="w">    </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.data.results[] | select(.id == &quot;backup.volume-helper&quot;)</span>
-<span class="s1">           | .message, .remedy&#39;</span><span class="w"> </span><span class="p">|</span>
-<span class="w">    </span>grep<span class="w"> </span>-o<span class="w"> </span><span class="s1">&#39;[^ ]*@sha256:[a-f0-9]\{64\}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
-<span class="nb">test</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HELPER</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;doctor did not report a helper image&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
-docker<span class="w"> </span>pull<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HELPER</span><span class="s2">&quot;</span>
-docker<span class="w"> </span>save<span class="w"> </span>-o<span class="w"> </span>helper.tar<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HELPER</span><span class="s2">&quot;</span>
+<span class="w">    </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.data.results[] | select(.id == "backup.volume-helper")</span>
+<span class="s1">           | .message, .remedy'</span><span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>grep<span class="w"> </span>-o<span class="w"> </span><span class="s1">'[^ ]*@sha256:[a-f0-9]\{64\}'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
+<span class="nb">test</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$HELPER</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"doctor did not report a helper image"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+docker<span class="w"> </span>pull<span class="w"> </span><span class="s2">"</span><span class="nv">$HELPER</span><span class="s2">"</span>
+docker<span class="w"> </span>save<span class="w"> </span>-o<span class="w"> </span>helper.tar<span class="w"> </span><span class="s2">"</span><span class="nv">$HELPER</span><span class="s2">"</span>
 </code></pre></div>
 <p><code>docker save</code> is fine for the helper and wrong for the release's images, and the
 difference is not arbitrary. The manager finds the helper <strong>by tag</strong>, which a
@@ -2252,7 +2252,7 @@ vendor's signing key if the installation requires signatures.</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># 1. The volume helper, so backups can capture volumes later.</span>
 docker<span class="w"> </span>load<span class="w"> </span>&lt;<span class="w"> </span>helper.tar
 
-<span class="c1"># 2. Install the manager&#39;s own state. No network needed: the bundle is a file,</span>
+<span class="c1"># 2. Install the manager's own state. No network needed: the bundle is a file,</span>
 <span class="c1">#    and staging it loads the images it carries.</span>
 morzer<span class="w"> </span>init<span class="w"> </span>--release<span class="w"> </span>./demo-1.3.0.tar.zst<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--profile<span class="w"> </span>embedded<span class="w"> </span><span class="se">\</span>

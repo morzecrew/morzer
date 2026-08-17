@@ -2225,14 +2225,25 @@ real Docker on every CI run, so what you are reading is what passes.</p>
 <span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Demo self-hosted bundle used by the test suite</span>
 <span class="w">  </span><span class="nt">vendor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">example</span>
 
-<span class="nt">runtime</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
-<span class="w">  </span><span class="nt">files</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
-<span class="w">  </span><span class="nt">profiles</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
-<span class="w">    </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
+<span class="nt">runtimes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">compose</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
+<span class="w">    </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">options</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
 </code></pre></div>
+<p><strong><code>runtimes</code> names which runtimes this release supports</strong>, and its keys are the
+declaration — there is no separate field saying which one. <code>options</code> holds
+settings that runtime understands and the manager does not; <code>project</code> is
+Compose's, and it is the namespace every volume, network and container of the
+deployment lives in, so it is the one field here you must not change after a
+release has shipped.</p>
+<p>The older spelling is a single <code>runtime:</code> block with the files directly under
+it. It is still read, and it stops being read in 0.4.0 — <code>release verify</code> says
+so when it meets one.</p>
 <p><strong>That first line is worth typing.</strong> It is a comment, so a manifest without it
 behaves identically and an editor that ignores it loses nothing — but every
 editor that speaks the language-server protocol reads it and gives you
@@ -2266,11 +2277,11 @@ in agreement, and the manifest is the one the manager verifies.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">requirements</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">architectures</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">amd64</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">arm64</span><span class="p p-Indicator">]</span>
 <span class="w">  </span><span class="nt">os</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">ubuntu</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=22.04&quot;</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">debian</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=12&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">ubuntu</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=22.04"</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">debian</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=12"</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">tools</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">docker</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=24&quot;</span>
-<span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span>
+<span class="w">    </span><span class="nt">docker</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=24"</span>
+<span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=2.30"</span>
 <span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2GiB</span>
 <span class="w">  </span><span class="nt">disk</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5GiB</span>
 <span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">18080</span><span class="p p-Indicator">]</span>
@@ -2284,7 +2295,7 @@ declared too tightly is an installation that refuses for no reason.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">configuration</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml.tmpl</span>
 <span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/application.yaml</span>
-<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0640&quot;</span>
+<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">"0640"</span>
 </code></pre></div>
 <p>The <code>.tmpl</code> suffix is a convention, not a requirement — the manifest names the
 path, so morzer has no business dictating filenames it was handed the location
@@ -2296,8 +2307,8 @@ Go templates in your editor and the noise stops.</p>
 <p>Rendered with the installation's own facts. <strong>Secrets appear as paths, never as
 values</strong> — there is a <code>secretFile</code> helper for exactly this:</p>
 <div class="highlight"><span class="filename">templates/application.yaml.tmpl</span><pre><span></span><code><span class="nt">secrets</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">db_password_file</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">secretFile .Secrets &quot;db_password&quot;</span><span class="w"> </span><span class="p p-Indicator">}}</span>
-<span class="w">  </span><span class="nt">session_key_file</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">secretFile .Secrets &quot;session_key&quot;</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+<span class="w">  </span><span class="nt">db_password_file</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">secretFile .Secrets "db_password"</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+<span class="w">  </span><span class="nt">session_key_file</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">secretFile .Secrets "session_key"</span><span class="w"> </span><span class="p p-Indicator">}}</span>
 </code></pre></div>
 <p>A rendered config in <code>/etc</code> that contained a credential would be a credential in
 every backup, every support bundle and every <code>cat</code> an operator ever runs.</p>
@@ -2306,8 +2317,8 @@ every backup, every support bundle and every <code>cat</code> an operator ever r
 <span class="w">  </span><span class="nt">database_schema_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
 <span class="w">  </span><span class="nt">database_schema_max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
 <span class="w">  </span><span class="nt">rollback_safe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.0.0&quot;</span>
-<span class="w">  </span><span class="nt">upgrade_from</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=1.0.0</span><span class="nv"> </span><span class="s">&lt;2.0.0&quot;</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.3.0"</span>
+<span class="w">  </span><span class="nt">upgrade_from</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=1.0.0</span><span class="nv"> </span><span class="s">&lt;2.0.0"</span>
 </code></pre></div>
 <p>The four declarations that make an update decidable without running it:</p>
 <ul>
@@ -2315,7 +2326,10 @@ every backup, every support bundle and every <code>cat</code> an operator ever r
 <li><strong><code>database_schema_min</code>/<code>max</code></strong> — which schemas this release can read. The
   manager knows the running schema because your migrate hook reported it.</li>
 <li><strong><code>rollback_safe</code></strong> — whether returning to the previous release is safe.</li>
-<li><strong><code>min_manager_version</code></strong> — the oldest manager that may install this.</li>
+<li><strong><code>min_manager_version</code></strong> — the oldest manager that may install this. <code>0.3.0</code>
+  here because the manifest above uses <code>runtimes</code>, which older managers do not
+  know: an unknown field refuses the whole manifest under strict decoding, and
+  this is what turns that refusal into a sentence naming the real problem.</li>
 </ul>
 <p>Set <code>rollback_safe: false</code> when your migrations are one-way. The manager will
 refuse the rollback and name the pre-update backup instead, which is the honest
@@ -2393,7 +2407,7 @@ is worth reading once before you rely on it.</p>
 <span class="w">  </span><span class="nt">support_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://support.example/demo</span>
 
 <span class="nt">providers</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">runtime</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">compose</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">runtime</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">compose</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=2.30"</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">secrets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">sops-age</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">backup</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">hooks</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">health</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">}</span>
@@ -2409,17 +2423,17 @@ is worth reading once before you rely on it.</p>
 <span class="nt">requirements</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">architectures</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">amd64</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">arm64</span><span class="p p-Indicator">]</span>
 <span class="w">  </span><span class="nt">os</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">ubuntu</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=22.04&quot;</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">debian</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=12&quot;</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">ubuntu</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=22.04"</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="nv">debian</span><span class="p p-Indicator">,</span><span class="nt"> version</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=12"</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">tools</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">docker</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=24&quot;</span>
-<span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=2.30&quot;</span>
+<span class="w">    </span><span class="nt">docker</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=24"</span>
+<span class="w">    </span><span class="nt">compose</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=2.30"</span>
 <span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2GiB</span>
 <span class="w">  </span><span class="nt">disk</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5GiB</span>
 <span class="w">  </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="w">  </span><span class="c1"># Follows the parameter rather than restating it: preflight has to check the</span>
 <span class="w">  </span><span class="c1"># port this deployment will actually publish, not the one the vendor chose.</span>
-<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}"</span><span class="p p-Indicator">]</span>
 
 <span class="c1"># What an operator may change, and nothing else. Each reaches Compose as</span>
 <span class="c1"># &lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;, templates as .Parameters.&lt;name&gt;, and hooks the same</span>
@@ -2445,7 +2459,7 @@ is worth reading once before you rely on it.</p>
 <span class="nt">configuration</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">template</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">templates/application.yaml.tmpl</span>
 <span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/application.yaml</span>
-<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0640&quot;</span>
+<span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="s">"0640"</span>
 
 <span class="nt">secrets</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/secrets.sops.yaml</span>
@@ -2455,22 +2469,22 @@ is worth reading once before you rely on it.</p>
 <span class="nt">operations</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">migrate</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/migrate&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/migrate"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
 <span class="w">  </span><span class="nt">smoke_test</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/smoke-test&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/smoke-test"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
 <span class="w">  </span><span class="nt">backup</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/backup&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/backup"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60m</span>
 <span class="w">  </span><span class="nt">restore</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hook</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/restore&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/restore"</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">120m</span>
 
-<span class="c1"># What the manager may do about this project&#39;s named volumes, which it captures</span>
+<span class="c1"># What the manager may do about this project's named volumes, which it captures</span>
 <span class="c1"># itself rather than through the backup hook above.</span>
 <span class="c1">#</span>
 <span class="c1"># A volume left out of this map is captured *cold*: the services that mount it</span>
@@ -2479,7 +2493,7 @@ is worth reading once before you rely on it.</p>
 <span class="c1">#</span>
 <span class="c1"># `consistency: hot` is a claim that a copy taken while the product is running</span>
 <span class="c1"># is a usable one -- true for files written once and never modified, false for</span>
-<span class="c1"># anything with a write-ahead log. It is the vendor&#39;s claim, not the manager&#39;s</span>
+<span class="c1"># anything with a write-ahead log. It is the vendor's claim, not the manager's</span>
 <span class="c1"># guess, and every backup manifest records which one applied.</span>
 <span class="nt">backup</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
@@ -2488,17 +2502,17 @@ is worth reading once before you rely on it.</p>
 <span class="nt">health</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">checks</span><span class="p">:</span>
 <span class="w">    </span><span class="c1"># Follows the parameter too. A probe on a port the deployment does not</span>
-<span class="w">    </span><span class="c1"># publish is an `apply` that fails at &quot;wait for health&quot; on a system that</span>
+<span class="w">    </span><span class="c1"># publish is an `apply` that fails at "wait for health" on a system that</span>
 <span class="w">    </span><span class="c1"># is working.</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}/health/ready&quot;</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">command</span><span class="p p-Indicator">,</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hooks/check-db&quot;</span><span class="p p-Indicator">],</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">15s</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">api</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">,</span><span class="nt"> url</span><span class="p">:</span><span class="w"> </span><span class="s">"http://127.0.0.1:{{</span><span class="nv"> </span><span class="s">.Parameters.http_port</span><span class="nv"> </span><span class="s">}}/health/ready"</span><span class="p p-Indicator">,</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">30s</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">db</span><span class="p p-Indicator">,</span><span class="nt"> type</span><span class="p">:</span><span class="w"> </span><span class="nv">command</span><span class="p p-Indicator">,</span><span class="nt"> command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hooks/check-db"</span><span class="p p-Indicator">],</span><span class="nt"> timeout</span><span class="p">:</span><span class="w"> </span><span class="nv">15s</span><span class="p p-Indicator">}</span>
 
 <span class="nt">compatibility</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">database_schema_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
 <span class="w">  </span><span class="nt">database_schema_max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
 <span class="w">  </span><span class="nt">rollback_safe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.0.0&quot;</span>
-<span class="w">  </span><span class="nt">upgrade_from</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=1.0.0</span><span class="nv"> </span><span class="s">&lt;2.0.0&quot;</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.0.0"</span>
+<span class="w">  </span><span class="nt">upgrade_from</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=1.0.0</span><span class="nv"> </span><span class="s">&lt;2.0.0"</span>
 
 <span class="nt">retention</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">releases</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>

@@ -2149,7 +2149,7 @@
 the release declares and you choose. Ports, log levels, limits.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>list<span class="w">                </span><span class="c1"># what exists, what it is set to, and where that came from</span>
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">9000</span><span class="w">  </span><span class="c1"># change one</span>
-morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>http_port<span class="w">     </span><span class="c1"># back to the release&#39;s default</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>http_port<span class="w">     </span><span class="c1"># back to the release's default</span>
 </code></pre></div>
 <h2 id="find-out-what-you-can-change">Find out what you can change<a class="headerlink" href="#find-out-what-you-can-change" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span>list
@@ -2163,7 +2163,7 @@ means it is the vendor's default and you have not touched it. That answers
 <p>The release decides what exists. There is no way to set something it does not
 declare, and a typo is refused by name:</p>
 <div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">htpp_port</span><span class="o">=</span><span class="m">9000</span>
-<span class="go">error: the release declares no parameter &quot;htpp_port&quot;</span>
+<span class="go">error: the release declares no parameter "htpp_port"</span>
 <span class="go">hint:  it declares: http_port, log_level</span>
 </code></pre></div>
 <h2 id="change-one">Change one<a class="headerlink" href="#change-one" title="Permanent link">&para;</a></h2>

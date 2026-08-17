@@ -2285,7 +2285,7 @@ check.</p>
 <p>The script is doing this. It stays documented because an operator who wants to
 check its work needs to be able to, and because a machine that cannot reach the
 site can still install from a release it already has.</p>
-<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.2.0<span class="w">                            </span><span class="c1"># the release you mean, not &quot;whatever is newest&quot;</span>
+<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.2.0<span class="w">                            </span><span class="c1"># the release you mean, not "whatever is newest"</span>
 <span class="nv">ARCHIVE</span><span class="o">=</span>morzer_<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>_linux_amd64.tar.zst
 <span class="nv">BASE</span><span class="o">=</span>https://github.com/morzecrew/morzer/releases/download/v<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>
 
@@ -2295,7 +2295,7 @@ curl<span class="w"> </span>-fsSLO<span class="w"> </span><span class="si">${</s
 curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/morzecrew/morzer/main/morzer.pub
 
 minisign<span class="w"> </span>-Vm<span class="w"> </span>SHA256SUMS<span class="w"> </span>-p<span class="w"> </span>morzer.pub<span class="w">    </span><span class="c1"># who published it</span>
-grep<span class="w"> </span><span class="s2">&quot; </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span><span class="s2">\$&quot;</span><span class="w"> </span>SHA256SUMS<span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c<span class="w"> </span>-<span class="w">  </span><span class="c1"># that this is what they published</span>
+grep<span class="w"> </span><span class="s2">" </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span><span class="s2">\$"</span><span class="w"> </span>SHA256SUMS<span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c<span class="w"> </span>-<span class="w">  </span><span class="c1"># that this is what they published</span>
 
 tar<span class="w"> </span>--zstd<span class="w"> </span>-xf<span class="w"> </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span><span class="w">                </span><span class="c1"># runs zstd as a filter; install it first</span>
 sudo<span class="w"> </span>install<span class="w"> </span>-m<span class="w"> </span><span class="m">0755</span><span class="w"> </span>morzer<span class="w"> </span>/usr/local/bin/morzer

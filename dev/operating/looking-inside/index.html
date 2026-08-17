@@ -2348,7 +2348,7 @@ most wanted, and pretending the stream was filtered would be worse than either.<
 <p><code>morzer logs --json</code> is the single exception to the <a href="../../reference/output-modes/">one-object
 rule</a>: it emits one <abbr title="JavaScript Object Notation">JSON</abbr> object per line, and no
 envelope. A stream has no end at which to write one.</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;ts&quot;</span><span class="p">:</span><span class="s2">&quot;2026-08-10T09:12:33.481Z&quot;</span><span class="p">,</span><span class="nt">&quot;container&quot;</span><span class="p">:</span><span class="s2">&quot;demo-app-1&quot;</span><span class="p">,</span><span class="nt">&quot;service&quot;</span><span class="p">:</span><span class="s2">&quot;app&quot;</span><span class="p">,</span><span class="nt">&quot;line&quot;</span><span class="p">:</span><span class="s2">&quot;listening on :8080&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"ts"</span><span class="p">:</span><span class="s2">"2026-08-10T09:12:33.481Z"</span><span class="p">,</span><span class="nt">"container"</span><span class="p">:</span><span class="s2">"demo-app-1"</span><span class="p">,</span><span class="nt">"service"</span><span class="p">:</span><span class="s2">"app"</span><span class="p">,</span><span class="nt">"line"</span><span class="p">:</span><span class="s2">"listening on :8080"</span><span class="p">}</span>
 </code></pre></div>
 <p><code>ts</code> is the instant the <strong>container</strong> wrote the line, not the moment the manager
 read it. <code>service</code> is empty for a line the runtime itself wrote about the stream
@@ -2412,13 +2412,13 @@ leak.</p>
 <p><code>--watch</code> with <code>--json</code> is refused. Loop around <code>morzer stats --json</code> instead,
 which is also the form that composes with <code>sleep</code>.</p>
 <h2 id="exec">exec<a class="headerlink" href="#exec" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>db<span class="w"> </span>--<span class="w"> </span>psql<span class="w"> </span>-U<span class="w"> </span>demo<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;select count(*) from users&#39;</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>db<span class="w"> </span>--<span class="w"> </span>psql<span class="w"> </span>-U<span class="w"> </span>demo<span class="w"> </span>-c<span class="w"> </span><span class="s1">'select count(*) from users'</span>
 morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>ls<span class="w"> </span>-la<span class="w"> </span>/var/lib/demo
 </code></pre></div>
 <p>Everything after <code>--</code> is the command line inside the container and nothing else.
 The exit code is the command's own, so this works in a script:</p>
 <div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>db<span class="w"> </span>--<span class="w"> </span>pg_isready<span class="w"> </span>-q<span class="p">;</span><span class="w"> </span><span class="k">then</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;the database is not accepting connections&quot;</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"the database is not accepting connections"</span>
 <span class="k">fi</span>
 </code></pre></div>
 <p>It is <strong>not an interactive shell.</strong> There is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin, so a command
@@ -2435,13 +2435,13 @@ what they asked it to do is exactly what an incident review needs, and nothing
 else in the journal would carry it.</p>
 <p>The argv is redacted first, with this installation's known secret values
 scrubbed. That matters because a password in an argv is the ordinary case:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>db<span class="w"> </span>--<span class="w"> </span>psql<span class="w"> </span><span class="s1">&#39;postgresql://demo:hunter2@localhost/demo&#39;</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>db<span class="w"> </span>--<span class="w"> </span>psql<span class="w"> </span><span class="s1">'postgresql://demo:hunter2@localhost/demo'</span>
 </code></pre></div>
 <p>On a machine whose secret state will not decrypt, the redactor knows no values —
 so the record keeps the service, the exit code and the time, and carries
 <code>argv_omitted</code> in place of the command line:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="s2">&quot;exec&quot;</span><span class="p">,</span><span class="nt">&quot;flags&quot;</span><span class="p">:{</span><span class="nt">&quot;service&quot;</span><span class="p">:</span><span class="s2">&quot;db&quot;</span><span class="p">,</span><span class="nt">&quot;exit_code&quot;</span><span class="p">:</span><span class="s2">&quot;0&quot;</span><span class="p">,</span>
-<span class="w"> </span><span class="nt">&quot;argv_omitted&quot;</span><span class="p">:</span><span class="s2">&quot;this installation&#39;s secret values could not be loaded, so the command line could not be scrubbed before writing it down&quot;</span><span class="p">}}</span>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="s2">"exec"</span><span class="p">,</span><span class="nt">"flags"</span><span class="p">:{</span><span class="nt">"service"</span><span class="p">:</span><span class="s2">"db"</span><span class="p">,</span><span class="nt">"exit_code"</span><span class="p">:</span><span class="s2">"0"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"argv_omitted"</span><span class="p">:</span><span class="s2">"this installation's secret values could not be loaded, so the command line could not be scrubbed before writing it down"</span><span class="p">}}</span>
 </code></pre></div>
 <p>Three answers rather than two, and the third is the point. Refusing to journal
 would lose the fact that a human was inside the deployment, which is the

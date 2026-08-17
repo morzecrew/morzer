@@ -2467,7 +2467,7 @@
 
 
 <h1 id="backups-and-restore">Backups and restore<a class="headerlink" href="#backups-and-restore" title="Permanent link">&para;</a></h1>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--reason<span class="w"> </span><span class="s2">&quot;before the 1.4 upgrade&quot;</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--reason<span class="w"> </span><span class="s2">"before the 1.4 upgrade"</span>
 morzer<span class="w"> </span>backup<span class="w"> </span>list
 morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>&lt;id&gt;
 </code></pre></div>
@@ -2724,7 +2724,7 @@ leave on a disk carries no credential and no data with it.</p>
 <p>The manifest stays readable on purpose. <code>morzer backup list</code> works on a machine
 whose key is gone, and an operator looking at a directory of ciphertext can
 still tell what it is and which installation it belongs to.</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>list<span class="w">   </span><span class="c1"># who can read this deployment&#39;s backups</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>list<span class="w">   </span><span class="c1"># who can read this deployment's backups</span>
 </code></pre></div>
 <p>Two consequences worth knowing before you need them:</p>
 <ul>
@@ -2804,7 +2804,7 @@ and restoring one deployment's data over another is almost always a mistake.</p>
 <a href="../../reference/installation-commands/"><code>installation import</code></a>, which restores
 the original installation id so the guard never fires.</p>
 <p>If you genuinely mean it:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;this<span class="w"> </span>machine<span class="err">&#39;</span>s<span class="w"> </span>id&gt;<span class="w"> </span>--allow-cross-installation
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;this<span class="w"> </span>machine<span class="err">'</span>s<span class="w"> </span>id&gt;<span class="w"> </span>--allow-cross-installation
 </code></pre></div>
 <p>A separate flag from <code>--force</code> on purpose: every restore already requires
 forcing, so a shared flag would mean this check could never apply.</p>
