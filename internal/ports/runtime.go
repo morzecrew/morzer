@@ -503,6 +503,12 @@ type OptionResolver interface {
 	// not understand: an unknown key is still compared, and a resolver that
 	// dropped one would hide a change rather than resolve it. Refusing an
 	// unknown key is Validate's job, and happens later.
+	//
+	// It must not write into cfg.Options. The caller may be holding an
+	// installation's recorded baseline, and a map edited here is a map that
+	// gets persisted -- so resolving is a question that must leave no trace.
+	// The manager passes a copy rather than trusting this, because a contract
+	// the boundary cannot enforce is one every future adapter can break.
 	ResolveOptions(cfg RuntimeConfig) map[string]string
 }
 

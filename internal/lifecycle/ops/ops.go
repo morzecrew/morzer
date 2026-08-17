@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -728,6 +729,12 @@ func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Re
 // The recorded baseline stays as the vendor declared it -- no schema change, no
 // migration, and `installation describe` keeps publishing what was written --
 // while the values actually compared are the ones the runtime will use.
+// The map handed to the adapter is a copy. ports.OptionResolver forbids writing
+// into it, but one of the maps passed here is the installation's own recorded
+// baseline and persistRuntimeBaseline writes that map back -- so a resolver that
+// broke the rule would not corrupt a comparison, it would declare a default onto
+// disk from a check that only asked a question. Copying costs a map per call and
+// removes the whole class.
 func (d *Deps) resolveRuntimeOptions(inst domain.Installation, options map[string]string) map[string]string {
 	resolver, ok := d.Runtime.(ports.OptionResolver)
 	if !ok {
@@ -735,7 +742,7 @@ func (d *Deps) resolveRuntimeOptions(inst domain.Installation, options map[strin
 	}
 	return resolver.ResolveOptions(ports.RuntimeConfig{
 		Product: inst.Product,
-		Options: options,
+		Options: maps.Clone(options),
 	})
 }
 
