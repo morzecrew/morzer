@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"testing"
@@ -272,6 +273,43 @@ func TestTheBaselineWriteYieldsToWhatIsAlreadyRecorded(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "myapp", after.RuntimeOptions["project"],
 		"a recorded baseline is never overwritten by a copy read before the lock")
+}
+
+// unreadableState fails the read the baseline write starts with, and records
+// whether anything was written afterwards.
+type unreadableState struct {
+	ports.StateStore
+	err   error
+	saved bool
+}
+
+func (s *unreadableState) LoadInstallation(context.Context) (domain.Installation, error) {
+	return domain.Installation{}, s.err
+}
+
+func (s *unreadableState) SaveInstallation(context.Context, domain.Installation) error {
+	s.saved = true
+	return nil
+}
+
+// The baseline write is a read-modify-write, so the read failing has to stop it.
+//
+// Worth a test rather than trusting the `if err != nil` beside it, because of
+// what the zero value would do if the error were dropped: an installation that
+// failed to load has no ID, no product and a nil RuntimeOptions -- which reads
+// as "no baseline recorded yet", passes the absence check, and gets saved. The
+// error path is not propagation here, it is the only thing standing between a
+// failed read and a blank installation written over a real one.
+func TestTheBaselineWriteStopsWhenItCannotReadTheInstallation(t *testing.T) {
+	broken := &unreadableState{err: errors.New("state file is unreadable")}
+	d := &Deps{State: broken}
+
+	err := d.persistRuntimeBaseline(context.Background(), map[string]string{"project": "myapp"})
+
+	require.Error(t, err, "a failed read must not be reported as a successful adoption")
+	assert.Contains(t, err.Error(), "state file is unreadable")
+	assert.False(t, broken.saved,
+		"nothing may be written from an installation that was never read")
 }
 
 // The consequence side of the same hazard, and adapter-independent: whatever a
