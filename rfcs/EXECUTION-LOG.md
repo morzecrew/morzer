@@ -1447,6 +1447,42 @@ schema 11.
 running. It has now been carried longer than it took to build everything it
 generalises, which is itself the argument for either putting it or dropping it.
 
+## Self-audit — 2026-08-17
+
+Scope: the whole branch — the port, the adapter, the comparison, the fake, the
+shared battery, docs and records. `just ci` green at **86.5%** (floor 84),
+`docs-check` 41 pages / 55 checks, `runtime-check` **17 mentions, 0 branches**,
+unchanged: this wave added no runtime vocabulary above the adapters. Full
+acceptance passed and the container lane passed, each run on its own.
+
+**Sabotage sweep: 10 mutations, 10 killed — two only after being made
+compilable, and one only after being made killable.**
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| A-1 | Major | **An adapter that resolved options in place broke no test.** The map handed to `ResolveOptions` is the installation's own recorded baseline, and `persistRuntimeBaseline` writes that map back — so a resolving *read* could have declared an adapter's default onto disk, turning a deployment that named no project into one that names its own default. The contract battery asserts non-mutation, but its real-adapter leg is behind the `docker` build tag and no untagged lane ran it. | Fixed — asserted in the adapter's own untagged test and at the ops boundary, where it holds for any runtime rather than this one |
+
+**One process failure, recorded rather than hidden.** Acceptance was started
+while the container lane was still running, and both failed — "cannot start
+services" and "cannot restart services", one step apart in the same daemon. This
+project already knows those two lanes cannot share Docker; running them
+concurrently to save wall-clock is how that knowledge gets rediscovered. Both
+pass run sequentially, and the first two runs are reported here rather than
+quietly replaced by the second.
+
+**What remains distrusted.**
+
+- **The recorded baseline is what the vendor declared**, by decision. If an
+  adapter ever changes a default, `resolve(recorded)` moves with it and both
+  sides of the comparison shift together — a real rename would pass unnoticed.
+  This is the accepted cost of not bumping the schema, and nothing detects it.
+- **One implementation.** Only Compose implements `OptionResolver`; the decline
+  path is exercised by a wrapper that hides the capability, not by a second
+  adapter that genuinely has no defaults.
+- **A pure capability's conformance is gated behind Docker.** `ResolveOptions`
+  needs no daemon, but the battery's real-adapter leg is docker-tagged as a
+  whole, so the fast loop cannot see it. That is precisely why A-1 survived.
+
 ## Rules distilled
 
 - **A comparison between what somebody typed and what the machine does needs a
@@ -1461,3 +1497,23 @@ generalises, which is itself the argument for either putting it or dropping it.
   same question.** The lifecycle layer may not import an adapter, so its tests
   run against a copy of the rule — and a copy that drifts makes those tests
   agree with a manager that refuses the wrong releases. (D-024)
+
+## Carried into the next unit
+
+- **The §6 baseline, now recorded**: 13 core methods and 8 optional
+  capabilities. P3 is measured against it, and the hatch can finally fire.
+- **Row 14, outstanding since wave 27** — not put again for the third wave
+  running. It has now been carried longer than it took to build everything it
+  generalises, which is the argument for either putting it or dropping it.
+- **The RFC 0018 proposal from wave 29's D-023**, still unruled.
+- **The removal of `runtime:` in 0.4.0** — a dated commitment nothing enforces.
+- **`Installation.Providers`** — still declared, still unwritten (D-011).
+- **P1b item 4** — the `EnvironmentFile`-on-tmpfs measurement, still behind a
+  bootable venue, and still the only thing before **P3, the Quadlet adapter**.
+- **Two settle-window fragilities**, carried from waves 28 and 29: the
+  acceptance suite's `assert_running`, and `TestTCPProbeAgainstRedis`.
+- **`init --dry-run` plans against a bundle it has not read** (wave 29 A-4).
+- **The contract battery cannot exercise a pure capability without Docker**, new
+  here — the whole real-adapter leg is behind one build tag.
+- ~~**R-4, an option made explicit with the adapter's own default**~~ — closed by
+  this wave.
