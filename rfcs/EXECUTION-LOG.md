@@ -1768,10 +1768,17 @@ the bundle at its **source**; `init --dry-run` read nothing at all.
 - **RFC said:** `--dry-run` plans the convergence steps against the bundle at
   its source rather than its release-store destination, because nothing is
   staged during a plan.
-- **Built (before this wave):** `init --dry-run` closed with
-  `installation  created for ` — two empty slots and a creation claimed in the
-  past tense, printed directly beneath *this is a plan; nothing was changed*.
-  In `--json`, `data.product` was `""`.
+- **Built (before this wave):** `init --dry-run` closed with this, captured
+  rather than paraphrased — the trailing space is the evidence, so it is fenced
+  rather than spanned:
+
+  ```
+  installation  created for 
+  ```
+
+  Two empty slots, and a creation claimed in the past tense printed directly
+  beneath *this is a plan; nothing was changed*. In `--json`, `data.product`
+  was `""`.
 - **Because:** the summary read the installation out of engine state, and a plan
   runs no steps, so nothing had populated it.
 - **Class:** `drift`. Decision 12 covered it and `init` was built otherwise —
@@ -1857,8 +1864,79 @@ replaced by the green re-run: it is now the **third** sighting of the shape, and
 a fragility seen three times across three waves is a defect the project keeps
 deciding not to fix.
 
+## Review round, PR #56 — appended after the group closed
+
+Four findings, all valid. Two were defects in this wave's own new code, and the
+most useful one is D-035: it found that this wave fixed half of the thing it
+existed to fix and wrote the other half down as acceptable.
+
+**Drift count: still 1** — no new drift; D-034 and D-035 are gaps, D-036 is a
+limitation now named rather than a change.
+
+## D-034 — `--repair` reported as a creation, on both paths
+
+- **Touches:** wave 32's own summary work, and whatever wave first added `--repair`
+- **Built:** `init --repair` said `installation <id> created for <product>`, and
+  the plan said `would create an installation` beside an empty installation id —
+  for a record that already exists.
+- **Because:** the summary had one sentence for two operations. This wave made
+  the plan half state it more explicitly, which is what made two reviewers see it.
+- **Class:** `spec-gap`, and **pre-existing**: the real path said "created" on
+  `main` before this branch. Fixed on both paths rather than only the one
+  reported, because fixing the plan alone would have left the operation lying
+  and called the review answered.
+- **Consequence:** an operator reading a plan to check they are repairing the
+  right machine was reading the one line that did not distinguish repair from
+  first install.
+
+## D-035 — The plan warned about directories and stayed silent about archives
+
+- **Touches:** D-032, this wave, found in review
+- **Built:** `warnPlannedDeprecations` joined `manifest.yaml` onto the release
+  path. `--release` names a directory *or* a `tar.zst`, so for an archive that
+  produced `demo.tar.zst/manifest.yaml`, the load failed, and the error was
+  swallowed.
+- **Because:** measured, with a real archive: the plan printed no warning while
+  the operation printed one, about the same bundle. Two answers to one question,
+  decided by which shape the vendor happened to publish.
+- **Class:** `spec-gap`, and the worst kind — **the limitation was written down
+  as intentional.** The function's own comment said an archive "gets no warning
+  rather than an error". D-032 exists because a plan withheld this warning; this
+  wave fixed the directory case and documented the archive case as acceptable,
+  which is a gap converted into prose instead of into code.
+- **Consequence:** now routed through `ports.ReleaseSource`, which reads either
+  shape. Local references only: a registry would mean a plan pulling a bundle
+  over the network to phrase an advisory. **A remote reference still gets no
+  warning** — carried below, and named rather than commented away this time.
+
+## D-036 — The between-tags exemption also exempts a build that is behind
+
+- **Touches:** RFC 0018 row 13, written this wave
+- **Built:** row 13 now names the hole.
+- **Because:** `isUntaggedBuild` matches `N-g<sha>`, and a build from an *older*
+  branch is stamped identically — `0.1.0-5-gabc1234` — while being genuinely
+  behind rather than ahead. `git describe` cannot separate them: both are "N
+  commits past some tag", and which tag is the last one is the question.
+- **Class:** `spec-gap` in the row I had just written. The row already said the
+  stamp is derived and understates; it did not say the derivation is also
+  ambiguous in the other direction.
+- **Consequence:** bounded to builds from source — a released binary sits on a
+  clean tag and is held to the floor. Closing it needs a *declared* version
+  rather than a derived one, which is a change to how this project versions
+  itself, not to this check. Not attempted under review.
+
 ## Rules distilled
 
+- **A limitation written into a comment is a gap that has stopped being
+  counted.** The archive case was documented as acceptable in the same wave
+  whose whole purpose was that a plan must not withhold this warning. Ask
+  whether a comment explaining a restriction is describing a decision or
+  excusing an omission. (D-035)
+- **Fixing the half a reviewer saw leaves the other half lying.** `--repair`
+  said "created" on the real path too, and only the plan was reported. (D-034)
+- **A row is written the day you know least about it.** Row 13 was authored and
+  reviewed in the same wave, and review found a direction the author had not
+  considered. (D-036)
 - **An assertion on the sentence is not an assertion on the contract.** The
   summary and `data.product` say the same thing to two different audiences, and
   the parsed one had no test. (A-1)
@@ -1886,6 +1964,10 @@ deciding not to fix.
   **P3, the Quadlet adapter**.
 - **Two settle-window fragilities**, carried from waves 28 and 29.
 - **`saveInstallation` writes its report before the state store** (wave 31).
+- **A plan over a remote reference still carries no deprecation warning** — new
+  in review (D-035). Local shapes are covered; `oci://` and `https://` are not,
+  because a plan that pulls a bundle to phrase an advisory is a cost nobody
+  asked a plan for. Named here rather than left in a code comment.
 - **`operation.status` reports `succeeded` for a dry run whose steps are all
   `pending`**, new here and deliberately not fixed: it is a machine-readable
   field RFC 0026's read model may consume, so changing it is a design question
