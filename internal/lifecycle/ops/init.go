@@ -131,6 +131,20 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 
+	// A plan gets its deprecation warning here, from the bundle at its
+	// source, because the one inside stepStageRelease reads the staged copy
+	// and a plan stages nothing.
+	//
+	// Deliberately not moved out of the step for the real path. There it
+	// reads the bundle *after* verification, and a bundle whose signature
+	// does not check out should not have produced advice about its fields
+	// on the way to being refused. A plan has no verified copy to read and
+	// is already a statement about the source (RFC 0001 decision 12), so
+	// the two paths read different copies for the same reason.
+	if opts.DryRun && opts.ReleasePath != "" {
+		d.warnPlannedDeprecations(ctx, opts.ReleasePath)
+	}
+
 	opID := d.newOpID()
 
 	op := engine.Operation{
@@ -153,14 +167,51 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		return out, runErr
 	}
 
+	// A plan populated no state, so there is no installation to read: every
+	// step reported what it would do and none of them ran. Reading engine
+	// state anyway is what printed "installation  created for " -- two empty
+	// slots and a creation claimed in the past tense, directly beneath the
+	// line saying nothing was changed.
+	//
+	// The product was never unknown. The CLI resolves it before the
+	// operation, from --product or from the manifest at the bundle's source,
+	// because every managed path derives from it -- so it arrives here in
+	// opts and the plan can say whose installation it is describing.
+	if opts.DryRun {
+		out.Summary = fmt.Sprintf("would %s an installation for %s",
+			initVerb(opts, "create", "repair"), opts.Product)
+		out.Data = map[string]any{
+			"installation_id": "",
+			"product":         opts.Product,
+			"etc_dir":         d.Paths.EtcDir,
+		}
+		return out, nil
+	}
+
 	inst := engine.MustGet[domain.Installation](result.State, engine.KeyInstallation)
-	out.Summary = fmt.Sprintf("installation %s created for %s", inst.ID, inst.Product)
+	out.Summary = fmt.Sprintf("installation %s %s for %s",
+		inst.ID, initVerb(opts, "created", "repaired"), inst.Product)
 	out.Data = map[string]any{
 		"installation_id": inst.ID,
 		"product":         inst.Product,
 		"etc_dir":         d.Paths.EtcDir,
 	}
 	return out, nil
+}
+
+// initVerb names what this run of `init` is doing.
+//
+// `--repair` restores an installation that already exists, and the summary said
+// "created" for it on both paths -- a claim an operator could act on, since a
+// repair on the wrong machine and a first install differ in exactly what this
+// line is reporting. The plan half was worse than the operation's: it said
+// "would create" beside an empty installation id for a record that was already
+// there.
+func initVerb(opts InitOptions, create, repair string) string {
+	if opts.Repair {
+		return repair
+	}
+	return create
 }
 
 func initFlags(opts InitOptions) map[string]string {

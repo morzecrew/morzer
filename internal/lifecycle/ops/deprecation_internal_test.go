@@ -1,6 +1,8 @@
 package ops
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The two kinds of deprecation an operator can be told about, and the one
@@ -118,4 +121,52 @@ func TestWarningWithoutABusIsNotAPanic(t *testing.T) {
 			Runtime: domain.RuntimeSpec{Files: []string{"compose.yaml"}},
 		})
 	})
+}
+
+// countingSource records whether the plan reached for the bundle at all.
+//
+// The clitest for a remote reference asserts that no warning appears, and that
+// assertion passes for two different reasons: the scheme guard declining, or a
+// Fetch that fails because nothing serves `oci://` in a test. Measured — with
+// the guard removed, that test still passed. So the guard needs a test that can
+// see the difference, and the only observable that separates them is whether
+// the source was asked.
+type countingSource struct {
+	ports.ReleaseSource
+	fetches int
+}
+
+func (s *countingSource) Fetch(context.Context, ports.Ref, string) (ports.BundlePath, error) {
+	s.fetches++
+	return "", errors.New("no source in this test")
+}
+
+// A remote reference is declined before the source is touched.
+//
+// Not merely "no warning appears": no *pull* is attempted. That is the whole
+// content of the decision -- a plan does not go to a registry to phrase an
+// advisory -- and it is invisible in the output either way.
+func TestAPlanDoesNotReachForARemoteBundle(t *testing.T) {
+	d, seen := warned(t)
+	src := &countingSource{}
+	d.Source = src
+
+	d.warnPlannedDeprecations(context.Background(), "oci://registry.invalid/demo:1.2.0")
+
+	assert.Zero(t, src.fetches,
+		"a plan must not pull from a registry to decide whether to warn")
+	assert.Empty(t, *seen, "and it says nothing about a bundle it never read")
+}
+
+// The local half of the same guard: a directory *is* reached for, so the
+// decision is a scheme test rather than a blanket refusal to look.
+func TestAPlanDoesReachForALocalBundle(t *testing.T) {
+	d, _ := warned(t)
+	src := &countingSource{}
+	d.Source = src
+
+	d.warnPlannedDeprecations(context.Background(), t.TempDir())
+
+	assert.Equal(t, 1, src.fetches,
+		"a local reference is materialised through the source, whatever shape it is")
 }

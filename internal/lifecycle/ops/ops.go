@@ -259,9 +259,57 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 			"this bundle's api_version %s is deprecated: %s", m.APIVersion, warning))
 	}
 	for _, f := range m.DeprecatedFields() {
-		d.Bus.Publish(events.Message(events.LevelWarn,
-			"this bundle uses %s", f.Message()))
+		// Published bare. Message() already opens with the field name,
+		// so a subject clause in front of it composes "this bundle uses
+		// `runtime` is deprecated" -- two verbs in one clause. `release
+		// verify` printed the same message bare all along and read
+		// correctly, which is what located the defect in the join.
+		d.Bus.Publish(events.Message(events.LevelWarn, "%s", f.Message()))
 	}
+}
+
+// warnPlannedDeprecations announces what a bundle is written with, read from
+// the source rather than from a staged copy.
+//
+// Only a plan uses it, and only because a plan stages nothing.
+//
+// It goes through the source rather than reading a path, because `--release`
+// names a directory *or* a `tar.zst`, and joining a filename onto an archive
+// produces a path that does not exist. The first version of this did exactly
+// that and swallowed the error, so a plan over an archive silently said nothing
+// while the operation warned -- the two disagreeing about the same bundle,
+// which is the defect this function exists to remove rather than relocate.
+//
+// Local references only. For a directory Fetch copies and for an archive it
+// extracts, both of them cheap and neither of them leaving the machine; a
+// registry would mean a plan pulling a bundle over the network to phrase an
+// advisory, which is a cost nobody asked a plan for. A remote reference gets no
+// warning, and that is a real gap rather than a tidy one -- see the log.
+//
+// The temporary directory is not a write in the sense a plan is forbidden:
+// nothing outside it is touched and it is gone before this returns. The local
+// source already does the same thing inside Resolve, for the same reason.
+func (d *Deps) warnPlannedDeprecations(ctx context.Context, releasePath string) {
+	ref, err := ports.ParseRef(releasePath)
+	if err != nil || ref.Scheme != "file" {
+		return
+	}
+
+	dir, err := os.MkdirTemp("", "morzer-plan-")
+	if err != nil {
+		return
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	bundle, err := d.Source.Fetch(ctx, ref, dir)
+	if err != nil {
+		return
+	}
+	m, err := release.LoadManifest(filepath.Join(bundle.String(), release.ManifestFileName))
+	if err != nil {
+		return
+	}
+	d.warnDeprecations(m)
 }
 
 // engineOptions translates operation options into engine options.
