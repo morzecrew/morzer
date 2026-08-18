@@ -2488,8 +2488,14 @@ sticks: reconciliation no longer re-enables a unit that already exists. Only
 <code>morzer init --repair --install-units</code> switches it back on, which is the one
 command whose job is to put a machine right. <code>doctor</code> reports a unit you
 disabled as <code>not enabled</code>, and names both ways out of that.</p>
-<p><code>systemctl mask</code> still does not work on a generated unit — the file morzer
-writes occupies the path a mask needs. Use either of the two above.</p>
+<p><code>systemctl mask</code> does not work on a generated unit, and that is settled rather
+than pending. A mask is a symlink to <code>/dev/null</code> at
+<code>/etc/systemd/system/&lt;unit&gt;</code>, and that is exactly where morzer writes the unit,
+so the path is already occupied. The units live there deliberately: systemd
+loads <code>/etc/systemd/system</code> in preference to <code>/usr/lib/systemd/system</code>, so the
+file morzer writes is the one that takes effect, and moving them elsewhere would
+leave an older copy silently winning on every machine that already has one. Use
+either of the two above — between them they say everything a mask would.</p>
 <p>Taking a backup by hand is unaffected by both: <code>morzer backup</code> still works, and
 a backup that exists is still expected to reach a target.</p>
 <p>Settings and parameters are set in separate commands. They run on different
