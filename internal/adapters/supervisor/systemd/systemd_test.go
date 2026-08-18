@@ -32,6 +32,28 @@ func newSupervisor(t *testing.T) (*systemd.Supervisor, *exec.Scripted, string) {
 	), runner, dir
 }
 
+// The unit directory is a decision, not a default (RFC 0030 row 3), and this is
+// the only test that reads the value production uses.
+//
+// It exists because relocating the directory is what makes every other test in
+// this file runnable without root -- so the constant they all replace is the one
+// thing they cannot check. Measured before writing this: changing it to
+// `/usr/lib/systemd/system` and running the entire suite passes.
+//
+// What the value buys, and what it costs, are both settled: `/etc` is where an
+// administrator's units live, which is what these are, and systemd loads it in
+// preference to `/usr/lib` -- so the manager's file is the one that takes
+// effect. The cost is that `systemctl mask` needs this exact path for its
+// symlink and finds it occupied (RFC 0030 §3.2). Moving to `/usr/lib` would buy
+// masking back and cost the precedence, which is the trade row 3 declined.
+func TestGeneratedUnitsLiveWhereAnAdministratorsUnitsLive(t *testing.T) {
+	if systemd.UnitDir != "/etc/systemd/system" {
+		t.Fatalf("unit directory is %q; RFC 0030 row 3 answers /etc/systemd/system, "+
+			"and moving it shadows every unit already installed on an existing "+
+			"machine -- change the RFC before changing this", systemd.UnitDir)
+	}
+}
+
 func TestInstallUnitsWritesReloadsThenEnables(t *testing.T) {
 	s, runner, dir := newSupervisor(t)
 
@@ -295,6 +317,38 @@ func TestRemoveUnitsToleratesAUnitThatWasNeverInstalled(t *testing.T) {
 
 	if err := s.RemoveUnits(context.Background(), []string{"demo.service"}); err != nil {
 		t.Errorf("removing a unit that was never installed: %v", err)
+	}
+}
+
+// The third of os.Remove's three outcomes, and the only one that carries an
+// error.
+//
+// The file went away, it was already gone, or removal failed for some other
+// reason -- and RemoveUnits treats each differently. The first two have tests
+// above: one deletes a unit it wrote, the other takes the missing-file branch.
+// The third had none, so deleting the code that reports it changed nothing any
+// test could see. It matters because of what a swallowed
+// failure leaves: a unit file still on disk after an uninstall said it was gone,
+// which systemd goes on honouring. A timer that survives the removal of the
+// product it belongs to is the same class of problem as an old unit shadowing a
+// new one (RFC 0030 §8.4), reached by a different route.
+//
+// A non-empty directory standing where the unit file should be is the way to
+// make os.Remove fail for a reason that is not "not there", without root.
+func TestRemoveUnitsReportsAFailureThatIsNotAMissingFile(t *testing.T) {
+	s, _, dir := newSupervisor(t)
+
+	occupied := filepath.Join(dir, "demo.service")
+	if err := os.MkdirAll(filepath.Join(occupied, "in the way"), 0o755); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+
+	err := s.RemoveUnits(context.Background(), []string{"demo.service"})
+	if err == nil {
+		t.Fatal("a unit that could not be deleted was reported as removed")
+	}
+	if !strings.Contains(err.Error(), "demo.service") {
+		t.Errorf("the failure must name the unit it could not remove; got %v", err)
 	}
 }
 
