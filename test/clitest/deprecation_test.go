@@ -145,3 +145,28 @@ func TestAPlanNamesTheProductItWouldCreate(t *testing.T) {
 	// A plan has created nothing, so it must not say it has.
 	res.NoOutputContains("created for")
 }
+
+// The same claim on the surface something parses.
+//
+// Asserted separately because the text summary and `data.product` are two
+// different promises, and only the second is a contract: blanking the JSON field
+// while leaving the sentence intact killed no test until this one existed. The
+// empty installation id is asserted too -- a plan that reported one would be
+// naming a record nobody wrote.
+func TestAPlansJSONNamesTheProductAndNoInstallation(t *testing.T) {
+	r := clitest.New(t)
+
+	out := r.Run("init",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+		"--json",
+	).ExitCode(0)
+
+	out.FieldEquals("data.product", "demo")
+	out.FieldEquals("data.installation_id", "")
+	out.FieldEquals("ok", true)
+}
