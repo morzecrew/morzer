@@ -73,3 +73,75 @@ func TestTheScaffoldWritesNothingItWillWarnAbout(t *testing.T) {
 	r.Run("release", "verify", dir, "--render-check").ExitCode(0).
 		NoOutputContains("deprecated")
 }
+
+// The plan is the moment the warning is worth most, and it was the one moment
+// that never carried it.
+//
+// An operator running `init --dry-run` is deciding whether to install this
+// bundle at all -- which is exactly the choice the deprecation exists to inform
+// -- and the warning lived inside the staging step, which a plan never runs. So
+// the operator who looked before leaping was the only one not told.
+func TestAPlannedInstallWarnsAboutADeprecatedBundle(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("init",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(0).
+		StderrContains("`runtime` is deprecated", domain.FieldRemovalRelease)
+}
+
+// The warning is one sentence and has to read like one.
+//
+// `FieldDeprecation.Message()` already opens with the field name -- "`runtime`
+// is deprecated ..." -- and the caller prepended "this bundle uses", composing
+// "this bundle uses `runtime` is deprecated": two verbs in one clause. `release
+// verify` prints the same message bare and always read correctly, so the defect
+// was in the join rather than in the sentence.
+//
+// Asserted on a real install rather than a plan, deliberately. The plan is where
+// the warning was missing entirely, so a grammar assertion there would have
+// passed by finding no warning at all -- which is the shape of a test that
+// guards nothing.
+func TestTheDeprecationWarningIsOneSentence(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("init",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+	).ExitCode(0).
+		StderrContains("`runtime` is deprecated").
+		NoOutputContains("uses `runtime` is deprecated")
+}
+
+// A plan names what it is planning.
+//
+// The closing line read "installation  created for " -- two empty slots and a
+// past-tense claim of a creation, printed directly beneath "nothing was
+// changed". The product was never unknown: the CLI reads the manifest before the
+// operation to build the managed paths, and passes the name in. The summary was
+// reading the installation out of engine state instead, which no step had
+// populated because a plan runs no steps.
+func TestAPlanNamesTheProductItWouldCreate(t *testing.T) {
+	r := clitest.New(t)
+
+	res := r.Run("init",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(0)
+
+	res.OutputContains("demo")
+	// A plan has created nothing, so it must not say it has.
+	res.NoOutputContains("created for")
+}

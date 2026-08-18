@@ -259,9 +259,30 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 			"this bundle's api_version %s is deprecated: %s", m.APIVersion, warning))
 	}
 	for _, f := range m.DeprecatedFields() {
-		d.Bus.Publish(events.Message(events.LevelWarn,
-			"this bundle uses %s", f.Message()))
+		// Published bare. Message() already opens with the field name,
+		// so a subject clause in front of it composes "this bundle uses
+		// `runtime` is deprecated" -- two verbs in one clause. `release
+		// verify` printed the same message bare all along and read
+		// correctly, which is what located the defect in the join.
+		d.Bus.Publish(events.Message(events.LevelWarn, "%s", f.Message()))
 	}
+}
+
+// warnPlannedDeprecations announces what a bundle is written with, read from
+// the source rather than from a staged copy.
+//
+// Only a plan uses it, and only because a plan stages nothing. Everything it
+// cannot answer it declines to answer: a reference this build cannot read as a
+// local directory -- a registry, an archive -- gets no warning rather than an
+// error, because a plan that refused to plan over an advisory would be worse
+// than one that stays quiet. The operation itself still reads that bundle, and
+// still warns, from the copy it has verified.
+func (d *Deps) warnPlannedDeprecations(releasePath string) {
+	m, err := release.LoadManifest(filepath.Join(releasePath, release.ManifestFileName))
+	if err != nil {
+		return
+	}
+	d.warnDeprecations(m)
 }
 
 // engineOptions translates operation options into engine options.
