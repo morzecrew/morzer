@@ -1993,3 +1993,138 @@ limitation now named rather than a change.
   `pending`**, new here and deliberately not fixed: it is a machine-readable
   field RFC 0026's read model may consume, so changing it is a design question
   rather than a bugfix.
+
+# Wave 33 · The environment file at boot
+
+Branch `feature/wave-33-the-environment-file-at-boot`. RFC 0023 P1b item 4.
+
+A spike. The deliverable is a measurement, not an implementation — `irreducible`
+in the classification below: no amount of design settles what systemd does at
+boot, and a guess would have been carried into P3's unit graph where discovering
+it wrong costs a released adapter.
+
+**Drift count: 0.** Nothing was built that a document settled otherwise. No
+production code changed.
+
+## D-038 — Item 4 answered a different question than it asked
+
+- **Touches:** RFC 0023 §4.3, §12 item 4, decision 21 (new)
+- **RFC said:** the rendered `EnvironmentFile` "must survive a reboot before the
+  unit starts or the unit fails on a cold boot", and called this "the single
+  hardest problem in the RFC".
+- **Measured:** a tmpfs is empty at every boot by definition. The file never
+  survives a reboot and never had to. What decides the outcome is whether the
+  unit reading it is ordered behind whatever renders it, and what an absent file
+  does when it is not.
+- **The mechanism**, on the host (systemd 261) and again in the venue:
+  `EnvironmentFile=` fails the unit before the process runs
+  (`Failed to load environment files`, `Result=resources`); `EnvironmentFile=-`
+  starts it, reports success, and runs with the parameter empty.
+- **The ordering**, across three independent boots: an unordered unit with the
+  dash **started and finished before the render unit had written the file**, and
+  systemd marked it active.
+
+  ```
+  12:19:48.417342  Starting product B (unordered, dash)...
+  12:19:48.417797  Starting render parameters (stands in for apply --startup)...
+  12:19:48.423114  Finished product B (unordered, dash).
+  12:19:48.425017  Finished render parameters (stands in for apply --startup).
+  ```
+
+  `B_PORT=[]` on a unit reporting success is the whole finding.
+- **Class:** `irreducible`, and it behaved like one. The item had been carried
+  since wave 26 because it could not be reasoned about, and one boot settled it
+  — while also reversing the premise the section was written on.
+- **Consequence:** decision 21, LOCKED. The prefix is the difference between a
+  deployment that refuses and one that lies, and P3's generated units now owe an
+  explicit dependency on the render — which Compose gets for free, because its
+  product unit's `ExecStart` *is* `apply --startup`. **P1b is complete and P3 is
+  no longer gated.**
+
+## D-039 — The venue is not the one the item asked for
+
+- **Touches:** RFC 0023 §12 item 4
+- **RFC said:** a venue that can be booted on demand.
+- **Built:** a privileged container running systemd as PID 1, not
+  `systemd-nspawn`.
+- **Because:** nspawn needs root, and this environment has no password-less
+  sudo. The substitute runs the same systemd, mounts `/run` as a real tmpfs
+  (`rw,nosuid,nodev,noexec,relatime,mode=755`), and executes a real boot
+  transaction, which is what the ordering question needs. It boots in about a
+  second, which is what the item actually wanted when it rejected a workstation
+  — "the answer costs a reboot per attempt".
+- **Class:** `spec-gap` in the item's own phrasing: it named a tool where it
+  meant a property.
+- **Consequence, stated rather than buried:** this is not bare metal. It answers
+  unit ordering and unit-start semantics. It cannot speak to firmware, initrd,
+  or real device mounts, and was asked nothing about them. A future item that
+  needs those needs a different venue, and item 4's answer does not cover it.
+- **Deliberately not applied:** waiting for hardware. The two halves item 4
+  named were both answerable here, and holding a four-wave blocker for a venue
+  that would answer the same questions identically is a cost with no finding
+  attached.
+
+## D-040 — The spike is kept, because a measurement nobody can re-run is a claim
+
+- **Touches:** `spikes/environmentfile-at-boot/`
+- **Built:** the venue, its units and a `run.sh`, committed.
+- **Because:** every number in item 4 came out of it, and an RFC that cites
+  measurements no reader can reproduce is asking to be trusted rather than
+  checked. Re-run from a clean slate before committing: images removed, script
+  run, same three outcomes.
+- **Class:** `discovery` — only building it revealed how cheap repeated boots
+  are, which is what makes keeping it worthwhile rather than archiving a
+  transcript.
+- **Consequence:** it is not wired into `just ci`. It needs a privileged
+  container and answers a question that is now settled; running it on every
+  commit would spend a minute to re-derive a locked decision.
+
+## D-041 — A shell script the shell linter did not look at
+
+- **Touches:** `justfile`, found while committing D-040
+- **Built:** `just shellcheck` now covers `spikes/*/*.sh`.
+- **Because:** the recipe checked `install.sh` and `.github/scripts/*.sh`, so it
+  passed green over a script it had never read. Committing the spike added a
+  shell script to the repository that the repository's own shell gate did not
+  see — and `just shellcheck` reporting success is exactly what would stop
+  anybody from checking by hand.
+- **Class:** `spec-gap`. The recipe enumerated the two places shell scripts
+  lived when it was written, which is a list that silently stops being complete.
+- **Consequence:** verified by mutation rather than assumed — an unquoted
+  `$(dirname $0)` in the spike is now caught (SC2046, SC2086), and was not
+  before.
+
+## Rules distilled
+
+- **A lint recipe that enumerates paths is a list that goes stale silently.**
+  Adding a script to a repository does not add it to the gate, and the gate goes
+  on reporting success. (D-041)
+- **An unanswerable item is often a mis-asked one.** Item 4 was carried for
+  seven waves as "can the file be read at boot". One boot showed the file is
+  never there at boot, and the real question — who is ordered before whom — had
+  been answerable all along. (D-038)
+- **A silent success is worse than a loud failure, and costs one character.**
+  `EnvironmentFile=-` turns a missing configuration into a running product that
+  every health surface calls fine. (D-038)
+- **An item that names a tool has hidden the property it needs.** "A machine
+  with Podman", then "systemd-nspawn" — what it wanted was a boot that costs a
+  second, and saying so would have unblocked it sooner. (D-039)
+- **Keep the venue, not the transcript.** Numbers in a document are checkable
+  only if the thing that produced them still runs. (D-040)
+
+## Carried into the next unit
+
+- ~~**P1b item 4**~~ — measured; **P3, the Quadlet adapter, is no longer gated**
+  and is the whole of what remains in RFC 0023.
+- **P3 owes its generated units an explicit dependency on the render**, and owes
+  it without the `-` prefix (decision 21). This is a constraint discovered
+  before the adapter exists rather than after.
+- **The removal of `runtime:` in 0.4.0** — a dated commitment nothing enforces.
+  The oldest carried item, and untouched by this wave, which was the spike alone.
+- **`Installation.Providers`** — still declared, still unwritten (D-011).
+- **Two settle-window fragilities**, carried from waves 28 and 29;
+  `TestTCPProbeAgainstRedis` has now failed in three consecutive waves.
+- **`saveInstallation` writes its report before the state store** (wave 31).
+- **A plan over a remote reference still carries no deprecation warning** (D-035).
+- **`operation.status` reports `succeeded` for a dry run whose steps are all
+  `pending`** (wave 32).

@@ -221,6 +221,9 @@ shellcheck:
     fi
     shellcheck --shell=sh install.sh
     shellcheck .github/scripts/*.sh
+    # Spikes are committed so their measurements can be re-run, which
+    # makes them scripts this repository ships rather than scratch.
+    shellcheck spikes/*/*.sh
 
 # Format the tree.
 fmt:
