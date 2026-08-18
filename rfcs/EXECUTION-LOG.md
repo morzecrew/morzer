@@ -1837,8 +1837,31 @@ below a `0.3.0` floor. The code was narrowed to the exact `git describe` shape
 two waves before this row was written into the RFC. Accepting it verbatim would
 have made the document claim something wider than the code does.
 
+## Self-audit — 2026-08-18
+
+Scope: the whole branch — three commits, `init`'s summary and warning paths,
+the RFC row, and the tests. Sabotage sweep of six mutations against the changed
+surface.
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| A-1 | Medium | Blanking `data.product` in the `--json` output killed no test. The text summary was asserted and the machine-readable field was not — and of the two, only the second is a contract. | Fixed — `TestAPlansJSONNamesTheProductAndNoInstallation`, re-run against the same mutation and killed |
+
+**Sabotage sweep: 6 mutations, 6 killed** — one only after A-1 made it killable.
+
+**Two lanes, and the first container run was red.** `TestTCPProbeAgainstRedis`
+failed under the full lane and passed alone in 0.64s, which is the carried
+fragility from wave 29 reproducing its own measurement (0.6s alone, 30.8s under
+load). Nothing on this branch is near a health probe. Recorded rather than
+replaced by the green re-run: it is now the **third** sighting of the shape, and
+a fragility seen three times across three waves is a defect the project keeps
+deciding not to fix.
+
 ## Rules distilled
 
+- **An assertion on the sentence is not an assertion on the contract.** The
+  summary and `data.product` say the same thing to two different audiences, and
+  the parsed one had no test. (A-1)
 - **A carried proposal ages against the code it describes.** D-023 sat unruled
   for three waves while a review invalidated its wording, and nothing in the
   log's format shows that — the entry looks as fresh as the day it was filed.
