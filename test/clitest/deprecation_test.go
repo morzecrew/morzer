@@ -229,3 +229,31 @@ func TestAPlannedRepairSaysRepair(t *testing.T) {
 	done.OutputContains("repaired for demo")
 	done.NoOutputContains("created for demo")
 }
+
+// A remote reference gets no warning, and that is the decision rather than an
+// oversight.
+//
+// Reading the manifest means materialising the bundle, and for a registry that
+// is a network pull -- a cost nobody asks a plan for, to phrase an advisory. So
+// the plan declines, and this pins both halves of that: no warning, and no
+// attempt to reach the registry (the reference below resolves nowhere, and the
+// plan still succeeds promptly).
+//
+// It is a real gap and it is carried as one. The test exists so that closing it
+// is a deliberate act rather than a silent one.
+func TestAPlanOverARemoteReferenceDeclinesToWarn(t *testing.T) {
+	r := clitest.New(t)
+
+	res := r.Run("init",
+		"--product", "demo",
+		"--release", "oci://registry.invalid/demo:1.2.0",
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(0)
+
+	res.OutputContains("would create an installation for demo")
+	res.NoOutputContains("is deprecated")
+}

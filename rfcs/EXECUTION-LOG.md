@@ -1925,8 +1925,29 @@ limitation now named rather than a change.
   rather than a derived one, which is a change to how this project versions
   itself, not to this check. Not attempted under review.
 
+## D-037 — A test that passed for the wrong reason
+
+- **Touches:** D-035's fix, found by the coverage gate on PR #56
+- **Built:** `TestAPlanDoesNotReachForARemoteBundle`, asserting on a counting
+  source rather than on the output.
+- **Because:** codecov reported the patch at 75%, and the uncovered lines were
+  `warnPlannedDeprecations`'s decline branches. The clitest written to cover the
+  remote case asserted "no warning appears" — and **that passes for two
+  different reasons**: the scheme guard declining, or a `Fetch` that fails
+  because nothing serves `oci://` in a test. Measured: with the guard deleted,
+  that test still passed.
+- **Class:** `spec-gap` in my own test. The decision is *a plan does not go to a
+  registry to phrase an advisory*, and the only observable that separates it
+  from "the pull failed" is whether the source was asked at all — which the
+  output cannot show.
+- **Consequence:** the clitest keeps the user-visible claim and the internal
+  test pins the mechanism. The mutation that survived now dies.
+
 ## Rules distilled
 
+- **An output assertion cannot tell a guard from a failure downstream of it.**
+  Both produce silence. When a decision is "do not attempt X", the test has to
+  observe the attempt, not the result. (D-037)
 - **A limitation written into a comment is a gap that has stopped being
   counted.** The archive case was documented as acceptable in the same wave
   whose whole purpose was that a plan must not withhold this warning. Ask
