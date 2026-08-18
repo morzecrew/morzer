@@ -170,3 +170,62 @@ func TestAPlansJSONNamesTheProductAndNoInstallation(t *testing.T) {
 	out.FieldEquals("data.installation_id", "")
 	out.FieldEquals("ok", true)
 }
+
+// The same bundle, packed the way a vendor ships it.
+//
+// `--release` names a directory or a `tar.zst`, and the plan's warning was
+// first written by joining `manifest.yaml` onto the path -- which produces
+// `demo.tar.zst/manifest.yaml`, a path that does not exist. The error was
+// swallowed, so a plan over an archive said nothing while the operation warned
+// about the very same bundle. Two answers to one question, decided by which
+// shape the vendor happened to publish.
+func TestAPlannedInstallFromAnArchiveAlsoWarns(t *testing.T) {
+	r := clitest.New(t)
+
+	// Built and packed in a temp copy: `release build` writes SHA256SUMS,
+	// and the shared fixture is not this test's to modify.
+	bundle := r.BundleAt("1.4.0")
+	r.Run("release", "build", bundle).ExitCode(0)
+	archive := filepath.Join(t.TempDir(), "demo-1.4.0.tar.zst")
+	r.Run("release", "archive", bundle, "-o", archive).ExitCode(0)
+
+	r.Run("init",
+		"--product", "demo",
+		"--release", archive,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(0).
+		StderrContains("`runtime` is deprecated", domain.FieldRemovalRelease)
+}
+
+// `--repair` restores an installation that is already there, and both summaries
+// called it a creation.
+//
+// The plan's was the worse of the two: "would create an installation" printed
+// beside an empty installation id, for a record that exists. An operator reading
+// a plan to check they are repairing the right machine is reading the one line
+// that did not distinguish the two.
+func TestAPlannedRepairSaysRepair(t *testing.T) {
+	r := clitest.New(t)
+
+	install := []string{"init",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+	}
+	r.Run(install...).ExitCode(0)
+
+	plan := r.Run(append(append([]string{}, install...), "--repair", "--dry-run")...).ExitCode(0)
+	plan.OutputContains("would repair")
+	plan.NoOutputContains("would create")
+
+	// The operation says it too: the plan and the run describe one act.
+	done := r.Run(append(append([]string{}, install...), "--repair")...).ExitCode(0)
+	done.OutputContains("repaired for demo")
+	done.NoOutputContains("created for demo")
+}

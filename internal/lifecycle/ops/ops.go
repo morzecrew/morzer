@@ -271,14 +271,41 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 // warnPlannedDeprecations announces what a bundle is written with, read from
 // the source rather than from a staged copy.
 //
-// Only a plan uses it, and only because a plan stages nothing. Everything it
-// cannot answer it declines to answer: a reference this build cannot read as a
-// local directory -- a registry, an archive -- gets no warning rather than an
-// error, because a plan that refused to plan over an advisory would be worse
-// than one that stays quiet. The operation itself still reads that bundle, and
-// still warns, from the copy it has verified.
-func (d *Deps) warnPlannedDeprecations(releasePath string) {
-	m, err := release.LoadManifest(filepath.Join(releasePath, release.ManifestFileName))
+// Only a plan uses it, and only because a plan stages nothing.
+//
+// It goes through the source rather than reading a path, because `--release`
+// names a directory *or* a `tar.zst`, and joining a filename onto an archive
+// produces a path that does not exist. The first version of this did exactly
+// that and swallowed the error, so a plan over an archive silently said nothing
+// while the operation warned -- the two disagreeing about the same bundle,
+// which is the defect this function exists to remove rather than relocate.
+//
+// Local references only. For a directory Fetch copies and for an archive it
+// extracts, both of them cheap and neither of them leaving the machine; a
+// registry would mean a plan pulling a bundle over the network to phrase an
+// advisory, which is a cost nobody asked a plan for. A remote reference gets no
+// warning, and that is a real gap rather than a tidy one -- see the log.
+//
+// The temporary directory is not a write in the sense a plan is forbidden:
+// nothing outside it is touched and it is gone before this returns. The local
+// source already does the same thing inside Resolve, for the same reason.
+func (d *Deps) warnPlannedDeprecations(ctx context.Context, releasePath string) {
+	ref, err := ports.ParseRef(releasePath)
+	if err != nil || ref.Scheme != "file" {
+		return
+	}
+
+	dir, err := os.MkdirTemp("", "morzer-plan-")
+	if err != nil {
+		return
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	bundle, err := d.Source.Fetch(ctx, ref, dir)
+	if err != nil {
+		return
+	}
+	m, err := release.LoadManifest(filepath.Join(bundle.String(), release.ManifestFileName))
 	if err != nil {
 		return
 	}
