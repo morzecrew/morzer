@@ -1751,3 +1751,119 @@ the migration is priced.
 - **`saveInstallation` writes its report before the state store**, so a failed
   state write leaves a report that disagrees with it. Noticed while fixing D-028
   and not chased; it is a real ordering question, not a test artifact.
+
+# Wave 32 · A plan that names what it plans
+
+Branch `feature/wave-32-a-plan-that-names-what-it-plans`. RFC 0001 decision 12
+applied to `init`, and the reconciliation backlog: RFC 0018's proposal from
+wave 29's D-023.
+
+**Drift count: 1** — D-031, against whichever wave first gave `init` a
+`--dry-run`, found by this one. RFC 0001 decision 12 settled that a plan reads
+the bundle at its **source**; `init --dry-run` read nothing at all.
+
+## D-031 — `init --dry-run` planned against a bundle it never opened
+
+- **Touches:** RFC 0001 decision 12, RFC 0002 §"Plan (`--dry-run`)"
+- **RFC said:** `--dry-run` plans the convergence steps against the bundle at
+  its source rather than its release-store destination, because nothing is
+  staged during a plan.
+- **Built (before this wave):** `init --dry-run` closed with
+  `installation  created for ` — two empty slots and a creation claimed in the
+  past tense, printed directly beneath *this is a plan; nothing was changed*.
+  In `--json`, `data.product` was `""`.
+- **Because:** the summary read the installation out of engine state, and a plan
+  runs no steps, so nothing had populated it.
+- **Class:** `drift`. Decision 12 covered it and `init` was built otherwise —
+  the only non-zero drift entry in this file, and it is recorded as such rather
+  than softened into a gap. What makes it drift and not a gap: the rule existed,
+  was written down, and applied to exactly this situation.
+- **Consequence:** the product was never unknown. The CLI resolves it *before*
+  the operation, from `--product` or from the manifest at the bundle's source,
+  because every managed path derives from it — so it was already in `opts`. The
+  fix reads what was in hand rather than adding a way to obtain it.
+- **Measured, and what corrected the plan for this wave:** the same `--json`
+  object reported `etc_dir` ending in `/etc/web` for the `web` bundle while
+  `product` was empty. One value derived from the manifest and one blank, in one
+  object — which is what proved the manifest had already been read and killed
+  the assumption that this needed a way to read a manifest without staging.
+
+## D-032 — A warning withheld from the only person still choosing
+
+- **Touches:** RFC 0023 decision 18
+- **RFC said:** the deprecation warns at `release verify`, `init` and `update` —
+  the moments somebody can still act.
+- **Built:** the warning lived inside `stepStageRelease` and read the *staged*
+  copy, so `init --dry-run` — an operator deciding whether to install the bundle
+  at all — was the one path that never carried it.
+- **Because:** decision 18's whole argument is that the warning belongs where a
+  choice is available. A plan is that moment in its purest form: nothing has
+  been done yet and the operator is deciding.
+- **Class:** `spec-gap`. The row named commands, and a plan is a mode rather
+  than a command, so following it literally left the mode uncovered.
+- **Deliberately not applied:** moving the warning out of the step for the real
+  path too. There it reads the bundle *after* verification, and a bundle whose
+  signature does not check out should not hand out advice about its fields on
+  the way to being refused. A plan has no verified copy and is already a
+  statement about the source, so the two paths read different copies for a
+  stated reason rather than by accident.
+
+## D-033 — Two verbs in one clause
+
+- **Touches:** wave 29's D-021 work, found by this wave
+- **Built:** `warnDeprecations` published `"this bundle uses " + f.Message()`,
+  and `Message()` already opens with the field name — composing *this bundle
+  uses `runtime` is deprecated and will stop being read in 0.4.0*.
+- **Because:** the same `Message()` is printed bare by `release verify` and has
+  always read correctly, which is what located the defect in the join rather
+  than in the sentence. It shipped in wave 29 and is in that wave's own
+  acceptance log verbatim, unread by its author.
+- **Class:** `spec-gap`.
+- **Consequence:** nothing parsed either string — no test, no script, no doc —
+  which is why it survived. The summary line and the warning are both now
+  asserted.
+
+## Reconciliation — 2026-08-18
+
+| RFC | Row | Outcome | Grade | Decision | From |
+|---|---|---|---|---|---|
+| 0018 | 13 | **Accepted, narrowed** | `ASSUMED` | A version floor is not enforced against a manager stamped by `git describe` between tags (`<N>-g<sha>`, optionally `-dirty`); a deliberate prerelease such as `rc.1` stays subject to it | D-023 |
+
+**The proposal could not be accepted as written, and that is the finding.**
+D-023 proposed "the floor is not enforced against a manager whose own version is
+a prerelease". True of the wave 29 implementation — and **PR #53's review killed
+that form as too wide**, because `0.2.0-rc.1` is a prerelease that genuinely *is*
+below a `0.3.0` floor. The code was narrowed to the exact `git describe` shape
+two waves before this row was written into the RFC. Accepting it verbatim would
+have made the document claim something wider than the code does.
+
+## Rules distilled
+
+- **A carried proposal ages against the code it describes.** D-023 sat unruled
+  for three waves while a review invalidated its wording, and nothing in the
+  log's format shows that — the entry looks as fresh as the day it was filed.
+  Re-read the code before accepting a proposal, not just the proposal. (D-023)
+- **A rule written about commands does not cover modes.** Decision 18 named
+  `verify`, `init` and `update`; `--dry-run` is a mode of one of them, and fell
+  through. Ask which *modes* a rule about commands reaches. (D-032)
+- **One object holding a derived value and a blank one is the fastest proof
+  available.** `etc_dir: /etc/web` beside `product: ""` settled where the defect
+  was, and cost one command. (D-031)
+- **Prose defects survive because nothing parses prose.** Two verbs collided in
+  a warning that shipped, ran in an acceptance log, and was read by nobody —
+  including the author who wrote both. (D-033)
+
+## Carried into the next unit
+
+- ~~**The RFC 0018 proposal from wave 29's D-023**~~ — accepted, narrowed.
+- **The removal of `runtime:` in 0.4.0** — a dated commitment nothing enforces.
+  Now the oldest carried item in this file.
+- **`Installation.Providers`** — still declared, still unwritten (D-011).
+- **P1b item 4** — still behind a bootable venue, still the only thing before
+  **P3, the Quadlet adapter**.
+- **Two settle-window fragilities**, carried from waves 28 and 29.
+- **`saveInstallation` writes its report before the state store** (wave 31).
+- **`operation.status` reports `succeeded` for a dry run whose steps are all
+  `pending`**, new here and deliberately not fixed: it is a machine-readable
+  field RFC 0026's read model may consume, so changing it is a design question
+  rather than a bugfix.
