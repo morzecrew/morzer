@@ -291,12 +291,29 @@ status_field() {
 	"${MORZER}" --root "${ROOT}" --json status | jq -r "$1"
 }
 
+# Counting is not instantaneous after a stop. `docker compose stop` returns
+# when it has asked; Docker keeps reporting a container as running until its
+# process is actually gone, so a count sampled the moment the command returns
+# can still see a container the operation has already finished with.
+#
+# Polling to the expected count rather than sampling once does not weaken the
+# assertion: a wrong count still fails, it merely has to still be wrong a few
+# seconds later. What it removes is the failure that is a fact about timing
+# rather than about the deployment.
 assert_running() {
 	local expected=$1
-	local running
-	running=$(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)
-	[ "${running}" = "${expected}" ] ||
-		fail "expected ${expected} running container(s), found ${running}"
+	local running deadline
+	deadline=$(( $(date +%s) + 30 ))
+	while :; do
+		running=$(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)
+		if [ "${running}" = "${expected}" ]; then
+			break
+		fi
+		if [ "$(date +%s)" -ge "${deadline}" ]; then
+			fail "expected ${expected} running container(s), found ${running} after 30s"
+		fi
+		sleep 1
+	done
 	info "${running} container(s) running"
 }
 

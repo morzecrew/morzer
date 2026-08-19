@@ -264,3 +264,33 @@ func run(ctx context.Context, name string, args ...string) (string, error) {
 	err := cmd.Run()
 	return buf.String(), err
 }
+
+// WaitGone blocks until the container has actually stopped.
+//
+// This is the signal a test needs after asking a service to shut down.
+// Polling the service's own port answers a different question: it reports
+// when the port stopped accepting, which is the same observation whether the
+// service went away or the request to stop it never arrived. A test that
+// cannot tell those apart reports the second as the first, and blames
+// whatever it was probing for a fault in its own fixture.
+//
+// Containers here are started with --rm, so a stopped one is a removed one
+// and `inspect` failing to find it is the same answer as "not running".
+func (c *Container) WaitGone(t *testing.T, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		out, err := run(ctx, "docker", "inspect", "--format", "{{.State.Running}}", c.Name)
+		cancel()
+		if err != nil || strings.TrimSpace(out) == "false" {
+			return
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("%s was still running %s after being asked to stop: "+
+				"the request to stop it did not land, which is a fault in "+
+				"the fixture and not in whatever is being probed", c.Name, within)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}

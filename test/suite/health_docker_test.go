@@ -100,11 +100,25 @@ func TestTCPProbeAgainstRedis(t *testing.T) {
 	assert.Equal(t, "accepting connections", res.Message)
 
 	// And once it is gone, the same probe says so rather than hanging.
-	_, err := redis.Exec(t, "redis-cli", "shutdown", "nosave")
-	_ = err // shutdown drops the connection, so a non-zero exit is expected
+	//
+	// The shutdown's own exit code cannot settle whether it landed:
+	// redis-cli drops the connection as the server goes down, so a non-zero
+	// exit is the ordinary outcome and is indistinguishable from a `docker
+	// exec` that never reached the container at all. Asking the container
+	// is what tells those apart -- without it, a shutdown that never
+	// arrived spends this loop's whole deadline watching a healthy Redis
+	// and then reports "a stopped service was still reported healthy",
+	// which names the prober for a failure of the fixture.
+	_, _ = redis.Exec(t, "redis-cli", "shutdown", "nosave")
+	redis.WaitGone(t, 30*time.Second)
 
+	// The published port outlives the container by a little, so this still
+	// polls -- but it is now bounded by something already known to have
+	// happened, and a timeout here means the port mapping outlived the
+	// container rather than that the service never stopped.
 	deadline = time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
+		var err error
 		res, err = prober.Check(context.Background(), spec)
 		require.NoError(t, err)
 		if !res.OK {
