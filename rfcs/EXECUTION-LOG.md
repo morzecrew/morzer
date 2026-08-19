@@ -2165,6 +2165,42 @@ them once a row says LOCKED.
   destroy each other's container — or an unrelated one that happened to share
   the name. Now unique per run.
 
+## D-044 — A row that would have sent P3 at the wrong mechanism
+
+- **Touches:** RFC 0023 row 22, PR #59 review round 2
+- **Built:** `RequiresMountsFor=` removed from row 22's list of mechanisms, with
+  a note saying why it is not one.
+- **Because:** row 22 lists the ways P3 might satisfy "the file exists before a
+  reader starts", and `RequiresMountsFor=` is not one of them.
+  systemd.unit(5): it "automatically adds dependencies of type `Requires=` and
+  `After=` for all **mount units** required to access the specified path". That
+  orders the reader after `/run` is *mounted*, which it already is when the race
+  runs, and says nothing about whether anything has written into it. A P3 that
+  picked it off this list would have shipped the exact race the row exists to
+  prevent, believing the row had blessed it.
+- **Class:** `spec-gap` in a row written one commit earlier. The row was
+  authored to stop a spike foreclosing P3's design, and then offered P3 a
+  mechanism that does not work — a list assembled from plausibility rather than
+  from the manual page.
+- **Consequence:** the wrong entry is named as wrong rather than deleted, since
+  it is the one a reader is most likely to reach for independently.
+
+## D-045 — Claiming more than the venue measured
+
+- **Touches:** RFC 0023 row 21 and §12 item 4, and this log's distilled rules
+- **Built:** three claims narrowed to the unit-level signal that was observed.
+- **Because:** the spike measured that systemd reports a unit started while its
+  parameter is empty. It did **not** measure what any health check does with an
+  empty parameter — nothing here ran one. "Every health surface reports as fine"
+  and "the one outcome nothing downstream can detect" were extrapolations, and
+  they sat inside a LOCKED row, which is the worst place to keep an unmeasured
+  claim: the row's authority is the measurement.
+- **Class:** `spec-gap`. Review named two locations; there were three, the third
+  being the distilled rule, which is the one that travels furthest.
+- **Consequence:** the argument for LOCKED is unchanged and now rests only on
+  what was seen — a false green at the unit level, with downstream detection
+  depending on something validating the parameter, which nothing guarantees.
+
 ## Self-audit — 2026-08-19
 
 Scope: the whole branch — one commit, no production code. A spike, so the audit
@@ -2173,7 +2209,7 @@ the RFC text claims more than was observed, and whether the numbers reproduce.
 
 | # | Severity | Finding | Status |
 |---|---|---|---|
-| A-1 | Medium | The claim "B started before the render" is a **race outcome, not a determinism**. Unordered units have no guaranteed order, and B won three times out of three — but it could lose, in which case the unit succeeds with the correct value. Recorded, because it makes the hazard *worse* rather than milder: an intermittent silent misconfiguration is harder to catch than a reliable one. | Fixed — stated in item 4 and in row 21 |
+| A-1 | Medium | The claim "B started before the render" is a **race outcome, not a determinism**. Unordered units have no guaranteed order, and B won four times out of four, counting the post-pin re-run — but it could lose, in which case the unit succeeds with the correct value. Recorded, because it makes the hazard *worse* rather than milder: an intermittent silent misconfiguration is harder to catch than a reliable one. | Fixed — stated in item 4 and in row 21 |
 | A-2 | Low | The venue's `/run` is mounted by Docker (`--tmpfs /run`), not by systemd as it would be on a host. The conclusion is unaffected — what matters is that it is a tmpfs and empty when the transaction begins, which held either way — but the mount's provenance differs from bare metal and the item should not imply otherwise. | Fixed — named in item 4's venue paragraph |
 | A-3 | Low | The product units are `Type=oneshot` shell commands rather than containers. Deliberate: `EnvironmentFile` semantics are systemd's and do not depend on what `ExecStart` runs. Worth stating so a reader does not take the spike for a Quadlet rehearsal. | Fixed — stated in the spike's README |
 
@@ -2212,7 +2248,9 @@ product, and it is now the longest-running unfixed finding in this file.
   been answerable all along. (D-038)
 - **A silent success is worse than a loud failure, and costs one character.**
   `EnvironmentFile=-` turns a missing configuration into a running product that
-  every health surface calls fine. (D-038)
+  systemd reports as started. Whether anything downstream notices depends on
+  something validating the parameter — which is a different claim, and not one
+  this spike measured. (D-038)
 - **An item that names a tool has hidden the property it needs.** "A machine
   with Podman", then "systemd-nspawn" — what it wanted was a boot that costs a
   second, and saying so would have unblocked it sooner. (D-039)
@@ -2221,6 +2259,12 @@ product, and it is now the longest-running unfixed finding in this file.
 - **A kept venue must be pinned, or it re-runs a different experiment under the
   old one's name.** The entry arguing for reproducibility shipped a floating
   base image, which is the failure the entry existed to prevent. (D-043)
+- **A list of alternatives is a claim about each of them.** Row 22 offered P3
+  four mechanisms and one of them does not work; naming it without checking the
+  manual page would have blessed the race the row exists to prevent. (D-044)
+- **A measurement's authority does not extend to what it did not measure.** The
+  venue showed a false green at the unit level, and the prose turned that into
+  a claim about every health surface — inside a LOCKED row. (D-045)
 - **Count from the record, not from memory.** Two numbers in this wave were
   wrong in opposite directions — a boot count too low and a flake count too
   high — and a reviewer proposed a third that was wrong again. (D-043)
