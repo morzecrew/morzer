@@ -2322,7 +2322,16 @@ that has gone red in three of the last five waves; a red run there would then be
 unattributable between the new adapter and the old fragility, and that ambiguity
 costs more to resolve than the fixes cost to write.
 
-**Drift count: 1** — D-048, against wave 32, found by this one.
+**Drift count: 5** — D-048, D-052 and D-054 against wave 32; D-056 against
+RFC 0014, pre-existing and shipped; D-057 against this wave's own first fix.
+
+Written as 1 when the group was opened and corrected when it stopped being true,
+which is the whole of D-046's rule applied to the number that measures this
+practice. Four of the five were found while chasing something else — two CI
+failures that both read as flakes, a fixture migration, and a test written for
+the removal — and none was in the diff. That is the argument for the wave: a
+unit scoped to a carried list found more than the list contained, because the
+list was the part somebody had already noticed.
 
 ## D-047 — A plan's steps say `planned`, not `pending`
 
