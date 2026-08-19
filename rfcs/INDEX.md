@@ -25,7 +25,7 @@ second table of the same shape is a second set of rows for the same numbers.
   **Item 4 is measured as of 2026-08-18, and P1b is complete.** It asked what a
   tmpfs holds at boot; the answer is nothing, always, which turned out not to be
   the question — the ordering decides it, and `EnvironmentFile=-` is what makes a
-  misconfigured boot report success (decision 21). **P3 is no longer gated.**
+  misconfigured boot report success (decisions 21 and 22). **P3 is no longer gated.**
   **P2 is partly shipped**: the manifest gained `runtimes:` with `runtime:`
   deprecated and still read, decision 8 resolved against the option §4.1
   preferred, and the runtime fixed at `init` at installation schema 9. `import`

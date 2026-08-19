@@ -2094,6 +2094,53 @@ production code changed.
   `$(dirname $0)` in the spike is now caught (SC2046, SC2086), and was not
   before.
 
+## D-042 — A spike locked a mechanism it had not built
+
+- **Touches:** RFC 0023 decision 21 as first written, split into 21 and 22
+- **Built (first):** one row, `LOCKED`, saying the parameter file is referenced
+  without the `-` prefix **and** that any unit reading it is ordered behind
+  whatever renders it.
+- **Built (now):** two rows. 21 keeps the prefix, `LOCKED`. 22 states the
+  invariant — a reader must not start before the file exists — as `ASSUMED`,
+  with the mechanism left to P3.
+- **Because:** the single row graded a measured fact and an unbuilt design
+  obligation the same way. The prefix is systemd's behaviour, observed four
+  times; ordering-behind-the-render is one mechanism among several, and it was
+  inferred from the fixture that happened to be convenient to write. A generator
+  emitting its own ordering, `RequiresMountsFor=`, rendering earlier in the
+  boot, or Quadlet inlining values instead of referencing a file would all
+  satisfy the same invariant. A spike that has built no adapter is the
+  worst-placed thing to foreclose the design of one.
+- **Class:** `spec-gap` in the row, and the failure mode `flag-dont-flip` names
+  outright: grade inflation. LOCKED rows earn their force by being rare, and one
+  sitting beside a row that did not need it weakens the one that did.
+- **Consequence:** row 21 also gained a scope it was missing — it bans the
+  prefix on the *parameter* file, not everywhere, because `-` stays right for a
+  genuinely optional file such as an operator override drop-in. The first
+  version would have forbidden a pattern nothing here objects to.
+- **Found by:** the author's review of the proposal, which is the step this wave
+  had skipped — see below.
+
+## Reconciliation — 2026-08-19
+
+| RFC | Row | Outcome | Grade | Decision | From |
+|---|---|---|---|---|---|
+| 0023 | 21 | **Accepted, scoped** | `LOCKED` | The `EnvironmentFile` carrying parameters is referenced without the `-` prefix | D-038 |
+| 0023 | 22 | **Accepted, regraded** | `ASSUMED` | A reader must not start before the file exists; the mechanism is P3's | D-038, D-042 |
+
+**This wave got the reconciliation backwards, and the entry above exists because
+of it.** Rows 3, 13, 14 and 20 were each put to the author before they were
+written. Row 21 was written straight into the RFC, `LOCKED`, on the strength of
+a measurement — and a measurement is exactly what makes an executor most
+confident and least inclined to ask. The author's ruling split it, downgraded
+half, and scoped the half that survived, none of which the log would have
+recorded had the row simply been committed.
+
+**One alternative was declined:** locking the ordering mechanism now, on the
+argument that P3 will need one anyway. Declined because "will need something
+here" is not the same as "must use this", and the RFC has no way to distinguish
+them once a row says LOCKED.
+
 ## Self-audit — 2026-08-19
 
 Scope: the whole branch — one commit, no production code. A spike, so the audit
@@ -2119,6 +2166,13 @@ product, and it is now the longest-running unfixed finding in this file.
 
 ## Rules distilled
 
+- **A measurement is when an executor is least inclined to ask.** Confidence
+  earned by observing something transfers to the design conclusions drawn from
+  it, and those are a different claim. Row 21 was written unruled precisely
+  because the evidence behind it felt settled. (D-042)
+- **Grade the fact and the obligation separately.** One row held systemd's
+  observed behaviour and an unbuilt adapter's design, and gave both the grade
+  the stronger half deserved. (D-042)
 - **A race that keeps going the same way is still a race.** Three boots agreeing
   is not determinism, and the intermittent version of a silent misconfiguration
   is worse than the reliable one. (A-1)
@@ -2142,9 +2196,10 @@ product, and it is now the longest-running unfixed finding in this file.
 
 - ~~**P1b item 4**~~ — measured; **P3, the Quadlet adapter, is no longer gated**
   and is the whole of what remains in RFC 0023.
-- **P3 owes its generated units an explicit dependency on the render**, and owes
-  it without the `-` prefix (decision 21). This is a constraint discovered
-  before the adapter exists rather than after.
+- **P3 owes the file's presence before any unit that reads it starts** (decision
+  22), and owes it without the `-` prefix (decision 21). The mechanism is P3's
+  to choose; the invariant is not. A constraint discovered before the adapter
+  exists rather than after.
 - **The removal of `runtime:` in 0.4.0** — a dated commitment nothing enforces.
   The oldest carried item, and untouched by this wave, which was the spike alone.
 - **`Installation.Providers`** — still declared, still unwritten (D-011).
