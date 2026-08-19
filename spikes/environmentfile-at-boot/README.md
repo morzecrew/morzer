@@ -58,3 +58,13 @@ real device mounts.
 The ordering B demonstrates is a **race**. Unordered units have no guaranteed
 order, so a run where B loses and succeeds with the right value is not a
 refutation — it is the same defect being intermittent.
+
+## Pinning
+
+The base image is pinned by digest and the build asserts systemd 261, the
+version the measurement was taken on. A floating venue re-runs a different
+experiment and reports it under the old one's name, which is worse than keeping
+no venue at all.
+
+Repinning is deliberate: change the digest, run this, and record the new numbers
+in RFC 0023 §12 item 4 rather than assuming they carried over.

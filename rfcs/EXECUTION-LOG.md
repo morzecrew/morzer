@@ -2020,7 +2020,7 @@ production code changed.
   `EnvironmentFile=` fails the unit before the process runs
   (`Failed to load environment files`, `Result=resources`); `EnvironmentFile=-`
   starts it, reports success, and runs with the parameter empty.
-- **The ordering**, across three independent boots: an unordered unit with the
+- **The ordering**, across four independent boots: an unordered unit with the
   dash **started and finished before the render unit had written the file**, and
   systemd marked it active.
 
@@ -2035,11 +2035,13 @@ production code changed.
 - **Class:** `irreducible`, and it behaved like one. The item had been carried
   since wave 26 because it could not be reasoned about, and one boot settled it
   — while also reversing the premise the section was written on.
-- **Consequence:** decision 21, LOCKED. The prefix is the difference between a
-  deployment that refuses and one that lies, and P3's generated units now owe an
-  explicit dependency on the render — which Compose gets for free, because its
-  product unit's `ExecStart` *is* `apply --startup`. **P1b is complete and P3 is
-  no longer gated.**
+- **Consequence:** decisions 21 and 22. The prefix is the difference between a
+  deployment that refuses and one that lies (21, LOCKED), and P3's generated
+  units owe the file's presence before any unit that reads it starts (22,
+  ASSUMED) — the invariant, not a mechanism, which is the correction D-042
+  records. Compose satisfies it for free, because its product unit's
+  `ExecStart` *is* `apply --startup`. **P1b is complete and P3 is no longer
+  gated.**
 
 ## D-039 — The venue is not the one the item asked for
 
@@ -2141,6 +2143,28 @@ argument that P3 will need one anyway. Declined because "will need something
 here" is not the same as "must use this", and the RFC has no way to distinguish
 them once a row says LOCKED.
 
+## D-043 — The spike claimed reproducibility and floated
+
+- **Touches:** D-040, `spikes/environmentfile-at-boot/`, found in review
+- **Built:** the base image pinned by digest, and a build-time assertion that
+  the venue's systemd is the version the measurement was taken on.
+- **Because:** D-040's whole argument for committing the spike is that "a
+  measurement nobody can re-run is a claim". It was built `FROM
+  archlinux:latest` with an unpinned `pacman -Sy systemd`, so a re-run could
+  quietly boot a different userspace and a different systemd, and report the
+  result as the same experiment. That is worse than not keeping the venue: the
+  second answer arrives wearing the first one's authority.
+- **Class:** `spec-gap`, and a self-inflicted one — the entry arguing for
+  reproducibility shipped the mechanism that would have broken it.
+- **Consequence:** the venue is pinned to a digest and **fails the build** if
+  systemd is not 261, rather than silently measuring something else. Verified by
+  re-running the whole spike from a clean slate against the pinned image: same
+  three outcomes, same ordering, which is the fourth boot and the one that makes
+  the pin evidence rather than an assertion.
+- **Also:** the runner used a fixed container name, so two invocations could
+  destroy each other's container — or an unrelated one that happened to share
+  the name. Now unique per run.
+
 ## Self-audit — 2026-08-19
 
 Scope: the whole branch — one commit, no production code. A spike, so the audit
@@ -2159,8 +2183,11 @@ caught by the extended `just shellcheck` and was not before (D-041).
 
 **The container lane went red on its first run**, and it is recorded rather than
 replaced by the green re-run. `TestTCPProbeAgainstRedis` failed under the full
-lane and passed alone in 0.661s — the **fourth consecutive wave**, on a branch
-that changes no Go code at all. That it fails here, of all branches, is the
+lane and passed alone in 0.661s — the **third wave it has failed in (29, 32 and
+33), and they are not consecutive**: waves 30 and 31 ran the lane clean. Counted
+from the log rather than from memory, after review proposed "fourth" and the
+entry it was correcting said "three consecutive" — both wrong, in different
+directions. It failed here on a branch that changes no Go code at all. That it fails here, of all branches, is the
 clearest evidence yet that it is measuring Docker's teardown rather than the
 product, and it is now the longest-running unfixed finding in this file.
 
@@ -2191,6 +2218,12 @@ product, and it is now the longest-running unfixed finding in this file.
   second, and saying so would have unblocked it sooner. (D-039)
 - **Keep the venue, not the transcript.** Numbers in a document are checkable
   only if the thing that produced them still runs. (D-040)
+- **A kept venue must be pinned, or it re-runs a different experiment under the
+  old one's name.** The entry arguing for reproducibility shipped a floating
+  base image, which is the failure the entry existed to prevent. (D-043)
+- **Count from the record, not from memory.** Two numbers in this wave were
+  wrong in opposite directions — a boot count too low and a flake count too
+  high — and a reviewer proposed a third that was wrong again. (D-043)
 
 ## Carried into the next unit
 
@@ -2204,7 +2237,8 @@ product, and it is now the longest-running unfixed finding in this file.
   The oldest carried item, and untouched by this wave, which was the spike alone.
 - **`Installation.Providers`** — still declared, still unwritten (D-011).
 - **Two settle-window fragilities**, carried from waves 28 and 29;
-  `TestTCPProbeAgainstRedis` has now failed in three consecutive waves.
+  `TestTCPProbeAgainstRedis` has now failed in three waves — 29, 32 and 33 —
+  which are not consecutive.
 - **`saveInstallation` writes its report before the state store** (wave 31).
 - **A plan over a remote reference still carries no deprecation warning** (D-035).
 - **`operation.status` reports `succeeded` for a dry run whose steps are all

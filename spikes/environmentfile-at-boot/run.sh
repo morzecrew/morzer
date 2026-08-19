@@ -3,21 +3,24 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-name="morzer-envfile-spike"
+# Unique per run: a fixed name lets one invocation's cleanup destroy another's
+# container, or an unrelated container that happens to share it.
+img="morzer-envfile-spike"
+name="$img-$$"
 
 cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo "== building the venue =="
-docker build -q -t "$name:venue" -f Dockerfile . >/dev/null
-docker build -q -t "$name:units" -f units.Dockerfile . >/dev/null
+docker build -q -t "$img:venue" -f Dockerfile . >/dev/null
+docker build -q -t "$img:units" -f units.Dockerfile . >/dev/null
 
 echo "== booting =="
 cleanup
 docker run -d --name "$name" --privileged \
     --tmpfs /run --tmpfs /run/lock \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw --cgroupns=host \
-    "$name:units" >/dev/null
+    "$img:units" >/dev/null
 
 for _ in $(seq 1 30); do
     case "$(docker exec "$name" systemctl is-system-running 2>/dev/null)" in
