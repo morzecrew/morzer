@@ -295,8 +295,25 @@ func profilesFrom(releasePath string) []string {
 		return nil
 	}
 
-	out := make([]string, 0, len(manifest.Runtime.Profiles))
-	for name := range manifest.Runtime.Profiles {
+	// Every declared runtime's profiles, not one block's. This read
+	// `manifest.Runtime.Profiles` -- the deprecated block -- directly, so
+	// from the moment `runtimes:` existed the wizard offered nothing to any
+	// bundle written in it, silently: an empty list here is also what a
+	// release with no profiles looks like.
+	//
+	// A union across runtimes because the profile is the operator's choice
+	// of topology and the manifest is what says which exist; a release
+	// declaring two runtimes that disagree about profiles is the vendor's
+	// to reconcile, and offering the smaller set would hide the difference
+	// rather than surface it.
+	seen := map[string]bool{}
+	for _, decl := range manifest.DeclaredRuntimes() {
+		for name := range decl.Profiles {
+			seen[name] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
 		out = append(out, name)
 	}
 	sort.Strings(out)

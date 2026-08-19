@@ -56,7 +56,7 @@ func init() {
 // showed one it had not set. The options are printed as the vendor wrote them
 // because this layer does not know what any of them mean.
 func runtimeSummary(m domain.Manifest) string {
-	declared, _ := m.DeclaredRuntimes()
+	declared := m.DeclaredRuntimes()
 	if len(declared) == 0 {
 		return "none declared"
 	}

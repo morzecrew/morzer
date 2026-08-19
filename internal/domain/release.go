@@ -60,7 +60,7 @@ func (r Release) Path(rel string) (string, error) {
 // is decision 5 at the point a caller would otherwise get an empty file list
 // and deploy nothing while reporting success.
 func (r Release) RuntimeFilePaths(runtime, profile string) ([]string, error) {
-	declared, _ := r.Manifest.DeclaredRuntimes()
+	declared := r.Manifest.DeclaredRuntimes()
 	decl, ok := declared[runtime]
 	if !ok {
 		return nil, ValidationError(nil,

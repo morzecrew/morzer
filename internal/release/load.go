@@ -434,12 +434,11 @@ func checkReferencedFiles(rel domain.Release) error {
 	// reason Validate's do: naming `runtimes.compose.files` to somebody whose
 	// manifest says `runtime.files` sends them looking for a block that is
 	// not there.
-	declared, fromLegacy := rel.Manifest.DeclaredRuntimes()
+	declared := rel.Manifest.DeclaredRuntimes()
 	for _, name := range declared.Names() {
+		// Always the new spelling: `runtime:` is refused by Validate, so
+		// no manifest reaching here was written in the old one.
 		base := "runtimes." + name
-		if fromLegacy {
-			base = "runtime"
-		}
 		decl := declared[name]
 		for i, f := range decl.Files {
 			check(fmt.Sprintf("%s.files[%d]", base, i), f)

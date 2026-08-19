@@ -721,7 +721,7 @@ func runtimeBaseline(inst domain.Installation, running domain.Release) map[strin
 	if inst.RuntimeOptions != nil {
 		return inst.RuntimeOptions
 	}
-	declared, _ := running.Manifest.DeclaredRuntimes()
+	declared := running.Manifest.DeclaredRuntimes()
 
 	baseline := map[string]string{}
 	for key, value := range declared[inst.RuntimeName()].Options {
@@ -762,7 +762,7 @@ func (d *Deps) persistRuntimeBaseline(ctx context.Context, baseline map[string]s
 // started"), and the exit code and remedy that say what is actually wrong are
 // buried in a record. Asked here, it is a refusal with nothing started.
 func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Release) error {
-	declared, _ := rel.Manifest.DeclaredRuntimes()
+	declared := rel.Manifest.DeclaredRuntimes()
 	return d.checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
 }
 
@@ -941,7 +941,7 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		env[envName(inst.Product, "IMAGE_"+imageVarName(name))] = spec.RuntimeRef()
 	}
 
-	declared, _ := rel.Manifest.DeclaredRuntimes()
+	declared := rel.Manifest.DeclaredRuntimes()
 
 	if err := d.checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options); err != nil {
 		return ports.RuntimeConfig{}, err
