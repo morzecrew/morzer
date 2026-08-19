@@ -2,7 +2,6 @@ package gotemplate
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -83,17 +82,13 @@ func SyntheticData(rel domain.Release, schema domain.SecretSchema) ports.Templat
 // run: a check that rendered a different profile each time would report a
 // failure that disappears when someone looks into it.
 func syntheticProfile(rel domain.Release) string {
-	names := make([]string, 0, len(rel.Manifest.Runtime.Profiles))
-	for name := range rel.Manifest.Runtime.Profiles {
-		names = append(names, name)
-	}
+	names := rel.Manifest.ProfileNames()
 	if len(names) == 0 {
 		// A release declaring no profiles installs with none, so this is
 		// the honest value rather than a placeholder -- and the empty
 		// string is what such a template sees in the field.
 		return ""
 	}
-	sort.Strings(names)
 	return names[0]
 }
 

@@ -110,9 +110,9 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 		Empty:    "the release declares no images",
 	})
 
-	if len(m.Runtime.Profiles) > 0 {
+	if profiles := m.ProfileNames(); len(profiles) > 0 {
 		d.Heading("profiles")
-		d.Text(4, "%s", strings.Join(sortedKeys(m.Runtime.Profiles), ", "))
+		d.Text(4, "%s", strings.Join(profiles, ", "))
 	}
 
 	d.Heading("compatibility")

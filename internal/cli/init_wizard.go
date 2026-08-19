@@ -295,29 +295,11 @@ func profilesFrom(releasePath string) []string {
 		return nil
 	}
 
-	// Every declared runtime's profiles, not one block's. This read
-	// `manifest.Runtime.Profiles` -- the deprecated block -- directly, so
-	// from the moment `runtimes:` existed the wizard offered nothing to any
-	// bundle written in it, silently: an empty list here is also what a
-	// release with no profiles looks like.
-	//
-	// A union across runtimes because the profile is the operator's choice
-	// of topology and the manifest is what says which exist; a release
-	// declaring two runtimes that disagree about profiles is the vendor's
-	// to reconcile, and offering the smaller set would hide the difference
-	// rather than surface it.
-	seen := map[string]bool{}
-	for _, decl := range manifest.DeclaredRuntimes() {
-		for name := range decl.Profiles {
-			seen[name] = true
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for name := range seen {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
+	// One implementation, in the manifest. `release show` and the
+	// render-check's synthetic profile ask the same question, and all three
+	// read the deprecated block directly until decision 23 made that answer
+	// "none" everywhere at once.
+	return manifest.ProfileNames()
 }
 
 func splitDomains(input string) []string {

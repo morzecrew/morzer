@@ -41,6 +41,27 @@ func TestReleaseShowNamesEveryRuntimeAndItsOptions(t *testing.T) {
 		assert.Contains(t, out, "compose (project=myapp)")
 	})
 
+	// Profiles come from the declared runtimes, not the block that stopped
+	// being read. This rendered nothing for every current bundle and nothing
+	// failed, because "no profiles declared" and "declared, not found" print
+	// the same absence.
+	t.Run("profiles declared only under runtimes", func(t *testing.T) {
+		out := render(domain.Manifest{
+			Metadata: base,
+			Runtimes: domain.Runtimes{
+				"compose": {Files: []string{"compose.yaml"}, Profiles: map[string][]string{
+					"external-db": {"b.yaml"}, "embedded": {"a.yaml"},
+				}},
+				"quadlet": {Files: []string{"app.container"}, Profiles: map[string][]string{
+					"embedded": {"x.container"}, "ha": {"y.container"},
+				}},
+			},
+		})
+		assert.Contains(t, out, "profiles")
+		assert.Contains(t, out, "embedded, external-db, ha",
+			"sorted and deduplicated across runtimes")
+	})
+
 	t.Run("two runtimes, sorted, one of them plain", func(t *testing.T) {
 		out := render(domain.Manifest{
 			Metadata: base,

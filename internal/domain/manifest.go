@@ -209,6 +209,37 @@ func (m Manifest) DeclaredRuntimes() Runtimes {
 	return m.Runtimes
 }
 
+// ProfileNames is every deployment profile this release declares, sorted and
+// deduplicated across its runtimes.
+//
+// One implementation because there are three callers -- the `init` wizard's
+// question, `release show`, and the synthetic profile `release verify
+// --render-check` renders with -- and each of them read
+// `Manifest.Runtime.Profiles` directly. That field stopped being read in 0.3.0
+// (decision 23), so all three silently answered "no profiles" for every bundle
+// written in the current spelling: an empty list is also what a release with no
+// profiles looks like, so none of them failed, they just stopped being right.
+//
+// A union across runtimes rather than one runtime's, because a profile is the
+// operator's choice of topology and the manifest is what says which exist. A
+// release whose runtimes disagree about profiles is the vendor's to reconcile,
+// and offering the smaller set would hide the disagreement rather than surface
+// it.
+func (m Manifest) ProfileNames() []string {
+	seen := map[string]bool{}
+	for _, decl := range m.DeclaredRuntimes() {
+		for name := range decl.Profiles {
+			seen[name] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 type Metadata struct {
 	Name        string  `yaml:"name" json:"name"`
 	Version     Version `yaml:"version" json:"version"`

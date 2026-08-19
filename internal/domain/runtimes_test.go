@@ -411,3 +411,41 @@ func TestAnInstallationRefusesAMalformedRecordedRuntime(t *testing.T) {
 	assert.NoError(t, unknown.Validate(),
 		"a typo that is well-formed is caught by the adapter mismatch, not here")
 }
+
+// ProfileNames has three callers and every one of them used to read the
+// deprecated block directly.
+//
+// The failure mode is why this is asserted rather than assumed: when the block
+// stopped being read, all three answered "no profiles" for every bundle written
+// in the current spelling, and none of them failed -- an empty list is also
+// what a release declaring no profiles looks like. A wrong answer that is
+// indistinguishable from a right one is not caught by the callers' own tests,
+// so it is caught here.
+func TestProfileNamesAreTheUnionAcrossDeclaredRuntimes(t *testing.T) {
+	m := validManifest()
+	m.Runtimes = Runtimes{
+		"compose": {Files: []string{"c.yaml"}, Profiles: map[string][]string{
+			"embedded": {"a.yaml"}, "external-db": {"b.yaml"},
+		}},
+		"quadlet": {Files: []string{"q.container"}, Profiles: map[string][]string{
+			"embedded": {"x.container"}, "ha": {"y.container"},
+		}},
+	}
+
+	assert.Equal(t, []string{"embedded", "external-db", "ha"}, m.ProfileNames(),
+		"sorted and deduplicated across runtimes: a profile is the operator's "+
+			"choice of topology, and offering the smaller set would hide a "+
+			"disagreement between runtimes rather than surface it")
+
+	// The empty case, decided rather than inherited.
+	bare := validManifest()
+	bare.Runtimes = Runtimes{"compose": {Files: []string{"c.yaml"}}}
+	assert.Empty(t, bare.ProfileNames())
+
+	// And the deprecated block contributes nothing, because it is not read.
+	legacy := validManifest()
+	legacy.Runtimes = Runtimes{"compose": {Files: []string{"c.yaml"}}}
+	legacy.Runtime.Profiles = map[string][]string{"ghost": {"g.yaml"}}
+	assert.Empty(t, legacy.ProfileNames(),
+		"a profile declared in the block that stopped being read is not offered")
+}

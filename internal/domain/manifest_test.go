@@ -109,10 +109,13 @@ func TestPathsMayNotEscapeTheReleaseRoot(t *testing.T) {
 	for _, path := range cases {
 		t.Run(path, func(t *testing.T) {
 			m := validManifest()
-			m.Runtime.Files = []string{path}
+			m.Runtimes[LegacyRuntimeName] = RuntimeDecl{Files: []string{path}}
 
 			err := m.Validate()
 			require.Error(t, err, "%q must be rejected", path)
+			assert.Contains(t, err.Error(), "runtimes.compose.files",
+				"rejected for the path rather than for carrying a block "+
+					"Validate refuses before it looks at any path")
 		})
 	}
 }

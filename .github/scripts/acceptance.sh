@@ -476,9 +476,28 @@ step "into the running deployment: ps, logs, stats, exec"
 	fail "ps did not report both containers with their instances"
 
 # The health check has been polling the app stub, which logs each request, so
-# there are real lines to read.
-"${MORZER}" --root "${ROOT}" logs --tail 20 | grep -q "|" ||
-	fail "logs produced no framed line"
+# there are real lines to read -- eventually.
+#
+# Waited for rather than sampled once, for the same reason assert_running is:
+# whether a line exists yet depends on the health check having polled, which
+# nothing here synchronises with. Sampled immediately this asserts how promptly
+# a container flushed its first line, which is a fact about the machine. The
+# claim under test is that the manager frames what Compose produces, and that
+# is only testable once there is something to frame.
+wait_for_log_line() {
+	local deadline
+	deadline=$(( $(date +%s) + 60 ))
+	while :; do
+		if "${MORZER}" --root "${ROOT}" logs --tail 20 | grep -q "|"; then
+			return 0
+		fi
+		if [ "$(date +%s)" -ge "${deadline}" ]; then
+			fail "logs produced no framed line within 60s"
+		fi
+		sleep 1
+	done
+}
+wait_for_log_line
 
 # The one exception to the single-envelope contract: one JSON object per line,
 # and no envelope at the end. A consumer parsing lines must never meet one.
