@@ -2436,3 +2436,186 @@ costs more to resolve than the fixes cost to write.
 - **Consequence:** closed as won't-fix rather than left open. Three waves of
   *Carried* lists is long enough for a bullet nobody intends to act on, and an
   item carried indefinitely is indistinguishable from one nobody has read.
+
+## D-052 — `runtime:` stops being read in 0.3.0, and the grace period never existed
+
+- **Touches:** RFC 0023 decision 18 (`LOCKED`), superseded by row 23
+- **RFC said:** 0.4.0, so that 0.3.0 would be a release in which both spellings
+  worked and a vendor could publish one bundle across the upgrade.
+- **Found:** there is no such release and never was. `git show
+  v0.2.0:internal/domain/manifest.go` has no `Runtimes` field — `runtimes:`
+  ships for the first time in 0.3.0 — so 0.1.0 through 0.2.0 read only the old
+  block and 0.3.0 reads only the new one. **No version reads both.** The window
+  row 18 was buying did not exist when row 18 was written.
+- **Built:** the removal, in 0.3.0, and put to the author as a *withdrawal*
+  rather than a reschedule. Ruled on and accepted the same day.
+- **Class:** `drift` against wave 32, and specifically against row 18's
+  reasoning rather than its date. The row got the important half right — a
+  deprecation without a clock is a word in a document — and then assumed the
+  half it did not check.
+- **Consequence:** priced rather than asserted. 11 amd64 downloads and 0 arm64
+  across three releases, read from the release assets on 2026-08-19, most of
+  them this project's own installer validation. The cost of the break is
+  therefore near zero and the cost of carrying two spellings was not.
+- **Also:** the author's ruling was "keep the mechanism, delete only the member",
+  and the mechanism kept a global `FieldRemovalRelease` that only ever worked
+  because there was exactly one member. Two fields deprecated in different
+  releases cannot share it. **Left as it is deliberately** and recorded here
+  instead: the shape to choose is the next deprecation's to force, and building
+  it now would be a mechanism designed for a caller that has not arrived — which
+  is the thing RFC 0015 and 0021 were both findings about.
+
+## D-053 — Every fixture in the tree was written in the spelling being removed
+
+- **Touches:** the whole test suite; RFC 0023 row 23
+- **Found:** all three `testdata/*/manifest.yaml` bundles and every Go manifest
+  fixture used `runtime:`. Nine packages went red on the removal.
+- **Class:** `discovery`, and the most useful thing this wave measured. The
+  fixtures being on the old spelling is the same fact as no released manager
+  reading the new one, seen from inside the repository — the project had shipped
+  `runtimes:` in wave 32 and was still testing almost everything through the
+  block it had deprecated.
+- **Consequence, and it is not bookkeeping:** two tests were passing for the
+  wrong reason and one of them was hiding a live defect. `profilesFrom` read
+  `manifest.Runtime.Profiles` directly, so from the moment `runtimes:` existed
+  the `init` wizard offered **no profiles at all** to any bundle written in it —
+  silently, because an empty list is also what a release with no profiles looks
+  like. `TestProfilesComeFromTheBundle` passed throughout, because its fixture
+  was written the old way. Migrating the fixture failed the test immediately;
+  the fix is in the same wave.
+- **The rule underneath it:** *a fixture written in the deprecated form tests
+  the deprecated path.* A project that deprecates a surface and leaves its
+  fixtures on it has not started migrating, it has only announced one — and its
+  suite is measuring the path it intends to delete.
+
+## D-054 — The path-join bug was fixed in one place and left in two
+
+- **Touches:** wave 32's D-034; `internal/cli/commands.go`,
+  `internal/cli/init_wizard.go`
+- **Wave 32 found and fixed:** `warnPlannedDeprecations` joined `manifest.yaml`
+  onto `--release`, which for an archive produces
+  `demo.tar.zst/manifest.yaml` — a path that does not exist.
+- **Found here:** the same join, unchanged, at `commands.go:62` and
+  `init_wizard.go:293`. Byte-identical in `v0.2.0`, so it is shipped.
+  Measured: **`morzer init --release <bundle>.tar.zst` without `--product`
+  fails with `cannot read <archive>/manifest.yaml`** — on a valid archive, for
+  both a plan and a real install. The archive is the shape a vendor publishes,
+  so this is the primary install path.
+- **Class:** `drift` against wave 32. Not for fixing the instance it found —
+  that was right — but for not grepping for the others, which is **the rule this
+  file distilled one wave later** as D-046: *a claim that changes is a claim to
+  grep for.* The same failure, one wave apart, in the opposite direction: D-046
+  was a number restated in prose, this is a mechanism restated in code.
+- **Consequence:** not fixed here. It is a third defect found by a wave that was
+  scoped to a carried list, and fixing it inside this one would make the wave
+  unreviewable. Carried, named, and measured, which is the most a wave that
+  cannot afford it should do.
+
+## D-055 — A plan does not validate the bundle it plans against
+
+- **Touches:** RFC 0001 decision 12; found while writing the removal's tests
+- **Found:** `init --dry-run --product demo --release <legacy bundle>` reports
+  *"would create an installation"* for a release the very next command refuses.
+  The plan is refused only when `--product` is **absent** — because the CLI then
+  has to read the manifest to learn the name, and validation comes with the
+  read. An incidental mechanism, not a check.
+- **Class:** `spec-gap`. RFC 0001 decision 12 settled that a plan reads the
+  bundle at its source, which wave 32 built; it did not settle that a plan
+  *validates* what it read, and nothing does.
+- **Consequence:** the shape wave 32 named — *two answers to one question,
+  decided by which shape the vendor published* — has reappeared as *decided by
+  which flags the operator passed*. Recorded in the test that meets it, so the
+  next reader finds it at the assertion rather than in this file.
+
+## D-056 — `release build` copies the vendor's `.git` into the bundle it publishes
+
+- **Touches:** RFC 0014; `internal/infra/atomicfs/copy.go`
+- **Found:** chasing a CI failure that read as a settle-window flake —
+  `cannot open .../bundle/.git/objects/maintenance.lock`, racing git's own
+  background maintenance. The lock was the symptom. **The bundle walk does not
+  exclude `.git`**, and nothing in the tree does.
+- **Measured, end to end, with a seeded credential:** `release build` on a
+  git-tracked bundle wrote a `SHA256SUMS` of 55 entries of which **42 were
+  `.git/`**, including `.git/config` and the whole of `.git/objects`; `release
+  archive` then packed all 42 into the published `tar.zst`. The signature chain
+  is *signature → SHA256SUMS → every file*, and "every file" had come to mean
+  the vendor's repository.
+- **Not exotic:** `--version-from-git` requires the bundle to be a git repo, so
+  this is the workflow the flag exists for, and this project's own test creates
+  a repo at the bundle root — which is how CI met it.
+- **Class:** `drift` against RFC 0014, which never distinguished a bundle
+  *source tree* from what *ships* from it. Pre-existing: `v0.2.0`'s `copy.go`
+  has no filter either.
+- **Consequence:** wave 35, with an RFC 0014 amendment, ruled by the author on
+  2026-08-19. Not fixed here — the exclusion list, whether `.gitignore` is
+  honoured, and what a stricter builder does to bundles already published are
+  four decisions, and a security fix reviewed under a debt wave's title is
+  reviewed by nobody. **Nobody has leaked anything**: the same 11 downloads that
+  priced D-052 price this.
+
+## Rules distilled
+
+- **A deferral is a claim, and nothing later re-examines it.** A fix gets
+  reviewed; a *Carried* bullet gets copied forward. Wave 32 deferred the dry-run
+  status because a read model "may consume" it, and the read model reads the
+  journal a dry run never enters — two file reads away, carried for two waves.
+  (D-048)
+- **A grace period is a claim about what some released binary can read, and it
+  is checkable against the tags.** Row 18 named a removal release on sound
+  reasoning and assumed the release before it was a migration window. `git show
+  <tag>:<file>` settles that in one command. (D-052)
+- **A fixture written in the deprecated form tests the deprecated path.** A
+  project that deprecates a surface and leaves its fixtures on it has announced
+  a migration rather than started one, and its suite is measuring the path it
+  means to delete. Migrating the fixtures is what turns the announcement into a
+  test — here it exposed a wizard that had offered no profiles to any current
+  bundle since the day the spelling landed. (D-053)
+- **An assertion that cannot tell which of two things failed will name the
+  wrong one — and it names the one under test.** The Redis probe reported "a
+  stopped service was still reported healthy" when the shutdown had not landed,
+  so three waves each looked at health probing, found it correct, and carried
+  the finding. (D-049)
+- **Fixing the instance is half the fix; the other half is the grep.** D-046
+  distilled this for a number and this wave found it true of a mechanism: wave
+  32 fixed one path-join and left two, one of which breaks the primary install
+  path. (D-054)
+- **A flake in a lane is a hypothesis about the lane, not a fact about it.**
+  Both of this wave's flakes were real defects wearing a flake's clothes — a
+  swallowed error, and a `.git` directory in a published archive. (D-049, D-056)
+
+## Carried into the next unit
+
+- **The `.git` leak — wave 35**, with an RFC 0014 amendment (D-056). Ruled.
+- **The path-join in `commands.go` and `init_wizard.go`** (D-054). `init
+  --release <archive>` without `--product` is broken on a shipped release.
+- **A plan does not validate the bundle it plans against** (D-055).
+- **`FieldRemovalRelease` is a single-member design with no members** (D-052).
+  The next field deprecation is what should force its shape.
+- **`Installation.Providers`** — still declared, still unwritten (D-011). Ruled
+  2026-08-19: **not gated on P3**, which was this file's own framing and did not
+  survive checking. The state decodes with plain `json.Unmarshal`, so removing
+  it needs no migration; what gates it is whether `installation describe`'s
+  output may lose a field, which is RFC 0027's question. Wave 36.
+- ~~**The removal of `runtime:` in 0.4.0**~~ — done, one release early (D-052).
+  The oldest carried item in this file, closed.
+- ~~**Two settle-window fragilities**~~ — both closed (D-049, D-050).
+- ~~**A plan over a remote reference carries no deprecation warning**~~ — closed
+  as won't-fix (D-051).
+- ~~**`operation.status` reports `succeeded` for an all-`pending` dry run**~~ —
+  fixed (D-047).
+- **`saveInstallation` writes its report before the state store** (wave 31).
+  Untouched, and now the oldest carried item in this file.
+
+## Reconciliation — 2026-08-19
+
+| RFC | row | outcome | grade | decision | from |
+|---|---|---|---|---|---|
+| 0023 | 23 | **Accepted** | `LOCKED` | `runtime:` stops being read in 0.3.0; a withdrawn compatibility promise rather than a moved date, because no released manager reads `runtimes:` | D-052 |
+| 0023 | 18 | **Superseded** | `LOCKED` | Left in the table unedited. An append-only table that rewrites the row it replaces has stopped recording that a decision changed | D-052 |
+| 0014 | — | **Deferred to wave 35** | — | A bundle source tree is not what ships from it; the exclusion list, `.gitignore`, and already-published bundles are wave 35's to settle | D-056 |
+| 0027 | — | **Ruled, unscheduled** | — | `Installation.Providers` is 0027's question, not 0023's, and not gated on P3 | D-011 |
+| — | — | **Refused** | — | Making `init --dry-run` fetch a remote bundle to phrase a deprecation advisory | D-051 |
+
+No row is proposed for `StepPlanned` (D-047): a step-status vocabulary that no
+RFC settles does not become a decision row because one value was added to it.
+The argument for the value belongs where the value is.

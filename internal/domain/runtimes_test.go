@@ -32,6 +32,28 @@ func TestALegacyRuntimeBlockDeclaresNothing(t *testing.T) {
 			"decision 23 removed")
 }
 
+// A legacy manifest is told one thing, not two.
+//
+// The "must declare at least one runtime" rule fires on an empty `runtimes:`
+// map, and a manifest written entirely in the old block has one -- so before
+// this was suppressed, a vendor who did declare a runtime was told they had
+// declared none, beside the refusal that actually explains it. Two errors, one
+// of them contradicting the other, and the wrong one reads as the real
+// complaint.
+func TestALegacyManifestIsToldOneThing(t *testing.T) {
+	m := validManifest()
+	m.Runtimes = nil
+	m.Runtime.Files = []string{"compose.yaml"}
+
+	err := m.Validate()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is no longer read")
+	assert.NotContains(t, err.Error(), "must declare at least one runtime",
+		"a vendor who wrote `runtime:` declared a runtime; telling them they "+
+			"declared none is a second error contradicting the first")
+}
+
 // And the manifest carrying it is refused, naming what to write instead.
 func TestALegacyRuntimeBlockIsRefusedAndNamesTheMigration(t *testing.T) {
 	for name, mutate := range map[string]func(*Manifest){
