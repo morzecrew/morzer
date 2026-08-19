@@ -2310,3 +2310,129 @@ product, and it is now the longest-running unfixed finding in this file.
 - **A plan over a remote reference still carries no deprecation warning** (D-035).
 - **`operation.status` reports `succeeded` for a dry run whose steps are all
   `pending`** (wave 32).
+
+# Wave 34 · The lane and the clock
+
+Branch `feature/wave-34-the-lane-and-the-clock`. No RFC phase: this unit is the
+carried list at the tail of wave 33, which no wave owned.
+
+Scheduled ahead of RFC 0023 P3 deliberately, and the argument is the lane rather
+than tidiness. P4 adds a second runtime's acceptance stage to a container lane
+that has gone red in three of the last five waves; a red run there would then be
+unattributable between the new adapter and the old fragility, and that ambiguity
+costs more to resolve than the fixes cost to write.
+
+**Drift count: 1** — D-048, against wave 32, found by this one.
+
+## D-047 — A plan's steps say `planned`, not `pending`
+
+- **Touches:** no decision row in any RFC; the step-status vocabulary is
+  internal and no document settles it. Carried from wave 32.
+- **RFC said:** nothing.
+- **Built:** `domain.StepPlanned`, written by `Engine.plan()`, and an explicit
+  case in `FirstIncompleteStep` that refuses to resume from it.
+- **Because:** `pending` means a step has not run *yet*. A plan's steps were
+  never going to run, so the record was the one document in the system still
+  claiming work was owed — beneath an operation status of `succeeded`, which is
+  correct and stays, because planning is what succeeded. Changing the operation
+  status instead would have erased the distinction between a plan that worked
+  and a plan that failed validation.
+- **Class:** `spec-gap`.
+- **Consequence:** the value is its own rather than a reuse of `pending`, and
+  that pays twice. `FirstIncompleteStep` treats `pending` as resumable, so a
+  record whose steps are all pending reads as resumable from step 0 — a plan
+  offered to `--resume` would run every step while reporting that it continued
+  something. Unreachable today, because the engine returns from `plan()` before
+  journaling and no record on disk can carry the status; now refused by
+  construction rather than by that accident continuing to hold.
+- **Deliberately not applied:** the plan already knows which steps will not run
+  (`WillRun`, from each step's `Check`), and that could have been folded into
+  the record as `StepSkipped`. It was not: `skipped` in a journaled record means
+  a check reported the postcondition already held *during a run*, and reusing it
+  for a prediction would put a claim about what happened into a document about
+  what would. The event carries `WillRun` and `Reason` for the reader who wants
+  it.
+- **Proposed row:** none. A status vocabulary that no RFC settles does not
+  become a decision table entry because one value was added to it; the argument
+  for the value belongs where the value is, and it is in the doc comment.
+
+## D-048 — The deferral rested on a premise that was false, and checkable
+
+- **Touches:** wave 32's carried item, and its stated reason
+- **Wave 32 said:** the dry-run status is *"a machine-readable field RFC 0026's
+  read model may consume, so changing it is a design question rather than a
+  bugfix"*, and left it.
+- **Found:** 0026's read model cannot reach it. `Engine.Run` returns from
+  `plan()` before `e.journal()` — under a comment that says so in as many words,
+  *"a dry run plans and prints; it must not touch the journal"* — and
+  `fleetLastOperation` sources the row from `State.LastOperation`, the journal.
+  No dry-run record has ever been journaled, so no read model can consume one.
+- **Class:** `drift` against wave 32. Not a wrong fix, a wrong reason: the
+  premise was two file reads away in code that wave had open, and deferring on
+  it converted a contained defect into a standing design question that was
+  carried into two subsequent waves' *Carried* lists.
+- **Consequence:** the fix was smaller than the deferral implied, which is the
+  general shape worth noticing. **A deferral is a claim, and it is the kind
+  nothing later re-examines** — a fix gets reviewed, a `Carried` bullet gets
+  copied forward. This is the same failure as RFC 0023 §12 item 5, where "a host
+  is needed for this" sat on the list defining what was unknown and went
+  unattacked for four days; here it was "a consumer may read this", and it sat
+  for two waves.
+
+## D-049 — The flake was not a settle window, and the first diagnosis was wrong
+
+- **Touches:** the fragility carried since wave 29; waves 29, 32 and 33
+- **Planned:** the wave-34 plan named the *second* poll loop as the suspect —
+  that the test waits up to 30s for Docker to stop accepting on the published
+  port, and that teardown under load exceeds it.
+- **Measured, and refuted:** teardown is **105ms idle and 119–133ms under CPU
+  saturation** (24 spinners on 16 cores, five runs each). It is not the cause,
+  and no amount of widening that window would have fixed anything.
+- **Built:** `dockerlab.WaitGone`, and the test asks the container whether it
+  stopped before asking the port.
+- **Because:** the real cause is an ambiguity, not a window — the test had two
+  windows already. `redis-cli shutdown` drops its own connection as the server
+  goes down, so a non-zero exit is the ordinary outcome; the test therefore
+  discarded the error, and in doing so made a `docker exec` that never reached
+  the container indistinguishable from a shutdown that worked. When the exec
+  missed, the test spent its whole 30s deadline watching a perfectly healthy
+  Redis and then reported *"a stopped service was still reported healthy"*.
+- **Reproduced:** by making the shutdown miss — **31.3s and those exact
+  messages**, against the **30.8s** wave 32 recorded from the real failure. The
+  duration is what identifies it: 30s is the deadline, and a test that fails
+  because a service is genuinely unhealthy fails in under a second.
+- **Class:** `discovery`.
+- **Consequence:** the poll is still there and still 30s, because the port
+  mapping does outlive the container. What changed is what a failure names. It
+  had been reporting the prober for a fault in the fixture, which is why three
+  waves each looked at it, found nothing wrong with health probing, and carried
+  it. **An assertion that cannot tell which of two things failed will name the
+  wrong one, and it will name the one under test** — that is what made this
+  cost three waves rather than one.
+
+## D-050 — `assert_running` counts before Docker has finished
+
+- **Touches:** the fragility carried since wave 28
+- **Built:** a 30s settle window inside the helper, at all seven call sites.
+- **Because:** `docker compose stop` returns when it has *asked*; a container is
+  reported running until its process is actually gone. The helper sampled once,
+  immediately.
+- **Class:** `spec-gap`.
+- **Consequence:** the assertion is not weakened — a wrong count still fails, it
+  merely has to still be wrong thirty seconds later. What it stops reporting is
+  a fact about timing dressed as a fact about the deployment.
+
+## D-051 — A plan over a remote reference will not warn, and that is now settled
+
+- **Touches:** D-035, carried from wave 32
+- **Put to the author, and refused:** whether `init --dry-run` should fetch an
+  `oci://` or `https://` bundle so it can phrase a deprecation warning.
+- **Because:** wave 32's reason holds and was never a compatibility argument —
+  a plan is the cheap, side-effect-free path, and making it pull a remote
+  artifact to phrase an advisory inverts what it is for. The measured absence of
+  users, which decided the other two questions this wave, does not reach this
+  one.
+- **Class:** not a departure. Recorded so the item stops being carried.
+- **Consequence:** closed as won't-fix rather than left open. Three waves of
+  *Carried* lists is long enough for a bullet nobody intends to act on, and an
+  item carried indefinitely is indistinguishable from one nobody has read.
