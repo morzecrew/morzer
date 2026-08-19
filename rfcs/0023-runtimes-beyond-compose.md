@@ -13,7 +13,7 @@
   hardware. **P2 is complete as of 2026-08-17**: `runtime:` now names 0.4.0 as
   the release that stops reading it and warns where somebody can act on it, and
   `release new` writes the current spelling (decisions 18–19). What remains of
-  this RFC is P1b item 4 and everything after it.
+  this RFC is P1b item 4 and everything after it. **P1b is complete as of 2026-08-18**: item 4 was measured in a booted venue, and it answered a different question than it asked -- the file never survives a boot and never had to; the ordering decides the outcome and the `-` prefix decides whether a failure is loud or silent (decisions 21 and 22). **What remains of this RFC is P3, and it is no longer gated.**
 - **Scope:** Grading the `ports.Runtime` seam by writing a second implementation
   of it — rootless Podman with Quadlet — and recording every place the port had
   to change to accommodate one. Covers the manifest's runtime dimension, the
@@ -282,9 +282,22 @@ each `.container` references it. This keeps 0007's `<PRODUCT>_PARAM_<NAME>`
 naming identical across runtimes — the *names* are the ABI, the delivery mechanism
 is not. The render directory's tmpfs requirement
 ([0003](0003-secrets-recovery-and-onboarding.md)) now covers a file systemd reads
-at unit start, which means it must survive a reboot before the unit starts or the
-unit fails on a cold boot. **This is the single hardest problem in the RFC** and
-§12 owes it a measurement.
+at unit start.
+
+**Amended 2026-08-18, after §12 item 4 was measured.** This paragraph used to say
+the file "must survive a reboot before the unit starts", and called that the
+single hardest problem in the RFC. A tmpfs is empty at every boot, so it never
+survives one and never had to: what decides the outcome is whether the unit is
+ordered behind whatever renders it. Ordered, it works. Unordered, the behaviour
+is chosen by the prefix -- `EnvironmentFile=` fails the unit loudly, and
+`EnvironmentFile=-` starts it with empty parameters and reports success. The
+parameter file is therefore referenced **without** the `-` prefix (decision 21), and
+what a reader owes is that the file exists before it starts -- an invariant rather
+than a mechanism (decision 22). The hard problem is the ordering rather than the
+persistence: under Compose the product
+unit's `ExecStart` is `apply --startup`, so rendering and starting are one
+process, while Quadlet's generated units are started by systemd directly and owe
+an explicit dependency on the render. Measurements in §12 item 4.
 
 ### 4.4 Health
 
@@ -329,6 +342,8 @@ refusal, which is also the first test that the refusal path is reachable.
 | 18 | `runtime:` stops being read in 0.4.0, and the deprecation warns at `release verify`, `init` and `update` only | LOCKED | Decision 9 accepted "two spellings to maintain until a named removal release" and named none, so the cost ran with no clock on it and no signal to a vendor that one was running (D-017). A field cannot be deprecated by the `api_version` mechanism, which is a map keyed by value: a field is deprecated by being written at all, which only the manifest can answer. The three surfaces are the moments somebody can act — a vendor before publishing, an operator while choosing a bundle. Refused: a `doctor` check, because every installation that exists runs a `runtime:` bundle, so it would warn on every machine, permanently, about a file the operator did not write and cannot change. Consequence: an operator who runs neither `init` nor `update` before 0.4.0 is never warned, bounded by 0.4.0 refusing at `update` rather than breaking a running deployment. Added by execution 2026-08-17, accepted the same day — see EXECUTION-LOG.md D-021. |
 | 19 | `morzer release new` writes `runtimes:` and stamps the `min_manager_version` it needs | LOCKED | The scaffold emitted `runtime:` until this wave, so every bundle authored from the documented starting point was born on the spelling the manager was about to stop reading — a project that warns about a field its own scaffold writes has deprecated nothing. The floor beside it is not bookkeeping: `runtimes:` is an unknown field to every released manager and strict decoding refuses the whole manifest over one, so without it the vendor's customer is told about a typo rather than an upgrade requirement, which is the conversion 0018 decision 1 exists to perform. Consequence: a bundle scaffolded today cannot be installed by any released manager, because the manager it declares is not released — and the floor exposed that a build between tags understates its own version, which had to be fixed before the binary would accept its own output (EXECUTION-LOG.md D-023). Added by execution 2026-08-17, accepted the same day — see EXECUTION-LOG.md D-022. |
 | 20 | The option comparison runs on the values the runtime resolves, not the ones the manifest declares | LOCKED | Decision 16 refuses a release that changes a recorded option, and it compared declared maps. Declared is not what the runtime reads: an installation created with no `project` is already running under its product name, so a release writing that name out in full renames nothing, and the manager refused it and told the vendor to restore a value that was never doing any work (EXECUTION-LOG.md wave 28 R-4). Only the adapter can tell those apart — knowing that `project` falls back to the product is exactly what decision 7 keeps out of these layers — so it is asked, through `ports.OptionResolver`. Refused: recording the *effective* options instead, which pins the namespace against an adapter later changing its defaults but costs installation schema 11, a migration that cannot run where the state package lives because it has no adapter to ask, and a change to what `installation describe` publishes. Consequence: the recorded baseline stays as declared, so a future change to an adapter's default silently moves both sides of the comparison with it; and the port gains its 8th optional capability, which is what prompted §6's amendment. Added by execution 2026-08-17, accepted the same day — see EXECUTION-LOG.md D-024. |
+| 21 | The `EnvironmentFile` **carrying parameters** is referenced without the `-` prefix | LOCKED | Measured on the host and again in each of four boots of the venue (§12 item 4). With the file absent, `EnvironmentFile=` fails the unit before the process runs (`Failed to load environment files`, `Result=resources`); `EnvironmentFile=-` **starts it, reports success, and runs with the parameter empty** -- observed as `B_PORT=[]` on a unit systemd marked active. This is systemd's behaviour rather than a design choice, so what is being decided is only which of the two failure modes this project accepts: one that refuses, or one that lies. Scoped to the *parameter* file deliberately: `-` stays legitimate for a genuinely optional file, such as an operator override drop-in, and an unscoped ban would forbid a pattern nothing here objects to. LOCKED because the alternative lets a product run on an empty parameter while systemd reports the unit started successfully -- that unit-level signal is what was measured, and whether anything downstream notices depends on something validating the parameter, which nothing here guarantees -- and because the ordering that exposes it is a race -- a deployment can boot correctly for months before the once it does not, so this can survive every test anybody thought to run. Added by execution 2026-08-18 -- see EXECUTION-LOG.md D-038. |
+| 22 | A unit that reads the parameter file must not start before the file exists; **how that is achieved is P3's to settle** | ASSUMED | The invariant the measurement establishes, stated without the mechanism it was observed through. Ordering the reader behind whatever renders the file is one way, and the one the venue tested (`After=`+`Requires=`, which worked); a generator that emits its own ordering, rendering earlier in the boot, or Quadlet inlining values rather than referencing a file at all are others. **Not** `RequiresMountsFor=`, which the first draft of this row listed and review caught: it adds dependencies on the *mount units* covering a path (systemd.unit(5)), so it guarantees `/run` is mounted and says nothing about whether anything has written into it -- the tmpfs is already there when the race runs, and it survives intact. This row deliberately does not choose. A spike that has built no adapter is the worst-placed thing to foreclose the design of one, and the first draft of this row did exactly that -- it locked a mechanism inferred from a fixture rather than a constraint derived from a measurement. ASSUMED rather than LOCKED for the same reason: it is load-bearing for P3 and expected to be satisfied, not to be defended. Consequence: Compose satisfies it for free, because its product unit's `ExecStart` *is* `apply --startup`, so rendering and starting are one process; Quadlet's units are started by systemd directly and satisfy it by construction or not at all. Added by execution 2026-08-19 -- see EXECUTION-LOG.md D-042. |
 
 ## 6. The escape hatch, restated after measurement
 
@@ -522,21 +537,85 @@ Taken 2026-08-12, against the code rather than the documentation.
    Nothing else issues it, so the collision is entirely prospective — which is why
    decision 6 is graded ASSUMED rather than LOCKED.
 4. **Whether an `EnvironmentFile` on tmpfs can be read by a unit at boot** (§4.3).
-   **Still not measured, and this item asked for the wrong thing.** It was
-   written as needing "a machine with Podman"; a machine with Podman is not
-   enough, because the question is about the state of a tmpfs at boot and a
-   host that is already up cannot be asked. What it needs is a *venue* that can
-   be booted on demand — and a workstation is the worst of them, since the
-   answer costs a reboot per attempt. It remains the item most likely to change
-   the design, and P1b may not report complete without it.
+   **Measured 2026-08-18. Both halves, and the answer is that the file's
+   presence is not the question — the ordering is, and the `-` prefix is the
+   hazard.**
 
-   Two halves, worth separating because only one of them needs the venue. The
-   mechanism — what systemd does with an `EnvironmentFile=` that is absent when
-   the unit starts, and whether the `-` prefix's silence is worse than the
-   failure — is answerable on any host. The ordering — whether the file is
-   there by the time a product unit starts, given that `apply --startup` is what
-   renders it — is a dependency-graph question about units this project already
-   generates. The venue is needed to confirm the graph, not to discover it.
+   The item asked for a venue that could be booted on demand. It got one: a
+   privileged container running systemd as PID 1, booted repeatedly in about a
+   second. `systemd-nspawn` was the intended tool and needs root this
+   environment does not have; the substitute runs the same systemd, has `/run`
+   as a real tmpfs (`rw,nosuid,nodev,noexec,relatime,mode=755`) and executes a
+   real boot transaction, which is what the ordering question needs. That tmpfs
+   is mounted by the container runtime rather than by systemd as it would be on
+   a host — immaterial here, since what matters is that it is a tmpfs and empty
+   when the transaction begins, but named so the item does not imply more
+   fidelity than it has.
+   It is **not** bare metal and does not answer firmware-level questions; it was
+   not asked any.
+
+   **The mechanism half**, measured on the host (systemd 261) and confirmed in
+   the venue. With the file absent:
+
+   - `EnvironmentFile=` — the unit **fails and the process never runs**:
+     `Failed to load environment files: No such file or directory`, then
+     `Failed to spawn 'start' task`, `Result=resources`.
+   - `EnvironmentFile=-` — the unit **starts, reports success, and runs with the
+     parameter empty**.
+
+   A trap worth naming: the failing unit reports `ExecMainStatus=0`. Nothing
+   ran, so there is no exit code, and anything reading exit status alone sees a
+   zero from a unit that failed.
+
+   **The ordering half**, measured across four independent boots of the venue —
+   three before the base image was pinned by digest, and once after, which is
+   what makes the pin worth having rather than an assertion about it.
+   Four units, all `WantedBy=multi-user.target`, with a render unit standing in
+   for `apply --startup`:
+
+   | Unit | Ordering | Prefix | Boot outcome |
+   |---|---|---|---|
+   | A | none | none | **failed** — `Result=resources` |
+   | B | none | `-` | **active, success**, `B_PORT=[]` |
+   | C | `After=`+`Requires=` render | none | active, success, `C_PORT=[18080]` |
+
+   The timeline is the finding. B *started and finished before the render unit
+   had written the file* — and this is a **race**, not a determinism. Unordered
+   units have no guaranteed order; B won four boots out of four, but it could
+   lose, in which case it succeeds with the correct value. That makes the hazard
+   worse rather than milder: the same deployment can boot correctly for months
+   before the once it does not.
+
+   ```
+   12:17:46.322936  Starting product B (unordered, dash)...
+   12:17:46.323457  Starting render parameters (stands in for apply --startup)...
+   12:17:46.328716  Finished product B (unordered, dash).
+   12:17:46.331510  Finished render parameters (stands in for apply --startup).
+   ```
+
+   **What this settles.** A tmpfs is empty at every boot by definition, so the
+   file is always absent when the boot transaction begins; "does it survive"
+   was never the question. What decides the outcome is whether the unit is
+   ordered behind whatever renders it, and what the missing file does when it
+   is not. Ordered, it works. Unordered without the prefix, it fails loudly —
+   recoverable, and the operator is told. Unordered *with* the prefix, the
+   product comes up misconfigured and systemd reports the unit started
+   successfully. That unit-level signal is what was measured; whether anything
+   downstream notices depends on something validating the parameter, which
+   nothing in this design guarantees.
+
+   **Consequence for §4.3, and it is not what the section feared.** §4.3 called
+   this "the single hardest problem in the RFC" on the grounds that the file
+   must survive a reboot. It cannot and need not. The hard part is that under
+   Compose the ordering is free — the product unit's `ExecStart` *is*
+   `apply --startup`, so the same process renders and then starts — while under
+   Quadlet systemd starts generated `.container` units directly from a
+   generator, with no natural ordering behind the manager. P3 owes that graph the
+   file's presence before a reader starts -- by ordering, by a generator that
+   emits its own, or by not referencing a file at all -- and owes it without the
+   `-` prefix. Neither is a discovery this item can make; both are now measured
+   constraints on it.
+
 5. **Whether rootless Podman's volume paths break 0010's staging assumptions.**
    **Measured 2026-08-16: they do not, and the item's premise was wrong.**
    0010 has no host-path assumption to break. `CaptureVolume` runs a helper

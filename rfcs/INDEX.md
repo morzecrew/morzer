@@ -22,9 +22,10 @@ second table of the same shape is a second set of rows for the same numbers.
   answered.** A rootless Podman host settled §12 items 5 and 6 — 0010's volume
   capture names no host path, so rootless storage roots break nothing, and
   0011's registry is reachable over plain HTTP with `--tls-verify=false`.
-  **Item 4 is open and was never blocked on a host**: it asks what a tmpfs holds
-  at boot, which needs somewhere bootable on demand. It gates P3, not P2 — the
-  claim that P1b blocked P2 was withdrawn on 2026-08-16 (EXECUTION-LOG.md D-005).
+  **Item 4 is measured as of 2026-08-18, and P1b is complete.** It asked what a
+  tmpfs holds at boot; the answer is nothing, always, which turned out not to be
+  the question — the ordering decides it, and `EnvironmentFile=-` is what makes a
+  misconfigured boot report success (decisions 21 and 22). **P3 is no longer gated.**
   **P2 is partly shipped**: the manifest gained `runtimes:` with `runtime:`
   deprecated and still read, decision 8 resolved against the option §4.1
   preferred, and the runtime fixed at `init` at installation schema 9. `import`
