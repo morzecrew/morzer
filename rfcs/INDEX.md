@@ -49,8 +49,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   was created with and refuses a release that changes it, and
   `<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime rather than promised by
   the core hook ABI. The leak inventory is **17**, down from 19 at P1.
-  **P2 is complete.** The deprecation of `runtime:` finally says something: it
-  stops being read in **0.4.0**, and `release verify`, `init` and `update` say so
+  **P2 is complete.** The deprecation of `runtime:` finally said something: it
+  would stop being read in **0.4.0**, and `release verify`, `init` and `update` said so
   — no other command does, because a manifest the operator did not write and
   cannot change is not something to be told about on every invocation. The
   scaffold, which had been emitting the deprecated block all along, now writes
@@ -59,7 +59,10 @@ phase shipped, and a reader deciding what to work on needs the other half.
   to refuse the bundle its own scaffold had just written. **What remains of this
   RFC is P3, the Quadlet adapter, and the two phases behind it** — an acceptance
   stage and the report that says whether the port survived being implemented
-  twice, which is the question the RFC was opened to answer.
+  twice, which is the question the RFC was opened to answer. **The removal came
+  early**: `runtime:` stops being read in **0.3.0**, not 0.4.0, because the
+  window 0.4.0 was buying turned out never to have existed — no released manager
+  reads `runtimes:`, so no version reads both (decision 23).
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
   inventory, the archive, redaction proved against seeded values, `support
   redact --check`, an archive encrypted to the vendor and unreadable by the

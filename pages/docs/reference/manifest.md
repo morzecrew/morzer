@@ -156,42 +156,41 @@ belong to one runtime, so changing it is a migration of everything the manager
 knows rather than a setting. A release that does not declare the runtime an
 installation was created against is refused rather than run on a substitute.
 
-## runtime (deprecated, removed in 0.4.0)
+## runtime (removed in 0.3.0)
 
-The original single-runtime block. Still read, so releases built before
-`runtimes` existed keep installing; a manifest declaring both is refused,
-because merging them would pick a winner the vendor never nominated.
+The original single-runtime block. **It is no longer read.** A manifest carrying
+it is refused, naming what to write instead — the manager will not install a
+release whose runtime declaration it cannot read, because doing so would bring
+the deployment up with no Compose files at all.
 
-**It stops being read in 0.4.0.** Until then a bundle using it installs
-normally, and says so at the two moments somebody can act on it: `release
-verify`, so a vendor's CI reports it before the bundle is published, and `init`
-and `update`, so an operator choosing this bundle can ask their vendor for one
-written the new way. No other command warns — a manifest an operator did not
-write and cannot change is not something to be told about on every invocation.
+It was deprecated rather than removed at first, on the understanding that a
+release would exist in which both spellings worked. None did: `runtimes` shipped
+in 0.3.0 and no earlier manager ever read it, so 0.1.0 through 0.2.0 read only
+`runtime:` and 0.3.0 reads only `runtimes:`. There was no version that read both
+and so no migration window to preserve, which is why the removal came a release
+earlier than first announced.
+
+**Migrating.** Move the files under `runtimes.compose.files`, move `project` to
+`runtimes.compose.options.project`, delete the old block, and raise
+`compatibility.min_manager_version` to `0.3.0`. The old block's shape was:
 
 | Field | Type | Required | Meaning |
 | --- | --- | :---: | --- |
-| `project` | string | | Compose project name. Defaults to `metadata.name`. |
+| `project` | string | | Compose project name. Defaulted to `metadata.name`. |
 | `files` | list | ✅ | Base Compose files, release-relative. |
-| `profiles` | map | | Named deployment topologies; each is a list of *additional* Compose files. |
+| `profiles` | map | | Named deployment topologies; each a list of *additional* Compose files. |
 
-A release still using this block is read as declaring the `compose` runtime and
-nothing else, with `project` read as `runtimes.compose.options.project`.
-
-Adopting `runtimes` means moving the files under `runtimes.compose`, **moving
-`project` to `runtimes.compose.options.project`**, and deleting the old block —
-and raising `compatibility.min_manager_version` to `0.3.0`, the manager that
-added the field. That last step is not optional bookkeeping: `runtimes` is an
-unknown field to anything older, and under strict decoding an unknown field
-refuses the whole manifest, so without the floor your customer gets a report
-about a typo instead of an upgrade requirement.
+The version floor is not optional bookkeeping: `runtimes` is an unknown field to
+anything older, and under strict decoding an unknown field refuses the whole
+manifest — so without the floor your customer gets a report about a typo instead
+of an upgrade requirement.
 
 Do not drop `project` on the way. It is the namespace every volume, network and
 container of a running deployment lives in, so a release that loses it points
 existing installations at storage that does not exist. A `project:` left behind
-beside `runtimes:` is refused rather than ignored, for the same reason, and a
-manager that has recorded what an installation was created with refuses the
-change as well.
+left behind beside `runtimes:` is refused with the rest of the old block, for
+the same reason, and a manager that has recorded what an installation was
+created with refuses the change as well.
 
 ## requirements
 

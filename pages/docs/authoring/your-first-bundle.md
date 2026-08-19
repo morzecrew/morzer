@@ -56,9 +56,9 @@ Compose's, and it is the namespace every volume, network and container of the
 deployment lives in, so it is the one field here you must not change after a
 release has shipped.
 
-The older spelling is a single `runtime:` block with the files directly under
-it. It is still read, and it stops being read in 0.4.0 — `release verify` says
-so when it meets one.
+The older spelling was a single `runtime:` block with the files directly under
+it. It stopped being read in 0.3.0 and a bundle carrying it is now refused —
+`release verify` says so, and names what to write instead.
 
 **That first line is worth typing.** It is a comment, so a manifest without it
 behaves identically and an editor that ignores it loses nothing — but every
