@@ -42,3 +42,19 @@ A render unit standing in for `apply --startup`, which writes
 A failed. B started, reported **success**, and ran with an empty parameter. C
 worked. The timeline is the finding: B started *and finished* before the render
 unit had written the file, which is why its success means nothing.
+
+## What it is not
+
+The product units are `Type=oneshot` shell commands, not containers. That is
+deliberate — `EnvironmentFile` semantics belong to systemd and do not depend on
+what `ExecStart` runs — but it means this is a measurement of unit-start
+behaviour and not a Quadlet rehearsal.
+
+`/run` is mounted by the container runtime here rather than by systemd. What the
+question needs is a tmpfs that is empty when the boot transaction begins, which
+holds either way; it is not bare metal and cannot speak to firmware, initrd, or
+real device mounts.
+
+The ordering B demonstrates is a **race**. Unordered units have no guaranteed
+order, so a run where B loses and succeeds with the right value is not a
+refutation — it is the same defect being intermittent.

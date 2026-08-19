@@ -2094,8 +2094,34 @@ production code changed.
   `$(dirname $0)` in the spike is now caught (SC2046, SC2086), and was not
   before.
 
+## Self-audit — 2026-08-19
+
+Scope: the whole branch — one commit, no production code. A spike, so the audit
+is of the *measurement*: whether the venue answers the question asked, whether
+the RFC text claims more than was observed, and whether the numbers reproduce.
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| A-1 | Medium | The claim "B started before the render" is a **race outcome, not a determinism**. Unordered units have no guaranteed order, and B won three times out of three — but it could lose, in which case the unit succeeds with the correct value. Recorded, because it makes the hazard *worse* rather than milder: an intermittent silent misconfiguration is harder to catch than a reliable one. | Fixed — stated in item 4 and in row 21 |
+| A-2 | Low | The venue's `/run` is mounted by Docker (`--tmpfs /run`), not by systemd as it would be on a host. The conclusion is unaffected — what matters is that it is a tmpfs and empty when the transaction begins, which held either way — but the mount's provenance differs from bare metal and the item should not imply otherwise. | Fixed — named in item 4's venue paragraph |
+| A-3 | Low | The product units are `Type=oneshot` shell commands rather than containers. Deliberate: `EnvironmentFile` semantics are systemd's and do not depend on what `ExecStart` runs. Worth stating so a reader does not take the spike for a Quadlet rehearsal. | Fixed — stated in the spike's README |
+
+**No sabotage sweep of production code**, because none changed. The one gate this
+wave did touch was mutated instead: an unquoted `$(dirname $0)` in the spike is
+caught by the extended `just shellcheck` and was not before (D-041).
+
+**The container lane went red on its first run**, and it is recorded rather than
+replaced by the green re-run. `TestTCPProbeAgainstRedis` failed under the full
+lane and passed alone in 0.661s — the **fourth consecutive wave**, on a branch
+that changes no Go code at all. That it fails here, of all branches, is the
+clearest evidence yet that it is measuring Docker's teardown rather than the
+product, and it is now the longest-running unfixed finding in this file.
+
 ## Rules distilled
 
+- **A race that keeps going the same way is still a race.** Three boots agreeing
+  is not determinism, and the intermittent version of a silent misconfiguration
+  is worse than the reliable one. (A-1)
 - **A lint recipe that enumerates paths is a list that goes stale silently.**
   Adding a script to a repository does not add it to the gate, and the gate goes
   on reporting success. (D-041)
