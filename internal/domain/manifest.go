@@ -209,13 +209,6 @@ func (m Manifest) DeclaredRuntimes() Runtimes {
 	return m.Runtimes
 }
 
-// legacyProjectOption is what `runtime.project` becomes under `runtimes:`.
-//
-// See DeclaredRuntimes. It is a Compose word above `internal/adapters` and it
-// is deliberate: this is the translation of a released manifest surface, not a
-// manager deciding what a runtime needs.
-const legacyProjectOption = "project"
-
 type Metadata struct {
 	Name        string  `yaml:"name" json:"name"`
 	Version     Version `yaml:"version" json:"version"`
@@ -372,14 +365,13 @@ const LegacyRuntimeName = "compose"
 // `runtime: {project: x}` beside `runtimes:` is ignored rather than refused,
 // which the both-declared message cannot help with because there is no file
 // list to move.
-func (r RuntimeSpec) isZero() bool { return len(r.Files) == 0 && len(r.Profiles) == 0 }
-
 // isAbsent reports whether the deprecated block was written at all.
 //
-// Distinct from isZero, which asks whether the block *declares* a runtime --
-// files or profiles. A block carrying only `project` declares nothing by that
-// measure and was still written, and decision 23 refuses what a vendor wrote
-// rather than what the loader could make of it.
+// Every field, not only the ones that declare a runtime. There used to be an
+// isZero beside this asking the narrower question -- files or profiles -- back
+// when the block was read and the question was what it declared. Decision 23
+// refuses what a vendor wrote instead, and a block carrying only `project`
+// declares nothing and still decides the namespace every volume lives in.
 func (r RuntimeSpec) isAbsent() bool {
 	return r.Project == "" && len(r.Files) == 0 && len(r.Profiles) == 0
 }

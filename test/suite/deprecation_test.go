@@ -10,32 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
-
-// warnings collects what an operation told the operator, so a test can assert
-// on a message the operator actually receives rather than on the helper that
-// composes it.
-func warnings(t *testing.T, h *harness) *[]string {
-	t.Helper()
-	var seen []string
-	h.Deps.Bus.SubscribeFunc(func(e events.Event) {
-		if e.Level == events.LevelWarn {
-			seen = append(seen, e.Message)
-		}
-	})
-	return &seen
-}
-
-func contains(lines []string, want string) bool {
-	for _, l := range lines {
-		if strings.Contains(l, want) {
-			return true
-		}
-	}
-	return false
-}
 
 // An update is how a vendor ships the next bundle, so it is where an operator
 // meets a manifest still written the old way. Until 0.3.0 that produced a
