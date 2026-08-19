@@ -2559,8 +2559,15 @@ list was the part somebody had already noticed.
   2026-08-19. Not fixed here — the exclusion list, whether `.gitignore` is
   honoured, and what a stricter builder does to bundles already published are
   four decisions, and a security fix reviewed under a debt wave's title is
-  reviewed by nobody. **Nobody has leaked anything**: the same 11 downloads that
-  priced D-052 price this.
+  reviewed by nobody.
+- **What the download counts do and do not bound.** An earlier draft of this
+  entry said *"nobody has leaked anything"*, and review was right that the
+  counts cannot carry that. They are worse evidence than the objection allowed,
+  in fact: 11 amd64 and 0 arm64 are downloads of **morzer**, not of bundles
+  built with it, so they bound how many people could have run the builder and
+  say nothing whatever about what any resulting bundle contained. The honest
+  statement is that exposure is bounded by a small number of manager downloads
+  and is not otherwise established.
 
 ## Rules distilled
 
@@ -2694,3 +2701,52 @@ rather than after.
   step that can fail to land, so the failure mode is removed by construction
   instead of given a longer deadline. If it returns it will be something else,
   and it will say so.
+
+## Review round, PR #60 — appended after the group closed
+
+## D-058 — The wave distilled "grep for the rest" and then did not
+
+- **Touches:** D-053 and D-054, both of this wave; `internal/ui/views/release.go`,
+  `internal/adapters/render/gotemplate/synthetic.go`
+- **Found in review:** `releaseDoc` still read `Manifest.Runtime.Profiles`, so
+  `release show` listed no profiles for any bundle on the current spelling.
+  Grepping for the rest — which the reviewer did not do and I should have —
+  turned up **a third site**: `syntheticProfile`, which feeds `release verify
+  --render-check`. That one is the worst of the three, because it is a
+  *verification* feature and it had stopped exercising profile branches
+  entirely while continuing to report success.
+- **Class:** `drift` against this wave, and against its own distilled rule.
+  D-054 in this same group records wave 32 fixing one instance of a repeated
+  mechanism and not grepping for the others; the fix for D-053's wizard defect
+  was written after that entry and did exactly the same thing. The rule was
+  not merely available, it was **written down in the file, in this group, by
+  me, in the commit before**.
+- **Why it went unseen, which is the part worth keeping:** the search that found
+  the wizard was `\.Runtime\.\(Files\|Project\)` — the fields the *removal*
+  touched. Profiles was not on that list because nothing in the removal read it;
+  the sites were found by a test failing, and only one test failed. **The grep
+  that matters after a removal is for every read of the removed thing, not for
+  the reads the removal happened to break.** A read that silently returns the
+  empty value breaks no test, which is precisely why it needs the grep.
+- **Consequence:** one `Manifest.ProfileNames`, three callers, and the
+  render-check's own fixture moved off the deprecated block — it had been
+  declaring profiles in `runtime:`, which is why the regression was invisible
+  from inside its test. Sabotage: 4 mutations, 4 killed.
+
+## D-059 — Download counts bound who could run the builder, not what shipped
+
+- **Touches:** D-056
+- **Written:** *"Nobody has leaked anything: the same 11 downloads that priced
+  D-052 price this."*
+- **Found in review, and it is worse than the objection said:** the counts are
+  downloads of **morzer**, not of bundles built with it. They bound how many
+  people could have run the builder at all; they say nothing about what any
+  resulting bundle contained. The same number was sound evidence for D-052,
+  where the question really was "how many people have this binary", and carrying
+  it one entry across to a question about *artefacts* made it look like evidence
+  for something it cannot reach.
+- **Class:** `drift` against this wave.
+- **Consequence:** a number that was load-bearing in one entry is not
+  transferable to the next just because the entries are adjacent. **Re-derive
+  what a measurement measures before reusing it**, especially when reusing it is
+  what makes a security claim comfortable.

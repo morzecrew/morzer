@@ -12,8 +12,8 @@
   the next phase available**~~ and the Podman programme is not waiting on
   hardware. **P2 is complete as of 2026-08-17**: `runtime:` then named 0.4.0 as
   the release that stops reading it and warns where somebody can act on it, and
-  `release new` writes the current spelling (decisions 18–19). What remains of
-  this RFC is P1b item 4 and everything after it. **P1b is complete as of 2026-08-18**: item 4 was measured in a booted venue, and it answered a different question than it asked -- the file never survives a boot and never had to; the ordering decides the outcome and the `-` prefix decides whether a failure is loud or silent (decisions 21 and 22). **What remains of this RFC is P3, and it is no longer gated.** **2026-08-19:** `runtime:` stops being read in **0.3.0**, not 0.4.0 — decision 23 supersedes 18, and it withdraws a compatibility promise rather than moving a date, because no released manager reads `runtimes:` and so no version reads both spellings.
+  `release new` writes the current spelling (decisions 18–19). ~~What remains of
+  this RFC is P1b item 4 and everything after it.~~ **P1b is complete as of 2026-08-18**: item 4 was measured in a booted venue, and it answered a different question than it asked -- the file never survives a boot and never had to; the ordering decides the outcome and the `-` prefix decides whether a failure is loud or silent (decisions 21 and 22). **What remains of this RFC is P3, and it is no longer gated.** **2026-08-19:** `runtime:` stops being read in **0.3.0**, not 0.4.0 — decision 23 supersedes 18, and it withdraws a compatibility promise rather than moving a date, because no released manager reads `runtimes:` and so no version reads both spellings.
 - **Scope:** Grading the `ports.Runtime` seam by writing a second implementation
   of it — rootless Podman with Quadlet — and recording every place the port had
   to change to accommodate one. Covers the manifest's runtime dimension, the
