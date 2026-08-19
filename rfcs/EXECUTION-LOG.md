@@ -2619,3 +2619,39 @@ costs more to resolve than the fixes cost to write.
 No row is proposed for `StepPlanned` (D-047): a step-status vocabulary that no
 RFC settles does not become a decision row because one value was added to it.
 The argument for the value belongs where the value is.
+
+## Self-audit — 2026-08-19
+
+Scope: the whole branch — the engine's plan record, two test lanes, the manifest
+removal and every fixture behind it, three documentation pages and the
+changelog. `just ci` green at **86.6%** (floor 84), `docs-check` 41 pages / 55
+checks, acceptance passed, container lane run.
+
+**Sabotage sweep: 9 mutations, 8 killed.** The survivor is `case StepPlanned:`
+in `FirstIncompleteStep`, and the why is the finding rather than the survival:
+it is behaviourally identical to the `default:` branch beside it, which also
+refuses. It exists so that branch's comment — *"a status this build does not
+recognise"* — stays true of a status this build defines. Recorded rather than
+deleted, and recorded rather than counted as covered.
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| A-1 | Major | **The `init` wizard offered no profiles to any bundle on the current spelling**, since the day that spelling landed. `profilesFrom` read the deprecated block directly, and an empty list is also what a release with no profiles looks like, so it failed silently. | Fixed — D-053, verified red the moment the fixture moved |
+| A-2 | Major | **`init --release <archive>.tar.zst` without `--product` is broken on a released binary** — the same path-join wave 32 fixed in one place and left in two. | Open — D-054, carried |
+| A-3 | Major | **`release build` writes the vendor's `.git` into the bundle it publishes**, `.git/config` included, and `release archive` ships it. | Open — D-056, wave 35, ruled |
+| A-4 | Medium | **A plan does not validate the bundle it plans against**, and is refused only when `--product` is absent, by accident of the CLI needing the manifest for the name. | Open — D-055, recorded at the assertion that meets it |
+| A-5 | Medium | The legacy refusal emitted a **second error contradicting the first**: a vendor who wrote `runtime:` was told they had declared no runtime. | Fixed, with the test that was missing for it |
+| A-6 | Low | Four symbols left with no callers by the removal — `legacyProjectOption`, `RuntimeSpec.isZero`, and the suite's `warnings`/`contains`. **Found by lint, not by reading the diff**, which is the argument for the linter: none appears in any hunk that stopped using it. | Fixed |
+| A-7 | Low | `DeclaredRuntimes` now returns the manifest's own map rather than a fold-built one, and `RuntimeConfig.Options` carries it to every adapter method uncloned. **Pre-existing and unchanged in practice**: every manifest that still loads was already on the spelling that took this path, and the fold's fresh map only ever protected the spelling being deleted. | Open — observation, not this wave's to decide |
+
+**A-1 is the wave's most useful finding and it was free.** Nothing looked for it;
+migrating a fixture off a deprecated spelling failed the test that had been
+guarding it, and the defect was underneath. The generalisation is in *Rules
+distilled*, and it is the one worth carrying: a suite whose fixtures use the
+deprecated form is measuring the path the project intends to delete.
+
+**Three of the four Majors were found while chasing something else** — two CI
+failures that both read as flakes, and a fixture migration. None was in the
+diff. That is the argument for treating a red lane as a hypothesis rather than
+an inconvenience, and it is why this wave was scheduled before RFC 0023 P3
+rather than after.
