@@ -2598,7 +2598,9 @@ costs more to resolve than the fixes cost to write.
   output may lose a field, which is RFC 0027's question. Wave 36.
 - ~~**The removal of `runtime:` in 0.4.0**~~ — done, one release early (D-052).
   The oldest carried item in this file, closed.
-- ~~**Two settle-window fragilities**~~ — both closed (D-049, D-050).
+- ~~**Two settle-window fragilities**~~ — both closed (D-049, D-050), and
+  D-049's first fix was itself wrong (D-057): it named the cause correctly and
+  left it in place.
 - ~~**A plan over a remote reference carries no deprecation warning**~~ — closed
   as won't-fix (D-051).
 - ~~**`operation.status` reports `succeeded` for an all-`pending` dry run**~~ —
@@ -2655,3 +2657,31 @@ failures that both read as flakes, and a fixture migration. None was in the
 diff. That is the argument for treating a red lane as a hypothesis rather than
 an inconvenience, and it is why this wave was scheduled before RFC 0023 P3
 rather than after.
+
+## D-057 — The first fix made the flake diagnosable, not fixed
+
+- **Touches:** D-049, this wave, corrected by this wave
+- **D-049 said:** `dockerlab.WaitGone` was the fix — ask the container whether
+  it stopped before asking the port.
+- **Found, by running the lane it was written for:** the test failed again, and
+  the message was the new one — *"the request to stop it did not land, which is
+  a fault in the fixture and not in whatever is being probed"*. So the diagnosis
+  was **confirmed in the wild rather than only in simulation**, and the fix
+  addressed the wrong half: it made the failure name its cause and left the
+  cause in place.
+- **Built:** `dockerlab.Stop`, which stops the container from outside. Nothing in
+  the probe's claim needs the service to stop itself — what is asserted is that
+  a TCP check reports a vanished port as refused, and how it went is the
+  fixture's business. `docker exec` has to schedule a process in a container on
+  a busy host; `docker stop` has no such step.
+- **Class:** `drift` against this wave. The evidence for the *diagnosis* was
+  strong — a simulated miss reproduced the recorded 30.8s to within half a
+  second — and I let that stand in for evidence about the *remedy*, which it
+  never was. Attributing a failure correctly and preventing it are two changes,
+  and the first one feels like both.
+- **Consequence:** the full lane is green and **one green run is weak evidence
+  for a flake that failed in three of six waves.** What is worth more is that
+  the mechanism is gone rather than widened: there is no longer an in-container
+  step that can fail to land, so the failure mode is removed by construction
+  instead of given a longer deadline. If it returns it will be something else,
+  and it will say so.
