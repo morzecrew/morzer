@@ -477,7 +477,7 @@ func (e *Engine) plan(ctx context.Context, op Operation, st *State, rec domain.O
 		}
 
 		steps = append(steps, ps)
-		rec.Steps[i].Status = domain.StepPending
+		rec.Steps[i].Status = domain.StepPlanned
 	}
 
 	e.bus.Publish(events.Plan(op.ID, op.Type, steps))

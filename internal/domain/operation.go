@@ -89,6 +89,7 @@ type StepStatus string
 const (
 	StepPending     StepStatus = "pending"
 	StepRunning     StepStatus = "running"
+	StepPlanned     StepStatus = "planned" // A dry run listed it; it was never going to run
 	StepSucceeded   StepStatus = "succeeded"
 	StepSkipped     StepStatus = "skipped" // Check reported the postcondition already held
 	StepFailed      StepStatus = "failed"
@@ -176,6 +177,17 @@ func (r OperationRecord) FirstIncompleteStep() (idx int, resumable bool) {
 		case StepCompensated:
 			// Compensation already undid work in this record;
 			// resuming would race its own cleanup.
+			return i, false
+		case StepPlanned:
+			// A dry run's steps. Unreachable through the journal --
+			// the engine returns from plan() before journaling, so
+			// no record on disk can carry this -- and refused here
+			// anyway, because a plan describes work that was never
+			// started and resuming it would run every step while
+			// claiming to continue something. Written as its own
+			// case rather than left to the default below: that
+			// branch means "a status this build does not
+			// recognise", and this is one it defines.
 			return i, false
 		default:
 			// A status this build does not recognise: a journal

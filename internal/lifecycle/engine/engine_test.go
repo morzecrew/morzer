@@ -807,3 +807,52 @@ func TestReadOnlyStepFailureDoesNotDemandAHuman(t *testing.T) {
 	assert.Equal(t, domain.ExitCompensated, domain.ExitCode(err))
 	assert.Contains(t, tr.compensated, "mutating")
 }
+
+// TestAPlansStepsSayPlannedRatherThanPending is the record half of the plan.
+//
+// `pending` means a step has not run *yet*, and the whole point of a plan is
+// that none of its steps was ever going to. The record already reports
+// `succeeded` at the operation level -- correctly, because planning is what
+// succeeded -- so `pending` steps underneath it are the only thing in the
+// document still claiming work is owed.
+func TestAPlansStepsSayPlannedRatherThanPending(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	first := step(tr, "would-run", false, true)
+	satisfied := step(tr, "already-done", false, true)
+	satisfied.Check = func(ctx context.Context, st *State) (bool, error) { return true, nil }
+
+	res, err := eng.Run(context.Background(), operation(first, satisfied), Options{DryRun: true})
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.StatusSucceeded, res.Record.Status,
+		"planning succeeded; it is the steps that never ran")
+	require.Len(t, res.Record.Steps, 2)
+	for _, s := range res.Record.Steps {
+		assert.Equal(t, domain.StepPlanned, s.Status,
+			"step %q: a plan's steps are planned, not pending", s.ID)
+	}
+}
+
+// TestAPlanIsNotSomethingResumeCanContinue guards the reason the status is its
+// own value rather than a reuse of `pending`.
+//
+// FirstIncompleteStep treats pending as resumable -- correctly, for a run that
+// stopped -- so a record whose steps are all pending reads as resumable from
+// step 0. A plan's record is never journaled, so `--resume` cannot reach one
+// today; this pins that it would be refused if it ever did.
+func TestAPlanIsNotSomethingResumeCanContinue(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	res, err := eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), step(tr, "b", false, true)),
+		Options{DryRun: true})
+	require.NoError(t, err)
+
+	_, resumable := res.Record.FirstIncompleteStep()
+	assert.False(t, resumable,
+		"a plan offered a step to resume from: resuming it would run every "+
+			"step while reporting that it continued something")
+}
