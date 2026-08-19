@@ -425,23 +425,13 @@ func TestTheManagerVersionCheckIsSkippedWhenUnknown(t *testing.T) {
 func TestAMissingFileIsCaughtUnderTheRuntimesSpelling(t *testing.T) {
 	dir := bundle(t, func(dir string) {
 		edit(t, filepath.Join(dir, "manifest.yaml"), func(s string) string {
-			// The whole legacy block is replaced, profiles included:
-			// leaving any of it behind declares both spellings, which
-			// is refused before the file check is reached.
-			return strings.Replace(s, `runtime:
-  project: demo
-  files:
-    - compose/compose.yaml
-  profiles:
-    embedded: [compose/compose.embedded.yaml]
-    external-db: [compose/compose.external-db.yaml]`, `runtimes:
-  compose:
-    files:
-      - compose/compose.yaml
-      - compose/missing.yaml
-    profiles:
-      embedded: [compose/compose.embedded.yaml]
-      external-db: [compose/compose.external-db.yaml]`, 1)
+			// One file added to the block the fixture already has.
+			// This used to replace a whole legacy block with the new
+			// spelling; the fixture is written in the new spelling
+			// now, which is what decision 23 leaves.
+			return strings.Replace(s,
+				"      - compose/compose.yaml",
+				"      - compose/compose.yaml\n      - compose/missing.yaml", 1)
 		})
 	})
 

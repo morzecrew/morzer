@@ -80,24 +80,42 @@ func TestADeprecatedAPIVersionReachesTheOperator(t *testing.T) {
 
 // Both kinds at once, which is the manifest a vendor who has migrated neither
 // would ship: each is reported on its own rather than one masking the other.
-func TestBothKindsOfDeprecationAreReported(t *testing.T) {
+// Only api_version deprecations reach a warning now.
+//
+// This asserted that the two kinds were independent, using `runtime:` as the
+// field-level example -- the only one there has ever been. Decision 23 removed
+// it, so the field half has no member to demonstrate with, and a manifest
+// carrying `runtime:` is refused by Validate long before anything warns about
+// it. What survives is the claim worth keeping: the api_version warning does
+// not depend on a field deprecation existing beside it.
+func TestAnAPIVersionDeprecationIsReportedOnItsOwn(t *testing.T) {
 	const stale = domain.APIVersion("morze.dev/v0alpha0")
 	deprecateAPIVersion(t, stale, "upgrade the bundle to v1alpha1")
 
 	d, seen := warned(t)
 	d.warnDeprecations(domain.Manifest{
 		APIVersion: stale,
+		Runtimes:   domain.Runtimes{"compose": {Files: []string{"compose.yaml"}}},
+	})
+
+	require.Len(t, *seen, 1, "one deprecation, one warning: %v", *seen)
+	assert.True(t, mentions(*seen, string(stale)),
+		"the api_version warning must name the version: %v", *seen)
+}
+
+// A legacy block produces no warning, because it is not deprecated -- it is
+// refused. Pinned so that a reintroduced fold would show up as a warning
+// nobody meant to restore.
+func TestALegacyBlockWarnsAboutNothingBecauseItIsRefused(t *testing.T) {
+	d, seen := warned(t)
+	d.warnDeprecations(domain.Manifest{
+		APIVersion: domain.APIVersionV1Alpha1,
 		Runtime:    domain.RuntimeSpec{Files: []string{"compose.yaml"}},
 	})
 
-	// Both named, not merely counted. Two warnings is also what an
-	// implementation that published the api_version one twice would produce,
-	// and this test's whole claim is that the two kinds are independent.
-	require.Len(t, *seen, 2, "two independent deprecations, two warnings: %v", *seen)
-	assert.True(t, mentions(*seen, string(stale)),
-		"one of them must be the api_version warning: %v", *seen)
-	assert.True(t, mentions(*seen, "`runtime` is deprecated"),
-		"and the other the field warning: %v", *seen)
+	assert.Empty(t, *seen,
+		"`runtime:` stopped being read in 0.3.0; warning about it would offer "+
+			"a grace period the loader will not honour")
 }
 
 // A manifest with nothing deprecated says nothing. The silent case is the one

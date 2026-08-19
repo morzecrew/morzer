@@ -11,7 +11,17 @@ import (
 // Per-runtime options, at the layer that carries them and refuses to read them.
 // RFC 0023 §2.2 and decision 14.
 
-func TestTheLegacyProjectBecomesTheLegacyRuntimesOption(t *testing.T) {
+// The fold that carried `runtime.project` into the legacy runtime's `project`
+// option is gone with the block that fed it (decision 23).
+//
+// This asserts the removal rather than deleting the test, because the fold
+// existed for a sharp reason -- a bundle built before `runtimes:` keeps the
+// namespace its volumes are already in, and dropping the project renames every
+// volume, network and container on the next apply. That reason did not stop
+// being true; what changed is that such a bundle is now refused outright
+// instead of being read and silently renamed, which is the safe direction and
+// the one a vendor is told about.
+func TestTheLegacyProjectIsNoLongerFoldedIntoAnOption(t *testing.T) {
 	m := Manifest{
 		Metadata: Metadata{Name: "demo"},
 		Runtime: RuntimeSpec{
@@ -20,13 +30,14 @@ func TestTheLegacyProjectBecomesTheLegacyRuntimesOption(t *testing.T) {
 		},
 	}
 
-	declared, fromLegacy := m.DeclaredRuntimes()
-	require.True(t, fromLegacy)
+	assert.Empty(t, m.DeclaredRuntimes(),
+		"the legacy block declares nothing, so there is no option to fold into")
 
-	// The whole point of the fold. A bundle built before `runtimes:` existed
-	// keeps the namespace its volumes are already in; dropping it here would
-	// rename every volume, network and container on the next apply.
-	assert.Equal(t, "myapp", declared[LegacyRuntimeName].Options["project"])
+	err := m.Validate()
+	require.Error(t, err, "and the manifest carrying it is refused rather than read")
+	assert.Contains(t, err.Error(), "options.project",
+		"the refusal must name where a project goes now, or the migration "+
+			"silently renames every volume the deployment owns")
 }
 
 func TestARuntimesReleaseInheritsNoProjectFromTheDeprecatedBlock(t *testing.T) {
@@ -36,8 +47,7 @@ func TestARuntimesReleaseInheritsNoProjectFromTheDeprecatedBlock(t *testing.T) {
 	}
 	m.ApplyDefaults()
 
-	declared, fromLegacy := m.DeclaredRuntimes()
-	require.False(t, fromLegacy)
+	declared := m.DeclaredRuntimes()
 	assert.Empty(t, declared["compose"].Options,
 		"a release that declared no options must not acquire one by defaulting")
 }

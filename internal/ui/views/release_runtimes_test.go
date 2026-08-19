@@ -56,7 +56,10 @@ func TestReleaseShowNamesEveryRuntimeAndItsOptions(t *testing.T) {
 	t.Run("the legacy block, folded", func(t *testing.T) {
 		out := render(domain.Manifest{
 			Metadata: base,
-			Runtime:  domain.RuntimeSpec{Project: "myapp", Files: []string{"compose.yaml"}},
+			Runtimes: domain.Runtimes{"compose": {
+				Files:   []string{"compose.yaml"},
+				Options: map[string]string{"project": "myapp"},
+			}},
 		})
 		assert.Contains(t, out, "compose (project=myapp)",
 			"a bundle on the old spelling reads as the compose runtime with its project")

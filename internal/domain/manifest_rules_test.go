@@ -109,20 +109,34 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			func(m *Manifest) { m.Providers.Runtime.Name = "" }, "providers.runtime.name",
 		},
 		"no compose files": {
-			func(m *Manifest) { m.Runtime.Files = nil }, "runtime.files",
+			func(m *Manifest) { m.Runtimes[LegacyRuntimeName] = RuntimeDecl{} },
+			"runtimes.compose.files",
 		},
 		"a compose file outside the bundle": {
-			func(m *Manifest) { m.Runtime.Files = []string{"../../etc/passwd"} }, "runtime.files[0]",
+			func(m *Manifest) {
+				m.Runtimes[LegacyRuntimeName] = RuntimeDecl{Files: []string{"../../etc/passwd"}}
+			},
+			"runtimes.compose.files[0]",
 		},
 		"a profile that selects nothing": {
-			func(m *Manifest) { m.Runtime.Profiles = map[string][]string{"embedded": {}} },
-			"runtime.profiles.embedded",
+			func(m *Manifest) {
+				d := m.Runtimes[LegacyRuntimeName]
+				d.Profiles = map[string][]string{"embedded": {}}
+				m.Runtimes[LegacyRuntimeName] = d
+			},
+			"runtimes.compose.profiles.embedded",
 		},
 		"a profile file outside the bundle": {
 			func(m *Manifest) {
-				m.Runtime.Profiles = map[string][]string{"embedded": {"/etc/passwd"}}
+				d := m.Runtimes[LegacyRuntimeName]
+				d.Profiles = map[string][]string{"embedded": {"/etc/passwd"}}
+				m.Runtimes[LegacyRuntimeName] = d
 			},
-			"runtime.profiles.embedded[0]",
+			"runtimes.compose.profiles.embedded[0]",
+		},
+		"the deprecated runtime block": {
+			func(m *Manifest) { m.Runtime = RuntimeSpec{Files: []string{"compose/compose.yaml"}} },
+			"runtime",
 		},
 
 		// requirements.ports -- literal or a parameter reference, never junk
@@ -441,7 +455,7 @@ func TestDefaultsAreAppliedBeforeValidation(t *testing.T) {
 		Kind:       KindApplicationRelease,
 		Metadata:   Metadata{Name: "demo", Version: MustParseVersion("1.0.0")},
 		Providers:  Providers{Runtime: Provider{Name: "compose"}},
-		Runtime:    RuntimeSpec{Files: []string{"compose/compose.yaml"}},
+		Runtimes:   Runtimes{LegacyRuntimeName: {Files: []string{"compose/compose.yaml"}}},
 		Images: map[string]ImageSpec{
 			"app": {Ref: "registry.example/demo/app@sha256:" + strings.Repeat("a", 64)},
 		},
