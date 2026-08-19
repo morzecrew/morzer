@@ -265,6 +265,29 @@ func run(ctx context.Context, name string, args ...string) (string, error) {
 	return buf.String(), err
 }
 
+// Stop stops the container and blocks until it is gone.
+//
+// The runtime's own mechanism, deliberately, rather than asking the service
+// inside to shut itself down. A `docker exec` has to schedule a process in a
+// container on a busy host and can simply not land -- measured: under the full
+// container lane it does not, and the test that depended on it then spent its
+// whole deadline watching a service that was never asked to stop. Stopping from
+// outside has no such step, and it is what a test that only needs the service
+// gone should have been using.
+//
+// Started with --rm, so a stopped container is a removed one; the failure to
+// stop is reported, and the failure to remove is not, because the removal is
+// Docker's business and the test's claim is about the port.
+func (c *Container) Stop(t *testing.T, within time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), within)
+	defer cancel()
+	if out, err := run(ctx, "docker", "stop", "--timeout", "10", c.Name); err != nil {
+		t.Fatalf("cannot stop %s: %v\n%s", c.Name, err, out)
+	}
+	c.WaitGone(t, within)
+}
+
 // WaitGone blocks until the container has actually stopped.
 //
 // This is the signal a test needs after asking a service to shut down.
