@@ -2201,6 +2201,25 @@ them once a row says LOCKED.
   what was seen — a false green at the unit level, with downstream detection
   depending on something validating the parameter, which nothing guarantees.
 
+## D-046 — The same number, wrong in a fourth place
+
+- **Touches:** wave 31's D-030, unapplied by this wave
+- **Built:** every boot-count claim in the tree found by one grep and aligned.
+- **Because:** the ordering boot count moved from three to four when pinning the
+  venue forced a re-run, and it is written in five places. Review caught the
+  RFC's copy, then the self-audit table's, then the distilled rule's — three
+  rounds, each fixing the instance that was pointed at.
+- **Class:** `drift` against this file's own recorded practice, which is the
+  uncomfortable part. **D-030 distilled exactly this rule one wave ago** —
+  *grep the claim, not the diff* — after a status was edited in three places and
+  left stale in three others. It was written down, and then not applied to a
+  number that had just changed.
+- **Consequence:** the sweep is done properly now, across `rfcs/` and the
+  spike's README. What the rule was missing is the trigger: it says what to do
+  and not when, so it only fires for somebody already suspicious. The version
+  worth keeping is that **a number that changes is a number to grep for**, at
+  the moment it changes rather than at the moment somebody objects.
+
 ## Self-audit — 2026-08-19
 
 Scope: the whole branch — one commit, no production code. A spike, so the audit
@@ -2236,7 +2255,7 @@ product, and it is now the longest-running unfixed finding in this file.
 - **Grade the fact and the obligation separately.** One row held systemd's
   observed behaviour and an unbuilt adapter's design, and gave both the grade
   the stronger half deserved. (D-042)
-- **A race that keeps going the same way is still a race.** Three boots agreeing
+- **A race that keeps going the same way is still a race.** Four boots agreeing
   is not determinism, and the intermittent version of a silent misconfiguration
   is worse than the reliable one. (A-1)
 - **A lint recipe that enumerates paths is a list that goes stale silently.**
@@ -2259,6 +2278,10 @@ product, and it is now the longest-running unfixed finding in this file.
 - **A kept venue must be pinned, or it re-runs a different experiment under the
   old one's name.** The entry arguing for reproducibility shipped a floating
   base image, which is the failure the entry existed to prevent. (D-043)
+- **A number that changes is a number to grep for, when it changes.** D-030
+  said grep the claim rather than the diff; this wave had the rule, changed a
+  count, and still needed three review rounds to find all five copies. A rule
+  without a trigger only fires for somebody already looking. (D-046)
 - **A list of alternatives is a claim about each of them.** Row 22 offered P3
   four mechanisms and one of them does not work; naming it without checking the
   manual page would have blessed the race the row exists to prevent. (D-044)
