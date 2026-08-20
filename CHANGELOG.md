@@ -48,7 +48,7 @@ wrong substrate while reporting success.
 
 - **A planned operation's steps report `planned` rather than `pending` in `--json`.** A dry run's steps were never going to run, and `pending` means not yet, so the record was the one part of the output still claiming work was owed. The operation status is unchanged at `succeeded`: planning is what succeeded.
 
-- **`morzer release new` scaffolds a bundle using `runtimes:` rather than the deprecated `runtime:` block**, and declares the manager version that spelling needs. A bundle scaffolded now therefore requires 0.3.0 or newer, which is stated by the manifest rather than discovered as a decoding error.
+- **`morzer release new` scaffolds a bundle using `runtimes:` rather than the `runtime:` block this release stops reading**, and declares the manager version that spelling needs. A bundle scaffolded now therefore requires 0.3.0 or newer, which is stated by the manifest rather than discovered as a decoding error.
 
 - **A release that changes a runtime option an installation was created with is refused.** Under Compose the project prefixes every volume, so such a release would bring the product up against storage nothing has written to and leave the real data unreferenced. The way through is a backup, a fresh `init` and a `restore`.
 
@@ -59,8 +59,6 @@ wrong substrate while reporting success.
 ### Removed
 
 - **The `runtime:` manifest block is no longer read.** A bundle carrying it is refused, naming what to write instead: files under `runtimes.compose.files`, `project` under `runtimes.compose.options.project`, and `min_manager_version` raised to `0.3.0`.
-
-- **No release ever read both spellings**, which is why this is a break rather than the deprecation first announced for 0.4.0. `runtimes:` ships here for the first time, so 0.2.0 and earlier read only the old block and this release reads only the new one.
 
 ### Fixed
 
