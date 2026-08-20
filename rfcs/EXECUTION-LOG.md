@@ -2855,10 +2855,15 @@ release to date.
 - **`Installation.Providers`** — RFC 0027's question, not gated on P3. Wave 36.
 - **`saveInstallation` writes its report before the state store** (wave 31), the
   oldest item in this file.
-- ~~**Cutting 0.3.0**~~ — closed by the `release/v0.3.0` branch. The scaffold
-  stamps `min_manager_version: 0.3.0`, so until that release existed `morzer
-  release new` wrote bundles no released manager could install. It was never a
-  defect in the code, only a consequence of the tag not being cut.
+- ~~**Cutting 0.3.0**~~ — closed by the `v0.3.0` tag, which the
+  `release/v0.3.0` branch prepares. The scaffold stamps
+  `min_manager_version: 0.3.0`, so until that release existed `morzer release
+  new` wrote bundles no released manager could install. Measured on the release
+  branch rather than reasoned about: a build stamped `0.3.0` plans a freshly
+  scaffolded bundle (`would create an installation for demo`), and the same
+  code stamped `0.2.0` refuses it — *requires morzer 0.3.0 or newer, and this
+  is 0.2.0*. Never a defect in the code, only a consequence of the tag not
+  being cut.
 
 ## Reconciliation — 2026-08-19
 
