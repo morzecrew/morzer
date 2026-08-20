@@ -3010,3 +3010,31 @@ argument for keeping both kinds in the rotation rather than only the second.
 the code least likely to be tested and the code every other test trusts. The
 walk is now a function taking a root, and there is a test that it records a
 nested path — sabotaged shallow, and it fails.
+
+## D-068 — The verifier filtered without pruning, and kept the race
+
+- **Touches:** D-060, D-065; found in review, in the **review body** rather than
+  on a thread — CodeRabbit could not anchor it because it fell outside the diff.
+- **Found:** `unlisted` returned early for directories *before* computing the
+  relative path, so it descended into `.git` and excluded per file. The three
+  other walks over a bundle — `ArchiveEntries`, `CopyTree`, `DigestTree` — all
+  prune with `fs.SkipDir`.
+- **Why it matters beyond speed:** an object store is being **rewritten while a
+  verify runs**. The first sighting of this whole class was a build failing on a
+  git lock file that existed when the walk saw it and was gone before the open.
+  A verifier that enters `.git` at all keeps that race, however carefully it
+  filters afterwards — so the fix for the leak would have left the symptom that
+  found the leak.
+- **Class:** `drift` against this wave. Four walks, and the exclusion was applied
+  to the fourth with the wrong shape after being applied correctly to three.
+- **Consequence:** tested through an unreadable directory rather than by
+  counting entries, because "did not report its files" and "did not enter it"
+  are different claims and only the second is the one that matters.
+
+**Three of this round's six findings are the same mistake at different
+distances**: the exclusion reached the enumerations (D-060), missed the digest
+(D-065), and reached the verifier in a form that filtered without pruning
+(D-068). The generalisation is not "grep harder" — it is that **a rule about a
+tree has to be applied at every walk of that tree, and walks do not look alike**:
+one enumerates, one hashes, one copies, one audits. Grepping for any of their
+names finds none of the others.

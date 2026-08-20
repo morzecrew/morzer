@@ -83,3 +83,31 @@ func hexDigest(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
+
+// The completeness walk must not descend into an excluded directory, which is a
+// stronger claim than not reporting its files.
+//
+// Tested through an unreadable directory because that is the failure that
+// matters: an object store is being rewritten while a verify runs, and the
+// first sighting of this whole class was a build failing on a git lock file
+// that existed when the walk saw it and vanished before the open. A walk that
+// enters `.git` at all keeps that race, however carefully it filters afterwards.
+func TestTheCompletenessWalkDoesNotEnterAnExcludedDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the permission bits this test relies on")
+	}
+
+	dir := t.TempDir()
+	write(t, dir, "manifest.yaml", "api_version: selfhost/v1alpha1\n")
+	write(t, dir, ".git/objects/ab/cdef", "object")
+	require.NoError(t, release.WriteSums(dir))
+
+	// Unreadable: entering it is an error, skipping it is not.
+	objects := filepath.Join(dir, ".git", "objects")
+	require.NoError(t, os.Chmod(objects, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(objects, 0o755) })
+
+	require.NoError(t, checksum.VerifySumsFile(dir),
+		"the walk entered an excluded directory, so a bundle verifies or not "+
+			"depending on what git happens to be doing to it")
+}

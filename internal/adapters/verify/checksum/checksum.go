@@ -179,12 +179,27 @@ func unlisted(dir string, listed map[string]bool) []string {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() {
-			return nil
-		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
 			return err
+		}
+		// Excluded directories are not descended into, which the other
+		// three walks over a bundle already did and this one did not.
+		// Two reasons, and the second is the one that matters: an object
+		// store is large, and it is **being rewritten while this runs**.
+		// The first sighting of the leak this exclusion exists for was a
+		// build failing on a git lock file that existed when the walk
+		// saw it and not when the open came, so a verifier that still
+		// descends keeps that race for itself. Found in review, outside
+		// the diff.
+		if domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
+			if entry.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
 		}
 		// The list cannot list itself, and the signature over it is
 		// what makes the list trustworthy in the first place.
@@ -204,13 +219,6 @@ func unlisted(dir string, listed map[string]bool) []string {
 		// it is that nothing on a deployment host reads any of these --
 		// no git runs there -- so an added `.git/hooks/pre-commit` is
 		// inert in a way an added `compose.yaml` is not.
-		// ToSlash because the predicate reads slash-separated
-		// bundle-relative paths and `rel` comes from filepath.Rel.
-		// ArchiveEntries converts and this did not, which is two callers
-		// of one predicate disagreeing about what they hand it.
-		if domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
-			return nil
-		}
 		if !listed[filepath.Clean(rel)] {
 			problems = append(problems, filepath.ToSlash(rel)+
 				": present in the bundle but not listed")
