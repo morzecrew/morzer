@@ -2750,3 +2750,118 @@ rather than after.
   transferable to the next just because the entries are adjacent. **Re-derive
   what a measurement measures before reusing it**, especially when reusing it is
   what makes a security claim comfortable.
+
+# Wave 35 · What ships from a source tree
+
+Branch `feature/wave-35-what-ships-from-a-source-tree`. RFC 0014, and the two
+defects wave 34 found while looking for something else.
+
+Scheduled as its own unit rather than folded into wave 34, which is the ruling
+recorded there: the exclusion list, the verifier's symmetry, `.gitignore`, and
+what a stricter builder does to already-published bundles are four decisions,
+and a security fix reviewed under a debt wave's title is reviewed by nobody.
+
+**Drift count: 1** — D-060, against RFC 0014, pre-existing and shipped in every
+release to date.
+
+## D-060 — The RFC never said which files are in a bundle
+
+- **Touches:** RFC 0014 §4, §8; rows 18 and 19 proposed and accepted
+- **RFC said:** nothing. It is careful about ordering (rows 2, 16),
+  determinism (row 4), version derivation (rows 5–9) and where `build` writes
+  (row 10), and nowhere about *what the set being summed is*. The set was
+  whatever `filepath.WalkDir` returned.
+- **Built:** `domain.IsExcludedFromBundle`, applied at `release.ArchiveEntries`
+  — the one enumeration `WriteSums` and `WriteArchive` share — and at the
+  verifier's completeness walk and `atomicfs.CopyTree`.
+- **Because:** row 10 has `build` write **in place** so a multi-gigabyte
+  `images/` layout is not copied, and a bundle is authored in a working copy. The
+  two together mean the working copy was the input to the enumeration. Measured:
+  **42 of 55 `SHA256SUMS` entries under `.git/`**, `.git/config` among them, and
+  the archive packed all of them.
+- **Class:** `drift` against RFC 0014 — the design admits a shape it never
+  considered, and the code implemented the design faithfully.
+- **The shape worth keeping, and it is not "somebody forgot":** the omission is
+  invisible from inside the document. Every sentence in it about the bundle is
+  about a bundle that already contains the right files, so no section reads as
+  incomplete and no review of the RFC would have found it. **A specification can
+  be complete about everything it mentions and silent about its own input.** The
+  question "what is in it" was never asked, which is different from being
+  answered wrongly.
+- **Consequence:** the verifier's symmetry is forced rather than chosen, and
+  that is the part a fix could most easily have got wrong — excluding on the
+  producing side alone makes every vendor's own `verify` fail against the tree
+  they just built in, which is a worse failure than the leak because it reaches
+  everyone rather than everyone-who-uses-git.
+
+## D-061 — Already-published bundles were checked rather than reasoned about
+
+- **Touches:** D-060; the compatibility question the author raised when ruling
+- **The question:** `unlisted` is fail-closed both ways, so does a stricter
+  builder make an already-published bundle unverifiable?
+- **Answered by measurement, both directions.** A bundle whose sums list
+  `.git/config` with the file present **verifies** — the listed side is
+  digest-checked as before and the completeness side no longer looks. Strip that
+  listed file and it fails with `missing or unreadable`, which is pre-existing
+  behaviour and unchanged.
+- **Class:** not a departure. Recorded because the plan called this benign from
+  a code read, and a compatibility claim that decides whether published
+  artefacts keep working is the wrong place to stop at reading. It is also the
+  cheapest kind of measurement: two files and a verify.
+
+## D-062 — One manifest reader for both shapes of bundle
+
+- **Touches:** D-054, carried from wave 34; RFC 0014 rows 2 and 19
+- **Built:** `release.ManifestAt`, reading an archive's first entry without
+  extracting, refusing an archive that does not lead with the manifest.
+- **Because:** decision 2 locks `manifest.yaml` first *so that this read is
+  possible*. Spending that guarantee costs a few kilobytes of decompression;
+  extracting to a temp directory to learn a product name would have cost the
+  whole bundle, and refusing archives without `--product` would have made the
+  published shape the awkward one.
+- **Refuses rather than scans**, following decision 3's reasoning at a second
+  reader: a guarantee one reader enforces and another works around is a
+  convention, and the lenient reader is the one that admits a non-conforming
+  archive to the strict one.
+- **Class:** `spec-gap`, closed.
+- **Consequence:** the join existed in three places. Two were fixed a wave
+  apart; the third was found by grepping for the first two. That is the argument
+  for the surface being one function rather than a corrected line.
+
+## Rules distilled
+
+- **A specification can be complete about everything it mentions and silent
+  about its own input.** RFC 0014 settled ordering, determinism, version
+  derivation and where `build` writes, and never said which files are in a
+  bundle. No section reads as incomplete, because every sentence about the
+  bundle assumes one that already contains the right files. (D-060)
+- **When a producer and a checker walk the same tree, a change to one is a
+  change to both.** The exclusion had to be symmetric or every vendor's own
+  `verify` would fail against the tree they built in — a worse failure than the
+  leak, because it reaches everyone rather than everyone-who-uses-git. (D-060)
+- **A compatibility claim about published artefacts is not a code-read claim.**
+  "Already-published bundles still verify" was right, and it cost two files and
+  one command to know rather than believe. (D-061)
+- **Exact names beat patterns where being wrong is silent.** A `*~` rule decides
+  the fate of names nobody has looked at, and the direction it fails in is a
+  release that is missing a file and still looks complete. (D-060)
+
+## Carried into the next unit
+
+- ~~**The `.git` leak**~~ — closed (D-060).
+- ~~**The path-join in `commands.go` and `init_wizard.go`**~~ — closed (D-062).
+- **A plan does not validate the bundle it plans against** (D-055, wave 34).
+- **`FieldRemovalRelease` is a single-member design with no members** (D-052).
+- **`Installation.Providers`** — RFC 0027's question, not gated on P3. Wave 36.
+- **`saveInstallation` writes its report before the state store** (wave 31), the
+  oldest item in this file.
+- **Cutting 0.3.0** — the scaffold stamps `min_manager_version: 0.3.0`, so until
+  that release exists `morzer release new` writes bundles no released manager
+  can install. Not a defect in the code; a consequence of the tag not being cut.
+
+## Reconciliation — 2026-08-19
+
+| RFC | row | outcome | grade | decision | from |
+|---|---|---|---|---|---|
+| 0014 | 18 | **Accepted** | `LOCKED` | A bundle source tree is not what ships from it; the exclusion is symmetric across producer and verifier | D-060 |
+| 0014 | 19 | **Accepted** | `LOCKED` | The manifest is read from an archive's first entry and an archive that does not lead with it is refused rather than searched | D-062 |

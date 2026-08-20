@@ -536,12 +536,30 @@ whether the three version paths share one resolver type.
 | 15 | `archive` derives `<name>-<version>.tar.zst`, overridable with `-o` | Guessable by a human and scriptable without a lookup; the override covers pipelines that name artifacts their own way. |
 | 16 | **Refines decision 4** (2026-08-09): entries are **sorted lexicographically by normalised relative path within each rank**, and `SHA256SUMS` uses the same order | Normalised headers alone do not make an archive reproducible — directory traversal order is unspecified, so entry order and checksum line order could both vary. The ranks serve the budget read; the sort serves reproducibility; neither substitutes for the other. |
 | 17 | `--force` **deletes** `SHA256SUMS.minisig` and propagates to the pack step | Same postcondition as [0012 decision 11](0012-packing-images-into-a-bundle.md), for the same reason: forcing past the refusal while keeping the signature produces the wrongly-signed bundle the refusal exists to stop. Propagating means there is no run where part of a build is forced and part is not. |
+| 18 | A bundle **source tree is not what ships from it**: version-control and OS-litter paths are excluded from the enumeration, and the verifier's completeness walk excludes the same set | This RFC gave a vendor two commands between a source tree and something publishable and never said the two are different things. They are, and decision 10 is why it matters: `build` writes **in place** so a multi-gigabyte `images/` layout is not copied, so whatever else sits in that directory was being enumerated, checksummed, signed over and packed. Measured 2026-08-19 on a bundle built inside a git repository -- **42 of 55 `SHA256SUMS` entries were `.git/`**, `.git/config` included, and `release archive` packed all of them. `--version-from-git` requires a repository, so this is the workflow that flag exists for. Applied at `release.ArchiveEntries`, the one enumeration decision 11's single sums routine and `WriteArchive` share, so the list and the archive cannot describe different sets. **The verifier's symmetry is forced, not chosen**: with `build` writing in place a vendor verifies the working copy they built in, so a producer that stops listing `.git` beside a completeness walk that keeps finding it fails every vendor's own bundle. Consequence, named rather than left implicit: excluding a path from that walk opens a hole in the completeness rule -- a mirror could add files under an excluded path unreported. Bounded by nothing on a deployment host reading any of them; an added `.git/hooks/pre-commit` is inert where an added `compose.yaml` is not. Exact names, no globbing: a pattern rule decides the fate of names nobody has looked at, and a wrongly excluded file is absent from a release that still looks complete. Already-published bundles are unaffected, measured both ways -- their sums list the source tree, the files are present, and the listed side is digest-checked as before. Added by execution 2026-08-19 -- see EXECUTION-LOG.md D-056 and D-060. |
+| 19 | The manifest is read from an **archive's first entry**, without extracting, and an archive that does not lead with it is **refused rather than searched** | `--release` names a directory or a `.tar.zst`, and three call sites built the path as `releasePath + "/manifest.yaml"` -- which for an archive names something that cannot exist. Measured against a released binary: `morzer init --release <bundle>.tar.zst` **without `--product` failed on a valid archive**, and the archive is the shape a vendor publishes, so that was the primary install path. Decision 2 already locks `manifest.yaml` first precisely so this read is possible, so it costs a few kilobytes of decompression rather than a temporary copy of the bundle. Refusing rather than scanning follows decision 3's reasoning at a second reader: a guarantee one reader enforces and another works around is a convention, and the lenient reader is the one that admits a non-conforming archive to the strict one. Consequence: `release.ManifestAt` is the single surface, because the join had been written three times and two of them were fixed a wave apart. Added by execution 2026-08-19 -- see EXECUTION-LOG.md D-054. |
 
 ## 13. Execution notes
 
 Recorded rather than silently absorbed, because each is a place where the
 implementation answered a question this document had left to it — or declined
 to answer one it had assigned.
+
+**2026-08-19 — this RFC never distinguished a bundle source tree from what
+ships from it, and that gap had a cost.** Rows 18 and 19 add the distinction.
+The document is careful about *ordering*, *determinism* and *what a version
+means*, and says nothing anywhere about *which files are in a bundle* — §4's
+goals name the sums, the ordering and the version scheme; §8's out-of-scope
+list names publishing, chaining and version schemes. The set being summed was
+simply whatever `filepath.WalkDir` returned.
+
+Worth recording as a shape rather than an oversight: the omission is invisible
+from inside the document, because every sentence about the bundle is about a
+bundle that already contains the right files. The question "what is in it" was
+never asked, so no section reads as incomplete. The first sighting of the
+consequence was **a CI failure that looked like a flaky test** — a build racing
+git's own background maintenance and failing on a lock file that existed when
+the walk saw it and not when the open came.
 
 **Decision 3's consuming-side guard did not ship here** — it shipped with
 [0011](0011-bundled-container-images.md) P1 on 2026-08-09, which is where the

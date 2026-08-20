@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A release bundle no longer carries the vendor's version-control directory.** `release build` summed and `release archive` packed whatever sat in the bundle directory, so a bundle built inside a git repository shipped `.git` — history and `.git/config` included — under the signature. Bundles already published are unaffected and still verify.
+
+- **`morzer init --release <bundle>.tar.zst` works without `--product`.** Reading the product name from an archive's manifest built a path inside the archive file, so the primary install path failed on a valid bundle. The manifest is now read from the archive's first entry, which the format guarantees is the manifest.
+
 - **The init wizard offers the profiles of a bundle written with `runtimes:`.** It read the deprecated block directly, so from the moment the new spelling existed it offered nothing — indistinguishable from a release that declares no profiles.
 
 - **A release that spells out a runtime option already in force is no longer refused.** An installation with no `project` runs under its product name, so a release naming that same value changes nothing, and dropping such a line is equally harmless. A value that really changes the namespace is refused as before.
