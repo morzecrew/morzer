@@ -362,13 +362,16 @@ func guardTheSourceTree(t *testing.T) {
 	})
 }
 
-// dirNames records every path under the package directory, not only its top
-// level.
+// filesUnder records every **file** beneath root, at any depth. Directories are
+// not entries: only a file can be the thing a prompt wrote.
 //
 // Recursive because the shallow version had a hole review found: a key written
 // *below* an existing directory leaves the root entry set unchanged, so the
 // guard would have reported nothing for exactly the kind of path a prompt is
 // most likely to be handed -- `hooks/3`, or anything with a slash in it.
+//
+// Takes a root rather than assuming ".", so the walk itself is testable. It was
+// not, which is how it shipped shallow.
 func filesUnder(t *testing.T, root string) map[string]bool {
 	t.Helper()
 	names := map[string]bool{}
