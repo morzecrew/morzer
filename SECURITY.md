@@ -25,8 +25,9 @@ rather than misreading it.
 
 | Version | Supported |
 | --- | --- |
-| 0.2.x | ✅ |
-| 0.1.x | ❌ — upgrade to 0.2.x |
+| 0.3.x | ✅ |
+| 0.2.x | ❌ — upgrade to 0.3.x |
+| 0.1.x | ❌ — upgrade to 0.3.x |
 | `main` | Fixes land here first; it is not a release |
 
 ## Verifying a release
