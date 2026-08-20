@@ -6,12 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/morzecrew/morzer/internal/domain"
-	"github.com/morzecrew/morzer/internal/release"
 	"time"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // A bundle arrives from somewhere else. Every way it can be wrong is a way an
