@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A release declares which runtimes it supports, under `runtimes:`.** Each key names a runtime and carries that runtime's own files and profiles, so a bundle states the substrate it is written for instead of leaving the manager to assume the only one that has ever existed. An installation records the runtime it was created against and never transitions to another, which is what lets a later manager tell a machine that chose Compose from one that predates the question being askable. A release declaring more than one runtime is refused at `init` rather than chosen between, because choosing needs a second adapter to choose with and that arrives alongside it.
+
 - **A release can set per-runtime options with `runtimes.<name>.options`.** The compose runtime reads `project` there — the namespace its volumes, networks and containers live in — and defaults to the product name. The manager carries these without interpreting them, and the runtime refuses a key it does not understand.
 
 - **`morzer doctor` reports the runtime an installation is fixed to**, and fails when this manager drives a different one. There is no fix on the machine, since a runtime never transitions, so the check names the two ways out instead. With no installation yet, it asks the runtime which tools `init` will need.
@@ -44,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The init wizard offers the profiles of a bundle written with `runtimes:`.** It read the deprecated block directly, so from the moment the new spelling existed it offered nothing — indistinguishable from a release that declares no profiles.
 
 - **A release that spells out a runtime option already in force is no longer refused.** An installation with no `project` runs under its product name, so a release naming that same value changes nothing, and dropping such a line is equally harmless. A value that really changes the namespace is refused as before.
+
+- **`morzer init --dry-run` names the product it would create.** The summary read the installation out of engine state, which a plan never populates, so it closed with `installation  created for` — two empty slots and a creation claimed in the past tense, directly beneath the line saying nothing had changed. Under `--json`, `data.product` was empty for the same reason. `--repair` says *repaired* rather than *created* on both paths too: a repair on the wrong machine and a first install differ in exactly what that line reports.
 
 ## [0.2.0] - 2026-08-15
 
