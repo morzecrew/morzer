@@ -513,6 +513,13 @@ func checkExecutable(rel domain.Release, relPath, field string, missing *[]strin
 // precisely so it can be read from the stream, so this costs a few kilobytes of
 // decompression rather than a temporary copy of the whole bundle.
 func ManifestAt(path string) (domain.Manifest, error) {
+	// What it *is*, then what it is named. IsTarZst reads the suffix, and
+	// `--release` takes an arbitrary directory path -- so a bundle
+	// directory called `demo-1.2.0.tar.zst` would otherwise be opened as a
+	// compressed archive and fail before staging. Found in review.
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return LoadManifest(filepath.Join(path, ManifestFileName))
+	}
 	if atomicfs.IsTarZst(path) {
 		data, err := atomicfs.ReadFirstArchiveEntry(path, ManifestFileName)
 		if err != nil {

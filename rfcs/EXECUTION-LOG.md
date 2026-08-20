@@ -2940,8 +2940,8 @@ argument for keeping both kinds in the rotation rather than only the second.
   in all four commits of the branch.
 - **How it was missed:** it had been reported and tracked as *untracked* for
   several turns, and the check that would have caught the change —
-  `git status --short` — was read as showing the file just edited. A `??` became
-  a ` M` and nothing looked at it again.
+  `git status --short` — was read as showing the file just edited. A `"??"` became
+  a `" M"` and nothing looked at it again.
 - **Class:** `drift`. Over-broad staging is the specific failure this project
   has now made three times, twice with `git add -A` and once with a directory.
   **The mitigation that exists is a habit, and a habit is what failed.**
@@ -2956,3 +2956,57 @@ argument for keeping both kinds in the rotation rather than only the second.
 - **Not covered by D-063's guard.** That guard stops a *test* writing into the
   source tree; it has nothing to say about what gets staged. Two failures, one
   fixed.
+
+## Review round, PR #61 — appended after the group closed
+
+## D-065 — The exclusion reached what a bundle contains, not what it hashes
+
+- **Touches:** D-060, this wave; `internal/infra/atomicfs/copy.go`
+- **Found in review** (CodeAnt), and confirmed by measurement before agreeing:
+  a bundle built inside a working copy loaded with digest
+  `sha256:88b5821a…` and the release extracted from its own archive loaded with
+  `sha256:ded8194d…`. **The same release, two identities.**
+- **Because:** `Release.Digest` comes from `atomicfs.DigestTree`, a third walk
+  of the same tree that the exclusion did not reach. That digest is what `fetch`
+  pins against, what `update` compares, and what an attestation records — so the
+  divergence surfaces as a bundle refusing itself.
+- **Class:** `drift` against this wave. The plan named "one choke point" and
+  found two walks that had to agree; there were three. The map was built by
+  grepping for the *enumeration* (`ArchiveEntries`, `unlisted`) and a digest is
+  not an enumeration, so it was not in the search that produced the plan.
+- **The rule, and it is a sharpening of D-058's rather than a new one:** *the
+  grep that matters is for every consumer of the thing being changed, not every
+  caller of the function being changed.* D-058 was a field with three readers;
+  this is a directory tree with three walkers. Both times the missing one was
+  the one that did something different with it.
+
+## D-066 — Two callers of one predicate disagreed about what they hand it
+
+- **Touches:** D-060; `unlisted`
+- **Found in review:** `IsExcludedFromBundle` reads slash-separated paths.
+  `ArchiveEntries` converts with `filepath.ToSlash`; the verifier passed
+  `filepath.Rel`'s output straight through.
+- **Not reachable today** — the separator only differs on Windows, which this
+  project does not target. Fixed anyway, and recorded as the cheaper half of a
+  real point: a predicate with a documented input shape and two callers, one of
+  which honours it, is a defect whether or not the platform that exposes it is
+  supported.
+- **Class:** `spec-gap`.
+
+## D-067 — Three smaller findings, all valid
+
+- **A directory named like an archive was opened as one.** `ManifestAt` chose by
+  suffix, and `--release` takes an arbitrary path, so a bundle directory called
+  `demo-1.2.0.tar.zst` failed before staging. It now asks what the path *is*
+  before what it is *named*. `spec-gap`.
+- **The source-tree guard was shallow.** `os.ReadDir(".")` records only top-level
+  entries, so a key written below an existing directory — `hooks/3`, anything
+  with a slash — left the entry set unchanged and the guard reported nothing.
+  Now a walk. `drift` against D-063, one commit old.
+- **A markdownlint MD038** in D-064's own text: a code span opening with a space.
+  Fixed.
+
+**The guard had no test, which is how it shipped shallow.** A test harness is
+the code least likely to be tested and the code every other test trusts. The
+walk is now a function taking a root, and there is a test that it records a
+nested path — sabotaged shallow, and it fails.

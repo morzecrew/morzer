@@ -204,7 +204,11 @@ func unlisted(dir string, listed map[string]bool) []string {
 		// it is that nothing on a deployment host reads any of these --
 		// no git runs there -- so an added `.git/hooks/pre-commit` is
 		// inert in a way an added `compose.yaml` is not.
-		if domain.IsExcludedFromBundle(rel) {
+		// ToSlash because the predicate reads slash-separated
+		// bundle-relative paths and `rel` comes from filepath.Rel.
+		// ArchiveEntries converts and this did not, which is two callers
+		// of one predicate disagreeing about what they hand it.
+		if domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
 			return nil
 		}
 		if !listed[filepath.Clean(rel)] {

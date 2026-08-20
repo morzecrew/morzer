@@ -363,6 +363,10 @@ func DigestTree(dir string) (string, error) {
 			return domain.Internal(err, "cannot walk %s", path)
 		}
 		if d.IsDir() {
+			rel, relErr := filepath.Rel(dir, path)
+			if relErr == nil && domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if !d.Type().IsRegular() {
@@ -371,6 +375,14 @@ func DigestTree(dir string) (string, error) {
 		rel, relErr := filepath.Rel(dir, path)
 		if relErr != nil {
 			return domain.Internal(relErr, "cannot relativise %s", path)
+		}
+		// The same set the enumeration and the copy exclude. Found in
+		// review: filtering what a bundle *contains* and not what it
+		// *hashes* gives a bundle built in a working copy a digest its
+		// own archive cannot reproduce, so a source and the release
+		// extracted from it disagree about their identity.
+		if domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
+			return nil
 		}
 		info, infoErr := d.Info()
 		if infoErr != nil {

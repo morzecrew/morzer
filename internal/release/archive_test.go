@@ -303,3 +303,43 @@ func TestArchiveEntriesLeaveTheSourceTreeBehind(t *testing.T) {
 		}
 	}
 }
+
+// TestABundleBuiltInAWorkingCopyHasTheDigestItsArchiveReproduces is the finding
+// review caught: the exclusion reached what a bundle *contains* and not what it
+// *hashes*.
+//
+// Release.Digest came from a walk of the whole tree, so a bundle built inside a
+// repository carried a digest covering `.git` while its archive did not. The
+// two would then disagree about the identity of the same release — and that
+// digest is what `fetch` pins against and what an attestation records, so the
+// disagreement surfaces as a bundle refusing itself.
+func TestABundleBuiltInAWorkingCopyHasTheDigestItsArchiveReproduces(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		"manifest.yaml", "compose/compose.yaml",
+		".git/config", ".git/objects/ab/cdef", ".DS_Store",
+	} {
+		writeFixture(t, dir, name, name)
+	}
+
+	withSourceTree, err := atomicfs.DigestTree(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The same bundle with the source tree genuinely absent is what the
+	// archive extracts to, so it is what the digest has to equal.
+	clean := t.TempDir()
+	for _, name := range []string{"manifest.yaml", "compose/compose.yaml"} {
+		writeFixture(t, clean, name, name)
+	}
+	withoutIt, err := atomicfs.DigestTree(clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if withSourceTree != withoutIt {
+		t.Errorf("a working copy changed the release's identity:\n  with    %s\n  without %s",
+			withSourceTree, withoutIt)
+	}
+}

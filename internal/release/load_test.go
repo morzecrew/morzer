@@ -507,3 +507,24 @@ func TestManifestAtRefusesAnArchiveThatDoesNotLeadWithTheManifest(t *testing.T) 
 		t.Errorf("the refusal must name what it expected: %v", err)
 	}
 }
+
+// A bundle directory is read as a directory whatever it is called.
+//
+// ManifestAt chose by suffix, and `--release` takes an arbitrary path — so a
+// directory a vendor happened to name `demo-1.2.0.tar.zst` was opened as a
+// compressed archive and failed before anything was staged. Found in review.
+func TestManifestAtReadsADirectoryNamedLikeAnArchive(t *testing.T) {
+	src := bundle(t, nil)
+	misleading := filepath.Join(t.TempDir(), "demo-1.2.0.tar.zst")
+	if err := os.Rename(src, misleading); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := release.ManifestAt(misleading)
+	if err != nil {
+		t.Fatalf("a directory is a directory whatever it is named: %v", err)
+	}
+	if m.Metadata.Name != "demo" {
+		t.Errorf("product = %q, want demo", m.Metadata.Name)
+	}
+}

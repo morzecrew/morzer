@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -349,11 +350,11 @@ func testdataBundle(t *testing.T) string {
 func guardTheSourceTree(t *testing.T) {
 	t.Helper()
 
-	before := dirNames(t)
+	before := filesUnder(t, ".")
 	t.Cleanup(func() {
-		for name := range dirNames(t) {
+		for name := range filesUnder(t, ".") {
 			if !before[name] {
-				t.Errorf("this test created %q in the package directory; "+
+				t.Errorf("this test created %q under the package directory; "+
 					"a wizard answer reached a prompt that writes a file, and "+
 					"the working directory of a test is the source tree", name)
 			}
@@ -361,15 +362,57 @@ func guardTheSourceTree(t *testing.T) {
 	})
 }
 
-func dirNames(t *testing.T) map[string]bool {
+// dirNames records every path under the package directory, not only its top
+// level.
+//
+// Recursive because the shallow version had a hole review found: a key written
+// *below* an existing directory leaves the root entry set unchanged, so the
+// guard would have reported nothing for exactly the kind of path a prompt is
+// most likely to be handed -- `hooks/3`, or anything with a slash in it.
+func filesUnder(t *testing.T, root string) map[string]bool {
 	t.Helper()
-	entries, err := os.ReadDir(".")
+	names := map[string]bool{}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			names[filepath.ToSlash(path)] = true
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("cannot read the package directory: %v", err)
 	}
-	names := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		names[e.Name()] = true
-	}
 	return names
+}
+
+// The guard is a test harness, so nothing tests it -- which is how its first
+// version shipped shallow. This is the assertion that it walks.
+func TestFilesUnderRecordsNestedPaths(t *testing.T) {
+	root := t.TempDir()
+	nested := filepath.Join(root, "hooks", "deep")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "3"), []byte("key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "top"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := filesUnder(t, root)
+
+	if !got[filepath.ToSlash(filepath.Join(root, "hooks", "deep", "3"))] {
+		t.Errorf("a file below an existing directory was not recorded, so the "+
+			"guard would report nothing for it: %v", got)
+	}
+	if !got[filepath.ToSlash(filepath.Join(root, "top"))] {
+		t.Errorf("a top-level file was not recorded: %v", got)
+	}
+	// Directories are not entries; only a file can be the thing written.
+	if got[filepath.ToSlash(filepath.Join(root, "hooks"))] {
+		t.Errorf("a directory was recorded as a file: %v", got)
+	}
 }
