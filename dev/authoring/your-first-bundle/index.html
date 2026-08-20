@@ -2241,9 +2241,9 @@ settings that runtime understands and the manager does not; <code>project</code>
 Compose's, and it is the namespace every volume, network and container of the
 deployment lives in, so it is the one field here you must not change after a
 release has shipped.</p>
-<p>The older spelling is a single <code>runtime:</code> block with the files directly under
-it. It is still read, and it stops being read in 0.4.0 — <code>release verify</code> says
-so when it meets one.</p>
+<p>The older spelling was a single <code>runtime:</code> block with the files directly under
+it. It stopped being read in 0.3.0 and a bundle carrying it is now refused —
+<code>release verify</code> says so, and names what to write instead.</p>
 <p><strong>That first line is worth typing.</strong> It is a comment, so a manifest without it
 behaves identically and an editor that ignores it loses nothing — but every
 editor that speaks the language-server protocol reads it and gives you
@@ -2412,13 +2412,15 @@ is worth reading once before you rely on it.</p>
 <span class="w">  </span><span class="nt">backup</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">hooks</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">health</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">}</span>
 
-<span class="nt">runtime</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
-<span class="w">  </span><span class="nt">files</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
-<span class="w">  </span><span class="nt">profiles</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
-<span class="w">    </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
+<span class="nt">runtimes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">compose</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">options</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
+<span class="w">    </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
+<span class="w">    </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
 
 <span class="nt">requirements</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">architectures</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">amd64</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">arm64</span><span class="p p-Indicator">]</span>

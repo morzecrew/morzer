@@ -1629,10 +1629,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#runtime-deprecated-removed-in-040" class="md-nav__link">
+  <a href="#runtime-removed-in-030" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        runtime (deprecated, removed in 0.4.0)
+        runtime (removed in 0.3.0)
       </span>
     </span>
   </a>
@@ -2291,10 +2291,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#runtime-deprecated-removed-in-040" class="md-nav__link">
+  <a href="#runtime-removed-in-030" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        runtime (deprecated, removed in 0.4.0)
+        runtime (removed in 0.3.0)
       </span>
     </span>
   </a>
@@ -2912,16 +2912,20 @@ transitions. The state directory records volume names and image references that
 belong to one runtime, so changing it is a migration of everything the manager
 knows rather than a setting. A release that does not declare the runtime an
 installation was created against is refused rather than run on a substitute.</p>
-<h2 id="runtime-deprecated-removed-in-040">runtime (deprecated, removed in 0.4.0)<a class="headerlink" href="#runtime-deprecated-removed-in-040" title="Permanent link">&para;</a></h2>
-<p>The original single-runtime block. Still read, so releases built before
-<code>runtimes</code> existed keep installing; a manifest declaring both is refused,
-because merging them would pick a winner the vendor never nominated.</p>
-<p><strong>It stops being read in 0.4.0.</strong> Until then a bundle using it installs
-normally, and says so at the two moments somebody can act on it: <code>release
-verify</code>, so a vendor's CI reports it before the bundle is published, and <code>init</code>
-and <code>update</code>, so an operator choosing this bundle can ask their vendor for one
-written the new way. No other command warns — a manifest an operator did not
-write and cannot change is not something to be told about on every invocation.</p>
+<h2 id="runtime-removed-in-030">runtime (removed in 0.3.0)<a class="headerlink" href="#runtime-removed-in-030" title="Permanent link">&para;</a></h2>
+<p>The original single-runtime block. <strong>It is no longer read.</strong> A manifest carrying
+it is refused, naming what to write instead — the manager will not install a
+release whose runtime declaration it cannot read, because doing so would bring
+the deployment up with no Compose files at all.</p>
+<p>It was deprecated rather than removed at first, on the understanding that a
+release would exist in which both spellings worked. None did: <code>runtimes</code> shipped
+in 0.3.0 and no earlier manager ever read it, so 0.1.0 through 0.2.0 read only
+<code>runtime:</code> and 0.3.0 reads only <code>runtimes:</code>. There was no version that read both
+and so no migration window to preserve, which is why the removal came a release
+earlier than first announced.</p>
+<p><strong>Migrating.</strong> Move the files under <code>runtimes.compose.files</code>, move <code>project</code> to
+<code>runtimes.compose.options.project</code>, delete the old block, and raise
+<code>compatibility.min_manager_version</code> to <code>0.3.0</code>. The old block's shape was:</p>
 <table>
 <thead>
 <tr>
@@ -2936,7 +2940,7 @@ write and cannot change is not something to be told about on every invocation.</
 <td><code>project</code></td>
 <td>string</td>
 <td style="text-align: center;"></td>
-<td>Compose project name. Defaults to <code>metadata.name</code>.</td>
+<td>Compose project name. Defaulted to <code>metadata.name</code>.</td>
 </tr>
 <tr>
 <td><code>files</code></td>
@@ -2948,25 +2952,20 @@ write and cannot change is not something to be told about on every invocation.</
 <td><code>profiles</code></td>
 <td>map</td>
 <td style="text-align: center;"></td>
-<td>Named deployment topologies; each is a list of <em>additional</em> Compose files.</td>
+<td>Named deployment topologies; each a list of <em>additional</em> Compose files.</td>
 </tr>
 </tbody>
 </table>
-<p>A release still using this block is read as declaring the <code>compose</code> runtime and
-nothing else, with <code>project</code> read as <code>runtimes.compose.options.project</code>.</p>
-<p>Adopting <code>runtimes</code> means moving the files under <code>runtimes.compose</code>, <strong>moving
-<code>project</code> to <code>runtimes.compose.options.project</code></strong>, and deleting the old block —
-and raising <code>compatibility.min_manager_version</code> to <code>0.3.0</code>, the manager that
-added the field. That last step is not optional bookkeeping: <code>runtimes</code> is an
-unknown field to anything older, and under strict decoding an unknown field
-refuses the whole manifest, so without the floor your customer gets a report
-about a typo instead of an upgrade requirement.</p>
+<p>The version floor is not optional bookkeeping: <code>runtimes</code> is an unknown field to
+anything older, and under strict decoding an unknown field refuses the whole
+manifest — so without the floor your customer gets a report about a typo instead
+of an upgrade requirement.</p>
 <p>Do not drop <code>project</code> on the way. It is the namespace every volume, network and
 container of a running deployment lives in, so a release that loses it points
 existing installations at storage that does not exist. A <code>project:</code> left behind
-beside <code>runtimes:</code> is refused rather than ignored, for the same reason, and a
-manager that has recorded what an installation was created with refuses the
-change as well.</p>
+left behind beside <code>runtimes:</code> is refused with the rest of the old block, for
+the same reason, and a manager that has recorded what an installation was
+created with refuses the change as well.</p>
 <h2 id="requirements">requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
 <p>Checked in preflight and reported by <code>doctor</code>.</p>
 <table>
@@ -3670,13 +3669,15 @@ all run against it, so it cannot drift from what the manager actually accepts.</
 <span class="w">  </span><span class="nt">backup</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">hooks</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">health</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="nv">http</span><span class="p p-Indicator">}</span>
 
-<span class="nt">runtime</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
-<span class="w">  </span><span class="nt">files</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
-<span class="w">  </span><span class="nt">profiles</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
-<span class="w">    </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
+<span class="nt">runtimes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">compose</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">options</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
+<span class="w">    </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
+<span class="w">    </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
 
 <span class="nt">requirements</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">architectures</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">amd64</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">arm64</span><span class="p p-Indicator">]</span>
