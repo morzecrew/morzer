@@ -2865,3 +2865,33 @@ release to date.
 |---|---|---|---|---|---|
 | 0014 | 18 | **Accepted** | `LOCKED` | A bundle source tree is not what ships from it; the exclusion is symmetric across producer and verifier | D-060 |
 | 0014 | 19 | **Accepted** | `LOCKED` | The manifest is read from an archive's first entry and an archive that does not lead with it is refused rather than searched | D-062 |
+
+**RFC 0014's decision table carries no grade column**, unlike 0023's. The grades
+above are this file's reading of how the two rows should be treated on a later
+conflict, not a quotation from the document — which is worth saying, because a
+reader checking the row against the RFC will not find the word there. Whether
+that table should grow grades is 0014's question and not this wave's.
+
+## Self-audit — 2026-08-19
+
+Scope: the whole branch — one predicate, three walks that had to agree, one new
+archive reader, the RFC amendment and two changelog entries. `just ci` green at
+**86.6%** (floor 84), acceptance passed, container lane passed
+(`./test/suite` 187.2s).
+
+**Sabotage sweep: 6 mutations, 6 killed** — one of them only after being made
+compilable, which is not a kill until it is.
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| A-1 | Major | The producer and the verifier walk the same tree, so excluding on one side alone fails **every vendor's own `verify`** against the working copy they just built in. Caught in the plan rather than in code, and it is the failure this change could most easily have shipped. | Designed against — one predicate, both walks, and a test that builds sums inside a `.git` tree and verifies in place |
+| A-2 | Medium | Already-published bundles: `unlisted` is fail-closed both ways, so a stricter builder could have made them unverifiable. | Measured both directions rather than reasoned about — D-061 |
+| A-3 | Low | `ArchiveEntries` now descends into no excluded directory at all (`fs.SkipDir`) rather than filtering per file. Deliberate: an object store on a busy repository is both large and **being rewritten under the walk**, which is how the first sighting of this leak arrived — as a lock file that existed when the walk saw it and not when the open came. | By design, recorded here because a reader could mistake it for an optimisation |
+| A-4 | Low | `CopyTree`'s new comment claimed "the one caller", and there is a contract-test caller too. | Fixed — "one production caller" |
+| A-5 | Low | The reconciliation table grades rows 18 and 19, and **RFC 0014's table has no grade column**. A reader checking the row against the document will not find the word there. | Fixed — the grade is named as this file's reading, and whether 0014 should grow grades is left to 0014 |
+
+**What this wave did not find is worth as much as what it did.** Wave 34's
+findings all arrived while chasing something else; this one was scoped to two
+known defects and turned up no third. That is the difference between a unit that
+follows a carried list and one that follows a lane going red, and it is an
+argument for keeping both kinds in the rotation rather than only the second.

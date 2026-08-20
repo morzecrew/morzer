@@ -145,7 +145,8 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 			return nil
 		}
 		// The source tree is not the release (RFC 0014 decision 18).
-		// The one caller of this is the local bundle source, so a
+		// The one production caller of this is the local bundle
+		// source, so a
 		// working copy staged from a directory would otherwise carry
 		// `.git` onto the operator's disk as well as into a published
 		// archive. Skipped before the entry is counted: a repository's
