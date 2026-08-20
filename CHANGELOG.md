@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-20
+
+The manifest gains a runtime dimension. `runtimes:` names the substrate a bundle
+is written for and carries that runtime's files, profiles and options — Compose
+is still the only runtime this manager drives, so what changed is that a bundle
+now says so rather than the manager assuming it. An installation is fixed to its
+runtime when it is created and never transitions.
+
+**A bundle written for 0.2.0 does not install on this release.** The `runtime:`
+block stopped being read: move its files under `runtimes.compose.files`, any
+`runtime.project` under `runtimes.compose.options.project`, and raise
+`compatibility.min_manager_version` to `0.3.0`. The refusal names all three, so
+a bundle meeting this manager is told what to write instead of failing as an
+unrecognised field. This is a withdrawn compatibility promise rather than a
+moved date — `runtimes:` ships here for the first time, so 0.2.0 and earlier
+read only the old spelling and this release reads only the new one. No version
+ever read both, which is why the grace period first announced for 0.4.0 was a
+window no release could have opened.
+
+Upgrading is automatic — the installation schema moves 8 → 10 on the first read
+and converts nothing. Going back is not, and here the refusal earns its keep: an
+older manager meeting a state file that names a runtime it has never heard of
+has exactly one adapter and would drive the installation with it, operating the
+wrong substrate while reporting success.
+
 ### Added
 
 - **A release declares which runtimes it supports, under `runtimes:`.** Each key names a runtime and carries that runtime's own files and profiles, so a bundle states the substrate it is written for instead of leaving the manager to assume the only one that has ever existed. An installation records the runtime it was created against and never transitions to another, which is what lets a later manager tell a machine that chose Compose from one that predates the question being askable. A release declaring more than one runtime is refused at `init` rather than chosen between, because choosing needs a second adapter to choose with and that arrives alongside it.
@@ -235,7 +260,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/morzecrew/morzer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/morzecrew/morzer/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/morzecrew/morzer/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/morzecrew/morzer/releases/tag/v0.1.0
