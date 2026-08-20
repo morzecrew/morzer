@@ -50,6 +50,28 @@ func (s *scriptedInput) Read(p []byte) (int, error) {
 func wizardApp(t *testing.T, answers ...string) (*App, *strings.Builder) {
 	t.Helper()
 
+	// A wizard question can write a file, and `go test` runs with the
+	// working directory set to the package -- so an answer that reaches the
+	// wrong prompt writes into the source tree. Both halves of that are
+	// closed here rather than in the tests, because the tests are what get
+	// added.
+	//
+	// A temporary home makes the *default* recovery path safe. The guard
+	// below makes an *answered* one safe, which is the case that actually
+	// happened: the answers are positional and the number of questions is
+	// not fixed -- it depends on what the bundle declares -- so a skipped
+	// question shifts every answer after it, and "3" stops being a menu
+	// choice and becomes the path a private key is written to. Measured:
+	// with the profile question skipped, this package grew a file named `3`
+	// containing a real age identity.
+	//
+	// One test in this file already asserted its own key landed under its
+	// own HOME, with a comment saying a test must never be able to write a
+	// key into the repository. It was right, and it guarded the one test it
+	// was written for; this is the same rule where every test gets it.
+	t.Setenv("HOME", t.TempDir())
+	guardTheSourceTree(t)
+
 	var shown strings.Builder
 	return &App{
 		Stream: ui.Streams{
@@ -242,11 +264,14 @@ func TestResolveRecoveryChoiceTakesEachAnswer(t *testing.T) {
 // asserts: an operator who walks away gets a generated recovery key rather
 // than an installation quietly created without one.
 func TestEndOfInputDoesNotCancelInAccessibleMode(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-
 	// Only the product name is answered; everything after it hits EOF.
+	//
+	// The temporary home comes from wizardApp, which sets one for every
+	// wizard test rather than leaving each to remember. This test used to
+	// set its own, and two owners of the same isolation is how one of them
+	// comes to be overridden.
 	app, _ := wizardApp(t, "demo")
+	dir := os.Getenv("HOME")
 
 	got, err := runInitWizard(context.Background(), app, ops.InitOptions{})
 	require.NoError(t, err, "if this now fails, huh has learned to signal "+
@@ -311,4 +336,40 @@ func testdataBundle(t *testing.T) string {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	return filepath.Join(wd, "..", "..", "testdata", "bundle")
+}
+
+// guardTheSourceTree fails the test if it created a file in the package
+// directory.
+//
+// Not a cleanup that deletes what appeared: a test that writes a private key
+// into the source tree has already done the thing worth knowing about, and
+// quietly removing the evidence would leave the next one free to do it again.
+// It reports and leaves the file, so the failure names both what appeared and
+// which test produced it.
+func guardTheSourceTree(t *testing.T) {
+	t.Helper()
+
+	before := dirNames(t)
+	t.Cleanup(func() {
+		for name := range dirNames(t) {
+			if !before[name] {
+				t.Errorf("this test created %q in the package directory; "+
+					"a wizard answer reached a prompt that writes a file, and "+
+					"the working directory of a test is the source tree", name)
+			}
+		}
+	})
+}
+
+func dirNames(t *testing.T) map[string]bool {
+	t.Helper()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("cannot read the package directory: %v", err)
+	}
+	names := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		names[e.Name()] = true
+	}
+	return names
 }

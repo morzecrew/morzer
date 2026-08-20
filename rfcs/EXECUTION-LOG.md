@@ -2895,3 +2895,64 @@ findings all arrived while chasing something else; this one was scoped to two
 known defects and turned up no third. That is the difference between a unit that
 follows a carried list and one that follows a lane going red, and it is an
 argument for keeping both kinds in the rotation rather than only the second.
+
+## D-063 — A wizard test wrote a private key into the source tree
+
+- **Touches:** `internal/cli/wizard_run_test.go`; found by the author asking why
+  a stray file kept coming back
+- **Found:** `internal/cli/3`, mode 0400, containing a real age identity —
+  `AGE-SECRET-KEY-…` under a `# created by morzer` header, a fresh one each time.
+- **Mechanism, confirmed by probe rather than inferred:** the wizard tests feed
+  answers positionally and **the number of questions is not fixed** — the
+  profile question only appears when the bundle declares profiles. With
+  `profilesFrom` returning empty, that question is skipped, every later answer
+  shifts up one, and the `"3"` intended as the recovery *menu choice* becomes
+  the answer to *"Where to write the recovery key"*. `go test` runs with the
+  working directory set to the package, so `GenerateIdentity("3")` wrote into
+  the source tree.
+- **It was a real symptom before it was an artefact.** The first appearance was
+  during the window in wave 34 when `profilesFrom` genuinely returned empty for
+  every bundle (D-053). Afterwards it recurred only under mutations that empty
+  the profile list — which is to say the sabotage sweeps kept re-minting it.
+- **Class:** `drift`, and against a rule this file's own subject already knew.
+  One test in that file asserted its key landed under its own `HOME`, with the
+  comment *"an earlier draft of this file wrote a real age private key into the
+  repository, which is a thing a test must never be able to do"*. **The rule was
+  right, written down, and applied to the one test it was noticed in.** The next
+  test that could do it was not covered. Third instance of that shape in two
+  waves (D-054, D-058).
+- **Built:** the isolation moved into `wizardApp`, so every wizard test gets a
+  temporary `HOME` and a `t.Cleanup` that fails if the test created a file in
+  the package directory. It reports and leaves the file rather than deleting it:
+  a test that writes a key into the source tree has already done the thing worth
+  knowing about, and tidying the evidence away lets the next one repeat it.
+- **A limitation of the guard, found by verifying it:** it is a before/after
+  diff, so a **pre-existing** stray masks a recurrence of that same name. Worth
+  knowing rather than worth solving — the answer to a dirty tree is to clean it.
+- **Also fixed:** the HOME isolation had two owners. One test set its own and
+  was silently overridden once `wizardApp` set one; it now reads the harness's.
+
+## D-064 — The commit that fixed a key leak committed a key
+
+- **Touches:** this wave's own first commit
+- **What happened:** `internal/cli/3` was staged by `git add internal/` and
+  landed in *"🔒 fix(release): a source tree is not what ships from it"*. It sat
+  in all four commits of the branch.
+- **How it was missed:** it had been reported and tracked as *untracked* for
+  several turns, and the check that would have caught the change —
+  `git status --short` — was read as showing the file just edited. A `??` became
+  a ` M` and nothing looked at it again.
+- **Class:** `drift`. Over-broad staging is the specific failure this project
+  has now made three times, twice with `git add -A` and once with a directory.
+  **The mitigation that exists is a habit, and a habit is what failed.**
+- **Consequence:** the branch had never been pushed, so nothing left the machine,
+  and the key was a throwaway that had encrypted nothing. Removed from all four
+  commits with `filter-branch`, and the refs that still held the old history —
+  `refs/original`, a safety branch, and **a stash whose parent was the old tip** —
+  removed with it. That last one is the part worth remembering: purging history
+  and leaving a stash pointing into it purges nothing, and the stash was
+  invisible to `git stash list` because the reflog had already been expired.
+  Verified afterwards: zero commits and zero objects naming the path.
+- **Not covered by D-063's guard.** That guard stops a *test* writing into the
+  source tree; it has nothing to say about what gets staged. Two failures, one
+  fixed.
