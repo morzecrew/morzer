@@ -266,3 +266,80 @@ func writeFixture(t *testing.T, dir, rel, content string) {
 		t.Fatal(err)
 	}
 }
+
+// TestArchiveEntriesLeaveTheSourceTreeBehind is the leak, asserted at the one
+// enumeration both the checksum list and the archive read.
+//
+// Filtering here rather than in the two callers is the point: WriteSums and
+// WriteArchive share this function, so a bundle's sums and its archive cannot
+// come to describe different sets. A test per caller would pass while they
+// disagreed.
+func TestArchiveEntriesLeaveTheSourceTreeBehind(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		"manifest.yaml",
+		"compose/compose.yaml",
+		".gitignore",
+		".git/config",
+		".git/objects/ab/cdef0123",
+		".git/HEAD",
+		"compose/.DS_Store",
+	} {
+		writeFixture(t, dir, name, name)
+	}
+
+	got, err := release.ArchiveEntries(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"manifest.yaml", ".gitignore", "compose/compose.yaml"}
+	if len(got) != len(want) {
+		t.Fatalf("entries = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("entries = %v, want %v", got, want)
+		}
+	}
+}
+
+// TestABundleBuiltInAWorkingCopyHasTheDigestItsArchiveReproduces is the finding
+// review caught: the exclusion reached what a bundle *contains* and not what it
+// *hashes*.
+//
+// Release.Digest came from a walk of the whole tree, so a bundle built inside a
+// repository carried a digest covering `.git` while its archive did not. The
+// two would then disagree about the identity of the same release — and that
+// digest is what `fetch` pins against and what an attestation records, so the
+// disagreement surfaces as a bundle refusing itself.
+func TestABundleBuiltInAWorkingCopyHasTheDigestItsArchiveReproduces(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		"manifest.yaml", "compose/compose.yaml",
+		".git/config", ".git/objects/ab/cdef", ".DS_Store",
+	} {
+		writeFixture(t, dir, name, name)
+	}
+
+	withSourceTree, err := atomicfs.DigestTree(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The same bundle with the source tree genuinely absent is what the
+	// archive extracts to, so it is what the digest has to equal.
+	clean := t.TempDir()
+	for _, name := range []string{"manifest.yaml", "compose/compose.yaml"} {
+		writeFixture(t, clean, name, name)
+	}
+	withoutIt, err := atomicfs.DigestTree(clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if withSourceTree != withoutIt {
+		t.Errorf("a working copy changed the release's identity:\n  with    %s\n  without %s",
+			withSourceTree, withoutIt)
+	}
+}

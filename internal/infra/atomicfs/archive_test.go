@@ -389,3 +389,101 @@ func assertNoArchiveLeftBehind(t *testing.T, out string) {
 		}
 	}
 }
+
+// ReadFirstArchiveEntry's refusals, which are the whole of what it adds.
+//
+// Every branch here runs only when the input is malformed, so none of them is
+// reached by a passing bundle — which is exactly why they need tests rather
+// than the happy path does. A refusal that panics or returns a useless message
+// is discovered by the first vendor with a truncated download.
+func TestReadFirstArchiveEntryRefusals(t *testing.T) {
+	// Not through the branch that names zstd, and that is worth pinning
+	// rather than assuming. `zstd.NewReader` is lazy: it accepts the file
+	// and the magic-number mismatch surfaces at the first read, so the
+	// "not a valid zstd archive" message is unreachable for a file that
+	// simply is not one. The refusal a vendor actually meets is the read's,
+	// and it still has to be intelligible.
+	t.Run("not a zstd archive", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "nope.tar.zst")
+		if err := os.WriteFile(path, []byte("this is not compressed"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := atomicfs.ReadFirstArchiveEntry(path, "manifest.yaml")
+		if err == nil {
+			t.Fatal("a file that is not an archive must be refused")
+		}
+		if !strings.Contains(err.Error(), "cannot read") {
+			t.Errorf("the refusal must name the file it could not read: %v", err)
+		}
+		if !strings.Contains(err.Error(), path) {
+			t.Errorf("and which file it was: %v", err)
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		_, err := atomicfs.ReadFirstArchiveEntry(
+			filepath.Join(t.TempDir(), "absent.tar.zst"), "manifest.yaml")
+		if err == nil {
+			t.Fatal("a path that is not there must be refused")
+		}
+	})
+
+	t.Run("no entries at all", func(t *testing.T) {
+		empty := t.TempDir()
+		src := filepath.Join(empty, "src")
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(empty, "empty.tar.zst")
+		if err := atomicfs.WriteTarZst(path, src, nil, time.Unix(0, 0)); err != nil {
+			t.Fatal(err)
+		}
+		_, err := atomicfs.ReadFirstArchiveEntry(path, "manifest.yaml")
+		if err == nil {
+			t.Fatal("an archive with no entries must be refused")
+		}
+		if !strings.Contains(err.Error(), "no entries") {
+			t.Errorf("the refusal must name the emptiness: %v", err)
+		}
+	})
+
+	t.Run("an entry larger than the bound", func(t *testing.T) {
+		dir := t.TempDir()
+		// The bound exists because this read happens before anything has
+		// established what the archive is, so an archive could otherwise
+		// declare its own budget in a file large enough to be the attack.
+		big := make([]byte, (1<<20)+1)
+		if err := os.WriteFile(filepath.Join(dir, "manifest.yaml"), big, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "big.tar.zst")
+		if err := atomicfs.WriteTarZst(path, dir, []string{"manifest.yaml"}, time.Unix(0, 0)); err != nil {
+			t.Fatal(err)
+		}
+		_, err := atomicfs.ReadFirstArchiveEntry(path, "manifest.yaml")
+		if err == nil {
+			t.Fatal("an oversized first entry must be refused rather than read")
+		}
+		if !strings.Contains(err.Error(), "larger than") {
+			t.Errorf("the refusal must say it was too large: %v", err)
+		}
+	})
+
+	t.Run("the happy path still works", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte("api_version: v1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "ok.tar.zst")
+		if err := atomicfs.WriteTarZst(path, dir, []string{"manifest.yaml"}, time.Unix(0, 0)); err != nil {
+			t.Fatal(err)
+		}
+		data, err := atomicfs.ReadFirstArchiveEntry(path, "manifest.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "api_version: v1\n" {
+			t.Errorf("content = %q", data)
+		}
+	})
+}

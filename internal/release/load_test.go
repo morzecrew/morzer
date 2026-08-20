@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/release"
 )
 
@@ -445,5 +447,84 @@ func TestAMissingFileIsCaughtUnderTheRuntimesSpelling(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "runtimes.compose.files") {
 		t.Errorf("the field named must be the one the vendor wrote: %v", err)
+	}
+}
+
+// TestManifestAtReadsBothShapesOfBundle is the fix for a join written three
+// times: `releasePath + "/manifest.yaml"`, which for a `.tar.zst` names a path
+// that cannot exist.
+//
+// Both shapes asserted in one test, because the defect was never that either
+// branch was wrong -- it was that only one of them existed, and the surface
+// that accepts both is what made that invisible.
+func TestManifestAtReadsBothShapesOfBundle(t *testing.T) {
+	dir := bundle(t, nil)
+
+	fromDir, err := release.ManifestAt(dir)
+	if err != nil {
+		t.Fatalf("a bundle directory must be readable: %v", err)
+	}
+	if fromDir.Metadata.Name != "demo" {
+		t.Fatalf("product from a directory = %q, want demo", fromDir.Metadata.Name)
+	}
+
+	archive := filepath.Join(t.TempDir(), "demo-1.2.0.tar.zst")
+	if err := release.WriteSums(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := release.WriteArchive(dir, archive, time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	fromArchive, err := release.ManifestAt(archive)
+	if err != nil {
+		t.Fatalf("an archive must be readable without extracting it: %v", err)
+	}
+	if fromArchive.Metadata.Name != "demo" {
+		t.Fatalf("product from an archive = %q, want demo", fromArchive.Metadata.Name)
+	}
+}
+
+// An archive whose first entry is not the manifest is refused rather than
+// searched. The ordering is a guarantee RFC 0014 decision 2 makes, and a reader
+// that falls back to scanning is what turns a guarantee into a convention.
+func TestManifestAtRefusesAnArchiveThatDoesNotLeadWithTheManifest(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "aaa-first.txt", "not the manifest")
+	writeFixture(t, dir, "manifest.yaml", "api_version: selfhost/v1alpha1\n")
+
+	archive := filepath.Join(t.TempDir(), "wrong-order.tar.zst")
+	if err := atomicfs.WriteTarZst(archive, dir,
+		[]string{"aaa-first.txt", "manifest.yaml"}, time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := release.ManifestAt(archive)
+	if err == nil {
+		t.Fatal("an archive not leading with the manifest must be refused")
+	}
+	if !strings.Contains(err.Error(), "does not begin with manifest.yaml") {
+		t.Errorf("the refusal must name what it expected: %v", err)
+	}
+}
+
+// A bundle directory is read as a directory whatever it is called.
+//
+// ManifestAt chose by suffix, and `--release` takes an arbitrary path — so a
+// directory a vendor happened to name `demo-1.2.0.tar.zst` was opened as a
+// compressed archive and failed before anything was staged. Found in review.
+func TestManifestAtReadsADirectoryNamedLikeAnArchive(t *testing.T) {
+	src := bundle(t, nil)
+	misleading := filepath.Join(t.TempDir(), "demo-1.2.0.tar.zst")
+	if err := os.Rename(src, misleading); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := release.ManifestAt(misleading)
+	if err != nil {
+		t.Fatalf("a directory is a directory whatever it is named: %v", err)
+	}
+	if m.Metadata.Name != "demo" {
+		t.Errorf("product = %q, want demo", m.Metadata.Name)
 	}
 }

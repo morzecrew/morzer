@@ -144,6 +144,20 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 		if rel == "." {
 			return nil
 		}
+		// The source tree is not the release (RFC 0014 decision 18).
+		// The one production caller of this is the local bundle
+		// source, so a
+		// working copy staged from a directory would otherwise carry
+		// `.git` onto the operator's disk as well as into a published
+		// archive. Skipped before the entry is counted: a repository's
+		// object store is exactly the thing that would spend the
+		// bundle's entry budget on files no release contains.
+		if domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
 
 		entries++
 		if limits.MaxEntries > 0 && entries > limits.MaxEntries {
@@ -349,6 +363,10 @@ func DigestTree(dir string) (string, error) {
 			return domain.Internal(err, "cannot walk %s", path)
 		}
 		if d.IsDir() {
+			rel, relErr := filepath.Rel(dir, path)
+			if relErr == nil && domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if !d.Type().IsRegular() {
@@ -357,6 +375,14 @@ func DigestTree(dir string) (string, error) {
 		rel, relErr := filepath.Rel(dir, path)
 		if relErr != nil {
 			return domain.Internal(relErr, "cannot relativise %s", path)
+		}
+		// The same set the enumeration and the copy exclude. Found in
+		// review: filtering what a bundle *contains* and not what it
+		// *hashes* gives a bundle built in a working copy a digest its
+		// own archive cannot reproduce, so a source and the release
+		// extracted from it disagree about their identity.
+		if domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
+			return nil
 		}
 		info, infoErr := d.Info()
 		if infoErr != nil {

@@ -58,8 +58,10 @@ func newInitCommand(app *App) *cobra.Command {
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
 			if product == "" && releasePath != "" {
-				manifest, err := release.LoadManifest(
-					releasePath + "/" + release.ManifestFileName)
+				// Through ManifestAt, because `--release` names a
+				// directory *or* an archive and this used to join
+				// `manifest.yaml` onto whichever it got.
+				manifest, err := release.ManifestAt(releasePath)
 				if err != nil {
 					return err
 				}

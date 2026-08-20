@@ -506,3 +506,65 @@ func normalizeArchiveMode(mode fs.FileMode) fs.FileMode {
 	}
 	return 0o644
 }
+
+// ReadFirstArchiveEntry returns the bytes of an archive's first entry, refusing
+// unless it is the file the caller named.
+//
+// A release archive's first entry is `manifest.yaml` by construction (RFC 0014
+// decision 2), which is what makes this possible at all: the manifest can be
+// read without extracting the archive, without a temporary directory, and
+// without decompressing past a few kilobytes.
+//
+// Refuses rather than searching, for the reason negotiateLimits refuses: the
+// ordering is a guarantee the format makes, and a reader that falls back to
+// scanning turns it into a convention. The two readers of the first entry then
+// disagree about what an archive has to be, and the one that is lenient is the
+// one that lets a non-conforming archive through to the one that is not.
+//
+// Bounded by maxManifestSize, because this read happens before anything has
+// established what the archive is.
+func ReadFirstArchiveEntry(src, want string) ([]byte, error) {
+	f, err := os.Open(src)
+	if err != nil {
+		return nil, domain.ValidationError(err, "cannot open the archive %s", src)
+	}
+	defer func() { _ = f.Close() }()
+
+	zr, err := zstd.NewReader(f, zstd.WithDecoderMaxMemory(decoderMaxMemory))
+	if err != nil {
+		return nil, domain.ValidationError(err, "%s is not a valid zstd archive", src).
+			WithHint("release archives are tar.zst; check the file was downloaded completely")
+	}
+	defer zr.Close()
+
+	tr := tar.NewReader(zr)
+	hdr, err := tr.Next()
+	if errors.Is(err, io.EOF) {
+		return nil, domain.ValidationError(nil, "%s contains no entries", src)
+	}
+	if err != nil {
+		return nil, domain.ValidationError(err, "cannot read %s", src).
+			WithHint("the archive is truncated or corrupt")
+	}
+
+	rel, err := archiveEntryPath(hdr.Name)
+	if err != nil {
+		return nil, err
+	}
+	if rel != want {
+		return nil, domain.ValidationError(nil,
+			"%s does not begin with %s (its first entry is %q)", src, want, hdr.Name).
+			WithHint("a release archive states its size in the manifest, which has to " +
+				"arrive before the bytes it bounds. Repack it with `morzer release archive`")
+	}
+
+	data, err := io.ReadAll(io.LimitReader(tr, maxManifestSize+1))
+	if err != nil {
+		return nil, domain.ValidationError(err, "cannot read %s from %s", want, src)
+	}
+	if int64(len(data)) > maxManifestSize {
+		return nil, domain.ValidationError(nil,
+			"%s in %s is larger than %d bytes", want, src, maxManifestSize)
+	}
+	return data, nil
+}

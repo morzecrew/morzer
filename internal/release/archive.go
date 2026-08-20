@@ -74,13 +74,34 @@ func ArchiveEntries(dir string) ([]string, error) {
 			return walkErr
 		}
 		if entry.IsDir() {
+			rel, relErr := filepath.Rel(dir, path)
+			if relErr == nil && domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
+				// Not descended into at all. A `.git/objects` on a
+				// busy repository is large, and it is also being
+				// rewritten under us: the first sighting of this
+				// leak was a build racing git's own background
+				// maintenance and failing on a lock file that
+				// existed when the walk saw it and not when the
+				// open came.
+				return fs.SkipDir
+			}
 			return nil
 		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
 			return err
 		}
-		entries = append(entries, filepath.ToSlash(rel))
+		slash := filepath.ToSlash(rel)
+		// The source tree is not the release (RFC 0014 decision 18).
+		// Skipped here rather than in the two callers because this is
+		// the only enumeration: WriteSums and WriteArchive both read it,
+		// so one filter keeps the checksum list and the archive
+		// describing the same set -- which the verifier requires in both
+		// directions.
+		if domain.IsExcludedFromBundle(slash) {
+			return nil
+		}
+		entries = append(entries, slash)
 		return nil
 	})
 	if err != nil {

@@ -464,3 +464,43 @@ func TestAnInTreeSymlinkIsRefused(t *testing.T) {
 		t.Error("the symlink's target was copied under the link's name")
 	}
 }
+
+// TestCopyTreeLeavesTheSourceTreeBehind covers the second surface the same leak
+// reached: staging a local bundle.
+//
+// The published archive is the serious half, but a working copy staged from a
+// directory put `.git` on the operator's disk too -- and spent the bundle's
+// entry budget doing it, since an object store is exactly the thing with tens
+// of thousands of files in it.
+func TestCopyTreeLeavesTheSourceTreeBehind(t *testing.T) {
+	src := t.TempDir()
+	dst := filepath.Join(t.TempDir(), "staged")
+
+	for _, rel := range []string{
+		"manifest.yaml", "compose/compose.yaml", ".gitignore",
+		".git/config", ".git/objects/ab/cdef", ".DS_Store",
+	} {
+		p := filepath.Join(src, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(rel), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := atomicfs.CopyTree(src, dst, atomicfs.DefaultExtractLimits()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, rel := range []string{"manifest.yaml", "compose/compose.yaml", ".gitignore"} {
+		if _, err := os.Stat(filepath.Join(dst, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("%s belongs in the staged bundle: %v", rel, err)
+		}
+	}
+	for _, rel := range []string{".git", ".git/config", ".DS_Store"} {
+		if _, err := os.Stat(filepath.Join(dst, filepath.FromSlash(rel))); !os.IsNotExist(err) {
+			t.Errorf("%s must not be staged (err=%v)", rel, err)
+		}
+	}
+}
