@@ -144,6 +144,19 @@ func CopyTree(src, dst string, limits ExtractLimits) error {
 		if rel == "." {
 			return nil
 		}
+		// The source tree is not the release (RFC 0014 decision 18).
+		// The one caller of this is the local bundle source, so a
+		// working copy staged from a directory would otherwise carry
+		// `.git` onto the operator's disk as well as into a published
+		// archive. Skipped before the entry is counted: a repository's
+		// object store is exactly the thing that would spend the
+		// bundle's entry budget on files no release contains.
+		if domain.IsExcludedFromBundle(filepath.ToSlash(rel)) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
 
 		entries++
 		if limits.MaxEntries > 0 && entries > limits.MaxEntries {

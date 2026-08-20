@@ -493,3 +493,32 @@ func checkExecutable(rel domain.Release, relPath, field string, missing *[]strin
 			fmt.Sprintf("%s: %s is not executable (mode %04o)", field, relPath, info.Mode().Perm()))
 	}
 }
+
+// ManifestAt reads a manifest from a bundle named either as a directory or as
+// an archive.
+//
+// `--release` accepts both, and every caller that needed a manifest before the
+// bundle was staged built the path by hand: `releasePath + "/" + manifest.yaml`.
+// For a `.tar.zst` that produces `demo-1.2.0.tar.zst/manifest.yaml`, a path that
+// cannot exist. Measured 2026-08-19 against a released binary: `morzer init
+// --release <bundle>.tar.zst` without `--product` failed with `cannot read
+// <archive>/manifest.yaml` on a perfectly good archive -- and the archive is
+// the shape a vendor publishes, so that was the primary install path.
+//
+// One function because the join had been written three times. Two of them were
+// fixed a wave apart and the third was found by grepping for the first two,
+// which is the argument for there being one.
+//
+// The archive is not extracted. RFC 0014 decision 2 puts `manifest.yaml` first
+// precisely so it can be read from the stream, so this costs a few kilobytes of
+// decompression rather than a temporary copy of the whole bundle.
+func ManifestAt(path string) (domain.Manifest, error) {
+	if atomicfs.IsTarZst(path) {
+		data, err := atomicfs.ReadFirstArchiveEntry(path, ManifestFileName)
+		if err != nil {
+			return domain.Manifest{}, err
+		}
+		return ParseManifest(data, path)
+	}
+	return LoadManifest(filepath.Join(path, ManifestFileName))
+}

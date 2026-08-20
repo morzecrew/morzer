@@ -266,3 +266,40 @@ func writeFixture(t *testing.T, dir, rel, content string) {
 		t.Fatal(err)
 	}
 }
+
+// TestArchiveEntriesLeaveTheSourceTreeBehind is the leak, asserted at the one
+// enumeration both the checksum list and the archive read.
+//
+// Filtering here rather than in the two callers is the point: WriteSums and
+// WriteArchive share this function, so a bundle's sums and its archive cannot
+// come to describe different sets. A test per caller would pass while they
+// disagreed.
+func TestArchiveEntriesLeaveTheSourceTreeBehind(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		"manifest.yaml",
+		"compose/compose.yaml",
+		".gitignore",
+		".git/config",
+		".git/objects/ab/cdef0123",
+		".git/HEAD",
+		"compose/.DS_Store",
+	} {
+		writeFixture(t, dir, name, name)
+	}
+
+	got, err := release.ArchiveEntries(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"manifest.yaml", ".gitignore", "compose/compose.yaml"}
+	if len(got) != len(want) {
+		t.Fatalf("entries = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("entries = %v, want %v", got, want)
+		}
+	}
+}

@@ -191,6 +191,22 @@ func unlisted(dir string, listed map[string]bool) []string {
 		if rel == SumsFileName || rel == ports.SignatureFileName {
 			return nil
 		}
+		// And the source tree is not the release (RFC 0014 decision 18).
+		// Symmetry with release.ArchiveEntries is forced rather than
+		// chosen: `build` writes in place, so a vendor runs `verify`
+		// against the working copy they built in. A producer that stops
+		// listing `.git` and a verifier that keeps walking it means every
+		// vendor's own bundle fails its own check.
+		//
+		// It does open a hole in the completeness rule this function is:
+		// a mirror could add files under an excluded path and they would
+		// not be reported. Named rather than left implicit. What bounds
+		// it is that nothing on a deployment host reads any of these --
+		// no git runs there -- so an added `.git/hooks/pre-commit` is
+		// inert in a way an added `compose.yaml` is not.
+		if domain.IsExcludedFromBundle(rel) {
+			return nil
+		}
 		if !listed[filepath.Clean(rel)] {
 			problems = append(problems, filepath.ToSlash(rel)+
 				": present in the bundle but not listed")

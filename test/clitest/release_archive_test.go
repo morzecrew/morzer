@@ -329,3 +329,32 @@ func TestReleaseBuildRefusesABrokenBundleBeforeWritingAnything(t *testing.T) {
 		t.Error("a refused build wrote a checksum list anyway")
 	}
 }
+
+// TestAnArchiveInstallsWithoutBeingToldTheProduct is D-054, end to end.
+//
+// `--release` names a directory or a `.tar.zst`, and the product name comes
+// from the manifest when `--product` is absent. That read joined
+// `manifest.yaml` onto the path, so for an archive it named
+// `demo-1.2.0.tar.zst/manifest.yaml` and failed -- on a valid archive, which is
+// the shape a vendor publishes. Measured against a released binary before the
+// fix; asserted here so it stays fixed.
+//
+// Without `--product` deliberately. With it, the manifest is never read and the
+// test passes whether the archive can be read or not.
+func TestAnArchiveInstallsWithoutBeingToldTheProduct(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("release", "build", r.Bundle).ExitCode(0)
+	archive := filepath.Join(t.TempDir(), "demo-1.2.0.tar.zst")
+	r.Run("release", "archive", r.Bundle, "-o", archive).ExitCode(0)
+
+	r.Run("init",
+		"--release", archive,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(0).
+		OutputContains("would create an installation for demo")
+}

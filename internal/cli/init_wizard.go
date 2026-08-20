@@ -290,7 +290,7 @@ func profilesFrom(releasePath string) []string {
 	if releasePath == "" {
 		return nil
 	}
-	manifest, err := release.LoadManifest(releasePath + "/" + release.ManifestFileName)
+	manifest, err := release.ManifestAt(releasePath)
 	if err != nil {
 		return nil
 	}
