@@ -22,10 +22,11 @@ Four commands answer it, all read-only, none of them taking the deployment lock:
 
 The reason they exist rather than a page telling you to run `docker compose` is
 that `docker compose` needs three things you would have to reconstruct: the
-project name (`manifest.runtime.project`, which defaults to the product name and
-need not equal it), the list of Compose files the deployment profile selected,
-and the environment the manager interpolates into them. Reconstructing that by
-hand under pressure is how an operator ends up looking at the wrong deployment.
+project name (`runtimes.compose.options.project`, which defaults to the product
+name and need not equal it), the list of Compose files the deployment profile
+selected, and the environment the manager interpolates into them. Reconstructing
+that by hand under pressure is how an operator ends up looking at the wrong
+deployment.
 
 None of the four takes the deployment lock, deliberately. They are what you run
 *while* an update is in flight, which is exactly the case a lock would break.

@@ -29,7 +29,7 @@ journaled, verified afterwards, and undone.
 ## Install
 
 ```sh
-curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 0.2.0
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 0.3.0
 ```
 
 Verifies the checksum before it installs, and the signature too when `minisign`
