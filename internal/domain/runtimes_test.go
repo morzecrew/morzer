@@ -16,16 +16,65 @@ import (
 // below that asserts an error asserts which error, because "it failed" is
 // satisfied by a validator that fails for the wrong reason.
 
-func TestALegacyRuntimeBlockDeclaresTheLegacyRuntime(t *testing.T) {
+// The legacy block declares nothing, and that is the removal (decision 23).
+//
+// Asserted on DeclaredRuntimes rather than only on Validate because they are
+// different claims: Validate refusing is what a vendor meets, and this is what
+// stops the block having an effect on any path that never validated.
+func TestALegacyRuntimeBlockDeclaresNothing(t *testing.T) {
+	m := validManifest()
+	m.Runtimes = nil
+	m.Runtime.Files = []string{"compose.yaml"}
+	m.Runtime.Project = "legacy"
+
+	assert.Empty(t, m.DeclaredRuntimes(),
+		"`runtime:` stopped being read in 0.3.0; folding it in is what "+
+			"decision 23 removed")
+}
+
+// A legacy manifest is told one thing, not two.
+//
+// The "must declare at least one runtime" rule fires on an empty `runtimes:`
+// map, and a manifest written entirely in the old block has one -- so before
+// this was suppressed, a vendor who did declare a runtime was told they had
+// declared none, beside the refusal that actually explains it. Two errors, one
+// of them contradicting the other, and the wrong one reads as the real
+// complaint.
+func TestALegacyManifestIsToldOneThing(t *testing.T) {
 	m := validManifest()
 	m.Runtimes = nil
 	m.Runtime.Files = []string{"compose.yaml"}
 
-	declared, fromLegacy := m.DeclaredRuntimes()
+	err := m.Validate()
 
-	require.True(t, fromLegacy, "a release using the old block must be reported as doing so")
-	assert.Equal(t, []string{LegacyRuntimeName}, declared.Names())
-	assert.Equal(t, []string{"compose.yaml"}, declared[LegacyRuntimeName].Files)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is no longer read")
+	assert.NotContains(t, err.Error(), "must declare at least one runtime",
+		"a vendor who wrote `runtime:` declared a runtime; telling them they "+
+			"declared none is a second error contradicting the first")
+}
+
+// And the manifest carrying it is refused, naming what to write instead.
+func TestALegacyRuntimeBlockIsRefusedAndNamesTheMigration(t *testing.T) {
+	for name, mutate := range map[string]func(*Manifest){
+		"files":        func(m *Manifest) { m.Runtime.Files = []string{"compose.yaml"} },
+		"project only": func(m *Manifest) { m.Runtime.Project = "legacy" },
+		"profiles":     func(m *Manifest) { m.Runtime.Profiles = map[string][]string{"ha": {"x.yaml"}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := validManifest()
+			m.Runtimes = Runtimes{"compose": {Files: []string{"compose.yaml"}}}
+			mutate(&m)
+
+			err := m.Validate()
+
+			require.Error(t, err, "a manifest carrying `runtime:` must be refused")
+			assert.Contains(t, err.Error(), "is no longer read",
+				"the refusal must say the block is gone, not merely that it is wrong")
+			assert.Contains(t, err.Error(), "runtimes.compose",
+				"and must name the spelling to migrate to")
+		})
+	}
 }
 
 func TestARuntimesMapDeclaresItsOwnKeys(t *testing.T) {
@@ -36,16 +85,16 @@ func TestARuntimesMapDeclaresItsOwnKeys(t *testing.T) {
 		"compose": {Files: []string{"compose.yaml"}},
 	}
 
-	declared, fromLegacy := m.DeclaredRuntimes()
+	declared := m.DeclaredRuntimes()
 
-	assert.False(t, fromLegacy)
 	// Sorted, so every message that lists runtimes lists them alike.
 	assert.Equal(t, []string{"compose", "quadlet"}, declared.Names())
 }
 
-// Both blocks is a refusal rather than a merge. Merging would pick a winner
-// the vendor never nominated, and the losing block is a topology somebody
-// wrote on purpose.
+// Both blocks was its own refusal until decision 23; it is now one case of the
+// legacy block being refused at all, and the message names the migration
+// rather than the collision. Kept as a test because a vendor mid-migration is
+// the likeliest writer of this manifest.
 func TestDeclaringBothBlocksIsRefused(t *testing.T) {
 	m := validManifest()
 	m.Runtime.Files = []string{"compose.yaml"}
@@ -54,18 +103,23 @@ func TestDeclaringBothBlocksIsRefused(t *testing.T) {
 	err := m.Validate()
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot be used together with the deprecated `runtime:` block",
-		"the refusal must say which two things collided")
+	assert.Contains(t, err.Error(), "is no longer read",
+		"a half-migrated manifest is told the old block is gone, not that it collided")
 }
 
-// The regression that made DeclaredRuntimes derived rather than stored.
+// The path escape that motivated making DeclaredRuntimes derived is now
+// unreachable, and this pins that it is unreachable for the right reason.
 //
-// ApplyDefaults used to normalise the legacy block into a field. That made it
-// a snapshot: Validate called on its own saw an empty map and checked no
-// paths, so an escaping path in the legacy block passed. This asserts the
-// check holds without ApplyDefaults having run, which is the only version of
-// it that is a check.
-func TestLegacyRuntimePathsAreCheckedWithoutApplyingDefaults(t *testing.T) {
+// The original defect: ApplyDefaults normalised the legacy block into a field,
+// so Validate called on its own saw an empty map, checked no paths, and a
+// `runtime.files` entry of `/etc/passwd` passed. Decision 23 closes it from the
+// other end -- the block is refused before any path in it is worth checking --
+// which is strictly safer than checking the paths of a block being read.
+//
+// Kept rather than deleted because "the escape is refused" and "the escape is
+// not looked at" are the same outcome only while the refusal holds. If the
+// block ever became readable again, this test is what fails.
+func TestALegacyBlockCarryingAPathEscapeIsRefusedBeforeThePathMatters(t *testing.T) {
 	for _, path := range []string{"/etc/passwd", "../outside/compose.yaml", "a/../../escape.yaml"} {
 		t.Run(path, func(t *testing.T) {
 			m := validManifest()
@@ -75,8 +129,9 @@ func TestLegacyRuntimePathsAreCheckedWithoutApplyingDefaults(t *testing.T) {
 			err := m.Validate()
 
 			require.Error(t, err, "%q must be rejected", path)
-			assert.Contains(t, err.Error(), "runtime.files",
-				"the refusal must name the field the vendor actually wrote")
+			assert.Contains(t, err.Error(), "is no longer read",
+				"refused for carrying the block at all, which does not "+
+					"depend on anything being noticed about the path")
 		})
 	}
 }
@@ -93,10 +148,11 @@ func TestRuntimesMapPathsAreCheckedAndNamedByRuntime(t *testing.T) {
 		"a vendor must be able to search their own file for the field named")
 }
 
-// A manifest declaring nothing has no signal for which spelling its author is
-// using, so the refusal names both. The per-runtime messages that would name
-// the right one never run when there is nothing to iterate.
-func TestDeclaringNoRuntimeNamesBothSpellings(t *testing.T) {
+// A manifest declaring nothing is told about the one spelling there is. This
+// used to name both, because with nothing declared there was no signal for
+// which the author was writing; naming `runtime.files` now would send them to
+// the block the refusal exists to move them off.
+func TestDeclaringNoRuntimeNamesTheOnlySpelling(t *testing.T) {
 	m := validManifest()
 	m.Runtime = RuntimeSpec{}
 	m.Runtimes = nil
@@ -104,8 +160,10 @@ func TestDeclaringNoRuntimeNamesBothSpellings(t *testing.T) {
 	err := m.Validate()
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "runtimes")
-	assert.Contains(t, err.Error(), "runtime.files")
+	assert.Contains(t, err.Error(), "must declare at least one runtime")
+	assert.NotContains(t, err.Error(), "runtime.files",
+		"the deprecated block is gone; pointing a vendor at it is pointing "+
+			"them at the thing they would then have to migrate off")
 }
 
 // `providers.runtime.name` is no longer a hardcoded "compose". It is derived
@@ -208,11 +266,15 @@ func TestAnInstallationWithNoRecordedRuntimeReadsAsTheLegacyOne(t *testing.T) {
 	assert.Equal(t, "quadlet", Installation{Runtime: "quadlet"}.RuntimeName())
 }
 
-// ApplyDefaults fills RuntimeSpec.Project from the product name unconditionally,
-// including for a release that never wrote a `runtime:` block. That makes the
-// legacy struct non-zero on a manifest whose author only used `runtimes:` --
-// which would read as "declared both" and refuse the release, if isZero looked
-// at Project. It looks at Files and Profiles, and this is what says so.
+// ApplyDefaults must not fill RuntimeSpec.Project on a release that never
+// wrote a `runtime:` block, and this is what says so.
+//
+// Load-bearing since decision 23, and more so than when it was written. The
+// refusal for a legacy block now reads *every* field of it, Project included,
+// because a project-only block is the half-finished migration and still
+// decides a namespace. So a defaulter that filled Project unconditionally
+// would no longer merely look like "declared both" -- it would refuse every
+// manifest in existence, including the ones written entirely in `runtimes:`.
 func TestARuntimesOnlyReleaseSurvivesDefaultingAndValidation(t *testing.T) {
 	m := validManifest()
 	m.Runtime = RuntimeSpec{}
@@ -224,9 +286,7 @@ func TestARuntimesOnlyReleaseSurvivesDefaultingAndValidation(t *testing.T) {
 
 	require.NoError(t, m.Validate(), "a defaulted project must not read as a declared legacy block")
 
-	declared, fromLegacy := m.DeclaredRuntimes()
-	assert.False(t, fromLegacy)
-	assert.Equal(t, []string{"compose"}, declared.Names())
+	assert.Equal(t, []string{"compose"}, m.DeclaredRuntimes().Names())
 }
 
 // A two-runtime manifest must survive its own defaulting.
@@ -350,4 +410,42 @@ func TestAnInstallationRefusesAMalformedRecordedRuntime(t *testing.T) {
 	unknown.Runtime = "quadlt"
 	assert.NoError(t, unknown.Validate(),
 		"a typo that is well-formed is caught by the adapter mismatch, not here")
+}
+
+// ProfileNames has three callers and every one of them used to read the
+// deprecated block directly.
+//
+// The failure mode is why this is asserted rather than assumed: when the block
+// stopped being read, all three answered "no profiles" for every bundle written
+// in the current spelling, and none of them failed -- an empty list is also
+// what a release declaring no profiles looks like. A wrong answer that is
+// indistinguishable from a right one is not caught by the callers' own tests,
+// so it is caught here.
+func TestProfileNamesAreTheUnionAcrossDeclaredRuntimes(t *testing.T) {
+	m := validManifest()
+	m.Runtimes = Runtimes{
+		"compose": {Files: []string{"c.yaml"}, Profiles: map[string][]string{
+			"embedded": {"a.yaml"}, "external-db": {"b.yaml"},
+		}},
+		"quadlet": {Files: []string{"q.container"}, Profiles: map[string][]string{
+			"embedded": {"x.container"}, "ha": {"y.container"},
+		}},
+	}
+
+	assert.Equal(t, []string{"embedded", "external-db", "ha"}, m.ProfileNames(),
+		"sorted and deduplicated across runtimes: a profile is the operator's "+
+			"choice of topology, and offering the smaller set would hide a "+
+			"disagreement between runtimes rather than surface it")
+
+	// The empty case, decided rather than inherited.
+	bare := validManifest()
+	bare.Runtimes = Runtimes{"compose": {Files: []string{"c.yaml"}}}
+	assert.Empty(t, bare.ProfileNames())
+
+	// And the deprecated block contributes nothing, because it is not read.
+	legacy := validManifest()
+	legacy.Runtimes = Runtimes{"compose": {Files: []string{"c.yaml"}}}
+	legacy.Runtime.Profiles = map[string][]string{"ghost": {"g.yaml"}}
+	assert.Empty(t, legacy.ProfileNames(),
+		"a profile declared in the block that stopped being read is not offered")
 }

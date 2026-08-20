@@ -17,6 +17,15 @@ against putting a number anywhere it has to be maintained.
 A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
+**Being listed here is not the same as being scheduled.** Of the entries below,
+only **0023** has work anybody can pick up: 0027, 0028 and 0029 have each shipped
+a phase and gated the next one on a condition this project cannot manufacture —
+a user who is not the author asking, a host somebody believes was compromised,
+demand for a darwin tier. Those are not stalls, and 0027's own text says that if
+the condition never arrives, never building P2 is the correct outcome. Each
+bullet says which it is, because 🚧 in the table cannot: the status records that a
+phase shipped, and a reader deciding what to work on needs the other half.
+
 - **[0023 — Runtimes beyond Compose](0023-runtimes-beyond-compose.md).** P1a
   shipped: the leak inventory and the boundary checker. **P1b is two-thirds
   answered.** A rootless Podman host settled §12 items 5 and 6 — 0010's volume
@@ -40,15 +49,20 @@ second table of the same shape is a second set of rows for the same numbers.
   was created with and refuses a release that changes it, and
   `<PRODUCT>_COMPOSE_PROJECT` is supplied by the runtime rather than promised by
   the core hook ABI. The leak inventory is **17**, down from 19 at P1.
-  **P2 is complete.** The deprecation of `runtime:` finally says something: it
-  stops being read in **0.4.0**, and `release verify`, `init` and `update` say so
+  **P2 is complete.** The deprecation of `runtime:` finally said something: it
+  would stop being read in **0.4.0**, and `release verify`, `init` and `update` said so
   — no other command does, because a manifest the operator did not write and
   cannot change is not something to be told about on every invocation. The
   scaffold, which had been emitting the deprecated block all along, now writes
   `runtimes:` and declares the manager version it needs. That declaration is what
   exposed a manager built between tags understating its own version badly enough
   to refuse the bundle its own scaffold had just written. **What remains of this
-  RFC is P1b item 4, and P3 behind it.**
+  RFC is P3, the Quadlet adapter, and the two phases behind it** — an acceptance
+  stage and the report that says whether the port survived being implemented
+  twice, which is the question the RFC was opened to answer. **The removal came
+  early**: `runtime:` stops being read in **0.3.0**, not 0.4.0, because the
+  window 0.4.0 was buying turned out never to have existed — no released manager
+  reads `runtimes:`, so no version reads both (decision 23).
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
   inventory, the archive, redaction proved against seeded values, `support
   redact --check`, an archive encrypted to the vendor and unreadable by the

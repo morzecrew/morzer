@@ -60,9 +60,19 @@ const RuntimesMinManagerVersion = "0.3.0"
 // DeprecatedFields reports.
 //
 // A deprecation without one is a word in a document: it tells a vendor that
-// something will happen and gives them nothing to plan against. RFC 0023
-// decision 9 accepted "two spellings to maintain until a named removal
-// release" as its cost, and this is the name.
+// something will happen and gives them nothing to plan against.
+//
+// **DeprecatedFields currently reports none**, so this names no live
+// deprecation: `runtime:` was its only member and stopped being read in 0.3.0
+// (RFC 0023 decision 23), which is one release earlier than this constant ever
+// said, because the grace period it promised turned out never to have existed.
+// The value is what the next deprecated field would target.
+//
+// That there is one value for all of them is a single-member design, and it is
+// only visibly so now that the member is gone: two fields deprecated in
+// different releases cannot share it. Left as it is deliberately -- the shape
+// to choose is the next deprecation's to force, and guessing it with nothing to
+// deprecate is how a mechanism gets built for a caller that never arrives.
 const FieldRemovalRelease = "0.4.0"
 
 // FieldDeprecation is a manifest field this manager still reads and will stop
@@ -95,21 +105,19 @@ func (f FieldDeprecation) Message() string {
 
 // DeprecatedFields reports the deprecated fields this manifest actually uses.
 //
-// Computed on demand for the reason DeprecationWarning is, and derived from
-// DeclaredRuntimes rather than from a second look at the struct: "this
-// release's runtimes came from the deprecated block" is already decided in one
-// place, and a predicate that asks the question its own way is a predicate
-// that can disagree with the loader about which spelling a bundle is written
-// in.
+// **There are none.** `runtime:` was the only one and is no longer read at all
+// (RFC 0023 decision 23) -- a field that is refused is not deprecated, it is
+// gone, and reporting it here would offer a vendor a grace period the loader
+// will not honour.
+//
+// The mechanism is kept rather than deleted with its member. It is RFC 0018's,
+// it is the only field-level deprecation machinery this manifest has, and the
+// next field to need one would otherwise rebuild it -- differently, which is
+// how one manifest comes to have two ways of saying the same thing. What keeps
+// it honest with nothing to report is the test that drives it with a synthetic
+// deprecation; without that, an empty registry is an untested one.
 func (m Manifest) DeprecatedFields() []FieldDeprecation {
-	var out []FieldDeprecation
-	if _, fromLegacy := m.DeclaredRuntimes(); fromLegacy {
-		out = append(out, FieldDeprecation{
-			Field:       "runtime",
-			Replacement: "`runtimes." + LegacyRuntimeName + "`",
-		})
-	}
-	return out
+	return nil
 }
 
 const KindApplicationRelease = "application-release"
@@ -183,50 +191,54 @@ type Manifest struct {
 	Extensions    map[string]map[string]any `yaml:"extensions" json:"extensions,omitempty"`
 }
 
-// DeclaredRuntimes returns the runtimes this release supports, and whether
-// they came from the deprecated `runtime:` block.
+// DeclaredRuntimes returns the runtimes this release supports.
+//
+// It no longer reads the deprecated `runtime:` block: that block stopped being
+// read in 0.3.0 (RFC 0023 decision 23), and Validate refuses a manifest
+// carrying it, so a legacy bundle is answered by a refusal naming the
+// migration rather than by a fold nothing announces.
 //
 // Derived on every call rather than normalised once into a field, and that is
-// the whole point. The first version of this stored the synthesis in
-// ApplyDefaults, which made it a snapshot: anything that touched `runtime:`
-// afterwards was silently ignored, and `Validate` called without
-// ApplyDefaults checked an empty map -- so a `runtime.files` entry of
-// `/etc/passwd` passed validation. A path-escape check that holds only when
-// another method ran first is not a check.
-func (m Manifest) DeclaredRuntimes() (Runtimes, bool) {
-	if len(m.Runtimes) > 0 {
-		return m.Runtimes, false
-	}
-	if m.Runtime.isZero() {
-		return nil, false
-	}
-	decl := RuntimeDecl{
-		Files:    m.Runtime.Files,
-		Profiles: m.Runtime.Profiles,
-	}
-	// The legacy block's project becomes the legacy runtime's `project`
-	// option, so a bundle built before `runtimes:` existed keeps the
-	// namespace its volumes are already in. Dropping it here would rename
-	// every volume, network and container of a running deployment on the
-	// next `apply` -- measured: `--project-name alpha` resolves a volume
-	// named `alpha_data` and `beta` resolves `beta_data`.
-	//
-	// The option's name is spelled here for the same reason
-	// LegacyRuntimeName is: the old block *is* Compose's, that is what it
-	// meant, and a manager that would not say so could not read a released
-	// bundle. It leaves when the block does.
-	if m.Runtime.Project != "" {
-		decl.Options = map[string]string{legacyProjectOption: m.Runtime.Project}
-	}
-	return Runtimes{LegacyRuntimeName: decl}, true
+// worth keeping now that there is nothing to fold. The first version of this
+// stored the synthesis in ApplyDefaults, which made it a snapshot: anything
+// that touched the block afterwards was silently ignored, and `Validate`
+// called without ApplyDefaults checked an empty map -- so a `runtime.files`
+// entry of `/etc/passwd` passed validation. A path-escape check that holds
+// only when another method ran first is not a check.
+func (m Manifest) DeclaredRuntimes() Runtimes {
+	return m.Runtimes
 }
 
-// legacyProjectOption is what `runtime.project` becomes under `runtimes:`.
+// ProfileNames is every deployment profile this release declares, sorted and
+// deduplicated across its runtimes.
 //
-// See DeclaredRuntimes. It is a Compose word above `internal/adapters` and it
-// is deliberate: this is the translation of a released manifest surface, not a
-// manager deciding what a runtime needs.
-const legacyProjectOption = "project"
+// One implementation because there are three callers -- the `init` wizard's
+// question, `release show`, and the synthetic profile `release verify
+// --render-check` renders with -- and each of them read
+// `Manifest.Runtime.Profiles` directly. That field stopped being read in 0.3.0
+// (decision 23), so all three silently answered "no profiles" for every bundle
+// written in the current spelling: an empty list is also what a release with no
+// profiles looks like, so none of them failed, they just stopped being right.
+//
+// A union across runtimes rather than one runtime's, because a profile is the
+// operator's choice of topology and the manifest is what says which exist. A
+// release whose runtimes disagree about profiles is the vendor's to reconcile,
+// and offering the smaller set would hide the disagreement rather than surface
+// it.
+func (m Manifest) ProfileNames() []string {
+	seen := map[string]bool{}
+	for _, decl := range m.DeclaredRuntimes() {
+		for name := range decl.Profiles {
+			seen[name] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
 
 type Metadata struct {
 	Name        string  `yaml:"name" json:"name"`
@@ -384,7 +396,16 @@ const LegacyRuntimeName = "compose"
 // `runtime: {project: x}` beside `runtimes:` is ignored rather than refused,
 // which the both-declared message cannot help with because there is no file
 // list to move.
-func (r RuntimeSpec) isZero() bool { return len(r.Files) == 0 && len(r.Profiles) == 0 }
+// isAbsent reports whether the deprecated block was written at all.
+//
+// Every field, not only the ones that declare a runtime. There used to be an
+// isZero beside this asking the narrower question -- files or profiles -- back
+// when the block was read and the question was what it declared. Decision 23
+// refuses what a vendor wrote instead, and a block carrying only `project`
+// declares nothing and still decides the namespace every volume lives in.
+func (r RuntimeSpec) isAbsent() bool {
+	return r.Project == "" && len(r.Files) == 0 && len(r.Profiles) == 0
+}
 
 // Runtimes maps a runtime's name to what that runtime is declared with.
 //
@@ -691,7 +712,7 @@ func (m *Manifest) ApplyDefaults() {
 	}
 	// Derived, not stored: DeclaredRuntimes folds the legacy block in on
 	// every call, so nothing here can go stale against a later edit.
-	declared, _ := m.DeclaredRuntimes()
+	declared := m.DeclaredRuntimes()
 	if m.Providers.Runtime.Name == "" && len(declared) == 1 {
 		// Derived rather than hardcoded. A single-runtime release
 		// leaves the field meaning what it always meant; a
@@ -871,7 +892,7 @@ func (m *Manifest) Validate() error {
 
 	// Computed before the providers block below, which needs to know how
 	// many runtimes are declared to know whether one name can be true.
-	declaredRuntimes, fromLegacy := m.DeclaredRuntimes()
+	declaredRuntimes := m.DeclaredRuntimes()
 
 	// providers
 	//
@@ -888,39 +909,44 @@ func (m *Manifest) Validate() error {
 
 	// runtimes
 	//
-	// ApplyDefaults has already folded a legacy `runtime:` block into the
-	// map, so there is one shape to check. What it cannot fold is a
-	// manifest carrying both: merging them would pick a winner the vendor
-	// never nominated, and picking the wrong one deploys a topology nobody
-	// asked for.
-	if len(m.Runtimes) > 0 && !m.Runtime.isZero() {
-		v.add("runtimes", "cannot be used together with the deprecated `runtime:` block; "+
-			"move the files under `runtimes."+LegacyRuntimeName+".files` and delete `runtime:`")
-	}
-	// A project left behind by a half-finished migration. The block is not
-	// "declared" by isZero's measure -- it lists no files -- so nothing above
-	// catches it, and folding it in would be the merge the refusal beside
-	// this one exists to prevent.
+	// `runtime:` is no longer read (RFC 0023 decision 23), and a manifest
+	// carrying it is refused rather than folded. This replaces two narrower
+	// rules the removal subsumes -- one for a manifest carrying both
+	// spellings, one for a `project` left behind by a half-finished
+	// migration -- because with the block refused outright, both are the
+	// same manifest seen from different sides.
 	//
-	// It refuses rather than ignores because ignoring it is the expensive
-	// direction: the option decides the namespace Compose puts volumes,
-	// networks and containers in, so dropping it renames all of them and the
-	// deployment comes up against empty storage with the old data still on
-	// the disk, unreferenced. Measured: `--project-name alpha` resolves a
-	// volume named `alpha_data`, `beta` resolves `beta_data`.
-	if len(m.Runtimes) > 0 && m.Runtime.Project != "" {
-		v.add("runtime.project", "is set while `runtimes:` declares this release's runtimes, "+
-			"where it would be ignored; move it to `runtimes."+LegacyRuntimeName+
-			".options.project` and delete `runtime:`. Dropping it renames every volume, "+
-			"network and container of any deployment already running this product")
+	// Refused rather than deleted from the struct. The manifest is
+	// strict-decoded (`yaml.Strict()`, `yaml.DisallowUnknownField()` in
+	// internal/release/load.go), so removing the field would answer a vendor
+	// with "unknown field runtime" -- true, useless, and naming nothing they
+	// can act on.
+	//
+	// Every field of the block, not only the ones isZero measures. A
+	// project-only block declares no runtime and still decides the namespace
+	// Compose puts volumes, networks and containers in; ignoring it renames
+	// all of them and brings the deployment up against empty storage with
+	// the old data unreferenced on the disk. Measured: `--project-name
+	// alpha` resolves a volume named `alpha_data`, `beta` resolves
+	// `beta_data`.
+	if !m.Runtime.isAbsent() {
+		v.add("runtime", "is no longer read: move the files under `runtimes."+
+			LegacyRuntimeName+".files`, any `runtime.project` under `runtimes."+
+			LegacyRuntimeName+".options.project`, and delete `runtime:`")
 	}
-	if len(declaredRuntimes) == 0 {
-		// Both spellings named, because with nothing declared there is
-		// no signal for which one the vendor is writing -- and the
-		// per-runtime messages below, which do name the right field,
-		// never run for a manifest that declares nothing at all.
-		v.add("runtimes", "must declare at least one runtime, each listing at least one file; "+
-			"a release still using the deprecated `runtime:` block lists them under `runtime.files`")
+	if len(declaredRuntimes) == 0 && m.Runtime.isAbsent() {
+		// One spelling named, because there is only one. This used to
+		// name the deprecated block too -- with nothing declared there
+		// was no signal for which one the vendor was writing -- and
+		// pointing anybody at `runtime.files` now sends them to a block
+		// the refusal above exists to move them off.
+		//
+		// Silent when the legacy block is present, which is the case
+		// that reads worst: a vendor who wrote `runtime:` declared a
+		// runtime, and telling them they declared none is a second
+		// error contradicting the first. The refusal above is the whole
+		// answer, and it names the migration.
+		v.add("runtimes", "must declare at least one runtime, each listing at least one file")
 	}
 	for _, name := range declaredRuntimes.Names() {
 		decl := declaredRuntimes[name]
@@ -941,10 +967,9 @@ func (m *Manifest) Validate() error {
 			continue
 		}
 		// The field path a vendor can search for in their own file.
+		// Always the new spelling: the old one is refused above, so no
+		// manifest reaching here was written in it.
 		base := "runtimes." + name
-		if fromLegacy {
-			base = "runtime"
-		}
 		if len(decl.Files) == 0 {
 			v.add(base+".files", "must list at least one file")
 		}

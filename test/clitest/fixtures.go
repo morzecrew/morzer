@@ -117,3 +117,50 @@ func copyDir(t *testing.T, src, dst string) {
 		t.Fatal(err)
 	}
 }
+
+// LegacyBundle is a copy of the example bundle written the way a released
+// bundle really was: the deprecated `runtime:` block instead of `runtimes:`.
+//
+// It exists because the shared fixture no longer is one. `runtime:` stopped
+// being read in 0.3.0 (RFC 0023 decision 23), so every fixture in the tree
+// moved to the current spelling -- and the refusal that removal put in place
+// then had nothing to refuse. A test for a rejected input needs the rejected
+// input, and after a removal the only place left to get it is a fixture that
+// reconstructs it.
+func (r *Runner) LegacyBundle() string {
+	r.t.Helper()
+
+	dir := filepath.Join(r.t.TempDir(), "legacy-bundle")
+	copyDir(r.t, r.Bundle, dir)
+
+	manifest := filepath.Join(dir, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	const current = `runtimes:
+  compose:
+    options:
+      project: demo
+    files:
+      - compose/compose.yaml
+    profiles:
+      embedded: [compose/compose.embedded.yaml]
+      external-db: [compose/compose.external-db.yaml]`
+	const legacy = `runtime:
+  project: demo
+  files:
+    - compose/compose.yaml
+  profiles:
+    embedded: [compose/compose.embedded.yaml]
+    external-db: [compose/compose.external-db.yaml]`
+	rewritten := strings.Replace(string(data), current, legacy, 1)
+	if rewritten == string(data) {
+		r.t.Fatalf("the example bundle no longer carries the block this fixture "+
+			"rewrites; update %s", manifest)
+	}
+	if err := os.WriteFile(manifest, []byte(rewritten), 0o644); err != nil {
+		r.t.Fatal(err)
+	}
+	return dir
+}

@@ -56,7 +56,7 @@ func init() {
 // showed one it had not set. The options are printed as the vendor wrote them
 // because this layer does not know what any of them mean.
 func runtimeSummary(m domain.Manifest) string {
-	declared, _ := m.DeclaredRuntimes()
+	declared := m.DeclaredRuntimes()
 	if len(declared) == 0 {
 		return "none declared"
 	}
@@ -110,9 +110,9 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 		Empty:    "the release declares no images",
 	})
 
-	if len(m.Runtime.Profiles) > 0 {
+	if profiles := m.ProfileNames(); len(profiles) > 0 {
 		d.Heading("profiles")
-		d.Text(4, "%s", strings.Join(sortedKeys(m.Runtime.Profiles), ", "))
+		d.Text(4, "%s", strings.Join(profiles, ", "))
 	}
 
 	d.Heading("compatibility")

@@ -16,10 +16,17 @@ func syntheticRelease() (domain.Release, domain.SecretSchema) {
 	rel.Manifest.Metadata.Name = "demo"
 	rel.Manifest.Metadata.Version = domain.MustParseVersion("1.2.0")
 	rel.Manifest.Metadata.Vendor = "example"
-	rel.Manifest.Runtime.Profiles = map[string][]string{
-		"embedded":    {"compose/compose.embedded.yaml"},
-		"external-db": {"compose/compose.external-db.yaml"},
-	}
+	// Declared under `runtimes:`, which is the only spelling read since
+	// 0.3.0. While this fixture used the deprecated block, syntheticProfile
+	// returned "" for every real bundle and this test did not notice --
+	// the render-check had quietly stopped exercising profile branches.
+	rel.Manifest.Runtimes = domain.Runtimes{"compose": {
+		Files: []string{"compose/compose.yaml"},
+		Profiles: map[string][]string{
+			"embedded":    {"compose/compose.embedded.yaml"},
+			"external-db": {"compose/compose.external-db.yaml"},
+		},
+	}}
 	rel.Manifest.Parameters = map[string]domain.ParameterSpec{
 		"http_port": {Type: domain.ParamPort, Default: "8080"},
 		"log_level": {Type: domain.ParamEnum, Values: []string{"info", "debug"}},

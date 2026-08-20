@@ -100,11 +100,27 @@ func TestTCPProbeAgainstRedis(t *testing.T) {
 	assert.Equal(t, "accepting connections", res.Message)
 
 	// And once it is gone, the same probe says so rather than hanging.
-	_, err := redis.Exec(t, "redis-cli", "shutdown", "nosave")
-	_ = err // shutdown drops the connection, so a non-zero exit is expected
+	//
+	// Stopped from outside rather than by `redis-cli shutdown` in the
+	// container. The in-container route was the fragility: a `docker exec`
+	// can fail to land on a busy host, redis-cli's own non-zero exit is the
+	// ordinary outcome of a shutdown dropping its connection -- so the two
+	// cannot be told apart -- and the test then spent its whole deadline
+	// watching a service nothing had asked to stop. Measured under the full
+	// lane, where it did not land.
+	//
+	// Nothing about the probe's claim needs the service to stop itself. What
+	// is being asserted is that a TCP check reports a port that is gone as
+	// refused, and how it went is the fixture's business.
+	redis.Stop(t, 60*time.Second)
 
+	// The published port outlives the container by a little, so this still
+	// polls -- but it is now bounded by something already known to have
+	// happened, and a timeout here means the port mapping outlived the
+	// container rather than that the service never stopped.
 	deadline = time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
+		var err error
 		res, err = prober.Check(context.Background(), spec)
 		require.NoError(t, err)
 		if !res.OK {

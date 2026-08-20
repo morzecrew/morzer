@@ -295,12 +295,11 @@ func profilesFrom(releasePath string) []string {
 		return nil
 	}
 
-	out := make([]string, 0, len(manifest.Runtime.Profiles))
-	for name := range manifest.Runtime.Profiles {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
+	// One implementation, in the manifest. `release show` and the
+	// render-check's synthetic profile ask the same question, and all three
+	// read the deprecated block directly until decision 23 made that answer
+	// "none" everywhere at once.
+	return manifest.ProfileNames()
 }
 
 func splitDomains(input string) []string {

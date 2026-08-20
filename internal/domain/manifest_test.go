@@ -22,10 +22,10 @@ func validManifest() Manifest {
 			Version: MustParseVersion("1.2.0"),
 		},
 		Providers: Providers{Runtime: Provider{Name: "compose"}},
-		Runtime: RuntimeSpec{
-			Project: "demo",
+		Runtimes: Runtimes{LegacyRuntimeName: {
 			Files:   []string{"compose/compose.yaml"},
-		},
+			Options: map[string]string{"project": "demo"},
+		}},
 		Images: map[string]ImageSpec{
 			"app": {Ref: "registry.example/demo/app@sha256:" + strings.Repeat("a", 64)},
 		},
@@ -109,10 +109,13 @@ func TestPathsMayNotEscapeTheReleaseRoot(t *testing.T) {
 	for _, path := range cases {
 		t.Run(path, func(t *testing.T) {
 			m := validManifest()
-			m.Runtime.Files = []string{path}
+			m.Runtimes[LegacyRuntimeName] = RuntimeDecl{Files: []string{path}}
 
 			err := m.Validate()
 			require.Error(t, err, "%q must be rejected", path)
+			assert.Contains(t, err.Error(), "runtimes.compose.files",
+				"rejected for the path rather than for carrying a block "+
+					"Validate refuses before it looks at any path")
 		})
 	}
 }
@@ -133,7 +136,7 @@ func TestValidationReportsEveryProblemAtOnce(t *testing.T) {
 	// on the retry.
 	m := validManifest()
 	m.Metadata.Name = ""
-	m.Runtime.Files = nil
+	m.Runtimes[LegacyRuntimeName] = RuntimeDecl{}
 	m.Images["app"] = ImageSpec{Ref: "unpinned:latest"}
 
 	err := m.Validate()
@@ -141,7 +144,7 @@ func TestValidationReportsEveryProblemAtOnce(t *testing.T) {
 
 	msg := err.Error()
 	assert.Contains(t, msg, "metadata.name")
-	assert.Contains(t, msg, "runtime.files")
+	assert.Contains(t, msg, "runtimes.compose.files")
 	assert.Contains(t, msg, "images.app")
 }
 
@@ -254,7 +257,7 @@ func TestApplyDefaults(t *testing.T) {
 		APIVersion: APIVersionV1Alpha1,
 		Kind:       KindApplicationRelease,
 		Metadata:   Metadata{Name: "demo", Version: MustParseVersion("1.0.0")},
-		Runtime:    RuntimeSpec{Files: []string{"compose/compose.yaml"}},
+		Runtimes:   Runtimes{LegacyRuntimeName: {Files: []string{"compose/compose.yaml"}}},
 		Images:     map[string]ImageSpec{"app": {Ref: "r/a@sha256:" + strings.Repeat("a", 64)}},
 		Configuration: []ConfigurationFile{
 			{Template: "templates/a.yaml", Target: "/etc/demo/a.yaml"},

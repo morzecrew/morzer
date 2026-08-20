@@ -291,12 +291,29 @@ status_field() {
 	"${MORZER}" --root "${ROOT}" --json status | jq -r "$1"
 }
 
+# Counting is not instantaneous after a stop. `docker compose stop` returns
+# when it has asked; Docker keeps reporting a container as running until its
+# process is actually gone, so a count sampled the moment the command returns
+# can still see a container the operation has already finished with.
+#
+# Polling to the expected count rather than sampling once does not weaken the
+# assertion: a wrong count still fails, it merely has to still be wrong a few
+# seconds later. What it removes is the failure that is a fact about timing
+# rather than about the deployment.
 assert_running() {
 	local expected=$1
-	local running
-	running=$(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)
-	[ "${running}" = "${expected}" ] ||
-		fail "expected ${expected} running container(s), found ${running}"
+	local running deadline
+	deadline=$(( $(date +%s) + 30 ))
+	while :; do
+		running=$(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)
+		if [ "${running}" = "${expected}" ]; then
+			break
+		fi
+		if [ "$(date +%s)" -ge "${deadline}" ]; then
+			fail "expected ${expected} running container(s), found ${running} after 30s"
+		fi
+		sleep 1
+	done
 	info "${running} container(s) running"
 }
 
@@ -459,9 +476,28 @@ step "into the running deployment: ps, logs, stats, exec"
 	fail "ps did not report both containers with their instances"
 
 # The health check has been polling the app stub, which logs each request, so
-# there are real lines to read.
-"${MORZER}" --root "${ROOT}" logs --tail 20 | grep -q "|" ||
-	fail "logs produced no framed line"
+# there are real lines to read -- eventually.
+#
+# Waited for rather than sampled once, for the same reason assert_running is:
+# whether a line exists yet depends on the health check having polled, which
+# nothing here synchronises with. Sampled immediately this asserts how promptly
+# a container flushed its first line, which is a fact about the machine. The
+# claim under test is that the manager frames what Compose produces, and that
+# is only testable once there is something to frame.
+wait_for_log_line() {
+	local deadline
+	deadline=$(( $(date +%s) + 60 ))
+	while :; do
+		if "${MORZER}" --root "${ROOT}" logs --tail 20 | grep -q "|"; then
+			return 0
+		fi
+		if [ "$(date +%s)" -ge "${deadline}" ]; then
+			fail "logs produced no framed line within 60s"
+		fi
+		sleep 1
+	done
+}
+wait_for_log_line
 
 # The one exception to the single-envelope contract: one JSON object per line,
 # and no envelope at the end. A consumer parsing lines must never meet one.

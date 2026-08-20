@@ -23,16 +23,18 @@ providers:
   backup: {name: hooks}
   health: {name: http}
 
-runtime:
-  project: web
-  files:
-    - compose/compose.yaml
-  profiles:
-    # The database runs alongside the product.
-    embedded: [compose/compose.embedded.yaml]
-    # Someone else's database. The backend keeps its credential either way,
-    # which is why db_password is declared for it rather than for the db.
-    external-db: [compose/compose.external-db.yaml]
+runtimes:
+  compose:
+    options:
+      project: web
+    files:
+      - compose/compose.yaml
+    profiles:
+      # The database runs alongside the product.
+      embedded: [compose/compose.embedded.yaml]
+      # Someone else's database. The backend keeps its credential either way,
+      # which is why db_password is declared for it rather than for the db.
+      external-db: [compose/compose.external-db.yaml]
 
 requirements:
   architectures: [amd64, arm64]

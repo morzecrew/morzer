@@ -41,6 +41,27 @@ func TestReleaseShowNamesEveryRuntimeAndItsOptions(t *testing.T) {
 		assert.Contains(t, out, "compose (project=myapp)")
 	})
 
+	// Profiles come from the declared runtimes, not the block that stopped
+	// being read. This rendered nothing for every current bundle and nothing
+	// failed, because "no profiles declared" and "declared, not found" print
+	// the same absence.
+	t.Run("profiles declared only under runtimes", func(t *testing.T) {
+		out := render(domain.Manifest{
+			Metadata: base,
+			Runtimes: domain.Runtimes{
+				"compose": {Files: []string{"compose.yaml"}, Profiles: map[string][]string{
+					"external-db": {"b.yaml"}, "embedded": {"a.yaml"},
+				}},
+				"quadlet": {Files: []string{"app.container"}, Profiles: map[string][]string{
+					"embedded": {"x.container"}, "ha": {"y.container"},
+				}},
+			},
+		})
+		assert.Contains(t, out, "profiles")
+		assert.Contains(t, out, "embedded, external-db, ha",
+			"sorted and deduplicated across runtimes")
+	})
+
 	t.Run("two runtimes, sorted, one of them plain", func(t *testing.T) {
 		out := render(domain.Manifest{
 			Metadata: base,
@@ -53,13 +74,25 @@ func TestReleaseShowNamesEveryRuntimeAndItsOptions(t *testing.T) {
 		assert.Contains(t, out, "compose (project=myapp), quadlet")
 	})
 
-	t.Run("the legacy block, folded", func(t *testing.T) {
+	// Was "the legacy block, folded". Migrating its fixture to `runtimes:`
+	// made it a copy of the first subtest and left its name and message
+	// describing a fold that no longer happens -- so it asserted a
+	// contract the opposite of the one now in force, in words nobody
+	// reading the output would question.
+	t.Run("the legacy block declares nothing", func(t *testing.T) {
 		out := render(domain.Manifest{
 			Metadata: base,
-			Runtime:  domain.RuntimeSpec{Project: "myapp", Files: []string{"compose.yaml"}},
+			Runtime: domain.RuntimeSpec{
+				Files:   []string{"compose.yaml"},
+				Project: "myapp",
+			},
 		})
-		assert.Contains(t, out, "compose (project=myapp)",
-			"a bundle on the old spelling reads as the compose runtime with its project")
+		assert.Contains(t, out, "none declared",
+			"`runtime:` stopped being read in 0.3.0, so a bundle carrying only "+
+				"it declares no runtime for `release show` to name")
+		assert.NotContains(t, out, "myapp",
+			"and its project reaches nothing, or the view would be reporting a "+
+				"namespace the manager will not use")
 	})
 
 	t.Run("a manifest that declares none", func(t *testing.T) {

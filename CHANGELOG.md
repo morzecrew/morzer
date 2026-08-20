@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A planned operation's steps report `planned` rather than `pending` in `--json`.** A dry run's steps were never going to run, and `pending` means not yet, so the record was the one part of the output still claiming work was owed. The operation status is unchanged at `succeeded`: planning is what succeeded.
+
 - **`morzer release new` scaffolds a bundle using `runtimes:` rather than the deprecated `runtime:` block**, and declares the manager version that spelling needs. A bundle scaffolded now therefore requires 0.3.0 or newer, which is stated by the manifest rather than discovered as a decoding error.
 
 - **A release that changes a runtime option an installation was created with is refused.** Under Compose the project prefixes every volume, so such a release would bring the product up against storage nothing has written to and leave the real data unreferenced. The way through is a backup, a fresh `init` and a `restore`.
@@ -27,11 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`morzer installation import` refuses an export whose runtime this manager does not drive**, before anything on the new host is created. A runtime is fixed when an installation is created and never transitions, so importing one this binary cannot operate would rebuild a machine no command could use.
 
-### Deprecated
+### Removed
 
-- **The `runtime:` manifest block will stop being read in 0.4.0.** It still works, and `morzer release verify` says so before a bundle is published, as do `init` and `update` when an operator installs one. Moving to `runtimes:` relocates the files and `project`, and raises `min_manager_version` to `0.3.0`.
+- **The `runtime:` manifest block is no longer read.** A bundle carrying it is refused, naming what to write instead: files under `runtimes.compose.files`, `project` under `runtimes.compose.options.project`, and `min_manager_version` raised to `0.3.0`.
+
+- **No release ever read both spellings**, which is why this is a break rather than the deprecation first announced for 0.4.0. `runtimes:` ships here for the first time, so 0.2.0 and earlier read only the old block and this release reads only the new one.
 
 ### Fixed
+
+- **The init wizard offers the profiles of a bundle written with `runtimes:`.** It read the deprecated block directly, so from the moment the new spelling existed it offered nothing — indistinguishable from a release that declares no profiles.
 
 - **A release that spells out a runtime option already in force is no longer refused.** An installation with no `project` runs under its product name, so a release naming that same value changes nothing, and dropping such a line is equally harmless. A value that really changes the namespace is refused as before.
 

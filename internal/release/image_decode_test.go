@@ -21,7 +21,7 @@ func TestImagesDecodeInBothSpellings(t *testing.T) {
 	manifest := `api_version: selfhost/v1alpha1
 kind: application-release
 metadata: {name: demo, version: 1.0.0}
-runtime: {project: demo, files: [compose/compose.yaml]}
+runtimes: {compose: {options: {project: demo}, files: [compose/compose.yaml]}}
 images:
   db: registry.example/demo/db` + digest + `
   app:
@@ -96,7 +96,7 @@ func TestAnUnknownImageSourceIsRefused(t *testing.T) {
 	manifest := `api_version: selfhost/v1alpha1
 kind: application-release
 metadata: {name: demo, version: 1.0.0}
-runtime: {project: demo, files: [compose/compose.yaml]}
+runtimes: {compose: {options: {project: demo}, files: [compose/compose.yaml]}}
 images:
   app:
     ref: registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001
@@ -117,7 +117,7 @@ func TestAnImageMappingWithNoRefIsRefused(t *testing.T) {
 	manifest := `api_version: selfhost/v1alpha1
 kind: application-release
 metadata: {name: demo, version: 1.0.0}
-runtime: {project: demo, files: [compose/compose.yaml]}
+runtimes: {compose: {options: {project: demo}, files: [compose/compose.yaml]}}
 images:
   app:
     from: bundle
@@ -140,7 +140,7 @@ func TestAnUnknownKeyInAnImageMappingIsRefused(t *testing.T) {
 	manifest := `api_version: selfhost/v1alpha1
 kind: application-release
 metadata: {name: demo, version: 1.0.0}
-runtime: {project: demo, files: [compose/compose.yaml]}
+runtimes: {compose: {options: {project: demo}, files: [compose/compose.yaml]}}
 images:
   app:
     ref: registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001

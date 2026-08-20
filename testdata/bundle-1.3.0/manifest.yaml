@@ -22,13 +22,15 @@ providers:
   backup: {name: hooks}
   health: {name: http}
 
-runtime:
-  project: demo
-  files:
-    - compose/compose.yaml
-  profiles:
-    embedded: [compose/compose.embedded.yaml]
-    external-db: [compose/compose.external-db.yaml]
+runtimes:
+  compose:
+    options:
+      project: demo
+    files:
+      - compose/compose.yaml
+    profiles:
+      embedded: [compose/compose.embedded.yaml]
+      external-db: [compose/compose.external-db.yaml]
 
 requirements:
   architectures: [amd64, arm64]

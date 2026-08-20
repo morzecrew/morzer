@@ -819,7 +819,7 @@ func runtimeOptionsFor(st *engine.State, runtime string) map[string]string {
 	if !ok {
 		return options
 	}
-	declared, _ := r.Manifest.DeclaredRuntimes()
+	declared := r.Manifest.DeclaredRuntimes()
 	for key, value := range declared[runtime].Options {
 		options[key] = value
 	}
@@ -834,7 +834,7 @@ func runtimeOptionsFor(st *engine.State, runtime string) map[string]string {
 // lines of `switch`. A decision that can only be exercised through the machinery
 // around it is a decision that gets exercised once, by the happy path.
 func runtimeForRelease(r domain.Release) (string, error) {
-	declared, _ := r.Manifest.DeclaredRuntimes()
+	declared := r.Manifest.DeclaredRuntimes()
 	names := declared.Names()
 	switch len(names) {
 	case 0:

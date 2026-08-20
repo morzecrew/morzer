@@ -264,3 +264,56 @@ func run(ctx context.Context, name string, args ...string) (string, error) {
 	err := cmd.Run()
 	return buf.String(), err
 }
+
+// Stop stops the container and blocks until it is gone.
+//
+// The runtime's own mechanism, deliberately, rather than asking the service
+// inside to shut itself down. A `docker exec` has to schedule a process in a
+// container on a busy host and can simply not land -- measured: under the full
+// container lane it does not, and the test that depended on it then spent its
+// whole deadline watching a service that was never asked to stop. Stopping from
+// outside has no such step, and it is what a test that only needs the service
+// gone should have been using.
+//
+// Started with --rm, so a stopped container is a removed one; the failure to
+// stop is reported, and the failure to remove is not, because the removal is
+// Docker's business and the test's claim is about the port.
+func (c *Container) Stop(t *testing.T, within time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), within)
+	defer cancel()
+	if out, err := run(ctx, "docker", "stop", "--timeout", "10", c.Name); err != nil {
+		t.Fatalf("cannot stop %s: %v\n%s", c.Name, err, out)
+	}
+	c.WaitGone(t, within)
+}
+
+// WaitGone blocks until the container has actually stopped.
+//
+// This is the signal a test needs after asking a service to shut down.
+// Polling the service's own port answers a different question: it reports
+// when the port stopped accepting, which is the same observation whether the
+// service went away or the request to stop it never arrived. A test that
+// cannot tell those apart reports the second as the first, and blames
+// whatever it was probing for a fault in its own fixture.
+//
+// Containers here are started with --rm, so a stopped one is a removed one
+// and `inspect` failing to find it is the same answer as "not running".
+func (c *Container) WaitGone(t *testing.T, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		out, err := run(ctx, "docker", "inspect", "--format", "{{.State.Running}}", c.Name)
+		cancel()
+		if err != nil || strings.TrimSpace(out) == "false" {
+			return
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("%s was still running %s after being asked to stop: "+
+				"the request to stop it did not land, which is a fault in "+
+				"the fixture and not in whatever is being probed", c.Name, within)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}

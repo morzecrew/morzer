@@ -1,57 +1,54 @@
 package clitest_test
 
 import (
+	"io/fs"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/release"
+
 	"github.com/morzecrew/morzer/test/clitest"
 )
 
-// A vendor's CI is one of the two places a deprecation warning can still change
-// a bundle: here, before it is published, and at the moment an operator chooses
-// to install it. Every other command meets the same manifest with no choice
-// available, which is why `release.Load` refuses to be the place this happens.
+// `runtime:` stopped being read in 0.3.0 (RFC 0023 decision 23), so what these
+// assert is a refusal where they used to assert a warning. The distinction is
+// the whole of that decision: a warning offers a grace period, and there was
+// never a released manager that could read both spellings, so there was no
+// grace period to offer.
 
-// The example bundle is written the old way -- deliberately, since it is the
-// fixture for the deprecated read path -- so `verify` has something to warn
-// about that a released bundle really looks like.
-func TestReleaseVerifyWarnsAboutTheDeprecatedRuntimeBlock(t *testing.T) {
+// A vendor's CI is where this has to land, and it now lands as a failure.
+func TestReleaseVerifyRefusesTheDeprecatedRuntimeBlock(t *testing.T) {
 	r := clitest.New(t)
 
-	r.Run("release", "verify", r.Bundle).ExitCode(0).
-		StderrContains("`runtime` is deprecated", domain.FieldRemovalRelease, "runtimes.compose")
+	r.Run("release", "verify", r.LegacyBundle()).ExitCode(2).
+		StderrContains("is no longer read", "runtimes.compose")
 }
 
-// A warning, not a failure. `verify` answers "is this bundle installable", and
-// a deprecated field still is until the release that stops reading it -- a
-// vendor who wants the clock enforced has their own CI's exit code to spend.
-func TestADeprecatedFieldDoesNotFailVerification(t *testing.T) {
+// The current spelling verifies, which is the other half of the same claim: the
+// refusal names a block, not any bundle that happens to reach it.
+func TestTheCurrentSpellingVerifies(t *testing.T) {
 	r := clitest.New(t)
 
 	r.Run("release", "verify", r.Bundle, "--render-check").ExitCode(0).
 		StdoutContains("demo 1.2.0")
 }
 
-// The other of the two moments: an operator choosing this bundle. They cannot
-// edit it, but they can decline it and ask their vendor for one written the new
-// way -- which is the whole reason the warning is here and not on every command
-// that later reads the same manifest.
-//
-// `init` specifically. The api_version warning lived on the update path alone,
-// so a first install said nothing at all; found while adding the field warning
-// beside it, and this is the assertion that keeps both on this path.
-func TestAFirstInstallWarnsAboutADeprecatedBundle(t *testing.T) {
+// The operator's side. They cannot edit the bundle, so the refusal has to name
+// what their vendor must change -- an error that only says "invalid" leaves
+// them with nothing to ask for.
+func TestAFirstInstallRefusesADeprecatedBundle(t *testing.T) {
 	r := clitest.New(t)
 
 	r.Run("init",
-		"--release", r.Bundle,
+		"--release", r.LegacyBundle(),
 		"--profile", "embedded",
 		"--domain", "demo.example",
 		"--no-recovery-recipient",
 		"--install-units=false",
-	).ExitCode(0).
-		StderrContains("`runtime` is deprecated", domain.FieldRemovalRelease)
+	).ExitCode(2).
+		StderrContains("is no longer read", "runtimes.compose")
 }
 
 // The update path is asserted in the suite, where an update runs to completion
@@ -81,45 +78,27 @@ func TestTheScaffoldWritesNothingItWillWarnAbout(t *testing.T) {
 // bundle at all -- which is exactly the choice the deprecation exists to inform
 // -- and the warning lived inside the staging step, which a plan never runs. So
 // the operator who looked before leaping was the only one not told.
-func TestAPlannedInstallWarnsAboutADeprecatedBundle(t *testing.T) {
+func TestAPlannedInstallRefusesADeprecatedBundle(t *testing.T) {
 	r := clitest.New(t)
 
 	r.Run("init",
-		"--release", r.Bundle,
+		"--release", r.LegacyBundle(),
 		"--profile", "embedded",
 		"--domain", "demo.example",
 		"--no-recovery-recipient",
 		"--install-units=false",
 		"--dry-run",
-	).ExitCode(0).
-		StderrContains("`runtime` is deprecated", domain.FieldRemovalRelease)
+	).ExitCode(2).
+		StderrContains("is no longer read")
 }
 
-// The warning is one sentence and has to read like one.
-//
-// `FieldDeprecation.Message()` already opens with the field name -- "`runtime`
-// is deprecated ..." -- and the caller prepended "this bundle uses", composing
-// "this bundle uses `runtime` is deprecated": two verbs in one clause. `release
-// verify` prints the same message bare and always read correctly, so the defect
-// was in the join rather than in the sentence.
-//
-// Asserted on a real install rather than a plan, deliberately. The plan is where
-// the warning was missing entirely, so a grammar assertion there would have
-// passed by finding no warning at all -- which is the shape of a test that
-// guards nothing.
-func TestTheDeprecationWarningIsOneSentence(t *testing.T) {
-	r := clitest.New(t)
-
-	r.Run("init",
-		"--release", r.Bundle,
-		"--profile", "embedded",
-		"--domain", "demo.example",
-		"--no-recovery-recipient",
-		"--install-units=false",
-	).ExitCode(0).
-		StderrContains("`runtime` is deprecated").
-		NoOutputContains("uses `runtime` is deprecated")
-}
+// The warning-is-one-sentence assertion that stood here has moved to
+// TestTheDeprecationMachineryStillRendersASentenceThatCanBeActedOn in
+// internal/domain. It drove the field-deprecation join through a real install,
+// and no manifest produces a field deprecation any more -- so run here it would
+// have passed by finding no warning at all, which is the shape of a test that
+// guards nothing. The invariant it was really protecting is that the message is
+// a whole sentence, and that is asserted where the sentence is built.
 
 // A plan names what it is planning.
 //
@@ -171,23 +150,50 @@ func TestAPlansJSONNamesTheProductAndNoInstallation(t *testing.T) {
 	out.FieldEquals("ok", true)
 }
 
-// The same bundle, packed the way a vendor ships it.
+// The same bundle, packed the way a vendor ships it, refused by the operation.
 //
-// `--release` names a directory or a `tar.zst`, and the plan's warning was
-// first written by joining `manifest.yaml` onto the path -- which produces
-// `demo.tar.zst/manifest.yaml`, a path that does not exist. The error was
-// swallowed, so a plan over an archive said nothing while the operation warned
-// about the very same bundle. Two answers to one question, decided by which
-// shape the vendor happened to publish.
-func TestAPlannedInstallFromAnArchiveAlsoWarns(t *testing.T) {
+// Asserted on a real install rather than a plan, and that is the finding this
+// test carries. **A plan does not validate the bundle it plans against**: with
+// `--product` given, `init --dry-run` over this archive reports "would create
+// an installation" for a release the very next command refuses. It is refused
+// without `--product` only because the CLI then has to read the manifest to
+// learn the name, and validation comes with the read -- an incidental
+// mechanism, not a check.
+//
+// Measured both ways while writing this. Recorded rather than fixed here: a
+// plan that validates is RFC 0001 decision 12's territory and its own change.
+func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
 	r := clitest.New(t)
 
-	// Built and packed in a temp copy: `release build` writes SHA256SUMS,
-	// and the shared fixture is not this test's to modify.
-	bundle := r.BundleAt("1.4.0")
-	r.Run("release", "build", bundle).ExitCode(0)
-	archive := filepath.Join(t.TempDir(), "demo-1.4.0.tar.zst")
-	r.Run("release", "archive", bundle, "-o", archive).ExitCode(0)
+	// Packed directly rather than with `release archive`, which now refuses
+	// the same bundle for the same reason -- so after the removal this
+	// project can no longer produce a legacy archive through its own
+	// commands, and a test for one has to build it.
+	bundle := r.LegacyBundle()
+	var entries []string
+	if err := filepath.WalkDir(bundle, func(path string, e fs.DirEntry, err error) error {
+		if err != nil || e.IsDir() {
+			return err
+		}
+		rel, relErr := filepath.Rel(bundle, path)
+		if relErr != nil {
+			return relErr
+		}
+		if rel == release.ManifestFileName {
+			return nil // added first, below
+		}
+		entries = append(entries, rel)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// manifest.yaml first: a release archive states its size in the
+	// manifest, so the manifest has to arrive before the bytes it bounds.
+	entries = append([]string{release.ManifestFileName}, entries...)
+	archive := filepath.Join(t.TempDir(), "demo-1.2.0.tar.zst")
+	if err := atomicfs.WriteTarZst(archive, bundle, entries, time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
 
 	r.Run("init",
 		"--product", "demo",
@@ -196,9 +202,8 @@ func TestAPlannedInstallFromAnArchiveAlsoWarns(t *testing.T) {
 		"--domain", "demo.example",
 		"--no-recovery-recipient",
 		"--install-units=false",
-		"--dry-run",
-	).ExitCode(0).
-		StderrContains("`runtime` is deprecated", domain.FieldRemovalRelease)
+	).ExitCode(11).
+		StderrContains("is no longer read")
 }
 
 // `--repair` restores an installation that is already there, and both summaries
