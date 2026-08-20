@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-08-20
+## [0.3.0] - 2026-08-21
 
 The manifest gains a runtime dimension. `runtimes:` names the substrate a bundle
 is written for and carries that runtime's files, profiles and options — Compose
