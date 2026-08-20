@@ -3038,3 +3038,23 @@ distances**: the exclusion reached the enumerations (D-060), missed the digest
 tree has to be applied at every walk of that tree, and walks do not look alike**:
 one enumerates, one hashes, one copies, one audits. Grepping for any of their
 names finds none of the others.
+
+## D-069 — The refusal branches of a new reader, and one that cannot fire
+
+- **Touches:** D-062; codecov reported the patch at 75.7%, with
+  `ReadFirstArchiveEntry` at 46.9%
+- **Class:** `spec-gap`, closed. Codecov is informational on this repository —
+  the gate is `COVERAGE_FLOOR` and it was green at 86.6% — so nothing was
+  failing. Covered anyway, because the uncovered lines were **all refusals**:
+  the branches that only run when the input is malformed, which is the code a
+  passing bundle never reaches and a truncated download always does.
+- **Found while writing them:** the branch that reports *"not a valid zstd
+  archive"* **cannot fire for a file that is not one**. `zstd.NewReader` is lazy;
+  it accepts the file, and the magic-number mismatch surfaces at the first read
+  as `cannot read <path>` with the truncation hint. The test asserts the refusal
+  a vendor actually meets rather than the one the code appears to offer.
+- **The same shape exists in `ExtractTarZst`**, which this reader was modelled
+  on, and is pre-existing there. Not changed: the branch is defensive, costs
+  nothing, and removing it is a behaviour question rather than a cleanup. Named
+  so the next reader does not take its message as evidence of what happens.
+- `ReadFirstArchiveEntry` is at **84.6%**; the remainder is that branch.
