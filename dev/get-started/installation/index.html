@@ -2182,7 +2182,7 @@
 <p>morzer is a single static binary with no runtime dependency on the machine's
 libc. Getting it is a download and a checksum.</p>
 <h2 id="the-script">The script<a class="headerlink" href="#the-script" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.2.0
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.3.0
 </code></pre></div>
 <p>It resolves the archive for this machine's architecture, checks the checksum
 against the release's own <code>SHA256SUMS</code>, checks the signature when <code>minisign</code> is
@@ -2207,11 +2207,11 @@ curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.githu
 
 <span class="c1"># A production runbook: pin the version, and refuse to install unsigned.</span>
 curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.2.0<span class="w"> </span>--require-signature
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.3.0<span class="w"> </span>--require-signature
 
 <span class="c1"># Somewhere else, without touching a startup file.</span>
 curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.2.0<span class="w"> </span>--dir<span class="w"> </span>/opt/morzer/bin<span class="w"> </span>--no-modify-path
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.3.0<span class="w"> </span>--dir<span class="w"> </span>/opt/morzer/bin<span class="w"> </span>--no-modify-path
 </code></pre></div>
 <p><code>sh -s --</code> is how arguments reach a script that arrived on stdin. <code>MORZER_VERSION</code>
 and <code>MORZER_INSTALL_DIR</code> do the same job for a runbook that would rather set
@@ -2273,7 +2273,7 @@ it:</p>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh
 less<span class="w"> </span>install.sh
 sh<span class="w"> </span>install.sh<span class="w"> </span>--print-only
-sh<span class="w"> </span>install.sh<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.2.0
+sh<span class="w"> </span>install.sh<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.3.0
 </code></pre></div>
 <p>The same file is at
 <a href="https://raw.githubusercontent.com/morzecrew/morzer/main/install.sh"><code>raw.githubusercontent.com</code></a>
@@ -2285,7 +2285,7 @@ check.</p>
 <p>The script is doing this. It stays documented because an operator who wants to
 check its work needs to be able to, and because a machine that cannot reach the
 site can still install from a release it already has.</p>
-<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.2.0<span class="w">                            </span><span class="c1"># the release you mean, not "whatever is newest"</span>
+<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.3.0<span class="w">                            </span><span class="c1"># the release you mean, not "whatever is newest"</span>
 <span class="nv">ARCHIVE</span><span class="o">=</span>morzer_<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>_linux_amd64.tar.zst
 <span class="nv">BASE</span><span class="o">=</span>https://github.com/morzecrew/morzer/releases/download/v<span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span>
 

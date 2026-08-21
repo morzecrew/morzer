@@ -2305,9 +2305,10 @@ rm<span class="w"> </span>-rf<span class="w"> </span>./demo<span class="w"> </sp
 </code></pre></div>
 <p>This is the one place these pages reach for <code>docker</code> directly, and it works here
 only because the example's Compose project name happens to equal its product
-name. In general it does not — <code>manifest.runtime.project</code> is the vendor's to set
-— which is why everything <em>read-only</em> about a running deployment has a command
-of its own rather than an instruction to reconstruct the project by hand.</p>
+name. In general it does not — <code>runtimes.compose.options.project</code> is the
+vendor's to set — which is why everything <em>read-only</em> about a running deployment
+has a command of its own rather than an instruction to reconstruct the project
+by hand.</p>
 <p>That is all of it. The whole installation was under one directory, which is what
 <code>--root</code> is for.</p>
 <p>For a real machine, without <code>--root</code>, there is no teardown command on purpose:

@@ -2348,12 +2348,13 @@ which encrypts them at rest and renders them to tmpfs as files.</p>
 <h2 id="profiles">Profiles<a class="headerlink" href="#profiles" title="Permanent link">&para;</a></h2>
 <p>The database is a profile rather than a fixed service, because whether it runs
 here is the operator's decision:</p>
-<div class="highlight"><pre><span></span><code><span class="nt">runtime</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">files</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
-<span class="w">  </span><span class="nt">profiles</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
-<span class="w">    </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
+<div class="highlight"><pre><span></span><code><span class="nt">runtimes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">compose</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compose/compose.yaml</span>
+<span class="w">    </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>The backend keeps <code>db_password</code> under both. Someone else's database still
 requires authenticating to it; only the server moves.</p>
