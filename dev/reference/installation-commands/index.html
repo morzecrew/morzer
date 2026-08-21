@@ -2625,13 +2625,19 @@ that should match, and reviewing what changed after somebody ran <code>config se
 <td>History, not a choice — a recreated installation has its own.</td>
 </tr>
 <tr>
-<td><code>providers</code></td>
-<td>Declared by the release manifest, not chosen by the operator.</td>
+<td><code>signing</code></td>
+<td>Machine identity. The public half is derived from the key file, and a rebuilt machine is honestly a different signer.</td>
+</tr>
+<tr>
+<td><code>attestation_salt</code></td>
+<td>Minted, not chosen — and publishing it in a file meant for a git repository would make the digest it salts brute-forceable again.</td>
 </tr>
 </tbody>
 </table>
-<p>The list is not maintained by hand: a field added to an installation and not
-accounted for one way or the other fails the build.</p>
+<p>Every field of an installation is either carried by the document or excluded
+with a reason, and that accounting is checked against the struct in both
+directions: a field added and left unclassified fails the build, and so does a
+reason naming a field that no longer exists.</p>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../secret-commands/#secret-recipients"><code>secret recipients</code></a> — who can decrypt</li>
