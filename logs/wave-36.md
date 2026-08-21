@@ -182,3 +182,34 @@ in logged`), so declaring D-11's paths would demand an entry citing D-11 — and
 the only honest one would say that nothing disagreed, which is not what an entry
 is for. That limitation was never the task file's doing, and removing it changes
 nothing about it.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-08-21T09:42:10Z
+attempt: 1
+claim: the published page listing what `installation describe` leaves out is a hand-written copy of the code's exclusion map, and it disagreed with it in three of five rows while claiming to be machine-maintained
+evidence: `git show HEAD:pages/docs/reference/installation-commands.md | sed -n '276,282p'` — lists schema_version, created_at, providers; the map holds SchemaVersion, CreatedAt, Signing, AttestationSalt
+action: decided
+proposal: ASSUMED — the page's exclusion table is checked against `installationFieldsNotDescribed` by `tools/docscheck`, the way the support-bundle inventory and the command index already are. Until it is, the table is hand-maintained and the page should not claim otherwise.
+```
+
+Only one of the three was this wave's doing. `providers` went stale when the
+field was removed; `signing` and `attestation_salt` were **never documented at
+all**, and `attestation_salt` is the one exclusion with a security reason — a
+page explaining what a committable file leaves out, which omits the field whose
+whole reason for being left out is that publishing it would make an attestation
+digest brute-forceable.
+
+The sentence under the table said *"The list is not maintained by hand: a field
+added to an installation and not accounted for one way or the other fails the
+build."* True of the map in the source. This table is a copy of it, and the copy
+is exactly what nothing checks — so the claim that made the table trustworthy
+was the reason nobody re-read it. Corrected to say what is actually guaranteed,
+which is now both directions in the code (see the entry above) and neither of
+them here.
+
+**Drift count: 0.** The stale row is a consequence of this wave's removal rather
+than a departure from a decision: nothing settled that the page carried this
+table, and `docs-check` has no rule that reads it.

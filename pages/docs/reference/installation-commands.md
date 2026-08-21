@@ -277,10 +277,13 @@ that should match, and reviewing what changed after somebody ran `config set`.
 | --- | --- |
 | `schema_version` | State bookkeeping. The document has its own `api_version`. |
 | `created_at` | History, not a choice — a recreated installation has its own. |
-| `providers` | Declared by the release manifest, not chosen by the operator. |
+| `signing` | Machine identity. The public half is derived from the key file, and a rebuilt machine is honestly a different signer. |
+| `attestation_salt` | Minted, not chosen — and publishing it in a file meant for a git repository would make the digest it salts brute-forceable again. |
 
-The list is not maintained by hand: a field added to an installation and not
-accounted for one way or the other fails the build.
+Every field of an installation is either carried by the document or excluded
+with a reason, and that accounting is checked against the struct in both
+directions: a field added and left unclassified fails the build, and so does a
+reason naming a field that no longer exists.
 
 ## Related
 
