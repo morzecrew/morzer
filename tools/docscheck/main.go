@@ -108,6 +108,7 @@ func main() {
 	checkCommands(&rep, pages)
 	checkCommandIndex(&rep, root, pages)
 	checkSupportInventory(&rep, root)
+	checkDescribeExclusions(&rep, root)
 	checkReleaseAssets(&rep, root, pages)
 
 	if rep.failed() {

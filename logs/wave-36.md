@@ -213,3 +213,42 @@ them here.
 **Drift count: 0.** The stale row is a consequence of this wave's removal rather
 than a departure from a decision: nothing settled that the page carried this
 table, and `docs-check` has no rule that reads it.
+
+```divergence
+decision: 0027 D-10
+grade: ASSUMED
+class: spec-gap
+at: 2026-08-21T09:43:46Z
+attempt: 1
+claim: the row's reason for deferring is wrong -- docscheck does not need a map-literal AST reader, because it already imports internal/domain and can call DescribedInstallationFields directly
+evidence: tools/docscheck/support.go:22
+action: departed
+proposal: supersede 0027 row 10 — the check is built. `checkDescribeExclusions` reads the exclusion set from `domain.DescribedInstallationFields`, maps it through `Installation`'s serialisation tags, and compares it with the table on the page in both directions.
+```
+
+Row 10 was accepted an hour before this entry and deferred on a blocker that
+does not exist. One `grep` would have settled it, and the row was written
+without one — which is the same failure as the table it was about, at one
+remove: a claim about a mechanism, asserted rather than checked, by somebody who
+had just finished writing about the cost of exactly that.
+
+Departed rather than halted, because the row is `ASSUMED` and this is the case
+that grade exists for: building it proved the assumption wrong, so the entry is
+the record and the work continues. The row is not edited; it stays as written
+and is superseded, which is how a reader can still see what was believed when it
+was accepted.
+
+**Verified as a detection branch, not by a green run.** Three sabotages against
+the real page, each producing its own message: dropping `attestation_salt` gives
+*"installation describe excludes ... and the page does not list it"*; inventing
+a `parameters` row gives *"the table is describing a struct that has moved on"*;
+renaming the heading gives *"has no table under ..."*. That third one is the one
+worth having — a parser that cannot find its table and says nothing is
+indistinguishable from one that found a correct table, and renaming a heading is
+an ordinary editorial act. Five tests carry all three cases plus the unreadable
+page, and their fixtures are built from the code so this file does not become a
+fourth hand-maintained copy of the same list.
+
+**Drift count: 0.** This entry is `spec-gap`, not `drift`: no document settled
+that the check was unbuildable, and the row deferring it was execution's own
+proposal rather than a design anyone had reviewed.
