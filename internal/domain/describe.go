@@ -109,7 +109,6 @@ type DescribedRelease struct {
 var installationFieldsNotDescribed = map[string]string{
 	"SchemaVersion": "state bookkeeping: the document carries api_version, which is its own contract",
 	"CreatedAt":     "history, not a choice -- a recreated installation has its own creation time",
-	"Providers":     "declared by the release manifest, not chosen by the operator",
 
 	// Machine identity, not desired state. Both are minted rather than
 	// chosen, and a document that carried them would be describing what

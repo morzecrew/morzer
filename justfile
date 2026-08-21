@@ -262,7 +262,7 @@ check: fmt-check vet runtime-check test
 # if it passes, CI passes.
 
 # Run exactly what CI runs. Needs golangci-lint and sops.
-ci: fmt-check vet darwin-check lint shellcheck runtime-check docs-check contract-strict test-race coverage-gate
+ci: fmt-check vet darwin-check lint shellcheck runtime-check docs-check log-check contract-strict test-race coverage-gate
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.
@@ -406,6 +406,63 @@ build-docs:
 # Check the docs against the code: links, nav, contracts, commands.
 docs-check:
     go run ./tools/docscheck
+
+# Every divergence log is checked, unless it says it predates the format.
+#
+# Default-gated on purpose. The first version of this keyed off the presence of
+# `tasks/<id>.json`, which made checking opt-in: a log nobody remembered to
+# declare was silently ungated, and the failure failed open. It also declared
+# nothing the checker uses -- a task file without `paths` buys exactly what
+# having no task file buys -- so it was ceremony standing in for a gate.
+#
+# The exclusion now lives in the file it applies to. Waves 25-35 and the 0.3.0
+# release carry entries in the prose they were written in, and their
+# `Drift count: still 0` lines are not this format's; the checker would fail on
+# records nobody is allowed to edit. Each one says so at its head, and that
+# sentence is what this skips on.
+#
+# `tasks/<id>.json` is still passed when one exists. It is the skill's optional
+# half: it declares the paths a LOCKED decision governs, so a diff touching one
+# with no entry citing that decision is the silence worth catching. Worth
+# writing when a wave has a lock worth watching, and not before.
+
+# Check every divergence log that does not declare itself pre-format.
+log-check base="origin/main":
+    #!/usr/bin/env sh
+    set -eu
+    checker=.agents/skills/flag-dont-flip/scripts/log_check.py
+    # Anchored, and only in the header. Matching the sentence anywhere in the
+    # file let a current-format log opt itself out by *quoting* it -- in a
+    # claim, in evidence, in prose about the migration -- and a log that skips
+    # itself is checked by nothing at all. Found in review; reproduced by a log
+    # whose `claim` quoted the sentence, which the unanchored form skipped while
+    # reporting OK.
+    marker='^> \*\*Migrated from `rfcs/EXECUTION-LOG.md`, verbatim\.\*\*'
+    [ -d logs ] || { echo "log-check: no logs/ yet, nothing to check"; exit 0; }
+    status=0
+    checked=0
+    skipped=0
+    for log in logs/*.md; do
+        [ -e "$log" ] || continue
+        if head -n 12 "$log" | grep -qE "$marker"; then
+            skipped=$((skipped + 1))
+            continue
+        fi
+        id=$(basename "$log" .md)
+        set -- --log "$log" --root .
+        if [ -f "tasks/${id}.json" ]; then
+            set -- "$@" --task "tasks/${id}.json" --base "{{base}}"
+        elif [ -f "tasks/${id}.yaml" ]; then
+            set -- "$@" --task "tasks/${id}.yaml" --base "{{base}}"
+        fi
+        python3 "$checker" "$@" || status=1
+        checked=$((checked + 1))
+    done
+    # Say what was not checked. "OK" over a directory where most of the files
+    # were skipped reads as coverage it does not have, and the skipped ones are
+    # exactly the records that cannot be fixed if they are ever wrong.
+    echo "log-check: ${checked} log(s) checked, ${skipped} skipped as pre-format"
+    exit $status
 
 # depguard enforces the layering as *imports*, which is a real guarantee and a
 # different one: a ports file whose exported API is the Compose interpolation

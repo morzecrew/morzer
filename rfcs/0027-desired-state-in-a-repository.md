@@ -179,6 +179,9 @@ to extend 0016's gate to cover it — not to build a parallel one here.
 | 6 | The file participates in 0020's precedence chain rather than introducing a fourth selector | LOCKED | `--config` > `--product` > `MORZER_PRODUCT` > discovery. |
 | 7 | `installation describe` and any future `apply -f` share one schema with one producer, pinned by a round-trip test | LOCKED | 0017 established this: without a byte-for-byte equivalence test, *"one producer" decays quietly back into two.* Written as `export --declarative` before decision 8 renamed the command; the name was the only thing that changed, and leaving the old one here would have made this RFC describe two command contracts for one document. |
 | 8 | Where the command lives | LOCKED | Resolved 2026-08-12 as `installation describe`, a verb of its own. `export` produces an artifact whose purpose is to be unreadable without a recovery key; this produces one whose purpose is to be read and committed. Two artifacts differing in exactly the property an operator cares about, behind one verb and a flag, is how somebody publishes the wrong one. |
+| 9 | The field accounting behind §12.1 is checked in **both** directions | ASSUMED | §12.1 says the accounting is "read off the structs by reflection rather than from a list, so a field added later and forgotten fails the build". Half of that was true. Measured 2026-08-21: `accountFields` ranges over the installation's fields and looks each one up in the reasons map, and nothing ranged over the map -- so a field *added* and forgotten failed the build, while a reason naming a field that no longer exists sat there indefinitely, documenting a decision about a struct that had moved on. It survived because every earlier change to `Installation` moved in the direction already covered; removing `Providers` was the first to go the other way. The sibling table in `sandbox_test.go` has asserted both directions all along, which is what made the asymmetry visible once one of them was asked a question the other had already answered. `TestNoExclusionNamesAFieldThatIsGone` closes it, driven red first. **This row is where the document stops over-claiming:** §12.1's prose still states the one-directional guarantee and is deliberately not edited to match what was built. Added by execution 2026-08-21 -- see logs/wave-36.md (unlisted, 2026-08-21T08:31:41Z). |
+| 10 | The published table of what `installation describe` leaves out is checked against `installationFieldsNotDescribed` -- **accepted, not yet built** | ASSUMED | The reference page carries a hand-written copy of that map under "What it leaves out, and why", and closed with *"The list is not maintained by hand"*. Measured 2026-08-21: the copy disagreed with the map in **three of five rows**. `providers` went stale when row 24 removed the field; `signing` and `attestation_salt` had never been documented at all, and `attestation_salt` is the one exclusion with a security reason -- a page explaining what a committable file leaves out, silently omitting the field whose reason for exclusion is that publishing it makes an attestation digest brute-forceable. The claim that made the table trustworthy is why nobody re-read it. The table is corrected and the claim now states what is actually guaranteed; the rule that would keep it that way is not built. `tools/docscheck` already generates the support-bundle inventory page and the command index from source, but has no map-literal AST reader, which this needs. Recorded here rather than in RFC 0006, which owns `docs-check`: the subject is this RFC's document, and 0006's decision table carries no grade column to put a graded row in. Until it is built the table is hand-maintained, and the page says so. Added by execution 2026-08-21 -- see logs/wave-36.md (unlisted, 2026-08-21T09:42:10Z). |
+| 11 | **Supersedes row 10.** The published exclusion table is checked against `installationFieldsNotDescribed` on every `docs-check` run | ASSUMED | Row 10 deferred this and gave a reason that was wrong: `tools/docscheck` needs no map-literal AST reader, because it already imports `internal/domain` (`tools/docscheck/support.go:22`) and can call `DescribedInstallationFields` directly. `checkDescribeExclusions` reads the exclusion set from there, maps it through `Installation`'s serialisation tags to the names the file uses, and compares it with the table in both directions -- a field excluded and undocumented, and a documented field nothing excludes, are separate messages. A renamed heading is a third: a parser that cannot find its table and reports nothing is indistinguishable from one that found a correct table, and renaming a heading is an ordinary editorial act. Verified as a detection branch rather than by a green run -- three sabotages against the real page, each producing its own message, and five tests whose fixtures are built from the code so they do not become a fourth hand-maintained copy of the list. Row 10 stays in this table, unedited, so a reader can see what was believed when it was accepted. Added by execution 2026-08-21 -- see logs/wave-36.md (0027 D-10, 2026-08-21T09:43:46Z). |
 
 ## 6. The gate on P2
 
@@ -275,4 +278,46 @@ Taken 2026-08-12.
 
 ## 13. Amendments
 
-*(Empty.)*
+### 2026-08-21 — wave 36
+
+`logs/wave-36.md` proposed five rows. Four were accepted: rows 9 and 10 above,
+and rows 24 and 25 in [RFC 0023](0023-runtimes-beyond-compose.md), each citing
+the entry that produced it.
+
+**One was refused**, and the refusal is recorded here because an accepted row
+records itself and a refused one otherwise leaves its proposal looking
+permanently unanswered.
+
+The entry timestamped `2026-08-21T08:31:19Z` proposed a row noting that §12.1's
+measurement — eleven `Installation` fields carried, three excluded — stays true
+as of the date it was taken, and naming the current excluded set. Refused: it
+settles no question, and this table is append-only, so a row that decides
+nothing is permanent.
+
+The measurement is also a poor thing to keep patching, which is the better
+argument against the row. It is dated **2026-08-12** and was accurate that day.
+`signing` and `attestation_salt` joined the excluded set on **2026-08-13**, with
+RFC 0028's signing identity — so §12.1 had been describing a set of three that
+was really a set of five for nine days before wave 36 removed anything. Wave 36
+is the third change to that set, not the first, and a row per change would be a
+changelog growing inside a decision table.
+
+§12.1 therefore stands unedited, as what it says it is: a measurement with a
+date on it. What a reader actually needs — the current excluded set — is
+published in the reference documentation and held there by row 9's check.
+
+### 2026-08-21 — row 10, superseded the same day
+
+Row 10 was accepted deferred, on the stated ground that `docs-check` would need
+a Go map-literal AST reader it does not have. That was wrong, and one `grep`
+would have settled it: `tools/docscheck` already imports `internal/domain`.
+
+Row 11 supersedes it and the check is built. Row 10 stays in the table because
+the table is append-only and because what it recorded — that this was accepted
+and not yet built — was true when it was written, which is the state a reader
+needs to be able to see.
+
+Worth naming rather than quietly correcting: the row asserted a fact about a
+mechanism without checking it, in a row whose whole subject was a published
+table that had done the same thing. The proposal came from execution, not from
+review, which is the argument for the rails that keep the two apart.

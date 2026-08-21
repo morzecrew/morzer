@@ -350,8 +350,6 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 		"Profile": "carried unless --profile is given",
 		"Domains": "carried unless --domain is given",
 
-		"Providers": "from the flags: which adapters to use is what `init` decides",
-
 		"Runtime": "carried from the existing state, always. Rebuilding it from " +
 			"the release would let a vendor who changed runtimes between " +
 			"releases re-point an installation whose volumes and image " +

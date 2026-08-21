@@ -172,8 +172,9 @@ type view struct {
 	Parameters domain.Parameters
 }
 
-// installationView exposes the installation without its Providers block,
-// which is manager wiring rather than product configuration.
+// installationView exposes what a template may read of the installation, which
+// is deliberately less than the installation holds: identity and addressing,
+// not policy, parameters or machine identity.
 type installationView struct {
 	ID      string
 	Product string
