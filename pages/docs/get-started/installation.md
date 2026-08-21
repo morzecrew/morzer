@@ -12,7 +12,7 @@ libc. Getting it is a download and a checksum.
 ## The script
 
 ```sh
-curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 0.2.0
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 0.3.0
 ```
 
 It resolves the archive for this machine's architecture, checks the checksum
@@ -42,11 +42,11 @@ curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --print-only
 
 # A production runbook: pin the version, and refuse to install unsigned.
 curl -fsSL https://morzecrew.github.io/morzer/install.sh \
-  | sh -s -- --version 0.2.0 --require-signature
+  | sh -s -- --version 0.3.0 --require-signature
 
 # Somewhere else, without touching a startup file.
 curl -fsSL https://morzecrew.github.io/morzer/install.sh \
-  | sh -s -- --version 0.2.0 --dir /opt/morzer/bin --no-modify-path
+  | sh -s -- --version 0.3.0 --dir /opt/morzer/bin --no-modify-path
 ```
 
 `sh -s --` is how arguments reach a script that arrived on stdin. `MORZER_VERSION`
@@ -80,7 +80,7 @@ it:
 curl -fsSLO https://morzecrew.github.io/morzer/install.sh
 less install.sh
 sh install.sh --print-only
-sh install.sh --version 0.2.0
+sh install.sh --version 0.3.0
 ```
 
 The same file is at
@@ -97,7 +97,7 @@ check its work needs to be able to, and because a machine that cannot reach the
 site can still install from a release it already has.
 
 ```sh
-VERSION=0.2.0                            # the release you mean, not "whatever is newest"
+VERSION=0.3.0                            # the release you mean, not "whatever is newest"
 ARCHIVE=morzer_${VERSION}_linux_amd64.tar.zst
 BASE=https://github.com/morzecrew/morzer/releases/download/v${VERSION}
 

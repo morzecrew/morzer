@@ -166,12 +166,13 @@ The database is a profile rather than a fixed service, because whether it runs
 here is the operator's decision:
 
 ```yaml
-runtime:
-  files:
-    - compose/compose.yaml
-  profiles:
-    embedded: [compose/compose.embedded.yaml]
-    external-db: [compose/compose.external-db.yaml]
+runtimes:
+  compose:
+    files:
+      - compose/compose.yaml
+    profiles:
+      embedded: [compose/compose.embedded.yaml]
+      external-db: [compose/compose.external-db.yaml]
 ```
 
 The backend keeps `db_password` under both. Someone else's database still

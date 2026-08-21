@@ -7,7 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-21
+
+The manifest gains a runtime dimension. `runtimes:` names the substrate a bundle
+is written for and carries that runtime's files, profiles and options — Compose
+is still the only runtime this manager drives, so what changed is that a bundle
+now says so rather than the manager assuming it. An installation is fixed to its
+runtime when it is created and never transitions.
+
+**A bundle written for 0.2.0 does not install on this release.** The `runtime:`
+block stopped being read: move its files under `runtimes.compose.files`, any
+`runtime.project` under `runtimes.compose.options.project`, and raise
+`compatibility.min_manager_version` to `0.3.0`. The refusal names all three, so
+a bundle meeting this manager is told what to write instead of failing as an
+unrecognised field. This is a withdrawn compatibility promise rather than a
+moved date — `runtimes:` ships here for the first time, so 0.2.0 and earlier
+read only the old spelling and this release reads only the new one. No version
+ever read both, which is why the grace period first announced for 0.4.0 was a
+window no release could have opened.
+
+Upgrading is automatic — the installation schema moves 8 → 10 on the first read
+and converts nothing. Going back is not, and here the refusal earns its keep: an
+older manager meeting a state file that names a runtime it has never heard of
+has exactly one adapter and would drive the installation with it, operating the
+wrong substrate while reporting success.
+
 ### Added
+
+- **A release declares which runtimes it supports, under `runtimes:`.** Each key names a runtime and carries that runtime's own files and profiles, so a bundle states the substrate it is written for instead of leaving the manager to assume the only one that has ever existed. An installation records the runtime it was created against and never transitions to another, which is what lets a later manager tell a machine that chose Compose from one that predates the question being askable. A release declaring more than one runtime is refused at `init` rather than chosen between, because choosing needs a second adapter to choose with and that arrives alongside it.
 
 - **A release can set per-runtime options with `runtimes.<name>.options`.** The compose runtime reads `project` there — the namespace its volumes, networks and containers live in — and defaults to the product name. The manager carries these without interpreting them, and the runtime refuses a key it does not understand.
 
@@ -21,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A planned operation's steps report `planned` rather than `pending` in `--json`.** A dry run's steps were never going to run, and `pending` means not yet, so the record was the one part of the output still claiming work was owed. The operation status is unchanged at `succeeded`: planning is what succeeded.
 
-- **`morzer release new` scaffolds a bundle using `runtimes:` rather than the deprecated `runtime:` block**, and declares the manager version that spelling needs. A bundle scaffolded now therefore requires 0.3.0 or newer, which is stated by the manifest rather than discovered as a decoding error.
+- **`morzer release new` scaffolds a bundle using `runtimes:` rather than the `runtime:` block this release stops reading**, and declares the manager version that spelling needs. A bundle scaffolded now therefore requires 0.3.0 or newer, which is stated by the manifest rather than discovered as a decoding error.
 
 - **A release that changes a runtime option an installation was created with is refused.** Under Compose the project prefixes every volume, so such a release would bring the product up against storage nothing has written to and leave the real data unreferenced. The way through is a backup, a fresh `init` and a `restore`.
 
@@ -33,8 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The `runtime:` manifest block is no longer read.** A bundle carrying it is refused, naming what to write instead: files under `runtimes.compose.files`, `project` under `runtimes.compose.options.project`, and `min_manager_version` raised to `0.3.0`.
 
-- **No release ever read both spellings**, which is why this is a break rather than the deprecation first announced for 0.4.0. `runtimes:` ships here for the first time, so 0.2.0 and earlier read only the old block and this release reads only the new one.
-
 ### Fixed
 
 - **A release bundle no longer carries the vendor's version-control directory.** `release build` summed and `release archive` packed whatever sat in the bundle directory, so a bundle built inside a git repository shipped `.git` — history and `.git/config` included — under the signature. Bundles already published are unaffected and still verify.
@@ -44,6 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The init wizard offers the profiles of a bundle written with `runtimes:`.** It read the deprecated block directly, so from the moment the new spelling existed it offered nothing — indistinguishable from a release that declares no profiles.
 
 - **A release that spells out a runtime option already in force is no longer refused.** An installation with no `project` runs under its product name, so a release naming that same value changes nothing, and dropping such a line is equally harmless. A value that really changes the namespace is refused as before.
+
+- **`morzer init --dry-run` names the product it would create.** The summary read the installation out of engine state, which a plan never populates, so it closed with `installation  created for` — two empty slots and a creation claimed in the past tense, directly beneath the line saying nothing had changed. Under `--json`, `data.product` was empty for the same reason. `--repair` says *repaired* rather than *created* on both paths too: a repair on the wrong machine and a first install differ in exactly what that line reports.
 
 ## [0.2.0] - 2026-08-15
 
@@ -231,7 +258,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/morzecrew/morzer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/morzecrew/morzer/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/morzecrew/morzer/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/morzecrew/morzer/releases/tag/v0.1.0

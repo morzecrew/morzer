@@ -148,9 +148,10 @@ rm -rf ./demo ~/demo-recovery.key
 
 This is the one place these pages reach for `docker` directly, and it works here
 only because the example's Compose project name happens to equal its product
-name. In general it does not — `manifest.runtime.project` is the vendor's to set
-— which is why everything *read-only* about a running deployment has a command
-of its own rather than an instruction to reconstruct the project by hand.
+name. In general it does not — `runtimes.compose.options.project` is the
+vendor's to set — which is why everything *read-only* about a running deployment
+has a command of its own rather than an instruction to reconstruct the project
+by hand.
 
 That is all of it. The whole installation was under one directory, which is what
 `--root` is for.
