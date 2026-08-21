@@ -223,7 +223,6 @@ func validManifestWithParameters(params map[string]domain.ParameterSpec) *domain
 		APIVersion: domain.APIVersionV1Alpha1,
 		Kind:       domain.KindApplicationRelease,
 		Metadata:   domain.Metadata{Name: "demo", Version: domain.MustParseVersion("1.0.0")},
-		Providers:  domain.Providers{Runtime: domain.Provider{Name: "compose"}},
 		Runtimes: domain.Runtimes{"compose": {
 			Files:   []string{"compose/compose.yaml"},
 			Options: map[string]string{"project": "demo"},

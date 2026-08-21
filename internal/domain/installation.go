@@ -297,14 +297,16 @@ type Installation struct {
 	// value means "predates the field", and filling it in would erase the
 	// distinction on the first `config set`.
 	//
-	// It is *not* stored in Providers.Runtime, which would be the obvious
-	// home. That field is declared, serialised, and has never been written
-	// or read by anything -- describe.go calls it "declared by the release
-	// manifest", a test calls it "from the flags", and it comes from
-	// neither. Recording the runtime there would give a field with two
-	// contradictory documented meanings a third, real one, and an older
-	// manager reading it would find a name it understands and no reason to
-	// stop.
+	// A field of its own rather than `Providers.Runtime`, which was the
+	// obvious home and is why that field is now gone. It was declared,
+	// serialised, and never written or read by anything, and it was
+	// documented four incompatible ways -- "declared by the release
+	// manifest", "from the flags", "which adapters to use", and excluded
+	// from the describe document as the release's to declare. Recording the
+	// runtime there would have given it a fifth meaning that was also the
+	// only real one, and an older manager reading it would have found a
+	// name it understood and no reason to stop. RFC 0023 decision 11
+	// settled that; wave 36 removed the field the decision was avoiding.
 	Runtime string `yaml:"runtime" json:"runtime,omitempty"`
 
 	// RuntimeOptions is what the runtime was told when this installation was
@@ -332,8 +334,7 @@ type Installation struct {
 	// is canonical and becomes the public URL in `status`.
 	Domains []string `yaml:"domains" json:"domains,omitempty"`
 
-	Providers Providers `yaml:"providers" json:"providers"`
-	Policy    Policy    `yaml:"policy" json:"policy"`
+	Policy Policy `yaml:"policy" json:"policy"`
 
 	// Parameters are the operator's choices among what the release
 	// declares, stored as written and validated against the declaration on

@@ -30,3 +30,31 @@ func TestAFieldNobodyAccountedForIsReported(t *testing.T) {
 		t.Errorf("the unaccounted field was not reported: %v", unaccounted)
 	}
 }
+
+// TestNoExclusionNamesAFieldThatIsGone.
+//
+// The other direction, and it was missing. accountFields ranges over the
+// installation's fields and looks each one up in the reasons map; nothing
+// ranged over the map. So a field *added* and forgotten failed the build, and a
+// reason left behind for a field that no longer exists sat there indefinitely,
+// documenting a decision about a document that had moved on.
+//
+// Found by removing `Providers` in wave 36 rather than by adding anything:
+// every earlier change to Installation moved in the direction the check already
+// covered. Its sibling table in sandbox_test.go has asserted both directions
+// all along, which is what made the asymmetry visible once one of them was
+// asked a question the other had already answered.
+func TestNoExclusionNamesAFieldThatIsGone(t *testing.T) {
+	real := map[string]bool{}
+	for _, name := range fieldNames(reflect.TypeFor[Installation]()) {
+		real[name] = true
+	}
+
+	for field := range installationFieldsNotDescribed {
+		if !real[field] {
+			t.Errorf("installationFieldsNotDescribed excludes %q, which is not an "+
+				"Installation field; the exclusion is describing a struct that "+
+				"has moved on", field)
+		}
+	}
+}

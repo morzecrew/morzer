@@ -73,12 +73,6 @@ func sandboxClassification() map[string]sandboxVerdict {
 			"lost them renders nothing, and it cannot serve them anyway " +
 			"without DNS pointing at it"),
 
-		"Providers":         keep("which adapters to use; names, not endpoints"),
-		"Providers.Runtime": keep("an adapter name"),
-		"Providers.Secrets": keep("an adapter name"),
-		"Providers.Backup":  keep("an adapter name"),
-		"Providers.Health":  keep("an adapter name"),
-
 		"Policy":                        keep("how this machine behaves, all of it local"),
 		"Policy.RequireSignature":       keep("whether to refuse unsigned bundles; local"),
 		"Policy.SigningKeys":            keep("whose releases this machine will install -- public keys, and a sandbox testing an update needs the same set"),
