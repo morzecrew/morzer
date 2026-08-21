@@ -87,3 +87,16 @@ jobs:
             ${{ env.MINISIGN_KEY_FILE == '' && '--skip=sign' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # After the release exists and before a human publishes it. The notes
+      # step above guards its own output; this guards the handoff, which is
+      # where v0.3.0 lost them -- built correctly, printed into this log, and
+      # dropped by a config flag that made the flag unreadable. Every job
+      # reported success.
+      #
+      # The release is a draft at this point, so a mismatch costs a re-run
+      # instead of a published release nobody can quietly correct.
+      - name: Refuse a release that is not carrying the notes we built
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/scripts/verify-release-notes.sh
