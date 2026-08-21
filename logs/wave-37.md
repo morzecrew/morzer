@@ -168,3 +168,32 @@ correction rather than an edit to it. The discrepancy is not explained here
 because explaining it would need the intermediate measurement, which was not
 recorded — which is itself the reason a counted claim should carry the command
 that produced it, as the entries above do.
+
+## Correction — 2026-08-21, the count beneath the first entry
+
+**The paragraph under the first entry says "Five `chore: update agent skills`
+commits already exist in this repository's history". Five is wrong.** It is left
+standing rather than edited, for the same reason wave 36's correction left its
+own paragraph standing: a record quietly adjusted to match what is true now is
+worth less than one that shows what was believed when it was written.
+
+Measured: **9** commits in this repository sync vendored skills, **8** of them
+touched `.agents/skills/rfc-writer/`, and **4** touched `rfc_index.py` itself.
+
+Where five came from is the part worth keeping. It was read off
+`git log --oneline -5 -- .agents/skills/rfc-writer/`, run to see *whether* the
+file had ever been re-synced. It had, which was the question, and the `-5` was a
+display limit that answered a different question than the one the number was
+later used for — the second use needed a count, and the flag capping it was no
+longer visible in the answer.
+
+The claim the number was supporting survives the correction and is stronger for
+it: the expiry date on a vendored edit is not hypothetical, and `rfc_index.py`
+specifically has been overwritten four times.
+
+**Rule distilled:** a number lifted out of a command run for a yes-or-no
+question carries that command's limits with it. Re-run it without the cap before
+it becomes a count.
+
+**Drift count: still 1.** This correction is against this wave's own prose, not
+against a document any RFC settled, and it changes no entry's class.
