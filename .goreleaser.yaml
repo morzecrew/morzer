@@ -89,19 +89,34 @@ changelog:
   # The release body comes from CHANGELOG.md, built by
   # `.github/scripts/release-notes.sh` and passed as `--release-notes`.
   #
-  # Disabled rather than configured, because a commit log is the wrong source
-  # for this. It was `use: github` with group patterns and exclude filters, and
-  # the two releases it produced are why it is not any more: v0.1.0 had no
-  # previous tag to diff against and listed every commit in the repository,
-  # `fix(backup): improve volume reporting` and agent-skill commits included;
-  # v0.1.1 listed a single subject and a SHA. No filter fixes that -- a commit
-  # subject is addressed to whoever reads `git log`, and release notes are
-  # addressed to whoever is deciding whether to upgrade.
+  # **There is deliberately no `disable: true` here, and that is not an
+  # oversight.** It was here, and it is what published v0.3.0 with an empty
+  # body. `disable` skips the whole changelog pipe -- and that pipe is the only
+  # thing that reads `--release-notes`. GoReleaser v2.17.1,
+  # `internal/pipe/changelog/changelog.go`: `Skip()` returns
+  # `Changelog.Disable`, `Run()` is the sole caller of `loadContent(...
+  # ReleaseNotesFile ...)` and the sole assignment to `ctx.ReleaseNotes`. Skip
+  # the pipe and the file is never opened, so the body is empty and nothing
+  # errors -- the notes had already been built, printed into the job log, and
+  # handed to a flag nobody would read.
+  #
+  # Leaving it unset does **not** bring back the commit-log body. Run() loads
+  # the file, assigns it, and returns before reaching the commit walk: a
+  # `--release-notes` run generates nothing from git. That early return is the
+  # guarantee `disable` was reached for, and it was already there.
+  #
+  # A commit log is still the wrong source, which is why the flag exists at
+  # all. `use: github` with group patterns and exclude filters produced the two
+  # releases that argue against it: v0.1.0 had no previous tag to diff against
+  # and listed every commit in the repository, `fix(backup): improve volume
+  # reporting` and agent-skill commits included; v0.1.1 listed a single subject
+  # and a SHA. No filter fixes that -- a commit subject is addressed to whoever
+  # reads `git log`, and release notes are addressed to whoever is deciding
+  # whether to upgrade.
   #
   # `--release-notes` also replaces the body outright, so `release.header` and
   # `release.footer` never run once it is passed. The footer moved into the
   # script for that reason; leaving it here would be config that reads as live.
-  disable: true
 
 release:
   draft: true
