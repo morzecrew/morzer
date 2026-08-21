@@ -98,8 +98,17 @@ func exclusionTable(body string) (map[string]bool, bool) {
 
 	names := map[string]bool{}
 	seenRow := false
-	for _, line := range strings.Split(body[at:], "\n") {
+	for i, line := range strings.Split(body[at:], "\n") {
 		line = strings.TrimSpace(line)
+		// Stop at the next heading. Without this the scan runs past the end
+		// of the section, so a table moved *out* of it and into a later one
+		// was still accepted -- the anchor would be present, the table would
+		// be found somewhere else, and the check would report agreement
+		// between the code and a table that is no longer under the heading it
+		// is supposed to document. Found in review.
+		if i > 0 && strings.HasPrefix(line, "#") {
+			break
+		}
 		if !strings.HasPrefix(line, "|") {
 			if seenRow {
 				break // prose after the table ends it

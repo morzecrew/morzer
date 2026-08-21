@@ -431,14 +431,20 @@ log-check base="origin/main":
     #!/usr/bin/env sh
     set -eu
     checker=.agents/skills/flag-dont-flip/scripts/log_check.py
-    marker='Migrated from `rfcs/EXECUTION-LOG.md`, verbatim.'
+    # Anchored, and only in the header. Matching the sentence anywhere in the
+    # file let a current-format log opt itself out by *quoting* it -- in a
+    # claim, in evidence, in prose about the migration -- and a log that skips
+    # itself is checked by nothing at all. Found in review; reproduced by a log
+    # whose `claim` quoted the sentence, which the unanchored form skipped while
+    # reporting OK.
+    marker='^> \*\*Migrated from `rfcs/EXECUTION-LOG.md`, verbatim\.\*\*'
     [ -d logs ] || { echo "log-check: no logs/ yet, nothing to check"; exit 0; }
     status=0
     checked=0
     skipped=0
     for log in logs/*.md; do
         [ -e "$log" ] || continue
-        if grep -qF "$marker" "$log"; then
+        if head -n 12 "$log" | grep -qE "$marker"; then
             skipped=$((skipped + 1))
             continue
         fi

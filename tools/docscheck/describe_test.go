@@ -103,3 +103,36 @@ func TestAnUnreadablePageIsReported(t *testing.T) {
 		t.Fatalf("a missing page was not reported: %v", got)
 	}
 }
+
+// A table that has been moved out of its section is not this section's table.
+//
+// The heading survives an edit that relocates the content under it, which is
+// what makes this the quiet failure: the anchor is found, a valid table is
+// found somewhere below, and the check reports agreement about a table that no
+// longer documents what the heading says it does.
+func TestATableMovedIntoALaterSectionIsNotAccepted(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, docsDir, "reference"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "# page\n\n" + describeExclusionsAnchor + "\n\nThe table used to be here.\n\n" +
+		"#### Somewhere else entirely\n\n" +
+		"| Not in the document | Why |\n| --- | --- |\n" + theRealTable(t) + "\n"
+	path := filepath.Join(root, docsDir, filepath.FromSlash(describePage))
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var rep report
+	checkDescribeExclusions(&rep, root)
+	got := rep.problems["describe exclusions"]
+
+	if len(got) != len(excludedSerialisedNames()) {
+		t.Fatalf("a relocated table was accepted: %v", got)
+	}
+	for _, problem := range got {
+		if !strings.Contains(problem, "does not list it") {
+			t.Errorf("unexpected problem: %s", problem)
+		}
+	}
+}
