@@ -93,16 +93,25 @@ only account of why the code is shaped the way it is.
 
 ## Where execution disagreed
 
-[EXECUTION-LOG.md](EXECUTION-LOG.md) records the places building something
-disagreed with the design for it, grouped by the wave that found them and
-classified by whether the design could have known. It is deliberately not part of
-any RFC: an RFC edited to match what was built is a document that has stopped
-recording that a decision ever changed, and a separate file is the only way the
-change stays visible from both ends.
+[`logs/`](../logs) records the places building something disagreed with the
+design for it, classified by whether the design could have known. **One file per
+unit of execution** — `logs/wave-34.md`, `logs/release-0.3.0.md` — rather than
+one shared file, which is a write hotspot the moment two units run at once.
+Every log is append-only: an entry that turns out to be wrong gets a later entry
+saying so, never an edit.
 
-It carries no number, has no status, and does not appear in the table below —
-the one resident of this directory that is not an RFC. Its decision rows are
-proposals until an author accepts or refuses them, and the log says which.
+The logs are deliberately not part of any RFC. An RFC edited to match what was
+built is a document that has stopped recording that a decision ever changed, and
+a separate file is the only way the change stays visible from both ends. So a
+log's decision rows are proposals until an author accepts or refuses them, and
+an accepted row cites the entry that produced it — `see logs/wave-30.md
+(D-024)`. That back-link is what makes the round trip auditable from both ends:
+from the row to the evidence that forced it, and from the entry to whether
+anything came of it.
+
+**Waves 25 through 35 and the 0.3.0 release predate the current entry format**
+and are reproduced in the prose they were written in, rather than retrofitted.
+Each says so at its head.
 
 ## Allocating a number
 

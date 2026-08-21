@@ -262,7 +262,7 @@ check: fmt-check vet runtime-check test
 # if it passes, CI passes.
 
 # Run exactly what CI runs. Needs golangci-lint and sops.
-ci: fmt-check vet darwin-check lint shellcheck runtime-check docs-check contract-strict test-race coverage-gate
+ci: fmt-check vet darwin-check lint shellcheck runtime-check docs-check log-check contract-strict test-race coverage-gate
 
 # Exercises the real binary against the example bundle without touching /etc,
 # which is what the hidden --root flag exists for.
@@ -406,6 +406,42 @@ build-docs:
 # Check the docs against the code: links, nav, contracts, commands.
 docs-check:
     go run ./tools/docscheck
+
+# A divergence log is checked when, and only when, a task file declares one.
+#
+# `tasks/<id>.json` is what says a log is written in the current entry format
+# and what the silence check needs: it declares the paths each LOCKED decision
+# governs, so a diff touching one of them with no entry is the silence worth
+# catching. A log with no task file is not checked, which is how waves 25-35
+# stay in the prose they were written in rather than being retrofitted to
+# satisfy a schema they predate.
+#
+# Deliberately not a glob over `logs/*.md`. That would gate the historical logs
+# too, and their `Drift count: still 0` lines are not the format's -- the check
+# would fail on records nobody is allowed to edit.
+
+# Check every task log that declares itself with a task file.
+log-check base="origin/main":
+    #!/usr/bin/env sh
+    set -eu
+    checker=.agents/skills/flag-dont-flip/scripts/log_check.py
+    if [ ! -d tasks ] || [ -z "$(ls -A tasks 2>/dev/null)" ]; then
+        echo "log-check: no tasks/ declared, nothing to check"
+        exit 0
+    fi
+    status=0
+    for task in tasks/*.json tasks/*.yaml; do
+        [ -e "$task" ] || continue
+        id=$(basename "$task"); id=${id%.*}
+        log="logs/${id}.md"
+        if [ ! -f "$log" ]; then
+            echo "log-check: ${task} declares a task with no ${log}" >&2
+            status=1
+            continue
+        fi
+        python3 "$checker" --log "$log" --root . --task "$task" --base "{{base}}" || status=1
+    done
+    exit $status
 
 # depguard enforces the layering as *imports*, which is a real guarantee and a
 # different one: a ports file whose exported API is the Compose interpolation
