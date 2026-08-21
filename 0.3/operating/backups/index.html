@@ -1,0 +1,3044 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Lifecycle management for a self-hosted product on a single machine">
+      
+      
+        <meta name="author" content="Lev Litvinov">
+      
+      
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/0.3/operating/backups/">
+      
+      
+        <link rel="prev" href="../secrets/">
+      
+      
+        <link rel="next" href="../changing-configuration/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>Backups and restore - morzer</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#backups-and-restore" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="morzer" class="md-header__button md-logo" aria-label="morzer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            morzer
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Backups and restore
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/morzecrew/morzer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    morzer
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../get-started/installation/" class="md-tabs__link">
+          
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../updating/" class="md-tabs__link">
+          
+  
+  Operating
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../authoring/" class="md-tabs__link">
+          
+  
+  Authoring
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../explanation/architecture/" class="md-tabs__link">
+          
+  
+  Explanation
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="morzer" class="md-nav__button md-logo" aria-label="morzer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    morzer
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/morzecrew/morzer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    morzer
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Get started
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Get started
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/installation/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-download" viewBox="0 0 24 24"><path d="M12 15V3M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Installing morzer
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/first-deployment/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-rocket" viewBox="0 0 24 24"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09"/><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first deployment
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Operating
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Operating
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../updating/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-up-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Updating
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rolling-back/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-down-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Rolling back
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secrets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing secrets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backups and restore
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backups and restore
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#a-backup-is-an-identity-artifact" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A backup is an identity artifact
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-backup-contains" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What a backup contains
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#volumes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Volumes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Volumes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cold-by-default-hot-only-when-the-release-says-so" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Cold by default, hot only when the release says so
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-you-cannot-afford-the-downtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        When you cannot afford the downtime
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-never-captured" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What is never captured
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restoring-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring a volume
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-helper-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The helper image
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#size" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Size
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#everything-in-a-backup-is-encrypted-except-its-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Everything in a backup is encrypted except its manifest
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-is-not-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Verification is not optional
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Retention
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#restoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Restoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restoring-another-machines-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring another machine's backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-them-somewhere-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Keeping them somewhere else
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Keeping them somewhere else">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-push-that-fails-fails-the-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A push that fails fails the backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Credentials
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reading-a-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reading a target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-doctor-says" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What doctor says
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changing-configuration/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Changing configuration
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installing-offline/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01M8.5 16.429a5 5 0 0 1 7 0M5 12.859a10 10 0 0 1 5.17-2.69M19 12.859a10 10 0 0 0-2.007-1.523M2 8.82a15 15 0 0 1 4.177-2.643M22 8.82a15 15 0 0 0-11.288-3.764M2 2l20 20"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Installing without a network
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notifications/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Notifications
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../looking-inside/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Looking inside
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../asking-for-help/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Asking for help
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../several-installations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Several installations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recovering-a-lost-machine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Recovering a lost machine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Authoring
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Authoring
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a bundle is
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/your-first-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/a-three-tier-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  A three-tier bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Writing hooks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/bundled-images/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-container" viewBox="0 0 24 24"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1M10 14l11.9-6.9M14 19.8v-8.1M18 17.5V9.4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundled images
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/publishing/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-upload" viewBox="0 0 24 24"><path d="M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Signing and publishing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Every command
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Commands
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/backup-targets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backup target URLs
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/secret-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  secret
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/release-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  release
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/installation-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  installation
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/exit-codes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output-modes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Output modes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/parameters/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Parameters
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/manifest/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Manifest
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/variables/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Variables
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Hook ABI
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/attestations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-signature" viewBox="0 0 24 24"><path d="M14.364 13.634a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506l4.013-4.009a1 1 0 0 0-3.004-3.004zM14.487 7.858A1 1 0 0 1 14 7V2"/><path d="M20 19.645V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l2.516 2.516M8 18h1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Attestations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/support-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a support bundle contains
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/fleet/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-network" viewBox="0 0 24 24"><rect width="6" height="6" x="16" y="16" rx="1"/><rect width="6" height="6" x="2" y="16" rx="1"/><rect width="6" height="6" x="9" y="2" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The fleet view
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Explanation
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Explanation
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Architecture
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/the-step-engine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list-checks" viewBox="0 0 24 24"><path d="M13 5h8M13 12h8M13 19h8M3 17l2 2 4-4M3 7l2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The step engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/secrets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The secrets model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/what-is-tested/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What is tested
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#a-backup-is-an-identity-artifact" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A backup is an identity artifact
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-backup-contains" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What a backup contains
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#volumes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Volumes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Volumes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cold-by-default-hot-only-when-the-release-says-so" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Cold by default, hot only when the release says so
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-you-cannot-afford-the-downtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        When you cannot afford the downtime
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-never-captured" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What is never captured
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restoring-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring a volume
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-helper-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The helper image
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#size" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Size
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#everything-in-a-backup-is-encrypted-except-its-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Everything in a backup is encrypted except its manifest
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-is-not-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Verification is not optional
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Retention
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#restoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Restoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restoring-another-machines-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Restoring another machine's backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-them-somewhere-else" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Keeping them somewhere else
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Keeping them somewhere else">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-push-that-fails-fails-the-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A push that fails fails the backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Credentials
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reading-a-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reading a target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-doctor-says" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What doctor says
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../updating/" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Operating
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+  
+
+
+<h1 id="backups-and-restore">Backups and restore<a class="headerlink" href="#backups-and-restore" title="Permanent link">&para;</a></h1>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--reason<span class="w"> </span><span class="s2">"before the 1.4 upgrade"</span>
+morzer<span class="w"> </span>backup<span class="w"> </span>list
+morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<p>The manager does not know how to back your product up — it coordinates the
+release's own <code>backup</code> hook, wraps what that produces in a self-describing
+manifest, and verifies the checksums by re-reading what was written. It does
+know how to read the project's <strong>volumes</strong>, which is the part the hook usually
+forgets.</p>
+<h2 id="a-backup-is-an-identity-artifact">A backup is an identity artifact<a class="headerlink" href="#a-backup-is-an-identity-artifact" title="Permanent link">&para;</a></h2>
+<p>Every backup carries the deployment's identity as well as its data: the
+installation record, the encrypted secret state, and the list of who can
+decrypt it. That is what makes <a href="../recovering-a-lost-machine/">recovering a lost
+machine</a> a matter of a recovery key and a backup
+rather than a recovery key, a backup and an export somebody remembered to take.</p>
+<p>It changes where you should be willing to store one.</p>
+<p><strong>The identity part is encrypted to the recovery keys alone</strong> — not to the
+machine's own key like every other component. The machine that wrote the backup
+cannot read it. So compromising the live host, which is the one that is online
+and attackable, yields the data and not the ability to become the deployment;
+only the offline key opens that, and by construction the offline key is not on
+the machine.</p>
+<p>What that does not remove:</p>
+<ul>
+<li><strong>An attacker with backup read access <em>and</em> the recovery key gets
+  everything</strong> — the installation, the secrets, and the credentials for the
+  backup target itself. This was nearly true before (the secret state was
+  already in every backup); what changed is that it now takes one command
+  rather than manual <code>sops</code> work.</li>
+<li><strong>Retention multiplies the copies.</strong> Thirty nightly backups are thirty copies
+  of the identity bundle where there used to be one export file.</li>
+</ul>
+<p>An installation with no recovery recipient gets <strong>no</strong> identity in its backups,
+rather than one encrypted to the key that would die with the machine. <code>morzer
+doctor</code> reports that as <code>secrets.recovery-recipient</code>.</p>
+<h2 id="what-a-backup-contains">What a backup contains<a class="headerlink" href="#what-a-backup-contains" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Comes from</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>database</code></td>
+<td>the release's backup hook</td>
+</tr>
+<tr>
+<td><code>files</code></td>
+<td>the release's backup hook</td>
+</tr>
+<tr>
+<td><code>volumes</code></td>
+<td>the project's named volumes, read by the manager</td>
+</tr>
+<tr>
+<td><code>config</code></td>
+<td>the operator-facing files as they stood — <strong>forensic, not recoverable</strong></td>
+</tr>
+<tr>
+<td><code>export</code></td>
+<td>the installation identity: the authoritative record, the encrypted secret state, and who can decrypt it</td>
+</tr>
+<tr>
+<td><code>manifest</code></td>
+<td>the release identity, schema version, checksums, installation id</td>
+</tr>
+<tr>
+<td>~~<code>secrets</code>~~</td>
+<td><strong>retired.</strong> <code>export</code> carries the same state byte for byte, plus the recipient roles</td>
+</tr>
+</tbody>
+</table>
+<p><code>config</code> and <code>export</code> look similar and are not. <code>config</code> holds
+<code>installation.yaml</code>, the file an operator edits — and <code>doctor</code> ships a
+<code>config.installation-file</code> check for it disagreeing with the authoritative
+state, which is exactly what makes it useful in an incident review and useless
+for rebuilding a machine. <code>export</code> is the authoritative record. Naming both
+roles is what turns a trap into two labelled artifacts.</p>
+<p><code>--component secrets</code> is still accepted, because a restore reads backups this
+manager did not write. On a recent backup it selects nothing.</p>
+<p>The manifest is what makes a backup self-describing: which release took it,
+which database schema was current, and which installation it belongs to.</p>
+<h2 id="volumes">Volumes<a class="headerlink" href="#volumes" title="Permanent link">&para;</a></h2>
+<p>A backup hook is usually written by somebody thinking about the database. They
+do not think about the uploads volume, the generated thumbnails, the certificate
+store, or the queue's spool directory — and nobody notices until a restore
+produces a working database and an application with no files.</p>
+<p>So the manager reads the project's named volumes itself. Each becomes one
+component.</p>
+<p>Every example below is the same deployment: four named volumes — <code>uploads</code>,
+<code>caddy_data</code>, <code>spool</code> and <code>pgdata</code> — and one bind mount at <code>/srv/legacy</code>. The
+release excludes <code>pgdata</code>, which is why three volumes end up in the backup and
+the bind mount is not one of them:</p>
+<div class="highlight"><pre><span></span><code>20260805T174743Z/
+  backup.json
+  database.sql.age            from the hook
+  volumes/caddy_data.tar.age  read by the manager
+  volumes/spool.tar.age
+  volumes/uploads.tar.age
+</code></pre></div>
+<p>This also means a release that ships <strong>no backup hook at all</strong> can still produce
+a restorable backup, which it previously could not — as long as there is
+something for the manager to capture. A release with no hook <em>and</em> no named
+volume produces no backup: <code>morzer backup</code> refuses rather than writing a
+directory holding your configuration and none of your product's data. Bind
+mounts and excluded volumes do not count towards it.</p>
+<div class="admonition warning">
+<p class="admonition-title">This does not replace your database backup</p>
+<p>Copying a volume while something is writing to it gives you a
+<strong>crash-consistent</strong> copy — byte-for-byte what a power cut would have left,
+not what a clean shutdown would have. Postgres will usually replay its WAL
+and come up, because that is what it is built to do. <em>Usually</em> is not a
+property a restore should have, and other engines vary.</p>
+<p>Anything with a transaction log stays the backup hook's job. Volumes cover
+what the hook does not.</p>
+</div>
+<h3 id="cold-by-default-hot-only-when-the-release-says-so">Cold by default, hot only when the release says so<a class="headerlink" href="#cold-by-default-hot-only-when-the-release-says-so" title="Permanent link">&para;</a></h3>
+<p>A volume the release has <strong>not</strong> classified is captured <strong>cold</strong>: the services
+that mount it are stopped for the duration of the copy, and started again
+afterwards. Nothing is writing, so the copy is exactly what a clean shutdown
+would have left.</p>
+<p>A release can declare that a volume is safe to read live:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">backup</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">uploads</span><span class="p">:</span><span class="w">    </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">     </span><span class="c1"># write-once files</span>
+<span class="w">    </span><span class="nt">caddy_data</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">hot</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">pgdata</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">{</span><span class="nt"> consistency</span><span class="p">:</span><span class="w"> </span><span class="nv">exclude</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="c1"># the backup hook owns this</span>
+</code></pre></div>
+<p>Nothing is said about <code>spool</code>, so <code>spool</code> is the one this deployment stops for.</p>
+<p><code>hot</code> is a claim the <strong>vendor</strong> makes about their own product, not a guess the
+manager makes on their behalf — which is why the default is the slow one. The
+backup manifest records which claim applied to each volume, so a post-incident
+review can see what was promised.</p>
+<p>Only the services that mount a cold volume are stopped, and they are all stopped
+once rather than once per volume — so capturing a certificate store stops the
+web server, not the database. Services that are already stopped are left alone:
+a backup never starts something you had deliberately taken down.</p>
+<p>A <strong>paused</strong> service is not stopped, but it is not ignored either. It still
+holds the volume open, frozen mid-write, so it is stopped for the copy like a
+running one — and comes back running rather than paused.</p>
+<div class="admonition tip">
+<p class="admonition-title">If the pause is longer than you expect</p>
+<p>A container is stopped with <code>SIGTERM</code> and then killed after two minutes. A
+process that does not handle <code>SIGTERM</code> — a shell loop, or anything running
+as PID 1 without a signal handler — never sees it, so the stop waits out the
+whole two minutes before killing it.</p>
+<p>That cost is per backup, not per volume. If a cold capture takes minutes
+where it should take seconds, the service is ignoring <code>SIGTERM</code>, and
+<code>init: true</code> or a <code>stop_signal</code> in the release's Compose file is the fix.</p>
+</div>
+<h3 id="when-you-cannot-afford-the-downtime">When you cannot afford the downtime<a class="headerlink" href="#when-you-cannot-afford-the-downtime" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--no-downtime
+</code></pre></div>
+<p><code>--no-downtime</code> skips volumes that would need their services stopped, and
+<strong>names them in the backup manifest</strong> rather than capturing them live. They are
+never silently downgraded to a hot copy: that would be the manager making the
+vendor's claim for them, which is the one thing this design refuses to do.</p>
+<p><code>morzer backup</code> tells you either way. The ordinary run, which stops whatever
+mounts <code>spool</code> for as long as the copy takes:</p>
+<div class="highlight"><pre><span></span><code>backup 20260805T174743Z created (1.4GiB), 3 volume(s): 1 cold, 2 hot,
+  not captured: pgdata, /srv/legacy
+</code></pre></div>
+<p>and the same deployment with the flag, which stops nothing and says what that
+cost:</p>
+<div class="highlight"><pre><span></span><code>backup 20260805T181102Z created (1.2GiB), 2 volume(s) captured hot,
+  not captured: pgdata, spool, /srv/legacy
+</code></pre></div>
+<h3 id="what-is-never-captured">What is never captured<a class="headerlink" href="#what-is-never-captured" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Bind mounts.</strong> A bind mount points at an arbitrary host path — it can be
+  <code>/</code>, it can be a network mount, it can be shared with something the manager
+  knows nothing about. They are reported in the backup manifest and in
+  <code>morzer doctor</code>, never copied. Copying one is yours to arrange.</li>
+<li><strong>Volumes the release excludes.</strong> <code>consistency: exclude</code> is the vendor saying
+  their backup hook owns that data.</li>
+<li><strong><code>tmpfs</code> mounts</strong>, which hold nothing that outlives the container.</li>
+<li><strong>Anonymous volumes</strong> — a mount written <code>- /data</code> rather than <code>- data:/data</code>.
+  These <em>do</em> persist, which is what makes them worth reporting: the runtime
+  invents a name that changes when the container is recreated, so there is no
+  stable target a restore could write back into. <code>morzer doctor</code> names them, and
+  the remedy belongs to the vendor — give the volume a name.</li>
+</ul>
+<p><code>morzer doctor</code> reports all of this, so you find out while you can do something
+about it:</p>
+<div class="highlight"><pre><span></span><code>[warn] every named volume is covered by a backup
+       3 of 4 named volume(s) captured -- pgdata excluded by the release;
+       /srv/legacy are bind mounts and are never captured
+       → an excluded volume is the vendor saying its backup hook owns that
+         data; a bind mount is yours to copy. Make sure something does.
+</code></pre></div>
+<p>Three of four, not two: <code>doctor</code> counts what a backup is configured to capture,
+and <code>--no-downtime</code> is a decision made per run rather than something the
+deployment records. A volume that the flag skips still counts as covered here.</p>
+<h3 id="restoring-a-volume">Restoring a volume<a class="headerlink" href="#restoring-a-volume" title="Permanent link">&para;</a></h3>
+<p>A volume is <strong>replaced</strong>, not merged: after a restore it holds exactly what the
+backup held. A volume left holding files the backup does not contain, beside a
+database restored to an exact moment, is how a record without its file is made.</p>
+<p>The volume is emptied <em>before</em> the backup is extracted into it, so a failure
+partway through leaves neither the old contents nor all of the new ones, and
+there is nothing to roll back to. The backup is verified and decrypted before
+anything is emptied, so the usual answer to a failure here is to run the same
+restore again.</p>
+<p>Restoring into a volume is <strong>refused while any service that mounts it still
+holds it open</strong>, named by service and by the state it is in — untarring into a
+volume a container has open is how a restore corrupts the thing it was
+restoring. Paused counts as holding it open. <code>morzer restore</code> stops the services
+for you, so seeing this message means something was still up.</p>
+<h3 id="the-helper-image">The helper image<a class="headerlink" href="#the-helper-image" title="Permanent link">&para;</a></h3>
+<p>Volumes are read and written through a small container (<code>busybox</code>, pinned by
+digest) rather than through the host's storage directory, which is an
+implementation detail and is unreadable under a rootless or remote daemon.</p>
+<p>That is one more image to have locally. <code>morzer doctor</code> reports it when it is
+absent, with the command to pull it — ask <strong>before</strong> you disconnect the machine,
+not during a backup:</p>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>pull<span class="w"> </span>busybox@sha256:...<span class="w">   </span><span class="c1"># doctor prints the exact reference</span>
+</code></pre></div>
+<p>If your registry does not carry busybox, name a different image. Any image with
+a POSIX <code>tar</code>, <code>du</code>, <code>find</code>, <code>wc</code> and <code>sh</code> will do — <code>find</code> and <code>wc</code> are for the
+size check, which counts a volume's entries to bound what <code>tar</code> adds on top of
+them. An image missing them measures nothing, and a backup that cannot be
+measured is refused rather than started:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">MORZER_VOLUME_HELPER_IMAGE</span><span class="o">=</span>registry.internal/toolbox@sha256:...<span class="w"> </span>morzer<span class="w"> </span>backup
+</code></pre></div>
+<p>An environment variable rather than a setting, because the backup that needs it
+is usually the scheduled one — add it to the timer's unit with a drop-in:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># /etc/systemd/system/demo-backup.service.d/helper-image.conf</span>
+<span class="k">[Service]</span>
+<span class="na">Environment</span><span class="o">=</span><span class="s">MORZER_VOLUME_HELPER_IMAGE=registry.internal/toolbox@sha256:...</span>
+</code></pre></div>
+<p>Pin it by digest. It runs with your data mounted.</p>
+<p>See <a href="../installing-offline/">installing offline</a>.</p>
+<h3 id="size">Size<a class="headerlink" href="#size" title="Permanent link">&para;</a></h3>
+<p>Volume backups are much larger than database dumps, and retention counts
+backups rather than bytes. Two things follow:</p>
+<ul>
+<li>A backup that would not fit is <strong>refused before anything is written or
+  stopped</strong>, naming both figures — <code>needs about 140GiB and 60GiB is free</code> is a
+  better message than <code>no space left on device</code> halfway through.</li>
+<li>A volume the manager cannot <strong>measure</strong> is refused the same way and for the
+  same reason — starting the copy anyway means finding out it does not fit once
+  the services are already stopped. The message names the volume and the remedy,
+  which is nearly always the helper image. A measurement that simply did not run
+  is not this case: that volume goes unbudgeted and the backup is still taken.</li>
+<li><code>morzer doctor</code> warns when keeping <code>retention.backups</code> of them will not fit.</li>
+</ul>
+<p>If a volume is large enough for this to bite, the answers are lower retention,
+pushing to a target and pruning locally, or a vendor <code>exclude</code>.</p>
+<h2 id="everything-in-a-backup-is-encrypted-except-its-manifest">Everything in a backup is encrypted except its manifest<a class="headerlink" href="#everything-in-a-backup-is-encrypted-except-its-manifest" title="Permanent link">&para;</a></h2>
+<p>Each component is encrypted to the same recipients as the secret state — this
+machine's age key plus whatever offline and operator keys <code>secret recipients</code>
+knows about. So a backup you copy to another machine, upload to a bucket, or
+leave on a disk carries no credential and no data with it.</p>
+<p>The manifest stays readable on purpose. <code>morzer backup list</code> works on a machine
+whose key is gone, and an operator looking at a directory of ciphertext can
+still tell what it is and which installation it belongs to.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>recipients<span class="w"> </span>list<span class="w">   </span><span class="c1"># who can read this deployment's backups</span>
+</code></pre></div>
+<p>Two consequences worth knowing before you need them:</p>
+<ul>
+<li><strong>A backup is readable by the recipients it had when it was taken.</strong> Adding
+  a recovery key today does not make yesterday's backups readable by it. Add
+  the key first, then take a backup.</li>
+<li><strong>Verification needs no key.</strong> The checksum is of the stored bytes, so
+  <code>backup verify</code> detects rot without decrypting anything. Tampering is caught
+  separately and more strongly: the encryption is authenticated, so an altered
+  backup fails to decrypt rather than restoring altered data.</li>
+</ul>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>--component<span class="w"> </span>database<span class="w"> </span>--component<span class="w"> </span>files
+</code></pre></div>
+<p>Limits it, when a full backup is not what you need.</p>
+<h2 id="verification-is-not-optional">Verification is not optional<a class="headerlink" href="#verification-is-not-optional" title="Permanent link">&para;</a></h2>
+<p>Every backup is re-read and checksummed after it is written, unless you pass
+<code>--no-verify</code>. A backup nobody has read is a hypothesis, and the moment to test
+it is not during a restore.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w">        </span><span class="c1"># the most recent</span>
+morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>&lt;id&gt;<span class="w">   </span><span class="c1"># a specific one</span>
+</code></pre></div>
+<p>Worth running on a schedule against your oldest retained backup, which is the
+one most likely to have rotted.</p>
+<h2 id="retention">Retention<a class="headerlink" href="#retention" title="Permanent link">&para;</a></h2>
+<p>Governed by <code>retention.backups</code> in the manifest, or <code>policy.retain_backups</code> in
+your installation when you want a different number than the vendor chose. <strong>The
+most recent backup is never pruned</strong>, whatever the number says.</p>
+<p><code>--no-prune</code> skips the retention pass for one run.</p>
+<h2 id="restoring">Restoring<a class="headerlink" href="#restoring" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+morzer<span class="w"> </span>restore<span class="w"> </span>--backup<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--identity<span class="w"> </span>~/demo-recovery.key
+</code></pre></div>
+<p>Destructive, and it asks for two things:</p>
+<ul>
+<li><code>--force</code>, which authorises destroying what is currently there.</li>
+<li><code>--identity</code>, when the backup was taken by a machine that no longer exists.
+  A rebuilt machine has a new key that was never a recipient of the old
+  machine's backups; the offline recovery key is what opens them. See
+  <a href="../recovering-a-lost-machine/">recovering a lost machine</a>.</li>
+<li><code>--confirm &lt;installation-id&gt;</code>, typed out. A y/n prompt can be answered by
+  reflex; an identifier you have to go and look up cannot.</li>
+</ul>
+<p>What it does, in order: verify the backup, <strong>stop the services</strong> so nothing is
+writing, run the release's restore hook, re-apply the release over the restored
+data, and run the smoke test.</p>
+<p>Stopping first is the part that matters. Restored data underneath containers
+still holding stale state in memory is a combination that corrupts quietly.</p>
+<div class="admonition warning">
+<p class="admonition-title">A failed restore needs a human</p>
+<p>Restore declares that it requires manual intervention on failure. A
+half-restored database is a state no automatic action can repair, so a
+failure exits <a href="../../reference/exit-codes/">12</a> rather than pretending
+compensation succeeded — and keeps surfacing in <code>status</code> and <code>doctor</code> until
+you clear it with <code>morzer status --clear-intervention</code>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Ctrl-C during a restore leaves the product stopped</p>
+<p>An interruption is taken literally: the operation stops where it is and
+nothing is brought back up, because a long automatic recovery is not what
+"stop" means. Since the services are stopped before anything is written,
+ctrl-C in the first moments leaves a deployment that is down and a database
+that is untouched.</p>
+<p>The refusal says so, and there are two roads forward:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>apply<span class="w">     </span><span class="c1"># start the current release again, restore abandoned</span>
+morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;<span class="w">   </span><span class="c1"># try again</span>
+</code></pre></div>
+<p>Restore is deliberately not resumable. Its middle step overwrites a database
+through the release's own hook, no automatic check can tell how far that got,
+and guessing is the one thing this tool will not do. <code>morzer status</code> shows
+where the interrupted operation stopped.</p>
+</div>
+<h3 id="restoring-another-machines-backup">Restoring another machine's backup<a class="headerlink" href="#restoring-another-machines-backup" title="Permanent link">&para;</a></h3>
+<p>Refused by default. Backups are stamped with the installation they came from,
+and restoring one deployment's data over another is almost always a mistake.</p>
+<p>If the machine is a rebuild of the one the backup came from, the right answer is
+<a href="../../reference/installation-commands/"><code>installation import</code></a>, which restores
+the original installation id so the guard never fires.</p>
+<p>If you genuinely mean it:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;this<span class="w"> </span>machine<span class="err">'</span>s<span class="w"> </span>id&gt;<span class="w"> </span>--allow-cross-installation
+</code></pre></div>
+<p>A separate flag from <code>--force</code> on purpose: every restore already requires
+forcing, so a shared flag would mean this check could never apply.</p>
+<h2 id="keeping-them-somewhere-else">Keeping them somewhere else<a class="headerlink" href="#keeping-them-somewhere-else" title="Permanent link">&para;</a></h2>
+<p>A backup on the same disk as the thing it protects is not a backup. A <strong>target</strong>
+is somewhere else: another host over SSH, an object store, or a directory on
+separate media.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>target<span class="w"> </span>add<span class="w"> </span>file:///mnt/usb/demo-backups
+morzer<span class="w"> </span>backup<span class="w"> </span>target<span class="w"> </span>add<span class="w"> </span>ssh://backups@nas.internal/srv/demo<span class="w"> </span>--credentials<span class="w"> </span>backup_ssh
+morzer<span class="w"> </span>backup<span class="w"> </span>target<span class="w"> </span>add<span class="w"> </span>s3://acme-backups/demo<span class="w"> </span>--credentials<span class="w"> </span>backup_s3
+morzer<span class="w"> </span>backup<span class="w"> </span>target<span class="w"> </span>list
+morzer<span class="w"> </span>backup<span class="w"> </span>target<span class="w"> </span>remove<span class="w"> </span>file:///mnt/usb/demo-backups
+</code></pre></div>
+<p>Every backup is copied to every configured target after it is verified.
+<code>morzer backup target add</code> checks the target answers before recording it, so a
+typo fails at your terminal rather than during a backup three weeks later, and
+<code>morzer backup target list</code> shows which of them are reachable right now.</p>
+<p><code>morzer backup target remove</code> stops using a target. It deletes nothing that is
+already there.</p>
+<h3 id="a-push-that-fails-fails-the-backup">A push that fails fails the backup<a class="headerlink" href="#a-push-that-fails-fails-the-backup" title="Permanent link">&para;</a></h3>
+<p>Not a warning. The point of a target is that the data is somewhere your machine
+failing does not reach, and a green <code>backup</code> on a machine whose backups are all
+local is the state this exists to end.</p>
+<p><strong>The local backup is kept.</strong> A failed push leaves you exactly where you were
+before you configured a target, plus an error — so the remedy is not to take
+another backup. <code>morzer backup push</code> retries the copy of a backup you already
+have, verifying it again on the way:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>push<span class="w">          </span><span class="c1"># retry the most recent</span>
+morzer<span class="w"> </span>backup<span class="w"> </span>push<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<p><code>--no-push</code> takes a local-only backup for the run, when you already know the
+medium is disconnected. <code>--no-prune-remote</code> skips the retention pass on the
+targets; retention there follows the same policy as locally, and never removes
+the most recent backup.</p>
+<h3 id="credentials">Credentials<a class="headerlink" href="#credentials" title="Permanent link">&para;</a></h3>
+<p><code>file://</code> needs none, which is why it is the target a recovery can always reach.</p>
+<p>The others take the <code>--credentials</code> flag, naming a secret that holds a small
+<abbr title="YAML Ain't Markup Language">YAML</abbr> document. Set it first:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>backup_s3
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="nt">access_key_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AKIA...</span>
+<span class="nt">secret_access_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+<span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu-central-1</span><span class="w">      </span><span class="c1"># optional</span>
+<span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">minio.internal</span><span class="w">  </span><span class="c1"># optional; for anything that is not AWS</span>
+</code></pre></div>
+<p>For <code>ssh://</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">private_key</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">  </span><span class="no">-----BEGIN OPENSSH PRIVATE KEY-----</span>
+<span class="w">  </span><span class="no">...</span>
+<span class="nt">known_hosts</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">  </span><span class="no">nas.internal ssh-ed25519 AAAA...</span>
+</code></pre></div>
+<p>A name rather than the values, because the URL lives in <code>installation.yaml</code>,
+which <code>doctor</code> prints and support tickets quote. A URL that carries a password
+is refused for the same reason.</p>
+<div class="admonition warning">
+<p class="admonition-title">The host key is required</p>
+<p><code>known_hosts</code> is not optional and no flag disables checking it. An
+impostor cannot read your backups — they are encrypted to your own
+recipients — but it can accept every push and answer every listing, and you
+would believe you had off-site backups you do not have.</p>
+<p>Get the line with <code>ssh-keyscan</code>, then check it against the host itself with
+<code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>. A keyscan is only as
+trustworthy as the network you ran it over.</p>
+</div>
+<p><code>s3://</code> speaks to S3 and to everything else that speaks its API: MinIO,
+Cloudflare R2, Backblaze B2, and Google Cloud Storage in interoperability mode.
+Point <code>endpoint</code> at them. The bucket must already exist — the manager will not
+create one, because a typo would silently make a new bucket and your backups
+would go somewhere nobody is watching.</p>
+<h3 id="reading-a-target">Reading a target<a class="headerlink" href="#reading-a-target" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>list<span class="w"> </span>--remote
+morzer<span class="w"> </span>backup<span class="w"> </span>fetch<span class="w">            </span><span class="c1"># the newest on the target</span>
+morzer<span class="w"> </span>backup<span class="w"> </span>fetch<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<p><code>--remote</code> reads only each backup's manifest, which is the one file in a backup
+that is not encrypted — so it works from a machine that has lost every key it
+ever had, which is the machine most likely to be running it.</p>
+<p><code>backup fetch</code> brings a backup down into this machine's backup store and
+verifies it. Restoring is a separate step on purpose: a backup that has come
+back from a bucket is one you should be able to look at before it overwrites a
+database.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>--remote<span class="w">        </span><span class="c1"># every backup on every target</span>
+morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>--remote<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<p>Checks the copy on the target without keeping it: each component is streamed
+through a checksum and discarded. That is a full transfer, which is the honest
+cost of the claim — a backup nobody has read back is a hope, and copying one to
+a bucket does not change that. It needs no key, because the checksums are of the
+stored bytes.</p>
+<p>Worth running on a schedule against your oldest retained backup, which is the
+one most likely to have rotted, and it is the only thing that will notice: the
+local copy can be perfect while the remote one is not.</p>
+<p><code>backup list</code>, <code>backup fetch</code> and <code>backup verify</code> all take <code>--target</code> to address
+one target by URL, whether or not this installation configures it, and
+<code>--credentials-file</code> to supply that target's credentials from a file instead of
+from the secret store. That pair is the escape hatch for a rebuilt machine — see
+<a href="../recovering-a-lost-machine/">recovering a lost machine</a>.</p>
+<h3 id="what-doctor-says">What doctor says<a class="headerlink" href="#what-doctor-says" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>When it fails</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backup.target-reachable</code></td>
+<td>a configured target does not answer, so every backup from now on will fail at the push</td>
+</tr>
+<tr>
+<td><code>backup.target-freshness</code></td>
+<td>the most recent backup is not on any target</td>
+</tr>
+</tbody>
+</table>
+<p>Both are failures rather than warnings, and both exit
+<a href="../../reference/exit-codes/">3</a>. The second is the one worth watching: it is the
+failure that hides, because the backup ran, the backup succeeded, and the copy
+that would survive the machine is not there.</p>
+<p>An <a href="../../reference/installation-commands/">installation export</a> belongs on a
+target too, or beside it, and separately from the recovery key that opens it.</p>
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../secrets/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Managing secrets">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Managing secrets
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../changing-configuration/" class="md-footer__link md-footer__link--next" aria-label="Next: Changing configuration">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Changing configuration
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      &copy; 2026 Lev Litvinov and contributors
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["search.highlight","navigation.footer","navigation.instant","navigation.instant.progress","navigation.tabs","navigation.sections","navigation.path","navigation.top","toc.follow","content.code.copy","content.code.select","content.code.annotate","content.tooltips"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+    
+  </body>
+</html>

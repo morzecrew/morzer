@@ -1,0 +1,3411 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Lifecycle management for a self-hosted product on a single machine">
+      
+      
+        <meta name="author" content="Lev Litvinov">
+      
+      
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/0.3/reference/release-commands/">
+      
+      
+        <link rel="prev" href="../secret-commands/">
+      
+      
+        <link rel="next" href="../installation-commands/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>release - morzer</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#morzer-release" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="morzer" class="md-header__button md-logo" aria-label="morzer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            morzer
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              release
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/morzecrew/morzer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    morzer
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../get-started/installation/" class="md-tabs__link">
+          
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../operating/updating/" class="md-tabs__link">
+          
+  
+  Operating
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../authoring/" class="md-tabs__link">
+          
+  
+  Authoring
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../explanation/architecture/" class="md-tabs__link">
+          
+  
+  Explanation
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="morzer" class="md-nav__button md-logo" aria-label="morzer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    morzer
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/morzecrew/morzer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    morzer
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Get started
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Get started
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/installation/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-download" viewBox="0 0 24 24"><path d="M12 15V3M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Installing morzer
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/first-deployment/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-rocket" viewBox="0 0 24 24"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09"/><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first deployment
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Operating
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Operating
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/updating/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-up-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Updating
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/rolling-back/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-down-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Rolling back
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/secrets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing secrets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/backups/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backups and restore
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/changing-configuration/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Changing configuration
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/installing-offline/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01M8.5 16.429a5 5 0 0 1 7 0M5 12.859a10 10 0 0 1 5.17-2.69M19 12.859a10 10 0 0 0-2.007-1.523M2 8.82a15 15 0 0 1 4.177-2.643M22 8.82a15 15 0 0 0-11.288-3.764M2 2l20 20"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Installing without a network
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/notifications/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Notifications
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/looking-inside/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Looking inside
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/asking-for-help/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Asking for help
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/several-installations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Several installations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Recovering a lost machine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Authoring
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Authoring
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a bundle is
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/your-first-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/a-three-tier-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  A three-tier bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Writing hooks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/bundled-images/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-container" viewBox="0 0 24 24"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1M10 14l11.9-6.9M14 19.8v-8.1M18 17.5V9.4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundled images
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/publishing/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-upload" viewBox="0 0 24 24"><path d="M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Signing and publishing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Every command
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Commands
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backup-targets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backup target URLs
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secret-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  secret
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  release
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  release
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#release-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release list
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-show" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release show
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release new
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release verify
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release verify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-render-check-checks-and-what-it-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What <code>--render-check</code> checks, and what it does not
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-pack" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release pack
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release pack">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#platform-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Platform selection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release build
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release archive
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release archive">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entry-order-is-part-of-the-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Entry order is part of the format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reproducibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reproducibility
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release fetch
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-bundles-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where bundles come from
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where bundles come from">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#over-https" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Over HTTPS
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-an-oci-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        From an OCI registry
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-extraction-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The extraction budget
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-extraction-refuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What extraction refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Verification
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release ingest
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release ingest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-leaves-behind" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it leaves behind
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-prune" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release prune
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-loader-enforces" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What the loader enforces
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  installation
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../exit-codes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-modes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Output modes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../parameters/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Parameters
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../manifest/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Manifest
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../variables/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Variables
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Hook ABI
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../attestations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-signature" viewBox="0 0 24 24"><path d="M14.364 13.634a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506l4.013-4.009a1 1 0 0 0-3.004-3.004zM14.487 7.858A1 1 0 0 1 14 7V2"/><path d="M20 19.645V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l2.516 2.516M8 18h1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Attestations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../support-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a support bundle contains
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-network" viewBox="0 0 24 24"><rect width="6" height="6" x="16" y="16" rx="1"/><rect width="6" height="6" x="2" y="16" rx="1"/><rect width="6" height="6" x="9" y="2" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The fleet view
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Explanation
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Explanation
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Architecture
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/the-step-engine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list-checks" viewBox="0 0 24 24"><path d="M13 5h8M13 12h8M13 19h8M3 17l2 2 4-4M3 7l2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The step engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/secrets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The secrets model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/what-is-tested/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What is tested
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#release-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release list
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-show" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release show
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release new
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release verify
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release verify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-render-check-checks-and-what-it-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What <code>--render-check</code> checks, and what it does not
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-pack" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release pack
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release pack">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#platform-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Platform selection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release build
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release archive
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release archive">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entry-order-is-part-of-the-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Entry order is part of the format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reproducibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Reproducibility
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release fetch
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-bundles-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where bundles come from
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where bundles come from">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#over-https" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Over HTTPS
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-an-oci-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        From an OCI registry
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-extraction-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The extraction budget
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-extraction-refuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What extraction refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Verification
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release ingest
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release ingest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-leaves-behind" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it leaves behind
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-prune" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release prune
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-loader-enforces" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What the loader enforces
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+  
+
+
+<h1 id="morzer-release"><code>morzer release</code><a class="headerlink" href="#morzer-release" title="Permanent link">&para;</a></h1>
+<p>Inspects, manages and packs release bundles.</p>
+<p>A release is identified by <code>(name, version)</code> <strong>plus</strong> its content digest. The
+digest is computed over every file's path, executable bit and contents, sorted —
+so the same version appearing with a different digest is an error, not a
+warning. That is what makes a rollback target unambiguous.</p>
+<h2 id="release-list">release list<a class="headerlink" href="#release-list" title="Permanent link">&para;</a></h2>
+<p>Lists installed releases, newest first, marking the roles that keep a release in
+the store: <code>*</code> current, <code>-</code> previous, <code>+</code> staged by a channel poll and not yet
+installed.</p>
+<p>The release store keeps more than the running release so that <code>rollback --to</code>
+has somewhere to go. How many is the manifest's <code>retention.releases</code>, which
+counts the releases holding <em>none</em> of those roles — the three marked ones are
+kept regardless.</p>
+<h2 id="release-show">release show<a class="headerlink" href="#release-show" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>show<span class="w"> </span><span class="o">[</span>version<span class="o">]</span>
+</code></pre></div>
+<p>Shows a release manifest — the installed one when no version is given.</p>
+<h2 id="release-new">release new<a class="headerlink" href="#release-new" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>new<span class="w"> </span>&lt;dir&gt;<span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--vendor<span class="w"> </span>VENDOR<span class="o">]</span>
+</code></pre></div>
+<p>Scaffolds a bundle skeleton that passes <code>release verify</code> with no edits.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--name</code></td>
+<td>Product name. Defaults to the directory's own name, and is validated the same way <code>metadata.name</code> is — it becomes <code>/etc/&lt;name&gt;</code> on someone's machine.</td>
+</tr>
+<tr>
+<td><code>--vendor</code></td>
+<td>Who publishes this release. Left as a <code>TODO</code> when omitted.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>my-product/
+├── manifest.yaml         # schema modeline on line 1, version 0.0.0
+├── VERSION               # 0.0.0, agreeing with the manifest
+├── RELEASE.md            # declared as metadata.release_notes
+├── secrets.schema.yaml
+├── compose/compose.yaml
+└── templates/app.yaml.tmpl
+</code></pre></div>
+<p><strong>A skeleton, not a product.</strong> No image guessing, no Compose service inference,
+no hook stubs. A generated bundle that pretended to know your architecture
+would be work to un-write; one that verifies clean and deploys nothing useful
+is honest. Every value that must change before you publish is marked <code>TODO</code>.</p>
+<p>The version is <code>0.0.0</code> deliberately — a placeholder
+<a href="#release-build"><code>release build</code></a> stamps. A scaffold that wrote <code>1.0.0</code> would
+be inviting you to hand-maintain the one field the tooling owns, and <code>build</code>
+refuses <code>0.0.0</code> precisely so a forgotten <code>--version</code> cannot ship it.</p>
+<p>It refuses to write over anything. Scaffold into an empty directory.</p>
+<h2 id="release-verify">release verify<a class="headerlink" href="#release-verify" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>&lt;path&gt;
+</code></pre></div>
+<p>Validates a bundle's manifest, <strong>parses every template it declares</strong>, and
+checks its integrity, without installing anything. This is the command a bundle
+vendor runs in their own CI.</p>
+<p>The template pass is parsing, not rendering. A template that parses can still
+fail against a real context — the render context has values only an
+installation can supply — so a clean <code>verify</code> means the templates are
+syntactically sound, not that they will produce what you expect. Parsing needs
+no installation, no parameters and no network, which is what makes it safe to
+run on every commit.</p>
+<p>It matters because the alternative is worse: without it, a template with an
+unterminated action passes <code>verify</code> and fails during an operator's <code>apply</code>,
+part-way through a journaled operation, on a machine belonging to someone who
+did not write it.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--digest</code></td>
+<td>Expected content digest. A mismatch is an error.</td>
+</tr>
+<tr>
+<td><code>--signing-key</code></td>
+<td>minisign public key the bundle's signature must verify against. Repeat for several.</td>
+</tr>
+<tr>
+<td><code>--render-check</code></td>
+<td>Also render each template against a synthetic context. A smoke test — see below.</td>
+</tr>
+</tbody>
+</table>
+<p>It reports <strong>every</strong> violation in one pass rather than the first, because a
+bundle author fixing one problem should not discover the next one on the retry.</p>
+<h3 id="what-render-check-checks-and-what-it-does-not">What <code>--render-check</code> checks, and what it does not<a class="headerlink" href="#what-render-check-checks-and-what-it-does-not" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product<span class="w"> </span>--render-check
+</code></pre></div>
+<p>It builds a plausible render context — an installation id, a domain, the
+production path layout, your declared parameters resolved, your declared
+secrets — and renders every template against it.</p>
+<p><strong>The values are invented.</strong> A template that branches on them
+(<code>{{- if .Domains }}</code>) exercises only the branch they choose, so a clean render
+check does not mean the template will render on a customer's machine. That is
+structural rather than a maturity gap: there is no real context here, which is
+exactly what lets you run this in CI. It will never become the default, and
+there will never be a <code>--no-render-check</code>.</p>
+<p>What it does catch is the class parsing cannot: a reference to a field the
+render context does not define, and a <code>secretFile</code> call naming a secret your
+schema does not declare. Those fail on every machine, so catching them on yours
+is free.</p>
+<p>Two things are <em>not</em> invented, and they are why the check has teeth: secret
+names come from the schema your manifest declares, and parameters from your own
+<code>parameters:</code> block. A typo in either fails here.</p>
+<p>A parameter you declared without a default gets an invented value that satisfies
+its type, rather than the empty string an unset parameter really resolves to.
+Otherwise <code>{{ required "choose a port" .Parameters.http_port }}</code> would fail the
+check on a bundle that is entirely correct — the operator simply has not chosen
+yet.</p>
+<p><code>--signing-key</code> is how a vendor checks their own signing pipeline in CI: it
+needs no installation on the machine, because there is no policy to read there.
+On a deployment host, <code>policy.signing_keys</code> in <code>installation.yaml</code> decides
+instead. See <a href="#verification">Verification</a>.</p>
+<h2 id="release-pack">release pack<a class="headerlink" href="#release-pack" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>pack<span class="w"> </span>&lt;bundle-dir&gt;<span class="w"> </span><span class="o">[</span>--platform<span class="w"> </span>linux/amd64<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+</code></pre></div>
+<p>Copies every image the manifest marks <code>from: bundle</code> out of its registry into
+an <abbr title="Open Container Initiative">OCI</abbr> layout under <code>&lt;bundle-dir&gt;/images/</code>, then regenerates <code>SHA256SUMS</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--platform</code></td>
+<td>Which platform to select from a multi-platform image, e.g. <code>linux/amd64</code>. Defaults to whatever the registry resolves.</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>Discard an existing <code>SHA256SUMS.minisig</code>, which repacking invalidates.</td>
+</tr>
+</tbody>
+</table>
+<p>Credentials come from the ambient Docker configuration, exactly as a
+<code>docker pull</code> on this machine would — so this runs on your build machine, and
+your customers never need them. That is the whole point:
+<a href="../../authoring/bundled-images/">bundled images</a> exist so a customer can install
+a release containing your private images without holding a credential for the
+registry they came from.</p>
+<p><strong>Idempotent.</strong> The layout is content-addressed, so running it twice copies
+nothing the second time, and re-running after adding an image adds only that
+image's blobs.</p>
+<h3 id="what-it-refuses">What it refuses<a class="headerlink" href="#what-it-refuses" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No image is marked <code>from: bundle</code></td>
+<td>Refused. There is nothing to pack, and silently succeeding would suggest there was.</td>
+</tr>
+<tr>
+<td>An image cannot be resolved or copied</td>
+<td>Refused, and <strong><code>SHA256SUMS</code> is not regenerated</strong> — so the half-populated tree fails <code>release verify</code> until a later pack completes.</td>
+</tr>
+<tr>
+<td>The registry serves a different digest than the manifest pins</td>
+<td>Refused, naming both. This is the check that makes a bundle's provenance mean anything.</td>
+</tr>
+<tr>
+<td>An existing <code>SHA256SUMS.minisig</code></td>
+<td>Refused unless <code>--force</code>, which <strong>deletes</strong> it. A signature over a list that packing is about to invalidate is the exact failure the chain exists to prevent.</td>
+</tr>
+</tbody>
+</table>
+<p>On a partial write: <code>pack</code> writes in place, so a failure on the fourth image
+leaves the first three copied. Blobs are content-addressed, so what that leaves
+is <em>orphans</em> rather than corruption — and because the checksum list is
+regenerated only after every image succeeds, the tree fails <code>release verify</code>
+until a later pack finishes. Staging the whole layout to make a stronger promise
+would double the disk for a multi-gigabyte bundle.</p>
+<h3 id="platform-selection">Platform selection<a class="headerlink" href="#platform-selection" title="Permanent link">&para;</a></h3>
+<p>A registry reference may resolve to a multi-platform index. <code>--platform</code> picks
+one; the default is whatever the registry resolves for this machine, which is
+least surprising for a vendor building on the architecture they ship and wrong
+for one cross-building on arm64 for amd64 customers.</p>
+<p>If you pin a multi-platform <em>index</em> digest and then select a platform, the copy
+resolves to a per-platform manifest whose digest is not the one you pinned, and
+<code>pack</code> refuses rather than quietly bundling an image the manifest does not
+describe. Pin the digest you actually want to ship.</p>
+<h2 id="release-build">release build<a class="headerlink" href="#release-build" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>build<span class="w"> </span>&lt;bundle-dir&gt;<span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+</code></pre></div>
+<p>Writes <code>SHA256SUMS</code> over every file in the bundle, then verifies the result the
+same way <code>verify</code> does.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--version</code></td>
+<td>Version to stamp into <code>manifest.yaml</code> <strong>and</strong> <code>VERSION</code>.</td>
+</tr>
+<tr>
+<td><code>--version-from-git</code></td>
+<td>Derive it from <code>git describe</code>: <code>&lt;next-patch&gt;-dev.&lt;distance&gt;.g&lt;sha&gt;</code>. Mutually exclusive with <code>--version</code>.</td>
+</tr>
+<tr>
+<td><code>--allow-dirty</code></td>
+<td>With <code>--version-from-git</code>, permit a work tree with uncommitted changes; the version gains a <code>.dirty</code> identifier.</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>Discard an existing <code>SHA256SUMS.minisig</code>, which regenerating the list invalidates.</td>
+</tr>
+</tbody>
+</table>
+<p>With neither version flag, the manifest's own version is used and nothing is
+stamped — except <code>0.0.0</code>, which is refused. See
+<a href="../../authoring/publishing/#versioning">Versioning</a> for the scheme and why the
+patch is bumped.</p>
+<p>Stamping edits the manifest's <code>version:</code> line in place rather than re-encoding
+the document, so comments and key order survive, and the result is re-parsed
+before the command returns. A manifest whose <code>metadata.version</code> cannot be
+located unambiguously — a flow-style mapping, say — is refused rather than
+guessed at.</p>
+<p>Writes <strong>in place</strong> — the bundle directory is modified. Copying a tree whose
+<code>images/</code> layout may be tens of gigabytes to protect a checksum file is a poor
+trade, so there is no <code>--out</code>.</p>
+<p>The manifest is validated <em>before</em> anything is written. A checksum list over a
+broken tree is evidence that the tree is exactly as broken as it is, signed and
+shipped.</p>
+<p>A bundle that already carries a signature is refused: regenerating the list
+necessarily invalidates any signature over it. <code>--force</code> <strong>deletes</strong> the
+signature rather than building around it — keeping one that no longer verifies
+produces a bundle that fails on the customer's machine for a reason the vendor
+cannot see from their own tree.</p>
+<p>The list is written in the archive's entry order, and the checksums are bare
+hex, so <code>sha256sum -c SHA256SUMS</code> reads it without this tool.</p>
+<h2 id="release-archive">release archive<a class="headerlink" href="#release-archive" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>archive<span class="w"> </span>&lt;bundle-dir&gt;<span class="w"> </span><span class="o">[</span>-o<span class="w"> </span>FILE<span class="o">]</span>
+</code></pre></div>
+<p>Packs a bundle directory into the <code>.tar.zst</code> every transport reads, after
+checking it the same way <code>verify</code> does. Writes
+<code>&lt;name&gt;-&lt;version&gt;.tar.zst</code> beside the bundle unless <code>-o</code> says otherwise.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--output</code>, <code>-o</code></td>
+<td>Where to write the archive. Defaults to <code>&lt;name&gt;-&lt;version&gt;.tar.zst</code> beside the bundle directory. It must be outside the bundle.</td>
+</tr>
+</tbody>
+</table>
+<p>This is the last of the three steps that publish a release:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>build<span class="w">   </span>./my-product
+minisign<span class="w"> </span>-Sm<span class="w"> </span>./my-product/SHA256SUMS
+morzer<span class="w"> </span>release<span class="w"> </span>archive<span class="w"> </span>./my-product
+</code></pre></div>
+<p>Signing sits in the middle, and that is why these are separate commands rather
+than one. The signature is a file <em>inside</em> the bundle — a sibling file would not
+survive being packed and unpacked — so it has to exist before the bundle is
+packed. And morzer does not sign: a manager that signs is a manager that holds
+signing keys.</p>
+<h3 id="what-it-refuses_1">What it refuses<a class="headerlink" href="#what-it-refuses_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No <code>SHA256SUMS</code></td>
+<td>Refused. Archiving an unsummed tree produces a bundle the completeness rule cannot be applied to.</td>
+</tr>
+<tr>
+<td><code>SHA256SUMS</code> does not match the tree</td>
+<td>Refused, by the same check <code>verify</code> runs.</td>
+</tr>
+<tr>
+<td><code>SHA256SUMS.minisig</code> older than <code>SHA256SUMS</code></td>
+<td>Refused. A signature over a tree that has since changed is the exact failure the chain exists to prevent.</td>
+</tr>
+<tr>
+<td>No signature at all</td>
+<td><strong>Warned, not refused.</strong> Whether a signature is required is the operator's policy (<code>policy.require_signature</code>), and an unsigned bundle is legitimate for a vendor whose customers do not require one.</td>
+</tr>
+<tr>
+<td><code>-o</code> points inside the bundle</td>
+<td>Refused. The archive would be a file the bundle contains and its own <code>SHA256SUMS</code> does not list.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="entry-order-is-part-of-the-format">Entry order is part of the format<a class="headerlink" href="#entry-order-is-part-of-the-format" title="Permanent link">&para;</a></h3>
+<p>The archive is written in a fixed order, and it is a property of a morzer
+release archive rather than an implementation detail:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Entry</th>
+<th>Why here</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>manifest.yaml</code></td>
+<td>A reader sizes its extraction budget from the manifest before extracting anything else, which works only while it arrives first.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>VERSION</code></td>
+<td>Tiny, and lets a reader confirm identity from the first two entries.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>SHA256SUMS</code>, <code>SHA256SUMS.minisig</code></td>
+<td>The integrity evidence, available before the bytes it covers.</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Everything else, <code>images/</code> last</td>
+<td>The large content, extracted under a budget that is by now known.</td>
+</tr>
+</tbody>
+</table>
+<p>Within each of those four ranks, entries are sorted by their relative path.
+The ranks exist for the budget read; the sort exists for reproducibility, and
+neither substitutes for the other — directory traversal order is not specified
+by any filesystem, so without the sort two archives of one tree could differ in
+entry order alone.</p>
+<p>If you roll your own <code>tar</code>, put <code>manifest.yaml</code> first.</p>
+<h3 id="reproducibility">Reproducibility<a class="headerlink" href="#reproducibility" title="Permanent link">&para;</a></h3>
+<p>Two archives of the same tree are byte-identical. Ownership is normalised to
+uid/gid 0 with no owner names, the mode is reduced to the executable bit —
+the only permission a release depends on and the only one the content digest
+records — and every entry carries one timestamp, resolved in this order:</p>
+<ol>
+<li><code>SOURCE_DATE_EPOCH</code>, when set. The reproducible-builds convention wins where
+   it is expressed. A value that is not a Unix timestamp is refused rather than
+   ignored: a pipeline that sets the variable is asking for a specific time, and
+   silently substituting a different one produces an archive that is
+   reproducible by accident.</li>
+<li>The commit date of the repository the bundle sits in, when there is one.
+   <code>build</code> and <code>archive</code> are separate commands and nothing in a bundle records
+   how its version was resolved, so this is the fact <code>archive</code> can actually
+   observe — and it gives the same answer for the case the step exists for.</li>
+<li>The epoch — a timestamp that is obviously not a build time, rather than one
+   that looks like a real date and is not.</li>
+</ol>
+<p>None of this changes the bundle's identity. The content digest covers contents,
+paths and the executable bit, not timestamps, so normalising them changes the
+archive's bytes and not the release's digest.</p>
+<h2 id="release-fetch">release fetch<a class="headerlink" href="#release-fetch" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>&lt;ref&gt;
+morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>./demo-1.3.0.tar.zst
+</code></pre></div>
+<p>Fetches a release bundle into the release store, verifies it, and leaves it
+inactive. <code>update --to &lt;version&gt;</code> installs it afterwards.</p>
+<h2 id="where-bundles-come-from">Where bundles come from<a class="headerlink" href="#where-bundles-come-from" title="Permanent link">&para;</a></h2>
+<p>A reference's scheme selects the source that handles it. This build supports:</p>
+<table>
+<thead>
+<tr>
+<th>Reference</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>./bundle</code>, <code>/opt/x/releases/1.2.0</code></td>
+<td>An unpacked bundle directory.</td>
+</tr>
+<tr>
+<td><code>./demo-1.3.0.tar.zst</code>, <code>.tzst</code></td>
+<td>A zstd-compressed tar archive.</td>
+</tr>
+<tr>
+<td><code>file:///abs/path</code></td>
+<td>Either of the above, spelled explicitly.</td>
+</tr>
+<tr>
+<td><code>https://host/demo-1.3.0.tar.zst</code></td>
+<td>An archive published over TLS.</td>
+</tr>
+<tr>
+<td><code>oci://registry.example/demo/bundle:1.3.0</code></td>
+<td>An <abbr title="Open Container Initiative">OCI</abbr> artifact in a registry.</td>
+</tr>
+</tbody>
+</table>
+<p>Plaintext <code>http://</code> is refused outright — fetch the bundle out of band and pass
+a path. A reference whose scheme this build has no adapter for is refused by
+name, listing the ones it does have.</p>
+<h3 id="over-https">Over HTTPS<a class="headerlink" href="#over-https" title="Permanent link">&para;</a></h3>
+<p>TLS is not optional, and <strong>a redirect may not leave it</strong>. A server that answered
+an <code>https://</code> request with a redirect to plaintext would route around the
+refusal above at exactly the moment it matters, so the redirect is refused and
+the chain is bounded.</p>
+<p>A response body is capped while it is being read rather than trusted to match
+its <code>Content-Length</code> — that header is a claim by the same server sending the
+body. A 5xx or 429 is retried a few times, because a mirror restarting during a
+deploy is ordinary; a 404 or a 401 is not, because repeating a request the
+server answered definitively only delays the same answer.</p>
+<p>An untrusted certificate is named as one rather than retried:</p>
+<div class="highlight"><pre><span></span><code>error: the TLS certificate for https://releases.internal/demo.tar.zst is not
+       trusted by this machine
+hint:  install the issuing CA, or fetch the bundle out of band and install it
+       from a path. There is no option to skip verification.
+</code></pre></div>
+<p><strong>There is no flag to skip verification, and there will not be.</strong> A bundle
+fetched over a connection nothing authenticated is a bundle from nobody in
+particular, and a <code>--insecure</code> that existed would be reached for at exactly the
+moment it should not be.</p>
+<p>No credentials are sent. A bundle behind authentication is fetched out of band,
+or published to a registry.</p>
+<h3 id="from-an-oci-registry">From an <abbr title="Open Container Initiative">OCI</abbr> registry<a class="headerlink" href="#from-an-oci-registry" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>oci://registry.example/demo/bundle:1.3.0
+morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>oci://registry.example/demo/bundle@sha256:…
+</code></pre></div>
+<p>The bundle is one layer of an <abbr title="Open Container Initiative">OCI</abbr> artifact, published with the media type
+<code>application/vnd.morzer.release.bundle.v1.tar+zstd</code>. An artifact with a single
+layer is taken whatever its type; with several, the media type is what selects
+the bundle rather than a guess at ordering.</p>
+<p><strong>A reference with no tag or digest is refused.</strong> A bare repository resolves to
+whatever <code>latest</code> points at today, which is the thing content-addressed identity
+exists to prevent.</p>
+<p>Credentials come from the ambient Docker configuration, so an operator who has
+run <code>docker login</code> for the registry their <em>images</em> come from does not log in
+again for the bundle that pins those images. Nothing is stored by the manager.</p>
+<p><code>release list</code> against an <code>oci://</code> reference enumerates the repository's version
+tags. It is the only transport that can — a URL has no index — and tags that are
+not versions, like <code>latest</code>, are skipped rather than offered as something to
+install by number.</p>
+<div class="admonition note">
+<p class="admonition-title">What the registry proves, and what it does not</p>
+<p>Both the manifest and the layer are checked against the digests the registry
+itself advertises, so a registry serving different bytes than it named is
+refused. That is a weaker claim than it sounds: it says the registry was
+self-consistent, not that the bundle is the vendor's. The bundle's own
+content digest and its signature are what answer that.</p>
+</div>
+<p><strong>The shape a bundle arrives in does not change its identity.</strong> A directory and
+its archive produce the same content digest, so a digest recorded from one
+verifies the other. That is asserted by a test comparing every source against
+the same bundle, because pinning a release would otherwise mean pinning a
+transport too.</p>
+<h3 id="the-extraction-budget">The extraction budget<a class="headerlink" href="#the-extraction-budget" title="Permanent link">&para;</a></h3>
+<p>Extraction happens <strong>before</strong> the signature is checked — a bundle is written to
+disk, then verified — so the extraction limits are the only thing standing
+between a hostile archive and the disk, and the signature cannot be the
+mitigation because it comes afterwards.</p>
+<p>The default ceiling is 2 GiB in total and 1 GiB per file, which a bundle
+carrying container images cannot live within. Such a bundle raises its own by
+declaring what it expands to:</p>
+<div class="highlight"><span class="filename">manifest.yaml</span><pre><span></span><code><span class="nt">bundle</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">uncompressed_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12GiB</span>
+</code></pre></div>
+<p>Three rules, and each is the answer to a way of getting this wrong:</p>
+<ul>
+<li><strong>The archive must begin with <code>manifest.yaml</code>.</strong> That is where the
+  declaration lives, and it has to be readable before the bytes it bounds.
+  <code>release archive</code> guarantees the order; an archive that does not honour it is
+  <strong>refused</strong>, not quietly given the default ceiling — a fallback would make the
+  ordering advisory, and an advisory guarantee decays.</li>
+<li><strong>A declaration may only ever lower the ceiling.</strong> The effective limit is
+  <code>min(declared, hard cap)</code>, where the hard caps are <strong>50 GiB total and 5 GiB
+  per file</strong>. The declaration is made by the same unverified bytes the guard
+  bounds, so a budget that could raise the ceiling is one an attacker sets. A
+  bundle needing more than the cap is refused; raising the cap is a change to
+  morzer, made once, in the open.</li>
+<li><strong>Absent means the default, not unbounded.</strong> A missing field must never be the
+  permissive reading of anything that gates untrusted bytes.</li>
+</ul>
+<p>A declaration smaller than the default is honoured as the stricter bound you
+asked for: an archive that exceeds its own declared size is refused. And before
+anything is written, the declared ceiling is checked against free disk space, so
+a bundle too large for the machine is a clean refusal rather than a full
+filesystem.</p>
+<h3 id="what-extraction-refuses">What extraction refuses<a class="headerlink" href="#what-extraction-refuses" title="Permanent link">&para;</a></h3>
+<p>An archive is the largest attack surface here: a format chosen by whoever
+produced the bundle, unpacked onto the host as root before anything in it has
+been verified as safe to run. Refused, always:</p>
+<ul>
+<li><strong>Entries that escape the destination</strong> — <code>../</code>, absolute paths. Extraction
+  goes through a syscall-level root, so this fails at the kernel rather than at
+  a string check somebody has to get right.</li>
+<li><strong>Symlinks and hardlinks.</strong> The classic escape is a link out of the
+  destination followed by a write through it.</li>
+<li><strong>Device nodes, FIFOs, sockets</strong> — anything that is not a regular file or a
+  directory.</li>
+<li><strong>More entries, a larger file, or a larger total than the limits allow</strong>,
+  enforced <em>during</em> extraction. A decompression bomb has to be refused while it
+  is being written; noticing once the disk is full is noticing too late.</li>
+</ul>
+<p>Permissions are normalised to <code>0755</code> or <code>0644</code>. The executable bit survives
+because a hook must be able to run and the digest records it; nothing else about
+a vendor's umask is carried onto your machine.</p>
+<h2 id="verification">Verification<a class="headerlink" href="#verification" title="Permanent link">&para;</a></h2>
+<p>Two independent checks, and a bundle failing either is refused.</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Question it answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Checksum</strong></td>
+<td>Is this the artifact that was pinned, and does every file match — and appear in — the <code>SHA256SUMS</code> the bundle ships?</td>
+</tr>
+<tr>
+<td><strong>Signature</strong></td>
+<td>Did a key this installation trusts sign that <code>SHA256SUMS</code>?</td>
+</tr>
+</tbody>
+</table>
+<p>They compose rather than replace one another, and neither is sufficient alone: a
+signature covers <code>SHA256SUMS</code>, so on its own it cannot see a hook edited without
+its checksum entry being edited too. Together, the chain runs
+signature → <code>SHA256SUMS</code> → every file, and every link is checkable by hand with
+<code>minisign -Vm</code> and <code>sha256sum -c</code>.</p>
+<p>A signed bundle contains:</p>
+<div class="highlight"><pre><span></span><code>release/
+├── SHA256SUMS           # one line per file
+├── SHA256SUMS.minisig   # detached minisign signature over it
+└── ...
+</code></pre></div>
+<p>The signature travels <strong>inside</strong> the bundle so it survives being packed into an
+archive and unpacked again. A sibling file would not.</p>
+<p>Configure the keys per installation:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">policy</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">require_signature</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">signing_keys</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3</span>
+</code></pre></div>
+<p>or at <code>init</code>, with <code>--signing-key</code> and <code>--require-signature</code>. Keys live with the
+installation and never with the release: a bundle naming the key allowed to sign
+it would be a bundle authorising itself.</p>
+<div class="admonition warning">
+<p class="admonition-title">Signing proves provenance, not safety</p>
+<p>A verified signature says the holder of that key published this bundle. It
+says nothing about whether the bundle is safe to run — hooks execute as root
+on your host either way. Signature verification narrows <em>who</em> can hand you a
+release; it does not narrow what a release can do.</p>
+</div>
+<p>minisign rather than cosign: cosign as a library assumes a transparency log and
+an OIDC identity a self-hosted vendor may not have, while a minisign key is one
+base64 line an operator can paste into a config. The manager only ever verifies
+— there is no <code>morzer sign</code>, because the signing key belongs in a vendor's
+release pipeline rather than on a deployment host.</p>
+<h2 id="release-ingest">release ingest<a class="headerlink" href="#release-ingest" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>ingest
+</code></pre></div>
+<p>Loads the images the installed release carries into the local image store. No
+arguments: it acts on the release that is current, because that is the one a
+deployment is about to run.</p>
+<p>Nothing here touches the network. The manager serves the release's
+<code>images/</code> layout to the container runtime over <code>127.0.0.1</code>, read-only, for the
+length of the command, and the runtime pulls each image out of it — a real
+registry pull, so the runtime verifies every blob it fetches against the digest
+the manifest names.</p>
+<p><strong>You rarely run this.</strong> <code>init</code> and <code>update</code> run the same step, so a release
+installed the ordinary way arrives with its images already loaded. It exists for
+the case where they are not: a machine whose image store was pruned, a runtime
+that was reinstalled, a converge that refuses with</p>
+<div class="highlight"><pre><span></span><code>images the bundle carries are loaded
+  1 of 1 bundled image(s) are not in the local image store: registry.example/demo/app
+  → run `morzer release ingest` to load them out of the bundle
+</code></pre></div>
+<p><strong>Idempotent.</strong> An image already present is not read again, so re-running after
+a partial failure costs nothing for the images that succeeded.</p>
+<h3 id="what-it-refuses_2">What it refuses<a class="headerlink" href="#what-it-refuses_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The release bundles no images</td>
+<td>Not an error. It says so and does nothing.</td>
+</tr>
+<tr>
+<td>A blob whose bytes are not what the layout's index claims</td>
+<td>Refused, naming the blob and the digest it actually hashes to. The runtime is what rejects the bytes; the manager is what tells you which ones.</td>
+</tr>
+<tr>
+<td>The runtime has no local image store</td>
+<td>Refused. A release marking images <code>from: bundle</code> will not find them anywhere else.</td>
+</tr>
+<tr>
+<td>The runtime cannot reach this machine's loopback</td>
+<td>Refused. A daemon on another host — a remote <code>DOCKER_HOST</code> — cannot pull from a server bound to this one, and there is no fallback behind it.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-it-leaves-behind">What it leaves behind<a class="headerlink" href="#what-it-leaves-behind" title="Permanent link">&para;</a></h3>
+<p>An image that travelled in the bundle ends up named
+<code>&lt;repository&gt;:morzer-sha256-&lt;digest&gt;</code> rather than the <code>name@sha256:…</code> the
+manifest pins:</p>
+<div class="highlight"><pre><span></span><code>$ docker images
+REPOSITORY                  TAG                          IMAGE ID
+registry.example/demo/app   morzer-sha256-0000000000…    a1b2c3d4e5f6
+</code></pre></div>
+<p>That tag is the manager's, and it is not a cosmetic choice. A container runtime
+records the repository it <em>pulled</em> an image from, and nothing can add a digest
+reference for a repository it never contacted — <code>docker tag</code> refuses outright:
+<code>refusing to create a tag with a digest reference</code>. So a bundled image cannot
+answer to the reference its manifest pins, and Compose has to be given a name
+that resolves.</p>
+<p>The digest stays the identity. It is what the signature covers, what
+<code>release show</code> reports, and what the tag is derived from — which is also why the
+tag is the same on every machine and every run.</p>
+<p>Because the tag is derived rather than invented, <code>apply</code> <strong>refuses</strong> rather than
+pulls when a bundled image is missing. A tag is mutable; if a registry happened
+to serve that name, a missing image would let a digest-pinned deployment
+converge on bytes nobody verified.</p>
+<h2 id="release-prune">release prune<a class="headerlink" href="#release-prune" title="Permanent link">&para;</a></h2>
+<p>Removes old releases beyond the retention policy. The running release and the
+one before it are never pruned.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--keep</code></td>
+<td>Number of non-active releases to retain. <code>0</code> uses the manifest's policy.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-the-loader-enforces">What the loader enforces<a class="headerlink" href="#what-the-loader-enforces" title="Permanent link">&para;</a></h2>
+<p>Rules a bundle must satisfy before any of it runs:</p>
+<ul>
+<li><strong>Unknown manifest fields are an error.</strong> A typo must not silently fall back
+  to a default. Vendor keys live under <code>extensions.&lt;namespace&gt;</code>.</li>
+<li><strong>Images are pinned by digest.</strong> A bare tag is rejected: an unpinned image
+  makes a release mutable, and a mutable release makes rollback meaningless.</li>
+<li><strong>Paths are release-relative</strong> and may not escape the root.</li>
+<li><strong>A declared-but-missing hook is a validation error</strong>, and so is a hook
+  without the executable bit. Both are knowable before the lock is taken.</li>
+<li><strong>Errors report line and column</strong> from the source <abbr title="YAML Ain't Markup Language">YAML</abbr>.</li>
+</ul>
+<p>See <a href="../manifest/">Manifest</a> for the schema itself, and <a href="../hooks/">Hook <abbr title="Application Binary Interface">ABI</abbr></a> for
+what the hooks are handed.</p>
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../secret-commands/" class="md-footer__link md-footer__link--prev" aria-label="Previous: secret">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                secret
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../installation-commands/" class="md-footer__link md-footer__link--next" aria-label="Next: installation">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                installation
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      &copy; 2026 Lev Litvinov and contributors
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["search.highlight","navigation.footer","navigation.instant","navigation.instant.progress","navigation.tabs","navigation.sections","navigation.path","navigation.top","toc.follow","content.code.copy","content.code.select","content.code.annotate","content.tooltips"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+    
+  </body>
+</html>
