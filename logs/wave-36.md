@@ -146,3 +146,39 @@ of two, one of which meant nothing.
   oldest item in this collection.
 - **`release.draft: true` means a human publishes**, and that human is the last
   reader of the notes (release 0.3.0).
+
+## Correction — 2026-08-21, after the entries above
+
+**The paragraph at line 29 names `tasks/wave-36.json`, and that file no longer
+exists.** It is left standing rather than edited: this log is append-only, and a
+record quietly adjusted to match what is true now is worth less than one that
+shows what was believed when it was written.
+
+What was wrong with it. The task file declared three decisions and no `paths`,
+and `paths` is the only thing the checker reads a task file for. Run with it and
+without it, the checker returned the same verdict and the same coverage — three
+decisions skipped either way, no silence checked either way. It was ceremony
+standing where a gate was supposed to be.
+
+It also carried a second job it was never designed for: `just log-check` used
+the presence of `tasks/*.json` to decide which logs to check. That made checking
+**opt-in**, so a log nobody remembered to declare went unchecked, and the
+failure failed open. Demonstrated rather than reasoned about: a deliberately
+broken log with an illegal `LOCKED`/`departed` pair, a sentence for evidence and
+a wrong drift count passed silently under that rule, and fails with three
+problems under the one that replaced it.
+
+The gate is now default-on for every log in `logs/`, and skips only files
+carrying the migration header that says they predate this format — so the
+exclusion lives in the file it applies to, and nothing outside a log decides
+whether that log is checked.
+
+**The substance of the paragraph stands.** RFC 0023 decision 11 is `LOCKED`,
+this wave touched the area it governs, and there is still no entry citing it,
+because there is still no contradiction to report and the block format records
+contradictions. Confirmed against the checker's own rule while making this
+change: `check_silence` matches an entry to a decision by exact id (`ident not
+in logged`), so declaring D-11's paths would demand an entry citing D-11 — and
+the only honest one would say that nothing disagreed, which is not what an entry
+is for. That limitation was never the task file's doing, and removing it changes
+nothing about it.
