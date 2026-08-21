@@ -95,3 +95,54 @@ every previous change to `Installation` moved in the direction the check covers.
 *"%s is classified and no longer exists; the table is describing a document that
 has moved on"* — so the two sibling accountings disagreed about their own
 completeness, and only the stricter one would have caught this change.
+
+## Self-audit — 2026-08-21
+
+Scope: the whole wave — one field removed, four call sites, one new detection
+branch, and the log decomposition committed ahead of it on the same branch.
+
+**Drift count: 0.** No entry here is classed `drift`, and nothing this wave
+built contradicts a decision any document settled. The count is repeated rather
+than assumed unchanged, because a group that does not restate it cannot be told
+from one whose author never looked.
+
+**Sabotage sweep: 2 mutations, 1 killed, 1 survived.**
+
+| # | Mutation | Result |
+|---|---|---|
+| S1 | Put `Providers` back on `Installation` | **Killed.** `TestEveryInstallationFieldIsAccounted` and `TestEveryInstallationFieldIsClassifiedForASandbox` both fail, naming the field and each of its four sub-fields. |
+| S2 | Replace the new reverse-direction assertion's body with `_ = real[field]` | **Survived**, and the why is the finding rather than a shrug. |
+
+S2's survival is the expected shape for a detection branch: it is the only code
+that checks that direction, so nothing else can fail when it is gutted. That is
+exactly why it was driven **red** before being believed — the stale `Providers`
+key was reintroduced and the test failed with the message it exists to print.
+A green-only run of that test would have proved nothing about it, which is the
+trap `TestAFieldNobodyAccountedForIsReported` was written for one directory
+over, against the same detector, in the opposite direction.
+
+**Verification.** `just ci` green at 86.6% (floor 84). Container lane green,
+including `./test/suite` at 187.8s — the package holding `repair_test.go`, which
+this wave edited. `schemagen` regenerates all four schemas byte-identical, so
+the published surface is provably untouched.
+
+**What this wave did not find.** Nothing in `Manifest.Providers`, which is read,
+defaulted and validated, and which shares the `Providers` type with the field
+just removed. The type stays because the manifest still needs it; a reader
+meeting `domain.Providers` now finds exactly one struct that embeds it instead
+of two, one of which meant nothing.
+
+## Carried into the next unit
+
+- **`rfc_index.py check` is not wired into `ci`.** The updated `rfc-writer`
+  declares it as the `rfc-index` gate and it fails against this collection:
+  **369 decision rows across 23 RFCs carry no grade**, and the six tables that
+  do grade put `Grade` in the third column where the checker reads the second.
+  Making it green means grading 369 historical decisions, which is a unit of its
+  own and not a gate-wiring step. `log-check` is wired; this is not.
+- **A plan does not validate the bundle it plans against** (D-055, wave 34).
+- **`FieldRemovalRelease` is a single-member design with no members** (D-052).
+- **`saveInstallation` writes its report before the state store** (wave 31), the
+  oldest item in this collection.
+- **`release.draft: true` means a human publishes**, and that human is the last
+  reader of the notes (release 0.3.0).
