@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -109,4 +111,80 @@ func TestASuccessfulSaveWritesBothRecords(t *testing.T) {
 	assert.Contains(t, string(raw), "inst-1")
 	assert.True(t, strings.HasPrefix(string(raw), "# Managed by morzer."),
 		"the report keeps its header saying what the file is")
+}
+
+// recordingState is a state store that actually remembers, so a second call
+// sees what the first one wrote.
+type recordingState struct {
+	ports.StateStore
+	inst  domain.Installation
+	saves int
+}
+
+func (s *recordingState) LoadInstallation(context.Context) (domain.Installation, error) {
+	return s.inst, nil
+}
+
+func (s *recordingState) SaveInstallation(_ context.Context, i domain.Installation) error {
+	s.inst = i
+	s.saves++
+	return nil
+}
+
+// A report that cannot be written does not fail the operation that recorded it.
+//
+// `persistRuntimeBaseline` guards on `RuntimeOptions != nil` and returns early,
+// so once the record carries a baseline the save never runs again. Writing the
+// record first puts that guard *in front of* the step that can still fail: an
+// error here would tell an operator the operation did not happen, and the
+// re-run it invites would do nothing at all, because the half that succeeded is
+// the half the guard checks.
+//
+// So the operation stands and says what is missing. The alternative was tried
+// and is what this test was written against: it returned an error, the re-run
+// was a no-op, and the report stayed missing with nothing left to report it.
+func TestAFailedReportWarnsRatherThanFailingTheRecordedOperation(t *testing.T) {
+	paths := domain.PathsUnder(t.TempDir(), "demo")
+	// EtcDir occupied by a regular file, so MkdirAll inside atomicfs.WriteFile
+	// fails: the report write is the only half that can fail here.
+	require.NoError(t, os.MkdirAll(filepath.Dir(paths.EtcDir), 0o750))
+	require.NoError(t, os.WriteFile(paths.EtcDir, []byte("not a directory\n"), 0o640))
+
+	bus := events.NewBus()
+	var warnings []string
+	defer bus.SubscribeFunc(func(e events.Event) {
+		if e.Level == events.LevelWarn {
+			warnings = append(warnings, e.Message)
+		}
+	})()
+
+	store := &recordingState{}
+	d := &Deps{State: store, Paths: paths, Bus: bus}
+
+	err := d.persistRuntimeBaseline(context.Background(), map[string]string{"project": "myapp"})
+
+	require.NoError(t, err,
+		"the record is committed, so reporting failure invites a re-run the "+
+			"idempotence guard turns into a no-op")
+	assert.Equal(t, 1, store.saves, "the record was written")
+
+	require.Len(t, warnings, 1, "the missing report must be announced")
+	assert.Contains(t, warnings[0], paths.InstallationFile(),
+		"the warning names the file that is missing")
+	assert.Contains(t, warnings[0], "init --repair",
+		"the warning names the remedy, which is the only thing that rewrites it")
+}
+
+// The bus is optional, and a Deps without one must not panic on this path.
+func TestAFailedReportWithNoBusStillSucceeds(t *testing.T) {
+	paths := domain.PathsUnder(t.TempDir(), "demo")
+	require.NoError(t, os.MkdirAll(filepath.Dir(paths.EtcDir), 0o750))
+	require.NoError(t, os.WriteFile(paths.EtcDir, []byte("not a directory\n"), 0o640))
+
+	store := &recordingState{}
+	d := &Deps{State: store, Paths: paths}
+
+	require.NoError(t, d.persistRuntimeBaseline(
+		context.Background(), map[string]string{"project": "myapp"}))
+	assert.Equal(t, 1, store.saves)
 }
