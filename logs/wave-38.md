@@ -140,3 +140,67 @@ records as having already reappeared twice.
   — closed by this wave, the oldest item in this collection.
 - ~~**The upstream checker fix is unmerged**~~ (wave 37) — merged as
   `morzecrew/agent-skills#13` and synced here in `ff9d108`.
+
+## Correction — 2026-08-24, the third entry's claim that row 12 governs
+
+**The third entry says RFC 0001 decision 12 "governs whether a plan validates
+the bundle it plans against". It does not, and the entry is wrong.** It is left
+standing rather than edited, as this collection's corrections are.
+
+Row 12 settles *where* a plan reads from — the bundle at its source rather than
+its release-store destination — and its rationale is about planning against an
+unstaged destination reporting every template and hook as missing. It says
+nothing about whether a plan validates what it read.
+
+Wave 34 had already drawn that line and this entry contradicted it:
+`logs/wave-34.md` classes D-055 `spec-gap` on exactly these grounds — "decision
+12 settled that a plan reads the bundle at its source, which wave 32 built; it
+did not settle that a plan *validates* what it read, and nothing does."
+
+So the consequence stated in the entry does not follow. Adding validation
+contradicts no row, which makes it an **unlisted** decision, and unlisted
+licenses `decided`. **Nothing halted.** D-055 was held on one real question, not
+two: whether a plan over a remote reference validates.
+
+What survives, smaller and not blocking: 354 rows across 22 RFCs carry no grade,
+so if execution ever does want to contradict one of them, this practice has no
+answer for it. That is latent rather than live, and the entry above dressed a
+latent gap as a live blocker by finding the nearest row and assuming it governed.
+
+**Rule distilled:** before claiming a row blocks you, check that the change
+actually contradicts it. A row about the same *area* is not a row about the same
+*question*, and an earlier wave's log may already have drawn that line.
+
+## Ruling — 2026-08-24, the question D-055 was actually held on
+
+The author ruled the remaining question, so D-055 is executable and is carried
+as ready rather than blocked.
+
+**A plan validates what it already read, and says so when it did not.** A local
+bundle is validated — `warnPlannedDeprecations` already fetches it to a temp
+directory and loads its manifest, so the read is paid for and the validation is
+close to free. A remote reference is **not** fetched, and the plan states that
+it could not validate rather than staying silent.
+
+What this buys is that there is one answer to "does a plan validate?" — *it
+validates, or it tells you it did not*. The objection D-055 raises is that a
+question gets two answers depending on which shape the vendor published; a plan
+that names what it could not check has one answer and a stated limit, which is
+not the same thing as two answers.
+
+Refused: fetching the bundle behind a remote reference so a plan can validate
+it. That would make `--dry-run` — the cheap, safe thing an operator runs first —
+a network operation that fails when a registry is down, and
+`TestAPlanOverARemoteReferenceDeclinesToWarn` already pins both halves of the
+current behaviour: no attempt to reach the registry, and a plan that still
+succeeds promptly.
+
+Consequence for whoever executes it: the plan's output changes, and this
+project's plan output is parsed — the acceptance and CLI suites assert on
+`would create an installation for demo`. The limit is stated by **adding** a
+line rather than rewording that one, and by adding a key to the operation's
+`Data` map rather than reshaping it.
+
+**Drift count: still 0.** This section records an author's ruling and the
+correction above corrects this wave's own prose; neither changes an entry's
+class.
