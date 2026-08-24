@@ -662,11 +662,23 @@ func (d *Deps) saveInstallation(ctx context.Context, inst domain.Installation) e
 		"# the manager reads its own state, so editing this changes nothing.\n" +
 		"# Change parameters with `morzer config set name=value`.\n"
 
-	if err := atomicfs.WriteFile(d.Paths.InstallationFile(),
-		append([]byte(header), data...), 0o640); err != nil {
+	// State first, report second, and the order is the point.
+	//
+	// Both writes can fail, and `doctor` reads the report back and reports the
+	// two disagreeing either way -- so what the order decides is not whether a
+	// disagreement is noticed but which of the two files is the wrong one.
+	//
+	// Report first let it run *ahead* of state: a refused state write left an
+	// installation.yaml describing a change the manager never recorded, and
+	// `hookbackup` copies that file into backups, so the fiction outlived the
+	// failure. State first can only leave the report *behind* -- stale, still
+	// describing the installation as it actually stands, and reproduced by the
+	// next successful save.
+	if err := d.State.SaveInstallation(ctx, inst); err != nil {
 		return err
 	}
-	return d.State.SaveInstallation(ctx, inst)
+	return atomicfs.WriteFile(d.Paths.InstallationFile(),
+		append([]byte(header), data...), 0o640)
 }
 
 // parameters resolves the release's declarations against the operator's
