@@ -131,7 +131,7 @@
       "source": "morzecrew/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/rfc-writer/SKILL.md",
-      "computedHash": "4a6c9b3ed00762841fa48633a7c3aecb5f7601892b24dd69a08ef3ec572d2d72"
+      "computedHash": "3d8706620fb01447427fe67f9f55a98a08ef1266331a3ad056f25edebba85366"
     },
     "self-audit": {
       "source": "morzecrew/agent-skills",
