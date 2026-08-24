@@ -662,11 +662,55 @@ func (d *Deps) saveInstallation(ctx context.Context, inst domain.Installation) e
 		"# the manager reads its own state, so editing this changes nothing.\n" +
 		"# Change parameters with `morzer config set name=value`.\n"
 
-	if err := atomicfs.WriteFile(d.Paths.InstallationFile(),
-		append([]byte(header), data...), 0o640); err != nil {
+	// State first, report second, and the order is the point.
+	//
+	// Both writes can fail, and `doctor` reads the report back and reports the
+	// two disagreeing either way -- so what the order decides is not whether a
+	// disagreement is noticed but which of the two files is the wrong one.
+	//
+	// Report first let it run *ahead* of state: a refused state write left an
+	// installation.yaml describing a change the manager never recorded, and
+	// `hookbackup` copies that file into backups, so the fiction outlived the
+	// failure. State first can only leave the report *behind* -- stale, still
+	// describing the installation as it actually stands, and reproduced by the
+	// next successful save.
+	if err := d.State.SaveInstallation(ctx, inst); err != nil {
 		return err
 	}
-	return d.State.SaveInstallation(ctx, inst)
+
+	// A report that cannot be written is a warning, not a failed operation.
+	//
+	// The record is committed by the line above, and callers guard on it:
+	// `persistRuntimeBaseline` returns early once RuntimeOptions is set, so
+	// writing the record first puts that guard *in front of* the step that can
+	// still fail. Returning an error here would tell an operator the operation
+	// did not happen -- it did -- and invite a re-run that the guard turns into
+	// a no-op, leaving the report missing with nothing left to say so.
+	//
+	// So the operation stands, the gap is named, and the remedy is named with
+	// it. `doctor` reports the same disagreement on every subsequent run.
+	if err := atomicfs.WriteFile(d.Paths.InstallationFile(),
+		append([]byte(header), data...), 0o640); err != nil {
+		d.warnReportNotWritten(ctx, err)
+	}
+	return nil
+}
+
+// warnReportNotWritten reports a committed record whose report did not land.
+//
+// Both channels, because they answer different questions: the log is what an
+// operator reads afterwards while working out how the file went missing, and
+// the bus is what puts it in front of them during the run that caused it.
+func (d *Deps) warnReportNotWritten(ctx context.Context, cause error) {
+	logging.FromContext(ctx).Warn("installation report not written",
+		"path", d.Paths.InstallationFile(), "error", cause)
+	if d.Bus == nil {
+		return
+	}
+	d.Bus.Publish(events.Message(events.LevelWarn,
+		"the installation is recorded, but %s could not be written (%v); "+
+			"run `morzer init --repair` to rewrite it from the recorded state",
+		d.Paths.InstallationFile(), cause))
 }
 
 // parameters resolves the release's declarations against the operator's

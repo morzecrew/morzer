@@ -300,12 +300,13 @@ func (s *unreadableState) SaveInstallation(context.Context, domain.Installation)
 // as "no baseline recorded yet", passes the absence check, and gets saved. The
 // error path is not propagation here, it is the only thing standing between a
 // failed read and a blank installation written over a real one.
-// Paths is set for a reason that has nothing to do with the assertions: on the
-// failing side of this test, `saveInstallation` writes its report file to
-// `d.Paths.InstallationFile()` before it reaches the state store, and a zero
-// Paths resolves that to a relative path -- so a regression here does not just
-// fail, it writes a blank installation into whatever directory `go test` is
-// running in. Measured: it put one in this package's own source directory.
+// Paths is set deliberately, for a reason unrelated to the assertions. Should
+// the guard above regress, `saveInstallation` runs and reaches
+// `d.Paths.InstallationFile()` -- and a zero Paths resolves that to a relative
+// path, so the regression would not merely fail the test: it would write a
+// blank installation into whatever directory `go test` ran in. That happened
+// once, into this package's own source directory. The temp directory below is
+// what contains it.
 func TestTheBaselineWriteStopsWhenItCannotReadTheInstallation(t *testing.T) {
 	broken := &unreadableState{err: errors.New("state file is unreadable")}
 	d := &Deps{State: broken, Paths: domain.PathsUnder(t.TempDir(), "demo")}
