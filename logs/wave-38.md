@@ -204,3 +204,48 @@ line rather than rewording that one, and by adding a key to the operation's
 **Drift count: still 0.** This section records an author's ruling and the
 correction above corrects this wave's own prose; neither changes an entry's
 class.
+
+## Second attempt — 2026-08-24, what review found in the ordering
+
+The fix above was reviewed on #66 and was incomplete. The entry that follows is
+the second attempt at the same decision, appended rather than folded into the
+first, because the first was wrong in a way worth keeping.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-08-24T18:40:00Z
+attempt: 2
+claim: writing the record before the report moved an idempotence guard in front of the step that can still fail, so an error from the report write invited a re-run that does nothing at all
+evidence: internal/lifecycle/ops/ops.go:760
+action: decided
+proposal: ASSUMED — a report that cannot be written warns, names the file and names the remedy; it does not fail the operation that recorded the installation. The record is committed by then, and saying otherwise is the same class of untruth this wave set out to remove, pointing the other way.
+```
+
+`persistRuntimeBaseline` returns early once `RuntimeOptions` is set. Under the
+old order a refused *state* write left that field unset, so the next run retried
+and converged. Under the new order the record lands first — and if the report
+write then fails, the operation returns an error while the guard it will meet
+next time has already been satisfied. The operator is told it failed, re-runs
+it, and the second run does nothing: the half that succeeded is the half the
+guard checks.
+
+Reproduced rather than reasoned about: with `EtcDir` occupied by a regular file
+so `MkdirAll` inside the write fails, the first call errors, the obstruction is
+cleared, and the re-run is a no-op that produces no report at all.
+
+**This is a rule this project had already written down and did not apply to
+itself.** *A failure after the effect needs a second run that works — if
+retrying hits an idempotence guard before the failed step, warn instead of
+erroring.* It was distilled from an earlier wave, and the fix above walked into
+it while fixing a different ordering defect two lines away.
+
+What that says about the first attempt is not that reversing the order was
+wrong. The direction is still right and the argument for it stands. It is that
+**changing which of two writes commits first moves every guard that keys on
+either of them**, and the first attempt checked the artifacts the change
+produced without checking the guards that read them.
+
+**Drift count: still 0.** Nothing a document settled was built otherwise; the
+first attempt was incomplete rather than contrary to anything written down.
