@@ -359,3 +359,35 @@ func TestAPlanRefusesAnUndeclaredParameter(t *testing.T) {
 
 	res.NoOutputContains("would create")
 }
+
+// A plan refuses a declaration the manifest gives no default and the operator
+// gives no value.
+//
+// The other half of what `stage-release` checks before adopting a release, and
+// the half a sabotage sweep found untested: the example bundle gives every
+// parameter a default, so nothing in the suite reached `MissingValues` until a
+// plan started calling it.
+func TestAPlanRefusesAMissingRequiredParameter(t *testing.T) {
+	r := clitest.New(t)
+	bundle := r.BundleWithARequiredParameter()
+
+	base := []string{"init",
+		"--product", "demo",
+		"--release", bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	}
+
+	res := r.Run(base...).ExitCode(2)
+	res.StderrContains("declares no default for admin_email")
+	res.NoOutputContains("would create")
+
+	// Supplied, the same plan goes through: the check is the missing value,
+	// not the declaration.
+	r.Run(append(append([]string{}, base...),
+		"--set", "admin_email=ops@demo.example")...).ExitCode(0).
+		OutputContains("would create an installation for demo")
+}

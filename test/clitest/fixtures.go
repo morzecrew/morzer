@@ -164,3 +164,38 @@ func (r *Runner) LegacyBundle() string {
 	}
 	return dir
 }
+
+// BundleWithARequiredParameter is the example bundle with one declaration that
+// has no default.
+//
+// A manifest saying "you must choose this" is what `MissingValues` exists for,
+// and the example bundle gives every parameter a default -- so nothing in the
+// suite reached that check until a plan started making it.
+func (r *Runner) BundleWithARequiredParameter() string {
+	r.t.Helper()
+
+	dir := filepath.Join(r.t.TempDir(), "required-parameter-bundle")
+	copyDir(r.t, r.Bundle, dir)
+
+	manifest := filepath.Join(dir, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+
+	const anchor = "parameters:\n"
+	const added = `parameters:
+  admin_email:
+    type: string
+    description: Where the application sends operational mail
+    services: [app]
+`
+	rewritten := strings.Replace(string(data), anchor, added, 1)
+	if rewritten == string(data) {
+		r.t.Fatalf("the example bundle no longer declares parameters; update %s", manifest)
+	}
+	if err := os.WriteFile(manifest, []byte(rewritten), 0o644); err != nil {
+		r.t.Fatal(err)
+	}
+	return dir
+}
