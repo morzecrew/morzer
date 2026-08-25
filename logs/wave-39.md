@@ -153,3 +153,59 @@ needs the same argument `initVerb` takes — and it is the author's to schedule.
 
 **Drift count: still 0.** This is a discovery against an earlier wave's fix, not
 a departure from anything this wave built.
+
+## Second attempt — 2026-08-25, what review found in the claim
+
+Reviewed on #67. Both findings were valid and both were D-055 arriving through
+doors this branch had not looked at, which is the shape worth recording: the
+item was closed against the manifest, and the same gap was open twice more
+beside it.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-08-25T20:40:00Z
+attempt: 2
+claim: the plan validated the manifest and never checked the `--set` assignments, so it approved an invocation `stage-release` refuses before the release is adopted
+evidence: internal/lifecycle/ops/init.go:689
+action: decided
+proposal: ASSUMED — a plan makes the same two parameter checks the step makes. Both are pure functions over the manifest it has just loaded and the flags it was handed, so the plan pays nothing for them, and this is exactly the "validates what it already read" the ruling names.
+```
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-08-25T20:52:00Z
+attempt: 2
+claim: `release_validated: true` promised a check the plan does not make, because `stage-release` also verifies the resolved digest against the configured signature policy
+evidence: internal/lifecycle/ops/init.go:672
+action: decided
+proposal: ASSUMED — the field is `manifest_validated` and the declined message names the manifest. The claim is narrowed to what was checked rather than the check widened to match the claim.
+```
+
+**Narrowed rather than widened, and the distinction is the ruling's own.** The
+parameter checks are what the plan already read; digest and signature
+verification is new work, over bytes the plan has no reason to hash. Whether a
+plan should verify signatures is a real question — it makes no changes, so
+`--dry-run` permits it — and it is carried rather than answered inside a task.
+
+No disclaimer line was added to the successful path. A plan that says on every
+run what it did not check is the permanent warning this project refuses
+elsewhere; the field name carries the limit, and the reference page states it.
+
+## What the sweep found that review did not
+
+Sabotaging the two new checks killed one and left the other alive: disabling
+`MissingValues` changed no test's verdict. The example bundle gives every
+parameter a default, so **nothing in this suite had ever reached that branch** —
+it was dead the moment it was written, and the sweep is what said so.
+
+The fixture that fixes it declares a parameter with no default, and the test
+asserts both sides: refused when unset, and the same plan going through once
+`--set` supplies it. Without the second half it would pin the declaration rather
+than the missing value.
+
+**Drift count: still 0.** Both entries are gaps in what this wave built, found
+before it merged, and neither contradicts a document.
