@@ -150,10 +150,15 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	// `validated` travels to the plan's own output. A plan that could not
 	// check the bundle and does not say so is indistinguishable from one that
 	// checked it and found nothing wrong.
+	//
+	// It says *manifest*, deliberately, and not *release*. `stage-release`
+	// also verifies the resolved digest against the configured signature
+	// policy, and a plan does not: claiming the release was validated would
+	// promise a check that only the operation makes.
 	validated := false
 	if opts.DryRun && opts.ReleasePath != "" {
 		var err error
-		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath); err != nil {
+		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath, opts.Parameters); err != nil {
 			return Result{}, err
 		}
 	}
@@ -194,10 +199,10 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		out.Summary = fmt.Sprintf("would %s an installation for %s",
 			initVerb(opts, "create", "repair"), opts.Product)
 		out.Data = map[string]any{
-			"installation_id":   "",
-			"product":           opts.Product,
-			"etc_dir":           d.Paths.EtcDir,
-			"release_validated": validated,
+			"installation_id":    "",
+			"product":            opts.Product,
+			"etc_dir":            d.Paths.EtcDir,
+			"manifest_validated": validated,
 		}
 		return out, nil
 	}

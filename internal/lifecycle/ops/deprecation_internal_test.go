@@ -174,14 +174,14 @@ func TestAPlanDoesNotReachForARemoteBundle(t *testing.T) {
 	d.Source = src
 
 	validated, err := d.checkPlannedRelease(
-		context.Background(), "oci://registry.invalid/demo:1.2.0")
+		context.Background(), "oci://registry.invalid/demo:1.2.0", nil)
 
 	require.NoError(t, err, "declining to look is not a refusal")
 	assert.False(t, validated, "nothing was validated")
 	assert.Zero(t, src.fetches,
 		"a plan must not pull from a registry to decide whether to warn")
 	require.Len(t, *seen, 1, "and it says so rather than staying silent")
-	assert.Contains(t, (*seen)[0], "did not validate")
+	assert.Contains(t, (*seen)[0], "did not validate the bundle's manifest")
 }
 
 // The local half of the same guard: a directory *is* reached for, so the
@@ -196,7 +196,7 @@ func TestAPlanDoesReachForALocalBundle(t *testing.T) {
 	src := &countingSource{}
 	d.Source = src
 
-	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir())
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil)
 
 	assert.Equal(t, 1, src.fetches,
 		"a local reference is materialised through the source, whatever shape it is")

@@ -306,7 +306,7 @@ func TestAPlanOverARemoteReferenceSaysItDidNotValidate(t *testing.T) {
 		"--dry-run",
 	).ExitCode(0)
 
-	res.OutputContains("did not validate")
+	res.OutputContains("did not validate the bundle's manifest")
 	// Still a plan, and still promptly: declining to look is not a refusal.
 	res.OutputContains("would create an installation for demo")
 }
@@ -316,7 +316,7 @@ func TestAPlanOverARemoteReferenceSaysItDidNotValidate(t *testing.T) {
 // Asserted separately from the sentence for the reason the sibling test above
 // gives: the text and the field are two different promises, and only the field
 // is a contract.
-func TestAPlansJSONSaysWhetherItValidatedTheBundle(t *testing.T) {
+func TestAPlansJSONSaysWhetherItValidatedTheManifest(t *testing.T) {
 	r := clitest.New(t)
 
 	base := []string{"init",
@@ -329,9 +329,33 @@ func TestAPlansJSONSaysWhetherItValidatedTheBundle(t *testing.T) {
 	}
 
 	local := r.Run(append(append([]string{}, base...), "--release", r.Bundle)...).ExitCode(0)
-	local.FieldEquals("data.release_validated", true)
+	local.FieldEquals("data.manifest_validated", true)
 
 	remote := r.Run(append(append([]string{}, base...),
 		"--release", "oci://registry.invalid/demo:1.2.0")...).ExitCode(0)
-	remote.FieldEquals("data.release_validated", false)
+	remote.FieldEquals("data.manifest_validated", false)
+}
+
+// A plan refuses a `--set` the manifest does not declare.
+//
+// The same gap as D-055 arriving through the parameters rather than the
+// manifest: `stage-release` rejects an undeclared assignment before the release
+// is adopted, and a plan that does not was approving an invocation the run
+// refuses. Both checks are pure functions over the manifest the plan has
+// already loaded and the flags it was handed, so this costs no extra read.
+func TestAPlanRefusesAnUndeclaredParameter(t *testing.T) {
+	r := clitest.New(t)
+
+	res := r.Run("init",
+		"--product", "demo",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--set", "nosuchparameter=1",
+		"--dry-run",
+	).ExitCode(2)
+
+	res.NoOutputContains("would create")
 }

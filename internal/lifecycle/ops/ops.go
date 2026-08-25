@@ -289,7 +289,8 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 // The temporary directory is not a write in the sense a plan is forbidden:
 // nothing outside it is touched and it is gone before this returns. The local
 // source already does the same thing inside Resolve, for the same reason.
-func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string) (bool, error) {
+func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
+	set map[string]string) (bool, error) {
 	ref, err := ports.ParseRef(releasePath)
 	if err != nil {
 		return false, err
@@ -319,6 +320,21 @@ func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string) (boo
 		return false, err
 	}
 	d.warnDeprecations(m)
+
+	// The same two checks `stage-release` makes before the release is
+	// adopted, and both are pure functions over the manifest just loaded and
+	// the flags already in hand -- so a plan makes them for free, and one
+	// that skipped them approved an invocation the operation refuses. That is
+	// D-055 arriving through the parameters instead of the manifest.
+	if _, err := domain.ResolveParameters(m.Parameters, set); err != nil {
+		return false, err
+	}
+	if missing := domain.MissingValues(m.Parameters, set); len(missing) > 0 {
+		return false, domain.Usage(
+			"release %s declares no default for %s",
+			m.Metadata.Version, strings.Join(missing, ", ")).
+			WithHint("pass --set %s=<value> (repeat --set for several)", missing[0])
+	}
 	return true, nil
 }
 
@@ -332,8 +348,8 @@ func (d *Deps) noteBundleNotValidated(ref ports.Ref) {
 		return
 	}
 	d.Bus.Publish(events.Message(events.LevelWarn,
-		"this plan did not validate the bundle: a %s reference is not fetched "+
-			"for a plan, so it is checked when the operation runs", ref.Scheme))
+		"this plan did not validate the bundle's manifest: a %s reference is "+
+			"not fetched for a plan, so it is read when the operation runs", ref.Scheme))
 }
 
 // engineOptions translates operation options into engine options.
