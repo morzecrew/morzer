@@ -131,9 +131,9 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 
-	// A plan gets its deprecation warning here, from the bundle at its
-	// source, because the one inside stepStageRelease reads the staged copy
-	// and a plan stages nothing.
+	// A plan validates the bundle here, and warns about it, from the bundle
+	// at its source -- because the copy inside stepStageRelease is the staged
+	// one and a plan stages nothing.
 	//
 	// Deliberately not moved out of the step for the real path. There it
 	// reads the bundle *after* verification, and a bundle whose signature
@@ -141,8 +141,21 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	// on the way to being refused. A plan has no verified copy to read and
 	// is already a statement about the source (RFC 0001 decision 12), so
 	// the two paths read different copies for the same reason.
+	//
+	// Refused here rather than inside a step, so it is a refusal with nothing
+	// started: exit 2 naming the manifest, not exit 11 with the reason buried
+	// in a compensated operation record. `refuseRuntimeOptionChange` is here
+	// for the same reason.
+	//
+	// `validated` travels to the plan's own output. A plan that could not
+	// check the bundle and does not say so is indistinguishable from one that
+	// checked it and found nothing wrong.
+	validated := false
 	if opts.DryRun && opts.ReleasePath != "" {
-		d.warnPlannedDeprecations(ctx, opts.ReleasePath)
+		var err error
+		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath); err != nil {
+			return Result{}, err
+		}
 	}
 
 	opID := d.newOpID()
@@ -181,9 +194,10 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		out.Summary = fmt.Sprintf("would %s an installation for %s",
 			initVerb(opts, "create", "repair"), opts.Product)
 		out.Data = map[string]any{
-			"installation_id": "",
-			"product":         opts.Product,
-			"etc_dir":         d.Paths.EtcDir,
+			"installation_id":   "",
+			"product":           opts.Product,
+			"etc_dir":           d.Paths.EtcDir,
+			"release_validated": validated,
 		}
 		return out, nil
 	}

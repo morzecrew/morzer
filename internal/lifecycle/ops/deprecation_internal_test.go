@@ -164,27 +164,42 @@ func (s *countingSource) Fetch(context.Context, ports.Ref, string) (ports.Bundle
 // Not merely "no warning appears": no *pull* is attempted. That is the whole
 // content of the decision -- a plan does not go to a registry to phrase an
 // advisory -- and it is invisible in the output either way.
+//
+// What it now does say is the other half. Silence read as a clean bill of
+// health: the plan printed its steps whether it had checked the bundle or not,
+// and nothing distinguished the two.
 func TestAPlanDoesNotReachForARemoteBundle(t *testing.T) {
 	d, seen := warned(t)
 	src := &countingSource{}
 	d.Source = src
 
-	d.warnPlannedDeprecations(context.Background(), "oci://registry.invalid/demo:1.2.0")
+	validated, err := d.checkPlannedRelease(
+		context.Background(), "oci://registry.invalid/demo:1.2.0")
 
+	require.NoError(t, err, "declining to look is not a refusal")
+	assert.False(t, validated, "nothing was validated")
 	assert.Zero(t, src.fetches,
 		"a plan must not pull from a registry to decide whether to warn")
-	assert.Empty(t, *seen, "and it says nothing about a bundle it never read")
+	require.Len(t, *seen, 1, "and it says so rather than staying silent")
+	assert.Contains(t, (*seen)[0], "did not validate")
 }
 
 // The local half of the same guard: a directory *is* reached for, so the
 // decision is a scheme test rather than a blanket refusal to look.
+//
+// And a source that cannot produce the bundle is now a refusal. The plan
+// declines to look in exactly one case, the remote reference above; everywhere
+// else, failing to look is the operation failing, which is what a plan is for
+// saying in advance.
 func TestAPlanDoesReachForALocalBundle(t *testing.T) {
 	d, _ := warned(t)
 	src := &countingSource{}
 	d.Source = src
 
-	d.warnPlannedDeprecations(context.Background(), t.TempDir())
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir())
 
 	assert.Equal(t, 1, src.fetches,
 		"a local reference is materialised through the source, whatever shape it is")
+	require.Error(t, err, "a bundle that cannot be read is not a bundle that is fine")
+	assert.False(t, validated)
 }
