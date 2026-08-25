@@ -115,3 +115,41 @@ while leaving the sentence intact killed no test.
   reader of the notes (release 0.3.0).
 - ~~**A plan does not validate the bundle it plans against**~~ (D-055, wave 34)
   — closed by this wave.
+
+## Found while verifying, not while building — 2026-08-25
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-08-25T18:35:00Z
+attempt: 1
+claim: `apply --dry-run` prints "demo 1.2.0 applied" in the past tense, directly beneath the line saying nothing was changed, because applySummary never asks whether the operation was a plan
+evidence: internal/lifecycle/ops/apply.go:166
+action: decided
+proposal: none from this wave. Recorded and carried: it is another command's operator-visible summary, and this branch is about what `init --dry-run` validates.
+```
+
+**This is the defect an earlier wave already fixed for `init`, still live in
+`apply`.** That one read "installation created for" under a plan and was
+described then as "a creation claimed in the past tense, directly beneath the
+line saying nothing was changed" — which is this, verbatim, one command over.
+`init` grew `initVerb` to say "would create" for a plan and "created" for a run;
+`applySummary` takes the record and the release and never learns which it was.
+
+Nothing pins it: no test asserts the apply plan's summary, which is why the fix
+to the sibling command did not reach it.
+
+**How it was found is the part worth keeping.** It was not in the diff, not in
+the tests, and no checker reports it. It appeared in `just demo-plan`'s output,
+which this wave ran to satisfy a checklist — and it would have been just as
+invisible had that recipe been run and its exit code believed instead of its
+output read. The lane was already green.
+
+**Not fixed here, deliberately.** The plan's summary is parsed, and changing a
+command's output line is a decision about a published surface rather than a
+tidy-up to fold into a branch about something else. It is small — `applySummary`
+needs the same argument `initVerb` takes — and it is the author's to schedule.
+
+**Drift count: still 0.** This is a discovery against an earlier wave's fix, not
+a departure from anything this wave built.
