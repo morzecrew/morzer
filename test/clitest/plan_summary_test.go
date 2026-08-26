@@ -36,3 +36,24 @@ func TestAPlannedUpdateSaysItWouldUpdate(t *testing.T) {
 	res.OutputContains("would update demo")
 	res.NoOutputContains("updated demo from")
 }
+
+// An apply that failed does not print a sentence saying it applied.
+//
+// The same defect as the tense, one axis over: `applySummary` asked what the
+// steps did and never what the operation did, so a rolled-back run printed
+// "demo 1.2.0 applied" between "earlier changes were rolled back" and the error
+// explaining why. `updateSummary` has always checked the status; this is the
+// half of that pair that never did.
+//
+// The apply here fails at pull-images for want of a container runtime, which is
+// what makes the assertion cheap: any failure past the first step reaches the
+// summary.
+func TestAFailedApplyDoesNotSayItApplied(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	res := r.Run("apply")
+
+	res.ExitCode(11)
+	res.NoOutputContains("demo 1.2.0 applied")
+	res.NoOutputContains("is already applied")
+}

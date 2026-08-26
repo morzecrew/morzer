@@ -161,6 +161,14 @@ func applyFlags(opts Options) map[string]string {
 // changed. `init` grew `initVerb` when that was found there; the fix stopped at
 // the command it was found in, and this is the same defect two commands over.
 func applySummary(rec domain.OperationRecord, rel domain.Release, dryRun bool) string {
+	// An operation that did not succeed gets no summary, which is what
+	// `updateSummary` has always done and this one never did: asking only
+	// what the steps did, it printed "demo 1.2.0 applied" between "earlier
+	// changes were rolled back" and the error saying why.
+	if rec.Status != domain.StatusSucceeded {
+		return ""
+	}
+
 	skipped := 0
 	for _, s := range rec.Steps {
 		if s.Status == domain.StepSkipped {

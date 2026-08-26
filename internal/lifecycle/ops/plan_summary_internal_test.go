@@ -50,6 +50,37 @@ func TestApplySummaryWhenEveryStepIsAlreadySatisfied(t *testing.T) {
 		applySummary(none, rel, true))
 }
 
+// An apply that did not succeed gets no summary, in either tense.
+//
+// The pair to TestUpdateSummarySaysNothingAboutAnOperationThatFailed, which
+// existed as behaviour on one side and not the other: a rolled-back apply
+// printed a success sentence between the rollback and the error.
+func TestApplySummarySaysNothingAboutAnOperationThatFailed(t *testing.T) {
+	rel := summarised("demo", "1.2.0")
+	for _, status := range []domain.OperationStatus{
+		domain.StatusFailed, domain.StatusCompensated,
+	} {
+		rec := domain.OperationRecord{
+			Status: status,
+			Steps:  []domain.StepRecord{{ID: "a", Status: domain.StepSucceeded}},
+		}
+		assert.Empty(t, applySummary(rec, rel, false), "status %s, run", status)
+		assert.Empty(t, applySummary(rec, rel, true), "status %s, plan", status)
+	}
+}
+
+// A plan's record is a succeeded one, which is what lets the status guard above
+// coexist with the plan sentences. Asserted rather than assumed: if the engine
+// ever reported a plan as anything else, every plan summary would vanish and
+// the tests above would be the only thing that noticed.
+func TestAPlanRecordCountsAsSucceeded(t *testing.T) {
+	rel := summarised("demo", "1.2.0")
+	ran := stepsWith(domain.StepSucceeded)
+
+	assert.NotEmpty(t, applySummary(ran, rel, true),
+		"a plan whose record succeeded still gets a summary")
+}
+
 func TestUpdateSummarySpeaksInTheTenseOfWhatHappened(t *testing.T) {
 	to := summarised("demo", "1.3.0")
 	from := domain.ReleaseRecord{Name: "demo", Version: domain.MustParseVersion("1.2.0")}
