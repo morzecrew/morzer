@@ -97,7 +97,7 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return err
 	})
 
-	out := Result{Record: result.Record, Summary: applySummary(result.Record, rel)}
+	out := Result{Record: result.Record, Summary: applySummary(result.Record, rel, opts.DryRun)}
 	d.notifyFinished(ctx, opID, domain.OpTypeApply, result.Record, runErr)
 
 	// After the operation, never inside it. A statement is a record *of*
@@ -153,7 +153,22 @@ func applyFlags(opts Options) map[string]string {
 	return flags
 }
 
-func applySummary(rec domain.OperationRecord, rel domain.Release) string {
+// applySummary says what happened, or what would, and the difference is the
+// whole reason it takes dryRun.
+//
+// A plan runs no steps, so a summary that does not ask prints a completed
+// operation in the past tense directly beneath the line saying nothing was
+// changed. `init` grew `initVerb` when that was found there; the fix stopped at
+// the command it was found in, and this is the same defect two commands over.
+func applySummary(rec domain.OperationRecord, rel domain.Release, dryRun bool) string {
+	// An operation that did not succeed gets no summary, which is what
+	// `updateSummary` has always done and this one never did: asking only
+	// what the steps did, it printed "demo 1.2.0 applied" between "earlier
+	// changes were rolled back" and the error saying why.
+	if rec.Status != domain.StatusSucceeded {
+		return ""
+	}
+
 	skipped := 0
 	for _, s := range rec.Steps {
 		if s.Status == domain.StepSkipped {
@@ -161,7 +176,14 @@ func applySummary(rec domain.OperationRecord, rel domain.Release) string {
 		}
 	}
 	if skipped == len(rec.Steps) && len(rec.Steps) > 0 {
+		if dryRun {
+			return fmt.Sprintf("%s %s is already applied; there would be nothing to change",
+				rel.Name(), rel.Version())
+		}
 		return fmt.Sprintf("%s %s is already applied; nothing changed", rel.Name(), rel.Version())
+	}
+	if dryRun {
+		return fmt.Sprintf("would apply %s %s", rel.Name(), rel.Version())
 	}
 	return fmt.Sprintf("%s %s applied", rel.Name(), rel.Version())
 }
