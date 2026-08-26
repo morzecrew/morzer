@@ -141,7 +141,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 
 	out := Result{
 		Record:  result.Record,
-		Summary: updateSummary(result.Record, from, staged),
+		Summary: updateSummary(result.Record, from, staged, opts.DryRun),
 		Data: map[string]any{
 			"from":   from.Version.String(),
 			"to":     staged.Version().String(),
@@ -326,12 +326,21 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 	return flags
 }
 
-func updateSummary(rec domain.OperationRecord, from domain.ReleaseRecord, to domain.Release) string {
+// updateSummary says what happened, or what would. See applySummary: a plan
+// runs no steps, and a summary that does not ask describes one as finished.
+func updateSummary(rec domain.OperationRecord, from domain.ReleaseRecord,
+	to domain.Release, dryRun bool) string {
 	if rec.Status != domain.StatusSucceeded {
 		return ""
 	}
 	if from.IsZero() {
+		if dryRun {
+			return fmt.Sprintf("would install %s %s", to.Name(), to.Version())
+		}
 		return fmt.Sprintf("installed %s %s", to.Name(), to.Version())
+	}
+	if dryRun {
+		return fmt.Sprintf("would update %s from %s to %s", to.Name(), from.Version, to.Version())
 	}
 	return fmt.Sprintf("updated %s from %s to %s", to.Name(), from.Version, to.Version())
 }
