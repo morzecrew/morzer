@@ -262,3 +262,132 @@ func TestAPlanOverARemoteReferenceDeclinesToWarn(t *testing.T) {
 	res.OutputContains("would create an installation for demo")
 	res.NoOutputContains("is deprecated")
 }
+
+// A plan refuses what the run would refuse, and D-055 is the gap it closes.
+//
+// `--product` is given deliberately. Without it the CLI reads the manifest to
+// learn the product name, and validation arrives with the read -- so the plan
+// refused for a reason that had nothing to do with checking anything, and
+// supplying the name silently removed the only check there was.
+func TestAPlanRefusesABundleTheRunWouldRefuse(t *testing.T) {
+	r := clitest.New(t)
+
+	res := r.Run("init",
+		"--product", "demo",
+		"--release", r.LegacyBundle(),
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(2)
+
+	res.StderrContains("is no longer read")
+	res.NoOutputContains("would create")
+}
+
+// A plan that could not check the bundle says so, on both surfaces.
+//
+// The decision not to fetch a remote reference is unchanged and still pinned by
+// TestAPlanOverARemoteReferenceDeclinesToWarn. What changes is that silence no
+// longer stands in for a clean bill of health: the plan printed its steps and
+// "would create an installation" whether it had validated anything or not, and
+// nothing in that output told the two apart.
+func TestAPlanOverARemoteReferenceSaysItDidNotValidate(t *testing.T) {
+	r := clitest.New(t)
+
+	res := r.Run("init",
+		"--product", "demo",
+		"--release", "oci://registry.invalid/demo:1.2.0",
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(0)
+
+	res.OutputContains("did not validate the bundle's manifest")
+	// Still a plan, and still promptly: declining to look is not a refusal.
+	res.OutputContains("would create an installation for demo")
+}
+
+// The same claim on the surface something parses.
+//
+// Asserted separately from the sentence for the reason the sibling test above
+// gives: the text and the field are two different promises, and only the field
+// is a contract.
+func TestAPlansJSONSaysWhetherItValidatedTheManifest(t *testing.T) {
+	r := clitest.New(t)
+
+	base := []string{"init",
+		"--product", "demo",
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run", "--json",
+	}
+
+	local := r.Run(append(append([]string{}, base...), "--release", r.Bundle)...).ExitCode(0)
+	local.FieldEquals("data.manifest_validated", true)
+
+	remote := r.Run(append(append([]string{}, base...),
+		"--release", "oci://registry.invalid/demo:1.2.0")...).ExitCode(0)
+	remote.FieldEquals("data.manifest_validated", false)
+}
+
+// A plan refuses a `--set` the manifest does not declare.
+//
+// The same gap as D-055 arriving through the parameters rather than the
+// manifest: `stage-release` rejects an undeclared assignment before the release
+// is adopted, and a plan that does not was approving an invocation the run
+// refuses. Both checks are pure functions over the manifest the plan has
+// already loaded and the flags it was handed, so this costs no extra read.
+func TestAPlanRefusesAnUndeclaredParameter(t *testing.T) {
+	r := clitest.New(t)
+
+	res := r.Run("init",
+		"--product", "demo",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--set", "nosuchparameter=1",
+		"--dry-run",
+	).ExitCode(2)
+
+	res.NoOutputContains("would create")
+}
+
+// A plan refuses a declaration the manifest gives no default and the operator
+// gives no value.
+//
+// The other half of what `stage-release` checks before adopting a release, and
+// the half a sabotage sweep found untested: the example bundle gives every
+// parameter a default, so nothing in the suite reached `MissingValues` until a
+// plan started calling it.
+func TestAPlanRefusesAMissingRequiredParameter(t *testing.T) {
+	r := clitest.New(t)
+	bundle := r.BundleWithARequiredParameter()
+
+	base := []string{"init",
+		"--product", "demo",
+		"--release", bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	}
+
+	res := r.Run(base...).ExitCode(2)
+	res.StderrContains("declares no default for admin_email")
+	res.NoOutputContains("would create")
+
+	// Supplied, the same plan goes through: the check is the missing value,
+	// not the declaration.
+	r.Run(append(append([]string{}, base...),
+		"--set", "admin_email=ops@demo.example")...).ExitCode(0).
+		OutputContains("would create an installation for demo")
+}

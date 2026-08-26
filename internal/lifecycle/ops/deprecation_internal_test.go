@@ -3,6 +3,8 @@ package ops
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -164,27 +166,172 @@ func (s *countingSource) Fetch(context.Context, ports.Ref, string) (ports.Bundle
 // Not merely "no warning appears": no *pull* is attempted. That is the whole
 // content of the decision -- a plan does not go to a registry to phrase an
 // advisory -- and it is invisible in the output either way.
+//
+// What it now does say is the other half. Silence read as a clean bill of
+// health: the plan printed its steps whether it had checked the bundle or not,
+// and nothing distinguished the two.
 func TestAPlanDoesNotReachForARemoteBundle(t *testing.T) {
 	d, seen := warned(t)
 	src := &countingSource{}
 	d.Source = src
 
-	d.warnPlannedDeprecations(context.Background(), "oci://registry.invalid/demo:1.2.0")
+	validated, err := d.checkPlannedRelease(
+		context.Background(), "oci://registry.invalid/demo:1.2.0", nil)
 
+	require.NoError(t, err, "declining to look is not a refusal")
+	assert.False(t, validated, "nothing was validated")
 	assert.Zero(t, src.fetches,
 		"a plan must not pull from a registry to decide whether to warn")
-	assert.Empty(t, *seen, "and it says nothing about a bundle it never read")
+	require.Len(t, *seen, 1, "and it says so rather than staying silent")
+	assert.Contains(t, (*seen)[0], "did not validate the bundle's manifest")
 }
 
 // The local half of the same guard: a directory *is* reached for, so the
 // decision is a scheme test rather than a blanket refusal to look.
+//
+// And a source that cannot produce the bundle is now a refusal. The plan
+// declines to look in exactly one case, the remote reference above; everywhere
+// else, failing to look is the operation failing, which is what a plan is for
+// saying in advance.
 func TestAPlanDoesReachForALocalBundle(t *testing.T) {
 	d, _ := warned(t)
 	src := &countingSource{}
 	d.Source = src
 
-	d.warnPlannedDeprecations(context.Background(), t.TempDir())
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil)
 
 	assert.Equal(t, 1, src.fetches,
 		"a local reference is materialised through the source, whatever shape it is")
+	require.Error(t, err, "a bundle that cannot be read is not a bundle that is fine")
+	assert.False(t, validated)
+}
+
+// bundleSource hands back a real bundle directory whatever it is asked for, so
+// the checks past Fetch can be exercised without a CLI subprocess.
+//
+// The end-to-end tests in test/clitest cover these paths too, but they run the
+// binary as a child process: the behaviour is exercised and the coverage
+// instrumentation cannot see it, so the branches below read as untested.
+type bundleSource struct {
+	ports.ReleaseSource
+	dir     string
+	fetches int
+}
+
+func (s *bundleSource) Fetch(context.Context, ports.Ref, string) (ports.BundlePath, error) {
+	s.fetches++
+	return ports.BundlePath(s.dir), nil
+}
+
+func exampleBundle(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.Abs(filepath.Join("..", "..", "..", "testdata", "bundle"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "manifest.yaml")); err != nil {
+		t.Fatalf("the example bundle is not where this test expects it: %v", err)
+	}
+	return dir
+}
+
+// A local bundle that validates is reported as validated.
+//
+// The positive case matters as much as the refusals: a check that returned
+// false for everything would pass every test that only asserts a refusal.
+func TestAPlanReportsAValidatedManifest(t *testing.T) {
+	d, _ := warned(t)
+	src := &bundleSource{dir: exampleBundle(t)}
+	d.Source = src
+
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil)
+
+	require.NoError(t, err)
+	assert.True(t, validated, "a manifest that validates is reported as validated")
+	assert.Equal(t, 1, src.fetches)
+}
+
+// An assignment the manifest does not declare is refused by the plan.
+func TestAPlanRefusesAnUndeclaredAssignment(t *testing.T) {
+	d, _ := warned(t)
+	d.Source = &bundleSource{dir: exampleBundle(t)}
+
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(),
+		map[string]string{"nosuchparameter": "1"})
+
+	require.Error(t, err, "stage-release refuses this, so the plan describing it must too")
+	assert.False(t, validated)
+}
+
+// A reference that cannot be parsed is refused before the source is asked.
+//
+// `file://` with a host is the reachable case: an empty reference is refused by
+// the CLI before it reaches here.
+func TestAPlanRefusesAReferenceItCannotParse(t *testing.T) {
+	d, _ := warned(t)
+	src := &countingSource{}
+	d.Source = src
+
+	validated, err := d.checkPlannedRelease(
+		context.Background(), "file://elsewhere/bundle", nil)
+
+	require.Error(t, err)
+	assert.False(t, validated)
+	assert.Zero(t, src.fetches, "nothing is fetched for a reference that did not parse")
+}
+
+// A bundle whose manifest cannot be read is refused, not reported as fine.
+//
+// The plan declines to look in exactly one case, the remote reference, and says
+// so. Everywhere else a read that fails is the operation failing, which is what
+// the plan exists to say in advance.
+func TestAPlanRefusesABundleWithNoManifest(t *testing.T) {
+	d, _ := warned(t)
+	d.Source = &bundleSource{dir: t.TempDir()} // an empty directory
+
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil)
+
+	require.Error(t, err, "a bundle with no manifest is not a bundle that is fine")
+	assert.False(t, validated)
+}
+
+// A declaration with no default and no value is refused by the plan.
+//
+// Only the manifest is read here, so the fixture is one file rather than a
+// bundle: LoadManifest never looks at the rest.
+func TestAPlanRefusesAMissingValueForADeclaredParameter(t *testing.T) {
+	d, _ := warned(t)
+
+	source, err := os.ReadFile(filepath.Join(exampleBundle(t), "manifest.yaml"))
+	require.NoError(t, err)
+	const added = `parameters:
+  admin_email:
+    type: string
+    description: Where the application sends operational mail
+    services: [app]
+`
+	rewritten := strings.Replace(string(source), "parameters:\n", added, 1)
+	require.NotEqual(t, string(source), rewritten,
+		"the example bundle no longer declares parameters; update this fixture")
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte(rewritten), 0o644))
+	d.Source = &bundleSource{dir: dir}
+
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "admin_email")
+	assert.False(t, validated)
+}
+
+// A Deps with no bus does not panic on the path that publishes to one.
+func TestANotValidatedNoteWithNoBusIsSilentRatherThanFatal(t *testing.T) {
+	d := &Deps{Source: &countingSource{}}
+
+	validated, err := d.checkPlannedRelease(
+		context.Background(), "oci://registry.invalid/demo:1.2.0", nil)
+
+	require.NoError(t, err)
+	assert.False(t, validated)
 }

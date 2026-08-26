@@ -25,7 +25,7 @@ These are accepted by every command.
 | Flag | Meaning |
 | --- | --- |
 | `--json` | Machine-readable output. stdout carries exactly one JSON object; narration moves to stderr. |
-| `--dry-run` | Plan only; make no changes. Prints the step list and, where applicable, a configuration diff. |
+| `--dry-run` | Plan only; make no changes. Prints the step list and, where applicable, a configuration diff. A plan validates the release manifest it plans against, and the `--set` values against it, refusing what the operation would refuse; where it could not read the bundle — a remote reference is not fetched for a plan — it says so. The digest and signature are verified when the operation runs, not by a plan. |
 | `--yes` | Assume yes for confirmations. Destructive actions still need `--force`. |
 | `--force` | Confirm a destructive operation. It authorises destructive actions, not incorrect ones — a refusal on safety grounds is not overridden by it. |
 | `--timeout` | Overall time budget for the operation, as a Go duration (`30m`, `2h`). |

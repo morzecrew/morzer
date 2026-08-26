@@ -289,27 +289,67 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 // The temporary directory is not a write in the sense a plan is forbidden:
 // nothing outside it is touched and it is gone before this returns. The local
 // source already does the same thing inside Resolve, for the same reason.
-func (d *Deps) warnPlannedDeprecations(ctx context.Context, releasePath string) {
+func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
+	set map[string]string) (bool, error) {
 	ref, err := ports.ParseRef(releasePath)
-	if err != nil || ref.Scheme != "file" {
-		return
+	if err != nil {
+		return false, err
+	}
+	if ref.Scheme != "file" {
+		// The one case that declines to look, and it says so. Fetching a
+		// remote bundle to phrase a plan is a cost nobody asked a plan for.
+		d.noteBundleNotValidated(ref)
+		return false, nil
 	}
 
-	dir, err := os.MkdirTemp("", "morzer-plan-")
-	if err != nil {
-		return
+	dir, mkErr := os.MkdirTemp("", "morzer-plan-")
+	if mkErr != nil {
+		return false, domain.Internal(mkErr,
+			"cannot create a temporary directory to read the bundle")
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	bundle, err := d.Source.Fetch(ctx, ref, dir)
 	if err != nil {
-		return
+		return false, err
 	}
+	// LoadManifest validates: the answer this plan needs is already computed
+	// here, and used to be discarded with a bare return.
 	m, err := release.LoadManifest(filepath.Join(bundle.String(), release.ManifestFileName))
 	if err != nil {
-		return
+		return false, err
 	}
 	d.warnDeprecations(m)
+
+	// The same two checks `stage-release` makes before the release is
+	// adopted, and both are pure functions over the manifest just loaded and
+	// the flags already in hand -- so a plan makes them for free, and one
+	// that skipped them approved an invocation the operation refuses. That is
+	// D-055 arriving through the parameters instead of the manifest.
+	if _, err := domain.ResolveParameters(m.Parameters, set); err != nil {
+		return false, err
+	}
+	if missing := domain.MissingValues(m.Parameters, set); len(missing) > 0 {
+		return false, domain.Usage(
+			"release %s declares no default for %s",
+			m.Metadata.Version, strings.Join(missing, ", ")).
+			WithHint("pass --set %s=<value> (repeat --set for several)", missing[0])
+	}
+	return true, nil
+}
+
+// noteBundleNotValidated says a plan described a bundle it did not check.
+//
+// The alternative was silence, which reads as a clean bill of health: the plan
+// prints its steps and "would create an installation" whether it checked
+// anything or not, and nothing in that output distinguishes the two.
+func (d *Deps) noteBundleNotValidated(ref ports.Ref) {
+	if d.Bus == nil {
+		return
+	}
+	d.Bus.Publish(events.Message(events.LevelWarn,
+		"this plan did not validate the bundle's manifest: a %s reference is "+
+			"not fetched for a plan, so it is read when the operation runs", ref.Scheme))
 }
 
 // engineOptions translates operation options into engine options.
