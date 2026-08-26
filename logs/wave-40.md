@@ -95,3 +95,42 @@ argument.
   reader of the notes (release 0.3.0).
 - ~~**`apply --dry-run` claims an operation in the past tense**~~ (wave 39) —
   closed by this wave, in `update` as well.
+
+## Second attempt — 2026-08-26, the axis this wave was not looking along
+
+Reviewed on #70. One finding, valid, and it is the same defect this wave exists
+to fix rotated ninety degrees: a summary asserting something that did not happen.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-08-26T14:26:00Z
+attempt: 2
+claim: applySummary asked what the steps did and never what the operation did, so an apply that failed and rolled back still printed a sentence saying it applied
+evidence: `go test ./test/clitest/ -run TestProbeFailedApplySummary -v` printed, in order, `failed in 0s; earlier changes were rolled back`, then `demo 1.2.0 applied`, then `error: apply failed at step "pull-images"`
+action: decided
+proposal: ASSUMED — an operation that did not succeed gets no summary, which is what `updateSummary` has always done. The pair existed with the guard on one side only.
+```
+
+**This wave corrected the tense and walked past the mood.** The entries above are
+about a plan describing work as finished; this is a *failure* described as
+finished, printed between the rollback notice and the error explaining it. Both
+are `applySummary` answering a question nobody asked it — what happened to the
+steps — in place of the one that matters, what happened to the operation.
+
+It was pre-existing and it was in the function this branch already had open,
+which is the only reason it is fixed here rather than carried.
+
+**The risk in the fix was the plan path, and it was checked rather than
+reasoned about.** A guard on `StatusSucceeded` suppresses every summary if a
+plan's record is anything else — which would have silently deleted the sentences
+this wave was written to add. A plan's record *is* succeeded, and there is now a
+test saying so, because that fact is load-bearing for two features at once and
+was previously written down nowhere.
+
+Sabotaged both ways: removing the guard restores the failed-apply sentence,
+and widening it to suppress everything kills four tests including the plan ones.
+
+**Drift count: still 0.** A gap in what this wave built, found before it merged,
+contradicting no document.
