@@ -134,3 +134,33 @@ and widening it to suppress everything kills four tests including the plan ones.
 
 **Drift count: still 0.** A gap in what this wave built, found before it merged,
 contradicting no document.
+
+## Correction — 2026-08-26, "there is now a test saying so"
+
+**The entry above says a plan's record being a succeeded one is "asserted rather
+than assumed, because... there is now a test saying so". The test it meant does
+not say that.** It is left standing, as this collection's corrections are.
+
+`TestAPlanRecordCountsAsSucceeded` built its record with `stepsWith`, which
+hardcodes `Status: domain.StatusSucceeded`, and then asserted that a succeeded
+record with `dryRun` set produces a summary. That is a statement about the
+fixture, not about the engine. The name promised the engine's behaviour and the
+body could not reach it.
+
+What actually guards the coupling is `test/clitest`: `TestAPlannedApplySaysItWouldApply`
+and its update sibling run the real engine, and if a plan's record were ever
+reported as anything but succeeded the guard would blank the summary and both
+would fail. So the fact **is** pinned — end to end, by tests that exercise the
+engine — and it was never pinned by the unit test that claimed to.
+
+The test is renamed to `TestASucceededRecordStillGetsAPlanSummary`, which is
+what it checks, and its comment now names where the engine's half is guarded.
+Nothing about the production code changed: the guard was right, the description
+of its safety net was not.
+
+**Rule distilled:** a test whose fixture supplies the condition it claims to
+verify proves nothing about where that condition comes from. When a name says
+"X is true", check that something other than the test's own setup decides X.
+
+**Drift count: still 0.** This corrects this wave's own prose and a test name;
+no entry's class changes.

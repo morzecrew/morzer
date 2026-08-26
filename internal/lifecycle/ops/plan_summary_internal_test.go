@@ -69,16 +69,19 @@ func TestApplySummarySaysNothingAboutAnOperationThatFailed(t *testing.T) {
 	}
 }
 
-// A plan's record is a succeeded one, which is what lets the status guard above
-// coexist with the plan sentences. Asserted rather than assumed: if the engine
-// ever reported a plan as anything else, every plan summary would vanish and
-// the tests above would be the only thing that noticed.
-func TestAPlanRecordCountsAsSucceeded(t *testing.T) {
+// The status guard does not swallow the plan sentences it sits above.
+//
+// Named for what it checks, which is narrower than it first appears. The
+// fixture builds a succeeded record, so this pins the guard's boundary and
+// nothing about the engine: that *a plan's* record is a succeeded one is a fact
+// about `engine.Run`, and it is pinned end to end by the plan tests in
+// `test/clitest` — if the engine ever reported a plan otherwise, every plan
+// summary would vanish and those are what would fail.
+func TestASucceededRecordStillGetsAPlanSummary(t *testing.T) {
 	rel := summarised("demo", "1.2.0")
 	ran := stepsWith(domain.StepSucceeded)
 
-	assert.NotEmpty(t, applySummary(ran, rel, true),
-		"a plan whose record succeeded still gets a summary")
+	assert.NotEmpty(t, applySummary(ran, rel, true))
 }
 
 func TestUpdateSummarySpeaksInTheTenseOfWhatHappened(t *testing.T) {
