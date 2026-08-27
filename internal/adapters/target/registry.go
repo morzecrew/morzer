@@ -10,88 +10,34 @@ package target
 
 import (
 	"context"
-	"errors"
 	"io"
-	"maps"
-	"reflect"
-	"slices"
 	"strings"
 
+	"github.com/morzecrew/morzer/internal/adapters/scheme"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Registry dispatches to the target registered for a URL's scheme.
+//
+// Schemes and Close come from the embedded index, which also holds the wiring
+// refusals -- see internal/adapters/scheme.
 type Registry struct {
-	byScheme map[string]ports.BackupTarget
-
-	// registered is the argument list, in order, one entry per target
-	// however many schemes it claims. Close walks it rather than
-	// deduplicating the scheme map through a set keyed by the interface
-	// value: hashing an interface whose dynamic type is not comparable
-	// panics, and shutdown is the worst place to find that out.
-	registered []ports.BackupTarget
+	*scheme.Index[ports.BackupTarget]
 }
 
-var _ ports.BackupTarget = (*Registry)(nil)
+var (
+	_ ports.BackupTarget = (*Registry)(nil)
+	_ io.Closer          = (*Registry)(nil)
+)
 
 // NewRegistry indexes each target under every scheme it declares.
-//
-// Two targets claiming one scheme is a wiring mistake with no sensible
-// resolution, and an empty registry means a build in which every configured
-// target would fail at push time -- late, during the nightly backup, rather
-// than at startup with the rest.
-//
-// A nil target is the same kind of mistake, and is refused rather than skipped
-// for the same reason: dropping it quietly leaves a build whose sftp:// URLs
-// fail at push time as though the transport had never been compiled in. The
-// check cannot be t == nil alone -- a nil *sftp.Target satisfies the interface,
-// registers happily, and panics at shutdown when Close dereferences it.
 func NewRegistry(targets ...ports.BackupTarget) (*Registry, error) {
-	r := &Registry{byScheme: make(map[string]ports.BackupTarget, len(targets))}
-
-	for _, t := range targets {
-		if isNil(t) {
-			return nil, domain.Internal(nil, "a nil backup target was registered")
-		}
-		schemes := t.Schemes()
-		if len(schemes) == 0 {
-			return nil, domain.Internal(nil, "a backup target declares no schemes")
-		}
-		for _, scheme := range schemes {
-			if _, taken := r.byScheme[scheme]; taken {
-				return nil, domain.Internal(nil,
-					"two backup targets both claim the %q scheme", scheme)
-			}
-			r.byScheme[scheme] = t
-		}
-		r.registered = append(r.registered, t)
+	index, err := scheme.NewIndex("backup target", targets...)
+	if err != nil {
+		return nil, err
 	}
-
-	if len(r.byScheme) == 0 {
-		return nil, domain.Internal(nil, "no backup targets were registered")
-	}
-	return r, nil
-}
-
-// isNil reports a target that carries no value. An interface holding a typed
-// nil pointer is not == nil, so the plain comparison lets one through.
-func isNil(t ports.BackupTarget) bool {
-	if t == nil {
-		return true
-	}
-	switch v := reflect.ValueOf(t); v.Kind() {
-	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
-		return v.IsNil()
-	default:
-		return false
-	}
-}
-
-// Schemes lists what this build can push to, sorted.
-func (r *Registry) Schemes() []string {
-	out := slices.Sorted(maps.Keys(r.byScheme))
-	return out
+	return &Registry{Index: index}, nil
 }
 
 // For selects the target for a reference.
@@ -101,7 +47,7 @@ func (r *Registry) Schemes() []string {
 // answer should tell them what to do instead rather than only that they are
 // wrong.
 func (r *Registry) For(ref ports.TargetRef) (ports.BackupTarget, error) {
-	if t, ok := r.byScheme[ref.Scheme]; ok {
+	if t, ok := r.Lookup(ref.Scheme); ok {
 		return t, nil
 	}
 	return nil, domain.Usage("no backup target is configured for %q URLs", ref.Scheme).
@@ -203,25 +149,4 @@ func (r *Registry) objectStore(ref ports.TargetRef) (ports.ObjectStore, error) {
 			WithHint("attestations and fleet rows go to file://, ssh:// and s3:// targets")
 	}
 	return store, nil
-}
-
-var _ io.Closer = (*Registry)(nil)
-
-// Close releases anything a target holds -- an SSH connection above all.
-//
-// Every target is closed even after one fails, so a transport that cannot tidy
-// up does not leave the next one's socket open. Each target appears once in
-// registered however many schemes it answers for, so the loop needs no
-// deduplication of its own.
-func (r *Registry) Close() error {
-	var errs []error
-
-	for _, t := range r.registered {
-		if closer, ok := t.(io.Closer); ok {
-			if err := closer.Close(); err != nil {
-				errs = append(errs, err)
-			}
-		}
-	}
-	return errors.Join(errs...)
 }
