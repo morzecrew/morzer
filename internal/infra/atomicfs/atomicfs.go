@@ -12,7 +12,6 @@ package atomicfs
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -311,27 +310,6 @@ func OpenRoot(dir string) (*os.Root, error) {
 		return nil, domain.Internal(err, "cannot open %s as a root directory", dir)
 	}
 	return root, nil
-}
-
-// ReadFileIn reads a file from inside a root.
-func ReadFileIn(root *os.Root, rel string) ([]byte, error) {
-	rel, err := cleanRel(rel)
-	if err != nil {
-		return nil, err
-	}
-	f, err := root.Open(rel)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, domain.ValidationError(domain.ErrNotFound, "%s does not exist in %s", rel, root.Name())
-		}
-		return nil, domain.Internal(err, "cannot open %s in %s", rel, root.Name())
-	}
-	defer func() { _ = f.Close() }()
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return nil, domain.Internal(err, "cannot read %s", rel)
-	}
-	return data, nil
 }
 
 // cleanRel validates a root-relative path. os.Root would reject an escape

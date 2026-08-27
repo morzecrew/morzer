@@ -255,8 +255,12 @@ func (w *Waiter) now() time.Time {
 	return w.clock()
 }
 
-// WithClock overrides the waiter's notion of now. Tests only.
-func (w *Waiter) WithClock(clock func() time.Time) *Waiter {
+// withClock overrides the waiter's notion of now.
+//
+// Unexported: nothing in production sets it -- now() falls back to time.Now
+// when it is nil -- and a clock only tests pass is a clock no test exercises as
+// production leaves it.
+func (w *Waiter) withClock(clock func() time.Time) *Waiter {
 	w.clock = clock
 	return w
 }

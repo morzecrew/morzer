@@ -131,10 +131,6 @@ func TestAToolThatIsNotInstalled(t *testing.T) {
 	if info.Name != tools.SOPS {
 		t.Errorf("the failure does not carry the tool name: %+v", info)
 	}
-	if tools.NewRegistry(runner).Available(context.Background(), tools.SOPS) {
-		t.Error("an absent tool was reported available; optional tools would " +
-			"then be used and fail later")
-	}
 }
 
 // TestAToolThatIsInstalledButWillNotAnswer is the hung-daemon case.

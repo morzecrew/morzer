@@ -49,7 +49,7 @@ func WithUnitDir(dir string) Option {
 	return func(s *Supervisor) { s.unitDir = dir }
 }
 
-func WithSystemctl(path string) Option {
+func withSystemctl(path string) Option {
 	return func(s *Supervisor) { s.systemctl = path }
 }
 

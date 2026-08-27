@@ -870,10 +870,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	// Subprocess output is forwarded to the bus so the live view can tail
 	// it. The adapters never learn what a presenter is.
 	outputSink := func(line exec.Line) {
-		bus.Publish(events.Event{
-			Kind: events.KindStepOutput, At: time.Now(),
-			Message: line.Text, Level: events.LevelDebug,
-		})
+		bus.Publish(events.StepOutput("", "", line.Text))
 	}
 
 	runtime := compose.New(runner,

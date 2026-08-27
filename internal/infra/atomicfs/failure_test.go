@@ -101,11 +101,15 @@ func TestMkdirExactSetsTheModeEvenWhenTheDirectoryExists(t *testing.T) {
 	}
 }
 
-func TestReadFileInReadsAndRefuses(t *testing.T) {
+// The containment rule, asserted through the function production actually
+// calls.
+//
+// It used to be asserted through ReadFileIn, which nothing outside this test
+// ever called: the rule was proved on a path no operator could reach while
+// WriteFileIn -- the one that renders a secret into a release's directory --
+// had no test of its own. Same rule, same cleanRel, now guarded where it runs.
+func TestWriteFileInStaysInsideItsRoot(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "present"), []byte("hello"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	root, err := atomicfs.OpenRoot(dir)
 	if err != nil {
@@ -113,29 +117,32 @@ func TestReadFileInReadsAndRefuses(t *testing.T) {
 	}
 	defer func() { _ = root.Close() }()
 
-	data, err := atomicfs.ReadFileIn(root, "present")
+	if err := atomicfs.WriteFileIn(root, "present", []byte("hello"), 0o600); err != nil {
+		t.Fatalf("writing a file inside the root: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "present"))
 	if err != nil {
-		t.Fatalf("reading a file that exists: %v", err)
+		t.Fatal(err)
 	}
 	if string(data) != "hello" {
 		t.Errorf("read %q, want %q", data, "hello")
 	}
 
-	// Absent is a validation error naming the path, not an internal one.
-	_, err = atomicfs.ReadFileIn(root, "absent")
-	if err == nil {
-		t.Fatal("reading an absent file succeeded")
-	}
-	if !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("absent file gave %v, want ErrNotFound", err)
+	for _, escape := range []string{"../outside", "/etc/passwd", ""} {
+		err := atomicfs.WriteFileIn(root, escape, []byte("hello"), 0o600)
+		if err == nil {
+			t.Errorf("writing %q from inside a root succeeded", escape)
+			continue
+		}
+		if !errors.Is(err, domain.ErrPathEscape) {
+			t.Errorf("writing %q gave %v, want ErrPathEscape", escape, err)
+		}
 	}
 
-	// And the containment rule, which is the reason this function takes a
-	// root rather than a path.
-	for _, escape := range []string{"../outside", "/etc/passwd", ""} {
-		if _, err := atomicfs.ReadFileIn(root, escape); err == nil {
-			t.Errorf("reading %q from inside a root succeeded", escape)
-		}
+	// And the refusal is a refusal, not a rename: nothing landed beside the
+	// root under the name the escape asked for.
+	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "outside")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("an escaping write left something outside the root: %v", err)
 	}
 }
 

@@ -24,7 +24,7 @@ import (
 
 func newRuntime() (*compose.Runtime, *fakes.Scripted) {
 	runner := fakes.NewScripted()
-	return compose.New(runner, compose.WithDockerBinary("/usr/bin/docker")), runner
+	return compose.New(runner), runner
 }
 
 func cfg() ports.RuntimeConfig {
