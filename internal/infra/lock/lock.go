@@ -147,6 +147,22 @@ func (l *fileLock) Unlock() error {
 // work at the prompt: a descriptor parked in a blocking flock(2) is not woken
 // by a cancelled context.
 func (l *Locker) tryAcquire(ctx context.Context, path string, opts ports.LockOptions) (*fileLock, bool, error) {
+	// Cancellation is checked before the first attempt, not only in the poll
+	// below.
+	//
+	// The lock being *free* is what makes the ordering matter. A waiter
+	// blocked on a held lock reaches the select and is answered there, which
+	// is why the other cancellation test passes either way; a first attempt
+	// that succeeds returns a held lock, and a command the operator has
+	// already interrupted would go on to mutate the installation.
+	//
+	// The waiting path only. A non-waiting acquisition never consulted the
+	// context: it is one syscall that either succeeds or names the holder,
+	// and there is nothing to interrupt.
+	if opts.Wait && ctx.Err() != nil {
+		return nil, false, domain.Interrupted("gave up waiting for the deployment lock")
+	}
+
 	fl, locked, err := tryFlock(path)
 	if err != nil {
 		return nil, false, domain.Internal(err, "cannot acquire the deployment lock")
