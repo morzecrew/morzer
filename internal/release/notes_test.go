@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/release"
@@ -136,5 +137,72 @@ func TestTheSummarySkipsHeadingsAndIsShortEnoughToSend(t *testing.T) {
 
 	if got := release.NotesSummary("# only a heading\n"); got != "" {
 		t.Errorf("a file with nothing but headings summarised as %q", got)
+	}
+}
+
+// TestNotesCannotDriveTheTerminalOrTheClipboard.
+//
+// The notes are the vendor's bytes and every path out of `Notes` ends somewhere
+// that interprets them: stderr on `update --check` and `update --stage`, and a
+// notification body through NotesSummary. A bundle that ships an OSC 52 in its
+// RELEASE.md would otherwise write the operator's clipboard the moment they
+// asked what an update changes.
+//
+// Carriage return and backspace are in here for the reason that is easy to miss:
+// they are not escape sequences, so an ANSI stripper leaves them, and either one
+// lets a vendor overwrite a line the operator has already read.
+func TestNotesCannotDriveTheTerminalOrTheClipboard(t *testing.T) {
+	// wantGone is the sequence's payload, not just its ESC. Asserting only
+	// that no control rune survives is too weak: dropping the ESC alone
+	// satisfies it and leaves `]52;c;cHduZWQ=` on the operator's screen as
+	// text. That version of this test passed against a stripper that had
+	// been removed, which is how this column got here.
+	for _, tc := range []struct {
+		name, body, wantKept, wantGone string
+	}{
+		{"OSC 52 clipboard write", "\x1b]52;c;cHduZWQ=\x07keep", "keep", "cHduZWQ="},
+		{"OSC window title, BEL-terminated", "\x1b]0;owned\x07keep", "keep", "owned"},
+		{"OSC window title, ST-terminated", "\x1b]0;owned\x1b\\keep", "keep", "owned"},
+		{"SGR colour", "\x1b[31mkeep\x1b[0m", "keep", "31m"},
+		{"cursor movement", "\x1b[2Akeep", "keep", "[2A"},
+		{"DCS", "\x1bP0;1|x\x1b\\keep", "keep", "0;1|x"},
+		{"carriage return overwrite", "hidden\rkeep", "keep", ""},
+		{"backspace overwrite", "x\bkeep", "keep", ""},
+		{"bell", "\x07keep", "keep", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rel := releaseAt(t, map[string]string{"RELEASE.md": tc.body})
+			rel.Manifest.Metadata.ReleaseNotes = "RELEASE.md"
+
+			got := release.Notes(rel)
+
+			if strings.ContainsFunc(got, func(r rune) bool {
+				return r != '\n' && r != '\t' && unicode.IsControl(r)
+			}) {
+				t.Errorf("a control character survived into what reaches a terminal: %q", got)
+			}
+			if !strings.Contains(got, tc.wantKept) {
+				t.Errorf("the visible text was lost: %q", got)
+			}
+			if tc.wantGone != "" && strings.Contains(got, tc.wantGone) {
+				t.Errorf("the sequence lost its ESC but kept its payload %q: %q",
+					tc.wantGone, got)
+			}
+		})
+	}
+}
+
+// TestNotesKeepEveryMarkdownConstruct. The filter above must not be a renderer:
+// what a vendor wrote is what an operator reads, and the fenced command in here
+// is the one they copy.
+func TestNotesKeepEveryMarkdownConstruct(t *testing.T) {
+	body := "# demo 1.4.0\n\n- one\n- two\n\n```sh\nmorzer apply --wait-for-health\n```\n\n" +
+		"| setting | old | new |\n| --- | --- | --- |\n| pool | 10 | 40 |\n\n" +
+		"See https://example.com/a/b?c=d&e=f\n\n\tindented\n"
+	rel := releaseAt(t, map[string]string{"RELEASE.md": body})
+	rel.Manifest.Metadata.ReleaseNotes = "RELEASE.md"
+
+	if got := release.Notes(rel); got != body {
+		t.Errorf("the notes were rewritten:\nwant %q\ngot  %q", body, got)
 	}
 }
