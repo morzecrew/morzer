@@ -107,7 +107,13 @@ func (s *Source) Fetch(ctx context.Context, ref ports.Ref, destDir string) (port
 		if err := atomicfs.ExtractTarZst(path, destDir, s.limits); err != nil {
 			return "", err
 		}
-		if _, err := release.Load(destDir); err != nil {
+		// Named for the archive, not for where it was just unpacked. A
+		// plan unpacks into a temporary directory and a real install
+		// into the release store, and neither is a path the operator
+		// chose or can act on -- this is the only read of the bundle a
+		// caller of Fetch does not make itself, so it has to carry the
+		// name too.
+		if _, err := release.LoadAs(destDir, path); err != nil {
 			return "", err
 		}
 		return ports.BundlePath(destDir), nil

@@ -201,13 +201,15 @@ func TestAPlansJSONNamesTheProductAndNoInstallation(t *testing.T) {
 //
 // Measured both ways while writing this. Recorded rather than fixed here: a
 // plan that validates is RFC 0001 decision 12's territory and its own change.
-func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
-	r := clitest.New(t)
+// legacyArchive packs the legacy bundle the way a vendor ships one.
+//
+// Packed directly rather than with `release archive`, which now refuses the
+// same bundle for the same reason -- so after the removal this project can no
+// longer produce a legacy archive through its own commands, and a test for one
+// has to build it.
+func legacyArchive(t *testing.T, r *clitest.Runner) string {
+	t.Helper()
 
-	// Packed directly rather than with `release archive`, which now refuses
-	// the same bundle for the same reason -- so after the removal this
-	// project can no longer produce a legacy archive through its own
-	// commands, and a test for one has to build it.
 	bundle := r.LegacyBundle()
 	var entries []string
 	if err := filepath.WalkDir(bundle, func(path string, e fs.DirEntry, err error) error {
@@ -233,6 +235,33 @@ func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
 	if err := atomicfs.WriteTarZst(archive, bundle, entries, time.Unix(0, 0)); err != nil {
 		t.Fatal(err)
 	}
+	return archive
+}
+
+// A plan over an archive reads it through `Fetch`, which loads the bundle it
+// just unpacked before the plan's own check gets to it -- so the directory case
+// and the archive case leaked different temporary paths, and fixing one left
+// the shape a vendor actually publishes still naming `morzer-plan-*`.
+func TestAPlannedRefusalNamesTheArchiveTheOperatorPassed(t *testing.T) {
+	r := clitest.New(t)
+	archive := legacyArchive(t, r)
+
+	r.Run("init",
+		"--product", "demo",
+		"--release", archive,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(2).
+		StderrContains("is no longer read", archive).
+		NoOutputContains("morzer-plan-", "morzer-resolve-")
+}
+
+func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
+	r := clitest.New(t)
+	archive := legacyArchive(t, r)
 
 	r.Run("init",
 		"--product", "demo",
