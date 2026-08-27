@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"slices"
 
 	"strings"
 
@@ -79,12 +80,7 @@ type FleetPublishTarget struct {
 
 // Unreachable reports whether any target refused the row.
 func (r FleetPublishReport) Unreachable() bool {
-	for _, t := range r.Targets {
-		if t.Error != "" {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(r.Targets, func(t FleetPublishTarget) bool { return t.Error != "" })
 }
 
 // FleetPublish writes this installation's row to every configured target.

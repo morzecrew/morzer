@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -549,7 +550,7 @@ const ExportFileName = "export.yaml"
 func (e *Engine) captureExport(
 	ctx context.Context, dir string, components []ports.Component,
 ) (*ports.ComponentRecord, []string, error) {
-	if !containsComponent(components, ports.ComponentExport) || e.export == nil {
+	if !slices.Contains(components, ports.ComponentExport) || e.export == nil {
 		return nil, nil, nil
 	}
 
@@ -608,15 +609,6 @@ func recoveryRecipients(export domain.InstallationExport) []string {
 		}
 	}
 	return out
-}
-
-func containsComponent(components []ports.Component, want ports.Component) bool {
-	for _, c := range components {
-		if c == want {
-			return true
-		}
-	}
-	return false
 }
 
 // recordArtifacts checksums the files the hook reported.

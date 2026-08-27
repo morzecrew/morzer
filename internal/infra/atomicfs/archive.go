@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
@@ -26,12 +27,9 @@ var TarZstExtensions = []string{".tar.zst", ".tzst"}
 // IsTarZst reports whether a path names a zstd-compressed tar archive.
 func IsTarZst(path string) bool {
 	lower := strings.ToLower(path)
-	for _, ext := range TarZstExtensions {
-		if strings.HasSuffix(lower, ext) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(TarZstExtensions, func(ext string) bool {
+		return strings.HasSuffix(lower, ext)
+	})
 }
 
 // decoderMaxMemory bounds the zstd window a single frame may ask for.

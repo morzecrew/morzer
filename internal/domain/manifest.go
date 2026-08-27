@@ -302,7 +302,7 @@ func (r RuntimeSpec) ComposeFiles(profile string) ([]string, error) {
 	// Compose would merge it with itself and the operator would see
 	// confusing duplicate-key diagnostics.
 	for _, f := range extra {
-		if !containsString(files, f) {
+		if !slices.Contains(files, f) {
 			files = append(files, f)
 		}
 	}
@@ -359,7 +359,7 @@ func (d RuntimeDecl) FilesFor(profile string) ([]string, error) {
 			WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
 	}
 	for _, f := range extra {
-		if !containsString(files, f) {
+		if !slices.Contains(files, f) {
 			files = append(files, f)
 		}
 	}
@@ -1253,14 +1253,7 @@ func (m *Manifest) ImageRefs() []string {
 	return refs
 }
 
-func isSupportedAPIVersion(v APIVersion) bool {
-	for _, s := range SupportedAPIVersions {
-		if s == v {
-			return true
-		}
-	}
-	return false
-}
+func isSupportedAPIVersion(v APIVersion) bool { return slices.Contains(SupportedAPIVersions, v) }
 
 func joinAPIVersions(vs []APIVersion) string {
 	out := make([]string, len(vs))
@@ -1276,15 +1269,6 @@ func joinConsistencies(vs []VolumeConsistency) string {
 		out[i] = strconv.Quote(string(v))
 	}
 	return strings.Join(out, ", ")
-}
-
-func containsString(haystack []string, needle string) bool {
-	for _, h := range haystack {
-		if h == needle {
-			return true
-		}
-	}
-	return false
 }
 
 // validationErrors accumulates field-level complaints so Validate can report

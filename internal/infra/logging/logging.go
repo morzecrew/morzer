@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 
@@ -91,7 +92,7 @@ func (r *Redactor) Register(values ...string) {
 		if len(v) < minRedactLength {
 			continue
 		}
-		if !contains(r.values, v) {
+		if !slices.Contains(r.values, v) {
 			r.values = append(r.values, v)
 		}
 	}
@@ -152,15 +153,6 @@ func (r *Redactor) ApplyCount(s string) (string, int) {
 }
 
 const minRedactLength = 6
-
-func contains(hs []string, needle string) bool {
-	for _, h := range hs {
-		if h == needle {
-			return true
-		}
-	}
-	return false
-}
 
 // redactingHandler wraps another handler and scrubs both the message and every
 // string attribute value.

@@ -355,14 +355,7 @@ func ParseAssignments(args []string) (map[string]string, error) {
 	return out, nil
 }
 
-func isParameterType(t ParameterType) bool {
-	for _, known := range ParameterTypes {
-		if t == known {
-			return true
-		}
-	}
-	return false
-}
+func isParameterType(t ParameterType) bool { return slices.Contains(ParameterTypes, t) }
 
 func joinParameterTypes() string {
 	names := make([]string, len(ParameterTypes))

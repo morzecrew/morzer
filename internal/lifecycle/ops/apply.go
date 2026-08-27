@@ -268,12 +268,7 @@ func (d *Deps) projectRunning(ctx context.Context, inst domain.Installation, rel
 	if err != nil {
 		return false
 	}
-	for _, s := range states {
-		if s.Running() {
-			return true
-		}
-	}
-	return false
+	return anyRunning(states)
 }
 
 // stepLoadSecrets decrypts the secret state into memory.

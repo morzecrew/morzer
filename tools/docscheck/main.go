@@ -238,12 +238,7 @@ func loadPages(dir string) ([]page, error) {
 
 // mentioned reports whether any page names sym as an identifier.
 func mentioned(pages []page, sym string) bool {
-	for _, p := range pages {
-		if p.Code[sym] {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(pages, func(p page) bool { return p.Code[sym] })
 }
 
 // mentionedIn is mentioned, restricted to one page. Used where a contract has

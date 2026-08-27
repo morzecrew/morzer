@@ -299,12 +299,7 @@ func runQuiesceSuite(t *testing.T, newRuntime RuntimeFactory) {
 
 // anyOccupies reports whether any service still holds its volumes open.
 func anyOccupies(states []ports.ServiceState) bool {
-	for _, s := range states {
-		if s.OccupiesVolume() {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(states, ports.ServiceState.OccupiesVolume)
 }
 
 // runVolumeSuite covers the optional volume capabilities.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -200,12 +201,9 @@ func ExportForBackup(ctx context.Context, d *Deps) (domain.InstallationExport, b
 }
 
 func hasRecoveryRecipient(in []ports.Recipient) bool {
-	for _, r := range in {
-		if r.Kind == ports.RecipientRecovery {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(in, func(r ports.Recipient) bool {
+		return r.Kind == ports.RecipientRecovery
+	})
 }
 
 // exportRecipients converts port recipients into the document's own

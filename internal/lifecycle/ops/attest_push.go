@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -164,12 +165,7 @@ type AttestTargetStatus struct {
 
 // Unreachable reports whether anything went wrong anywhere.
 func (r AttestPushReport) Unreachable() bool {
-	for _, t := range r.Targets {
-		if t.Error != "" {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(r.Targets, func(t AttestTargetStatus) bool { return t.Error != "" })
 }
 
 // Missing totals the statements that are not on some target.

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -197,14 +198,7 @@ func ParseMode(s string) (Mode, error) {
 }
 
 // Valid reports whether a non-empty mode is one this manager knows.
-func (m Mode) Valid() bool {
-	for _, known := range Modes {
-		if m == known {
-			return true
-		}
-	}
-	return false
-}
+func (m Mode) Valid() bool { return slices.Contains(Modes, m) }
 
 func joinModes() string {
 	out := make([]string, len(Modes))
