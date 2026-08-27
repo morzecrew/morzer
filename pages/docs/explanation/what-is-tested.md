@@ -73,7 +73,7 @@ operation that could destroy or weaken it is a refusal.
 | Claim | Test |
 | --- | --- |
 | A path in a bundle cannot escape the release root | `TestPathsMayNotEscapeTheReleaseRoot` |
-| Nor can a read from inside a root | `TestReadFileInReadsAndRefuses` |
+| Nor can a write from inside a root | `TestWriteFileInStaysInsideItsRoot` |
 | Extracted files get normalised modes, not the archive's | `TestArchiveExtractionNormalisesModes` |
 | A directory that exists with the wrong permissions is corrected | `TestMkdirExactSetsTheModeEvenWhenTheDirectoryExists` |
 | A wrong mode is reported to `doctor`, not raised as a failure of `doctor` | `TestCheckModeReportsRatherThanFails` |
