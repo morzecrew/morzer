@@ -315,7 +315,13 @@ func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
 	}
 	// LoadManifest validates: the answer this plan needs is already computed
 	// here, and used to be discarded with a bare return.
-	m, err := release.LoadManifest(filepath.Join(bundle.String(), release.ManifestFileName))
+	//
+	// Named for what the operator passed, not for the copy above. The real
+	// path names the source without trying, because Resolve reads a local
+	// bundle in place -- so a plan that named its own scratch directory
+	// disagreed with the run about a path they were both refusing.
+	m, err := release.LoadManifestAs(
+		filepath.Join(bundle.String(), release.ManifestFileName), releasePath)
 	if err != nil {
 		return false, err
 	}

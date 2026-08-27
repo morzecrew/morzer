@@ -95,16 +95,33 @@ func Load(dir string) (domain.Release, error) {
 
 // LoadManifest reads, decodes, defaults and validates one manifest file.
 func LoadManifest(path string) (domain.Manifest, error) {
+	return LoadManifestAs(path, path)
+}
+
+// LoadManifestAs is LoadManifest naming `source` in whatever it refuses,
+// instead of the file it actually read.
+//
+// The two differ only where the bytes came from a copy. A plan stages the
+// bundle into a temporary directory to read it, and every message naming that
+// directory points the operator at a path they never chose and which is gone
+// before they can go and look at it. ParseManifest prefixes the source so an
+// author with several bundles open knows which one is being complained about,
+// and a temp path answers that question with a path they cannot place.
+//
+// Callers reading a file the operator named pass LoadManifest and get the two
+// arguments equal, which is the honest default: naming the file you read is
+// right everywhere except when you read a copy on their behalf.
+func LoadManifestAs(path, source string) (domain.Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return domain.Manifest{}, domain.ValidationError(domain.ErrReleaseNotFound,
-				"no manifest at %s", path).
+				"no manifest at %s", source).
 				WithHint("every release bundle must contain a %s at its root", ManifestFileName)
 		}
-		return domain.Manifest{}, domain.ValidationError(err, "cannot read %s", path)
+		return domain.Manifest{}, domain.ValidationError(err, "cannot read %s", source)
 	}
-	return ParseManifest(data, path)
+	return ParseManifest(data, source)
 }
 
 // managerVersion is the running manager's own version, recorded once at

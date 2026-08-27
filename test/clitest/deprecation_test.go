@@ -92,6 +92,37 @@ func TestAPlannedInstallRefusesADeprecatedBundle(t *testing.T) {
 		StderrContains("is no longer read")
 }
 
+// The plan reads a copy, and the copy's path is no answer to "which file?".
+//
+// `checkPlannedRelease` stages the bundle into a temporary directory to read
+// it, and `ParseManifest` prefixes whatever file it was handed -- so a refusal
+// named `/tmp/morzer-plan-3095461798/manifest.yaml`, a directory the operator
+// never chose and which is removed before they can go and look at it. That
+// prefix exists so "an author with several bundles open knows which file is
+// being complained about"; a temp path answers that question with a path they
+// cannot place, which is worse than not prefixing at all.
+//
+// `--product` is what makes this reachable, and it is the whole reason the
+// defect survived review: without it the CLI reads the manifest at the source
+// to learn the product name and refuses there, naming the real path by
+// accident. With it, the plan's copy is the only manifest anybody read.
+func TestAPlannedRefusalNamesTheBundleTheOperatorPassed(t *testing.T) {
+	r := clitest.New(t)
+	bundle := r.LegacyBundle()
+
+	r.Run("init",
+		"--product", "demo",
+		"--release", bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(2).
+		StderrContains("is no longer read", bundle).
+		NoOutputContains("morzer-plan-")
+}
+
 // The warning-is-one-sentence assertion that stood here has moved to
 // TestTheDeprecationMachineryStillRendersASentenceThatCanBeActedOn in
 // internal/domain. It drove the field-deprecation join through a real install,
