@@ -205,9 +205,15 @@ const fallbackWidth = 100
 // atoiSafe parses a width, answering 0 for anything that is not a plain
 // non-negative number under the ceiling -- COLUMNS is operator-set and a
 // nonsense value must fall back rather than fail.
+//
+// The sign is refused rather than read. `strconv.Atoi` accepts "+80", and
+// nothing that legitimately sets COLUMNS writes it that way; a value shaped
+// like that is a value somebody's script built wrong, and a guessed fallback
+// is the safer answer than half-understanding it.
 func atoiSafe(s string) int {
-	n, err := strconv.Atoi(strings.TrimSpace(s))
-	if err != nil || n < 0 || n > 10000 {
+	s = strings.TrimSpace(s)
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 || n > 10000 || strings.HasPrefix(s, "+") {
 		return 0
 	}
 	return n
