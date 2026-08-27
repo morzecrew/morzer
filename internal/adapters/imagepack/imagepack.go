@@ -24,13 +24,9 @@ import (
 	"github.com/morzecrew/morzer/internal/release"
 )
 
-// Source is where an image's bytes are read from. A registry, in production.
-type Source interface {
-	oras.ReadOnlyTarget
-}
-
-// OpenSource resolves an image reference to something to copy from.
-type OpenSource func(ref string) (Source, error)
+// OpenSource resolves an image reference to something to copy from. A
+// registry, in production.
+type OpenSource func(ref string) (oras.ReadOnlyTarget, error)
 
 // Packer copies images into a bundle's layout.
 type Packer struct {
@@ -68,7 +64,7 @@ func (p *Packer) WithSource(open OpenSource) *Packer {
 	return p
 }
 
-func openRegistry(ref string) (Source, error) {
+func openRegistry(ref string) (oras.ReadOnlyTarget, error) {
 	repo, err := ocisource.OpenRepository(ref)
 	if err != nil {
 		return nil, err
