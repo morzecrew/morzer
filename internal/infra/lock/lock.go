@@ -17,8 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gofrs/flock"
-
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -73,9 +71,7 @@ func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOption
 		return nil, err
 	}
 
-	fl := flock.New(l.path(name))
-
-	locked, err := l.tryAcquire(ctx, fl, opts)
+	fl, locked, err := l.tryAcquire(ctx, l.path(name), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -103,29 +99,83 @@ func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOption
 	}, nil
 }
 
-func (l *Locker) tryAcquire(ctx context.Context, fl *flock.Flock, opts ports.LockOptions) (bool, error) {
-	if !opts.Wait {
-		locked, err := fl.TryLock()
-		if err != nil {
-			return false, domain.Internal(err, "cannot acquire the deployment lock")
+// fileLock is an exclusive advisory lock on a file, held for as long as the
+// descriptor stays open.
+//
+// flock(2) directly rather than a library wrapping it: the whole of what this
+// package needs is one non-blocking attempt, and the polling that makes waiting
+// cancellable is written out below anyway.
+type fileLock struct{ f *os.File }
+
+// tryFlock takes the lock without waiting.
+//
+// A false with no error is somebody else holding it, which is the ordinary
+// answer and not a failure. The file is created if absent and never removed:
+// unlinking it would let a second process create a new inode and lock that
+// instead, which is exclusion against nothing.
+func tryFlock(path string) (*fileLock, bool, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o640)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, false, nil
 		}
-		return locked, nil
+		return nil, false, err
+	}
+	return &fileLock{f: f}, true, nil
+}
+
+// Unlock releases the lock and closes the descriptor.
+//
+// The explicit LOCK_UN before the close is not redundant in the way it looks:
+// a descriptor duplicated by a fork would keep the lock alive past this close,
+// and an operation that has released its lock must not still hold it.
+func (l *fileLock) Unlock() error {
+	err := syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN)
+	if cerr := l.f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// tryAcquire takes the lock, waiting only if asked to.
+//
+// Waiting polls rather than blocking in the kernel, which is what makes ctrl-c
+// work at the prompt: a descriptor parked in a blocking flock(2) is not woken
+// by a cancelled context.
+func (l *Locker) tryAcquire(ctx context.Context, path string, opts ports.LockOptions) (*fileLock, bool, error) {
+	fl, locked, err := tryFlock(path)
+	if err != nil {
+		return nil, false, domain.Internal(err, "cannot acquire the deployment lock")
+	}
+	if locked || !opts.Wait {
+		return fl, locked, nil
 	}
 
-	// TryLockContext polls rather than blocking in the kernel, which is
-	// what makes ctrl-c work while waiting for a lock.
 	interval := l.pollInterval
 	if interval <= 0 {
 		interval = defaultPollInterval
 	}
-	locked, err := fl.TryLockContext(ctx, interval)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return false, domain.Interrupted("gave up waiting for the deployment lock")
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, false, domain.Interrupted("gave up waiting for the deployment lock")
+		case <-ticker.C:
+			fl, locked, err := tryFlock(path)
+			if err != nil {
+				return nil, false, domain.Internal(err, "cannot acquire the deployment lock")
+			}
+			if locked {
+				return fl, true, nil
+			}
 		}
-		return false, domain.Internal(err, "cannot acquire the deployment lock")
 	}
-	return locked, nil
 }
 
 func lockedError(name string, owner ports.LockOwner, found bool) error {

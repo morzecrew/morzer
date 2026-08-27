@@ -236,7 +236,7 @@ func FromContext(ctx context.Context) *slog.Logger {
 	if l, ok := ctx.Value(loggerKey).(*slog.Logger); ok && l != nil {
 		return l
 	}
-	return slog.New(discardHandler{})
+	return slog.New(slog.DiscardHandler)
 }
 
 // WithOperation returns a context whose logger tags every record with the
@@ -250,15 +250,6 @@ func WithOperation(ctx context.Context, opID string, opType domain.OperationType
 func WithStep(ctx context.Context, stepID string) context.Context {
 	return WithLogger(ctx, FromContext(ctx).With("step_id", stepID))
 }
-
-// discardHandler drops everything. Cheaper than slog.NewTextHandler(io.Discard)
-// because Enabled short-circuits before a record is built.
-type discardHandler struct{}
-
-func (discardHandler) Enabled(context.Context, slog.Level) bool  { return false }
-func (discardHandler) Handle(context.Context, slog.Record) error { return nil }
-func (d discardHandler) WithAttrs([]slog.Attr) slog.Handler      { return d }
-func (d discardHandler) WithGroup(string) slog.Handler           { return d }
 
 // EventSink logs every engine event, so the log holds the complete story of an
 // operation regardless of which presenter the operator was watching.
