@@ -1,4 +1,4 @@
-package exec
+package fakes
 
 import (
 	"context"
@@ -7,9 +7,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/morzecrew/morzer/internal/infra/exec"
 )
 
-// Scripted is a Runner whose replies are written in advance.
+// Scripted is an exec.Runner whose replies are written in advance.
 //
 // It exists because most of what an adapter does is decide what a tool's output
 // *meant*, and the interesting answers are the ones a healthy machine will not
@@ -24,12 +26,12 @@ type Scripted struct {
 	mu sync.Mutex
 
 	replies []scriptedReply
-	calls   []Command
+	calls   []exec.Command
 
 	// Fallback answers a command no rule matched. The zero value is a
 	// successful, silent run, which keeps a test to the commands it cares
 	// about instead of scripting every incidental one.
-	Fallback Result
+	Fallback exec.Result
 
 	// LookErr, when set, makes every Look fail -- the "this tool is not
 	// installed" case that preflight and doctor both report on.
@@ -38,18 +40,18 @@ type Scripted struct {
 
 type scriptedReply struct {
 	match  string
-	result Result
+	result exec.Result
 	err    error
 
 	// exit is returned alongside the result, for a command that ran and
 	// failed. Distinct from err, which is a command that could not be run.
-	exit *ExitError
+	exit *exec.ExitError
 }
 
 // NewScripted returns a runner that succeeds silently until told otherwise.
 func NewScripted() *Scripted { return &Scripted{} }
 
-var _ Runner = (*Scripted)(nil)
+var _ exec.Runner = (*Scripted)(nil)
 
 // On makes a command whose joined argv contains match return result.
 //
@@ -58,7 +60,7 @@ var _ Runner = (*Scripted)(nil)
 // reproduce one exactly would be asserting the argv rather than the behaviour.
 // Rules are tried in the order they were added, so a specific one registered
 // first wins over a general one after it.
-func (s *Scripted) On(match string, result Result) *Scripted {
+func (s *Scripted) On(match string, result exec.Result) *Scripted {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.replies = append(s.replies, scriptedReply{match: match, result: result})
@@ -77,7 +79,7 @@ func (s *Scripted) OnError(match string, err error) *Scripted {
 
 // OnExit is the common case: a command that ran and failed.
 //
-// It returns an *ExitError alongside the result, because that is what the real
+// It returns an *exec.ExitError alongside the result, because that is what the real
 // runner does and what every caller keys on: an adapter that classifies a
 // failure does it with errors.As, and a fake that set only the exit code would
 // let a test pass while the adapter treated the failure as a success. That is
@@ -87,18 +89,18 @@ func (s *Scripted) OnExit(match string, code int, stderr string) *Scripted {
 	defer s.mu.Unlock()
 	s.replies = append(s.replies, scriptedReply{
 		match:  match,
-		result: Result{ExitCode: code, Stderr: stderr},
-		exit:   &ExitError{ExitCode: code, Stderr: stderr},
+		result: exec.Result{ExitCode: code, Stderr: stderr},
+		exit:   &exec.ExitError{ExitCode: code, Stderr: stderr},
 	})
 	return s
 }
 
 // OnOutput is the other common case: a command that ran and printed something.
 func (s *Scripted) OnOutput(match, stdout string) *Scripted {
-	return s.On(match, Result{Stdout: stdout})
+	return s.On(match, exec.Result{Stdout: stdout})
 }
 
-func (s *Scripted) Run(ctx context.Context, cmd Command) (Result, error) {
+func (s *Scripted) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
 	s.mu.Lock()
 	s.calls = append(s.calls, cmd)
 	replies := make([]scriptedReply, len(s.replies))
@@ -109,14 +111,14 @@ func (s *Scripted) Run(ctx context.Context, cmd Command) (Result, error) {
 	// A cancelled context is honoured before any rule, because that is what
 	// the real runner does and what the cancellation tests depend on.
 	if err := ctx.Err(); err != nil {
-		return Result{}, err
+		return exec.Result{}, err
 	}
 
 	line := strings.Join(cmd.Argv, " ")
 	for _, r := range replies {
 		if strings.Contains(line, r.match) {
 			if r.err != nil {
-				return Result{}, r.err
+				return exec.Result{}, r.err
 			}
 			res := r.result
 			if res.Duration == 0 {
@@ -142,17 +144,17 @@ func (s *Scripted) Look(name string) (string, error) {
 }
 
 // Calls returns every command the runner was asked to run, in order.
-func (s *Scripted) Calls() []Command {
+func (s *Scripted) Calls() []exec.Command {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]Command, len(s.calls))
+	out := make([]exec.Command, len(s.calls))
 	copy(out, s.calls)
 	return out
 }
 
 // Ran reports whether any command's line contains match.
 func (s *Scripted) Ran(match string) bool {
-	return slices.ContainsFunc(s.Calls(), func(c Command) bool {
+	return slices.ContainsFunc(s.Calls(), func(c exec.Command) bool {
 		return strings.Contains(strings.Join(c.Argv, " "), match)
 	})
 }

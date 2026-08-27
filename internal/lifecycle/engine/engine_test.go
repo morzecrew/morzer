@@ -12,6 +12,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // journalStore is a minimal in-memory StateStore. The engine only appends, so
@@ -74,10 +75,10 @@ type tracker struct {
 	checked     []string
 }
 
-func newEngine() (*Engine, *journalStore, *events.Collector) {
+func newEngine() (*Engine, *journalStore, *fakes.Collector) {
 	store := &journalStore{}
 	bus := events.NewStrictBus()
-	collector := events.NewCollector()
+	collector := fakes.NewCollector()
 	bus.Subscribe(collector)
 	return New(store, bus), store, collector
 }

@@ -71,7 +71,7 @@ func newMachine(t *testing.T, root string) *machine {
 	runner := infraexec.New()
 
 	bus := events.NewStrictBus()
-	bus.Subscribe(events.NewCollector())
+	bus.Subscribe(fakes.NewCollector())
 	_, redactor := logging.New(logging.Options{Writer: os.Stderr})
 
 	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile())

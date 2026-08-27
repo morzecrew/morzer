@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
-	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // Who decides whether a generated unit is enabled (RFC 0030 row 1).
@@ -29,11 +29,11 @@ import (
 // The setup deliberately uses EnableAll: it stands in for `init`, and a setup
 // that installed with the reconciliation's own scope would be a test whose
 // premise is the thing under test.
-func installedMachine(t *testing.T, d *ops.Deps) (*exec.Scripted, func() []string) {
+func installedMachine(t *testing.T, d *ops.Deps) (*fakes.Scripted, func() []string) {
 	t.Helper()
 	ctx := context.Background()
 
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	real := systemd.New(runner, systemd.WithUnitDir(t.TempDir()))
 	d.Supervisor = availableSupervisor{Supervisor: real}
 

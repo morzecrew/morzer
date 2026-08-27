@@ -48,7 +48,7 @@ type harness struct {
 	// default a container deployment has.
 	Supervisor *fakes.Supervisor
 	Renderer   *fakes.Renderer
-	Events     *events.Collector
+	Events     *fakes.Collector
 
 	Root    string
 	Paths   domain.Paths
@@ -77,7 +77,7 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	bus := events.NewStrictBus()
-	collector := events.NewCollector()
+	collector := fakes.NewCollector()
 	bus.Subscribe(collector)
 
 	stateStore := state.New(paths)

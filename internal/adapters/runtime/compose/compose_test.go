@@ -11,6 +11,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // The acceptance run drives this adapter against real Docker, which proves the
@@ -21,8 +22,8 @@ import (
 // A scripted runner supplies those answers. What is under test is the adapter's
 // reading of them -- which is all this adapter is.
 
-func newRuntime() (*compose.Runtime, *exec.Scripted) {
-	runner := exec.NewScripted()
+func newRuntime() (*compose.Runtime, *fakes.Scripted) {
+	runner := fakes.NewScripted()
 	return compose.New(runner, compose.WithDockerBinary("/usr/bin/docker")), runner
 }
 

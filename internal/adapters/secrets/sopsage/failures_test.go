@@ -10,7 +10,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/domain"
-	"github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // What sops does when it fails is the thing an operator meets at the worst
@@ -26,7 +26,7 @@ import (
 // unambiguous parse. The fixtures below are written that way for the same
 // reason the adapter asks for it.
 
-func scriptedStore(t *testing.T, encrypted string) (*sopsage.Store, *exec.Scripted, string) {
+func scriptedStore(t *testing.T, encrypted string) (*sopsage.Store, *fakes.Scripted, string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -42,7 +42,7 @@ func scriptedStore(t *testing.T, encrypted string) (*sopsage.Store, *exec.Script
 		t.Fatal(err)
 	}
 
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	return sopsage.New(runner, file, identity,
 		sopsage.WithClock(func() time.Time {
 			return time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
@@ -188,7 +188,7 @@ func TestTheSOPSBinaryCanBeOverridden(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.OnOutput("decrypt", `{"values":{}}`)
 
 	store := sopsage.New(runner, file, identity,
