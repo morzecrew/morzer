@@ -23,8 +23,8 @@ import (
 // 100 rather than 80 because the tables here carry identifiers and versions
 // that 80 genuinely cannot hold, and because RenderNotes already holds the
 // 80-column line for prose. Typographic practice puts a comfortable measure at
-// 45-75 characters; glamour, already a dependency, defaults to 80. A hundred is
-// the widest that is still one measure rather than a screen.
+// 45-75 characters, and RenderNotes holds prose to 80. A hundred is the widest
+// that is still one measure rather than a screen.
 const MaxContentWidth = 100
 
 // Gutter is the space between two columns, everywhere.

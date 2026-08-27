@@ -23,13 +23,12 @@ func TestPlainModeGetsTheSourceText(t *testing.T) {
 	}
 }
 
-// TestRichModeRendersAndKeepsTheContent.
+// TestRichModeWrapsAndKeepsTheContent.
 //
-// The assertion is on the words rather than on the escape codes: which colours
-// glamour chooses is its business and changes between versions, but notes that
-// arrive rendered and *missing a line* would be a renderer quietly dropping what
-// an operator is deciding on.
-func TestRichModeRendersAndKeepsTheContent(t *testing.T) {
+// The assertion is on the words rather than on where the breaks fall: a wrap
+// point is the wrapper's business, but notes that arrive *missing a line* would
+// be a renderer quietly dropping what an operator is deciding on.
+func TestRichModeWrapsAndKeepsTheContent(t *testing.T) {
 	got := ui.RenderNotes(ui.ModeRich, releaseNotes)
 
 	if got == "" {
@@ -65,5 +64,24 @@ func TestJSONModeIsNotStyled(t *testing.T) {
 
 	if strings.Contains(got, "\x1b[") {
 		t.Errorf("json mode styled the notes:\n%q", got)
+	}
+}
+
+// TestRichModeWrapsALongParagraph. Wrapping is the only thing rich mode does to
+// the notes, so it is the only thing worth pinning: a vendor who writes a
+// paragraph as one long line gets it broken to the measure the rest of this
+// project holds prose to.
+func TestRichModeWrapsALongParagraph(t *testing.T) {
+	long := strings.Repeat("word ", 60)
+
+	got := ui.RenderNotes(ui.ModeRich, long)
+
+	if !strings.Contains(got, "\n") {
+		t.Fatalf("a 300-column paragraph came back on one line:\n%q", got)
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if len(line) > 80 {
+			t.Errorf("a line ran to %d columns:\n%q", len(line), line)
+		}
 	}
 }

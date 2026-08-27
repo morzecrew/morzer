@@ -3,7 +3,7 @@ package ui
 import (
 	"strings"
 
-	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // notesWidth is where release notes wrap.
@@ -22,30 +22,20 @@ const notesWidth = 80
 // staged-but-unapplied release is a moment where "what changes" is the question
 // an operator is actually asking.
 //
-// Markdown is rendered only in rich mode. Plain mode is defined as line-oriented
-// output that is stable in a log, and ANSI colour in a journal entry is noise
-// that outlives the terminal that wanted it -- so plain gets the source text,
-// which is what a vendor wrote and is readable on its own.
+// Rich mode wraps; it does not restyle. What a vendor wrote is Markdown, which
+// is a format designed to be read as source, and the whole of what rendering it
+// added was colour -- at the price of a Markdown parser, a syntax highlighter
+// and an HTML sanitiser linked into a deployment tool. Wrapping is the part that
+// was doing work, because a paragraph written as one long line is genuinely hard
+// to read, and `ansi.Wordwrap` is already here for the tables.
 //
-// A rendering failure returns the source rather than an error. These are notes:
-// failing an update check because a vendor's Markdown upset a parser would be
-// the tail wagging the dog.
+// Plain mode gets the source untouched. Plain is defined as line-oriented output
+// that is stable in a log, and a wrap point is a decision about a terminal that
+// a journal entry outlives.
 func RenderNotes(mode Mode, notes string) string {
 	notes = strings.TrimSpace(notes)
 	if notes == "" || mode != ModeRich {
 		return notes
 	}
-
-	renderer, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(notesWidth),
-	)
-	if err != nil {
-		return notes
-	}
-	out, err := renderer.Render(notes)
-	if err != nil {
-		return notes
-	}
-	return strings.Trim(out, "\n")
+	return strings.TrimRight(ansi.Wordwrap(notes, notesWidth, ""), "\n")
 }
