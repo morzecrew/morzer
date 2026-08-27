@@ -78,6 +78,38 @@ path was named, and nothing did. Found by sabotage, after the fix was already
 green — which is the order that finds it, since a passing suite is exactly when
 the question stops being asked.
 
+## Found by the audit, after the entries above — 2026-08-27
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-08-27T12:40:00Z
+attempt: 2
+claim: the fix above covered a directory bundle and left the archive — the shape a vendor publishes — still naming a temp path, on the real install as well as the plan, because Resolve unpacks into morzer-resolve-* and Fetch loads what it just extracted before the plan's own check runs
+evidence: `morzer --root $R init --product demo --release demo-1.2.0.tar.zst …` printed `failed: /tmp/morzer-resolve-2896715448/manifest.yaml: manifest is invalid:`, and the same invocation with `--dry-run` printed `error: /tmp/morzer-plan-45132326/manifest.yaml: manifest is invalid:`
+action: decided
+proposal: ASSUMED — `release.LoadAs` carries a name the way `LoadManifestAs` does, `materialise` returns what the operator named, and `Fetch` names the archive it unpacked. Three call sites, one rule: the reader of a copy names the original.
+```
+
+**The wave fixed the case it was reported against and stopped.** That is the
+mistake wave 39 distilled a rule about and wave 40 was written to undo, arriving
+here in its own turn — and it was found by auditing the fix, not by any gate.
+`TestAnInstallFromAnArchiveIsRefusedToo` was passing throughout; it asserted the
+refusal happened and never what it named.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-08-27T13:05:00Z
+attempt: 2
+claim: `git checkout <file>` to revert a sabotage ate an uncommitted doc comment in the same file, because the fix had been committed and the comment written afterwards
+evidence: `git diff --stat` printed nothing after `git checkout internal/release/load.go`, on a file carrying an uncommitted paragraph documenting LoadManifestAs's contract
+action: decided
+proposal: the rule already exists — commit before you sabotage — and it is the *second* commit that this wave needed, not the first. A sabotage sweep that starts after new work has accumulated on top of the last commit eats that work, and the sweep is exactly when nobody is looking at the diff.
+```
+
 ## Ruling — 2026-08-27, RFC 0030's grades
 
 The author graded all five rows. Rows 1, 3 and 4 `LOCKED`, rows 2 and 5
@@ -122,6 +154,16 @@ decision tables carry no Grade column at all.
   suite would still accept.
 - **A plan item can assert a location that does not exist yet.** Checking the
   premise cost one command and withdrew half the change.
+- **A path in a message is a claim about where to go and look**, so every
+  stage-then-read helper owes the original name. The rule generalises past this
+  wave: `Resolve`, `Fetch`, the plan's own check and the https download cache
+  are four readers of a copy, and three of them were leaking.
+- **Correcting the success path is where the failure path gets forgotten.**
+  `https.Resolve` fixes the reference it returns and not the error it returns,
+  with a comment naming exactly the problem it does not solve.
+- **Commit again before the *second* sweep.** The rule is "commit before you
+  sabotage", and the case it misses is a sweep that starts after new work has
+  landed on top of the commit it is sweeping.
 
 ## Carried into the next unit
 
@@ -133,6 +175,18 @@ decision tables carry no Grade column at all.
   vocabulary question that blocked them is answered above, so what remains is
   volume and judgment, not a missing word. Proposed as a standing rule rather
   than a unit: a wave that conflicts with an ungraded table grades that table.
+- **The remote sources name their download cache, not the URL.** The same defect
+  this wave fixed for `file`, one layer out and worse: measured 2026-08-27, an
+  `https` bundle whose manifest does not validate is refused with
+  `/tmp/morzer-download-2453913850/bundle-0.tar.zst is not a valid manifest:`,
+  and the URL the operator typed appears nowhere. `https.Resolve` already
+  corrects this on the *success* path — `resolved.Ref = ref`, with a comment
+  saying "not the temp path we resolved through" — and leaves the failure path
+  carrying it. **Not fixed here because it is a port change:** `https` delegates
+  by constructing `ports.Ref{Scheme: local.Scheme, Location: <temp>}`, so there
+  is nowhere to put the operator's name without adding one to the reference, and
+  a change to `ports.Ref` re-opens the shared `ReleaseSource` conformance battery
+  for all three sources. `oci` is presumed to have it too and was not measured.
 - **Whether a plan should verify signatures** (wave 39), and it is cheaper than
   wave 40 assessed. A plan already fetches a local bundle into a temporary
   directory to read its manifest, so verification there costs a hash over bytes
