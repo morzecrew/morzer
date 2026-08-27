@@ -83,20 +83,7 @@ var (
 	// possible. A sentinel rather than an empty return value so a caller has
 	// to decide which of the two it means: `status` reports it, and a signer
 	// mints.
-	//
-	// Distinct from a key that disagrees with recorded state, which is
-	// ErrSigningKeyMismatch and is a machine to stop.
 	ErrNoSigningKey = errors.New("installation has no signing key")
-
-	// ErrSigningKeyMismatch marks a signing key file whose public half is
-	// not the one installation state records.
-	//
-	// This is the refusal RFC 0028 §5.4 asks for, and it is narrower than
-	// "there is no key": such a machine would sign with one key while
-	// telling everybody -- through `status`, the export, an attestation --
-	// that it signs with another, and its artifacts are attributable to
-	// nobody. Absence is ordinary; disagreement is not.
-	ErrSigningKeyMismatch = errors.New("signing key does not match recorded public key")
 
 	// ErrTemplateSyntax marks a manifest template that does not parse, as
 	// opposed to one that parses and refers to something absent.
@@ -282,14 +269,6 @@ func SecretsError(cause error, format string, args ...any) *Error {
 // or `init` -- rather than a broken machine or a bug.
 func NoSigningKey(cause error, format string, args ...any) *Error {
 	return newf(CodeSecrets, CategoryUser, ErrNoSigningKey, cause, format, args...)
-}
-
-// SigningKeyMismatch reports a key file that disagrees with recorded state.
-//
-// CategorySystem rather than User: nothing the operator typed produced this,
-// and the machine is in a state where its own artifacts cannot be attributed.
-func SigningKeyMismatch(cause error, format string, args ...any) *Error {
-	return newf(CodeSecrets, CategorySystem, ErrSigningKeyMismatch, cause, format, args...)
 }
 
 func RuntimeError(cause error, format string, args ...any) *Error {

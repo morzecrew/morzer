@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -488,14 +489,7 @@ func startPeriodError(specs []ports.CheckSpec, passed []bool, results []ports.He
 			"rather than a slow boot; check service logs with `docker compose logs`")
 }
 
-func allTrue(bs []bool) bool {
-	for _, b := range bs {
-		if !b {
-			return false
-		}
-	}
-	return true
-}
+func allTrue(bs []bool) bool { return !slices.Contains(bs, false) }
 
 // timeoutError names exactly which checks never passed, and what they last
 // said. "Health check failed" without that detail sends an operator to the

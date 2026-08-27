@@ -15,6 +15,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -342,10 +343,7 @@ func (r *Runtime) stopTargets(services []string) []string {
 	if len(services) > 0 {
 		return services
 	}
-	out := make([]string, 0, len(r.Services))
-	for name := range r.Services {
-		out = append(out, name)
-	}
+	out := slices.Collect(maps.Keys(r.Services))
 	return out
 }
 

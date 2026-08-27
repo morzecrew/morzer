@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -92,7 +92,7 @@ func (r *Redactor) Register(values ...string) {
 		if len(v) < minRedactLength {
 			continue
 		}
-		if !contains(r.values, v) {
+		if !slices.Contains(r.values, v) {
 			r.values = append(r.values, v)
 		}
 	}
@@ -153,15 +153,6 @@ func (r *Redactor) ApplyCount(s string) (string, int) {
 }
 
 const minRedactLength = 6
-
-func contains(hs []string, needle string) bool {
-	for _, h := range hs {
-		if h == needle {
-			return true
-		}
-	}
-	return false
-}
 
 // redactingHandler wraps another handler and scrubs both the message and every
 // string attribute value.
@@ -335,16 +326,3 @@ func ParseLevel(verbose, quiet bool) slog.Level {
 		return slog.LevelInfo
 	}
 }
-
-// Clock is injected wherever timestamps affect behaviour, so tests can make
-// time deterministic instead of sleeping.
-type Clock interface {
-	Now() time.Time
-}
-
-type realClock struct{}
-
-func (realClock) Now() time.Time { return time.Now() }
-
-// SystemClock is the production clock.
-var SystemClock Clock = realClock{}

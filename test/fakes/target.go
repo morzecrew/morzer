@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"io/fs"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -149,11 +151,7 @@ func (t *BackupTarget) Objects() []string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	out := make([]string, 0, len(t.objects))
-	for key := range t.objects {
-		out = append(out, key)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(t.objects))
 	return out
 }
 

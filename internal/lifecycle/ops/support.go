@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -312,11 +312,7 @@ func collectLogs(ctx context.Context, d *Deps, _ *supportSource) ([]supportFile,
 			"the deployment produced no log output to capture")
 	}
 
-	names := make([]string, 0, len(perService))
-	for name := range perService {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(perService))
 
 	out := make([]supportFile, 0, len(names))
 	for _, name := range names {
@@ -915,11 +911,7 @@ func configComparison(
 		return ConfigComparison{}, err
 	}
 
-	targets := make([]string, 0, len(rendered))
-	for target := range rendered {
-		targets = append(targets, target)
-	}
-	sort.Strings(targets)
+	targets := slices.Sorted(maps.Keys(rendered))
 
 	var out ConfigComparison
 	for _, target := range targets {

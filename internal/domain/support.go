@@ -1,6 +1,9 @@
 package domain
 
-import "sort"
+import (
+	"maps"
+	"slices"
+)
 
 // The support bundle's inclusion policy (RFC 0024 §3.2).
 //
@@ -279,10 +282,6 @@ func SupportRefusedPaths(p Paths) []string {
 			seen[path] = true
 		}
 	}
-	out := make([]string, 0, len(seen))
-	for path := range seen {
-		out = append(out, path)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(seen))
 	return out
 }

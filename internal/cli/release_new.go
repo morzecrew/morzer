@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -143,10 +145,7 @@ func rollbackScaffold(written []string, cause error) error {
 }
 
 func sortedScaffoldPaths(files map[string]string) []string {
-	out := make([]string, 0, len(files))
-	for rel := range files {
-		out = append(out, rel)
-	}
+	out := slices.Collect(maps.Keys(files))
 	// Sorted so the existence check and the write visit the same order,
 	// and so a failure reports the same file twice in a row rather than a
 	// different one each run.

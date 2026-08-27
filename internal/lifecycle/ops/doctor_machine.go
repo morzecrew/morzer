@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -230,10 +231,7 @@ func (d *Deps) declaredPorts(ctx context.Context) (map[int][]string, []string) {
 // otherwise reorder a warning between two runs of the same command, which is
 // what makes a diff of two `doctor --json` outputs unreadable.
 func sortedPorts(claims map[int][]string) []int {
-	out := make([]int, 0, len(claims))
-	for port := range claims {
-		out = append(out, port)
-	}
+	out := slices.Collect(maps.Keys(claims))
 	sort.Ints(out)
 	return out
 }

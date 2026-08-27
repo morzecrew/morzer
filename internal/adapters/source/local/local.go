@@ -40,12 +40,6 @@ func New() *Source {
 	return &Source{limits: limits}
 }
 
-// WithLimits overrides the extraction limits.
-func (s *Source) WithLimits(l atomicfs.ExtractLimits) *Source {
-	s.limits = l
-	return s
-}
-
 var _ ports.ReleaseSource = (*Source)(nil)
 
 func (s *Source) Schemes() []string { return []string{Scheme} }

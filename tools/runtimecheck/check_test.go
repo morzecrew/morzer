@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -372,19 +373,7 @@ func TestAnEntryStopsCoveringWhatItNoLongerCovers(t *testing.T) {
 }
 
 func hasSymbol(found []Finding, symbol string) bool {
-	for _, f := range found {
-		if f.Symbol == symbol {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(found, func(f Finding) bool { return f.Symbol == symbol })
 }
 
-func containsFinding(list []Finding, want Finding) bool {
-	for _, f := range list {
-		if f == want {
-			return true
-		}
-	}
-	return false
-}
+func containsFinding(list []Finding, want Finding) bool { return slices.Contains(list, want) }

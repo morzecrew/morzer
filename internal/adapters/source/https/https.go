@@ -34,7 +34,6 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/source"
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/domain"
-	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -73,16 +72,8 @@ func WithTransport(rt http.RoundTripper) Option {
 // WithMaxBody bounds a response body.
 func WithMaxBody(n int64) Option { return func(s *Source) { s.maxBody = n } }
 
-// WithAttempts sets how many times a retryable failure is retried.
-func WithAttempts(n int) Option { return func(s *Source) { s.attempts = n } }
-
 // WithBackoff sets the base delay between attempts.
 func WithBackoff(d time.Duration) Option { return func(s *Source) { s.backoff = d } }
-
-// WithLimits overrides the extraction limits applied after download.
-func WithLimits(l atomicfs.ExtractLimits) Option {
-	return func(s *Source) { s.local = s.local.WithLimits(l) }
-}
 
 func New(opts ...Option) *Source {
 	s := &Source{

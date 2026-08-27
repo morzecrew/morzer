@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -223,12 +224,7 @@ func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.I
 }
 
 func anyRunning(services []ports.ServiceState) bool {
-	for _, s := range services {
-		if s.Running() {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(services, ports.ServiceState.Running)
 }
 
 func (d *Deps) fillBackupStatus(ctx context.Context, out *Status, inst domain.Installation) {

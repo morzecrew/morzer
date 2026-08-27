@@ -16,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/registry/remote"
 
 	"github.com/morzecrew/morzer/internal/adapters/imagepack"
@@ -79,7 +80,7 @@ func bundleWithImage(t *testing.T) (layoutDir, vendorRef string) {
 	bundle := t.TempDir()
 	packer, err := imagepack.New("")
 	require.NoError(t, err)
-	packer = packer.WithSource(func(string) (imagepack.Source, error) {
+	packer = packer.WithSource(func(string) (oras.ReadOnlyTarget, error) {
 		repo, err := remote.NewRepository(addr + "/morzer-test/app")
 		if err != nil {
 			return nil, err

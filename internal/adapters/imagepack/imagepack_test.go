@@ -264,7 +264,7 @@ func imageInMemory(t *testing.T, layer string) (oras.ReadOnlyTarget, string) {
 }
 
 func constantSource(src oras.ReadOnlyTarget) imagepack.OpenSource {
-	return func(string) (imagepack.Source, error) { return src, nil }
+	return func(string) (oras.ReadOnlyTarget, error) { return src, nil }
 }
 
 func manifestWith(images map[string]domain.ImageSpec) domain.Manifest {

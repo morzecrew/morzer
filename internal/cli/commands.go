@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -321,7 +322,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 					return nil
 				}
 				app.finish(ops.Result{Summary: res.Summary()})
-				if notes := ui.RenderNotes(app.Mode, res.Notes); notes != "" {
+				if notes := strings.TrimSpace(res.Notes); notes != "" {
 					fmt.Fprintf(app.Stream.Err, "\n%s\n", notes)
 				}
 				return nil
@@ -488,7 +489,11 @@ func printStagedNotes(ctx context.Context, app *App) {
 	if err != nil {
 		return
 	}
-	if notes := ui.RenderNotes(app.Mode, release.Notes(rel)); notes != "" {
+	// The vendor's Markdown, as written. Nothing here reflows it: a wrap
+	// inserted into a fenced block breaks the command an operator is about
+	// to copy, and knowing which lines may be wrapped means parsing
+	// Markdown -- which is a renderer, which is what this stopped linking.
+	if notes := strings.TrimSpace(release.Notes(rel)); notes != "" {
 		fmt.Fprintf(app.Stream.Err, "\n%s\n", notes)
 	}
 }
@@ -986,11 +991,7 @@ func parseComponents(names []string) ([]ports.Component, error) {
 	for _, name := range names {
 		c, ok := valid[strings.TrimSpace(strings.ToLower(name))]
 		if !ok {
-			known := make([]string, 0, len(valid))
-			for k := range valid {
-				known = append(known, k)
-			}
-			sort.Strings(known)
+			known := slices.Sorted(maps.Keys(valid))
 			return nil, domain.Usage("unknown backup component %q", name).
 				WithHint("valid components: %s", strings.Join(known, ", "))
 		}

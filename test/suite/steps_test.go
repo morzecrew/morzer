@@ -2,8 +2,10 @@ package suite
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -580,9 +582,6 @@ func TestExportNeedsAStoreThatCanExport(t *testing.T) {
 }
 
 func keysOf(m map[string][]byte) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
+	out := slices.Collect(maps.Keys(m))
 	return out
 }

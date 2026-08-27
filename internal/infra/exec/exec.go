@@ -13,8 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	osexec "os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -580,28 +582,13 @@ func MergeEnv(env []string, overrides map[string]string) []string {
 			index[kv[:eq]] = i
 		}
 	}
-	keys := sortedKeys(overrides)
+	keys := slices.Sorted(maps.Keys(overrides))
 	for _, k := range keys {
 		entry := k + "=" + overrides[k]
 		if i, ok := index[k]; ok {
 			out[i] = entry
 		} else {
 			out = append(out, entry)
-		}
-	}
-	return out
-}
-
-func sortedKeys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	// Insertion sort: these maps hold a couple of dozen entries at most,
-	// and this keeps the package free of a sort import for one call.
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j] < out[j-1]; j-- {
-			out[j], out[j-1] = out[j-1], out[j]
 		}
 	}
 	return out

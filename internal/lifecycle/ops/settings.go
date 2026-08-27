@@ -3,7 +3,8 @@ package ops
 import (
 	"context"
 	"errors"
-	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -156,11 +157,7 @@ func (d *Deps) checkChannelIsFollowable(ctx context.Context, ref ports.Ref) erro
 
 // SettingNames lists what may be set, sorted.
 func SettingNames() []string {
-	out := make([]string, 0, len(settings))
-	for name := range settings {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(settings))
 	return out
 }
 
@@ -493,28 +490,11 @@ func zeroFor(inst domain.Installation, s setting) domain.Installation {
 // sortedSettingNames orders a change so two runs report the same list, and so
 // a failure part-way through fails on the same setting each time.
 func sortedSettingNames(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for name := range m {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(m))
 	return out
 }
 
 func unknownSetting(name string) error {
 	return domain.Usage("no installation setting named %q", name).
 		WithHint("settable: %s", strings.Join(SettingNames(), ", "))
-}
-
-// DescribeSettings renders the list for a human, one per line.
-func DescribeSettings(report SettingsReport) string {
-	var sb strings.Builder
-	for _, entry := range report.Settings {
-		value := entry.Value
-		if value == "" {
-			value = "(unset)"
-		}
-		fmt.Fprintf(&sb, "%-16s %-24s %s\n", entry.Name, value, entry.Description)
-	}
-	return strings.TrimRight(sb.String(), "\n")
 }

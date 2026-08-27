@@ -9,6 +9,7 @@ package ui
 import (
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -201,16 +202,19 @@ func TerminalWidth() int { return CurrentScreen().Width }
 // pipe, which is the one place where nothing was ever going to be truncated.
 const fallbackWidth = 100
 
+// atoiSafe parses a width, answering 0 for anything that is not a plain
+// non-negative number under the ceiling -- COLUMNS is operator-set and a
+// nonsense value must fall back rather than fail.
+//
+// The sign is refused rather than read. `strconv.Atoi` accepts "+80", and
+// nothing that legitimately sets COLUMNS writes it that way; a value shaped
+// like that is a value somebody's script built wrong, and a guessed fallback
+// is the safer answer than half-understanding it.
 func atoiSafe(s string) int {
-	n := 0
-	for _, r := range strings.TrimSpace(s) {
-		if r < '0' || r > '9' {
-			return 0
-		}
-		n = n*10 + int(r-'0')
-		if n > 10000 {
-			return 0
-		}
+	s = strings.TrimSpace(s)
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 || n > 10000 || strings.HasPrefix(s, "+") {
+		return 0
 	}
 	return n
 }

@@ -22,6 +22,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
 
 	gominisign "github.com/jedisct1/go-minisign"
@@ -178,10 +179,10 @@ func keyIDFor(sk gominisign.PrivateKey) string {
 	return strings.ToUpper(hex.EncodeToString(reverse(id[:])))
 }
 
+// reverse copies rather than reversing in place: both callers pass a slice of
+// a key's own id array, which the caller still holds.
 func reverse(b []byte) []byte {
-	out := make([]byte, len(b))
-	for i := range b {
-		out[len(b)-1-i] = b[i]
-	}
+	out := slices.Clone(b)
+	slices.Reverse(out)
 	return out
 }

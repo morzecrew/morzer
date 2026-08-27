@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -151,12 +152,9 @@ func (s *Scripted) Calls() []Command {
 
 // Ran reports whether any command's line contains match.
 func (s *Scripted) Ran(match string) bool {
-	for _, c := range s.Calls() {
-		if strings.Contains(strings.Join(c.Argv, " "), match) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(s.Calls(), func(c Command) bool {
+		return strings.Contains(strings.Join(c.Argv, " "), match)
+	})
 }
 
 // CommandLines renders every call, for a failure message that says what the

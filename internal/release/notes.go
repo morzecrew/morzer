@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -69,10 +72,40 @@ func Notes(rel domain.Release) string {
 		return ""
 	}
 	if len(raw) > maxNotesBytes {
-		return string(raw[:maxNotesBytes]) +
+		return stripTerminalControls(string(raw[:maxNotesBytes])) +
 			"\n\n_(release notes truncated at 256 KiB)_\n"
 	}
-	return string(raw)
+	return stripTerminalControls(string(raw))
+}
+
+// stripTerminalControls removes what a terminal acts on rather than prints.
+//
+// These bytes are the vendor's, and every path out of here ends somewhere that
+// interprets them: `update --check` and `update --stage` write them to stderr,
+// and NotesSummary puts the first line into a notification body that leaves the
+// machine. A release note is prose, so nothing legitimate is lost -- and this
+// project already withholds raw vendor output from notifiers for exactly this
+// reason (ops.forwardedKinds refuses KindStepOutput), which the notes path was
+// quietly bypassing.
+//
+// Two passes, because they catch different things. ansi.Strip removes whole
+// escape sequences -- OSC (a window title, or OSC 52 writing the operator's
+// clipboard), CSI, SGR, DCS -- which is what a naive control-rune filter cannot
+// do: dropping the ESC alone leaves `]0;...` on screen as garbage. The rune pass
+// then removes the bare C0 and C1 controls ansi.Strip leaves behind, where the
+// ones that matter are CR and backspace: both let a vendor overwrite a line the
+// operator has already read, which is how text that looked safe stops being what
+// is there. Newline and tab are the two a note legitimately contains.
+func stripTerminalControls(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, ansi.Strip(s))
 }
 
 // maxSummaryRunes bounds the one-liner.

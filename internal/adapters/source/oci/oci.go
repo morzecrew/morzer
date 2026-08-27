@@ -41,7 +41,6 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/source"
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/domain"
-	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -92,14 +91,6 @@ type Registry interface {
 }
 
 type Option func(*Source)
-
-// WithLimits overrides the extraction limits applied after the pull.
-func WithLimits(l atomicfs.ExtractLimits) Option {
-	return func(s *Source) { s.local = s.local.WithLimits(l) }
-}
-
-// WithMaxBlobSize bounds a layer.
-func WithMaxBlobSize(n int64) Option { return func(s *Source) { s.maxBlob = n } }
 
 // WithRepositoryFactory replaces how repositories are opened. See Registry.
 func WithRepositoryFactory(f func(reference string) (Registry, error)) Option {

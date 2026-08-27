@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -182,11 +184,7 @@ func (a *App) newEditSession() (dir, path string, err error) {
 func writeEditFile(path string, values map[string]string) error {
 	// Sorted, so a diff between two sessions is about what changed rather
 	// than about map iteration order.
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(values))
 
 	ordered := yaml.MapSlice{}
 	for _, name := range names {

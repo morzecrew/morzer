@@ -6,7 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -359,11 +360,7 @@ func CanonicalConfig(rendered map[string][]byte) []byte {
 		return nil
 	}
 
-	targets := make([]string, 0, len(rendered))
-	for target := range rendered {
-		targets = append(targets, target)
-	}
-	sort.Strings(targets)
+	targets := slices.Sorted(maps.Keys(rendered))
 
 	var buf bytes.Buffer
 	for _, target := range targets {
@@ -399,10 +396,6 @@ func parameterNames(params map[string]string) []string {
 	if len(params) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(params))
-	for name := range params {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(params))
 	return names
 }

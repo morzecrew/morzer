@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -42,12 +44,9 @@ type volumePlan struct {
 
 // hasCold reports whether anything in the plan needs its writers stopped.
 func (p volumePlan) hasCold() bool {
-	for _, v := range p.capture {
-		if v.consistency == ports.ConsistencyCold {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(p.capture, func(v plannedVolume) bool {
+		return v.consistency == ports.ConsistencyCold
+	})
 }
 
 // quiesceServices is every service that must be stopped, deduplicated across
@@ -67,11 +66,7 @@ func (p volumePlan) quiesceServices() []string {
 			set[s] = true
 		}
 	}
-	out := make([]string, 0, len(set))
-	for s := range set {
-		out = append(out, s)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(set))
 	return out
 }
 
@@ -721,11 +716,7 @@ func (e *Engine) refuseOccupiedVolumes(
 		return nil
 	}
 
-	names := make([]string, 0, len(blockers))
-	for service := range blockers {
-		names = append(names, service)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(blockers))
 
 	details := make([]string, 0, len(names))
 	for _, service := range names {
@@ -881,15 +872,7 @@ func mountingServices(c ports.ComponentRecord, live map[string]ports.NamedVolume
 // componentSelected reports whether a component is in scope. An empty
 // selection is everything, matching RestoreOptions.Components.
 func componentSelected(selected []ports.Component, want ports.Component) bool {
-	if len(selected) == 0 {
-		return true
-	}
-	for _, c := range selected {
-		if c == want {
-			return true
-		}
-	}
-	return false
+	return len(selected) == 0 || slices.Contains(selected, want)
 }
 
 func joinServices(services []string) string {

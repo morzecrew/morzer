@@ -66,9 +66,6 @@ func New(state ports.StateStore, bus *events.Bus) *Engine {
 	return &Engine{state: state, bus: bus}
 }
 
-// Bus exposes the event bus so presenters can subscribe.
-func (e *Engine) Bus() *events.Bus { return e.bus }
-
 // Result is the outcome of a run.
 type Result struct {
 	Record domain.OperationRecord

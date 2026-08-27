@@ -49,10 +49,12 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -144,11 +146,7 @@ func (r *report) add(group, format string, args ...any) {
 func (r *report) failed() bool { return len(r.problems) > 0 }
 
 func (r *report) print(w *os.File) {
-	groups := make([]string, 0, len(r.problems))
-	for g := range r.problems {
-		groups = append(groups, g)
-	}
-	sort.Strings(groups)
+	groups := slices.Sorted(maps.Keys(r.problems))
 
 	total := 0
 	for _, g := range groups {
@@ -240,12 +238,7 @@ func loadPages(dir string) ([]page, error) {
 
 // mentioned reports whether any page names sym as an identifier.
 func mentioned(pages []page, sym string) bool {
-	for _, p := range pages {
-		if p.Code[sym] {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(pages, func(p page) bool { return p.Code[sym] })
 }
 
 // mentionedIn is mentioned, restricted to one page. Used where a contract has
@@ -544,11 +537,7 @@ func checkSchemaFields(rep *report, pages []page) {
 	collectYAMLFields(reflect.TypeOf(domain.Manifest{}), "manifest", fields)
 	collectYAMLFields(reflect.TypeOf(domain.SecretSchema{}), "secret schema", fields)
 
-	names := make([]string, 0, len(fields))
-	for name := range fields {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(fields))
 
 	for _, name := range names {
 		if !mentionedIn(pages, manifestPage, name) {
@@ -643,11 +632,7 @@ func checkRuntimeHookVars(rep *report, pages []page) {
 		compose.Name: compose.New(nil),
 	}
 
-	names := make([]string, 0, len(suppliers))
-	for name := range suppliers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(suppliers))
 
 	for _, name := range names {
 		// A populated configuration, so a supplier that returns nothing

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -188,7 +190,7 @@ func parseStorage(raw string) (ports.ProjectStorage, error) {
 			Name:     name,
 			Actual:   actual,
 			External: declared.External,
-			Services: sortedKeys(users),
+			Services: slices.Sorted(maps.Keys(users)),
 		})
 	}
 	// A declared volume nothing mounts is still the project's storage, and
@@ -208,7 +210,7 @@ func parseStorage(raw string) (ports.ProjectStorage, error) {
 
 	for source, users := range bindUsers {
 		out.Binds = append(out.Binds, ports.BindMount{
-			Source: source, Services: sortedKeys(users),
+			Source: source, Services: slices.Sorted(maps.Keys(users)),
 		})
 	}
 
@@ -249,15 +251,6 @@ func addUser(index map[string]map[string]bool, key, service string) {
 		index[key] = map[string]bool{}
 	}
 	index[key][service] = true
-}
-
-func sortedKeys(set map[string]bool) []string {
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // CaptureVolume writes a volume's contents to destPath as an uncompressed tar.

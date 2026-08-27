@@ -37,19 +37,6 @@ const (
 	Continue
 )
 
-func (p FailurePolicy) String() string {
-	switch p {
-	case Abort:
-		return "abort"
-	case Compensate:
-		return "compensate"
-	case Continue:
-		return "continue"
-	default:
-		return "unknown"
-	}
-}
-
 // Step is one unit of work.
 //
 // The four functions separate concerns that are usually tangled: Check asks
@@ -174,14 +161,6 @@ func (s *State) Progress(fraction float64, detail string) {
 // fraction.
 func (s *State) Detail(format string, args ...any) {
 	s.Progress(-1, fmt.Sprintf(format, args...))
-}
-
-// Output forwards a line of subprocess output to the live view.
-func (s *State) Output(line string) {
-	if s.bus == nil {
-		return
-	}
-	s.bus.Publish(events.StepOutput(s.OpID, s.stepID, line))
 }
 
 // Warn emits a warning that is not a failure.

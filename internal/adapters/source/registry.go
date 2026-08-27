@@ -9,63 +9,34 @@ package source
 
 import (
 	"context"
-	"errors"
 	"io"
-	"sort"
 	"strings"
 
+	"github.com/morzecrew/morzer/internal/adapters/scheme"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Registry dispatches to the source registered for a reference's scheme.
+//
+// Schemes and Close come from the embedded index, which also holds the wiring
+// refusals -- see internal/adapters/scheme.
 type Registry struct {
-	byScheme map[string]ports.ReleaseSource
+	*scheme.Index[ports.ReleaseSource]
 }
 
-var _ ports.ReleaseSource = (*Registry)(nil)
+var (
+	_ ports.ReleaseSource = (*Registry)(nil)
+	_ io.Closer           = (*Registry)(nil)
+)
 
 // NewRegistry indexes each source under every scheme it declares.
-//
-// Two sources claiming one scheme is a wiring mistake with no sensible
-// resolution -- last-wins would make behaviour depend on argument order, and
-// first-wins would silently ignore an adapter someone deliberately added. It is
-// an error rather than a panic because the caller assembling the graph already
-// returns one, so it surfaces at startup with the rest.
 func NewRegistry(sources ...ports.ReleaseSource) (*Registry, error) {
-	r := &Registry{byScheme: make(map[string]ports.ReleaseSource, len(sources))}
-
-	for _, s := range sources {
-		if s == nil {
-			continue
-		}
-		schemes := s.Schemes()
-		if len(schemes) == 0 {
-			return nil, domain.Internal(nil, "a release source declares no schemes")
-		}
-		for _, scheme := range schemes {
-			if _, taken := r.byScheme[scheme]; taken {
-				return nil, domain.Internal(nil,
-					"two release sources both claim the %q scheme", scheme)
-			}
-			r.byScheme[scheme] = s
-		}
+	index, err := scheme.NewIndex("release source", sources...)
+	if err != nil {
+		return nil, err
 	}
-
-	if len(r.byScheme) == 0 {
-		return nil, domain.Internal(nil, "no release sources were registered")
-	}
-	return r, nil
-}
-
-// Schemes lists what this build can fetch, sorted.
-func (r *Registry) Schemes() []string {
-	out := make([]string, 0, len(r.byScheme))
-	for scheme := range r.byScheme {
-		out = append(out, scheme)
-	}
-	sort.Strings(out)
-	return out
+	return &Registry{Index: index}, nil
 }
 
 // For selects the source for a reference.
@@ -75,7 +46,7 @@ func (r *Registry) Schemes() []string {
 // operator asking for something reasonable, and the answer should tell them
 // what to do instead rather than only that they are wrong.
 func (r *Registry) For(ref ports.Ref) (ports.ReleaseSource, error) {
-	if s, ok := r.byScheme[ref.Scheme]; ok {
+	if s, ok := r.Lookup(ref.Scheme); ok {
 		return s, nil
 	}
 	return nil, domain.Usage("no release source is configured for %q references", ref.Scheme).
@@ -128,31 +99,4 @@ func (r *Registry) List(ctx context.Context, ref ports.Ref) ([]domain.Version, e
 		return nil, err
 	}
 	return s.List(ctx, ref)
-}
-
-var _ io.Closer = (*Registry)(nil)
-
-// Close releases every source that holds anything, so a caller can clean up
-// without knowing which transports it happens to have registered.
-//
-// Every source is closed even after one fails: a transport that cannot tidy up
-// must not leave the next one's download on disk.
-func (r *Registry) Close() error {
-	var errs []error
-	seen := make(map[ports.ReleaseSource]bool, len(r.byScheme))
-
-	for _, s := range r.byScheme {
-		// One source may answer for several schemes.
-		if seen[s] {
-			continue
-		}
-		seen[s] = true
-
-		if closer, ok := s.(io.Closer); ok {
-			if err := closer.Close(); err != nil {
-				errs = append(errs, err)
-			}
-		}
-	}
-	return errors.Join(errs...)
 }

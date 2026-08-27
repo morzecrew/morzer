@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -232,11 +234,7 @@ func (m Manifest) ProfileNames() []string {
 			seen[name] = true
 		}
 	}
-	out := make([]string, 0, len(seen))
-	for name := range seen {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(seen))
 	return out
 }
 
@@ -296,11 +294,7 @@ func (r RuntimeSpec) ComposeFiles(profile string) ([]string, error) {
 	}
 	extra, ok := r.Profiles[profile]
 	if !ok {
-		known := make([]string, 0, len(r.Profiles))
-		for name := range r.Profiles {
-			known = append(known, name)
-		}
-		sort.Strings(known)
+		known := slices.Sorted(maps.Keys(r.Profiles))
 		return nil, ValidationError(nil, "unknown deployment profile %q", profile).
 			WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
 	}
@@ -308,7 +302,7 @@ func (r RuntimeSpec) ComposeFiles(profile string) ([]string, error) {
 	// Compose would merge it with itself and the operator would see
 	// confusing duplicate-key diagnostics.
 	for _, f := range extra {
-		if !containsString(files, f) {
+		if !slices.Contains(files, f) {
 			files = append(files, f)
 		}
 	}
@@ -360,16 +354,12 @@ func (d RuntimeDecl) FilesFor(profile string) ([]string, error) {
 	}
 	extra, ok := d.Profiles[profile]
 	if !ok {
-		known := make([]string, 0, len(d.Profiles))
-		for name := range d.Profiles {
-			known = append(known, name)
-		}
-		sort.Strings(known)
+		known := slices.Sorted(maps.Keys(d.Profiles))
 		return nil, ValidationError(nil, "unknown deployment profile %q", profile).
 			WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
 	}
 	for _, f := range extra {
-		if !containsString(files, f) {
+		if !slices.Contains(files, f) {
 			files = append(files, f)
 		}
 	}
@@ -419,11 +409,7 @@ type Runtimes map[string]RuntimeDecl
 // Names returns the declared runtimes, sorted, so every message that lists
 // them lists them in the same order.
 func (r Runtimes) Names() []string {
-	names := make([]string, 0, len(r))
-	for name := range r {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(r))
 	return names
 }
 
@@ -1267,14 +1253,7 @@ func (m *Manifest) ImageRefs() []string {
 	return refs
 }
 
-func isSupportedAPIVersion(v APIVersion) bool {
-	for _, s := range SupportedAPIVersions {
-		if s == v {
-			return true
-		}
-	}
-	return false
-}
+func isSupportedAPIVersion(v APIVersion) bool { return slices.Contains(SupportedAPIVersions, v) }
 
 func joinAPIVersions(vs []APIVersion) string {
 	out := make([]string, len(vs))
@@ -1290,15 +1269,6 @@ func joinConsistencies(vs []VolumeConsistency) string {
 		out[i] = strconv.Quote(string(v))
 	}
 	return strings.Join(out, ", ")
-}
-
-func containsString(haystack []string, needle string) bool {
-	for _, h := range haystack {
-		if h == needle {
-			return true
-		}
-	}
-	return false
 }
 
 // validationErrors accumulates field-level complaints so Validate can report

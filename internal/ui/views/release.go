@@ -3,7 +3,8 @@ package views
 import (
 	"fmt"
 	"io"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -67,11 +68,7 @@ func runtimeSummary(m domain.Manifest) string {
 			parts = append(parts, name)
 			continue
 		}
-		keys := make([]string, 0, len(options))
-		for key := range options {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
+		keys := slices.Sorted(maps.Keys(options))
 		settings := make([]string, 0, len(keys))
 		for _, key := range keys {
 			settings = append(settings, key+"="+options[key])
@@ -100,7 +97,7 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 
 	d.Heading("images")
 	rows := make([][]string, 0, len(m.Images))
-	for _, name := range sortedKeys(m.Images) {
+	for _, name := range slices.Sorted(maps.Keys(m.Images)) {
 		rows = append(rows, []string{name, m.Images[name].Ref})
 	}
 	d.Table(4, ui.Table{

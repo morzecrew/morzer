@@ -45,7 +45,7 @@ func TestAnExportedCOLUMNSWinsOverTheDestination(t *testing.T) {
 	require.Equal(t, 137, got.Width)
 
 	// Malformed values are ignored rather than parsed to something absurd.
-	for _, bad := range []string{"", "0", "-1", "80x24", "abc", "10001"} {
+	for _, bad := range []string{"", "0", "-1", "+80", "80x24", "abc", "10001"} {
 		t.Setenv("COLUMNS", bad)
 		require.Falsef(t, ui.ScreenFor(&bytes.Buffer{}).Known,
 			"COLUMNS=%q was taken as a width", bad)

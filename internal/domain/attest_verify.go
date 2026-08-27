@@ -2,6 +2,8 @@ package domain
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -303,11 +305,7 @@ func CompareToLive(stmt Statement, live []LiveImage) []LiveMismatch {
 		}
 	}
 
-	digests := make([]string, 0, len(attested))
-	for d := range attested {
-		digests = append(digests, d)
-	}
-	sort.Strings(digests)
+	digests := slices.Sorted(maps.Keys(attested))
 	for _, d := range digests {
 		if !seen[d] {
 			img := attested[d]

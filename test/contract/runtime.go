@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -298,12 +299,7 @@ func runQuiesceSuite(t *testing.T, newRuntime RuntimeFactory) {
 
 // anyOccupies reports whether any service still holds its volumes open.
 func anyOccupies(states []ports.ServiceState) bool {
-	for _, s := range states {
-		if s.OccupiesVolume() {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(states, ports.ServiceState.OccupiesVolume)
 }
 
 // runVolumeSuite covers the optional volume capabilities.
@@ -614,22 +610,14 @@ func parentDirs(files map[string]string) []string {
 		}
 	}
 
-	out := make([]string, 0, len(set))
-	for dir := range set {
-		out = append(out, dir)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(set))
 	return out
 }
 
 // sortedNames keeps the archive deterministic: a tarball that differed between
 // runs would make a failure here impossible to compare against the last one.
 func sortedNames(files map[string]string) []string {
-	out := make([]string, 0, len(files))
-	for name := range files {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(files))
 	return out
 }
 

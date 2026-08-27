@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -301,10 +303,7 @@ func componentNames(r ops.SupportReport) []string {
 }
 
 func keys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
+	out := slices.Collect(maps.Keys(m))
 	return out
 }
 

@@ -2,7 +2,9 @@ package domain
 
 import (
 	"encoding/json"
+	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -335,11 +337,7 @@ func (m *Manifest) imageRefs(keep func(ImageSpec) bool) []string {
 }
 
 func sortedImageNames(images map[string]ImageSpec) []string {
-	names := make([]string, 0, len(images))
-	for name := range images {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(images))
 	return names
 }
 

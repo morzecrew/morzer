@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -232,12 +233,9 @@ func enablesSince(runner *exec.Scripted, from int) int {
 }
 
 func ranIn(calls []exec.Command, match string) bool {
-	for _, c := range calls {
-		if strings.Contains(strings.Join(c.Argv, " "), match) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(calls, func(c exec.Command) bool {
+		return strings.Contains(strings.Join(c.Argv, " "), match)
+	})
 }
 
 // TestInstallUnitsRefusesANameThatIsAPath is the traversal guard. A unit name
