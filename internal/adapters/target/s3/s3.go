@@ -51,6 +51,8 @@ const DefaultRegion = "us-east-1"
 // opens nothing. What is actually worth reusing is the connection pool, and
 // that lives in the transport below, which is shared.
 type Target struct {
+	blob.Delegate
+
 	mu sync.Mutex
 
 	// transports is keyed by whether the endpoint is https, because the two
@@ -59,86 +61,27 @@ type Target struct {
 	transports map[bool]http.RoundTripper
 }
 
-func New() *Target { return &Target{} }
+func New() *Target {
+	t := &Target{}
+	t.Delegate = blob.Delegate{Backup: t.openBackup, Object: t.openObject}
+	return t
+}
 
-var _ ports.BackupTarget = (*Target)(nil)
+var (
+	_ ports.BackupTarget = (*Target)(nil)
+	_ ports.ObjectStore  = (*Target)(nil)
+)
 
 func (t *Target) Schemes() []string { return []string{Scheme} }
 
-func (t *Target) Push(ctx context.Context, ref ports.TargetRef, localDir, id string) (ports.RemoteRef, error) {
-	store, err := t.store(ctx, ref)
-	if err != nil {
-		return ports.RemoteRef{}, err
-	}
-	return blob.Push(ctx, store, ref, localDir, id)
+// openBackup and openObject are the two halves blob.Delegate asks for. Neither
+// varies with write: a bucket is not something this creates.
+func (t *Target) openBackup(ctx context.Context, ref ports.TargetRef, _ bool) (blob.Store, error) {
+	return t.store(ctx, ref)
 }
 
-func (t *Target) List(ctx context.Context, ref ports.TargetRef) ([]ports.BackupManifest, error) {
-	store, err := t.store(ctx, ref)
-	if err != nil {
-		return nil, err
-	}
-	return blob.List(ctx, store)
-}
-
-func (t *Target) Fetch(ctx context.Context, ref ports.RemoteRef, destDir string) error {
-	store, err := t.store(ctx, ref.Target)
-	if err != nil {
-		return err
-	}
-	return blob.Fetch(ctx, store, ref, destDir)
-}
-
-func (t *Target) FetchFile(ctx context.Context, ref ports.RemoteRef, name, destDir string) error {
-	store, err := t.store(ctx, ref.Target)
-	if err != nil {
-		return err
-	}
-	return blob.FetchFile(ctx, store, ref, name, destDir)
-}
-
-func (t *Target) Verify(ctx context.Context, ref ports.RemoteRef) error {
-	store, err := t.store(ctx, ref.Target)
-	if err != nil {
-		return err
-	}
-	return blob.Verify(ctx, store, ref)
-}
-
-func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
-	store, err := t.store(ctx, ref.Target)
-	if err != nil {
-		return err
-	}
-	return blob.Remove(ctx, store, ref)
-}
-
-// The object-store half builds the store without the bucket probe that the
-// backup half runs. See (*Target).bucket for the measurement that says why.
-var _ ports.ObjectStore = (*Target)(nil)
-
-func (t *Target) PutObject(ctx context.Context, ref ports.TargetRef, key string, data []byte) error {
-	store, err := t.bucket(ref)
-	if err != nil {
-		return err
-	}
-	return blob.PutObject(ctx, store, key, data)
-}
-
-func (t *Target) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix string) ([]string, error) {
-	store, err := t.bucket(ref)
-	if err != nil {
-		return nil, err
-	}
-	return blob.ObjectKeys(ctx, store, prefix)
-}
-
-func (t *Target) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
-	store, err := t.bucket(ref)
-	if err != nil {
-		return nil, err
-	}
-	return blob.GetObject(ctx, store, key)
+func (t *Target) openObject(_ context.Context, ref ports.TargetRef, _ bool) (blob.Store, error) {
+	return t.bucket(ref)
 }
 
 // store builds the client, resolves the bucket and prefix out of the URL, and
