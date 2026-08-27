@@ -6,10 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // This adapter is the reference implementation of ReleaseSource: resolve
@@ -354,4 +357,34 @@ func copyTree(src, dst string) error {
 		}
 		return os.WriteFile(target, data, info.Mode().Perm())
 	})
+}
+
+// Fetch extracts before it validates, so a bundle it refuses is a bundle it
+// has already written. Leaving it there puts an unusable release in the store,
+// one `update --to` away from being installed by somebody who never saw the
+// error -- and neither caller cleans it up: `ops.fetchRelease` returns straight
+// out on a Fetch error, and `stepStageRelease`'s compensation keys off the
+// release in engine state, which a failed Fetch never put there.
+func TestFetchRemovesAnArchiveItRefuses(t *testing.T) {
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, release.ManifestFileName),
+		[]byte("schema_version: 1\nmetadata:\n  name: demo\n  version: not-a-version\n"),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "demo-1.2.0.tar.zst")
+	if err := atomicfs.WriteTarZst(archive, src,
+		[]string{release.ManifestFileName}, time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := filepath.Join(t.TempDir(), "releases", "1.2.0")
+	if _, err := local.New().Fetch(context.Background(), ref(archive), dest); err == nil {
+		t.Fatal("expected the invalid bundle to be refused")
+	}
+
+	entries, err := os.ReadDir(dest)
+	if err == nil && len(entries) > 0 {
+		t.Fatalf("Fetch left %d entries in the destination it refused", len(entries))
+	}
 }

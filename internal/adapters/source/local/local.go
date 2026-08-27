@@ -114,6 +114,15 @@ func (s *Source) Fetch(ctx context.Context, ref ports.Ref, destDir string) (port
 		// caller of Fetch does not make itself, so it has to carry the
 		// name too.
 		if _, err := release.LoadAs(destDir, path); err != nil {
+			// Extracted before it could be validated, so a refusal here
+			// is a refusal to a directory this call already filled.
+			// Neither caller cleans it up -- `fetchRelease` returns
+			// straight out on a Fetch error, and `stepStageRelease`'s
+			// compensation keys off the release in engine state, which
+			// a failed Fetch never put there -- and an unusable release
+			// left in the store is one `update --to` away from being
+			// installed by somebody who never saw this error.
+			_ = atomicfs.RemoveAll(destDir)
 			return "", err
 		}
 		return ports.BundlePath(destDir), nil
