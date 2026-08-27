@@ -58,13 +58,16 @@ func (s *Source) Schemes() []string { return []string{Scheme} }
 // one transport verify from another, and is worth the extra unpack of a bundle
 // measured in kilobytes.
 func (s *Source) Resolve(ctx context.Context, ref ports.Ref) (ports.ResolvedRelease, error) {
-	dir, cleanup, err := s.materialise(ref)
+	dir, source, cleanup, err := s.materialise(ref)
 	if err != nil {
 		return ports.ResolvedRelease{}, err
 	}
 	defer cleanup()
 
-	rel, err := release.Load(dir)
+	// Named for the archive the operator passed, not for the directory it
+	// was unpacked into. `source` is empty for a bundle already on disk as
+	// a directory, where the two are the same path anyway.
+	rel, err := release.LoadAs(dir, source)
 	if err != nil {
 		return ports.ResolvedRelease{}, err
 	}
@@ -104,7 +107,22 @@ func (s *Source) Fetch(ctx context.Context, ref ports.Ref, destDir string) (port
 		if err := atomicfs.ExtractTarZst(path, destDir, s.limits); err != nil {
 			return "", err
 		}
-		if _, err := release.Load(destDir); err != nil {
+		// Named for the archive, not for where it was just unpacked. A
+		// plan unpacks into a temporary directory and a real install
+		// into the release store, and neither is a path the operator
+		// chose or can act on -- this is the only read of the bundle a
+		// caller of Fetch does not make itself, so it has to carry the
+		// name too.
+		if _, err := release.LoadAs(destDir, path); err != nil {
+			// Extracted before it could be validated, so a refusal here
+			// is a refusal to a directory this call already filled.
+			// Neither caller cleans it up -- `fetchRelease` returns
+			// straight out on a Fetch error, and `stepStageRelease`'s
+			// compensation keys off the release in engine state, which
+			// a failed Fetch never put there -- and an unusable release
+			// left in the store is one `update --to` away from being
+			// installed by somebody who never saw this error.
+			_ = atomicfs.RemoveAll(destDir)
 			return "", err
 		}
 		return ports.BundlePath(destDir), nil
@@ -172,26 +190,29 @@ func (s *Source) List(ctx context.Context, ref ports.Ref) ([]domain.Version, err
 //
 // The returned cleanup is always non-nil, so callers can defer it
 // unconditionally rather than branching on how the bundle arrived.
-func (s *Source) materialise(ref ports.Ref) (dir string, cleanup func(), err error) {
+// The returned `source` is what the operator named, and is empty when that is
+// the directory being returned -- so a caller can name the archive in an error
+// about its contents without having to know whether one was unpacked.
+func (s *Source) materialise(ref ports.Ref) (dir, source string, cleanup func(), err error) {
 	path, err := s.locate(ref)
 	if err != nil {
-		return "", func() {}, err
+		return "", "", func() {}, err
 	}
 	if !atomicfs.IsTarZst(path) {
-		return path, func() {}, nil
+		return path, "", func() {}, nil
 	}
 
 	tmp, err := os.MkdirTemp("", "morzer-resolve-")
 	if err != nil {
-		return "", func() {}, domain.Internal(err, "cannot create a temporary directory")
+		return "", "", func() {}, domain.Internal(err, "cannot create a temporary directory")
 	}
 	cleanup = func() { _ = atomicfs.RemoveAll(tmp) }
 
 	if err := atomicfs.ExtractTarZst(path, tmp, s.limits); err != nil {
 		cleanup()
-		return "", func() {}, err
+		return "", "", func() {}, err
 	}
-	return tmp, cleanup, nil
+	return tmp, path, cleanup, nil
 }
 
 // locate resolves the reference to a bundle directory or archive file.

@@ -40,15 +40,23 @@ func TestTheCurrentSpellingVerifies(t *testing.T) {
 // them with nothing to ask for.
 func TestAFirstInstallRefusesADeprecatedBundle(t *testing.T) {
 	r := clitest.New(t)
+	bundle := r.LegacyBundle()
 
+	// The path is asserted, not incidental. `ParseManifest` prefixes the
+	// source so an author with several bundles open knows which one is
+	// being complained about, and until this line nothing checked that any
+	// path was named at all: replacing the source with an empty string
+	// degrades every refusal to `error: : manifest is invalid:` and passed
+	// the whole suite. Found by sabotage while fixing the plan's half of
+	// the same claim.
 	r.Run("init",
-		"--release", r.LegacyBundle(),
+		"--release", bundle,
 		"--profile", "embedded",
 		"--domain", "demo.example",
 		"--no-recovery-recipient",
 		"--install-units=false",
 	).ExitCode(2).
-		StderrContains("is no longer read", "runtimes.compose")
+		StderrContains("is no longer read", "runtimes.compose", bundle)
 }
 
 // The update path is asserted in the suite, where an update runs to completion
@@ -90,6 +98,37 @@ func TestAPlannedInstallRefusesADeprecatedBundle(t *testing.T) {
 		"--dry-run",
 	).ExitCode(2).
 		StderrContains("is no longer read")
+}
+
+// The plan reads a copy, and the copy's path is no answer to "which file?".
+//
+// `checkPlannedRelease` stages the bundle into a temporary directory to read
+// it, and `ParseManifest` prefixes whatever file it was handed -- so a refusal
+// named `/tmp/morzer-plan-3095461798/manifest.yaml`, a directory the operator
+// never chose and which is removed before they can go and look at it. That
+// prefix exists so "an author with several bundles open knows which file is
+// being complained about"; a temp path answers that question with a path they
+// cannot place, which is worse than not prefixing at all.
+//
+// `--product` is what makes this reachable, and it is the whole reason the
+// defect survived review: without it the CLI reads the manifest at the source
+// to learn the product name and refuses there, naming the real path by
+// accident. With it, the plan's copy is the only manifest anybody read.
+func TestAPlannedRefusalNamesTheBundleTheOperatorPassed(t *testing.T) {
+	r := clitest.New(t)
+	bundle := r.LegacyBundle()
+
+	r.Run("init",
+		"--product", "demo",
+		"--release", bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(2).
+		StderrContains("is no longer read", bundle).
+		NoOutputContains("morzer-plan-")
 }
 
 // The warning-is-one-sentence assertion that stood here has moved to
@@ -162,13 +201,15 @@ func TestAPlansJSONNamesTheProductAndNoInstallation(t *testing.T) {
 //
 // Measured both ways while writing this. Recorded rather than fixed here: a
 // plan that validates is RFC 0001 decision 12's territory and its own change.
-func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
-	r := clitest.New(t)
+// legacyArchive packs the legacy bundle the way a vendor ships one.
+//
+// Packed directly rather than with `release archive`, which now refuses the
+// same bundle for the same reason -- so after the removal this project can no
+// longer produce a legacy archive through its own commands, and a test for one
+// has to build it.
+func legacyArchive(t *testing.T, r *clitest.Runner) string {
+	t.Helper()
 
-	// Packed directly rather than with `release archive`, which now refuses
-	// the same bundle for the same reason -- so after the removal this
-	// project can no longer produce a legacy archive through its own
-	// commands, and a test for one has to build it.
 	bundle := r.LegacyBundle()
 	var entries []string
 	if err := filepath.WalkDir(bundle, func(path string, e fs.DirEntry, err error) error {
@@ -194,6 +235,33 @@ func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
 	if err := atomicfs.WriteTarZst(archive, bundle, entries, time.Unix(0, 0)); err != nil {
 		t.Fatal(err)
 	}
+	return archive
+}
+
+// A plan over an archive reads it through `Fetch`, which loads the bundle it
+// just unpacked before the plan's own check gets to it -- so the directory case
+// and the archive case leaked different temporary paths, and fixing one left
+// the shape a vendor actually publishes still naming `morzer-plan-*`.
+func TestAPlannedRefusalNamesTheArchiveTheOperatorPassed(t *testing.T) {
+	r := clitest.New(t)
+	archive := legacyArchive(t, r)
+
+	r.Run("init",
+		"--product", "demo",
+		"--release", archive,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+		"--dry-run",
+	).ExitCode(2).
+		StderrContains("is no longer read", archive).
+		NoOutputContains("morzer-plan-", "morzer-resolve-")
+}
+
+func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
+	r := clitest.New(t)
+	archive := legacyArchive(t, r)
 
 	r.Run("init",
 		"--product", "demo",
@@ -203,7 +271,12 @@ func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
 		"--no-recovery-recipient",
 		"--install-units=false",
 	).ExitCode(11).
-		StderrContains("is no longer read")
+		StderrContains("is no longer read", archive).
+		// The archive is the shape a vendor publishes, so this is the
+		// primary install path -- and `Resolve` extracts it into
+		// `morzer-resolve-*` before reading, which is the same defect
+		// the plan had, on the path more operators take.
+		NoOutputContains("morzer-resolve-")
 }
 
 // `--repair` restores an installation that is already there, and both summaries

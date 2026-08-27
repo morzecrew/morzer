@@ -209,3 +209,48 @@ than the missing value.
 
 **Drift count: still 0.** Both entries are gaps in what this wave built, found
 before it merged, and neither contradicts a document.
+
+## Correction — 2026-08-27, the exit code depends on a flag this entry did not name
+
+**The entry above, and the "Carried into the next unit" item it fed, say the
+real `init` refuses a legacy bundle at exit 11. It does that only when
+`--product` is passed.** The claim is left standing, as this collection's
+corrections are.
+
+Measured on wave 41's branch against a real binary and a legacy directory
+bundle:
+
+```
+morzer init --release <legacy> …                 → exit 2
+morzer init --product demo --release <legacy> …  → exit 11
+morzer init --product demo --release <legacy> … --dry-run → exit 2
+```
+
+Without `--product` the CLI reads the manifest at the source to learn the
+product name (`internal/cli/commands.go:64`), and validation comes with the
+read — so the refusal lands before any operation is built. With it, that read is
+skipped, three steps run and are rolled back, and the failure is the step's.
+
+The shape the entry described is real and worse than it says. On the exit-11
+path the top-level error is `code: compensated, category: system` — a system
+category for what is the operator's input — and the manifest problem appears
+exactly once in the whole `--json` stream, inside `record.steps[3].error`. A
+consumer reading `.error` is told the operation rolled back and nothing about
+why.
+
+**The cause is general, not this command's.** `domain.ExitCode` tests
+`ErrCompensated` (`internal/domain/errors.go:336`) before `ErrUsage` and
+`ErrValidation` (line 354), so the compensation wrapper outranks every cause in
+every compensated operation. Nothing records that precedence as a decision: no
+RFC decision row covers it, `docscheck`'s `checkExitCodes` only asserts each
+constant has a row in the published table, and `internal/domain` has no direct
+test of `ExitCode` at all. A change to that ordering passes every gate in
+`just ci`.
+
+Carried to an RFC rather than fixed. The published table names "an invalid
+manifest" under 2 *and* "back where it started" under 11, and both rows describe
+that run truthfully — which is a question about what an exit code reports, not a
+defect to patch inside a task.
+
+**Drift count: unchanged.** This corrects a claim's scope and names its cause;
+no entry's class changes.
