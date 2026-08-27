@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -335,16 +334,3 @@ func ParseLevel(verbose, quiet bool) slog.Level {
 		return slog.LevelInfo
 	}
 }
-
-// Clock is injected wherever timestamps affect behaviour, so tests can make
-// time deterministic instead of sleeping.
-type Clock interface {
-	Now() time.Time
-}
-
-type realClock struct{}
-
-func (realClock) Now() time.Time { return time.Now() }
-
-// SystemClock is the production clock.
-var SystemClock Clock = realClock{}

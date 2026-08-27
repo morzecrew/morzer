@@ -64,9 +64,3 @@ func (r *redactor) strings(in []string) []string {
 	}
 	return out
 }
-
-// Redact scrubs values from a string. Exported for the logging handler, which
-// applies the same rule to structured log records.
-func Redact(s string, values []string) string {
-	return newRedactor(values).string(s)
-}

@@ -3,7 +3,6 @@ package ops
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -504,17 +503,4 @@ func sortedSettingNames(m map[string]string) []string {
 func unknownSetting(name string) error {
 	return domain.Usage("no installation setting named %q", name).
 		WithHint("settable: %s", strings.Join(SettingNames(), ", "))
-}
-
-// DescribeSettings renders the list for a human, one per line.
-func DescribeSettings(report SettingsReport) string {
-	var sb strings.Builder
-	for _, entry := range report.Settings {
-		value := entry.Value
-		if value == "" {
-			value = "(unset)"
-		}
-		fmt.Fprintf(&sb, "%-16s %-24s %s\n", entry.Name, value, entry.Description)
-	}
-	return strings.TrimRight(sb.String(), "\n")
 }
