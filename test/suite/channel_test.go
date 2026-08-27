@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -177,6 +178,44 @@ func TestAMovedChannelStagesTheReleaseWithoutInstallingIt(t *testing.T) {
 	// on. RFC 0002 P5's gate, finally open.
 	assert.NotEmpty(t, result.Notes,
 		"the staged release ships RELEASE.md; nothing read it")
+}
+
+// theCommandAVendorWrote is one line, longer than any measure this project
+// holds prose to, inside a fenced block.
+const theCommandAVendorWrote = "morzer apply --installation demo --profile production " +
+	"--release 1.3.0 --wait-for-health --timeout 15m"
+
+// TestStagedNotesArriveAsTheVendorWroteThem.
+//
+// Release notes are a vendor's Markdown, and nothing between the bundle and the
+// operator reflows them. A wrap inserted at a column splits the fenced command
+// below, and the operator who copies it gets something that does not run --
+// which is what a word wrapper applied to Markdown did, before it was removed
+// in favour of not transforming the notes at all.
+//
+// The assertion is the whole line in one Contains. Asserting on the words would
+// pass against output that had broken the line between them.
+func TestStagedNotesArriveAsTheVendorWroteThem(t *testing.T) {
+	notes := "# demo 1.3.0\n\nRun this afterwards:\n\n```sh\n" +
+		theCommandAVendorWrote + "\n```\n"
+
+	h, registry, _, _ := followingHarnessWith(t, func(t *testing.T, bundleDir string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(
+			filepath.Join(bundleDir, "RELEASE.md"), []byte(notes), 0o644))
+	})
+
+	// The tag this harness publishes is the one the installation already
+	// follows, so the poll needs no explicit reference.
+	_ = registry
+	result, err := ops.FollowChannel(context.Background(), h.Deps,
+		ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+
+	assert.Contains(t, result.Notes, theCommandAVendorWrote,
+		"the fenced command reached the operator broken across lines")
+	assert.Equal(t, strings.TrimSpace(notes), strings.TrimSpace(result.Notes),
+		"something between the bundle and the operator rewrote the notes")
 }
 
 // TestInstallingAStagedReleaseRetiresTheCandidate.
