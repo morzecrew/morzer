@@ -40,15 +40,23 @@ func TestTheCurrentSpellingVerifies(t *testing.T) {
 // them with nothing to ask for.
 func TestAFirstInstallRefusesADeprecatedBundle(t *testing.T) {
 	r := clitest.New(t)
+	bundle := r.LegacyBundle()
 
+	// The path is asserted, not incidental. `ParseManifest` prefixes the
+	// source so an author with several bundles open knows which one is
+	// being complained about, and until this line nothing checked that any
+	// path was named at all: replacing the source with an empty string
+	// degrades every refusal to `error: : manifest is invalid:` and passed
+	// the whole suite. Found by sabotage while fixing the plan's half of
+	// the same claim.
 	r.Run("init",
-		"--release", r.LegacyBundle(),
+		"--release", bundle,
 		"--profile", "embedded",
 		"--domain", "demo.example",
 		"--no-recovery-recipient",
 		"--install-units=false",
 	).ExitCode(2).
-		StderrContains("is no longer read", "runtimes.compose")
+		StderrContains("is no longer read", "runtimes.compose", bundle)
 }
 
 // The update path is asserted in the suite, where an update runs to completion
