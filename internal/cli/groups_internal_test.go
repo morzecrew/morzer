@@ -104,8 +104,8 @@ func TestTheFirstSectionIsInTheOrderYouWouldRunIt(t *testing.T) {
 // The listing is `  <name padded> <short>`, and a Short long enough to wrap
 // turns the section into a paragraph -- which is the readability this whole
 // grouping exists for, undone one command at a time. Eighty because that is the
-// width the rest of this project treats as the terminal's floor (`RenderNotes`
-// wraps there, and it says why).
+// width a terminal is assumed to have when nothing says otherwise, and help is
+// read on whatever the operator happens to be sitting at.
 func TestHelpLinesFitEightyColumns(t *testing.T) {
 	const limit = 80
 
