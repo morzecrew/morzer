@@ -242,7 +242,12 @@ func TestAnInstallFromAnArchiveIsRefusedToo(t *testing.T) {
 		"--no-recovery-recipient",
 		"--install-units=false",
 	).ExitCode(11).
-		StderrContains("is no longer read")
+		StderrContains("is no longer read", archive).
+		// The archive is the shape a vendor publishes, so this is the
+		// primary install path -- and `Resolve` extracts it into
+		// `morzer-resolve-*` before reading, which is the same defect
+		// the plan had, on the path more operators take.
+		NoOutputContains("morzer-resolve-")
 }
 
 // `--repair` restores an installation that is already there, and both summaries

@@ -42,27 +42,56 @@ const ReleaseNotesFileName = "RELEASE.md"
 // The digest is computed over the whole tree, so identity is content-based
 // rather than trusting what the manifest claims about itself.
 func Load(dir string) (domain.Release, error) {
+	return loadFrom(dir, "")
+}
+
+// LoadAs is Load naming `source` in whatever it refuses, instead of the
+// directory it actually read.
+//
+// For the same reason LoadManifestAs exists, one level up: a source that has to
+// unpack an archive before it can read the bundle reads an extracted copy, and
+// naming that copy points the operator at a directory they never chose and
+// which is removed on the way out. The archive is the shape a vendor publishes,
+// so that is the install path most operators take.
+//
+// An empty `source` means "name what you read", which is what Load passes. The
+// distinction from LoadManifestAs is deliberate: that one is handed a source by
+// a caller that has decided to override, and an empty string there is a bug,
+// while here the empty case is the un-overridden default and has a caller.
+func LoadAs(dir, source string) (domain.Release, error) {
+	return loadFrom(dir, source)
+}
+
+func loadFrom(dir, source string) (domain.Release, error) {
+	named := func(real string) string {
+		if source != "" {
+			return source
+		}
+		return real
+	}
+
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return domain.Release{}, domain.ValidationError(err, "cannot resolve %s", dir)
+		return domain.Release{}, domain.ValidationError(err, "cannot resolve %s", named(dir))
 	}
 
 	info, err := os.Stat(abs)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return domain.Release{}, domain.ValidationError(domain.ErrReleaseNotFound,
-				"no release bundle at %s", abs).
+				"no release bundle at %s", named(abs)).
 				WithHint("check the path, or run `morzer release list` to see installed releases")
 		}
-		return domain.Release{}, domain.ValidationError(err, "cannot read %s", abs)
+		return domain.Release{}, domain.ValidationError(err, "cannot read %s", named(abs))
 	}
 	if !info.IsDir() {
 		return domain.Release{}, domain.ValidationError(nil,
-			"%s is not a directory", abs).
+			"%s is not a directory", named(abs)).
 			WithHint("point at an unpacked bundle directory containing %s", ManifestFileName)
 	}
 
-	manifest, err := LoadManifest(filepath.Join(abs, ManifestFileName))
+	manifestPath := filepath.Join(abs, ManifestFileName)
+	manifest, err := LoadManifestAs(manifestPath, named(manifestPath))
 	if err != nil {
 		return domain.Release{}, err
 	}
@@ -111,6 +140,13 @@ func LoadManifest(path string) (domain.Manifest, error) {
 // Callers reading a file the operator named pass LoadManifest and get the two
 // arguments equal, which is the honest default: naming the file you read is
 // right everywhere except when you read a copy on their behalf.
+//
+// `source` must not be empty, and there is deliberately no fallback for it. An
+// empty one renders as `error: : manifest is invalid:`, which is loud, wrong in
+// a way nobody can mistake for intended, and caught by the assertions in
+// `TestAFirstInstallRefusesADeprecatedBundle`. Quietly substituting `path`
+// would turn a caller's mistake into the exact defect this function exists to
+// remove, and leave it to be found by an operator instead of by a test.
 func LoadManifestAs(path, source string) (domain.Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
