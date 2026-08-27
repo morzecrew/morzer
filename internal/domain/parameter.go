@@ -2,7 +2,9 @@ package domain
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -371,21 +373,13 @@ func joinParameterTypes() string {
 }
 
 func declaredNames(m map[string]ParameterSpec) []string {
-	out := make([]string, 0, len(m))
-	for name := range m {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(m))
 	return out
 }
 
 func sortedParameterNames(m map[string]ParameterSpec) []string { return declaredNames(m) }
 
 func sortedStringKeys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for name := range m {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(m))
 	return out
 }

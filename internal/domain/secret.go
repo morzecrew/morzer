@@ -2,6 +2,8 @@ package domain
 
 import (
 	"log/slog"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -67,11 +69,7 @@ func (s SecretSet) Has(name string) bool {
 // Names returns secret names in sorted order. Names are not sensitive --
 // `secret list` shows them -- but values never accompany them.
 func (s SecretSet) Names() []string {
-	out := make([]string, 0, len(s.values))
-	for n := range s.values {
-		out = append(out, n)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(s.values))
 	return out
 }
 

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -67,11 +69,7 @@ func (p volumePlan) quiesceServices() []string {
 			set[s] = true
 		}
 	}
-	out := make([]string, 0, len(set))
-	for s := range set {
-		out = append(out, s)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(set))
 	return out
 }
 
@@ -721,11 +719,7 @@ func (e *Engine) refuseOccupiedVolumes(
 		return nil
 	}
 
-	names := make([]string, 0, len(blockers))
-	for service := range blockers {
-		names = append(names, service)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(blockers))
 
 	details := make([]string, 0, len(names))
 	for _, service := range names {

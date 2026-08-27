@@ -10,11 +10,12 @@ package preflight
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"os"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -283,11 +284,7 @@ func Tool(registry *tools.Registry, name string, constraint domain.Constraint) C
 
 // Tools builds a check per entry in requirements.tools, in a stable order.
 func Tools(registry *tools.Registry, req domain.Requirements) []Check {
-	names := make([]string, 0, len(req.Tools))
-	for name := range req.Tools {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(req.Tools))
 
 	checks := make([]Check, 0, len(names))
 	for _, name := range names {

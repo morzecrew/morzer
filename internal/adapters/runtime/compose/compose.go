@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -197,11 +198,7 @@ func checkOptions(options map[string]string) error {
 	}
 	sort.Strings(unknown)
 
-	names := make([]string, 0, len(known))
-	for key := range known {
-		names = append(names, key)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(known))
 
 	return domain.ValidationError(nil,
 		"this release sets runtime options the compose runtime does not know: %s",
@@ -272,17 +269,8 @@ func serviceNames(raw string) ([]string, error) {
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
 		return nil, domain.RuntimeError(err, "cannot parse the merged compose configuration")
 	}
-	names := make([]string, 0, len(doc.Services))
-	for name := range doc.Services {
-		names = append(names, name)
-	}
 	// Sorted so plans and diffs are stable between runs.
-	for i := 1; i < len(names); i++ {
-		for j := i; j > 0 && names[j] < names[j-1]; j-- {
-			names[j], names[j-1] = names[j-1], names[j]
-		}
-	}
-	return names, nil
+	return slices.Sorted(maps.Keys(doc.Services)), nil
 }
 
 // Pull fetches images.

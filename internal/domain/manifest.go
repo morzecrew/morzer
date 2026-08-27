@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -232,11 +234,7 @@ func (m Manifest) ProfileNames() []string {
 			seen[name] = true
 		}
 	}
-	out := make([]string, 0, len(seen))
-	for name := range seen {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(seen))
 	return out
 }
 
@@ -296,11 +294,7 @@ func (r RuntimeSpec) ComposeFiles(profile string) ([]string, error) {
 	}
 	extra, ok := r.Profiles[profile]
 	if !ok {
-		known := make([]string, 0, len(r.Profiles))
-		for name := range r.Profiles {
-			known = append(known, name)
-		}
-		sort.Strings(known)
+		known := slices.Sorted(maps.Keys(r.Profiles))
 		return nil, ValidationError(nil, "unknown deployment profile %q", profile).
 			WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
 	}
@@ -360,11 +354,7 @@ func (d RuntimeDecl) FilesFor(profile string) ([]string, error) {
 	}
 	extra, ok := d.Profiles[profile]
 	if !ok {
-		known := make([]string, 0, len(d.Profiles))
-		for name := range d.Profiles {
-			known = append(known, name)
-		}
-		sort.Strings(known)
+		known := slices.Sorted(maps.Keys(d.Profiles))
 		return nil, ValidationError(nil, "unknown deployment profile %q", profile).
 			WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
 	}
@@ -419,11 +409,7 @@ type Runtimes map[string]RuntimeDecl
 // Names returns the declared runtimes, sorted, so every message that lists
 // them lists them in the same order.
 func (r Runtimes) Names() []string {
-	names := make([]string, 0, len(r))
-	for name := range r {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(r))
 	return names
 }
 

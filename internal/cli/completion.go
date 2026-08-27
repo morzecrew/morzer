@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -140,10 +142,7 @@ func unknownShell(shell string) error {
 
 // completionShells are the shells this command can place a file for, sorted.
 func completionShells() []string {
-	out := make([]string, 0, len(completionTargets))
-	for name := range completionTargets {
-		out = append(out, name)
-	}
+	out := slices.Collect(maps.Keys(completionTargets))
 	sortStrings(out)
 	return out
 }

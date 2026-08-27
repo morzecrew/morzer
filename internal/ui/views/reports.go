@@ -3,7 +3,6 @@ package views
 import (
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
@@ -130,15 +129,4 @@ func settingsDoc(d *ui.Doc, report ops.SettingsReport) *ui.Doc {
 		Empty: "this installation declares no settings",
 	})
 	return d
-}
-
-// sortedKeys is the ordering every map-derived listing uses, so two runs against
-// the same release print the same bytes.
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }

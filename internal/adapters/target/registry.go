@@ -12,8 +12,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -89,11 +90,7 @@ func isNil(t ports.BackupTarget) bool {
 
 // Schemes lists what this build can push to, sorted.
 func (r *Registry) Schemes() []string {
-	out := make([]string, 0, len(r.byScheme))
-	for scheme := range r.byScheme {
-		out = append(out, scheme)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(r.byScheme))
 	return out
 }
 

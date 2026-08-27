@@ -3,6 +3,8 @@ package ops
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -155,11 +157,7 @@ func (d *Deps) checkChannelIsFollowable(ctx context.Context, ref ports.Ref) erro
 
 // SettingNames lists what may be set, sorted.
 func SettingNames() []string {
-	out := make([]string, 0, len(settings))
-	for name := range settings {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(settings))
 	return out
 }
 
@@ -492,11 +490,7 @@ func zeroFor(inst domain.Installation, s setting) domain.Installation {
 // sortedSettingNames orders a change so two runs report the same list, and so
 // a failure part-way through fails on the same setting each time.
 func sortedSettingNames(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for name := range m {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(m))
 	return out
 }
 

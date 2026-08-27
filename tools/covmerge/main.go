@@ -21,7 +21,9 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -123,10 +125,7 @@ func read(path string, into map[string]block) error {
 }
 
 func write(path string, blocks map[string]block) error {
-	keys := make([]string, 0, len(blocks))
-	for k := range blocks {
-		keys = append(keys, k)
-	}
+	keys := slices.Collect(maps.Keys(blocks))
 	// Sorted so the output is byte-identical between runs, which is what
 	// makes a diff of two profiles readable.
 	sort.Strings(keys)

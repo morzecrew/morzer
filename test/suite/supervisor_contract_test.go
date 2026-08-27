@@ -1,6 +1,8 @@
 package suite
 
 import (
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
@@ -42,10 +44,7 @@ func TestTheSystemdAdapterHonoursTheEnablementRules(t *testing.T) {
 						delete(on, c.Argv[2])
 					}
 				}
-				out := make([]string, 0, len(on))
-				for name := range on {
-					out = append(out, name)
-				}
+				out := slices.Collect(maps.Keys(on))
 				return out
 			},
 		}

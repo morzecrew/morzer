@@ -1,10 +1,11 @@
 package main
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -155,11 +156,7 @@ func installationFieldNames() map[string]string {
 }
 
 func sorted(set map[string]bool) []string {
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(set))
 	return out
 }
 

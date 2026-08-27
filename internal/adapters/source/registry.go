@@ -11,7 +11,8 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -60,11 +61,7 @@ func NewRegistry(sources ...ports.ReleaseSource) (*Registry, error) {
 
 // Schemes lists what this build can fetch, sorted.
 func (r *Registry) Schemes() []string {
-	out := make([]string, 0, len(r.byScheme))
-	for scheme := range r.byScheme {
-		out = append(out, scheme)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(r.byScheme))
 	return out
 }
 

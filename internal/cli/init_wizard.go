@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -335,7 +336,7 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	// Sorted, so the printed line is the same twice for the same options:
 	// this goes into a provisioning script, where a command that reorders
 	// itself between runs is a diff nobody can read.
-	for _, name := range sortedKeys(opts.Parameters) {
+	for _, name := range slices.Sorted(maps.Keys(opts.Parameters)) {
 		add("set", name+"="+opts.Parameters[name])
 	}
 	add("recovery-recipient", opts.RecoveryRecipient)
@@ -360,15 +361,6 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	}
 
 	return strings.Join(args, " \\\n    ")
-}
-
-func sortedKeys(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // shellQuote quotes a value only when it needs it, so the common case stays

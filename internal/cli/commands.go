@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -986,11 +987,7 @@ func parseComponents(names []string) ([]ports.Component, error) {
 	for _, name := range names {
 		c, ok := valid[strings.TrimSpace(strings.ToLower(name))]
 		if !ok {
-			known := make([]string, 0, len(valid))
-			for k := range valid {
-				known = append(known, k)
-			}
-			sort.Strings(known)
+			known := slices.Sorted(maps.Keys(valid))
 			return nil, domain.Usage("unknown backup component %q", name).
 				WithHint("valid components: %s", strings.Join(known, ", "))
 		}

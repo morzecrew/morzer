@@ -2,6 +2,8 @@ package ops
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -454,10 +456,6 @@ func notDeclared(name string, declared []string) error {
 }
 
 func sortedNames(m map[string]domain.ParameterSpec) []string {
-	out := make([]string, 0, len(m))
-	for name := range m {
-		out = append(out, name)
-	}
-	sort.Strings(out)
+	out := slices.Sorted(maps.Keys(m))
 	return out
 }

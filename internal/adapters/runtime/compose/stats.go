@@ -2,6 +2,7 @@ package compose
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -47,10 +48,7 @@ func (r *Runtime) Stats(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.S
 		return nil, nil
 	}
 
-	names := make([]string, 0, len(running))
-	for name := range running {
-		names = append(names, name)
-	}
+	names := slices.Collect(maps.Keys(running))
 	slices.Sort(names)
 
 	// `--no-stream` matters: the streaming form emits a first sample of

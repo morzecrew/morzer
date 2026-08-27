@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -268,11 +269,7 @@ func attestationInputs(
 // the running state could never disagree with it, and RFC 0025 decision 8 makes
 // the design conditional on that disagreement being possible.
 func attestedImages(rel domain.Release) []domain.AttestedImage {
-	names := make([]string, 0, len(rel.Manifest.Images))
-	for name := range rel.Manifest.Images {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(rel.Manifest.Images))
 
 	out := make([]domain.AttestedImage, 0, len(names))
 	for _, name := range names {
