@@ -54,3 +54,5 @@ go.work.sum
 # Public halves are not matched: morzer.pub is committed deliberately, and a
 # bundle's SHA256SUMS.minisig is a signature rather than a secret.
 *.key
+
+.repowise/
