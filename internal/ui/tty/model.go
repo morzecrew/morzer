@@ -127,12 +127,6 @@ func New(t *theme.Theme, onCancel func()) *Model {
 // eventMsg carries a bus event into the program's update loop.
 type eventMsg struct{ event events.Event }
 
-// EventMsg wraps an event as a Bubble Tea message.
-//
-// Exported so tests can drive the model from an event stream directly, which
-// is the same path Subscribe takes. Production code uses Subscribe.
-func EventMsg(e events.Event) tea.Msg { return eventMsg{event: e} }
-
 // tickMsg advances the elapsed clock.
 type tickMsg time.Time
 

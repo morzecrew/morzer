@@ -92,14 +92,6 @@ func Watch[T any](ctx context.Context, opts WatchOptions[T]) error {
 	return nil
 }
 
-// NewWatchModel builds the watch view.
-//
-// Exported so tests can drive it without a terminal; production code calls
-// Watch, which owns the program and the alt-screen.
-func NewWatchModel[T any](ctx context.Context, opts WatchOptions[T]) tea.Model {
-	return newWatchModel(ctx, opts)
-}
-
 func newWatchModel[T any](ctx context.Context, opts WatchOptions[T]) *watchModel[T] {
 	interval := opts.Interval
 	if interval <= 0 {

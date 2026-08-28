@@ -35,11 +35,27 @@ import (
 // Scheme is the URL scheme this target handles.
 const Scheme = "file"
 
-type Target struct{}
+type Target struct {
+	blob.Delegate
+}
 
-func New() *Target { return &Target{} }
+func New() *Target {
+	t := &Target{}
+	// One opener for both halves. write is what decides whether the root is
+	// created, so a push and a publish make the directory and everything
+	// that only reads refuses to.
+	t.Delegate = blob.Delegate{Backup: t.open, Object: t.open}
+	return t
+}
 
-var _ ports.BackupTarget = (*Target)(nil)
+var (
+	_ ports.BackupTarget = (*Target)(nil)
+	_ ports.ObjectStore  = (*Target)(nil)
+)
+
+func (t *Target) open(_ context.Context, ref ports.TargetRef, write bool) (blob.Store, error) {
+	return t.store(ref, write)
+}
 
 func (t *Target) Schemes() []string { return []string{Scheme} }
 
@@ -66,47 +82,6 @@ func (t *Target) Push(ctx context.Context, ref ports.TargetRef, localDir, id str
 	return blob.Push(ctx, store, ref, localDir, id)
 }
 
-func (t *Target) List(ctx context.Context, ref ports.TargetRef) ([]ports.BackupManifest, error) {
-	store, err := t.store(ref, false)
-	if err != nil {
-		return nil, err
-	}
-	// A target directory that is not there yet holds no backups. That is
-	// the state before the first push, and `backup list --target` must
-	// answer it rather than fail.
-	if _, err := os.Stat(store.root); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, t.unreachable(ref, err)
-	}
-	return blob.List(ctx, store)
-}
-
-func (t *Target) Fetch(ctx context.Context, ref ports.RemoteRef, destDir string) error {
-	store, err := t.store(ref.Target, false)
-	if err != nil {
-		return err
-	}
-	return blob.Fetch(ctx, store, ref, destDir)
-}
-
-func (t *Target) FetchFile(ctx context.Context, ref ports.RemoteRef, name, destDir string) error {
-	store, err := t.store(ref.Target, false)
-	if err != nil {
-		return err
-	}
-	return blob.FetchFile(ctx, store, ref, name, destDir)
-}
-
-func (t *Target) Verify(ctx context.Context, ref ports.RemoteRef) error {
-	store, err := t.store(ref.Target, false)
-	if err != nil {
-		return err
-	}
-	return blob.Verify(ctx, store, ref)
-}
-
 func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	store, err := t.store(ref.Target, false)
 	if err != nil {
@@ -119,36 +94,6 @@ func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	// manifest by anything less careful than blob.List.
 	_ = os.Remove(filepath.Join(store.root, ref.ID))
 	return nil
-}
-
-var _ ports.ObjectStore = (*Target)(nil)
-
-func (t *Target) PutObject(ctx context.Context, ref ports.TargetRef, key string, data []byte) error {
-	store, err := t.store(ref, true)
-	if err != nil {
-		return err
-	}
-	return blob.PutObject(ctx, store, key, data)
-}
-
-func (t *Target) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix string) ([]string, error) {
-	store, err := t.store(ref, false)
-	if err != nil {
-		return nil, err
-	}
-	return blob.ObjectKeys(ctx, store, prefix)
-}
-
-// GetObject reads one back. The store is opened without creating it, like
-// ObjectKeys and unlike PutObject: reading a directory into existence would
-// make "this target has never been published to" indistinguishable from "this
-// target is now an empty directory I just made".
-func (t *Target) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
-	store, err := t.store(ref, false)
-	if err != nil {
-		return nil, err
-	}
-	return blob.GetObject(ctx, store, key)
 }
 
 // store resolves the target's root directory, creating it when a push is about

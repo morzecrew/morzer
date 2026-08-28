@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"github.com/morzecrew/morzer/internal/ui"
 )
 
 // View draws the step list.
@@ -188,30 +188,17 @@ func (m *Model) detailWidth() int {
 	return max(m.width/3, 12)
 }
 
-// displayWidth is how many terminal cells a string occupies.
-//
-// Not len and not the rune count: a CJK character is two columns wide, and a
-// combining accent is zero. Counting bytes is how a "%-24s" column ends up
-// ragged the first time a service is named in Japanese.
-func displayWidth(s string) int { return lipgloss.Width(s) }
-
 // truncate shortens to a display width, with an ellipsis when it cuts.
+//
+// A width of one or less is left alone rather than replaced by the ellipsis
+// itself: the callers derive it by subtracting a margin from the terminal, so
+// the degenerate value means the screen is too narrow to say anything, not that
+// this string in particular needs cutting.
 func truncate(s string, width int) string {
-	if width <= 1 || displayWidth(s) <= width {
+	if width <= 1 {
 		return s
 	}
-
-	var b strings.Builder
-	used := 0
-	for _, r := range s {
-		w := displayWidth(string(r))
-		if used+w > width-1 {
-			break
-		}
-		b.WriteRune(r)
-		used += w
-	}
-	return b.String() + "…"
+	return ui.Truncate(s, width, "…")
 }
 
 // shortDuration renders an elapsed time the way somebody watching reads one.

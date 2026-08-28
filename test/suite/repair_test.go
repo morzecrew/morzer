@@ -13,9 +13,9 @@ import (
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/domain"
-	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // `init --repair`, and the unit reconciliation beside it.
@@ -127,7 +127,7 @@ func TestAnUnrelatedSettingChangeKeepsTheBackupWindow(t *testing.T) {
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 
 	unitDir := t.TempDir()
-	real := systemd.New(exec.NewScripted(), systemd.WithUnitDir(unitDir))
+	real := systemd.New(fakes.NewScripted(), systemd.WithUnitDir(unitDir))
 	h.Deps.Supervisor = availableSupervisor{Supervisor: real}
 
 	units, err := h.Deps.Supervisor.Units(ports.UnitParams{
@@ -159,7 +159,7 @@ func TestTheBackupWindowCanBeChangedAfterInit(t *testing.T) {
 	ctx := context.Background()
 
 	unitDir := t.TempDir()
-	real := systemd.New(exec.NewScripted(), systemd.WithUnitDir(unitDir))
+	real := systemd.New(fakes.NewScripted(), systemd.WithUnitDir(unitDir))
 	h.Deps.Supervisor = availableSupervisor{Supervisor: real}
 
 	units, err := h.Deps.Supervisor.Units(ports.UnitParams{Product: "demo"})
@@ -245,7 +245,7 @@ func TestAScheduleCannotSmuggleADirectiveIntoTheUnit(t *testing.T) {
 
 			// And the unit that value produces has the directives it should.
 			unitDir := t.TempDir()
-			real := systemd.New(exec.NewScripted(), systemd.WithUnitDir(unitDir))
+			real := systemd.New(fakes.NewScripted(), systemd.WithUnitDir(unitDir))
 			units, unitsErr := real.Units(ports.UnitParams{
 				Product: "demo", BackupSchedule: stored,
 			})
@@ -308,7 +308,7 @@ func TestALeadingNewlineDoesNotReachTheUnitFile(t *testing.T) {
 
 	// The renderer, which is the guard nearest the root-owned file.
 	unitDir := t.TempDir()
-	real := systemd.New(exec.NewScripted(), systemd.WithUnitDir(unitDir))
+	real := systemd.New(fakes.NewScripted(), systemd.WithUnitDir(unitDir))
 	_, err := real.Units(ports.UnitParams{Product: "demo", BackupSchedule: payload})
 	require.Error(t, err,
 		"the renderer accepted a schedule that would add a directive to the unit")

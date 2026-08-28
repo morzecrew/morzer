@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/domain"
-	"github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 const (
@@ -52,7 +52,7 @@ func emptyLayout(t *testing.T) string {
 // because the loopback reference names a port that stops listening the moment
 // this returns.
 func TestIngestPullsFromLoopbackAndLeavesTheAliasBehind(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	// Absent locally, so there is something to do.
 	runner.OnExit("image inspect", 1, "Error: No such image")
 
@@ -112,7 +112,7 @@ func TestIngestPullsFromLoopbackAndLeavesTheAliasBehind(t *testing.T) {
 // gigabytes, and the check happens before the layout is opened -- so an ingest
 // with nothing to do binds no port and reads no directory.
 func TestIngestSkipsWhatIsAlreadyHere(t *testing.T) {
-	runner := exec.NewScripted() // every command succeeds: the image is present
+	runner := fakes.NewScripted() // every command succeeds: the image is present
 
 	r := New(runner)
 	// A directory that is not a layout: if this is opened, Start fails and
@@ -135,7 +135,7 @@ func TestIngestSkipsWhatIsAlreadyHere(t *testing.T) {
 // The overwhelmingly common case -- a release that bundles no images at all --
 // must not open a layout that is not there.
 func TestIngestOfNothingDoesNothing(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	r := New(runner)
 
 	if err := r.IngestImages(context.Background(), "/nonexistent", nil); err != nil {
@@ -153,7 +153,7 @@ func TestIngestOfNothingDoesNothing(t *testing.T) {
 // message about a pull would be looking in the one place the problem cannot
 // be.
 func TestAFailedPullReportsTheBundleRatherThanTheNetwork(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.OnExit("image inspect", 1, "Error: No such image")
 	runner.OnExit("pull", 1, "filesystem layer verification failed for digest sha256:0000")
 
@@ -236,7 +236,7 @@ func TestRepositoryPathIsCosmeticButHasToBeLegal(t *testing.T) {
 // to leave behind. Unreachable through a validated manifest, and reachable
 // through the port, which is where this is asserted.
 func TestIngestRefusesAnUnpinnedBundledImage(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.OnExit("image inspect", 1, "Error: No such image")
 
 	r := New(runner)
@@ -260,7 +260,7 @@ func TestIngestRefusesAnUnpinnedBundledImage(t *testing.T) {
 // but not named is an image nothing can use -- and the bytes being safely in
 // the store is exactly what would make this easy to ignore.
 func TestAFailedTagIsReportedRatherThanSwallowed(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.OnExit("image inspect", 1, "Error: No such image")
 	runner.OnExit(" tag ", 1, "Error response from daemon: no such image")
 
@@ -298,7 +298,7 @@ func TestARemoteDaemonIsRefusedBeforeAnythingIsServed(t *testing.T) {
 		t.Run(host, func(t *testing.T) {
 			t.Setenv("DOCKER_HOST", host)
 
-			runner := exec.NewScripted()
+			runner := fakes.NewScripted()
 			runner.OnExit("image inspect", 1, "Error: No such image")
 			r := New(runner)
 

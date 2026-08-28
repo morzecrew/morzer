@@ -142,17 +142,7 @@ func unknownShell(shell string) error {
 
 // completionShells are the shells this command can place a file for, sorted.
 func completionShells() []string {
-	out := slices.Collect(maps.Keys(completionTargets))
-	sortStrings(out)
-	return out
-}
-
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
+	return slices.Sorted(maps.Keys(completionTargets))
 }
 
 // shellFromEnv reads the shell out of $SHELL, which holds a path.

@@ -52,11 +52,11 @@ type Store struct {
 
 type Option func(*Store)
 
-func WithSOPSBinary(path string) Option {
+func withSOPSBinary(path string) Option {
 	return func(s *Store) { s.sopsBinary = path }
 }
 
-func WithClock(now func() time.Time) Option {
+func withClock(now func() time.Time) Option {
 	return func(s *Store) { s.now = now }
 }
 

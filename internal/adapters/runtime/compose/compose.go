@@ -60,12 +60,6 @@ func New(runner exec.Runner, opts ...Option) *Runtime {
 
 type Option func(*Runtime)
 
-// WithDockerBinary overrides the docker executable, for tests and for hosts
-// where it is not on the default PATH.
-func WithDockerBinary(path string) Option {
-	return func(r *Runtime) { r.docker = path }
-}
-
 // WithOutputSink forwards subprocess output.
 func WithOutputSink(fn func(exec.Line)) Option {
 	return func(r *Runtime) { r.onLine = fn }

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
-	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/test/contract"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -22,7 +21,7 @@ import (
 
 func TestTheSystemdAdapterHonoursTheEnablementRules(t *testing.T) {
 	contract.RunSupervisorSuite(t, "systemd", func(t *testing.T) contract.SupervisorHarness {
-		runner := exec.NewScripted()
+		runner := fakes.NewScripted()
 		s := systemd.New(runner, systemd.WithUnitDir(t.TempDir()))
 		return contract.SupervisorHarness{
 			Supervisor: s,

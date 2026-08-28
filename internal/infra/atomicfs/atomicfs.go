@@ -12,13 +12,10 @@ package atomicfs
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/google/renameio/v2"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -39,30 +36,46 @@ func WriteFile(path string, data []byte, mode fs.FileMode) error {
 		return err
 	}
 
-	t, err := renameio.TempFile("", path)
+	dir := filepath.Dir(path)
+	t, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return domain.Internal(err, "cannot create temporary file next to %s", path)
 	}
-	defer func() { _ = t.Cleanup() }()
+	// Cleanup runs on every path that did not reach the rename. After a
+	// successful one the temporary name is gone and both calls are no-ops.
+	defer func() {
+		_ = t.Close()
+		_ = os.Remove(t.Name())
+	}()
 
 	// Chmod before the rename: a file that exists briefly with default
 	// permissions is a file that could be read in that window, and secret
-	// state passes through here.
+	// state passes through here. os.CreateTemp opens at 0600, so the window
+	// is narrower than the final mode rather than wider -- but only until
+	// this widens it, which must happen before the file has its real name.
 	if err := t.Chmod(mode); err != nil {
 		return domain.Internal(err, "cannot set mode %04o on temporary file for %s", mode.Perm(), path)
 	}
 	if _, err := t.Write(data); err != nil {
 		return domain.Internal(err, "cannot write %s", path)
 	}
-	if err := t.CloseAtomicallyReplace(); err != nil {
+	// Sync before the rename, not after: a rename that lands ahead of the
+	// contents leaves the old name pointing at a file of zeros.
+	if err := t.Sync(); err != nil {
+		return domain.Internal(err, "cannot flush %s", path)
+	}
+	if err := t.Close(); err != nil {
+		return domain.Internal(err, "cannot close temporary file for %s", path)
+	}
+	if err := os.Rename(t.Name(), path); err != nil {
 		return domain.Internal(err, "cannot atomically replace %s", path)
 	}
-	// renameio fsyncs the file but not the directory, so without this the
-	// rename's directory entry can be lost to a power cut after this
-	// function reported success -- state and reality then disagree about
-	// which file exists. Deepest first, then each newly created ancestor:
-	// a synced child entry inside an unsynced parent is still lost.
-	SyncDir(filepath.Dir(path))
+	// The rename fsyncs nothing, so without this its directory entry can be
+	// lost to a power cut after this function reported success -- state and
+	// reality then disagree about which file exists. Deepest first, then
+	// each newly created ancestor: a synced child entry inside an unsynced
+	// parent is still lost.
+	SyncDir(dir)
 	for _, d := range created {
 		SyncDir(d)
 	}
@@ -297,27 +310,6 @@ func OpenRoot(dir string) (*os.Root, error) {
 		return nil, domain.Internal(err, "cannot open %s as a root directory", dir)
 	}
 	return root, nil
-}
-
-// ReadFileIn reads a file from inside a root.
-func ReadFileIn(root *os.Root, rel string) ([]byte, error) {
-	rel, err := cleanRel(rel)
-	if err != nil {
-		return nil, err
-	}
-	f, err := root.Open(rel)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, domain.ValidationError(domain.ErrNotFound, "%s does not exist in %s", rel, root.Name())
-		}
-		return nil, domain.Internal(err, "cannot open %s in %s", rel, root.Name())
-	}
-	defer func() { _ = f.Close() }()
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return nil, domain.Internal(err, "cannot read %s", rel)
-	}
-	return data, nil
 }
 
 // cleanRel validates a root-relative path. os.Root would reject an escape

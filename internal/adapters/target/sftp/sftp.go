@@ -74,6 +74,8 @@ var errClosedTarget = domain.Internal(nil, "this backup target has been closed")
 // Connections are cached per host so one backup does not open a session per
 // file. Close releases them; the CLI calls it when the command ends.
 type Target struct {
+	blob.Delegate
+
 	mu    sync.Mutex
 	conns map[string]*connection
 
@@ -94,7 +96,16 @@ type Target struct {
 }
 
 func New() *Target {
-	return &Target{conns: map[string]*connection{}}
+	t := &Target{conns: map[string]*connection{}}
+	// One opener for both halves: an SFTP server is reached the same way
+	// whichever kind of thing is being read or written, and the connection
+	// is cached either way.
+	t.Delegate = blob.Delegate{Backup: t.open, Object: t.open}
+	return t
+}
+
+func (t *Target) open(ctx context.Context, ref ports.TargetRef, _ bool) (blob.Store, error) {
+	return t.store(ctx, ref)
 }
 
 // WithDialer overrides how the TCP connection is made.
@@ -105,50 +116,11 @@ func (t *Target) WithDialer(dial func(ctx context.Context, network, addr string)
 
 var (
 	_ ports.BackupTarget = (*Target)(nil)
+	_ ports.ObjectStore  = (*Target)(nil)
 	_ io.Closer          = (*Target)(nil)
 )
 
 func (t *Target) Schemes() []string { return []string{Scheme} }
-
-func (t *Target) Push(ctx context.Context, ref ports.TargetRef, localDir, id string) (ports.RemoteRef, error) {
-	store, err := t.store(ctx, ref)
-	if err != nil {
-		return ports.RemoteRef{}, err
-	}
-	return blob.Push(ctx, store, ref, localDir, id)
-}
-
-func (t *Target) List(ctx context.Context, ref ports.TargetRef) ([]ports.BackupManifest, error) {
-	store, err := t.store(ctx, ref)
-	if err != nil {
-		return nil, err
-	}
-	return blob.List(ctx, store)
-}
-
-func (t *Target) Fetch(ctx context.Context, ref ports.RemoteRef, destDir string) error {
-	store, err := t.store(ctx, ref.Target)
-	if err != nil {
-		return err
-	}
-	return blob.Fetch(ctx, store, ref, destDir)
-}
-
-func (t *Target) FetchFile(ctx context.Context, ref ports.RemoteRef, name, destDir string) error {
-	store, err := t.store(ctx, ref.Target)
-	if err != nil {
-		return err
-	}
-	return blob.FetchFile(ctx, store, ref, name, destDir)
-}
-
-func (t *Target) Verify(ctx context.Context, ref ports.RemoteRef) error {
-	store, err := t.store(ctx, ref.Target)
-	if err != nil {
-		return err
-	}
-	return blob.Verify(ctx, store, ref)
-}
 
 func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	store, err := t.store(ctx, ref.Target)
@@ -162,32 +134,6 @@ func (t *Target) Remove(ctx context.Context, ref ports.RemoteRef) error {
 	// operator has to reason about while looking for one.
 	_ = store.client.RemoveDirectory(path.Join(store.root, ref.ID))
 	return nil
-}
-
-var _ ports.ObjectStore = (*Target)(nil)
-
-func (t *Target) PutObject(ctx context.Context, ref ports.TargetRef, key string, data []byte) error {
-	store, err := t.store(ctx, ref)
-	if err != nil {
-		return err
-	}
-	return blob.PutObject(ctx, store, key, data)
-}
-
-func (t *Target) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix string) ([]string, error) {
-	store, err := t.store(ctx, ref)
-	if err != nil {
-		return nil, err
-	}
-	return blob.ObjectKeys(ctx, store, prefix)
-}
-
-func (t *Target) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
-	store, err := t.store(ctx, ref)
-	if err != nil {
-		return nil, err
-	}
-	return blob.GetObject(ctx, store, key)
 }
 
 // Close releases every cached connection.

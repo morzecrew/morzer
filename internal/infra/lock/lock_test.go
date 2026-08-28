@@ -433,6 +433,40 @@ func TestWaitingIsInterruptible(t *testing.T) {
 	}
 }
 
+// A cancelled context does not get a lock, even when the lock is free.
+//
+// The ordering is the whole of it. Every other cancellation test holds the lock
+// first, so the waiter reaches its poll loop and the select there answers. This
+// one leaves the lock free: the first attempt succeeds, and unless cancellation
+// is checked *before* that attempt, a command the operator has already
+// interrupted takes the deployment lock and proceeds to mutate the
+// installation.
+//
+// `--wait` only. A non-waiting acquisition never consulted the context and
+// still does not: it is one syscall that either succeeds or reports the holder,
+// and there is nothing to interrupt.
+func TestACancelledContextDoesNotGetAFreeLock(t *testing.T) {
+	t.Parallel()
+
+	l := locker(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	release, err := l.Acquire(ctx, "deployment", ports.LockOptions{Wait: true})
+	if err == nil {
+		_ = release()
+		t.Fatal("a cancelled command took the deployment lock, which is how a " +
+			"ctrl-c'd operation goes on to mutate an installation")
+	}
+
+	de := domain.AsError(err)
+	if de.Code != domain.CodeInterrupted {
+		t.Errorf("code = %v, want interrupted: the lock was free, so being "+
+			"refused it would name the wrong reason", de.Code)
+	}
+}
+
 // TestAcquireCreatesTheLockDirectory: the first mutating command on a fresh
 // machine runs before anything has created it.
 func TestAcquireCreatesTheLockDirectory(t *testing.T) {

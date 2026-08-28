@@ -9,6 +9,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/infra/tools"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // Preflight's whole job is to tell an operator which of two things is wrong:
@@ -17,9 +18,9 @@ import (
 // with tools that print `sops 3.13.2`, `systemd 255 (255.4-1)` and a JSON
 // document, all in answer to "what version are you".
 
-func registry(t *testing.T) (*tools.Registry, *exec.Scripted) {
+func registry(t *testing.T) (*tools.Registry, *fakes.Scripted) {
 	t.Helper()
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	return tools.NewRegistry(runner), runner
 }
 
@@ -129,10 +130,6 @@ func TestAToolThatIsNotInstalled(t *testing.T) {
 	}
 	if info.Name != tools.SOPS {
 		t.Errorf("the failure does not carry the tool name: %+v", info)
-	}
-	if tools.NewRegistry(runner).Available(context.Background(), tools.SOPS) {
-		t.Error("an absent tool was reported available; optional tools would " +
-			"then be used and fail later")
 	}
 }
 

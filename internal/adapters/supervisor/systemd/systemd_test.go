@@ -12,6 +12,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // systemd is the one adapter the acceptance run cannot exercise: it needs a
@@ -23,10 +24,10 @@ import (
 // runner is scripted so systemctl's replies are the ones a test needs rather
 // than the ones a healthy machine happens to give.
 
-func newSupervisor(t *testing.T) (*systemd.Supervisor, *exec.Scripted, string) {
+func newSupervisor(t *testing.T) (*systemd.Supervisor, *fakes.Scripted, string) {
 	t.Helper()
 	dir := t.TempDir()
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	return systemd.New(runner,
 		systemd.WithUnitDir(dir),
 		systemd.WithSystemctl("/usr/bin/systemctl"),
@@ -221,7 +222,7 @@ func TestAUnitAddedByAReconciliationIsStillEnabled(t *testing.T) {
 // install rather than about everything the test has done so far -- and so a
 // second install that issued its enables *before* the reload would still be
 // counted here and caught by the ordering assertion elsewhere.
-func enablesSince(runner *exec.Scripted, from int) int {
+func enablesSince(runner *fakes.Scripted, from int) int {
 	n := 0
 	for _, c := range runner.Calls()[from:] {
 		// `enable`, not `is-enabled`: the query is not the assertion.
@@ -445,7 +446,7 @@ func TestStatusRefusesAPathName(t *testing.T) {
 }
 
 func TestAvailableIsFalseWithoutSystemctl(t *testing.T) {
-	missing := exec.NewScripted()
+	missing := fakes.NewScripted()
 	missing.LookErr = errors.New("systemctl not found in PATH")
 
 	s := systemd.New(missing, systemd.WithUnitDir(t.TempDir()))
@@ -743,7 +744,7 @@ func TestAFailedReloadDoesNotStrandANewUnitDisabled(t *testing.T) {
 	// rule cannot be withdrawn -- and two runners over one unit directory is
 	// exactly the situation: the transient failure clears, the files it
 	// wrote do not.
-	failing := exec.NewScripted()
+	failing := fakes.NewScripted()
 	failing.OnError("daemon-reload", &exec.ExitError{
 		Argv: []string{"systemctl", "daemon-reload"}, ExitCode: 1,
 		Stderr: "Failed to reload daemon",
@@ -754,7 +755,7 @@ func TestAFailedReloadDoesNotStrandANewUnitDisabled(t *testing.T) {
 	}
 
 	// The operator runs the command again once the machine is healthy.
-	healthy := exec.NewScripted()
+	healthy := fakes.NewScripted()
 	second := systemd.New(healthy, systemd.WithUnitDir(dir), systemd.WithSystemctl("/usr/bin/systemctl"))
 	if err := second.InstallUnits(ctx, units, ports.EnableNew); err != nil {
 		t.Fatalf("retry: %v", err)
@@ -777,13 +778,13 @@ func TestARollbackLeavesTheUnitsThatWereAlreadyThere(t *testing.T) {
 	dir := t.TempDir()
 	existing := []ports.Unit{{Name: "demo.service", Contents: []byte("old"), Enable: true}}
 
-	healthy := exec.NewScripted()
+	healthy := fakes.NewScripted()
 	first := systemd.New(healthy, systemd.WithUnitDir(dir), systemd.WithSystemctl("/usr/bin/systemctl"))
 	if err := first.InstallUnits(ctx, existing, ports.EnableNew); err != nil {
 		t.Fatal(err)
 	}
 
-	failing := exec.NewScripted()
+	failing := fakes.NewScripted()
 	failing.OnError("daemon-reload", &exec.ExitError{
 		Argv: []string{"systemctl", "daemon-reload"}, ExitCode: 1,
 	})
@@ -811,7 +812,7 @@ func TestARollbackLeavesTheUnitsThatWereAlreadyThere(t *testing.T) {
 // An enable that fails part-way leaves nothing half-enabled.
 func TestARollbackDisablesWhatItHadAlreadyEnabled(t *testing.T) {
 	ctx := context.Background()
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.OnError("enable demo-backup.timer", &exec.ExitError{
 		Argv: []string{"systemctl", "enable", "demo-backup.timer"}, ExitCode: 1,
 	})

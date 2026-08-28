@@ -153,13 +153,6 @@ func (r *Registry) Require(ctx context.Context, name string, constraint domain.C
 	return info, nil
 }
 
-// Available reports whether a tool is present, without treating absence as an
-// error. Used for optional tools like restic and systemctl.
-func (r *Registry) Available(ctx context.Context, name string) bool {
-	_, err := r.Lookup(ctx, name)
-	return err == nil
-}
-
 // dockerVersionDoc is the subset of `docker version --format {{json .}}` the
 // registry reads.
 type dockerVersionDoc struct {

@@ -13,9 +13,9 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
-	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // "My backups are not this manager's job" (RFC 0030 rows 4 and 5).
@@ -39,7 +39,7 @@ func TestDeclaringNoScheduledBackupsRemovesTheTimer(t *testing.T) {
 	ctx := context.Background()
 
 	unitDir := t.TempDir()
-	real := systemd.New(exec.NewScripted(), systemd.WithUnitDir(unitDir))
+	real := systemd.New(fakes.NewScripted(), systemd.WithUnitDir(unitDir))
 	h.Deps.Supervisor = availableSupervisor{Supervisor: real}
 
 	units, err := h.Deps.Supervisor.Units(ports.UnitParams{Product: "demo"})
@@ -418,7 +418,7 @@ func TestAnInstallationWithNoDeclarationKeepsItsTimer(t *testing.T) {
 		"the field was written out, so its absence is not what this tests")
 
 	unitDir := t.TempDir()
-	real := systemd.New(exec.NewScripted(), systemd.WithUnitDir(unitDir))
+	real := systemd.New(fakes.NewScripted(), systemd.WithUnitDir(unitDir))
 	h.Deps.Supervisor = availableSupervisor{Supervisor: real}
 	units, err := h.Deps.Supervisor.Units(ports.UnitParams{Product: "demo"})
 	require.NoError(t, err)

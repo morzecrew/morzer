@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
-	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/contract"
 	"github.com/morzecrew/morzer/test/fakes"
@@ -35,7 +34,7 @@ func TestOptionContract_Fake(t *testing.T) {
 // command, this would fail rather than quietly start needing Docker.
 func TestOptionContract_Compose(t *testing.T) {
 	contract.RunOptionSuite(t, func(t *testing.T) (ports.Runtime, ports.RuntimeConfig) {
-		rt := compose.New(infraexec.NewScripted(), compose.WithDockerBinary("/usr/bin/docker"))
+		rt := compose.New(fakes.NewScripted())
 		return rt, ports.RuntimeConfig{
 			Product:    "demo",
 			Files:      []string{"/rel/compose.yaml"},

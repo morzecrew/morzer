@@ -15,6 +15,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // The fixture is real output. It was taken from `docker compose config
@@ -205,7 +206,7 @@ func TestTheHelperImageCanBeOverriddenButNotErased(t *testing.T) {
 // refusal, because using the default instead would back the deployment up
 // through an image the operator did not choose and never hear about it.
 func TestAHelperImageThatIsNotPinnedByDigestIsRefused(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	// The tag is present locally: the case that would otherwise run.
 	runner.On("image inspect", exec.Result{})
 	r := New(runner, WithHelperImage("busybox:latest"))
@@ -253,15 +254,15 @@ func TestAHelperImageThatIsNotPinnedByDigestIsRefused(t *testing.T) {
 
 // helperLab returns a runtime whose docker invocations are recorded rather than
 // run, with the helper image reported as already present.
-func helperLab(t *testing.T) (*Runtime, *exec.Scripted) {
+func helperLab(t *testing.T) (*Runtime, *fakes.Scripted) {
 	t.Helper()
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	// `image inspect` succeeding is how HasImage answers "it is here".
 	runner.On("image inspect", exec.Result{})
 	return New(runner), runner
 }
 
-func helperArgv(t *testing.T, runner *exec.Scripted) string {
+func helperArgv(t *testing.T, runner *fakes.Scripted) string {
 	t.Helper()
 	for _, c := range runner.Calls() {
 		line := strings.Join(c.Argv, " ")
@@ -317,7 +318,7 @@ func TestAVolumeIsRestoredThroughAWritableMount(t *testing.T) {
 // air-gapped machine gets the pull command rather than a registry error from
 // inside a backup.
 func TestAnAbsentHelperImageIsRefusedBeforeAnythingRuns(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.OnExit("image inspect", 1, "Error: No such image: busybox")
 	r := New(runner)
 
@@ -340,7 +341,7 @@ func TestAnAbsentHelperImageIsRefusedBeforeAnythingRuns(t *testing.T) {
 // A failed capture must not leave a zero-length tarball that a checksum would
 // happily record as this volume's contents.
 func TestAFailedCaptureRemovesTheFileItStarted(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	runner.OnExit("docker run", 2, "tar: /src: Permission denied")
 	r := New(runner)
@@ -358,7 +359,7 @@ func TestAFailedCaptureRemovesTheFileItStarted(t *testing.T) {
 // fails: buffered bytes that only reach the disk at close, and a close that
 // reports the failure -- a full filesystem, an NFS server that went away.
 type closingRunner struct {
-	*exec.Scripted
+	*fakes.Scripted
 }
 
 func (r closingRunner) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
@@ -374,7 +375,7 @@ func (r closingRunner) Run(ctx context.Context, cmd exec.Command) (exec.Result, 
 // never encrypt or delete. So the failure that arrives last -- at close, after
 // the helper exited zero -- has to clean up like every other one.
 func TestACaptureThatCannotBeFinishedLeavesNothingBehind(t *testing.T) {
-	scripted := exec.NewScripted()
+	scripted := fakes.NewScripted()
 	scripted.On("image inspect", exec.Result{})
 	r := New(closingRunner{scripted})
 
@@ -400,7 +401,7 @@ func helperMeasurement(entries, pathBytes int, du string) string {
 }
 
 func TestAVolumeIsMeasuredInBytes(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	// busybox `du -sk` reports KiB and the path it was given.
 	runner.OnOutput("docker run", helperMeasurement(1, 5, "2048\t/src\n"))
@@ -413,7 +414,7 @@ func TestAVolumeIsMeasuredInBytes(t *testing.T) {
 }
 
 func TestOutputThatIsNotASizeIsAnErrorRatherThanZero(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	runner.OnOutput("docker run", helperMeasurement(1, 5, "du: unrecognised option\n"))
 	r := New(runner)
@@ -440,7 +441,7 @@ func TestASizeCoversTheFramingTarAddsToTheContentsItMeasured(t *testing.T) {
 		contents  = int64(4) << 30
 	)
 
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	runner.OnOutput("docker run",
 		helperMeasurement(entries, pathBytes, fmt.Sprintf("%d\t/src\n", contents/1024)))
@@ -479,7 +480,7 @@ func TestAMeasurementWithoutAnEntryCountIsRefused(t *testing.T) {
 
 	for name, stdout := range cases {
 		t.Run(name, func(t *testing.T) {
-			runner := exec.NewScripted()
+			runner := fakes.NewScripted()
 			runner.On("image inspect", exec.Result{})
 			runner.OnOutput("docker run", stdout)
 			r := New(runner)
@@ -496,7 +497,7 @@ func TestAMeasurementWithoutAnEntryCountIsRefused(t *testing.T) {
 // and every space check reads a negative as smaller than the free space --
 // which is how a refusal became a pass once already.
 func TestAFramingThatCannotBeAddedSaturatesRatherThanWrapping(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	runner.OnOutput("docker run",
 		helperMeasurement(math.MaxInt64/2, math.MaxInt64/2,
@@ -514,7 +515,7 @@ func TestAFramingThatCannotBeAddedSaturatesRatherThanWrapping(t *testing.T) {
 // read as one. largestSize takes the largest number it is shown, so an unlabelled
 // count of ten million files would be budgeted as ten gigabytes of contents.
 func TestTheEntryCountIsNotMistakenForASize(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	runner.OnOutput("docker run", helperMeasurement(10_000_000, 100, "16\t/src\n"))
 	r := New(runner)
@@ -546,7 +547,7 @@ func TestAVolumeIsMeasuredByWhicheverReadingIsLarger(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			runner := exec.NewScripted()
+			runner := fakes.NewScripted()
 			runner.On("image inspect", exec.Result{})
 			runner.OnOutput("docker run", tc.stdout)
 			r := New(runner)
@@ -586,7 +587,7 @@ func TestAVolumeIsMeasuredByWhicheverReadingIsLarger(t *testing.T) {
 // looks plausible. GNU has to win on the first form so it never reaches the
 // second. Verified against both implementations.
 func TestTheGNUSpellingOfApparentSizeIsTriedFirst(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	runner.OnOutput("docker run", helperMeasurement(1, 5, "1\t/src\n1\t/src\n"))
 	r := New(runner)
@@ -617,7 +618,7 @@ func TestASizeThatCannotBecomeAByteCountIsRefused(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			runner := exec.NewScripted()
+			runner := fakes.NewScripted()
 			runner.On("image inspect", exec.Result{})
 			runner.OnOutput("docker run", tc.stdout)
 			r := New(runner)
@@ -641,7 +642,7 @@ func TestASizeThatCannotBecomeAByteCountIsRefused(t *testing.T) {
 // refusing every backup of a deployment over it is its own failure.
 func TestAMeasurementThatNeverRanIsMarkedApartFromOneThatRanAndCouldNotBeRead(t *testing.T) {
 	t.Run("the measurement never ran", func(t *testing.T) {
-		runner := exec.NewScripted()
+		runner := fakes.NewScripted()
 		runner.On("image inspect", exec.Result{})
 		runner.OnExit("docker run", 1, "du: /src: Operation not permitted")
 		r := New(runner)
@@ -667,7 +668,7 @@ func TestAMeasurementThatNeverRanIsMarkedApartFromOneThatRanAndCouldNotBeRead(t 
 	}
 	for name, stdout := range unreadable {
 		t.Run(name, func(t *testing.T) {
-			runner := exec.NewScripted()
+			runner := fakes.NewScripted()
 			runner.On("image inspect", exec.Result{})
 			runner.OnOutput("docker run", stdout)
 			r := New(runner)
@@ -690,7 +691,7 @@ func TestAMeasurementThatNeverRanIsMarkedApartFromOneThatRanAndCouldNotBeRead(t 
 // would travel out to `morzer backup` as a runtime failure rather than an
 // interruption, which is a different exit code.
 func TestACancelledMeasurementIsAnInterruptionRatherThanAnUnmeasuredVolume(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	runner.On("image inspect", exec.Result{})
 	runner.OnError("docker run", domain.Interrupted("docker run was cancelled"))
 	r := New(runner)
@@ -705,7 +706,7 @@ func TestACancelledMeasurementIsAnInterruptionRatherThanAnUnmeasuredVolume(t *te
 // and up reconciles against the declared configuration, so resuming a stack
 // after a backup could recreate a container whose definition had drifted.
 func TestQuiescingUsesStopAndStartRatherThanDownAndUp(t *testing.T) {
-	runner := exec.NewScripted()
+	runner := fakes.NewScripted()
 	r := New(runner)
 	cfg := ports.RuntimeConfig{Product: "demo"}
 
