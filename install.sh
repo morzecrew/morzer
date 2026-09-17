@@ -34,7 +34,7 @@ DOWNLOAD="https://github.com/${REPO}/releases/download"
 PUBKEY='untrusted comment: minisign public key 6244CB37DB91DD52
 RWRS3ZHbN8tEYuF9Se2e+JzQMiUCoLbABbJtzSxBThI/U4Bhw+AR+IbQ'
 
-# The kernel a Go 1.25 static binary needs. Warned about, never enforced: the
+# The kernel a Go 1.26 static binary needs. Warned about, never enforced: the
 # binary may well run, and refusing on a number read out of `uname -r` would
 # refuse containers whose kernel string is the host's.
 MIN_KERNEL_MAJOR=3
@@ -167,7 +167,7 @@ Darwin)
 	die "this installs Linux builds only, and there is no macOS build to point
        at: the release matrix is linux/amd64 and linux/arm64.
 
-       Building from source does work: \`go build ./cmd/morzer\` with Go 1.25
+       Building from source does work: \`go build ./cmd/morzer\` with Go 1.26
        or newer produces a binary that runs on macOS. That is a CLI for
        authoring bundles and looking around -- running a deployment is a
        Linux server's job, and this installer will not pretend otherwise."

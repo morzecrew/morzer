@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Building from source needs Go 1.26 or newer.** The `golang.org/x` modules moved their `go` directive to 1.26.0 together, and that directive is a requirement rather than a preference, so taking any of their updates raises this floor. Published binaries are unaffected.
+
 ## [0.3.0] - 2026-08-21
 
 The manifest gains a runtime dimension. `runtimes:` names the substrate a bundle

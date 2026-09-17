@@ -197,7 +197,13 @@ able to let an uncovered change through.
 
 ## Go version
 
-The floor is whatever `go.mod` declares — currently 1.25.0, driven by
-`golang.org/x/term`, `golang.org/x/sys` and `renameio/v2`. CI tests that floor
-and `stable`. If you raise it, move `go.mod`, the CI matrix and
-`pages/docs/get-started/installation.md` together.
+The floor is whatever `go.mod` declares — currently 1.26.0, driven by the
+`golang.org/x` modules, which all moved their own directive to 1.26.0 together.
+A module's `go` directive is a requirement, not a preference, so taking any
+`golang.org/x` update raises this floor whether or not the code needs it.
+
+CI tests that floor and `stable`. If you raise it, move all of these together,
+because the number is published in each of them: `go.mod`, the CI matrix, the
+README badge and its build line, `pages/docs/get-started/installation.md`, the
+macOS refusal in `install.sh`, and the assertion on that refusal in
+`test/installer/install_test.go`.

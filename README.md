@@ -3,7 +3,7 @@
 [![CI](https://github.com/morzecrew/morzer/actions/workflows/ci.yml/badge.svg)](https://github.com/morzecrew/morzer/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/morzecrew/morzer/graph/badge.svg)](https://codecov.io/github/morzecrew/morzer)
 [![Docs](https://img.shields.io/badge/docs-morzecrew.github.io-blue)](https://morzecrew.github.io/morzer/)
-[![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8)](go.mod)
+[![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8)](go.mod)
 [![Licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 
 A CLI that manages the lifecycle of a self-hosted product on a single Linux
@@ -47,7 +47,7 @@ just demo-plan       # what `apply` would do, as a step list with a config diff
 just demo-recovery   # delete an installation and rebuild it from an offline key
 ```
 
-Building needs Go 1.25+. At runtime a machine needs `docker`, `docker compose`
+Building needs Go 1.26+. At runtime a machine needs `docker`, `docker compose`
 and `sops`; the versions a release requires are declared in its manifest,
 checked in preflight and reported by `doctor`.
 
