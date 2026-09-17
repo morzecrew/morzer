@@ -372,7 +372,7 @@ func TestDetectionRefusesWhatItCannotServe(t *testing.T) {
 		{name: "macOS", os: "Darwin", machine: "arm64", wantRefusal: true,
 			wantSays: []string{
 				"Linux builds only", "no macOS build",
-				"go build ./cmd/morzer", "Go 1.25",
+				"go build ./cmd/morzer", "Go 1.26",
 				// Short enough not to be broken by the message's own
 				// wrapping, which is what an assertion on rendered
 				// text has to survive.

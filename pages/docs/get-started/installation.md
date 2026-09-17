@@ -152,7 +152,7 @@ cd morzer
 just build          # ./morzer
 ```
 
-Needs Go 1.25 or newer. `just build-all` cross-compiles both architectures with
+Needs Go 1.26 or newer. `just build-all` cross-compiles both architectures with
 a `SHA256SUMS`; the flags match what the release pipeline uses, so a binary you
 build from a tag is byte-identical to the published one.
 

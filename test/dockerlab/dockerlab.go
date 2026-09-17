@@ -51,7 +51,14 @@ const (
 	// S3, R2, B2 and GCS interoperability mode, which is the whole reason
 	// one adapter answers for all of them -- so proving the adapter against
 	// MinIO is proving it against the API rather than against one vendor.
-	ImageMinIO = "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+	//
+	// From quay.io rather than Docker Hub: `minio/minio` on Hub stopped
+	// answering to anyone between 2026-09-02 and 2026-09-17, for every tag
+	// and not merely this digest, and an authenticated runner is refused the
+	// same as an anonymous one. The digest is unchanged -- quay's
+	// `RELEASE.2025-09-07T16-13-09Z` is the same image by content -- so this
+	// moves where the bytes come from and nothing about what they are.
+	ImageMinIO = "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
 
 	// ImageOpenSSH backs the ssh:// target suite: a real sshd with a real
 	// host key, which is the only way to test that a *changed* host key is

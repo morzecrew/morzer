@@ -204,7 +204,7 @@ jobs:
       matrix:
         # The declared floor in go.mod, and whatever is current. Testing only
         # the latest toolchain silently raises the floor for everyone else.
-        go: ["1.25.0", "stable"]
+        go: ["1.26.0", "stable"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
