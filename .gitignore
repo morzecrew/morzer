@@ -56,3 +56,4 @@ go.work.sum
 *.key
 
 .repowise/
+.claude/CLAUDE.md
