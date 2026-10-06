@@ -687,3 +687,15 @@ added in P3 — means a flood can only ever truncate objects nobody asked about,
 so the failure mode is a slow read rather than twelve machines reported absent.
 That second one was the actual bug; the first is why what remains is a
 performance question and not a correctness one.
+
+### A16 — The write-only measurement is now taken against RustFS
+
+§10.3's `s3://` answer was measured against MinIO on 2026-08-13. MinIO stopped
+publishing an image, so as of 2026-10-06 the container suite runs against
+RustFS 1.0.1 (RFC 0009, amendment of the same date). The measurement was
+re-taken there with the same policy, exactly `s3:PutObject` on one prefix.
+It holds in all three directions: the credential publishes, cannot enumerate or
+read the fleet, and cannot write outside its prefix. It also fails, as it
+should, when the policy is widened to `s3:*` or to the whole bucket.
+`TestAWriteOnlyPrefixScopedCredential` is the measurement, against whichever
+server `dockerlab.ImageRustFS` pins.
