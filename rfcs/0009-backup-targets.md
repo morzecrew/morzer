@@ -641,3 +641,20 @@ A listing that failed was also reported as a `warn` on the grounds that
 green for a question nobody answered, which is the failure this check exists to
 catch, wearing the colour of the state it is meant to distinguish from. It is
 now a `fail` that points at the reachability check for the cause.
+
+### 2026-10-06 — the `s3://` container suite runs against RustFS, not MinIO
+
+§6 names **MinIO** for the `s3://` container level. MinIO no longer publishes an
+image anywhere: `minio/minio` on Docker Hub stopped answering in September 2026,
+and `quay.io/minio/minio`, which replaced it, refused every pull by 2026-09-29 —
+by tag and by pinned digest, authenticated or not. Every pull request was red on
+it, whatever it changed.
+
+The suite now runs against RustFS 1.0.1, pinned by digest. The choice of server
+was never the point — §6 wanted a real implementation of the API rather than a
+fake — so the same contract suite and the same refusals run unchanged. What did
+change is administration: RustFS ships no `mc`, so the write-only credential
+RFC 0026 §10.3 measured is now created through RustFS's own admin API, which
+takes plain JSON. That measurement was re-taken against RustFS and still holds
+in all three directions, and it still fails when the policy is widened to
+`s3:*` or to the whole bucket.

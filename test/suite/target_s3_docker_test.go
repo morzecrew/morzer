@@ -25,7 +25,7 @@ import (
 	"github.com/morzecrew/morzer/test/dockerlab"
 )
 
-// MinIO is the stand-in for every S3-compatible store, which is the point: the
+// RustFS is the stand-in for every S3-compatible store, which is the point: the
 // adapter is written against the API rather than against a vendor, so proving it
 // here proves it for R2, B2 and GCS interoperability mode too.
 //
@@ -36,39 +36,40 @@ import (
 // misread as "the network is down".
 
 const (
-	minioAccessKey = "morzertestaccess"
-	minioSecretKey = "morzertestsecret"
+	s3AccessKey = "morzertestaccess"
+	s3SecretKey = "morzertestsecret"
 )
 
-// startMinIO runs a MinIO server and returns credentials pointing at a fresh
+// startS3 runs a RustFS server and returns credentials pointing at a fresh
 // bucket.
-func startMinIO(t *testing.T) ports.TargetCredentials {
+func startS3(t *testing.T) ports.TargetCredentials {
 	t.Helper()
-	creds, _ := startMinIOContainer(t)
+	creds, _ := startS3Container(t)
 	return creds
 }
 
-// startMinIOContainer is the same, and hands back the container too.
+// startS3Container is the same, and hands back the container too.
 //
 // Separate because most callers want only the credentials, and one wants to
-// reach into the server with `mc`: the credential-scoping measurement RFC 0026
+// reach into the server's admin API: the credential-scoping measurement RFC 0026
 // §10.3 asked for needs to create a user and attach a policy, which is
 // administration rather than storage and has no place in the target port.
-func startMinIOContainer(t *testing.T) (ports.TargetCredentials, *dockerlab.Container) {
+func startS3Container(t *testing.T) (ports.TargetCredentials, *dockerlab.Container) {
 	t.Helper()
 	dockerlab.Require(t)
-	dockerlab.Pull(t, dockerlab.ImageMinIO)
+	dockerlab.Pull(t, dockerlab.ImageRustFS)
 
-	container := dockerlab.Start(t, dockerlab.ImageMinIO, []int{9000}, map[string]string{
-		"MINIO_ROOT_USER":     minioAccessKey,
-		"MINIO_ROOT_PASSWORD": minioSecretKey,
-	}, "server", "/data")
+	container := dockerlab.Start(t, dockerlab.ImageRustFS, []int{9000}, map[string]string{
+		"RUSTFS_ACCESS_KEY": s3AccessKey,
+		"RUSTFS_SECRET_KEY": s3SecretKey,
+	})
 
-	container.WaitReady(t, 90*time.Second, "mc", "ready", "local")
+	container.WaitReady(t, 90*time.Second,
+		"curl", "-fsS", "-o", "/dev/null", "http://localhost:9000/health/ready")
 
 	return ports.TargetCredentials{
-		AccessKeyID:     minioAccessKey,
-		SecretAccessKey: minioSecretKey,
+		AccessKeyID:     s3AccessKey,
+		SecretAccessKey: s3SecretKey,
 		// http:// deliberately spelled out. A bare host means TLS, and
 		// there is no flag anywhere that turns verification off -- so a
 		// test fixture has to say plainly that it is plaintext, which is
@@ -155,7 +156,7 @@ func addComponent(t *testing.T, backupDir, path string, size int) {
 }
 
 func TestBackupTargetContract_S3(t *testing.T) {
-	creds := startMinIO(t)
+	creds := startS3(t)
 
 	var n int
 	contract.RunBackupTargetSuite(t, func(t *testing.T) contract.BackupTargetHarness {
@@ -179,7 +180,7 @@ func TestBackupTargetContract_S3(t *testing.T) {
 // push reads as a transfer failure when it is a configuration mistake, so it is
 // caught before any bytes move.
 func TestS3RefusesABucketThatIsNotThere(t *testing.T) {
-	creds := startMinIO(t)
+	creds := startS3(t)
 
 	ref, err := ports.TargetURL("s3://morzer-no-such-bucket/backups")
 	require.NoError(t, err)
@@ -195,7 +196,7 @@ func TestS3RefusesABucketThatIsNotThere(t *testing.T) {
 // keys from a password manager under stress; "access denied" without a remedy is
 // where that stops.
 func TestS3RefusesWrongCredentialsByName(t *testing.T) {
-	creds := startMinIO(t)
+	creds := startS3(t)
 	createBucket(t, creds, "morzer-badcreds")
 
 	creds.SecretAccessKey = "wrong-secret-entirely"
@@ -214,7 +215,7 @@ func TestS3RefusesWrongCredentialsByName(t *testing.T) {
 // TestS3PushSurvivesABackupWithNestedComponents. Object keys are not paths, and
 // a hook artifact in a subdirectory is the case where that difference shows.
 func TestS3PushSurvivesABackupWithNestedComponents(t *testing.T) {
-	creds := startMinIO(t)
+	creds := startS3(t)
 	createBucket(t, creds, "morzer-nested")
 
 	ref, err := ports.TargetURL("s3://morzer-nested/backups")

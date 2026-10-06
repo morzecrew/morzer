@@ -47,18 +47,17 @@ const (
 	ImagePostgres = "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15"
 	ImageRegistry = "registry@sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33"
 
-	// ImageMinIO backs the s3:// target suite. MinIO speaks the same API as
+	// ImageRustFS backs the s3:// target suite. RustFS speaks the same API as
 	// S3, R2, B2 and GCS interoperability mode, which is the whole reason
 	// one adapter answers for all of them -- so proving the adapter against
-	// MinIO is proving it against the API rather than against one vendor.
+	// RustFS is proving it against the API rather than against one vendor.
 	//
-	// From quay.io rather than Docker Hub: `minio/minio` on Hub stopped
-	// answering to anyone between 2026-09-02 and 2026-09-17, for every tag
-	// and not merely this digest, and an authenticated runner is refused the
-	// same as an anonymous one. The digest is unchanged -- quay's
-	// `RELEASE.2025-09-07T16-13-09Z` is the same image by content -- so this
-	// moves where the bytes come from and nothing about what they are.
-	ImageMinIO = "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+	// RustFS 1.0.1 rather than MinIO, which no longer publishes an image
+	// anywhere: `minio/minio` on Docker Hub stopped answering between
+	// 2026-09-02 and 2026-09-17, and `quay.io/minio/minio`, which replaced
+	// it, refused every pull by 2026-09-29 -- authenticated or not, by tag
+	// or by digest.
+	ImageRustFS = "rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c"
 
 	// ImageOpenSSH backs the ssh:// target suite: a real sshd with a real
 	// host key, which is the only way to test that a *changed* host key is
