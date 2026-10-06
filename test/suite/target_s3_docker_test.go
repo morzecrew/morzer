@@ -57,7 +57,6 @@ func startS3(t *testing.T) ports.TargetCredentials {
 func startS3Container(t *testing.T) (ports.TargetCredentials, *dockerlab.Container) {
 	t.Helper()
 	dockerlab.Require(t)
-	dockerlab.Pull(t, dockerlab.ImageRustFS)
 
 	container := dockerlab.Start(t, dockerlab.ImageRustFS, []int{9000}, map[string]string{
 		"RUSTFS_ACCESS_KEY": s3AccessKey,
