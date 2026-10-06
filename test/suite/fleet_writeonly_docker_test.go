@@ -24,7 +24,7 @@ import (
 // configure. P1 was not allowed to write to a shared bucket before somebody
 // did.
 //
-// This is that check. A MinIO user is given a policy holding exactly one
+// This is that check. A RustFS user is given a policy holding exactly one
 // permission -- `s3:PutObject` under one prefix -- and the adapter is asked to
 // do the one thing a publisher does, and then the things a publisher must not
 // be able to do.
@@ -33,7 +33,7 @@ import (
 // whole question is what a real S3 implementation does with a real policy, and
 // a stub would answer whatever it was written to answer.
 
-// scopedUser creates a MinIO user whose policy is exactly the actions given, on
+// scopedUser creates a RustFS user whose policy is exactly the actions given, on
 // one prefix of one bucket.
 func scopedUser(
 	t *testing.T, container *dockerlab.Container, root ports.TargetCredentials,
@@ -50,29 +50,25 @@ func scopedUser(
 		`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":[%s],"Resource":[%s]}]}`,
 		strings.Join(quoted, ","), resources)
 
-	// An alias of our own, with the root credentials. The image ships a
-	// `local` alias that can read and write and cannot administer, which is
-	// the right default and the wrong thing for creating users.
-	const admin = "rootalias"
-	out, err := container.Exec(t, "mc", "alias", "set", admin,
-		"http://localhost:9000", minioAccessKey, minioSecretKey)
-	require.NoErrorf(t, err, "cannot point mc at the server: %s", out)
-
-	// Written inside the container: `mc` runs there, and the policy has to
-	// be a file it can read.
-	path := "/tmp/" + name + ".json"
-	out, err = container.Exec(t, "sh", "-c", "printf '%s' '"+policy+"' > "+path)
-	require.NoErrorf(t, err, "cannot write the policy: %s", out)
+	// RustFS's own admin API, called with the root credentials by the curl
+	// the image ships. Its `/rustfs/admin/v3` routes take plain JSON, where
+	// the MinIO-compatible `/minio/admin/v3` ones insist on the encrypted
+	// payload only `mc` and madmin produce.
+	admin := func(what, path, body string) {
+		t.Helper()
+		out, err := container.Exec(t, "curl", "-sS", "--fail-with-body", "-X", "PUT",
+			"--aws-sigv4", "aws:amz:"+root.Region+":s3",
+			"--user", s3AccessKey+":"+s3SecretKey,
+			"--data", body, "http://localhost:9000/rustfs/admin/v3/"+path)
+		require.NoErrorf(t, err, "cannot %s: %s", what, out)
+	}
 
 	secret := name + "-secret-value"
-	out, err = container.Exec(t, "mc", "admin", "user", "add", admin, name, secret)
-	require.NoErrorf(t, err, "cannot create the scoped user: %s", out)
-
-	out, err = container.Exec(t, "mc", "admin", "policy", "create", admin, name, path)
-	require.NoErrorf(t, err, "cannot create the policy: %s", out)
-
-	out, err = container.Exec(t, "mc", "admin", "policy", "attach", admin, name, "--user", name)
-	require.NoErrorf(t, err, "cannot attach the policy: %s", out)
+	admin("create the scoped user", "add-user?accessKey="+name,
+		`{"secretKey":"`+secret+`","status":"enabled"}`)
+	admin("create the policy", "add-canned-policy?name="+name, policy)
+	admin("attach the policy",
+		"set-user-or-group-policy?policyName="+name+"&userOrGroup="+name+"&isGroup=false", "")
 
 	scoped := root
 	scoped.AccessKeyID = name
@@ -83,12 +79,12 @@ func scopedUser(
 // Can an operator actually configure what §9 tells them to?
 //
 // One server for all three questions: they are three properties of one
-// credential, and starting three MinIOs to ask them separately would triple the
+// credential, and starting three servers to ask them separately would triple the
 // slowest part of the suite for nothing.
 func TestAWriteOnlyPrefixScopedCredential(t *testing.T) {
 	dockerlab.Require(t)
 
-	root, container := startMinIOContainer(t)
+	root, container := startS3Container(t)
 	const bucket = "fleet-writeonly"
 	createBucket(t, root, bucket)
 
