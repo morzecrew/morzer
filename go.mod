@@ -13,7 +13,7 @@ require (
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20260803091719-3755ebad01b1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/jedisct1/go-minisign v0.0.0-20260527172527-a09352b57a22
-	github.com/klauspost/compress v1.20.0
+	github.com/klauspost/compress v1.20.1
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/opencontainers/go-digest v1.0.0
