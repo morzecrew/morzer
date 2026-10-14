@@ -85,7 +85,13 @@ import (
 // `--project-name alpha` resolves a volume named `alpha_data` and `beta`
 // resolves `beta_data`. Refusing the file is the only answer that keeps the
 // data attached to the deployment.
-const InstallationSchemaVersion = 10
+// Bumped to 11 for `update.schedule`, and the write path again -- schema 7's
+// reason exactly, for the other timer. An older manager reading the field
+// ignores it harmlessly, but its `config set` rewrites the whole state, drops
+// the field on the way through, and the next reconciliation puts the update
+// timer back on 03:30: a dev VM that followed a channel within minutes starts
+// following it once a night, and nothing says so.
+const InstallationSchemaVersion = 11
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -420,6 +426,22 @@ type UpdateConfig struct {
 	// requirement lives in Installation.Validate, so it fires wherever the
 	// state is written rather than at the tick that would have acted.
 	AutoApply bool `yaml:"auto_apply" json:"auto_apply,omitempty"`
+
+	// Schedule is when the update timer ticks, as the supervisor's own
+	// expression -- a systemd `OnCalendar` line. Empty takes the
+	// supervisor's default, a daily tick at a quiet hour.
+	//
+	// **This is the maintenance window** (RFC 0016 decision 12, refined by
+	// 25). An operator who wants updates only on Sunday mornings writes
+	// that expression here; a sandbox that should follow `main` within
+	// minutes writes `*:0/5`. Stored verbatim and rendered verbatim, so
+	// systemd is still the thing expressing the window -- what decision 12
+	// rejected was a second mechanism translated into this one.
+	//
+	// A drop-in is not an equivalent: `OnCalendar=` in a drop-in adds a
+	// trigger rather than replacing one, so it widens the window it was
+	// meant to narrow. That was the documented route before this field.
+	Schedule string `yaml:"schedule" json:"schedule,omitempty"`
 }
 
 // FollowsChannel reports whether a channel is configured.
@@ -678,7 +700,14 @@ type Policy struct {
 // [Timer] section names what the timer starts: a way to schedule something as
 // root from a configuration field. Bounding it at the boundary is the same rule
 // every other value that leaves this manager follows.
-func ValidateBackupSchedule(raw string) error {
+func ValidateBackupSchedule(raw string) error { return validateSchedule("a backup schedule", raw) }
+
+// ValidateUpdateSchedule is ValidateBackupSchedule for the update timer, and
+// for the same reason: it is the other value rendered into `OnCalendar=` from
+// the state file.
+func ValidateUpdateSchedule(raw string) error { return validateSchedule("an update schedule", raw) }
+
+func validateSchedule(what, raw string) error {
 	// The raw value, before any trim. This guard runs on load and on save,
 	// where `raw` *is* what gets rendered -- so trimming first and scanning
 	// the copy asked the question about a string nobody stores. A leading
@@ -692,7 +721,7 @@ func ValidateBackupSchedule(raw string) error {
 	// than a refusal. What arrives here untrimmed did not come through them.
 	for _, r := range raw {
 		if r == '\n' || r == '\r' || unicode.IsControl(r) {
-			return ValidationError(nil, "a backup schedule is one line").
+			return ValidationError(nil, "%s is one line", what).
 				WithHint("it is rendered into a systemd unit, where a second " +
 					"line is a second directive; use an OnCalendar " +
 					"expression such as `Mon *-*-* 04:00:00`")
@@ -703,18 +732,18 @@ func ValidateBackupSchedule(raw string) error {
 	if schedule == "" {
 		return nil
 	}
-	if len(schedule) > maxBackupScheduleLen {
-		return ValidationError(nil, "a backup schedule is at most %d characters",
-			maxBackupScheduleLen).
+	if len(schedule) > maxScheduleLen {
+		return ValidationError(nil, "%s is at most %d characters",
+			what, maxScheduleLen).
 			WithHint("OnCalendar expressions are short; " +
 				"`morzer doctor` reports a unit systemd will not load")
 	}
 	return nil
 }
 
-// maxBackupScheduleLen bounds what reaches the unit file. Generous against any
+// maxScheduleLen bounds what reaches the unit file. Generous against any
 // real expression and far short of a payload.
-const maxBackupScheduleLen = 200
+const maxScheduleLen = 200
 
 // DefaultStaleBackupAfter is how old the newest backup may be before it is
 // worth telling somebody.
@@ -836,6 +865,9 @@ func (i Installation) Validate() error {
 	// door somebody was not coming through.
 	if err := ValidateBackupSchedule(i.Policy.BackupSchedule); err != nil {
 		v.add("policy.backup_schedule", "%s", AsError(err).Message)
+	}
+	if err := ValidateUpdateSchedule(i.Update.Schedule); err != nil {
+		v.add("update.schedule", "%s", AsError(err).Message)
 	}
 
 	// An unknown mode is refused rather than read as production. A typo --

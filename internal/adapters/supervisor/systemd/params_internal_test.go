@@ -113,4 +113,17 @@ func TestUnitsCarriesEveryFieldIntoTheRendering(t *testing.T) {
 			t.Errorf("SkipBackupTimer did not reach the rendering: %s was built", u.Name)
 		}
 	}
+
+	// The other absence: a line rather than a unit.
+	unjittered, err := s.Units(ports.UnitParams{
+		Product: "demo", UpdateTimer: true, SkipUpdateJitter: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range unjittered {
+		if u.Name == "demo-update.timer" && strings.Contains(string(u.Contents), "RandomizedDelaySec") {
+			t.Errorf("SkipUpdateJitter did not reach the rendering:\n%s", u.Contents)
+		}
+	}
 }

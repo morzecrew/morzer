@@ -178,6 +178,7 @@ morzer config unset update.channel           # back to absent, which is always t
 | `update.check` | Contact the vendor's registry unprompted, for `doctor` and `status`. Absent means off. |
 | `update.channel` | A mutable reference to follow. See [following a channel](../operating/updating.md#following-a-channel). |
 | `update.auto_apply` | Install what the channel offers, when the release declares a failure cannot end needing a database restore. |
+| `update.schedule` | When the update timer follows the channel — and installs, if `update.auto_apply` allows — as a systemd `OnCalendar` expression. This is the maintenance window. Absent takes daily at 03:30. See [unattended updates](../operating/unattended-updates.md#the-maintenance-window-is-an-oncalendar-expression). |
 | `backup.schedule` | When scheduled backups run, as a systemd `OnCalendar` expression. Absent takes the nightly default. |
 | `backup.scheduled` | Whether this manager runs backups on a timer at all. Absent means it does. |
 

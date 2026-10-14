@@ -70,18 +70,27 @@ timer again.
 
 ### The maintenance window is an `OnCalendar` expression
 
-The timer is an ordinary systemd timer, so a window is one line:
+The timer ticks daily at 03:30 unless you say otherwise. A window is one
+setting, and its value is a systemd `OnCalendar` expression, written into the
+timer exactly as you typed it:
 
-```ini
-[Timer]
-OnCalendar=Sun *-*-* 04:00:00
+```sh
+morzer config set update.schedule='Sun *-*-* 04:00:00'
+morzer config unset update.schedule   # back to daily at 03:30
 ```
 
-There is no separate maintenance-window setting, deliberately: systemd already
-expresses this better than a configuration field would, including "the first
-Sunday of the month" and "weekdays only".
+There is no second maintenance-window mechanism, deliberately: systemd already
+expresses this better than one would, including "the first Sunday of the
+month" and "weekdays only". `systemd-analyze calendar 'Sun *-*-* 04:00:00'`
+shows when an expression next elapses before you set it.
 
-`RandomizedDelaySec` spreads installations across a window so a vendor's
+**Do not narrow the window with a drop-in.** `OnCalendar=` in a drop-in *adds* a
+trigger to the one the manager wrote, so `systemctl edit demo-update.timer`
+with `OnCalendar=Sun *-*-* 04:00:00` runs updates on Sunday **and** every night.
+Earlier versions of this page recommended exactly that; if you followed it,
+delete the drop-in and use the setting.
+
+`RandomizedDelaySec` spreads installations across half an hour so a vendor's
 registry does not see every customer at the same second, and `Persistent=true`
 catches up a tick missed while the machine was off.
 
@@ -112,6 +121,10 @@ what will happen to a real one. It relaxes:
 - **Prereleases.** They are admissible update candidates. On a production
   machine they are not: every development build carries a prerelease version,
   and a check answering "1.4.1-dev.7 is available" is a check nobody reads.
+- **The update timer's spread.** A sandbox's timer has no
+  `RandomizedDelaySec`, so `update.schedule='*:0/5'` follows the channel every
+  five minutes rather than every five to thirty-five. The spread exists for a
+  vendor's customers, and a sandbox polls its own vendor's registry.
 
 It relaxes **nothing about verification**. Signature checking, digest pinning
 and `SHA256SUMS` completeness are unchanged, because the sandbox's entire value

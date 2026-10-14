@@ -337,6 +337,13 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// lose a label, it deploys under a different namespace
 			// and brings the product up against empty volumes.
 			i.SchemaVersion = 10
+		case 10:
+			// 10 -> 11 added `update.schedule`. Nothing to convert:
+			// an installation written before the field existed took
+			// the supervisor's default tick, and an empty value
+			// still means exactly that. The bump is for the write
+			// path, as 6 -> 7 was for the backup timer's schedule.
+			i.SchemaVersion = 11
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

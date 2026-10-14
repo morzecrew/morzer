@@ -334,9 +334,14 @@ type UnitParams struct {
 	//
 	// It *is* the maintenance window, which is worth stating because "add a
 	// maintenance window" is the obvious next feature request: an operator
-	// who wants updates only on Sunday mornings writes that expression, and
-	// systemd expresses it better than a config field would.
+	// who wants updates only on Sunday mornings writes that expression in
+	// `update.schedule`, and it arrives here verbatim (RFC 0016 decision 25).
 	UpdateSchedule string
+
+	// SkipUpdateJitter renders the update timer without RandomizedDelaySec.
+	// See updateTimerTemplate for what the jitter is for and why a sandbox
+	// is the one installation it does nothing for.
+	SkipUpdateJitter bool
 
 	// UpdateTimer generates the update pair at all. A machine that follows
 	// no channel gets no timer -- an installed unit that has nothing to poll
@@ -482,6 +487,11 @@ StandardError=journal
 // product asks the vendor's registry at the same second of the same minute, and
 // the vendor discovers their customer base by watching their own rate limiter.
 //
+// Except on a sandbox (RFC 0016 decision 26), which polls its own vendor's
+// registry: there is no customer base to spread, and a delay of up to half an
+// hour on every tick turns "follow main every five minutes" into every five to
+// thirty-five.
+//
 // Persistent catches up a tick missed while the machine was off, which is the
 // case a laptop-shaped deployment hits daily.
 const updateTimerTemplate = `[Unit]
@@ -490,7 +500,9 @@ Description={{.Description}}
 [Timer]
 OnCalendar={{.UpdateSchedule}}
 Persistent=true
+{{- if not .SkipUpdateJitter}}
 RandomizedDelaySec=1800
+{{- end}}
 
 [Install]
 WantedBy=timers.target
@@ -716,16 +728,17 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 	// the two structs stop agreeing, which is the half of that a test can
 	// see without knowing what each field means.
 	return BuildUnits(UnitParams{
-		Product:         params.Product,
-		ManagerPath:     params.ManagerPath,
-		ConfigPath:      params.ConfigPath,
-		Description:     params.Description,
-		BackupSchedule:  params.BackupSchedule,
-		SkipBackupTimer: params.SkipBackupTimer,
-		UpdateSchedule:  params.UpdateSchedule,
-		UpdateTimer:     params.UpdateTimer,
-		FleetSchedule:   params.FleetSchedule,
-		FleetTimer:      params.FleetTimer,
+		Product:          params.Product,
+		ManagerPath:      params.ManagerPath,
+		ConfigPath:       params.ConfigPath,
+		Description:      params.Description,
+		BackupSchedule:   params.BackupSchedule,
+		SkipBackupTimer:  params.SkipBackupTimer,
+		UpdateSchedule:   params.UpdateSchedule,
+		UpdateTimer:      params.UpdateTimer,
+		SkipUpdateJitter: params.SkipUpdateJitter,
+		FleetSchedule:    params.FleetSchedule,
+		FleetTimer:       params.FleetTimer,
 	})
 }
 

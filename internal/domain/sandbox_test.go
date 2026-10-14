@@ -95,6 +95,7 @@ func sandboxClassification() map[string]sandboxVerdict {
 			"a read, and testing an update is what a sandbox is for"),
 		"Update.Channel":   keep("a reference this machine follows; a read"),
 		"Update.AutoApply": keep("installs what the channel offers, here"),
+		"Update.Schedule":  keep("when this machine's own timer ticks; it reaches nothing"),
 
 		"Notify":         drop("a sandbox must not report into production's alerting"),
 		"Notify.Targets": drop("a webhook URL is itself the credential, and it travels in the export"),
