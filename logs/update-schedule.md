@@ -153,3 +153,28 @@ rendered, and systemd refuses the timer -- the same as `backup.schedule`, and
 by `ValidateBackupSchedule`'s stated design, but untested for either.
 
 **Drift count: 0.**
+
+## Review, round 1, 2026-10-14
+
+**Correction to the self-audit's scope line:** the branch touched 12 tracked
+files and two new ones, not 13. The thirteenth was `.claude/CLAUDE.md`,
+modified in the working tree and never part of the branch.
+
+Found by review and missed by the self-audit, each fixed on the branch:
+
+- **The schedule bound measured a trimmed copy** of a value rendered as it
+  stands, so a hand-edited schedule padded past 200 characters loaded. It
+  predates this branch -- `ValidateBackupSchedule` had it -- and the refactor
+  carried it into the update schedule unexamined. Reproduced red in
+  `TestTheScheduleBoundRefusesWhatItSaysItRefuses` before the fix.
+- **The jitter check in `TestUnitsCarriesEveryFieldIntoTheRendering` passed
+  when the timer was missing**, shown by a sabotage that dropped the timer
+  whenever `SkipUpdateJitter` was set. Seven of seven at the self-audit
+  measured the mutants imagined; this was not one of them.
+- **The schema 11 comment said an older manager reads and ignores the
+  field.** It refuses the file; the comment described the no-bump case, the
+  exact misreading the schema history above it warns against.
+
+Rule worth keeping: a refactor that shares a guard between two callers
+inherits the guard's defects for both, so audit the shared body against what
+each caller renders, not against what it used to do.
