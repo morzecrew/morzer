@@ -121,9 +121,18 @@ func TestUnitsCarriesEveryFieldIntoTheRendering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, u := range unjittered {
-		if u.Name == "demo-update.timer" && strings.Contains(string(u.Contents), "RandomizedDelaySec") {
-			t.Errorf("SkipUpdateJitter did not reach the rendering:\n%s", u.Contents)
+	// Found first, or a rendering that dropped the timer would pass as one
+	// that dropped only the line.
+	var timer *ports.Unit
+	for i := range unjittered {
+		if unjittered[i].Name == "demo-update.timer" {
+			timer = &unjittered[i]
 		}
+	}
+	if timer == nil {
+		t.Fatal("SkipUpdateJitter took the update timer away rather than its delay line")
+	}
+	if strings.Contains(string(timer.Contents), "RandomizedDelaySec") {
+		t.Errorf("SkipUpdateJitter did not reach the rendering:\n%s", timer.Contents)
 	}
 }
