@@ -2459,6 +2459,10 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td>Install what the channel offers, when the release declares a failure cannot end needing a database restore.</td>
 </tr>
 <tr>
+<td><code>update.schedule</code></td>
+<td>When the update timer follows the channel — and installs, if <code>update.auto_apply</code> allows — as a systemd <code>OnCalendar</code> expression. This is the maintenance window. Absent takes daily at 03:30. See <a href="../../operating/unattended-updates/#the-maintenance-window-is-an-oncalendar-expression">unattended updates</a>.</td>
+</tr>
+<tr>
 <td><code>backup.schedule</code></td>
 <td>When scheduled backups run, as a systemd <code>OnCalendar</code> expression. Absent takes the nightly default.</td>
 </tr>

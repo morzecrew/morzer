@@ -2309,14 +2309,22 @@ worse than one that refuses the setting: you would believe it was armed.</p>
 <p>Setting a channel installs a <code>&lt;product&gt;-update.timer</code>; clearing it removes the
 timer again.</p>
 <h3 id="the-maintenance-window-is-an-oncalendar-expression">The maintenance window is an <code>OnCalendar</code> expression<a class="headerlink" href="#the-maintenance-window-is-an-oncalendar-expression" title="Permanent link">&para;</a></h3>
-<p>The timer is an ordinary systemd timer, so a window is one line:</p>
-<div class="highlight"><pre><span></span><code><span class="k">[Timer]</span>
-<span class="na">OnCalendar</span><span class="o">=</span><span class="s">Sun *-*-* 04:00:00</span>
+<p>The timer ticks daily at 03:30 unless you say otherwise. A window is one
+setting, and its value is a systemd <code>OnCalendar</code> expression, written into the
+timer exactly as you typed it:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.schedule<span class="o">=</span><span class="s1">'Sun *-*-* 04:00:00'</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>update.schedule<span class="w">   </span><span class="c1"># back to daily at 03:30</span>
 </code></pre></div>
-<p>There is no separate maintenance-window setting, deliberately: systemd already
-expresses this better than a configuration field would, including "the first
-Sunday of the month" and "weekdays only".</p>
-<p><code>RandomizedDelaySec</code> spreads installations across a window so a vendor's
+<p>There is no second maintenance-window mechanism, deliberately: systemd already
+expresses this better than one would, including "the first Sunday of the
+month" and "weekdays only". <code>systemd-analyze calendar 'Sun *-*-* 04:00:00'</code>
+shows when an expression next elapses before you set it.</p>
+<p><strong>Do not narrow the window with a drop-in.</strong> <code>OnCalendar=</code> in a drop-in <em>adds</em> a
+trigger to the one the manager wrote, so <code>systemctl edit demo-update.timer</code>
+with <code>OnCalendar=Sun *-*-* 04:00:00</code> runs updates on Sunday <strong>and</strong> every night.
+Earlier versions of this page recommended exactly that; if you followed it,
+delete the drop-in and use the setting.</p>
+<p><code>RandomizedDelaySec</code> spreads installations across half an hour so a vendor's
 registry does not see every customer at the same second, and <code>Persistent=true</code>
 catches up a tick missed while the machine was off.</p>
 <h3 id="a-tick-that-cannot-take-the-lock-exits-0">A tick that cannot take the lock exits 0<a class="headerlink" href="#a-tick-that-cannot-take-the-lock-exits-0" title="Permanent link">&para;</a></h3>
@@ -2340,6 +2348,10 @@ what will happen to a real one. It relaxes:</p>
 <li><strong>Prereleases.</strong> They are admissible update candidates. On a production
   machine they are not: every development build carries a prerelease version,
   and a check answering "1.4.1-dev.7 is available" is a check nobody reads.</li>
+<li><strong>The update timer's spread.</strong> A sandbox's timer has no
+  <code>RandomizedDelaySec</code>, so <code>update.schedule='*:0/5'</code> follows the channel every
+  five minutes rather than every five to thirty-five. The spread exists for a
+  vendor's customers, and a sandbox polls its own vendor's registry.</li>
 </ul>
 <p>It relaxes <strong>nothing about verification</strong>. Signature checking, digest pinning
 and <code>SHA256SUMS</code> completeness are unchanged, because the sandbox's entire value
