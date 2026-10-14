@@ -73,3 +73,22 @@ Sabotage, each mutant compiled and restored from a copy, with the feature
 committed first: eight on the wiring and the adapter, then two on the branches
 coverage found uncovered -- ten of ten killed. Patch coverage after: every
 added statement line in `internal/` executed.
+
+## Review, round 1, 2026-10-14
+
+- **Fixed — a parser killed by a signal was read as a verdict.** The runner
+  reports a process killed from outside as an exit with code -1, and the
+  adapter took any exit as "systemd cannot parse". Only a positive status is
+  a refusal now. Reproduced red first. The discovery entry above covered a
+  parser that never started and missed one that started and did not finish:
+  the scripted runner's `OnExit` makes both an `ExitError`, so the test that
+  pinned the first could not see the second.
+- **Kept — `init --repair` re-renders a stored schedule unchecked.** That is
+  the doors entry above, not a gap in it. A repair is what an operator runs
+  when something is already wrong, and refusing it over a stored value it did
+  not write would make a broken machine unrepairable over an unrelated field.
+  Re-rendering makes such a value no worse, and it is not silent: measured
+  with `systemd-analyze verify`, a timer whose only `OnCalendar=` cannot be
+  parsed is "a bad unit file setting", is not loaded, and `doctor` reports it.
+
+**Drift count: 0.**
