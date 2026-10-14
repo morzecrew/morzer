@@ -86,11 +86,12 @@ import (
 // resolves `beta_data`. Refusing the file is the only answer that keeps the
 // data attached to the deployment.
 // Bumped to 11 for `update.schedule`, and the write path again -- schema 7's
-// reason exactly, for the other timer. An older manager reading the field
-// ignores it harmlessly, but its `config set` rewrites the whole state, drops
-// the field on the way through, and the next reconciliation puts the update
-// timer back on 03:30: a dev VM that followed a channel within minutes starts
-// following it once a night, and nothing says so.
+// reason exactly, for the other timer. With the bump an older manager refuses
+// the state file outright. Without it, that manager would read the file, and
+// its `config set` would rewrite the whole state, drop the field on the way
+// through, and let the next reconciliation put the update timer back on 03:30:
+// a dev VM that followed a channel within minutes would start following it
+// once a night, and nothing would say so.
 const InstallationSchemaVersion = 11
 
 // Signing is this installation's signing identity: the public half of the key

@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Building from source needs Go 1.26 or newer.** The `golang.org/x` modules moved their `go` directive to 1.26.0 together, and that directive is a requirement rather than a preference, so taking any of their updates raises this floor. Published binaries are unaffected.
 - **A dev-mode installation's update timer has no `RandomizedDelaySec`.** The half-hour spread exists so a vendor's registry does not see every customer at once, and a sandbox polls its own vendor's registry; with it, a five-minute schedule ticked every five to thirty-five minutes. Production timers keep it whatever the schedule.
-- **Installation schema 10 → 11**, for `update.schedule`. Migration is automatic and converts nothing. The bump is for the write path, as schema 7 was for `policy.backup_schedule`: an older manager's `config set` would drop the field and its next reconciliation would put the timer back on 03:30 without saying so.
+- **Installation schema 10 → 11**, for `update.schedule`. Migration is automatic and converts nothing. The bump is for the write path, as schema 7 was for `policy.backup_schedule`: without it, an older manager's `config set` would drop the field and its next reconciliation would put the timer back on 03:30 without saying so. With it, an older manager declines the installation instead.
 
 ### Fixed
 
