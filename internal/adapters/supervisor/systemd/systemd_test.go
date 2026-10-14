@@ -917,4 +917,14 @@ func TestValidateScheduleReportsAParserThatDidNotRun(t *testing.T) {
 	if errors.Is(err, domain.ErrValidation) {
 		t.Errorf("a parser that never ran was reported as refusing the schedule: %v", err)
 	}
+
+	// And one that ran and was killed by a signal from outside, which the
+	// runner reports as an exit with code -1. Only a parser that finished
+	// gave a verdict.
+	s, runner, _ = newSupervisor(t)
+	runner.OnExit("calendar", -1, "")
+	err = s.ValidateSchedule(context.Background(), "Sun *-*-* 04:00:00")
+	if err == nil || errors.Is(err, domain.ErrValidation) {
+		t.Errorf("a parser killed by a signal was read as a verdict: %v", err)
+	}
 }

@@ -314,8 +314,11 @@ func (s *Supervisor) ValidateSchedule(ctx context.Context, expr string) error {
 	if err == nil {
 		return nil
 	}
+	// A verdict only from a parser that finished. One killed by a signal from
+	// outside -- the OOM killer, an operator's kill -- exits -1, and calling
+	// that "cannot parse" would send somebody to rewrite a good expression.
 	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if errors.As(err, &exitErr) && exitErr.ExitCode > 0 {
 		return domain.ValidationError(nil, "systemd cannot parse the schedule %q", expr).
 			WithHint("it would be written to OnCalendar= and the timer would not load; " +
 				"`systemd-analyze calendar '<expression>'` shows what one means, " +
