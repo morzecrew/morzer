@@ -81,8 +81,10 @@ func TestTheUpdateWindowCanBeSetAndUnset(t *testing.T) {
 		"the default tick is still there beside the window, which is the drop-in defect again")
 	// Production keeps the spread whatever the schedule says: it protects
 	// the vendor's registry, and a customer's short schedule is not the
-	// vendor's decision.
-	assert.Contains(t, timer, "RandomizedDelaySec=1800")
+	// vendor's decision. Asserted as whole lines: the template's trim
+	// markers sit on either side of this one, and a directive joined onto
+	// `Persistent=true` would still contain the substring.
+	assert.Contains(t, timer, "Persistent=true\nRandomizedDelaySec=1800\n\n[Install]")
 
 	inst, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
