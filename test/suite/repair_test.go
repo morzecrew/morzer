@@ -274,6 +274,14 @@ func TestTheScheduleBoundRefusesWhatItSaysItRefuses(t *testing.T) {
 	require.Error(t, err, "a schedule longer than the bound was written")
 	assert.Contains(t, domain.AsError(err).Message, "at most 200 characters")
 
+	// Long only in padding. A hand-edited value is rendered as it stands, so
+	// the bound has to hold for the string that reaches the unit file rather
+	// than for a trimmed copy of it.
+	inst.Policy.BackupSchedule = strings.Repeat(" ", 200) + "daily"
+	err = h.Deps.State.SaveInstallation(ctx, inst)
+	require.Error(t, err, "a padded schedule longer than the bound was written")
+	assert.Contains(t, domain.AsError(err).Message, "at most 200 characters")
+
 	// And the bound is not off by one against a value that fits exactly.
 	inst.Policy.BackupSchedule = strings.Repeat("*", 200)
 	assert.NoError(t, h.Deps.State.SaveInstallation(ctx, inst),

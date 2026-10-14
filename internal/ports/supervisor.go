@@ -126,6 +126,12 @@ type UnitParams struct {
 	// the supervisor's own listing as though it did.
 	UpdateTimer bool
 
+	// SkipUpdateJitter leaves the update timer's RandomizedDelaySec out.
+	// True on a sandbox, which polls its vendor's own registry and wants a
+	// short schedule to mean what it says. Named for the unsafe direction,
+	// as SkipBackupTimer is: a caller that forgets it keeps the jitter.
+	SkipUpdateJitter bool
+
 	// FleetSchedule is the schedule expression for publishing this
 	// installation's fleet row.
 	//

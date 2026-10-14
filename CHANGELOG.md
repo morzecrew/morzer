@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`morzer config set update.schedule`**: when the update timer follows the channel — and installs, if `update.auto_apply` allows — as a systemd `OnCalendar` expression. This is the maintenance window RFC 0016 always said `OnCalendar` was, and nothing let you set it: every installation ticked daily at 03:30. Unsetting it returns to that default. A sandbox that should follow `main` within minutes sets `*:0/5`.
+
 ### Changed
 
 - **Building from source needs Go 1.26 or newer.** The `golang.org/x` modules moved their `go` directive to 1.26.0 together, and that directive is a requirement rather than a preference, so taking any of their updates raises this floor. Published binaries are unaffected.
+- **A dev-mode installation's update timer has no `RandomizedDelaySec`.** The half-hour spread exists so a vendor's registry does not see every customer at once, and a sandbox polls its own vendor's registry; with it, a five-minute schedule ticked every five to thirty-five minutes. Production timers keep it whatever the schedule.
+- **Installation schema 10 → 11**, for `update.schedule`. Migration is automatic and converts nothing. The bump is for the write path, as schema 7 was for `policy.backup_schedule`: without it, an older manager's `config set` would drop the field and its next reconciliation would put the timer back on 03:30 without saying so. With it, an older manager declines the installation instead.
+
+### Fixed
+
+- **The documented maintenance window did not narrow anything.** The unattended-updates page told you to add `OnCalendar=Sun *-*-* 04:00:00` to the update timer, and a drop-in's `OnCalendar=` *adds* a trigger to the one in the unit — so updates ran on Sunday morning and every night as well. Remove any such drop-in and use `update.schedule` instead.
 
 ## [0.3.0] - 2026-08-21
 

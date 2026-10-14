@@ -179,6 +179,9 @@
         },
         "check": {
           "type": "boolean"
+        },
+        "schedule": {
+          "type": "string"
         }
       },
       "type": "object"

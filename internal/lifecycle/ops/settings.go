@@ -91,6 +91,22 @@ var settings = map[string]setting{
 		// is "back to nightly", not "no backups".
 		Clear: func(i *domain.Installation) { i.Policy.BackupSchedule = "" },
 	},
+	"update.schedule": {
+		Description: "when the update timer follows the channel, as a systemd OnCalendar expression",
+		Read:        func(i domain.Installation) string { return i.Update.Schedule },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			schedule := strings.TrimSpace(raw)
+			if err := domain.ValidateUpdateSchedule(schedule); err != nil {
+				return err
+			}
+			i.Update.Schedule = schedule
+			return nil
+		},
+		// Back to the daily default, as `backup.schedule` goes back to
+		// nightly. Whether the timer exists at all is `update.channel`
+		// and `update.check`'s question, not this one's.
+		Clear: func(i *domain.Installation) { i.Update.Schedule = "" },
+	},
 	"backup.scheduled": {
 		Description: "whether this manager runs backups on a timer at all (RFC 0030 row 4)",
 		Read: func(i domain.Installation) string {
@@ -403,6 +419,17 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		// night on a refusal, which is how an operator learns to ignore
 		// the unit.
 		UpdateTimer: inst.Update.FollowsChannel() && inst.Update.Check,
+
+		// The operator's window, as the backup schedule above is
+		// (RFC 0016 decision 25). It was never set here, so every
+		// machine ticked at 03:30 whatever anybody wanted.
+		UpdateSchedule: inst.Update.Schedule,
+
+		// A sandbox polls its vendor's own registry, so the jitter
+		// that spreads customers across that registry protects nobody
+		// and turns "every five minutes" into "every five to
+		// thirty-five" (RFC 0016 decision 26).
+		SkipUpdateJitter: inst.IsDev(),
 
 		// A target to publish to is the whole precondition (RFC 0026
 		// P4). There is no second flag gating this the way `update.check`
