@@ -687,8 +687,9 @@ type Policy struct {
 // **Not a calendar parser.** Whether `Mon *-*-* 04:00:00` is a valid expression
 // is the supervisor's question, and answering it here would mean this package
 // carrying systemd's grammar and disagreeing with it at the first version that
-// extends it. A wrong-but-well-formed expression is a unit systemd refuses to
-// load, which is visible and local.
+// extends it. So the supervisor is asked instead, at the doors an operator
+// types into (`ports.Supervisor.ValidateSchedule`, from `config set` and
+// `init`), and this bounds only what any value must be to be rendered at all.
 //
 // What this refuses is the shape that is not a schedule at all. The value is
 // rendered into `OnCalendar=` in a root-owned unit file, and it used to arrive

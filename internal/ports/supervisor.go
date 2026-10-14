@@ -31,6 +31,17 @@ type Supervisor interface {
 
 	Status(ctx context.Context, unit string) (UnitState, error)
 
+	// ValidateSchedule asks whether expr is a schedule this supervisor can
+	// run, before it is stored and rendered into a unit.
+	//
+	// The supervisor's question and not the domain's, which deliberately
+	// carries no calendar grammar (domain.ValidateBackupSchedule): copying
+	// it would disagree with the init system the first time that extended
+	// it. Empty is the supervisor's own default and is always accepted. Nil
+	// also means this host has nothing to ask the question with, and the
+	// value goes unchecked, as every value did before this method existed.
+	ValidateSchedule(ctx context.Context, expr string) error
+
 	// Units renders the unit set this supervisor manages for a product.
 	//
 	// Unit *content* is supervisor-specific, so the lifecycle layer asks for

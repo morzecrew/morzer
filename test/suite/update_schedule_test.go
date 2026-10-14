@@ -159,3 +159,84 @@ func TestAHandEditedUpdateScheduleIsRefusedOnLoad(t *testing.T) {
 	assert.Contains(t, domain.AsError(err).Message, "update.schedule")
 
 }
+
+// A schedule systemd cannot parse is refused at the door, for both timers.
+//
+// It used to be stored, rendered into OnCalendar=, and leave a timer that does
+// not load -- no backups, or no unattended updates, from a `config set` that
+// exited 0. Played through the real adapter with systemd-analyze scripted to
+// refuse, so what is under test is the wiring from the setting to the parser
+// and what a refusal leaves behind: nothing.
+func TestAScheduleSystemdCannotParseIsRefused(t *testing.T) {
+	for _, setting := range []string{"update.schedule", "backup.schedule"} {
+		t.Run(setting, func(t *testing.T) {
+			h, unitDir := followingMachine(t, "")
+			ctx := context.Background()
+			_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+				Set: map[string]string{
+					"update.channel": "oci://registry.example/demo/bundle:stable",
+					"update.check":   "true",
+				},
+			})
+			require.NoError(t, err)
+
+			runner := fakes.NewScripted().OnExit("calendar -- every 5m", 1,
+				"Failed to parse calendar specification 'every 5m': Invalid argument")
+			h.Deps.Supervisor = availableSupervisor{
+				Supervisor: systemd.New(runner, systemd.WithUnitDir(unitDir)),
+			}
+			before := updateTimer(t, unitDir)
+
+			_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+				Set: map[string]string{setting: "every 5m"},
+			})
+			require.ErrorIs(t, err, domain.ErrValidation,
+				"a schedule systemd refused was stored")
+			assert.Contains(t, domain.AsError(err).Message, "every 5m")
+
+			inst, err := h.Deps.State.LoadInstallation(ctx)
+			require.NoError(t, err)
+			assert.Empty(t, inst.Update.Schedule)
+			assert.Empty(t, inst.Policy.BackupSchedule)
+			assert.Equal(t, before, updateTimer(t, unitDir), "a refused setting rewrote a unit")
+
+			// And a schedule it accepts still goes through the same door.
+			_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+				Set: map[string]string{setting: "Sun *-*-* 04:00:00"},
+			})
+			require.NoError(t, err)
+			assert.True(t, runner.Ran("calendar -- Sun *-*-* 04:00:00"),
+				"the accepted schedule was never put to systemd:\n%s", runner.CommandLines())
+		})
+	}
+}
+
+// `init --backup-schedule` asks before anything exists, as `--recovery-recipient`
+// does: found at unit installation, a bad schedule would unwind a half-built
+// installation over one flag.
+func TestInitRefusesABackupScheduleBeforeCreatingAnything(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	fake := fakes.NewSupervisor()
+	fake.Fail["ValidateSchedule"] = domain.ValidationError(nil, "systemd cannot parse the schedule")
+	h.Deps.Supervisor = fake
+
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, BackupSchedule: "every 5m",
+	})
+	require.ErrorIs(t, err, domain.ErrValidation)
+	assert.Contains(t, domain.AsError(err).Message, "systemd cannot parse the schedule",
+		"init failed, but not on the schedule")
+
+	exists, err := h.Deps.State.InstallationExists(ctx)
+	require.NoError(t, err)
+	assert.False(t, exists, "init refused the schedule after creating the installation")
+
+	// Shape before parser: a second line is refused as one, and never reaches
+	// systemd-analyze, which would call it a bad calendar instead.
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, BackupSchedule: "daily\nUnit=attacker.service",
+	})
+	require.ErrorIs(t, err, domain.ErrValidation)
+	assert.Contains(t, domain.AsError(err).Message, "one line")
+}
