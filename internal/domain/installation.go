@@ -728,11 +728,14 @@ func validateSchedule(what, raw string) error {
 		}
 	}
 
-	schedule := strings.TrimSpace(raw)
-	if schedule == "" {
+	// Blank is the default, however long, because the renderer trims it and
+	// writes the default instead. Anything else is rendered as it stands, so
+	// the bound is on `raw`: a trimmed copy let a value padded past it
+	// through.
+	if strings.TrimSpace(raw) == "" {
 		return nil
 	}
-	if len(schedule) > maxScheduleLen {
+	if len(raw) > maxScheduleLen {
 		return ValidationError(nil, "%s is at most %d characters",
 			what, maxScheduleLen).
 			WithHint("OnCalendar expressions are short; " +
