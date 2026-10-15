@@ -598,14 +598,24 @@ func stepPullImages(d *Deps, inst domain.Installation, rel domain.Release, opts 
 	}
 }
 
-// stepMigrate runs the release's migration operation.
+// stepMigrate runs the release's migration operation: one step, or several in
+// the order the manifest lists them -- migrations, then the application's own
+// bootstrap, say.
 //
 // It is deliberately not compensable. A migration that partially applied
 // cannot be undone by re-running anything the manager knows about, so a
 // failure here escalates to requires-manual-intervention rather than
-// pretending a rollback happened.
+// pretending a rollback happened. That holds for every step in the list: the
+// steps before a failed one have run, and so has whatever they changed.
 func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Options) engine.Step {
-	spec, declared := rel.Manifest.Operation(domain.OpMigrate)
+	steps := rel.Manifest.OperationSteps(domain.OpMigrate)
+
+	// The step's budget is the sum of its parts, each of which also bounds
+	// itself, so one slow step cannot spend another's time.
+	var budget time.Duration
+	for _, spec := range steps {
+		budget += spec.Timeout.Or(30 * time.Minute)
+	}
 
 	return engine.Step{
 		ID:          "migrate",
@@ -616,59 +626,93 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 		// anything the manager knows about, so a failure here stops and
 		// asks for a human rather than pretending a rollback happened.
 		RequiresInterventionOnFailure: true,
-		Timeout:                       spec.Timeout.Or(30 * time.Minute),
+		Timeout:                       budget,
 		Check: func(ctx context.Context, st *engine.State) (bool, error) {
-			return !declared, nil
+			return len(steps) == 0, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			switch spec.Kind {
-			case domain.OperationKindRuntimeService:
-				cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
+			reported := 0
+			for i, spec := range steps {
+				// Named by position only when there is more than
+				// one, so a single migration reads as it always
+				// has.
+				which := "the migration"
+				if len(steps) > 1 {
+					which = fmt.Sprintf("migration step %d of %d", i+1, len(steps))
+					st.Detail("%s", which)
+				}
+				schema, err := d.runMigrateStep(ctx, st, inst, rel, spec, which)
 				if err != nil {
 					return err
 				}
-				res, err := d.Runtime.RunOneShot(ctx, cfg, spec.Service, ports.RunOptions{
-					Timeout: spec.Timeout.Or(30 * time.Minute),
-					Remove:  true,
-				})
-				if err != nil {
-					return err
+				if schema > 0 {
+					reported = schema
 				}
-				if !res.OK() {
-					return domain.RuntimeError(nil,
-						"the migration service %q exited with code %d", spec.Service, res.ExitCode).
-						WithHint("inspect the migration output in the log; " +
-							"the database may be partially migrated")
-				}
-				passIfFallbackCannotRead(st, rel, 0)
-				return nil
-
-			case domain.OperationKindHook:
-				env := d.hookEnv(inst, rel, domain.Version{}, st.OpID,
-					domain.OpTypeApply, ports.PhaseMigrate, st.DryRun)
-
-				outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env,
-					spec.Timeout.Or(30*time.Minute))
-				if err != nil {
-					return err
-				}
-				if outcome.Skipped {
-					st.Detail("schema is already current")
-				}
-				if outcome.Result.SchemaVersion > 0 {
-					// Recorded so rollback can reason about
-					// schema compatibility without re-running
-					// the product's tooling to ask.
-					st.Set(engine.KeySchemaVersion, outcome.Result.SchemaVersion)
-				}
-				passIfFallbackCannotRead(st, rel, outcome.Result.SchemaVersion)
-				return nil
-
-			default:
-				return domain.ValidationError(nil,
-					"the migrate operation has an unsupported kind %q", spec.Kind)
 			}
+			if reported > 0 {
+				// Recorded so rollback can reason about schema
+				// compatibility without re-running the product's
+				// tooling to ask.
+				st.Set(engine.KeySchemaVersion, reported)
+			}
+			passIfFallbackCannotRead(st, rel, reported)
+			return nil
 		},
+	}
+}
+
+// runMigrateStep runs one step of the migrate operation and returns the schema
+// version it reported, or zero.
+func (d *Deps) runMigrateStep(
+	ctx context.Context, st *engine.State, inst domain.Installation, rel domain.Release,
+	spec domain.OperationSpec, which string,
+) (int, error) {
+	switch spec.Kind {
+	case domain.OperationKindRuntimeService:
+		cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
+		if err != nil {
+			return 0, err
+		}
+		res, err := d.Runtime.RunOneShot(ctx, cfg, spec.Service, ports.RunOptions{
+			Timeout: spec.Timeout.Or(30 * time.Minute),
+			Remove:  true,
+		})
+		if err != nil {
+			return 0, err
+		}
+		// Exit 2 is "nothing to do", as it is for a hook. The adapter
+		// returns it as data for exactly this reading, and treating it
+		// as a failure made a migration service that had nothing to
+		// migrate stop the deployment for manual intervention.
+		if res.ExitCode == 2 {
+			st.Detail("schema is already current")
+			return 0, nil
+		}
+		if !res.OK() {
+			return 0, domain.RuntimeError(nil,
+				"%s, the service %q, exited with code %d", which, spec.Service, res.ExitCode).
+				WithHint("inspect the migration output in the log; " +
+					"the database may be partially migrated")
+		}
+		return 0, nil
+
+	case domain.OperationKindHook:
+		env := d.hookEnv(inst, rel, domain.Version{}, st.OpID,
+			domain.OpTypeApply, ports.PhaseMigrate, st.DryRun)
+
+		outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env,
+			spec.Timeout.Or(30*time.Minute))
+		if err != nil {
+			return 0, err
+		}
+		if outcome.Skipped {
+			st.Detail("schema is already current")
+		}
+		return outcome.Result.SchemaVersion, nil
+
+	default:
+		return 0, domain.ValidationError(nil,
+			"%s has an unsupported kind %q", which, spec.Kind)
 	}
 }
 

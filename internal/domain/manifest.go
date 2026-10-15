@@ -157,13 +157,13 @@ type Manifest struct {
 	// and a release declaring two carries both sets with the vendor owning
 	// their equivalence -- the manager asserts nothing about it and must
 	// not pretend to (RFC 0023 decision 4).
-	Runtimes      Runtimes                 `yaml:"runtimes" json:"runtimes,omitempty"`
-	Requirements  Requirements             `yaml:"requirements" json:"requirements"`
-	Parameters    map[string]ParameterSpec `yaml:"parameters" json:"parameters,omitempty"`
-	Images        map[string]ImageSpec     `yaml:"images" json:"images"`
-	Configuration []ConfigurationFile      `yaml:"configuration" json:"configuration"`
-	Secrets       SecretsSpec              `yaml:"secrets" json:"secrets"`
-	Operations    map[string]OperationSpec `yaml:"operations" json:"operations"`
+	Runtimes      Runtimes                  `yaml:"runtimes" json:"runtimes,omitempty"`
+	Requirements  Requirements              `yaml:"requirements" json:"requirements"`
+	Parameters    map[string]ParameterSpec  `yaml:"parameters" json:"parameters,omitempty"`
+	Images        map[string]ImageSpec      `yaml:"images" json:"images"`
+	Configuration []ConfigurationFile       `yaml:"configuration" json:"configuration"`
+	Secrets       SecretsSpec               `yaml:"secrets" json:"secrets"`
+	Operations    map[string]OperationSteps `yaml:"operations" json:"operations"`
 
 	// omitzero rather than omitempty: omitempty does not omit an empty
 	// struct, so every release -- including the ones written before this
@@ -516,6 +516,61 @@ type OperationSpec struct {
 	Timeout Duration      `yaml:"timeout" json:"timeout,omitempty"`
 }
 
+// OperationSteps is one named operation: a single step, or, for `migrate`
+// alone, several run in order.
+//
+// A first install that needs its migrations and then the application's own
+// bootstrap -- system catalogues, a first administrator -- has two steps that
+// must run in that order, before services start, on every install and update.
+// A list is the shape rather than a second operation name such as
+// `post_migrate`, because `operations` is a map an older manager decodes
+// without complaint: it would accept the new key and never run it. A list under
+// `migrate` is something it cannot decode, so declaring
+// MigrateStepsMinManagerVersion makes it say so instead (RFC 0018 decision 1).
+type OperationSteps []OperationSpec
+
+// UnmarshalYAML accepts a mapping, one step, or a sequence of them.
+//
+// The shape is read first and only that shape decoded, so a typo inside a
+// mapping arrives as the strict decoder's own "unknown field" with its
+// position, not as the error from trying the other spelling.
+func (o *OperationSteps) UnmarshalYAML(unmarshal func(any) error) error {
+	var shape any
+	if err := unmarshal(&shape); err != nil {
+		return err
+	}
+	if _, isList := shape.([]any); isList {
+		var many []OperationSpec
+		if err := unmarshal(&many); err != nil {
+			return err
+		}
+		*o = many
+		return nil
+	}
+	var one OperationSpec
+	if err := unmarshal(&one); err != nil {
+		return err
+	}
+	*o = OperationSteps{one}
+	return nil
+}
+
+// MarshalJSON writes one step as the object it always was, and several as a
+// list, so `release show --json` is unchanged for every bundle that declares
+// one.
+func (o OperationSteps) MarshalJSON() ([]byte, error) {
+	if len(o) == 1 {
+		return json.Marshal(o[0])
+	}
+	return json.Marshal([]OperationSpec(o))
+}
+
+// MigrateStepsMinManagerVersion is the manager release that runs a list under
+// `operations.migrate`. A bundle using one declares it as its
+// `compatibility.min_manager_version`, so an older manager refuses it as too
+// old rather than as a malformed operation.
+const MigrateStepsMinManagerVersion = "0.4.0"
+
 // Named manifest operations the lifecycle layer looks up by convention.
 const (
 	OpMigrate   = "migrate"
@@ -725,10 +780,11 @@ func (m *Manifest) ApplyDefaults() {
 			m.Configuration[i].Mode = DefaultConfigMode
 		}
 	}
-	for name, op := range m.Operations {
-		if op.Timeout == 0 {
-			op.Timeout = Duration(DefaultOperationTimeout)
-			m.Operations[name] = op
+	for _, steps := range m.Operations {
+		for i := range steps {
+			if steps[i].Timeout == 0 {
+				steps[i].Timeout = Duration(DefaultOperationTimeout)
+			}
 		}
 	}
 	for i := range m.Health.Checks {
@@ -1079,35 +1135,31 @@ func (m *Manifest) Validate() error {
 	}
 
 	// operations
-	for name, op := range m.Operations {
-		field := "operations." + name
-		switch op.Kind {
-		case OperationKindRuntimeService:
-			if op.Service == "" {
-				v.add(field+".service", "is required for kind %q", OperationKindRuntimeService)
-			}
-			if len(op.Command) > 0 {
-				v.add(field+".command", "is not allowed for kind %q; use the service's own entrypoint",
-					OperationKindRuntimeService)
-			}
-		case OperationKindHook:
-			if len(op.Command) == 0 {
-				v.add(field+".command", "is required for kind %q", OperationKindHook)
-			} else {
-				v.checkRelPath(field+".command[0]", op.Command[0])
-			}
-			if op.Service != "" {
-				v.add(field+".service", "is not allowed for kind %q", OperationKindHook)
-			}
-		case "":
-			v.add(field+".kind", "is required (%q or %q)", OperationKindRuntimeService, OperationKindHook)
-		default:
-			v.add(field+".kind", "must be %q or %q, got %q",
-				OperationKindRuntimeService, OperationKindHook, op.Kind)
+	for name, steps := range m.Operations {
+		switch {
+		case len(steps) == 0:
+			v.add("operations."+name, "must declare at least one step")
+		case len(steps) > 1 && name != OpMigrate:
+			v.add("operations."+name, "may list several steps only for %s", OpMigrate)
 		}
-		if op.Timeout < 0 {
-			v.add(field+".timeout", "must be positive")
+		for i, op := range steps {
+			field := "operations." + name
+			if len(steps) > 1 {
+				field = fmt.Sprintf("operations.%s[%d]", name, i)
+			}
+			v.checkOperation(field, op)
 		}
+	}
+	// A list is what an older manager cannot decode, which is the point
+	// (OperationSteps), and the preamble pass turns that into "this needs
+	// a newer manager" only when the manifest says so. Without the
+	// declaration the vendor's customer is told their manifest has a
+	// malformed operation instead.
+	if minimum := MustParseVersion(MigrateStepsMinManagerVersion); len(m.Operations[OpMigrate]) > 1 &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because operations.%s lists several steps and an older "+
+				"manager cannot read them", minimum, OpMigrate)
 	}
 
 	// backup.volumes
@@ -1233,8 +1285,17 @@ func (m *Manifest) Validate() error {
 
 // Operation looks up a manifest-declared operation by name.
 func (m *Manifest) Operation(name string) (OperationSpec, bool) {
-	op, ok := m.Operations[name]
-	return op, ok
+	steps := m.Operations[name]
+	if len(steps) == 0 {
+		return OperationSpec{}, false
+	}
+	return steps[0], true
+}
+
+// OperationSteps returns every step of a named operation, in order. Only
+// `migrate` may have more than one; for the rest this is Operation as a list.
+func (m *Manifest) OperationSteps(name string) []OperationSpec {
+	return m.Operations[name]
 }
 
 // ImageRefs returns every image reference in a stable order, so pull plans and
@@ -1284,6 +1345,37 @@ func (v *validationErrors) add(field, format string, args ...any) {
 // checkRelPath enforces the manifest rule that every bundle-relative path
 // stays inside the release root. This is a contract check, not a security
 // boundary -- extraction and rendering enforce containment through os.Root.
+// checkOperation validates one step of a named operation.
+func (v *validationErrors) checkOperation(field string, op OperationSpec) {
+	switch op.Kind {
+	case OperationKindRuntimeService:
+		if op.Service == "" {
+			v.add(field+".service", "is required for kind %q", OperationKindRuntimeService)
+		}
+		if len(op.Command) > 0 {
+			v.add(field+".command", "is not allowed for kind %q; use the service's own entrypoint",
+				OperationKindRuntimeService)
+		}
+	case OperationKindHook:
+		if len(op.Command) == 0 {
+			v.add(field+".command", "is required for kind %q", OperationKindHook)
+		} else {
+			v.checkRelPath(field+".command[0]", op.Command[0])
+		}
+		if op.Service != "" {
+			v.add(field+".service", "is not allowed for kind %q", OperationKindHook)
+		}
+	case "":
+		v.add(field+".kind", "is required (%q or %q)", OperationKindRuntimeService, OperationKindHook)
+	default:
+		v.add(field+".kind", "must be %q or %q, got %q",
+			OperationKindRuntimeService, OperationKindHook, op.Kind)
+	}
+	if op.Timeout < 0 {
+		v.add(field+".timeout", "must be positive")
+	}
+}
+
 func (v *validationErrors) checkRelPath(field, p string) {
 	switch {
 	case p == "":
