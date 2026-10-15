@@ -2437,8 +2437,9 @@ nothing but the time to read the error.</p>
 <h3 id="when-an-update-fails">When an update fails<a class="headerlink" href="#when-an-update-fails" title="Permanent link">&para;</a></h3>
 <p>A failure rolls the update back: the configuration files return to what they
 were, in the modes they had, and if the new release's services had already been
-started, the release that was running is brought back up with its own secrets
-and waited for until its health checks pass. That is
+started — or a migration service had run, which starts what it depends on —
+the release that was running is brought back up with its own secrets and
+waited for until its health checks pass. That is
 <a href="../../reference/exit-codes/">exit 11</a>: the release that was running is running
 again. The database is not rolled back: if migrations ran, it stays at the
 schema they left, which is allowed only when the old release declares it can

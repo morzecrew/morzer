@@ -1748,6 +1748,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#several-migrate-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Several migrate steps
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2409,6 +2426,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#several-migrate-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Several migrate steps
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3323,6 +3357,36 @@ with permissions nobody chose.</p>
 <p>The two kinds are not collapsed into one field because their failure semantics
 differ: a hook runs on the host and sees the host's filesystem, a runtime
 service runs on the application network and sees the container's.</p>
+<p>A runtime service starts the services it <code>depends_on</code> first, and waits for any
+condition it names, so a migration service can reach the database on a first
+install, before the deployment's other services have ever started. On an update,
+a dependency whose configuration changed is recreated at that point, so
+migrations run against the new release's database service. Exit <code>2</code> means
+"nothing to do", as it does for a hook.</p>
+<h3 id="several-migrate-steps">Several migrate steps<a class="headerlink" href="#several-migrate-steps" title="Permanent link">&para;</a></h3>
+<p><code>migrate</code> alone may list several steps instead of one. They run in order, on
+<code>apply</code> and on every <code>update</code>, after images are pulled and before services
+start:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.4.0"</span>
+
+<span class="nt">operations</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">migrate</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">runtime-service</span>
+<span class="w">      </span><span class="nt">service</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">flyway</span>
+<span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15m</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">runtime-service</span>
+<span class="w">      </span><span class="nt">service</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bootstrap</span>
+</code></pre></div>
+<p>Every step is a migration as far as failure goes. If any of them fails, the
+ones before it have already changed the database, so the operation stops for
+manual intervention (<a href="../exit-codes/">exit 12</a>) rather than rolling back. Write
+each step so that running it again is harmless: a step after a failed one runs
+again on the next attempt, and every step runs again on every <code>apply</code>.</p>
+<p><strong>A list needs <code>min_manager_version: "0.4.0"</code> or later</strong>, and a manifest with a
+list that declares less is refused. A manager older than 0.4.0 cannot read the
+list. The declaration is what makes it refuse the bundle as needing a newer
+manager, instead of reporting a malformed operation.</p>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>What the manager may do about the project's named volumes, which it captures
 itself rather than through the backup hook.</p>
