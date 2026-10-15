@@ -2306,8 +2306,13 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set
 signatures — at the moment you set it, not at the tick that would have acted on
 it. A machine that accepts the setting and then refuses to act every night is
 worse than one that refuses the setting: you would believe it was armed.</p>
-<p>Setting a channel installs a <code>&lt;product&gt;-update.timer</code>; clearing it removes the
-timer again.</p>
+<p>With <code>update.check</code> on, setting a channel installs a <code>&lt;product&gt;-update.timer</code>,
+and clearing either one removes the timer again: a channel with checking off is
+followed by nothing. <code>morzer status</code> shows the channel on its <code>following</code> line,
+with when the timer looks and whether it installs what it finds, or says it is
+not polled:</p>
+<div class="highlight"><pre><span></span><code>  following     oci://registry.example/demo/bundle:stable (on Sun *-*-* 04:00:00, installs what it may)
+</code></pre></div>
 <h3 id="the-maintenance-window-is-an-oncalendar-expression">The maintenance window is an <code>OnCalendar</code> expression<a class="headerlink" href="#the-maintenance-window-is-an-oncalendar-expression" title="Permanent link">&para;</a></h3>
 <p>The timer ticks daily at 03:30 unless you say otherwise. A window is one
 setting, and its value is a systemd <code>OnCalendar</code> expression, written into the
