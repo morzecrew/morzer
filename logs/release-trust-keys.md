@@ -122,4 +122,16 @@ Superseded within the same attempt: `test/clitest/trust_test.go` runs `release
 trust add` and `init --signing-key` through the command line in-process, so the
 wired chain is what judges the key there.
 
+Sabotage, with the work committed first and each mutant compiled and restored
+from a copy: the first sweep killed eight of eleven, and two mutants that did
+not compile counted as nothing. The survivor was the duplicate check made again
+under the lock, after the same check against a copy read before it: no
+sequential test reaches the second. Each operation now decides once, under the
+lock against a fresh read -- `withLock` takes none for a plan, so a plan meets
+the same check -- and the line numbers above moved: the duplicate check is at
+`internal/lifecycle/ops/trust.go:59`, the writes at :54 and :87, the last-key
+refusal at :119. Of the evidence lines in the entries, `minisign.go:135` now
+falls inside the new CheckKey; the parser it cited is at :148. Second sweep:
+eleven of eleven killed, plus a test for a remove plan that changes nothing.
+
 **Drift count: 0.**
