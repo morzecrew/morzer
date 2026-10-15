@@ -130,6 +130,11 @@ func TestTheLastKeyMayGoWhenNoSignatureIsRequired(t *testing.T) {
 	_, err := ops.TrustAdd(ctx, h.Deps, ops.Options{}, key)
 	require.NoError(t, err)
 
+	plan, err := ops.TrustRemove(ctx, h.Deps, ops.Options{DryRun: true}, key)
+	require.NoError(t, err)
+	assert.Contains(t, plan.Summary, "would")
+	assert.Equal(t, []string{key}, trustedKeys(t, h).SigningKeys, "a plan removed a key")
+
 	_, err = ops.TrustRemove(ctx, h.Deps, ops.Options{}, key)
 	require.NoError(t, err)
 	assert.Empty(t, trustedKeys(t, h).SigningKeys)

@@ -40,27 +40,18 @@ func TrustList(ctx context.Context, d *Deps) (TrustReport, error) {
 // Adding a key already trusted is a no-op that says so rather than an error: a
 // rotation is a procedure an operator re-runs, and the re-run should not fail
 // at the step that already worked.
+//
+// Each decision is made once, under the lock against a fresh read. withLock
+// takes no lock for a plan, so a plan reaches the same check a real run does
+// rather than a copy of it made before the lock.
 func TrustAdd(ctx context.Context, d *Deps, opts Options, key string) (Result, error) {
 	key = strings.TrimSpace(key)
 	if err := d.checkSigningKeys([]string{key}); err != nil {
 		return Result{}, err
 	}
-	inst, err := d.loadInstallation(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	already := "release signatures by " + key + " are already trusted"
-	if slices.Contains(inst.Policy.SigningKeys, key) {
-		return Result{Summary: already}, nil
-	}
-	if opts.DryRun {
-		return Result{Summary: "would trust release signatures by " + key}, nil
-	}
 
 	added := false
-	err = d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts, func(ctx context.Context) error {
-		// Re-read under the lock, so a concurrent writer's change is not
-		// reverted by this copy of the state.
+	err := d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts, func(ctx context.Context) error {
 		current, err := d.loadInstallation(ctx)
 		if err != nil {
 			return err
@@ -68,53 +59,48 @@ func TrustAdd(ctx context.Context, d *Deps, opts Options, key string) (Result, e
 		if slices.Contains(current.Policy.SigningKeys, key) {
 			return nil
 		}
-		current.Policy.SigningKeys = append(current.Policy.SigningKeys, key)
 		added = true
+		if opts.DryRun {
+			return nil
+		}
+		current.Policy.SigningKeys = append(current.Policy.SigningKeys, key)
 		return d.saveInstallation(ctx, current)
 	})
-	if err != nil {
+	switch {
+	case err != nil:
 		return Result{}, err
-	}
-	if !added {
-		return Result{Summary: already}, nil
+	case !added:
+		return Result{Summary: "release signatures by " + key + " are already trusted"}, nil
+	case opts.DryRun:
+		return Result{Summary: "would trust release signatures by " + key}, nil
 	}
 	return Result{Summary: "release signatures by " + key + " are now trusted"}, nil
 }
 
 // TrustRemove stops trusting release signatures made with key.
 //
-// Refused, before a plan returns, when it would leave a policy nothing can
+// Refused, in a plan as in a run, when it would leave a policy nothing can
 // satisfy: a machine requiring a signature with no key to check one against
 // refuses every release, and unattended updates require exactly that policy.
 func TrustRemove(ctx context.Context, d *Deps, opts Options, key string) (Result, error) {
 	key = strings.TrimSpace(key)
-	inst, err := d.loadInstallation(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	if _, err := untrust(inst, key); err != nil {
-		return Result{}, err
-	}
-	if opts.DryRun {
-		return Result{Summary: "would stop trusting release signatures by " + key}, nil
-	}
-
-	err = d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts, func(ctx context.Context) error {
+	err := d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts, func(ctx context.Context) error {
 		current, err := d.loadInstallation(ctx)
 		if err != nil {
 			return err
 		}
-		// Checked again against the fresh copy: another `remove` may
-		// have taken the other key while this one waited for the lock.
 		remaining, err := untrust(current, key)
-		if err != nil {
+		if err != nil || opts.DryRun {
 			return err
 		}
 		current.Policy.SigningKeys = remaining
 		return d.saveInstallation(ctx, current)
 	})
-	if err != nil {
+	switch {
+	case err != nil:
 		return Result{}, err
+	case opts.DryRun:
+		return Result{Summary: "would stop trusting release signatures by " + key}, nil
 	}
 	return Result{Summary: "release signatures by " + key + " are no longer trusted"}, nil
 }
