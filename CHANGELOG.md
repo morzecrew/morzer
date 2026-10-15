@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`morzer config set update.schedule`**: when the update timer follows the channel — and installs, if `update.auto_apply` allows — as a systemd `OnCalendar` expression. This is the maintenance window RFC 0016 always said `OnCalendar` was, and nothing let you set it: every installation ticked daily at 03:30. Unsetting it returns to that default. A sandbox that should follow `main` within minutes sets `*:0/5`.
 
+- **`morzer release trust add|remove|list`: the keys a release must be signed with can change after `init`.** Rotating a vendor key used to mean re-creating the installation. Trust the new key, install a release it signed, then remove the old one. A key is parsed before it is trusted, adding one already trusted changes nothing, and the last key cannot be removed while a signature is required, which `update.auto_apply` also needs.
 - **`operations.migrate` may list several steps**, run in order before services start, on `apply` and every `update`: migrations, then the application's own bootstrap, for example. A failure in any of them stops for manual intervention as a failed migration always has. A manifest using a list declares `compatibility.min_manager_version: "0.4.0"`, so an older manager refuses it as needing a newer manager instead of reporting a malformed operation.
 
 ### Changed
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`init` accepted a `--signing-key` that is not a minisign public key.** Only its presence was checked, so a typo surfaced at the first update, after the installation had been created around it. The key is now parsed before anything is created.
 - **A migration run as a `runtime-service` could not reach the database on a first install.** It ran with `docker compose run --no-deps`, and migrations run before services start, so nothing had started the database it migrates. Its `depends_on` services are now started first, and any condition it names is waited for. On an update, a dependency whose configuration changed is now recreated before the migration rather than after it.
 - **A migration service that exited 2 stopped the deployment for manual intervention.** Exit 2 means "nothing to do" under the hook contract, and the runtime adapter already returned it as data for that reading. It is now treated as such.
 - **A failed update left the new release's containers running.** Compensation put the release pointer, configuration and secrets back, but not the services, so the new release's containers ran against the old release's configuration until somebody ran `apply` — on an unattended machine, until the next boot. When the update got as far as starting services, it now brings the previous release back up with its own secrets and waits for its health checks; if that fails too, the update ends at exit 12 with both failures in its error. Restored configuration files also keep their own mode instead of coming back as 0640.

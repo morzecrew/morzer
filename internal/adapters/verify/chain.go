@@ -67,3 +67,19 @@ func (c *Chain) Verify(ctx context.Context, bundle ports.BundlePath, expect port
 	}
 	return nil
 }
+
+var _ ports.KeyChecker = (*Chain)(nil)
+
+// CheckKey asks every member that can judge a key, and refuses if any refuses.
+// A chain with no such member accepts, which is what the manager did before
+// any member could judge one.
+func (c *Chain) CheckKey(key string) error {
+	for _, v := range c.verifiers {
+		if kc, ok := v.(ports.KeyChecker); ok {
+			if err := kc.CheckKey(key); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

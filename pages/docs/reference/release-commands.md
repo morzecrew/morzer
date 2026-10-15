@@ -511,9 +511,9 @@ morzer init --require-signature \
     --signing-key RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 ```
 
-They are recorded under `policy` in the installation's state and shown in
-`installation.yaml`, which is a report: editing it changes nothing. They are not
-yet changeable after `init`. Keys live with the
+and changed afterwards with [`release trust`](#release-trust). They are recorded
+under `policy` in the installation's state and shown in `installation.yaml`,
+which is a report: editing it changes nothing. Keys live with the
 installation and never with the release: a bundle naming the key allowed to sign
 it would be a bundle authorising itself.
 
@@ -605,6 +605,40 @@ one before it are never pruned.
 | Flag | Meaning |
 | --- | --- |
 | `--keep` | Number of non-active releases to retain. `0` uses the manifest's policy. |
+
+## release trust
+
+```sh
+morzer release trust list
+morzer release trust add <minisign-public-key>
+morzer release trust remove <minisign-public-key>
+```
+
+`release trust list` shows the keys this installation accepts a release
+signature from, and whether a signature is required at all. `init` sets both;
+`add` and `remove` change the keys afterwards.
+
+**Rotating a vendor key is three steps**, and while both keys are trusted a
+release signed with either installs:
+
+```sh
+morzer release trust add RWQ...new
+morzer update --to 1.5.0              # a release signed with the new key
+morzer release trust remove RWQ...old
+```
+
+- **`release trust add` parses the key** with the parser verification uses, and refuses one
+  that does not parse. `init` does the same for `--signing-key`. Adding a key
+  that is already trusted changes nothing and says so, so a rotation script can
+  be re-run.
+- **`release trust remove` refuses the last key while a signature is required**, because no
+  release could be installed afterwards, and `update.auto_apply` needs a
+  required signature. Trust the replacement first. Removing a key that is not
+  trusted is an error naming the keys that are.
+- A release already installed stays installed. One signed only with a removed
+  key is refused from the next update, including one already staged.
+
+`--dry-run` reports what would change, and the refusals above apply to it.
 
 ## What the loader enforces
 
