@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -483,7 +485,16 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 				modes[d.configTarget(cfg.Target)] = cfg.Mode.Perm()
 			}
 
-			for target, content := range rendered {
+			// Recorded before the first write, not after the last: a
+			// write that fails part way leaves the files before it
+			// replaced, and this step's own compensator, which runs
+			// for the step that failed, has to find their backups.
+			// The map is shared, so what the loop adds is seen.
+			st.Set(keyBackups, backups)
+
+			// In a fixed order, so which files a failure leaves
+			// replaced does not depend on map iteration.
+			for _, target := range slices.Sorted(maps.Keys(rendered)) {
 				switch existing, err := os.ReadFile(target); {
 				case err == nil:
 					backup := configBackup{content: existing, mode: os.FileMode(domain.DefaultConfigMode.Perm())}
@@ -495,17 +506,22 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 					// Created by this render, so putting it back
 					// means removing it.
 					backups[target] = configBackup{created: true}
+				default:
+					// A file that exists and cannot be read would be
+					// replaced with no backup, and nothing could put
+					// it back: refused before it is touched.
+					return domain.InstallationError(err,
+						"cannot read %s to keep a copy before replacing it", target)
 				}
 				mode := modes[target]
 				if mode == 0 {
 					mode = domain.DefaultConfigMode.Perm()
 				}
-				if err := atomicfs.WriteFile(target, content, os.FileMode(mode)); err != nil {
+				if err := atomicfs.WriteFile(target, rendered[target], os.FileMode(mode)); err != nil {
 					return err
 				}
 			}
 
-			st.Set(keyBackups, backups)
 			st.Detail("%d file(s)", len(rendered))
 			return nil
 		},

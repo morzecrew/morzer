@@ -447,6 +447,84 @@ func TestAFailedUpdatePutsThePreviousReleaseBackUp(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(), "the configuration came back in another mode")
 }
 
+// TestAConfigFileThatCannotBeReadIsNotReplaced.
+//
+// Rendering backs each file up before replacing it. A file that exists but
+// cannot be read was replaced with no backup, so the rollback put nothing back,
+// flagged nothing, and the previous release came back up against the new
+// release's configuration -- the state the restore exists to prevent.
+func TestAConfigFileThatCannotBeReadIsNotReplaced(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	config := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+	before, err := os.ReadFile(config)
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(config, 0))
+
+	h.Health.FailingWaits = 1
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.Error(t, err)
+
+	require.NoError(t, os.Chmod(config, 0o600))
+	after, err := os.ReadFile(config)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after),
+		"a file with no backup was replaced, and the rollback could not put it back")
+}
+
+// TestAPartlyWrittenConfigurationIsPutBack.
+//
+// Two files, the second in a directory nothing can write to. The first was
+// replaced before the second failed, and the backups were recorded only once
+// every write had succeeded -- so the failed step's own rollback found nothing
+// to restore and left the first file as the new release wrote it.
+func TestAPartlyWrittenConfigurationIsPutBack(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	config := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+	before, err := os.ReadFile(config)
+	require.NoError(t, err)
+
+	// Sorted after the first target, so it is written second.
+	locked := filepath.Join(h.Root, "etc", "zz")
+	require.NoError(t, os.MkdirAll(locked, 0o755))
+	require.NoError(t, os.Chmod(locked, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	src := stageRecoverableUpgradeSource(t, h)
+	path := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	first := "    target: " + config + "\n    mode: \"0640\"\n"
+	patched := strings.Replace(string(raw), first, first+
+		"  - template: templates/application.yaml.tmpl\n"+
+		"    target: "+filepath.Join(locked, "extra.yaml")+"\n"+
+		"    mode: \"0640\"\n", 1)
+	require.NotEqual(t, string(raw), patched, "the fixture's configuration entry is not the one this extends")
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	after, err := os.ReadFile(config)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after),
+		"the file written before the failure was left as the new release wrote it")
+}
+
 // TestARestoreThatFailsNeedsAPerson.
 //
 // Bringing the old release back can fail too, and then nothing is running that
