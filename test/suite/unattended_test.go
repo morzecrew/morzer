@@ -863,6 +863,11 @@ func TestWhatChangedIsDecidedUnderTheLock(t *testing.T) {
 // The hook is patched with the declaration. The gate reads only what the
 // release declares, but a failed install is judged by the schema the hook
 // reports, and the fixture's hook migrates to 14 whatever the manifest says.
+//
+// Its smoke test fails while failSmoke's marker exists: a failure after the
+// services start that the release put back does not repeat, because nothing
+// runs a smoke test on the way back. An injected Up failure would fail the
+// restore as well, and test that instead.
 func recoverableChannel(t *testing.T) (*harness, *fakeRegistry) {
 	t.Helper()
 	h, registry, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
@@ -870,6 +875,8 @@ func recoverableChannel(t *testing.T) (*harness, *fakeRegistry) {
 		for file, edit := range map[string][2]string{
 			"manifest.yaml": {"database_schema_produces: 14", "database_schema_produces: 12"},
 			"hooks/migrate": {"target=14", "target=12"},
+			"hooks/smoke-test": {"set -eu\n", "set -eu\n[ ! -f \"${DEMO_DATA_DIR:?}/.fail-smoke\" ] || " +
+				"{ echo \"injected smoke failure\" >&2; exit 1; }\n"},
 		} {
 			path := filepath.Join(dir, file)
 			raw, err := os.ReadFile(path)
@@ -883,6 +890,16 @@ func recoverableChannel(t *testing.T) (*harness, *fakeRegistry) {
 	applyBaseline(t, h)
 	armAutoApply(t, h)
 	return h, registry
+}
+
+// failSmoke makes the channel's release fail its smoke test until the
+// returned function is called.
+func failSmoke(t *testing.T, h *harness) (heal func()) {
+	t.Helper()
+	marker := filepath.Join(h.Paths.DataDir(), ".fail-smoke")
+	require.NoError(t, os.MkdirAll(filepath.Dir(marker), 0o755))
+	require.NoError(t, os.WriteFile(marker, nil, 0o644))
+	return func() { require.NoError(t, os.Remove(marker)) }
 }
 
 // countUpdates is how many update operations the journal holds, which is how
@@ -918,7 +935,7 @@ func TestAFailedUnattendedInstallIsNotRetried(t *testing.T) {
 	h, _ := recoverableChannel(t)
 	ctx := context.Background()
 
-	h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: daemon refused")
+	heal := failSmoke(t, h)
 	_, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
 	require.Error(t, err, "the injected failure must fail the first install")
 
@@ -942,7 +959,7 @@ func TestAFailedUnattendedInstallIsNotRetried(t *testing.T) {
 		"status does not say the timer stopped trying")
 
 	// The operator's retry is an ordinary update, and it retires the record.
-	delete(h.Runtime.Fail, "Up")
+	heal()
 	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{To: "1.3.0"})
 	require.NoError(t, err)
 	candidate, err = h.Deps.State.UpdateCandidate(ctx)
@@ -956,10 +973,10 @@ func TestAChannelThatMovesIsTriedAgain(t *testing.T) {
 	h, registry := recoverableChannel(t)
 	ctx := context.Background()
 
-	h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: daemon refused")
+	heal := failSmoke(t, h)
 	_, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
 	require.Error(t, err)
-	delete(h.Runtime.Fail, "Up")
+	heal()
 
 	// A new artefact behind the same tag: same bundle, different manifest
 	// digest, which is what a channel moving looks like to a poll.
