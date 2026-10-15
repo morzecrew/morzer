@@ -260,6 +260,108 @@ func TestNonCompensableFailureRequiresManualIntervention(t *testing.T) {
 		"earlier compensable steps still roll back")
 }
 
+// A step that succeeded and made the earlier steps unsafe to undo -- a
+// migration past what the release being returned to can read -- closes the
+// way back. A later failure undoes only what came after it, and ends needing a
+// person rather than reported as a rollback.
+func TestAFailurePastThePointOfNoReturnIsNotRolledBack(t *testing.T) {
+	eng, store, _ := newEngine()
+	tr := &tracker{}
+
+	pivot := step(tr, "migrate", false, false)
+	pivot.Execute = func(ctx context.Context, st *State) error {
+		tr.executed = append(tr.executed, "migrate")
+		st.PassPointOfNoReturn("the schema moved past what the old release reads")
+		st.PassPointOfNoReturn("a later reason, which must not replace the first")
+		return nil
+	}
+	op := operation(
+		step(tr, "before", false, true),
+		pivot,
+		step(tr, "after", false, true),
+		step(tr, "health", true, false),
+	)
+
+	result, err := eng.Run(context.Background(), op, Options{})
+	require.Error(t, err)
+
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status)
+	assert.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err))
+	assert.Equal(t, []string{"after"}, tr.compensated,
+		"only what came after the point of no return may be undone")
+	assert.Contains(t, err.Error(), `after step "migrate"`)
+	assert.Contains(t, err.Error(), "the schema moved past what the old release reads")
+	assert.NotContains(t, err.Error(), "a later reason")
+	assert.Equal(t, "the schema moved past what the old release reads",
+		store.last().Steps[1].Message, "the journal does not say where the way back closed")
+}
+
+// The same point closes the way back for a step that aborts rather than
+// compensates. Record-state is one: an update whose release record could not be
+// written after migrating ended `failed`, which blocks nothing, and the next
+// boot's apply converged the old release over the migrated database.
+func TestAnAbortPastThePointOfNoReturnNeedsAPerson(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	pivot := step(tr, "migrate", false, false)
+	pivot.Execute = func(ctx context.Context, st *State) error {
+		st.PassPointOfNoReturn("the schema moved past what the old release reads")
+		return nil
+	}
+	record := step(tr, "record-state", true, false)
+	record.OnFailure = Abort
+
+	result, err := eng.Run(context.Background(),
+		operation(step(tr, "before", false, true), pivot, record), Options{})
+	require.Error(t, err)
+
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status)
+	assert.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err))
+	assert.Empty(t, tr.compensated, "an abort undoes nothing, past the point or not")
+	assert.Contains(t, err.Error(), `after step "migrate"`)
+}
+
+// A rollback that fails is the failure that decides what an operator does
+// next, so every intervention names it -- not only the one reached because the
+// rollback failed. Here the failed step needs a person anyway, or the way back
+// had already closed, and an earlier undo failed as well.
+func TestEveryInterventionNamesTheRollbackThatFailed(t *testing.T) {
+	brokenUndo := func(tr *tracker, id string) Step {
+		s := step(tr, id, false, true)
+		s.Compensate = func(context.Context, *State) error {
+			return domain.RuntimeError(nil, "could not put %s back", id)
+		}
+		return s
+	}
+
+	t.Run("the failed step cannot be undone", func(t *testing.T) {
+		eng, _, _ := newEngine()
+		tr := &tracker{}
+		irreversible := step(tr, "migration", true, false)
+		irreversible.RequiresInterventionOnFailure = true
+
+		_, err := eng.Run(context.Background(), operation(brokenUndo(tr, "render"), irreversible), Options{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "could not put render back")
+	})
+
+	t.Run("past the point of no return", func(t *testing.T) {
+		eng, _, _ := newEngine()
+		tr := &tracker{}
+		pivot := step(tr, "migrate", false, false)
+		pivot.Execute = func(ctx context.Context, st *State) error {
+			st.PassPointOfNoReturn("the schema moved")
+			return nil
+		}
+
+		_, err := eng.Run(context.Background(),
+			operation(pivot, brokenUndo(tr, "start"), step(tr, "health", true, false)), Options{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "could not put start back")
+	})
+}
+
 func TestContinuePolicyKeepsGoing(t *testing.T) {
 	eng, _, _ := newEngine()
 	tr := &tracker{}

@@ -2,8 +2,13 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -474,26 +479,49 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			// only the digest travels.
 			st.Set(engine.KeyRenderedConfig, rendered)
 
-			backups := make(map[string][]byte, len(rendered))
+			backups := make(map[string]configBackup, len(rendered))
 			modes := make(map[string]uint32, len(rendered))
 			for _, cfg := range rel.Manifest.Configuration {
 				modes[d.configTarget(cfg.Target)] = cfg.Mode.Perm()
 			}
 
-			for target, content := range rendered {
-				if existing, err := os.ReadFile(target); err == nil {
-					backups[target] = existing
+			// Recorded before the first write, not after the last: a
+			// write that fails part way leaves the files before it
+			// replaced, and this step's own compensator, which runs
+			// for the step that failed, has to find their backups.
+			// The map is shared, so what the loop adds is seen.
+			st.Set(keyBackups, backups)
+
+			// In a fixed order, so which files a failure leaves
+			// replaced does not depend on map iteration.
+			for _, target := range slices.Sorted(maps.Keys(rendered)) {
+				switch existing, err := os.ReadFile(target); {
+				case err == nil:
+					backup := configBackup{content: existing, mode: os.FileMode(domain.DefaultConfigMode.Perm())}
+					if info, err := os.Stat(target); err == nil {
+						backup.mode = info.Mode().Perm()
+					}
+					backups[target] = backup
+				case errors.Is(err, fs.ErrNotExist):
+					// Created by this render, so putting it back
+					// means removing it.
+					backups[target] = configBackup{created: true}
+				default:
+					// A file that exists and cannot be read would be
+					// replaced with no backup, and nothing could put
+					// it back: refused before it is touched.
+					return domain.InstallationError(err,
+						"cannot read %s to keep a copy before replacing it", target)
 				}
 				mode := modes[target]
 				if mode == 0 {
 					mode = domain.DefaultConfigMode.Perm()
 				}
-				if err := atomicfs.WriteFile(target, content, os.FileMode(mode)); err != nil {
+				if err := atomicfs.WriteFile(target, rendered[target], os.FileMode(mode)); err != nil {
 					return err
 				}
 			}
 
-			st.Set(keyBackups, backups)
 			st.Detail("%d file(s)", len(rendered))
 			return nil
 		},
@@ -502,18 +530,53 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if !ok {
 				return nil
 			}
-			previous, ok := backups.(map[string][]byte)
+			previous, ok := backups.(map[string]configBackup)
 			if !ok {
 				return nil
 			}
-			for target, content := range previous {
-				// Best effort: a compensation that fails part
-				// way should still restore what it can.
-				_ = atomicfs.WriteFile(target, content, os.FileMode(domain.DefaultConfigMode.Perm()))
+			var failed []string
+			for target, backup := range previous {
+				// Every file is attempted, so one that fails
+				// does not strand the rest.
+				//
+				// In the file's own mode. Every restored file
+				// used to come back 0640, and a failed update
+				// now restarts the previous release, whose
+				// containers may run as a user that only a
+				// wider mode let read it.
+				var err error
+				if backup.created {
+					if err = os.Remove(target); errors.Is(err, fs.ErrNotExist) {
+						err = nil
+					}
+				} else {
+					err = atomicfs.WriteFile(target, backup.content, backup.mode)
+				}
+				if err != nil {
+					failed = append(failed, target)
+				}
 			}
-			return nil
+			if len(failed) == 0 {
+				return nil
+			}
+			// Reported rather than swallowed, and remembered: the
+			// previous release is brought back up after this, and
+			// must not be started against the new release's files.
+			st.Set(keyConfigNotRestored, true)
+			sort.Strings(failed)
+			return domain.InstallationError(nil,
+				"could not put back %s", strings.Join(failed, ", "))
 		},
 	}
+}
+
+// configBackup is a configuration file as it was before a render replaced it.
+type configBackup struct {
+	content []byte
+	mode    os.FileMode
+
+	// created is a file the render wrote where there was none.
+	created bool
 }
 
 // stepValidateRuntime parses and checks the Compose configuration.
@@ -582,14 +645,24 @@ func stepPullImages(d *Deps, inst domain.Installation, rel domain.Release, opts 
 	}
 }
 
-// stepMigrate runs the release's migration operation.
+// stepMigrate runs the release's migration operation: one step, or several in
+// the order the manifest lists them -- migrations, then the application's own
+// bootstrap, say.
 //
 // It is deliberately not compensable. A migration that partially applied
 // cannot be undone by re-running anything the manager knows about, so a
 // failure here escalates to requires-manual-intervention rather than
-// pretending a rollback happened.
+// pretending a rollback happened. That holds for every step in the list: the
+// steps before a failed one have run, and so has whatever they changed.
 func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Options) engine.Step {
-	spec, declared := rel.Manifest.Operation(domain.OpMigrate)
+	steps := rel.Manifest.OperationSteps(domain.OpMigrate)
+
+	// The step's budget is the sum of its parts, each of which also bounds
+	// itself, so one slow step cannot spend another's time.
+	var budget time.Duration
+	for _, spec := range steps {
+		budget += spec.Timeout.Or(30 * time.Minute)
+	}
 
 	return engine.Step{
 		ID:          "migrate",
@@ -600,57 +673,148 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 		// anything the manager knows about, so a failure here stops and
 		// asks for a human rather than pretending a rollback happened.
 		RequiresInterventionOnFailure: true,
-		Timeout:                       spec.Timeout.Or(30 * time.Minute),
+		Timeout:                       budget,
 		Check: func(ctx context.Context, st *engine.State) (bool, error) {
-			return !declared, nil
+			return len(steps) == 0, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			switch spec.Kind {
-			case domain.OperationKindRuntimeService:
-				cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
+			reported := 0
+			for i, spec := range steps {
+				// Named by position only when there is more than
+				// one, so a single migration reads as it always
+				// has.
+				which := "the migration"
+				if len(steps) > 1 {
+					which = fmt.Sprintf("migration step %d of %d", i+1, len(steps))
+					st.Detail("%s", which)
+				}
+				schema, err := d.runMigrateStep(ctx, st, inst, rel, spec, which)
 				if err != nil {
 					return err
 				}
-				res, err := d.Runtime.RunOneShot(ctx, cfg, spec.Service, ports.RunOptions{
-					Timeout: spec.Timeout.Or(30 * time.Minute),
-					Remove:  true,
-				})
-				if err != nil {
-					return err
+				if schema > 0 {
+					reported = schema
 				}
-				if !res.OK() {
-					return domain.RuntimeError(nil,
-						"the migration service %q exited with code %d", spec.Service, res.ExitCode).
-						WithHint("inspect the migration output in the log; " +
-							"the database may be partially migrated")
-				}
-				return nil
-
-			case domain.OperationKindHook:
-				env := d.hookEnv(inst, rel, domain.Version{}, st.OpID,
-					domain.OpTypeApply, ports.PhaseMigrate, st.DryRun)
-
-				outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env,
-					spec.Timeout.Or(30*time.Minute))
-				if err != nil {
-					return err
-				}
-				if outcome.Skipped {
-					st.Detail("schema is already current")
-				}
-				if outcome.Result.SchemaVersion > 0 {
-					// Recorded so rollback can reason about
-					// schema compatibility without re-running
-					// the product's tooling to ask.
-					st.Set(engine.KeySchemaVersion, outcome.Result.SchemaVersion)
-				}
-				return nil
-
-			default:
-				return domain.ValidationError(nil,
-					"the migrate operation has an unsupported kind %q", spec.Kind)
 			}
+			if reported > 0 {
+				// Recorded so rollback can reason about schema
+				// compatibility without re-running the product's
+				// tooling to ask.
+				st.Set(engine.KeySchemaVersion, reported)
+			}
+			passIfFallbackCannotRead(st, rel, reported)
+			return nil
 		},
+	}
+}
+
+// runMigrateStep runs one step of the migrate operation and returns the schema
+// version it reported, or zero.
+func (d *Deps) runMigrateStep(
+	ctx context.Context, st *engine.State, inst domain.Installation, rel domain.Release,
+	spec domain.OperationSpec, which string,
+) (int, error) {
+	switch spec.Kind {
+	case domain.OperationKindRuntimeService:
+		cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
+		if err != nil {
+			return 0, err
+		}
+		// A one-shot starts what it depends on, and on an update
+		// recreates a dependency whose configuration changed, so a
+		// failure from here on has services to put back, as one after
+		// start-services does.
+		st.Set(keyServicesTouched, true)
+		res, err := d.Runtime.RunOneShot(ctx, cfg, spec.Service, ports.RunOptions{
+			Timeout: spec.Timeout.Or(30 * time.Minute),
+			Remove:  true,
+		})
+		if err != nil {
+			return 0, err
+		}
+		// Exit 2 is "nothing to do", as it is for a hook. The adapter
+		// returns it as data for exactly this reading, and treating it
+		// as a failure made a migration service that had nothing to
+		// migrate stop the deployment for manual intervention.
+		if res.ExitCode == 2 {
+			st.Detail("schema is already current")
+			return 0, nil
+		}
+		if !res.OK() {
+			return 0, domain.RuntimeError(nil,
+				"%s, the service %q, exited with code %d", which, spec.Service, res.ExitCode).
+				WithHint("inspect the migration output in the log; " +
+					"the database may be partially migrated")
+		}
+		return 0, nil
+
+	case domain.OperationKindHook:
+		env := d.hookEnv(inst, rel, domain.Version{}, st.OpID,
+			domain.OpTypeApply, ports.PhaseMigrate, st.DryRun)
+
+		outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env,
+			spec.Timeout.Or(30*time.Minute))
+		if err != nil {
+			return 0, err
+		}
+		if outcome.Skipped {
+			st.Detail("schema is already current")
+		}
+		return outcome.Result.SchemaVersion, nil
+
+	default:
+		return 0, domain.ValidationError(nil,
+			"%s has an unsupported kind %q", which, spec.Kind)
+	}
+}
+
+// fallbackRelease is what a failed update's compensation would leave current:
+// the release that was running when it began.
+type fallbackRelease struct {
+	Version       domain.Version
+	Compatibility domain.Compatibility
+
+	// Known is false when its manifest could not be read. Nothing is then
+	// assumed about what it can run against.
+	Known bool
+}
+
+// passIfFallbackCannotRead marks the point of no return once migrations have
+// left a database the fallback release cannot run against.
+//
+// Without it, a failure after `migrate` -- a service that does not start, a
+// health check that never passes -- compensated back to the old release over
+// the migrated database and reported "earlier changes were rolled back": the
+// old release current, recorded at the old schema, reading one it does not
+// understand, and the next boot's `apply` running its migrations against it.
+// That is the rollback RFC 0001 refuses to perform, performed by compensation.
+//
+// The judgement is AssessRollback's, as `rollback` and the unattended gate
+// make it, so the three cannot disagree about what is recoverable. The schema
+// is the one the hook reported, then the one the release declares it produces.
+// A skipped migration is judged too: on a resumed update it is the attempt
+// before the crash that moved the schema. An operation with no fallback --
+// apply, rollback, a first install -- has nothing to protect.
+func passIfFallbackCannotRead(st *engine.State, rel domain.Release, reported int) {
+	fb, err := engine.GetTyped[fallbackRelease](st, engine.KeyFallbackRelease)
+	if err != nil {
+		return
+	}
+	if !fb.Known {
+		st.PassPointOfNoReturn(fmt.Sprintf("the manifest of %s, which a rollback would "+
+			"return to, could not be read, so whether it can run against the migrated "+
+			"database is unknown", fb.Version))
+		return
+	}
+	schema := reported
+	if schema <= 0 {
+		schema = rel.Manifest.Compatibility.DatabaseSchemaProduces
+	}
+	if a := domain.AssessRollback(rel.Manifest.Compatibility, fb.Compatibility, schema); a.RestoreRequired {
+		st.PassPointOfNoReturn(fmt.Sprintf("returning to %s would need a database restore (%s). "+
+			"%s's configuration and containers are left in place, and once the cause is fixed "+
+			"`morzer update --to %s` finishes the update; restoring the pre-update backup is "+
+			"the way back", fb.Version, a.Reason, rel.Version(), rel.Version()))
 	}
 }
 
@@ -667,6 +831,9 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 			if err != nil {
 				return err
 			}
+			// Before Up, not after: a failed Up may still have
+			// replaced some of the containers.
+			st.Set(keyServicesTouched, true)
 			return d.Runtime.Up(ctx, cfg, ports.UpOptions{
 				Wait:          true,
 				WaitTimeout:   10 * time.Minute,
@@ -704,9 +871,19 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 		// No Compensate: stopping the services would take the product
 		// down, which on an `apply` over a running deployment is worse
 		// than leaving the previous version serving traffic. `update`
-		// handles reverting the release pointer separately.
+		// brings the previous release back up from its restore point's
+		// compensator, which runs after configuration and secrets have
+		// been put back (restorePreviousRuntime).
 	}
 }
+
+// keyServicesTouched says start-services began replacing containers, so a
+// failed update has more to put back than files.
+const keyServicesTouched = "services-touched"
+
+// keyConfigNotRestored says the configuration compensator could not put every
+// file back, so nothing may be started against what is there.
+const keyConfigNotRestored = "config-not-restored"
 
 // stepHealthChecks waits for the application to report ready.
 func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {

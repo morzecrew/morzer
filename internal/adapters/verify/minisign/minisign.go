@@ -62,8 +62,8 @@ func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect p
 			// precisely so it does not become a runtime surprise.
 			return domain.ValidationError(nil,
 				"installation policy requires a signature but configures no signing keys").
-				WithHint("add policy.signing_keys to installation.yaml, " +
-					"or clear require_signature")
+				WithHint("trust one with `morzer release trust add <key>`; " +
+					"installation.yaml is a report, and editing it changes nothing")
 		}
 		// No keys means no opinion. The checksum verifier still runs.
 		return nil

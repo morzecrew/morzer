@@ -161,7 +161,8 @@ satisfy it, and a policy nothing can satisfy is a configuration error rather
 than something to discover on the next update. A key that does not parse is
 refused too. The keys change afterwards with [`morzer release
 trust`](release-commands.md#release-trust); whether a signature is required
-cannot yet be changed after `init`.
+cannot yet be changed after `init`. `installation.yaml` shows both, but it is a
+report, and editing it changes nothing.
 
 !!! warning "Keep the recovery key off this machine"
 
@@ -212,9 +213,13 @@ morzer update --to 1.3.0
 See [following a channel](../operating/updating.md#following-a-channel) for what
 staging leaves behind and what a poll costs.
 
-A failed update rolls back to the release that was running. **The database is
-never rolled back automatically**: when a migration cannot be undone, the
-release says so through `compatibility.rollback_safe`, and the answer is a
+A failed update rolls back to the release that was running, unless its
+migrations have already left a database that release cannot read, or cannot be
+shown to read because its manifest no longer loads. Then it stops
+at exit 12 and leaves the new release in place; see [a failure after the
+migrations](../operating/updating.md#a-failure-after-the-migrations). **The
+database is never rolled back automatically**: when a migration cannot be undone,
+the release says so through `compatibility.rollback_safe`, and the answer is a
 restore from the backup taken here.
 
 ## rollback

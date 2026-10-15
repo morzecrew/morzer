@@ -136,8 +136,8 @@ func newVolumeFixtureWithHook(
 	var hooks ports.HookRunner
 	if hook != nil {
 		hooks = hook
-		rel.Manifest.Operations = map[string]domain.OperationSpec{
-			domain.OpBackup: {Kind: domain.OperationKindHook, Command: []string{"hooks/backup"}},
+		rel.Manifest.Operations = map[string]domain.OperationSteps{
+			domain.OpBackup: {{Kind: domain.OperationKindHook, Command: []string{"hooks/backup"}}},
 		}
 	}
 
