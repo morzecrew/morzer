@@ -240,3 +240,66 @@ func TestInitRefusesABackupScheduleBeforeCreatingAnything(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrValidation)
 	assert.Contains(t, domain.AsError(err).Message, "one line")
 }
+
+// `status` says what the update timer does, which was otherwise written down
+// only in a unit file: whether anything polls the channel, when, and whether it
+// installs what it finds. A dev machine meant to follow `main` within minutes
+// is wrong about one of those three more often than it is broken.
+func TestStatusSaysHowTheChannelIsFollowed(t *testing.T) {
+	h, _ := followingMachine(t, "")
+	ctx := context.Background()
+	const channel = "oci://registry.example/demo/bundle:main"
+
+	following := func() *ops.Following {
+		t.Helper()
+		st, err := ops.GetStatus(ctx, h.Deps)
+		require.NoError(t, err)
+		return st.Following
+	}
+	set := func(kv map[string]string) {
+		t.Helper()
+		_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: kv})
+		require.NoError(t, err)
+	}
+
+	assert.Nil(t, following(), "a machine following no channel has nothing to report about one")
+
+	set(map[string]string{"update.channel": channel})
+	assert.Equal(t, &ops.Following{Channel: channel}, following(),
+		"with update.check off no timer exists, and status has to say the channel is not polled")
+
+	set(map[string]string{"update.check": "true", "update.schedule": "*:0/15"})
+	assert.Equal(t, &ops.Following{Channel: channel, Polled: true, Schedule: "*:0/15"}, following())
+
+	// Through the state rather than `config set`, which would first need a
+	// signing key this test has no use for beyond passing validation.
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Policy.RequireSignature = true
+	inst.Policy.SigningKeys = []string{"RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"}
+	inst.Update.AutoApply = true
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	assert.Equal(t, &ops.Following{
+		Channel: channel, Polled: true, Schedule: "*:0/15", AutoApply: true,
+	}, following())
+}
+
+// A channel's reference can carry a password in its userinfo, and `status` is
+// the output an operator pastes into a ticket. It shows the channel the way
+// every recorded release source is shown: with the password removed and the
+// username kept, so the reader can still tell which account it is.
+func TestStatusDoesNotPrintAChannelPassword(t *testing.T) {
+	h, _ := followingMachine(t, "")
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Update.Channel = "oci://robot:s3cr3t-token@registry.example/demo/bundle:main"
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	st, err := ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	require.NotNil(t, st.Following)
+	assert.NotContains(t, st.Following.Channel, "s3cr3t-token")
+	assert.Contains(t, st.Following.Channel, "robot@registry.example/demo/bundle:main")
+}

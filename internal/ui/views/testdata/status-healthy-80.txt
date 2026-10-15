@@ -1,6 +1,8 @@
 demo
   installation  inst_01KZP9ZZTKTQE1SS3JRZ0000
   release       1.2.0
+  following     oci://registry.example/demo/bundle:stable (on Sun *-*-*
+                04:00:00, installs what it may)
   profile       embedded
   url           https://demo.example
   support       https://support.example/demo
