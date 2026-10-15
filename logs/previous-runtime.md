@@ -106,3 +106,49 @@ render whose error is ignored, which the fakes cannot fail on the second render
 alone; a restore without its secrets would fail its own health wait anyway.
 
 **Drift count: 1.**
+
+## Review, round 1, 2026-10-15
+
+The entry above that records the build placed the restore in the staging
+step's compensator. Review showed that placement wrong, and the correction is
+recorded here rather than by editing it.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-10-15T07:09:57Z
+attempt: 2
+claim: the staging step is skipped when the release is already in the store -- every update --to, so every unattended install of a staged release -- and a skipped step's compensator never runs, so the restore never ran on the path it exists for; it now lives in a restore-point step of its own, before staging, which has no Check
+evidence: internal/lifecycle/ops/update.go:854
+action: decided
+proposal: ASSUMED — part of decision 19: the restore is the compensator of a step that is never skipped.
+```
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-10-15T07:09:57Z
+attempt: 2
+claim: the configuration compensator discarded its write errors, harmless while nothing restarted; with the restore after it, the previous release would start against the new release's files, so a file that cannot be put back is now an error and stops the restore
+evidence: internal/lifecycle/ops/apply.go:534
+action: decided
+proposal: ASSUMED — part of decision 19: nothing is started against configuration that was not put back.
+```
+
+- **Fixed — the restore never ran after `update --to`.** Reproduced red
+  (`TestAnUpdateToAStagedReleasePutsThePreviousOneBackToo`: one `Up`, not two).
+- **Fixed — configuration that could not be put back was restarted against.**
+  Reproduced red with a migration that takes the directory's write permission
+  away (`TestAConfigurationThatCannotBePutBackIsNotRestartedAgainst`).
+- **Fixed — a record with no root could not compensate.** Older than this
+  change: the symlink was restored from the record's empty root and failed,
+  though only record-state moves the link. Reproduced red
+  (`TestAReleaseRecordWithNoRootStillRollsBack`); an empty root now leaves the
+  link alone (update.go:837).
+- **Fixed — the docs overstated exit 11 and a failed restore.** Exit 11 puts
+  the release back, not the database; a failed restore leaves a mixture, not
+  nothing.
+
+**Drift count: 1.**
