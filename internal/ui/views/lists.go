@@ -166,6 +166,34 @@ func recipientsDoc(d *ui.Doc, recipients []ports.Recipient) *ui.Doc {
 }
 
 func init() {
+	ui.Register(ui.View[ops.TrustReport]{
+		Rich:  func(w io.Writer, t *theme.Theme, v ops.TrustReport) { emit(w, trustDoc(doc(w, t), v)) },
+		Plain: func(w io.Writer, v ops.TrustReport) { emit(w, trustDoc(plainDoc(w), v)) },
+	})
+}
+
+// trustDoc lists the release signing keys, and whether a signature is required
+// at all: a key trusted on a machine that requires none is a key nothing
+// insists on, which is the line an operator rotating keys needs to see.
+func trustDoc(d *ui.Doc, r ops.TrustReport) *ui.Doc {
+	required := "not required: unsigned releases are installed"
+	if r.RequireSignature {
+		required = "required"
+	}
+	d.Fields(0, []ui.Field{{Label: "signature", Value: required}})
+	rows := make([][]string, 0, len(r.Keys))
+	for _, k := range r.Keys {
+		rows = append(rows, []string{k})
+	}
+	d.Table(0, ui.Table{
+		Columns: []ui.Column{{Header: "trusted key", Essential: true}},
+		Rows:    rows,
+		Empty:   "no release signing key is trusted",
+	})
+	return d
+}
+
+func init() {
 	ui.Register(ui.View[[]ports.RenderedFile]{
 		Rich: func(w io.Writer, t *theme.Theme, v []ports.RenderedFile) {
 			emit(w, renderedDoc(doc(w, t), v))

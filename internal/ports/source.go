@@ -185,6 +185,17 @@ type Verifier interface {
 	Verify(ctx context.Context, bundle BundlePath, expect Expectation) error
 }
 
+// KeyChecker is a Verifier that can say whether a public key is one it could
+// ever check a signature against, before any bundle exists to check.
+//
+// Optional, because the checksum verifier has no keys to judge. Asked where a
+// key is written -- `init`, `release trust add` -- so a malformed one is a
+// configuration error at the terminal rather than every later bundle refused as
+// unsigned.
+type KeyChecker interface {
+	CheckKey(key string) error
+}
+
 // Names a bundle may ship its own integrity evidence under. They are part of
 // the release contract rather than an adapter's private detail: a vendor's
 // publishing pipeline writes them, a third party checks them with `sha256sum

@@ -119,6 +119,19 @@ func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect p
 			"policy.signing_keys names the vendor's current key.")
 }
 
+var _ ports.KeyChecker = (*Verifier)(nil)
+
+// CheckKey parses one key with the parser verification uses, so a key accepted
+// here is one Verify can use.
+func (v *Verifier) CheckKey(key string) error {
+	if _, err := gominisign.NewPublicKey(strings.TrimSpace(key)); err != nil {
+		return domain.ValidationError(err, "%q is not a valid minisign public key", key).
+			WithHint("a minisign public key is a single base64 line, " +
+				"as printed by `minisign -G`")
+	}
+	return nil
+}
+
 // parseKeys turns configured strings into keys, reporting a bad one by
 // position.
 //

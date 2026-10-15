@@ -88,7 +88,8 @@ A plan never claims a service was re-created; it says what *would* happen.
 | A port, a log level, a limit | `config set`, if the release declares it |
 | A credential | [`morzer secret`](secrets.md) — never a parameter |
 | The deployment profile | `apply --profile` for one run; otherwise re-install |
-| Domains, signing policy, retention | Not yet changeable after `init` |
+| The keys a release must be signed with | [`release trust add` / `remove`](../reference/release-commands.md#release-trust) |
+| Domains, whether a signature is required, retention | Not yet changeable after `init` |
 | The service topology | The vendor's, in the release's Compose files |
 
 !!! danger "Parameters are not secrets"
