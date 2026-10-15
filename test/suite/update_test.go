@@ -327,8 +327,9 @@ func TestAFailedUpdateKeepsTheParametersItWouldHaveRetired(t *testing.T) {
 	src := stageRecoverableUpgradeSource(t, h)
 	dropParameter(t, src, "log_level")
 
-	// The product never becomes healthy, so the update compensates.
-	h.Health.Healthy = false
+	// 1.3.0 never becomes healthy, so the update compensates; 1.2.0, put
+	// back, does.
+	h.Health.FailingWaits = 1
 
 	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
 	require.Error(t, err)
@@ -381,8 +382,8 @@ func TestUpdateRestoresThePointerWhenConvergenceFails(t *testing.T) {
 	applyBaseline(t, h)
 	ctx := context.Background()
 
-	// The product comes up but never becomes ready.
-	h.Health.Healthy = false
+	// 1.3.0 comes up but never becomes ready; 1.2.0, put back, does.
+	h.Health.FailingWaits = 1
 
 	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
 	require.Error(t, err)
@@ -407,6 +408,91 @@ func TestUpdateRestoresThePointerWhenConvergenceFails(t *testing.T) {
 	backups, err := h.Deps.Backup.List(ctx)
 	require.NoError(t, err)
 	assert.Len(t, backups, 1, "compensation must not delete the pre-update backup")
+}
+
+// TestAFailedUpdatePutsThePreviousReleaseBackUp.
+//
+// Compensation used to put back files and nothing else, so the new release's
+// containers went on running against the old release's configuration until
+// somebody ran `apply` -- on an unattended machine, until the next boot (RFC
+// 0001 decision 19). The release that was running is brought back up, with its
+// own secrets and its configuration in the mode it had, and waited for.
+func TestAFailedUpdatePutsThePreviousReleaseBackUp(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// A mode the manifest does not declare, so only a restore of the file
+	// as it was can bring it back.
+	config := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+	require.NoError(t, os.Chmod(config, 0o644))
+	ups := len(h.Runtime.UpConfigs)
+
+	h.Health.FailingWaits = 1
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+
+	require.Len(t, h.Runtime.UpConfigs, ups+2, "1.3.0 was brought up and 1.2.0 was not brought back")
+	assert.Equal(t, "1.3.0", h.Runtime.UpConfigs[ups].Env["DEMO_VERSION"])
+	assert.Equal(t, "1.2.0", h.Runtime.UpConfigs[ups+1].Env["DEMO_VERSION"],
+		"the project was brought back up from the wrong release")
+	assert.Zero(t, h.Health.FailingWaits, "the restored release was never waited for")
+
+	assert.DirExists(t, h.Paths.SecretsRenderDir(), "1.2.0 was brought up with no secrets rendered")
+	info, err := os.Stat(config)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(), "the configuration came back in another mode")
+}
+
+// TestARestoreThatFailsNeedsAPerson.
+//
+// Bringing the old release back can fail too, and then nothing is running that
+// anybody chose. Exit 12, with both failures in the error the operator reads:
+// the update's, and the rollback's, which decides what to do next.
+func TestARestoreThatFailsNeedsAPerson(t *testing.T) {
+	for name, breakBoth := range map[string]func(h *harness){
+		"neither release becomes healthy": func(h *harness) { h.Health.Healthy = false },
+		"neither release starts": func(h *harness) {
+			h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: daemon refused")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			h.setHookEnv()
+			applyBaseline(t, h)
+			ctx := context.Background()
+
+			breakBoth(h)
+			result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+			require.Error(t, err)
+			assert.Equal(t, domain.StatusManualIntervention, result.Record.Status)
+			assert.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err))
+			assert.Contains(t, err.Error(), "rollback did not complete (stage-release:",
+				"the rollback's own failure is not in the error")
+		})
+	}
+}
+
+// TestAFailureBeforeTheServicesLeavesThemAlone: an update that never replaced
+// a container has none to put back, and starting the old release again would
+// restart a deployment that was never touched.
+func TestAFailureBeforeTheServicesLeavesThemAlone(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+	ups := len(h.Runtime.UpConfigs)
+
+	h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusCompensated, result.Record.Status)
+	assert.Len(t, h.Runtime.UpConfigs, ups, "a deployment the update never touched was restarted")
 }
 
 // TestAFailureAfterAnUnreadableMigrationIsNotRolledBack.
@@ -533,7 +619,7 @@ func TestUpdateFaultInjection(t *testing.T) {
 			h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: daemon refused")
 		}},
 		{"health checks", func(h *harness) {
-			h.Health.Healthy = false
+			h.Health.FailingWaits = 1
 		}},
 		{"secret rendering", func(h *harness) {
 			h.Secrets.Fail["Render"] = domain.SecretsError(nil, "injected: cannot render")

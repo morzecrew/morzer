@@ -474,7 +474,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			// only the digest travels.
 			st.Set(engine.KeyRenderedConfig, rendered)
 
-			backups := make(map[string][]byte, len(rendered))
+			backups := make(map[string]configBackup, len(rendered))
 			modes := make(map[string]uint32, len(rendered))
 			for _, cfg := range rel.Manifest.Configuration {
 				modes[d.configTarget(cfg.Target)] = cfg.Mode.Perm()
@@ -482,7 +482,11 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 
 			for target, content := range rendered {
 				if existing, err := os.ReadFile(target); err == nil {
-					backups[target] = existing
+					backup := configBackup{content: existing, mode: os.FileMode(domain.DefaultConfigMode.Perm())}
+					if info, err := os.Stat(target); err == nil {
+						backup.mode = info.Mode().Perm()
+					}
+					backups[target] = backup
 				}
 				mode := modes[target]
 				if mode == 0 {
@@ -502,18 +506,30 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if !ok {
 				return nil
 			}
-			previous, ok := backups.(map[string][]byte)
+			previous, ok := backups.(map[string]configBackup)
 			if !ok {
 				return nil
 			}
-			for target, content := range previous {
+			for target, backup := range previous {
 				// Best effort: a compensation that fails part
 				// way should still restore what it can.
-				_ = atomicfs.WriteFile(target, content, os.FileMode(domain.DefaultConfigMode.Perm()))
+				//
+				// In the file's own mode. Every restored file
+				// used to come back 0640, and a failed update
+				// now restarts the previous release, whose
+				// containers may run as a user that only a
+				// wider mode let read it.
+				_ = atomicfs.WriteFile(target, backup.content, backup.mode)
 			}
 			return nil
 		},
 	}
+}
+
+// configBackup is a configuration file as it was before a render replaced it.
+type configBackup struct {
+	content []byte
+	mode    os.FileMode
 }
 
 // stepValidateRuntime parses and checks the Compose configuration.
@@ -719,6 +735,9 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 			if err != nil {
 				return err
 			}
+			// Before Up, not after: a failed Up may still have
+			// replaced some of the containers.
+			st.Set(keyServicesTouched, true)
 			return d.Runtime.Up(ctx, cfg, ports.UpOptions{
 				Wait:          true,
 				WaitTimeout:   10 * time.Minute,
@@ -756,9 +775,15 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 		// No Compensate: stopping the services would take the product
 		// down, which on an `apply` over a running deployment is worse
 		// than leaving the previous version serving traffic. `update`
-		// handles reverting the release pointer separately.
+		// brings the previous release back up from its staging step's
+		// compensator, which runs after configuration and secrets have
+		// been put back (restorePreviousRuntime).
 	}
 }
+
+// keyServicesTouched says start-services began replacing containers, so a
+// failed update has more to put back than files.
+const keyServicesTouched = "services-touched"
 
 // stepHealthChecks waits for the application to report ready.
 func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {

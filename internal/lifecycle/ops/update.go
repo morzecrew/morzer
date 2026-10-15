@@ -390,7 +390,7 @@ func updateSteps(
 		stepVerifyBundle(d, inst, source, opts),
 		stepCheckCompatibility(d, from, fallback, staged),
 		stepPreUpdateBackup(d, inst, from, staged, opts),
-		stepStageUpdate(d, from, source, staged, opts),
+		stepStageUpdate(d, inst, from, source, staged, opts),
 	}
 
 	// The convergence pipeline is apply's, reused against the new release.
@@ -662,7 +662,9 @@ func stepPreUpdateBackup(
 // operation began. Because compensation runs newest-first, this runs *after*
 // the apply steps have undone their own work, which is the right order --
 // secrets and configuration revert first, then the pointer.
-func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.Release, opts UpdateOptions) engine.Step {
+func stepStageUpdate(
+	d *Deps, inst domain.Installation, from domain.ReleaseRecord, source, staged domain.Release, opts UpdateOptions,
+) engine.Step {
 	return engine.Step{
 		ID:          "stage-release",
 		Description: "stage release " + staged.Version().String(),
@@ -825,7 +827,10 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 			if err := d.State.SetCurrentRelease(ctx, from); err != nil {
 				return err
 			}
-			return atomicfs.ReplaceSymlink(from.Root, d.Paths.CurrentLink())
+			if err := atomicfs.ReplaceSymlink(from.Root, d.Paths.CurrentLink()); err != nil {
+				return err
+			}
+			return d.restorePreviousRuntime(ctx, st, inst, from, opts.Profile)
 		},
 	}
 }
@@ -866,4 +871,62 @@ func stepPruneReleases(d *Deps) engine.Step {
 			return nil
 		},
 	}
+}
+
+// restorePreviousRuntime brings the release that was running back up, when the
+// update got as far as replacing its containers.
+//
+// Compensation used to put back only files, so a failed update left the new
+// release's containers running against the old release's configuration until
+// somebody ran `apply` -- on an unattended machine, until the next boot (RFC
+// 0001 §9, decision 19). Here, from the staging step's compensator: the
+// configuration compensator has put the old files back by now, and the
+// secrets compensator has removed the new release's rendering, so the old
+// release's secrets are rendered again before its services start.
+//
+// Never reached past a point of no return: the engine does not compensate the
+// steps before one, and this is the earliest of them.
+//
+// An error here is a compensation that did not complete, which ends the update
+// at requires-manual-intervention with both failures in its error.
+func (d *Deps) restorePreviousRuntime(
+	ctx context.Context, st *engine.State, inst domain.Installation, from domain.ReleaseRecord, profile string,
+) error {
+	if _, touched := st.Get(keyServicesTouched); !touched {
+		return nil
+	}
+	st.Detail("bringing %s back up", from.Version)
+
+	previous, err := d.resolveCurrentRelease(ctx, from)
+	if err != nil {
+		return err
+	}
+	schema, err := release.LoadSecretSchema(previous)
+	if err != nil {
+		return err
+	}
+	if _, err := d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema); err != nil {
+		return err
+	}
+	cfg, err := d.runtimeConfig(previous, inst, profile)
+	if err != nil {
+		return err
+	}
+	if err := d.Runtime.Up(ctx, cfg, ports.UpOptions{
+		Wait:          true,
+		WaitTimeout:   5 * time.Minute,
+		RemoveOrphans: true,
+	}); err != nil {
+		return err
+	}
+
+	specs, err := d.checkSpecs(inst, previous, st.OpID, domain.OpTypeUpdate)
+	if err != nil {
+		return err
+	}
+	if len(specs) == 0 {
+		return nil
+	}
+	_, err = d.Health.WaitReady(ctx, specs)
+	return err
 }
