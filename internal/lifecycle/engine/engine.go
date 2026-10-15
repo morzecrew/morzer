@@ -142,6 +142,9 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 	completed := make([]int, 0, len(op.Steps))
 	var failure error
 	var failedIdx = -1
+	// The step after which nothing may be compensated over; -1 until a
+	// step passes the point of no return.
+	noReturnIdx := -1
 
 	for i := 0; i < len(op.Steps); i++ {
 		step := op.Steps[i]
@@ -174,6 +177,11 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 			if status == domain.StepSucceeded || status == domain.StepSkipped {
 				completed = append(completed, i)
 			}
+			if noReturnIdx < 0 && st.pointOfNoReturn() != "" {
+				noReturnIdx = i
+				rec.Steps[i].Message = st.pointOfNoReturn()
+				e.journal(ctx, rec)
+			}
 			continue
 		}
 
@@ -197,7 +205,7 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 		return Result{Record: rec, State: st}, nil
 	}
 
-	return e.handleFailure(ctx, op, opts, st, &rec, completed, failedIdx, failure)
+	return e.handleFailure(ctx, op, opts, st, &rec, completed, failedIdx, failure, noReturnIdx)
 }
 
 // runStep executes one step through its full lifecycle.
@@ -312,6 +320,7 @@ func (e *Engine) handleFailure(
 	completed []int,
 	failedIdx int,
 	failure error,
+	noReturnIdx int,
 ) (Result, error) {
 	log := logging.FromContext(ctx)
 	rec.Error = domain.AsError(failure).WithOp(op.ID, stepIDAt(op, failedIdx))
@@ -346,6 +355,19 @@ func (e *Engine) handleFailure(
 		toCompensate = append(append([]int(nil), completed...), failedIdx)
 	}
 
+	// Past a point of no return, only what came after it is undone. What
+	// came before is the state the irreversible step was built on, and
+	// putting it back would pair the old release with what that step left.
+	if noReturnIdx >= 0 {
+		after := make([]int, 0, len(toCompensate))
+		for _, idx := range toCompensate {
+			if idx > noReturnIdx {
+				after = append(after, idx)
+			}
+		}
+		toCompensate = after
+	}
+
 	switch {
 	case interrupted:
 		rec.Status = domain.StatusInterrupted
@@ -359,6 +381,15 @@ func (e *Engine) handleFailure(
 				WithOp(op.ID, op.Steps[failedIdx].ID).
 				WithHint("run `morzer doctor` for the current state, then repair manually. " +
 					"The operation stays flagged until you clear it with `morzer status --clear-intervention`.")
+		case noReturnIdx >= 0:
+			rec.Status = domain.StatusManualIntervention
+			rec.Error = domain.ManualIntervention(failure,
+				"%s failed at step %q, after step %q made it impossible to roll back: %s",
+				op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID, st.pointOfNoReturn()).
+				WithOp(op.ID, stepIDAt(op, failedIdx)).
+				WithHint("the steps before it were left as they are rather than rolled back. Run " +
+					"`morzer doctor`, repair the cause, and clear the flag with " +
+					"`morzer status --clear-intervention`.")
 		case compensated:
 			rec.Status = domain.StatusCompensated
 			rec.Error = domain.Compensated(failure,

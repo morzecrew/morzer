@@ -27,6 +27,27 @@ func stageUpgradeSource(t *testing.T, h *harness) string {
 	return src
 }
 
+// stageRecoverableUpgradeSource is the 1.3.0 fixture with migrations that stop
+// at schema 12, which 1.2.0 can still read, so a failure after them may still
+// compensate back. The fixture as shipped migrates to 14, past the point of no
+// return.
+func stageRecoverableUpgradeSource(t *testing.T, h *harness) string {
+	t.Helper()
+	src := stageUpgradeSource(t, h)
+	for file, edit := range map[string][2]string{
+		"hooks/migrate": {"target=14", "target=12"},
+		"manifest.yaml": {"database_schema_produces: 14", "database_schema_produces: 12"},
+	} {
+		path := filepath.Join(src, file)
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		patched := strings.Replace(string(raw), edit[0], edit[1], 1)
+		require.NotEqual(t, string(raw), patched, "%s no longer says %q", file, edit[0])
+		require.NoError(t, os.WriteFile(path, []byte(patched), 0o755))
+	}
+	return src
+}
+
 // applyBaseline brings the harness to a converged 1.2.0 deployment, which is
 // the state every update test starts from.
 func applyBaseline(t *testing.T, h *harness) {
@@ -303,7 +324,7 @@ func TestAFailedUpdateKeepsTheParametersItWouldHaveRetired(t *testing.T) {
 	inst.Parameters = map[string]string{"log_level": "debug"}
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 
-	src := stageUpgradeSource(t, h)
+	src := stageRecoverableUpgradeSource(t, h)
 	dropParameter(t, src, "log_level")
 
 	// The product never becomes healthy, so the update compensates.
@@ -363,7 +384,7 @@ func TestUpdateRestoresThePointerWhenConvergenceFails(t *testing.T) {
 	// The product comes up but never becomes ready.
 	h.Health.Healthy = false
 
-	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
 	require.Error(t, err)
 	assert.Equal(t, domain.StatusCompensated, result.Record.Status)
 
@@ -386,6 +407,107 @@ func TestUpdateRestoresThePointerWhenConvergenceFails(t *testing.T) {
 	backups, err := h.Deps.Backup.List(ctx)
 	require.NoError(t, err)
 	assert.Len(t, backups, 1, "compensation must not delete the pre-update backup")
+}
+
+// TestAFailureAfterAnUnreadableMigrationIsNotRolledBack.
+//
+// The 1.3.0 fixture migrates to schema 14, and 1.2.0 reads at most 12. A
+// failure after that compensated back toward 1.2.0 over the migrated database
+// and called it a rollback: exit 11, "earlier changes were rolled back", 1.2.0
+// still recorded at schema 12, nothing flagged -- and the next boot's `apply`
+// running 1.2.0's migrations against 14. Past the migration, the only honest
+// outcomes are forward or a restore, and choosing between them is a person's.
+func TestAFailureAfterAnUnreadableMigrationIsNotRolledBack(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	h.Health.Healthy = false
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err))
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status)
+	assert.Contains(t, err.Error(), `after step "migrate"`, "the error does not say where the way back closed")
+	assert.Contains(t, err.Error(), "database restore", "the error does not say why")
+	assert.Contains(t, err.Error(), "update --to 1.3.0", "the error does not say how to finish")
+
+	// What came before the migration stays: compensation deletes the
+	// rendered secrets, and the release now running needs them.
+	assert.DirExists(t, h.Paths.SecretsRenderDir(), "a step before the migration was rolled back")
+
+	// The way forward the error names is one that works.
+	h.Health.Healthy = true
+	_, err = ops.ClearIntervention(ctx, h.Deps, result.Record.ID)
+	require.NoError(t, err)
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{To: "1.3.0"})
+	require.NoError(t, err)
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
+	assert.Equal(t, 14, current.SchemaAtInstall)
+}
+
+// TestAMigrationServiceClosesTheWayBackByWhatItDeclares is the same failure
+// with the migration run as a one-shot service. A service reports no schema,
+// so what the release declares its migrations produce is what decides.
+func TestAMigrationServiceClosesTheWayBackByWhatItDeclares(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageUpgradeSource(t, h)
+	path := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw),
+		"  migrate:\n    kind: hook\n    command: [\"hooks/migrate\"]",
+		"  migrate:\n    kind: runtime-service\n    service: app", 1)
+	require.NotEqual(t, string(raw), patched, "the fixture no longer declares a migrate hook")
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+
+	h.Health.Healthy = false
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status,
+		"a declared schema of 14 over a release reading 12 was compensated back over")
+	assert.Contains(t, h.Runtime.Calls, "RunOneShot", "the migration service never ran")
+}
+
+// TestAnUnreadableFallbackIsNotFallenBackTo.
+//
+// The release a failure would return to has a manifest that no longer loads,
+// so nothing can say what it reads. The update still runs -- its runtime
+// options are on record, which is all it needed from that manifest -- but past
+// the migration the way back is treated as closed, even for migrations that
+// stop at a schema the old release could have read.
+func TestAnUnreadableFallbackIsNotFallenBackTo(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, inst.RuntimeOptions,
+		"without recorded options the update refuses before reaching what this tests")
+
+	src := stageRecoverableUpgradeSource(t, h)
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(current.Root, "manifest.yaml"),
+		[]byte("not: [a manifest"), 0o644))
+
+	h.Health.Healthy = false
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status,
+		"the update fell back to a release nothing could say it was safe to fall back to")
+	assert.Contains(t, err.Error(), "could not be read")
 }
 
 // TestUpdateFaultInjection is RFC 0001 §6's extension of the engine's
