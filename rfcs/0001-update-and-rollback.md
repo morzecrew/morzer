@@ -298,6 +298,8 @@ the immediate previous one; it runs the same assessment against that target.
   message naming `morzer apply` as the next step, and by `doctor` reporting the
   service/release mismatch. Accepted: forcing a container revert inside
   compensation risks a second failure while the first is still being handled.
+  *(2026-10-15: neither mitigation was built, and decision 19 reverses the
+  acceptance — the containers are put back, and a second failure is exit 12.)*
 - **`AssessRollback` needs the current schema, which the manager does not own.**
   It comes from `ReleaseRecord.SchemaAtInstall`, populated by the migrate hook's
   structured result. A release whose hook does not report one yields `0`, which
@@ -329,6 +331,8 @@ the immediate previous one; it runs the same assessment against that target.
 | 15 | *(P4, 2026-08-03)* P4 was **not** gated on RFC 0004, contrary to §11 as written. `--to` resolves a version against the release store, which needs neither the source registry nor a new transport. The gating claim was made before update and rollback existed. |
 | 16 | *(P4, 2026-08-03)* `rollback --to` refuses a target newer than, or equal to, what is installed. Forward is `update --to`, which gates on `upgrade_from` and takes a backup; sideways is `apply`. Accepting either here would silently skip those. |
 | 17 | *(P4, 2026-08-03)* `--to` selects where to go, never whether it is safe. A named target gets the same three-question assessment as the default one, so `--to` cannot be used to route around a refusal. |
+| 18 | *(2026-10-15)* **Refines decision 2.** Compensation never crosses a migration that left the database at a schema the release it would return to cannot read, judged by `AssessRollback` as `rollback` judges it. The migrate step records a point of no return; a later failure undoes only what came after it and ends at requires-manual-intervention, leaving the new release's configuration and containers in place. Before this, a failure after `migrate` compensated toward the old release and reported a rollback the database had not taken, which is decision 5's refusal skipped by the back door. See [logs/no-way-back.md](../logs/no-way-back.md). |
+| 19 | *(2026-10-15)* **Reverses the risk §9 accepted.** When compensation is allowed (decision 18) and the update got as far as `start-services`, a `restore-point` step placed before staging — whose compensator runs last, after configuration and secrets are put back, and which, unlike staging, is never skipped — renders the previous release's secrets again, brings its services up and waits for its health checks. A failure there, or a configuration file that could not be put back, ends at requires-manual-intervention with both failures in the error. §9's two mitigations, a hint naming `morzer apply` and a `doctor` service/release mismatch check, were never built and are superseded rather than built. The configuration compensator also restores each file's own mode instead of 0640, because the restored containers have to read it. See [logs/previous-runtime.md](../logs/previous-runtime.md). |
 
 ## 11. Phasing
 

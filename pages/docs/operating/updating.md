@@ -140,11 +140,59 @@ flowchart TD
     D --> E[apply's convergence pipeline]
     E --> F{healthy?}
     F -->|yes| G[record the new release]
-    F -->|no| H[compensate: pointer back to what was running]
+    F -->|no| I{can the old release read the database now?}
+    I -->|yes| H[compensate: the release that was running, containers included]
+    I -->|no| J[stop: requires-manual-intervention, exit 12]
 ```
 
 The first two steps mutate nothing, so a bundle that fails them costs you
 nothing but the time to read the error.
+
+### When an update fails
+
+A failure rolls the update back: the configuration files return to what they
+were, in the modes they had, and if the new release's services had already been
+started — or a migration service had run, which starts what it depends on —
+the release that was running is brought back up with its own secrets and
+waited for until its health checks pass. That is
+[exit 11](../reference/exit-codes.md): the release that was running is running
+again. The database is not rolled back: if migrations ran, it stays at the
+schema they left, which is allowed only when the old release declares it can
+read it (see below).
+
+If bringing it back fails as well, the deployment matches neither release —
+some services may be the new release's and some the old one's — and the update
+stops at exit 12 with both failures in the error. So does a configuration file
+that could not be put back: the old release is not started against the new
+release's files.
+
+### A failure after the migrations
+
+A failure before the migrations run — an image that will not pull, a
+configuration that will not render — rolls back to the release that was running.
+A failure after them, such as a service that never becomes healthy, rolls back
+only if the release that was running can still read the database the migrations
+left. That is the same question [`rollback`](rolling-back.md) asks: the new
+release must declare `rollback_safe: true`, and the schema it reported, or
+declares in `database_schema_produces`, must be within the old release's
+`database_schema_max`.
+
+When it cannot, the update stops at
+[exit 12](../reference/exit-codes.md) without rolling anything back. The new
+release's configuration and containers stay in place, because they are the ones
+that match the database. The error names the two ways on:
+
+```text
+error: update failed at step "health-checks", after step "migrate" made it
+       impossible to roll back: returning to 1.2.0 would need a database restore
+       (database schema is at 14 but the previous release supports at most 12; …)
+```
+
+- **Forward.** Fix the cause, clear the flag with `morzer status
+  --clear-intervention`, and run `morzer update --to 1.3.0`. Its migrations find
+  the database already current, and the update finishes.
+- **Back.** Restore the backup the update took before it started. That is a
+  decision about your data, which is why the manager does not make it for you.
 
 ## Before it starts
 

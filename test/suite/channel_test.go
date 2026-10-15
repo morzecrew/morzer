@@ -267,8 +267,8 @@ func TestARefusedCandidateIsNotFetchedTwice(t *testing.T) {
 	ctx := context.Background()
 
 	// The machine is already running 1.4.0, so the channel's 1.3.0 is a
-	// downgrade: `update` refuses a backwards move, so staging one would
-	// only produce a candidate nobody can install.
+	// downgrade, which `update` would install with only a warning: staging
+	// is where a backwards move has to stop.
 	current, err := h.Deps.State.CurrentRelease(ctx)
 	require.NoError(t, err)
 	current.Version = domain.MustParseVersion("1.4.0")

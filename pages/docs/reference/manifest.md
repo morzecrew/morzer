@@ -404,6 +404,43 @@ The two kinds are not collapsed into one field because their failure semantics
 differ: a hook runs on the host and sees the host's filesystem, a runtime
 service runs on the application network and sees the container's.
 
+A runtime service starts the services it `depends_on` first, and waits for any
+condition it names, so a migration service can reach the database on a first
+install, before the deployment's other services have ever started. On an update,
+a dependency whose configuration changed is recreated at that point, so
+migrations run against the new release's database service. Exit `2` means
+"nothing to do", as it does for a hook.
+
+### Several migrate steps
+
+`migrate` alone may list several steps instead of one. They run in order, on
+`apply` and on every `update`, after images are pulled and before services
+start:
+
+```yaml
+compatibility:
+  min_manager_version: "0.4.0"
+
+operations:
+  migrate:
+    - kind: runtime-service
+      service: flyway
+      timeout: 15m
+    - kind: runtime-service
+      service: bootstrap
+```
+
+Every step is a migration as far as failure goes. If any of them fails, the
+ones before it have already changed the database, so the operation stops for
+manual intervention ([exit 12](exit-codes.md)) rather than rolling back. Write
+each step so that running it again is harmless: a step after a failed one runs
+again on the next attempt, and every step runs again on every `apply`.
+
+**A list needs `min_manager_version: "0.4.0"` or later**, and a manifest with a
+list that declares less is refused. A manager older than 0.4.0 cannot read the
+list. The declaration is what makes it refuse the bundle as needing a newer
+manager, instead of reporting a malformed operation.
+
 ## backup
 
 What the manager may do about the project's named volumes, which it captures

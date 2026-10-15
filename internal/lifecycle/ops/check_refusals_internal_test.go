@@ -240,6 +240,11 @@ func TestSourceRefIsStoredWithoutCredentials(t *testing.T) {
 		{"https://releases.example/demo.tar.zst",
 			"https://releases.example/demo.tar.zst"},
 		{"oci://registry.example/demo/bundle", "oci://registry.example/demo/bundle"},
+		// A channel in a hand-edited or imported state file was never
+		// parsed, and `status` shows it: one that does not parse loses
+		// everything, since where its password ends cannot be known.
+		{"https://user:hunter2%zz@releases.example/demo.tar.zst", ports.UnparseableRef},
+		{"https://releases.example:port/demo.tar.zst", "https://releases.example:port/demo.tar.zst"},
 		{"./local/bundle", "./local/bundle"},
 		{"", ""},
 	}

@@ -32,7 +32,8 @@ type cannot quietly acquire a new exit code by being handled somewhere else.
 ## 12 is the one that matters
 
 Exit 12 means an operation changed something no automatic action can put back —
-a migration that ran, a restore that got halfway. It is not a louder version of
+a migration that ran, a restore that got halfway, or an update that failed after
+migrating a database the previous release cannot read. It is not a louder version of
 11: 11 says the system is where you left it, and 12 says it is not.
 
 The systemd unit sets `RestartPreventExitStatus=12` so a unit that hits it does
