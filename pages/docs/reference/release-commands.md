@@ -339,6 +339,13 @@ Plaintext `http://` is refused outright — fetch the bundle out of band and pas
 a path. A reference whose scheme this build has no adapter for is refused by
 name, listing the ones it does have.
 
+**A bundle fetched over HTTPS or from a registry may be at most 512 MiB** as it
+arrives: the compressed archive, before the [extraction
+budget](#the-extraction-budget) applies to what it expands to. The cap is fixed
+in this build. A larger bundle — in practice one that carries its own container
+images — is copied to the machine some other way and installed from a path,
+where only the extraction budget applies.
+
 ### Over HTTPS
 
 TLS is not optional, and **a redirect may not leave it**. A server that answered
@@ -389,10 +396,12 @@ Credentials come from the ambient Docker configuration, so an operator who has
 run `docker login` for the registry their *images* come from does not log in
 again for the bundle that pins those images. Nothing is stored by the manager.
 
-`release list` against an `oci://` reference enumerates the repository's version
-tags. It is the only transport that can — a URL has no index — and tags that are
-not versions, like `latest`, are skipped rather than offered as something to
-install by number.
+`morzer update --check <ref>` against an `oci://` reference reads the
+repository's version tags and reports the newer releases this installation could
+install. A registry is the only transport that can — a URL has no index — and
+tags that are not versions, like `latest`, are skipped rather than offered as
+something to install by number. `release list` lists what is installed on this
+machine, never a repository.
 
 !!! note "What the registry proves, and what it does not"
 

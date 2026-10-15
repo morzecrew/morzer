@@ -180,9 +180,10 @@ side and a redirect out of it is refused, so a plain-HTTP mirror will not work.
 No credentials are sent, so a bundle behind authentication needs the registry
 route or an out-of-band download.
 
-**An OCI registry** is the one that lets `morzer release list` enumerate your
-versions, because a registry keeps a tag list and a URL does not. Publish the
-archive as a single-layer artifact:
+**An OCI registry** is the one that lets `morzer update --check` find your newer
+versions, and the only one an installation can follow as a channel, because a
+registry keeps a tag list and a URL does not. Publish the archive as a
+single-layer artifact:
 
 ```sh
 oras push registry.example/demo/bundle:1.3.0 \
@@ -193,6 +194,29 @@ oras push registry.example/demo/bundle:1.3.0 \
 Credentials come from your users' ambient Docker configuration, so anyone who
 has run `docker login` for the registry your *images* come from can already
 fetch the bundle that pins them.
+
+Either remote transport takes at most 512 MiB, compressed. A bundle larger than
+that, usually one [carrying its own images](bundled-images.md#size), is handed
+over as a file.
+
+### Moving a channel
+
+A channel is a tag that moves, such as `stable` or `main`, and installations
+that set `update.channel` to it follow wherever it points. Push the version
+first, then point the channel at it:
+
+```sh
+oras push registry.example/demo/bundle:1.3.0 \
+    --artifact-type application/vnd.morzer.release.bundle.v1 \
+    demo-1.3.0.tar.zst:application/vnd.morzer.release.bundle.v1.tar+zstd
+oras tag registry.example/demo/bundle:1.3.0 stable
+```
+
+**A channel only moves forward.** A machine following a channel refuses to
+stage a version older than the one it runs, and records the refusal. Moving
+`stable` back to `1.2.0` after a bad `1.3.0` therefore changes nothing on a
+machine that already took `1.3.0`. Publish `1.3.1` with the fix and move the tag
+to it; an operator who needs the old release now runs `morzer rollback`.
 
 ## Tell them the digest
 
