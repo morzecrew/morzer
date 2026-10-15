@@ -2981,9 +2981,13 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 <p><code>--check</code> and <code>--stage</code> are alternatives, and both stop short of installing.
 See <a href="../../operating/updating/#following-a-channel">following a channel</a> for what
 staging leaves behind and what a poll costs.</p>
-<p>A failed update rolls back to the release that was running. <strong>The database is
-never rolled back automatically</strong>: when a migration cannot be undone, the
-release says so through <code>compatibility.rollback_safe</code>, and the answer is a
+<p>A failed update rolls back to the release that was running, unless its
+migrations have already left a database that release cannot read, or cannot be
+shown to read because its manifest no longer loads. Then it stops
+at exit 12 and leaves the new release in place; see <a href="../../operating/updating/#a-failure-after-the-migrations">a failure after the
+migrations</a>. <strong>The
+database is never rolled back automatically</strong>: when a migration cannot be undone,
+the release says so through <code>compatibility.rollback_safe</code>, and the answer is a
 restore from the backup taken here.</p>
 <h2 id="rollback">rollback<a class="headerlink" href="#rollback" title="Permanent link">&para;</a></h2>
 <p>Returns to the previous release.</p>

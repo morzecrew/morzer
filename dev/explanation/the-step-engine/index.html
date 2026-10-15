@@ -2211,6 +2211,12 @@ without a compensator are simply read-only.</p>
 <p>Compensation runs newest-first and <strong>includes the step that failed</strong> — it may
 have mutated before failing, which is exactly the case a <code>Verify</code> failure
 describes.</p>
+<p>A step that <strong>succeeded</strong> can also close the way back. A migration that leaves
+the database at a schema the previous release cannot read has made every earlier
+step unsafe to undo: putting them back would run the old release against a
+database it does not understand. The step records a <em>point of no return</em> with
+its reason. A later failure then undoes only what came after it, ends at
+<code>requires-manual-intervention</code>, and the reason is in the error and the journal.</p>
 <h2 id="the-distinction-that-matters-most">The distinction that matters most<a class="headerlink" href="#the-distinction-that-matters-most" title="Permanent link">&para;</a></h2>
 <p>Three outcomes that a lesser design would collapse into "error":</p>
 <table>
