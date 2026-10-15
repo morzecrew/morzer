@@ -30,6 +30,12 @@ type Health struct {
 	// which is the case "polls until" exists for.
 	PassAfter int
 
+	// FailingWaits makes the next N calls to WaitReady fail every probe,
+	// after which Healthy decides again: a release that never comes up,
+	// followed by one that does. Healthy alone cannot say that, because a
+	// failed update now waits for the release it puts back as well.
+	FailingWaits int
+
 	// Patience bounds how long WaitReady polls before giving up.
 	//
 	// Zero -- the default -- is the port's actual promise: poll until the
@@ -93,6 +99,10 @@ func (h *Health) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]port
 
 	h.mu.Lock()
 	patience, interval := h.Patience, h.Interval
+	failThisWait := h.FailingWaits > 0
+	if failThisWait {
+		h.FailingWaits--
+	}
 	h.mu.Unlock()
 
 	if patience > 0 {
@@ -112,6 +122,11 @@ func (h *Health) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]port
 		h.calls++
 		err, results := h.Err, h.results(specs, attempt)
 		h.mu.Unlock()
+		if failThisWait {
+			for i := range results {
+				results[i].OK, results[i].Message = false, "simulated failure"
+			}
+		}
 
 		if err != nil {
 			return nil, err

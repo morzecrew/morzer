@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -368,13 +369,25 @@ func (e *Engine) handleFailure(
 		toCompensate = after
 	}
 
+	// alsoUndone names the compensators that failed, for an error that is
+	// an intervention for another reason. The rollback's own failure is the
+	// one that decides what an operator does next, and without this it is
+	// only in the journal's step records.
+	alsoUndone := func(undone []string) string {
+		if len(undone) == 0 {
+			return ""
+		}
+		return "; the rollback did not complete either (" + strings.Join(undone, "; ") + ")"
+	}
+
 	// Past a point of no return, any failure that is not an interruption
 	// needs a person, whatever the failed step's policy.
-	pastNoReturn := func() {
+	pastNoReturn := func(undone []string) {
 		rec.Status = domain.StatusManualIntervention
 		rec.Error = domain.ManualIntervention(failure,
-			"%s failed at step %q, after step %q made it impossible to roll back: %s",
-			op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID, st.pointOfNoReturn()).
+			"%s failed at step %q, after step %q made it impossible to roll back: %s%s",
+			op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID, st.pointOfNoReturn(),
+			alsoUndone(undone)).
 			WithOp(op.ID, stepIDAt(op, failedIdx)).
 			WithHint("the steps before it were left as they are rather than rolled back. Run " +
 				"`morzer doctor`, repair the cause, and clear the flag with " +
@@ -385,17 +398,18 @@ func (e *Engine) handleFailure(
 	case interrupted:
 		rec.Status = domain.StatusInterrupted
 	case policy == Compensate:
-		compensated := e.compensate(ctx, op, st, rec, toCompensate)
+		compensated, undone := e.compensate(ctx, op, st, rec, toCompensate)
 		switch {
 		case failedStepMutatedIrreversibly:
 			rec.Status = domain.StatusManualIntervention
 			rec.Error = domain.ManualIntervention(failure,
-				"step %q failed after making changes it cannot undo", op.Steps[failedIdx].ID).
+				"step %q failed after making changes it cannot undo%s",
+				op.Steps[failedIdx].ID, alsoUndone(undone)).
 				WithOp(op.ID, op.Steps[failedIdx].ID).
 				WithHint("run `morzer doctor` for the current state, then repair manually. " +
 					"The operation stays flagged until you clear it with `morzer status --clear-intervention`.")
 		case noReturnIdx >= 0:
-			pastNoReturn()
+			pastNoReturn(undone)
 		case compensated:
 			rec.Status = domain.StatusCompensated
 			rec.Error = domain.Compensated(failure,
@@ -403,8 +417,12 @@ func (e *Engine) handleFailure(
 				WithOp(op.ID, stepIDAt(op, failedIdx))
 		default:
 			rec.Status = domain.StatusManualIntervention
+			// Both failures, in the error the operator reads: the
+			// rollback's is otherwise only in the journal's step
+			// records, and it is the one that decides what to do next.
 			rec.Error = domain.ManualIntervention(failure,
-				"%s failed at step %q and rollback did not complete", op.Type, stepIDAt(op, failedIdx)).
+				"%s failed at step %q and rollback did not complete (%s)",
+				op.Type, stepIDAt(op, failedIdx), strings.Join(undone, "; ")).
 				WithOp(op.ID, stepIDAt(op, failedIdx)).
 				WithHint("run `morzer doctor` to see what state the system is in")
 		}
@@ -412,7 +430,7 @@ func (e *Engine) handleFailure(
 		// An abort undoes nothing, so nothing crosses the point -- but
 		// `failed` blocks nothing either, and the next apply would
 		// converge the old release over what that step left.
-		pastNoReturn()
+		pastNoReturn(nil)
 	default:
 		rec.Status = domain.StatusFailed
 	}
@@ -432,13 +450,16 @@ func (e *Engine) handleFailure(
 
 // compensate runs Compensate for completed steps, newest first.
 //
-// It returns true only when every compensable step undid itself. A step
-// without a Compensate function is not a failure of compensation -- it simply
-// had nothing to undo, which is why read-only steps do not block the
-// compensated status.
-func (e *Engine) compensate(ctx context.Context, op Operation, st *State, rec *domain.OperationRecord, completed []int) bool {
+// It returns true only when every compensable step undid itself, and names the
+// ones that did not. A step without a Compensate function is not a failure of
+// compensation -- it simply had nothing to undo, which is why read-only steps
+// do not block the compensated status.
+func (e *Engine) compensate(
+	ctx context.Context, op Operation, st *State, rec *domain.OperationRecord, completed []int,
+) (bool, []string) {
 	log := logging.FromContext(ctx)
 	allOK := true
+	var failed []string
 
 	// Compensation must run even when the operation was cancelled, so it
 	// gets a fresh context with its own budget. Using the cancelled one
@@ -464,6 +485,7 @@ func (e *Engine) compensate(ctx context.Context, op Operation, st *State, rec *d
 
 		if err := step.Compensate(compCtx, st); err != nil {
 			allOK = false
+			failed = append(failed, step.ID+": "+domain.AsError(err).Message)
 			rec.Steps[idx].Error = "compensation failed: " + domain.AsError(err).Message
 			log.Error("compensation failed", "step_id", step.ID, "error", err)
 			e.bus.Publish(events.Message(events.LevelError,
@@ -476,7 +498,7 @@ func (e *Engine) compensate(ctx context.Context, op Operation, st *State, rec *d
 		rec.Steps[idx].Status = domain.StepCompensated
 	}
 
-	return allOK
+	return allOK, failed
 }
 
 // compensationBudget bounds rollback. It is generous because compensation

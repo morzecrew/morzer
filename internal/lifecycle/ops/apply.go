@@ -2,8 +2,13 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -474,26 +479,49 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			// only the digest travels.
 			st.Set(engine.KeyRenderedConfig, rendered)
 
-			backups := make(map[string][]byte, len(rendered))
+			backups := make(map[string]configBackup, len(rendered))
 			modes := make(map[string]uint32, len(rendered))
 			for _, cfg := range rel.Manifest.Configuration {
 				modes[d.configTarget(cfg.Target)] = cfg.Mode.Perm()
 			}
 
-			for target, content := range rendered {
-				if existing, err := os.ReadFile(target); err == nil {
-					backups[target] = existing
+			// Recorded before the first write, not after the last: a
+			// write that fails part way leaves the files before it
+			// replaced, and this step's own compensator, which runs
+			// for the step that failed, has to find their backups.
+			// The map is shared, so what the loop adds is seen.
+			st.Set(keyBackups, backups)
+
+			// In a fixed order, so which files a failure leaves
+			// replaced does not depend on map iteration.
+			for _, target := range slices.Sorted(maps.Keys(rendered)) {
+				switch existing, err := os.ReadFile(target); {
+				case err == nil:
+					backup := configBackup{content: existing, mode: os.FileMode(domain.DefaultConfigMode.Perm())}
+					if info, err := os.Stat(target); err == nil {
+						backup.mode = info.Mode().Perm()
+					}
+					backups[target] = backup
+				case errors.Is(err, fs.ErrNotExist):
+					// Created by this render, so putting it back
+					// means removing it.
+					backups[target] = configBackup{created: true}
+				default:
+					// A file that exists and cannot be read would be
+					// replaced with no backup, and nothing could put
+					// it back: refused before it is touched.
+					return domain.InstallationError(err,
+						"cannot read %s to keep a copy before replacing it", target)
 				}
 				mode := modes[target]
 				if mode == 0 {
 					mode = domain.DefaultConfigMode.Perm()
 				}
-				if err := atomicfs.WriteFile(target, content, os.FileMode(mode)); err != nil {
+				if err := atomicfs.WriteFile(target, rendered[target], os.FileMode(mode)); err != nil {
 					return err
 				}
 			}
 
-			st.Set(keyBackups, backups)
 			st.Detail("%d file(s)", len(rendered))
 			return nil
 		},
@@ -502,18 +530,53 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if !ok {
 				return nil
 			}
-			previous, ok := backups.(map[string][]byte)
+			previous, ok := backups.(map[string]configBackup)
 			if !ok {
 				return nil
 			}
-			for target, content := range previous {
-				// Best effort: a compensation that fails part
-				// way should still restore what it can.
-				_ = atomicfs.WriteFile(target, content, os.FileMode(domain.DefaultConfigMode.Perm()))
+			var failed []string
+			for target, backup := range previous {
+				// Every file is attempted, so one that fails
+				// does not strand the rest.
+				//
+				// In the file's own mode. Every restored file
+				// used to come back 0640, and a failed update
+				// now restarts the previous release, whose
+				// containers may run as a user that only a
+				// wider mode let read it.
+				var err error
+				if backup.created {
+					if err = os.Remove(target); errors.Is(err, fs.ErrNotExist) {
+						err = nil
+					}
+				} else {
+					err = atomicfs.WriteFile(target, backup.content, backup.mode)
+				}
+				if err != nil {
+					failed = append(failed, target)
+				}
 			}
-			return nil
+			if len(failed) == 0 {
+				return nil
+			}
+			// Reported rather than swallowed, and remembered: the
+			// previous release is brought back up after this, and
+			// must not be started against the new release's files.
+			st.Set(keyConfigNotRestored, true)
+			sort.Strings(failed)
+			return domain.InstallationError(nil,
+				"could not put back %s", strings.Join(failed, ", "))
 		},
 	}
+}
+
+// configBackup is a configuration file as it was before a render replaced it.
+type configBackup struct {
+	content []byte
+	mode    os.FileMode
+
+	// created is a file the render wrote where there was none.
+	created bool
 }
 
 // stepValidateRuntime parses and checks the Compose configuration.
@@ -719,6 +782,9 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 			if err != nil {
 				return err
 			}
+			// Before Up, not after: a failed Up may still have
+			// replaced some of the containers.
+			st.Set(keyServicesTouched, true)
 			return d.Runtime.Up(ctx, cfg, ports.UpOptions{
 				Wait:          true,
 				WaitTimeout:   10 * time.Minute,
@@ -756,9 +822,19 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 		// No Compensate: stopping the services would take the product
 		// down, which on an `apply` over a running deployment is worse
 		// than leaving the previous version serving traffic. `update`
-		// handles reverting the release pointer separately.
+		// brings the previous release back up from its restore point's
+		// compensator, which runs after configuration and secrets have
+		// been put back (restorePreviousRuntime).
 	}
 }
+
+// keyServicesTouched says start-services began replacing containers, so a
+// failed update has more to put back than files.
+const keyServicesTouched = "services-touched"
+
+// keyConfigNotRestored says the configuration compensator could not put every
+// file back, so nothing may be started against what is there.
+const keyConfigNotRestored = "config-not-restored"
 
 // stepHealthChecks waits for the application to report ready.
 func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {

@@ -327,8 +327,9 @@ func TestAFailedUpdateKeepsTheParametersItWouldHaveRetired(t *testing.T) {
 	src := stageRecoverableUpgradeSource(t, h)
 	dropParameter(t, src, "log_level")
 
-	// The product never becomes healthy, so the update compensates.
-	h.Health.Healthy = false
+	// 1.3.0 never becomes healthy, so the update compensates; 1.2.0, put
+	// back, does.
+	h.Health.FailingWaits = 1
 
 	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
 	require.Error(t, err)
@@ -381,8 +382,8 @@ func TestUpdateRestoresThePointerWhenConvergenceFails(t *testing.T) {
 	applyBaseline(t, h)
 	ctx := context.Background()
 
-	// The product comes up but never becomes ready.
-	h.Health.Healthy = false
+	// 1.3.0 comes up but never becomes ready; 1.2.0, put back, does.
+	h.Health.FailingWaits = 1
 
 	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
 	require.Error(t, err)
@@ -407,6 +408,290 @@ func TestUpdateRestoresThePointerWhenConvergenceFails(t *testing.T) {
 	backups, err := h.Deps.Backup.List(ctx)
 	require.NoError(t, err)
 	assert.Len(t, backups, 1, "compensation must not delete the pre-update backup")
+}
+
+// TestAFailedUpdatePutsThePreviousReleaseBackUp.
+//
+// Compensation used to put back files and nothing else, so the new release's
+// containers went on running against the old release's configuration until
+// somebody ran `apply` -- on an unattended machine, until the next boot (RFC
+// 0001 decision 19). The release that was running is brought back up, with its
+// own secrets and its configuration in the mode it had, and waited for.
+func TestAFailedUpdatePutsThePreviousReleaseBackUp(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// A mode the manifest does not declare, so only a restore of the file
+	// as it was can bring it back.
+	config := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+	require.NoError(t, os.Chmod(config, 0o644))
+	ups := len(h.Runtime.UpConfigs)
+
+	h.Health.FailingWaits = 1
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+
+	require.Len(t, h.Runtime.UpConfigs, ups+2, "1.3.0 was brought up and 1.2.0 was not brought back")
+	assert.Equal(t, "1.3.0", h.Runtime.UpConfigs[ups].Env["DEMO_VERSION"])
+	assert.Equal(t, "1.2.0", h.Runtime.UpConfigs[ups+1].Env["DEMO_VERSION"],
+		"the project was brought back up from the wrong release")
+	assert.Zero(t, h.Health.FailingWaits, "the restored release was never waited for")
+
+	assert.DirExists(t, h.Paths.SecretsRenderDir(), "1.2.0 was brought up with no secrets rendered")
+	info, err := os.Stat(config)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(), "the configuration came back in another mode")
+}
+
+// TestAConfigFileThatCannotBeReadIsNotReplaced.
+//
+// Rendering backs each file up before replacing it. A file that exists but
+// cannot be read was replaced with no backup, so the rollback put nothing back,
+// flagged nothing, and the previous release came back up against the new
+// release's configuration -- the state the restore exists to prevent.
+func TestAConfigFileThatCannotBeReadIsNotReplaced(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	config := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+	before, err := os.ReadFile(config)
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(config, 0))
+
+	h.Health.FailingWaits = 1
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.Error(t, err)
+
+	require.NoError(t, os.Chmod(config, 0o600))
+	after, err := os.ReadFile(config)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after),
+		"a file with no backup was replaced, and the rollback could not put it back")
+}
+
+// TestAPartlyWrittenConfigurationIsPutBack.
+//
+// Two files, the second in a directory nothing can write to. The first was
+// replaced before the second failed, and the backups were recorded only once
+// every write had succeeded -- so the failed step's own rollback found nothing
+// to restore and left the first file as the new release wrote it.
+func TestAPartlyWrittenConfigurationIsPutBack(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	config := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+	before, err := os.ReadFile(config)
+	require.NoError(t, err)
+
+	// Sorted after the first target, so it is written second.
+	locked := filepath.Join(h.Root, "etc", "zz")
+	require.NoError(t, os.MkdirAll(locked, 0o755))
+	require.NoError(t, os.Chmod(locked, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	src := stageRecoverableUpgradeSource(t, h)
+	path := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	first := "    target: " + config + "\n    mode: \"0640\"\n"
+	patched := strings.Replace(string(raw), first, first+
+		"  - template: templates/application.yaml.tmpl\n"+
+		"    target: "+filepath.Join(locked, "extra.yaml")+"\n"+
+		"    mode: \"0640\"\n", 1)
+	require.NotEqual(t, string(raw), patched, "the fixture's configuration entry is not the one this extends")
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	after, err := os.ReadFile(config)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after),
+		"the file written before the failure was left as the new release wrote it")
+}
+
+// TestARestoreThatFailsNeedsAPerson.
+//
+// Bringing the old release back can fail too, and then nothing is running that
+// anybody chose. Exit 12, with both failures in the error the operator reads:
+// the update's, and the rollback's, which decides what to do next.
+func TestARestoreThatFailsNeedsAPerson(t *testing.T) {
+	for name, breakBoth := range map[string]func(h *harness){
+		"neither release becomes healthy": func(h *harness) { h.Health.Healthy = false },
+		"neither release starts": func(h *harness) {
+			h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: daemon refused")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			h.setHookEnv()
+			applyBaseline(t, h)
+			ctx := context.Background()
+
+			breakBoth(h)
+			result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+			require.Error(t, err)
+			assert.Equal(t, domain.StatusManualIntervention, result.Record.Status)
+			assert.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err))
+			assert.Contains(t, err.Error(), "rollback did not complete (restore-point:",
+				"the rollback's own failure is not in the error")
+		})
+	}
+}
+
+// TestAFailureBeforeTheServicesLeavesThemAlone: an update that never replaced
+// a container has none to put back, and starting the old release again would
+// restart a deployment that was never touched.
+func TestAFailureBeforeTheServicesLeavesThemAlone(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+	ups := len(h.Runtime.UpConfigs)
+
+	h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusCompensated, result.Record.Status)
+	assert.Len(t, h.Runtime.UpConfigs, ups, "a deployment the update never touched was restarted")
+}
+
+// TestAnUpdateToAStagedReleasePutsThePreviousOneBackToo.
+//
+// `update --to` installs a release already in the store -- which is how the
+// unattended tick installs what the channel staged -- and the staging step
+// finds it there and is skipped. A skipped step's compensator never runs, so a
+// restore that lived in it never ran either, on exactly the path it was for.
+func TestAnUpdateToAStagedReleasePutsThePreviousOneBackToo(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// Into the store, by a first attempt that fails the same way.
+	h.Health.FailingWaits = 1
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.Error(t, err)
+
+	ups := len(h.Runtime.UpConfigs)
+	h.Health.FailingWaits = 1
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{To: "1.3.0"})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+	require.Len(t, h.Runtime.UpConfigs, ups+2, "1.2.0 was not brought back after an update --to")
+	assert.Equal(t, "1.2.0", h.Runtime.UpConfigs[ups+1].Env["DEMO_VERSION"])
+}
+
+// TestAConfigurationThatCannotBePutBackIsNotRestartedAgainst.
+//
+// The configuration compensator wrote back what it could and discarded what it
+// could not. That was a best effort while nothing restarted; now the previous
+// release is brought back up after it, and would be started against the new
+// release's files. A file that cannot be put back stops the restore, and the
+// update ends needing a person, with both failures named.
+func TestAConfigurationThatCannotBePutBackIsNotRestartedAgainst(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	// The migration runs after the configuration is rendered and before
+	// anything is compensated, which is the window to take the directory's
+	// write permission away in.
+	src := stageRecoverableUpgradeSource(t, h)
+	hook := filepath.Join(src, "hooks", "migrate")
+	raw, err := os.ReadFile(hook)
+	require.NoError(t, err)
+	locked := strings.Replace(string(raw), "set -eu\n",
+		"set -eu\nchmod 0555 \"$(dirname \"${DEMO_CONFIG_FILE:?}\")\"\n", 1)
+	require.NotEqual(t, string(raw), locked)
+	require.NoError(t, os.WriteFile(hook, []byte(locked), 0o755))
+	configDir := filepath.Join(h.Root, "etc", "demo")
+	t.Cleanup(func() { _ = os.Chmod(configDir, 0o755) })
+
+	ups := len(h.Runtime.UpConfigs)
+	h.Health.FailingWaits = 1
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status, "%v", err)
+	assert.Contains(t, err.Error(), "render-configuration:", "the configuration's own failure is not named")
+	assert.Len(t, h.Runtime.UpConfigs, ups+1,
+		"1.2.0 was brought back up against configuration that was never put back")
+}
+
+// TestAConfigurationFileOnlyTheNewReleaseHadIsRemoved.
+//
+// The compensator put back files that existed before the render and kept
+// nothing for the ones the render created, so a file only the new release
+// declares stayed behind while the previous release was brought back up beside
+// it.
+func TestAConfigurationFileOnlyTheNewReleaseHadIsRemoved(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	existing := "    target: " + h.Root + "/etc/demo/application.yaml\n    mode: \"0640\"\n"
+	added := strings.Replace(string(raw), existing, existing+
+		"  - template: templates/application.yaml.tmpl\n"+
+		"    target: "+h.Root+"/etc/demo/extra.yaml\n    mode: \"0640\"\n", 1)
+	require.NotEqual(t, string(raw), added, "the fixture's configuration block is not the one this extends")
+	require.NoError(t, os.WriteFile(manifest, []byte(added), 0o644))
+	extra := filepath.Join(h.Root, "etc", "demo", "extra.yaml")
+
+	h.Health.FailingWaits = 1
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+	assert.NoFileExists(t, extra, "the new release's own configuration file outlived its rollback")
+}
+
+// TestAReleaseRecordWithNoRootStillRollsBack.
+//
+// A release record from before roots were recorded names its release only
+// through the `current` link. Restoring the link from the record's empty root
+// failed, so a failed update over such an installation could not compensate --
+// though the link had never moved, because only record-state moves it.
+func TestAReleaseRecordWithNoRootStillRollsBack(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	current.Root = ""
+	require.NoError(t, h.Deps.State.SetCurrentRelease(ctx, current))
+
+	h.Health.FailingWaits = 1
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
 }
 
 // TestAFailureAfterAnUnreadableMigrationIsNotRolledBack.
@@ -534,7 +819,7 @@ func TestUpdateFaultInjection(t *testing.T) {
 			h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: daemon refused")
 		}},
 		{"health checks", func(h *harness) {
-			h.Health.Healthy = false
+			h.Health.FailingWaits = 1
 		}},
 		{"secret rendering", func(h *harness) {
 			h.Secrets.Fail["Render"] = domain.SecretsError(nil, "injected: cannot render")

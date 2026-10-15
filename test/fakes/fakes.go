@@ -71,6 +71,10 @@ type Runtime struct {
 	// UpCount counts how many times Up ran, for idempotence assertions.
 	UpCount int
 
+	// UpConfigs is what each Up was handed, in order, so a test can tell
+	// which release a project was brought up from.
+	UpConfigs []ports.RuntimeConfig
+
 	// ValidateResult is what Validate returns.
 	ValidateResult ports.Rendered
 
@@ -259,6 +263,7 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.UpCount++
+	r.UpConfigs = append(r.UpConfigs, cfg)
 	for _, name := range r.ValidateResult.Services {
 		r.Services[name] = ports.ServiceState{
 			Name: name, State: "running", Health: ports.HealthHealthy,
