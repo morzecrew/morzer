@@ -859,17 +859,25 @@ func TestWhatChangedIsDecidedUnderTheLock(t *testing.T) {
 // recoverableChannel is a machine following a channel whose release passes the
 // gate: its migrations leave the database at a schema the installed release can
 // still read.
+//
+// The hook is patched with the declaration. The gate reads only what the
+// release declares, but a failed install is judged by the schema the hook
+// reports, and the fixture's hook migrates to 14 whatever the manifest says.
 func recoverableChannel(t *testing.T) (*harness, *fakeRegistry) {
 	t.Helper()
 	h, registry, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
 		t.Helper()
-		path := filepath.Join(dir, "manifest.yaml")
-		raw, err := os.ReadFile(path)
-		require.NoError(t, err)
-		patched := strings.Replace(string(raw),
-			"database_schema_produces: 14", "database_schema_produces: 12", 1)
-		require.NotEqual(t, string(raw), patched, "the fixture no longer declares what this patches")
-		require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+		for file, edit := range map[string][2]string{
+			"manifest.yaml": {"database_schema_produces: 14", "database_schema_produces: 12"},
+			"hooks/migrate": {"target=14", "target=12"},
+		} {
+			path := filepath.Join(dir, file)
+			raw, err := os.ReadFile(path)
+			require.NoError(t, err)
+			patched := strings.Replace(string(raw), edit[0], edit[1], 1)
+			require.NotEqual(t, string(raw), patched, "%s no longer says %q", file, edit[0])
+			require.NoError(t, os.WriteFile(path, []byte(patched), 0o755))
+		}
 	})
 	h.setHookEnv()
 	applyBaseline(t, h)
