@@ -2745,8 +2745,8 @@ check on a bundle that is entirely correct — the operator simply has not chose
 yet.</p>
 <p><code>--signing-key</code> is how a vendor checks their own signing pipeline in CI: it
 needs no installation on the machine, because there is no policy to read there.
-On a deployment host, <code>policy.signing_keys</code> in <code>installation.yaml</code> decides
-instead. See <a href="#verification">Verification</a>.</p>
+On a deployment host, the installation's <code>policy.signing_keys</code>, set at <code>init</code>,
+decides instead. See <a href="#verification">Verification</a>.</p>
 <h2 id="release-pack">release pack<a class="headerlink" href="#release-pack" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>pack<span class="w"> </span>&lt;bundle-dir&gt;<span class="w"> </span><span class="o">[</span>--platform<span class="w"> </span>linux/amd64<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
 </code></pre></div>
@@ -3037,6 +3037,12 @@ inactive. <code>update --to &lt;version&gt;</code> installs it afterwards.</p>
 <p>Plaintext <code>http://</code> is refused outright — fetch the bundle out of band and pass
 a path. A reference whose scheme this build has no adapter for is refused by
 name, listing the ones it does have.</p>
+<p><strong>A bundle fetched over HTTPS or from a registry may be at most 512 MiB</strong> as it
+arrives: the compressed archive, before the <a href="#the-extraction-budget">extraction
+budget</a> applies to what it expands to. The cap is fixed
+in this build. A larger bundle — in practice one that carries its own container
+images — is copied to the machine some other way and installed from a path,
+where only the extraction budget applies.</p>
 <h3 id="over-https">Over HTTPS<a class="headerlink" href="#over-https" title="Permanent link">&para;</a></h3>
 <p>TLS is not optional, and <strong>a redirect may not leave it</strong>. A server that answered
 an <code>https://</code> request with a redirect to plaintext would route around the
@@ -3073,10 +3079,13 @@ exists to prevent.</p>
 <p>Credentials come from the ambient Docker configuration, so an operator who has
 run <code>docker login</code> for the registry their <em>images</em> come from does not log in
 again for the bundle that pins those images. Nothing is stored by the manager.</p>
-<p><code>release list</code> against an <code>oci://</code> reference enumerates the repository's version
-tags. It is the only transport that can — a URL has no index — and tags that are
-not versions, like <code>latest</code>, are skipped rather than offered as something to
-install by number.</p>
+<p><code>morzer update --check &lt;ref&gt;</code> against an <code>oci://</code> reference reads the
+repository's version tags and reports the newer releases this installation could
+install. Of the remote transports a registry is the only one that can — a URL
+has no index — and tags that are not versions, like <code>latest</code>, are skipped rather
+than offered as something to install by number. On the machine itself, a
+directory holding one release directory per version is listed the same way. <code>release list</code> lists what is installed on this
+machine, never a repository.</p>
 <div class="admonition note">
 <p class="admonition-title">What the registry proves, and what it does not</p>
 <p>Both the manifest and the layer are checked against the digests the registry
@@ -3174,13 +3183,13 @@ signature → <code>SHA256SUMS</code> → every file, and every link is checkabl
 </code></pre></div>
 <p>The signature travels <strong>inside</strong> the bundle so it survives being packed into an
 archive and unpacked again. A sibling file would not.</p>
-<p>Configure the keys per installation:</p>
-<div class="highlight"><pre><span></span><code><span class="nt">policy</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">require_signature</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">signing_keys</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3</span>
+<p>The keys are set per installation, at <code>init</code>:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--require-signature<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--signing-key<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 </code></pre></div>
-<p>or at <code>init</code>, with <code>--signing-key</code> and <code>--require-signature</code>. Keys live with the
+<p>They are recorded under <code>policy</code> in the installation's state and shown in
+<code>installation.yaml</code>, which is a report: editing it changes nothing. They are not
+yet changeable after <code>init</code>. Keys live with the
 installation and never with the release: a bundle naming the key allowed to sign
 it would be a bundle authorising itself.</p>
 <div class="admonition warning">

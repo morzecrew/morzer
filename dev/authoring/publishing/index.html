@@ -1301,6 +1301,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Publish it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#moving-a-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Moving a channel
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2155,6 +2172,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Publish it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#moving-a-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Moving a channel
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2419,9 +2453,10 @@ installation on the machine, so it belongs in your CI as a required check.</p>
 side and a redirect out of it is refused, so a plain-HTTP mirror will not work.
 No credentials are sent, so a bundle behind authentication needs the registry
 route or an out-of-band download.</p>
-<p><strong>An <abbr title="Open Container Initiative">OCI</abbr> registry</strong> is the one that lets <code>morzer release list</code> enumerate your
-versions, because a registry keeps a tag list and a URL does not. Publish the
-archive as a single-layer artifact:</p>
+<p><strong>An <abbr title="Open Container Initiative">OCI</abbr> registry</strong> is the remote transport that lets <code>morzer update --check</code>
+find your newer versions, and the only one an installation can follow as a
+channel, because a registry keeps a tag list and a URL does not. Publish the archive as a
+single-layer artifact:</p>
 <div class="highlight"><pre><span></span><code>oras<span class="w"> </span>push<span class="w"> </span>registry.example/demo/bundle:1.3.0<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--artifact-type<span class="w"> </span>application/vnd.morzer.release.bundle.v1<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>demo-1.3.0.tar.zst:application/vnd.morzer.release.bundle.v1.tar+zstd
@@ -2429,6 +2464,24 @@ archive as a single-layer artifact:</p>
 <p>Credentials come from your users' ambient Docker configuration, so anyone who
 has run <code>docker login</code> for the registry your <em>images</em> come from can already
 fetch the bundle that pins them.</p>
+<p>Either remote transport takes at most 512 MiB, compressed. A bundle larger than
+that, usually one <a href="../bundled-images/#size">carrying its own images</a>, is handed
+over as a file.</p>
+<h3 id="moving-a-channel">Moving a channel<a class="headerlink" href="#moving-a-channel" title="Permanent link">&para;</a></h3>
+<p>A channel is a tag that moves, such as <code>stable</code> or <code>main</code>, and installations
+that set <code>update.channel</code> to it follow wherever it points. Push the version
+first, then point the channel at it:</p>
+<div class="highlight"><pre><span></span><code>oras<span class="w"> </span>push<span class="w"> </span>registry.example/demo/bundle:1.3.0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--artifact-type<span class="w"> </span>application/vnd.morzer.release.bundle.v1<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>demo-1.3.0.tar.zst:application/vnd.morzer.release.bundle.v1.tar+zstd
+oras<span class="w"> </span>tag<span class="w"> </span>registry.example/demo/bundle:1.3.0<span class="w"> </span>stable
+</code></pre></div>
+<p><strong>A machine only follows a channel forward.</strong> The tag can be moved back, but a
+machine following it refuses to stage a version older than the one it runs, and
+records the refusal. Moving
+<code>stable</code> back to <code>1.2.0</code> after a bad <code>1.3.0</code> therefore changes nothing on a
+machine that already took <code>1.3.0</code>. Publish <code>1.3.1</code> with the fix and move the tag
+to it; an operator who needs the old release now runs <code>morzer rollback</code>.</p>
 <h2 id="tell-them-the-digest">Tell them the digest<a class="headerlink" href="#tell-them-the-digest" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-1
 <span class="c1"># sha256:bcca96e8020143562b3040e9c443f36ae57d8e2594c59b7f2499902416b211c5</span>

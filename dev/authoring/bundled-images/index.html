@@ -2415,6 +2415,11 @@ layer.</p>
 <p>A bundle that carries everything is a bundle every transport has to move, and a
 release that was 2 MB becomes 800 MB. Bundling only what is private is what
 keeps that proportionate.</p>
+<p>It also decides how the bundle can travel. <strong>A bundle fetched over HTTPS or from
+a registry may be at most 512 MiB compressed</strong>, so an 800 MB bundle cannot be
+followed as an <code>update.channel</code> or fetched by URL. It reaches the machine as a
+file and is installed from a path, as in <a href="../../operating/installing-offline/">installing
+offline</a>.</p>
 <p>Declare what the bundle expands to, so the manager can size its extraction
 budget:</p>
 <div class="highlight"><span class="filename">manifest.yaml</span><pre><span></span><code><span class="nt">bundle</span><span class="p">:</span>

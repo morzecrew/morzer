@@ -2207,11 +2207,17 @@ recovery key.</p>
 <p>Diagnostics then name the target <code>chat</code> and never say where it points, which is
 the trade: you lose "unreachable host x" and keep the token out of your logs.</p>
 <h2 id="what-is-sent">What is sent<a class="headerlink" href="#what-is-sent" title="Permanent link">&para;</a></h2>
-<p>Two kinds of event, and no others:</p>
+<p>Three kinds of event, and no others:</p>
 <ul>
 <li><code>operation.finished</code> — the outcome of an <code>apply</code>, <code>update</code>, <code>rollback</code>,
   <code>config</code>, <code>backup</code> or <code>restore</code>, including <strong>failures</strong>.</li>
 <li><code>check</code> — a <code>doctor</code> result at or above the target's <code>min_level</code>.</li>
+<li><code>update.staged</code> — a followed reference moved, and the release it points at
+  was fetched and verified: the <a href="../unattended-updates/">update channel</a>, on a
+  timer tick or <code>morzer update --stage</code>, or a reference passed to
+  <code>update --stage</code>. It is sent when the release is staged, before anything decides whether it installs itself, and it is the one
+  event here that is not an outcome: it may be a decision waiting for a person
+  who was not at the terminal when the timer ran.</li>
 </ul>
 <p>The payload is the manager's own event <abbr title="JavaScript Object Notation">JSON</abbr>, the same shape <code>--log-format json</code>
 emits. A service wanting a different body gets a two-line receiver.</p>
