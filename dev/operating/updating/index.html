@@ -721,6 +721,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#when-an-update-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        When an update fails
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#a-failure-after-the-migrations" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2160,6 +2171,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#when-an-update-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        When an update fails
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#a-failure-after-the-migrations" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2408,10 +2430,24 @@ the same bundle again to reach the same answer. <code>status</code> reports it.<
     E --&gt; F{healthy?}
     F --&gt;|yes| G[record the new release]
     F --&gt;|no| I{can the old release read the database now?}
-    I --&gt;|yes| H[compensate: pointer back to what was running]
+    I --&gt;|yes| H[compensate: the release that was running, containers included]
     I --&gt;|no| J[stop: requires-manual-intervention, exit 12]</code></pre>
 <p>The first two steps mutate nothing, so a bundle that fails them costs you
 nothing but the time to read the error.</p>
+<h3 id="when-an-update-fails">When an update fails<a class="headerlink" href="#when-an-update-fails" title="Permanent link">&para;</a></h3>
+<p>A failure rolls the update back: the configuration files return to what they
+were, in the modes they had, and if the new release's services had already been
+started, the release that was running is brought back up with its own secrets
+and waited for until its health checks pass. That is
+<a href="../../reference/exit-codes/">exit 11</a>: the release that was running is running
+again. The database is not rolled back: if migrations ran, it stays at the
+schema they left, which is allowed only when the old release declares it can
+read it (see below).</p>
+<p>If bringing it back fails as well, the deployment matches neither release —
+some services may be the new release's and some the old one's — and the update
+stops at exit 12 with both failures in the error. So does a configuration file
+that could not be put back: the old release is not started against the new
+release's files.</p>
 <h3 id="a-failure-after-the-migrations">A failure after the migrations<a class="headerlink" href="#a-failure-after-the-migrations" title="Permanent link">&para;</a></h3>
 <p>A failure before the migrations run — an image that will not pull, a
 configuration that will not render — rolls back to the release that was running.
