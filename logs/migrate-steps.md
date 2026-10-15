@@ -140,3 +140,15 @@ proposal: ASSUMED — part of decision 14: a migration service's run is a change
   unreachable; removing them is a cleanup of its own.
 
 **Drift count: 0.**
+
+## CI, 2026-10-15
+
+- **Fixed — the docker test measured the resolver, not the start.**
+  `TestComposeRunOneShotStartsWhatItDependsOn` failed on every CI run of this
+  branch ("DB-MISSING", after the seven seconds the healthcheck wait takes, so
+  the database had been started) and passed on a workstation. Its probe was
+  busybox `nslookup` of the service name from inside the one-shot. It now asks
+  the runtime's own `Status` whether the dependency is running, and fails with
+  `--no-deps` put back ("never created"), measured.
+
+**Drift count: 0.**
