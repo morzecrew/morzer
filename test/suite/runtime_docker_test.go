@@ -308,6 +308,58 @@ services:
 		"the hook ABI's variables must reach the one-shot container")
 }
 
+// TestComposeRunOneShotStartsWhatItDependsOn is a first install's migration.
+//
+// Migrate runs before start-services, so on a machine where nothing has ever
+// run, the database a migration service depends on is not up yet. Under
+// `--no-deps`, which the adapter used to pass, it was not started either.
+// Asserted against the daemon because the claim is about what Compose does, and
+// a scripted runner can only report the flag.
+//
+// Asked of the runtime's own status rather than of the one-shot. A probe from
+// inside the container -- busybox `nslookup` of the service name -- passed on a
+// workstation and failed on the CI runner with the database running, so it
+// measured the resolver rather than whether the dependency was started.
+func TestComposeRunOneShotStartsWhatItDependsOn(t *testing.T) {
+	dockerlab.Require(t)
+	dockerlab.Pull(t, dockerlab.ImageBusybox)
+
+	cfg := dockerlab.Project(t, fmt.Sprintf(`
+services:
+  db:
+    image: %[1]s
+    command: ["sleep", "300"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 1s
+      retries: 5
+  migrate:
+    image: %[1]s
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["true"]
+`, dockerlab.ImageBusybox))
+
+	rt := compose.New(infraexec.New())
+	res, err := rt.RunOneShot(context.Background(), cfg, "migrate",
+		ports.RunOptions{Remove: true, Timeout: 2 * time.Minute})
+	require.NoError(t, err)
+	require.Equal(t, 0, res.ExitCode, "%s%s", res.Stdout, res.Stderr)
+
+	states, err := rt.Status(context.Background(), cfg)
+	require.NoError(t, err)
+	var db *ports.ServiceState
+	for i := range states {
+		if states[i].Name == "db" {
+			db = &states[i]
+		}
+	}
+	require.NotNil(t, db, "the migration ran and the database it depends on was never created")
+	assert.True(t, db.Running(), "the database the migration depends on is %q", db.State)
+}
+
 // TestComposeRunOneShotOnAMisnamedServiceIsAnExitNotAnError records the edge
 // of the "a non-zero exit is data" rule.
 //

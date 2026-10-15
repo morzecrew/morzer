@@ -151,31 +151,31 @@ func TestValidationReportsEveryProblemAtOnce(t *testing.T) {
 func TestOperationKindRules(t *testing.T) {
 	t.Run("runtime-service needs a service", func(t *testing.T) {
 		m := validManifest()
-		m.Operations = map[string]OperationSpec{
-			"migrate": {Kind: OperationKindRuntimeService},
+		m.Operations = map[string]OperationSteps{
+			"migrate": {{Kind: OperationKindRuntimeService}},
 		}
 		require.Error(t, m.Validate())
 	})
 
 	t.Run("hook needs a command", func(t *testing.T) {
 		m := validManifest()
-		m.Operations = map[string]OperationSpec{"backup": {Kind: OperationKindHook}}
+		m.Operations = map[string]OperationSteps{"backup": {{Kind: OperationKindHook}}}
 		require.Error(t, m.Validate())
 	})
 
 	t.Run("a hook may not also name a service", func(t *testing.T) {
 		m := validManifest()
-		m.Operations = map[string]OperationSpec{
-			"backup": {Kind: OperationKindHook, Command: []string{"hooks/backup"}, Service: "db"},
+		m.Operations = map[string]OperationSteps{
+			"backup": {{Kind: OperationKindHook, Command: []string{"hooks/backup"}, Service: "db"}},
 		}
 		require.Error(t, m.Validate(), "the two kinds have different semantics and must not be mixed")
 	})
 
 	t.Run("both kinds are valid on their own", func(t *testing.T) {
 		m := validManifest()
-		m.Operations = map[string]OperationSpec{
-			"migrate": {Kind: OperationKindRuntimeService, Service: "migrate"},
-			"backup":  {Kind: OperationKindHook, Command: []string{"hooks/backup"}},
+		m.Operations = map[string]OperationSteps{
+			"migrate": {{Kind: OperationKindRuntimeService, Service: "migrate"}},
+			"backup":  {{Kind: OperationKindHook, Command: []string{"hooks/backup"}}},
 		}
 		require.NoError(t, m.Validate())
 	})
@@ -262,8 +262,8 @@ func TestApplyDefaults(t *testing.T) {
 		Configuration: []ConfigurationFile{
 			{Template: "templates/a.yaml", Target: "/etc/demo/a.yaml"},
 		},
-		Operations: map[string]OperationSpec{
-			"backup": {Kind: OperationKindHook, Command: []string{"hooks/backup"}},
+		Operations: map[string]OperationSteps{
+			"backup": {{Kind: OperationKindHook, Command: []string{"hooks/backup"}}},
 		},
 		Health: HealthSpec{Checks: []HealthCheck{
 			{Name: "api", Type: HealthHTTP, URL: "http://127.0.0.1/health"},
@@ -282,7 +282,7 @@ func TestApplyDefaults(t *testing.T) {
 	// runtime falls back to is the adapter's answer now.
 	assert.Empty(t, m.Runtime.Project, "the project is the runtime's to default, not the manifest's")
 	assert.Equal(t, DefaultConfigMode, m.Configuration[0].Mode)
-	assert.Equal(t, Duration(DefaultOperationTimeout), m.Operations["backup"].Timeout)
+	assert.Equal(t, Duration(DefaultOperationTimeout), m.Operations["backup"][0].Timeout)
 	assert.Equal(t, Duration(DefaultHealthTimeout), m.Health.Checks[0].Timeout)
 
 	require.NoError(t, m.Validate())
