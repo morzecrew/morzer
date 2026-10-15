@@ -2,7 +2,9 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strings"
@@ -482,12 +484,17 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			}
 
 			for target, content := range rendered {
-				if existing, err := os.ReadFile(target); err == nil {
+				switch existing, err := os.ReadFile(target); {
+				case err == nil:
 					backup := configBackup{content: existing, mode: os.FileMode(domain.DefaultConfigMode.Perm())}
 					if info, err := os.Stat(target); err == nil {
 						backup.mode = info.Mode().Perm()
 					}
 					backups[target] = backup
+				case errors.Is(err, fs.ErrNotExist):
+					// Created by this render, so putting it back
+					// means removing it.
+					backups[target] = configBackup{created: true}
 				}
 				mode := modes[target]
 				if mode == 0 {
@@ -521,7 +528,15 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 				// now restarts the previous release, whose
 				// containers may run as a user that only a
 				// wider mode let read it.
-				if err := atomicfs.WriteFile(target, backup.content, backup.mode); err != nil {
+				var err error
+				if backup.created {
+					if err = os.Remove(target); errors.Is(err, fs.ErrNotExist) {
+						err = nil
+					}
+				} else {
+					err = atomicfs.WriteFile(target, backup.content, backup.mode)
+				}
+				if err != nil {
 					failed = append(failed, target)
 				}
 			}
@@ -543,6 +558,9 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 type configBackup struct {
 	content []byte
 	mode    os.FileMode
+
+	// created is a file the render wrote where there was none.
+	created bool
 }
 
 // stepValidateRuntime parses and checks the Compose configuration.

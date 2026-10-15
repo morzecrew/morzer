@@ -560,6 +560,38 @@ func TestAConfigurationThatCannotBePutBackIsNotRestartedAgainst(t *testing.T) {
 		"1.2.0 was brought back up against configuration that was never put back")
 }
 
+// TestAConfigurationFileOnlyTheNewReleaseHadIsRemoved.
+//
+// The compensator put back files that existed before the render and kept
+// nothing for the ones the render created, so a file only the new release
+// declares stayed behind while the previous release was brought back up beside
+// it.
+func TestAConfigurationFileOnlyTheNewReleaseHadIsRemoved(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	existing := "    target: " + h.Root + "/etc/demo/application.yaml\n    mode: \"0640\"\n"
+	added := strings.Replace(string(raw), existing, existing+
+		"  - template: templates/application.yaml.tmpl\n"+
+		"    target: "+h.Root+"/etc/demo/extra.yaml\n    mode: \"0640\"\n", 1)
+	require.NotEqual(t, string(raw), added, "the fixture's configuration block is not the one this extends")
+	require.NoError(t, os.WriteFile(manifest, []byte(added), 0o644))
+	extra := filepath.Join(h.Root, "etc", "demo", "extra.yaml")
+
+	h.Health.FailingWaits = 1
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+	assert.NoFileExists(t, extra, "the new release's own configuration file outlived its rollback")
+}
+
 // TestAReleaseRecordWithNoRootStillRollsBack.
 //
 // A release record from before roots were recorded names its release only
