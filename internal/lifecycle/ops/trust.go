@@ -56,7 +56,7 @@ func TrustAdd(ctx context.Context, d *Deps, opts Options, key string) (Result, e
 		if err != nil {
 			return err
 		}
-		if slices.Contains(current.Policy.SigningKeys, key) {
+		if slices.ContainsFunc(current.Policy.SigningKeys, sameKey(key)) {
 			return nil
 		}
 		added = true
@@ -108,14 +108,14 @@ func TrustRemove(ctx context.Context, d *Deps, opts Options, key string) (Result
 // untrust returns the keys that remain once key is removed, or why it cannot be.
 func untrust(inst domain.Installation, key string) ([]string, error) {
 	trusted := inst.Policy.SigningKeys
-	if !slices.Contains(trusted, key) {
+	if !slices.ContainsFunc(trusted, sameKey(key)) {
 		e := domain.Usage("%s is not a trusted signing key", key)
 		if len(trusted) == 0 {
 			return nil, e.WithHint("this installation trusts no signing key")
 		}
 		return nil, e.WithHint("the trusted keys are: %s", strings.Join(trusted, ", "))
 	}
-	remaining := slices.DeleteFunc(slices.Clone(trusted), func(k string) bool { return k == key })
+	remaining := slices.DeleteFunc(slices.Clone(trusted), sameKey(key))
 	if len(remaining) == 0 && inst.Policy.RequireSignature {
 		hint := "trust the replacement first with `morzer release trust add <key>`"
 		if inst.Update.AutoApply {
@@ -126,6 +126,14 @@ func untrust(inst domain.Installation, key string) ([]string, error) {
 				"so no release could be installed without it", key).WithHint("%s", hint)
 	}
 	return remaining, nil
+}
+
+// sameKey matches a stored key as the verifier reads it, trimmed. `init` kept
+// keys as typed until it trimmed them, so an installation can hold one with the
+// whitespace it was typed with, and an exact match would neither find it to
+// remove nor notice that adding it again adds nothing.
+func sameKey(key string) func(string) bool {
+	return func(stored string) bool { return strings.TrimSpace(stored) == key }
 }
 
 // checkSigningKeys asks the verifier whether each key is one it could check a

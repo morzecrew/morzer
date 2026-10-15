@@ -154,3 +154,28 @@ func TestRemovingAKeyThatIsNotTrustedNamesTheOnesThatAre(t *testing.T) {
 	assert.Contains(t, domain.AsError(err).Hint, key, "the refusal does not name the trusted key")
 	assert.Equal(t, []string{key}, trustedKeys(t, h).SigningKeys)
 }
+
+// A key with whitespace around it -- a trailing newline from `$(cat key.pub)`,
+// a pasted space -- still parses, so `init` stored it as typed, and `remove`,
+// which trims what it is given, could never match it: the old key stayed
+// trusted however often an operator dropped it, and `add` trusted the same key
+// a second time. Keys are compared, and stored, as the parser reads them.
+func TestAKeyStoredWithWhitespaceCanStillBeRemoved(t *testing.T) {
+	ctx := context.Background()
+	_, old := minisignKeypair(t)
+	_, replacement := minisignKeypair(t)
+
+	// As `init` wrote it until now, which an existing installation keeps.
+	h := trustingMachine(t)
+	requireSignatures(t, h, " "+old+"\n", false)
+
+	_, err := ops.TrustAdd(ctx, h.Deps, ops.Options{}, old)
+	require.NoError(t, err)
+	assert.Len(t, trustedKeys(t, h).SigningKeys, 1, "the same key was trusted twice")
+
+	_, err = ops.TrustAdd(ctx, h.Deps, ops.Options{}, replacement)
+	require.NoError(t, err)
+	_, err = ops.TrustRemove(ctx, h.Deps, ops.Options{}, old)
+	require.NoError(t, err, "the key init stored could not be removed")
+	assert.Equal(t, []string{replacement}, trustedKeys(t, h).SigningKeys)
+}

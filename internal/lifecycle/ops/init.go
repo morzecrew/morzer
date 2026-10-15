@@ -96,6 +96,18 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 				"or `morzer update` to install a new release")
 	}
 
+	// Stored as the verifier reads them. A key with whitespace around it --
+	// a trailing newline from `$(cat key.pub)` -- still parses, and kept as
+	// typed it could never be matched by `release trust remove`, which trims
+	// what it is given. A copy, so the caller's slice is left as it was.
+	if len(opts.SigningKeys) > 0 {
+		trimmed := make([]string, len(opts.SigningKeys))
+		for i, key := range opts.SigningKeys {
+			trimmed[i] = strings.TrimSpace(key)
+		}
+		opts.SigningKeys = trimmed
+	}
+
 	// An unsatisfiable policy is refused before anything is created, with
 	// the same message Installation.Validate would give later. Discovering
 	// it after the directories and the machine key exist would mean
