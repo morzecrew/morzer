@@ -93,3 +93,17 @@ the release pointer moved back, and the error says "earlier changes were rolled
 back". That is outside this task and is reported to the author, not fixed here.
 
 **Drift count: 0.**
+
+## Review, round 1, 2026-10-15
+
+- **Fixed — the failure mark was read and written outside the deployment
+  lock.** The digest re-check narrowed the window and did not close it: an
+  `update --stage`, or a manual `update --to` that installed the release and
+  retired the record, could land between the read and the write and be
+  overwritten by a stale record. The mark now takes the deployment lock every
+  other writer of the candidate holds, and does nothing but warn when it cannot
+  have it. Reproduced red first by holding the lock: the mark was written
+  anyway. The discovery entry above that decided the re-check missed this,
+  because a re-read is not exclusion.
+
+**Drift count: 0.**

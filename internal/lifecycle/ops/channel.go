@@ -518,7 +518,7 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 	out.Update = &result
 	out.Applied = err == nil
 	if err != nil && result.Record.ID != "" {
-		d.markInstallFailed(ctx, candidate, result.Record)
+		d.markInstallFailed(ctx, opts.Options, candidate, result.Record)
 	}
 	return out, err
 }
@@ -553,21 +553,30 @@ func (d *Deps) refuseOpenIntervention(ctx context.Context) error {
 //
 // Only for an operation that ran: a refusal before the engine started -- the
 // lock, a preflight -- says nothing about the release, and marking it would
-// leave a good release uninstalled until the channel moved. Re-read first,
-// because the record is written without the deployment lock and an operator's
-// `update --stage` may have replaced it meanwhile.
+// leave a good release uninstalled until the channel moved.
+//
+// Read, compared and written under the deployment lock, which every other
+// writer of the candidate holds. The update that failed has released it by
+// now, so an operator's `update --stage`, or a manual retry that installed the
+// release and retired the record, could otherwise land between the read and
+// the write and be overwritten by a stale record. The digest comparison is
+// what catches either one once the lock is ours.
+//
+// The update's own error is the one the tick returns. Not marking -- the lock
+// is held, the write fails -- costs one retry on the next tick, which is the
+// behaviour before this record existed, so it is a warning.
 func (d *Deps) markInstallFailed(
-	ctx context.Context, attempted domain.UpdateCandidate, rec domain.OperationRecord,
+	ctx context.Context, opts Options, attempted domain.UpdateCandidate, rec domain.OperationRecord,
 ) {
-	current, err := d.State.UpdateCandidate(ctx)
-	if err != nil || current.UpstreamDigest != attempted.UpstreamDigest {
-		return
-	}
-	current.Failed = fmt.Sprintf("%s ended %s", rec.ID, rec.Status)
-	if err := d.State.SetUpdateCandidate(ctx, current); err != nil {
-		// The update's own error is the one to return. Losing this
-		// costs one retry on the next tick, which is the behaviour
-		// before this record existed.
+	err := d.withLock(ctx, d.newOpID(), domain.OpTypeRelease, opts, func(ctx context.Context) error {
+		current, err := d.State.UpdateCandidate(ctx)
+		if err != nil || current.UpstreamDigest != attempted.UpstreamDigest {
+			return err
+		}
+		current.Failed = fmt.Sprintf("%s ended %s", rec.ID, rec.Status)
+		return d.State.SetUpdateCandidate(ctx, current)
+	})
+	if err != nil {
 		logging.FromContext(ctx).Warn("cannot record the failed install on the update candidate",
 			"error", err)
 	}
