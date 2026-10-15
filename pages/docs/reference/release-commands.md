@@ -132,8 +132,8 @@ yet.
 
 `--signing-key` is how a vendor checks their own signing pipeline in CI: it
 needs no installation on the machine, because there is no policy to read there.
-On a deployment host, `policy.signing_keys` in `installation.yaml` decides
-instead. See [Verification](#verification).
+On a deployment host, the installation's `policy.signing_keys`, set at `init`,
+decides instead. See [Verification](#verification).
 
 ## release pack
 
@@ -339,6 +339,13 @@ Plaintext `http://` is refused outright — fetch the bundle out of band and pas
 a path. A reference whose scheme this build has no adapter for is refused by
 name, listing the ones it does have.
 
+**A bundle fetched over HTTPS or from a registry may be at most 512 MiB** as it
+arrives: the compressed archive, before the [extraction
+budget](#the-extraction-budget) applies to what it expands to. The cap is fixed
+in this build. A larger bundle — in practice one that carries its own container
+images — is copied to the machine some other way and installed from a path,
+where only the extraction budget applies.
+
 ### Over HTTPS
 
 TLS is not optional, and **a redirect may not leave it**. A server that answered
@@ -389,10 +396,13 @@ Credentials come from the ambient Docker configuration, so an operator who has
 run `docker login` for the registry their *images* come from does not log in
 again for the bundle that pins those images. Nothing is stored by the manager.
 
-`release list` against an `oci://` reference enumerates the repository's version
-tags. It is the only transport that can — a URL has no index — and tags that are
-not versions, like `latest`, are skipped rather than offered as something to
-install by number.
+`morzer update --check <ref>` against an `oci://` reference reads the
+repository's version tags and reports the newer releases this installation could
+install. Of the remote transports a registry is the only one that can — a URL
+has no index — and tags that are not versions, like `latest`, are skipped rather
+than offered as something to install by number. On the machine itself, a
+directory holding one release directory per version is listed the same way. `release list` lists what is installed on this
+machine, never a repository.
 
 !!! note "What the registry proves, and what it does not"
 
@@ -494,16 +504,16 @@ release/
 The signature travels **inside** the bundle so it survives being packed into an
 archive and unpacked again. A sibling file would not.
 
-Configure the keys per installation:
+The keys are set per installation, at `init`:
 
-```yaml
-policy:
-  require_signature: true
-  signing_keys:
-    - RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
+```sh
+morzer init --require-signature \
+    --signing-key RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 ```
 
-or at `init`, with `--signing-key` and `--require-signature`. Keys live with the
+They are recorded under `policy` in the installation's state and shown in
+`installation.yaml`, which is a report: editing it changes nothing. They are not
+yet changeable after `init`. Keys live with the
 installation and never with the release: a bundle naming the key allowed to sign
 it would be a bundle authorising itself.
 
