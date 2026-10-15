@@ -308,6 +308,44 @@ services:
 		"the hook ABI's variables must reach the one-shot container")
 }
 
+// TestComposeRunOneShotStartsWhatItDependsOn is a first install's migration.
+//
+// Migrate runs before start-services, so on a machine where nothing has ever
+// run, the database a migration service depends on is not up yet. Under
+// `--no-deps`, which the adapter used to pass, it was not started either, and
+// the migration could not resolve it. Asserted against the daemon because the
+// claim is about what Compose does, and a scripted runner can only report the
+// flag.
+func TestComposeRunOneShotStartsWhatItDependsOn(t *testing.T) {
+	dockerlab.Require(t)
+	dockerlab.Pull(t, dockerlab.ImageBusybox)
+
+	cfg := dockerlab.Project(t, fmt.Sprintf(`
+services:
+  db:
+    image: %[1]s
+    command: ["sleep", "300"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 1s
+      retries: 5
+  migrate:
+    image: %[1]s
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "nslookup db >/dev/null 2>&1 && echo DB-FOUND || { echo DB-MISSING; exit 3; }"]
+`, dockerlab.ImageBusybox))
+
+	res, err := compose.New(infraexec.New()).RunOneShot(context.Background(), cfg, "migrate",
+		ports.RunOptions{Remove: true, Timeout: 2 * time.Minute})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, res.ExitCode, "%s%s", res.Stdout, res.Stderr)
+	assert.Contains(t, res.Stdout, "DB-FOUND", "the migration ran before the database it depends on was started")
+}
+
 // TestComposeRunOneShotOnAMisnamedServiceIsAnExitNotAnError records the edge
 // of the "a non-zero exit is data" rule.
 //
