@@ -229,61 +229,61 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 		// operations
 		"a runtime-service operation with no service": {
 			func(m *Manifest) {
-				m.Operations = map[string]OperationSpec{
-					"migrate": {Kind: OperationKindRuntimeService},
+				m.Operations = map[string]OperationSteps{
+					"migrate": {{Kind: OperationKindRuntimeService}},
 				}
 			},
 			"operations.migrate.service",
 		},
 		"a runtime-service operation that also gives a command": {
 			func(m *Manifest) {
-				m.Operations = map[string]OperationSpec{
-					"migrate": {Kind: OperationKindRuntimeService, Service: "app",
-						Command: []string{"migrate"}},
+				m.Operations = map[string]OperationSteps{
+					"migrate": {{Kind: OperationKindRuntimeService, Service: "app",
+						Command: []string{"migrate"}}},
 				}
 			},
 			"operations.migrate.command",
 		},
 		"a hook operation with no command": {
 			func(m *Manifest) {
-				m.Operations = map[string]OperationSpec{"migrate": {Kind: OperationKindHook}}
+				m.Operations = map[string]OperationSteps{"migrate": {{Kind: OperationKindHook}}}
 			},
 			"operations.migrate.command",
 		},
 		"a hook command outside the bundle": {
 			func(m *Manifest) {
-				m.Operations = map[string]OperationSpec{
-					"migrate": {Kind: OperationKindHook, Command: []string{"/bin/sh"}},
+				m.Operations = map[string]OperationSteps{
+					"migrate": {{Kind: OperationKindHook, Command: []string{"/bin/sh"}}},
 				}
 			},
 			"operations.migrate.command[0]",
 		},
 		"a hook operation that also names a service": {
 			func(m *Manifest) {
-				m.Operations = map[string]OperationSpec{
-					"migrate": {Kind: OperationKindHook, Command: []string{"hooks/migrate"},
-						Service: "app"},
+				m.Operations = map[string]OperationSteps{
+					"migrate": {{Kind: OperationKindHook, Command: []string{"hooks/migrate"},
+						Service: "app"}},
 				}
 			},
 			"operations.migrate.service",
 		},
 		"an operation with no kind": {
 			func(m *Manifest) {
-				m.Operations = map[string]OperationSpec{"migrate": {Command: []string{"hooks/migrate"}}}
+				m.Operations = map[string]OperationSteps{"migrate": {{Command: []string{"hooks/migrate"}}}}
 			},
 			"operations.migrate.kind",
 		},
 		"an operation of an unknown kind": {
 			func(m *Manifest) {
-				m.Operations = map[string]OperationSpec{"migrate": {Kind: "systemd-unit"}}
+				m.Operations = map[string]OperationSteps{"migrate": {{Kind: "systemd-unit"}}}
 			},
 			"operations.migrate.kind",
 		},
 		"a negative timeout": {
 			func(m *Manifest) {
-				m.Operations = map[string]OperationSpec{
-					"migrate": {Kind: OperationKindHook, Command: []string{"hooks/migrate"},
-						Timeout: Duration(-time.Second)},
+				m.Operations = map[string]OperationSteps{
+					"migrate": {{Kind: OperationKindHook, Command: []string{"hooks/migrate"},
+						Timeout: Duration(-time.Second)}},
 				}
 			},
 			"operations.migrate.timeout",
@@ -459,8 +459,8 @@ func TestDefaultsAreAppliedBeforeValidation(t *testing.T) {
 		Images: map[string]ImageSpec{
 			"app": {Ref: "registry.example/demo/app@sha256:" + strings.Repeat("a", 64)},
 		},
-		Operations: map[string]OperationSpec{
-			"migrate": {Kind: OperationKindHook, Command: []string{"hooks/migrate"}},
+		Operations: map[string]OperationSteps{
+			"migrate": {{Kind: OperationKindHook, Command: []string{"hooks/migrate"}}},
 		},
 		Health: HealthSpec{
 			Checks: []HealthCheck{{Name: "api", Type: HealthHTTP, URL: "http://127.0.0.1/health"}},
@@ -471,7 +471,7 @@ func TestDefaultsAreAppliedBeforeValidation(t *testing.T) {
 	if err := m.Validate(); err != nil {
 		t.Fatalf("a manifest that only omitted defaultable fields was refused: %v", err)
 	}
-	if m.Operations["migrate"].Timeout == 0 {
+	if m.Operations["migrate"][0].Timeout == 0 {
 		t.Error("an operation with no timeout would run forever")
 	}
 	if m.Health.Checks[0].Timeout == 0 {
@@ -512,8 +512,8 @@ func TestTheLoaderAndTheGeneratedSchemaAgreeOnConsistency(t *testing.T) {
 // TestOperationLookup is what every operation calls before it runs a hook.
 func TestOperationLookup(t *testing.T) {
 	m := validManifest()
-	m.Operations = map[string]OperationSpec{
-		OpBackup: {Kind: OperationKindHook, Command: []string{"hooks/backup"}},
+	m.Operations = map[string]OperationSteps{
+		OpBackup: {{Kind: OperationKindHook, Command: []string{"hooks/backup"}}},
 	}
 
 	if op, ok := m.Operation(OpBackup); !ok || op.Command[0] != "hooks/backup" {
