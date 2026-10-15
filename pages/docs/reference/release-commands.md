@@ -132,8 +132,8 @@ yet.
 
 `--signing-key` is how a vendor checks their own signing pipeline in CI: it
 needs no installation on the machine, because there is no policy to read there.
-On a deployment host, `policy.signing_keys` in `installation.yaml` decides
-instead. See [Verification](#verification).
+On a deployment host, the installation's `policy.signing_keys`, set at `init`,
+decides instead. See [Verification](#verification).
 
 ## release pack
 
@@ -503,16 +503,16 @@ release/
 The signature travels **inside** the bundle so it survives being packed into an
 archive and unpacked again. A sibling file would not.
 
-Configure the keys per installation:
+The keys are set per installation, at `init`:
 
-```yaml
-policy:
-  require_signature: true
-  signing_keys:
-    - RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
+```sh
+morzer init --require-signature \
+    --signing-key RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 ```
 
-or at `init`, with `--signing-key` and `--require-signature`. Keys live with the
+They are recorded under `policy` in the installation's state and shown in
+`installation.yaml`, which is a report: editing it changes nothing. They are not
+yet changeable after `init`. Keys live with the
 installation and never with the release: a bundle naming the key allowed to sign
 it would be a bundle authorising itself.
 

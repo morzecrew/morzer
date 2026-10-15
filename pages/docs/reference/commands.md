@@ -158,8 +158,9 @@ scripted install all take the flags exactly as given.
 
 `--require-signature` without `--signing-key` is refused: no bundle could
 satisfy it, and a policy nothing can satisfy is a configuration error rather
-than something to discover on the next update. Both are written into
-`installation.yaml` under `policy`, and can be edited there afterwards.
+than something to discover on the next update. Both are recorded under
+`policy` and are not yet changeable after `init`; `installation.yaml` shows
+them, but it is a report, and editing it changes nothing.
 
 !!! warning "Keep the recovery key off this machine"
 
