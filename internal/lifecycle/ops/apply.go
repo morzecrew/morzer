@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -510,18 +511,30 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if !ok {
 				return nil
 			}
+			var failed []string
 			for target, backup := range previous {
-				// Best effort: a compensation that fails part
-				// way should still restore what it can.
+				// Every file is attempted, so one that fails
+				// does not strand the rest.
 				//
 				// In the file's own mode. Every restored file
 				// used to come back 0640, and a failed update
 				// now restarts the previous release, whose
 				// containers may run as a user that only a
 				// wider mode let read it.
-				_ = atomicfs.WriteFile(target, backup.content, backup.mode)
+				if err := atomicfs.WriteFile(target, backup.content, backup.mode); err != nil {
+					failed = append(failed, target)
+				}
 			}
-			return nil
+			if len(failed) == 0 {
+				return nil
+			}
+			// Reported rather than swallowed, and remembered: the
+			// previous release is brought back up after this, and
+			// must not be started against the new release's files.
+			st.Set(keyConfigNotRestored, true)
+			sort.Strings(failed)
+			return domain.InstallationError(nil,
+				"could not put back %s", strings.Join(failed, ", "))
 		},
 	}
 }
@@ -819,7 +832,7 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 		// No Compensate: stopping the services would take the product
 		// down, which on an `apply` over a running deployment is worse
 		// than leaving the previous version serving traffic. `update`
-		// brings the previous release back up from its staging step's
+		// brings the previous release back up from its restore point's
 		// compensator, which runs after configuration and secrets have
 		// been put back (restorePreviousRuntime).
 	}
@@ -828,6 +841,10 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 // keyServicesTouched says start-services began replacing containers, so a
 // failed update has more to put back than files.
 const keyServicesTouched = "services-touched"
+
+// keyConfigNotRestored says the configuration compensator could not put every
+// file back, so nothing may be started against what is there.
+const keyConfigNotRestored = "config-not-restored"
 
 // stepHealthChecks waits for the application to report ready.
 func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {
