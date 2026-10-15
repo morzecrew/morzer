@@ -134,7 +134,9 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 	}
 	if inst.Update.FollowsChannel() {
 		out.Following = &Following{
-			Channel:   inst.Update.Channel,
+			// Without its password, as every recorded release source
+			// is: this is the output an operator pastes into a ticket.
+			Channel:   ports.RedactRefCredentials(inst.Update.Channel),
 			Polled:    inst.Update.Check,
 			Schedule:  inst.Update.Schedule,
 			AutoApply: inst.Update.AutoApply,

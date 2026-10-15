@@ -283,3 +283,23 @@ func TestStatusSaysHowTheChannelIsFollowed(t *testing.T) {
 		Channel: channel, Polled: true, Schedule: "*:0/15", AutoApply: true,
 	}, following())
 }
+
+// A channel's reference can carry a password in its userinfo, and `status` is
+// the output an operator pastes into a ticket. It shows the channel the way
+// every recorded release source is shown: with the password removed and the
+// username kept, so the reader can still tell which account it is.
+func TestStatusDoesNotPrintAChannelPassword(t *testing.T) {
+	h, _ := followingMachine(t, "")
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Update.Channel = "oci://robot:s3cr3t-token@registry.example/demo/bundle:main"
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	st, err := ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	require.NotNil(t, st.Following)
+	assert.NotContains(t, st.Following.Channel, "s3cr3t-token")
+	assert.Contains(t, st.Following.Channel, "robot@registry.example/demo/bundle:main")
+}
