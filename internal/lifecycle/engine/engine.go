@@ -368,6 +368,19 @@ func (e *Engine) handleFailure(
 		toCompensate = after
 	}
 
+	// Past a point of no return, any failure that is not an interruption
+	// needs a person, whatever the failed step's policy.
+	pastNoReturn := func() {
+		rec.Status = domain.StatusManualIntervention
+		rec.Error = domain.ManualIntervention(failure,
+			"%s failed at step %q, after step %q made it impossible to roll back: %s",
+			op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID, st.pointOfNoReturn()).
+			WithOp(op.ID, stepIDAt(op, failedIdx)).
+			WithHint("the steps before it were left as they are rather than rolled back. Run " +
+				"`morzer doctor`, repair the cause, and clear the flag with " +
+				"`morzer status --clear-intervention`.")
+	}
+
 	switch {
 	case interrupted:
 		rec.Status = domain.StatusInterrupted
@@ -382,14 +395,7 @@ func (e *Engine) handleFailure(
 				WithHint("run `morzer doctor` for the current state, then repair manually. " +
 					"The operation stays flagged until you clear it with `morzer status --clear-intervention`.")
 		case noReturnIdx >= 0:
-			rec.Status = domain.StatusManualIntervention
-			rec.Error = domain.ManualIntervention(failure,
-				"%s failed at step %q, after step %q made it impossible to roll back: %s",
-				op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID, st.pointOfNoReturn()).
-				WithOp(op.ID, stepIDAt(op, failedIdx)).
-				WithHint("the steps before it were left as they are rather than rolled back. Run " +
-					"`morzer doctor`, repair the cause, and clear the flag with " +
-					"`morzer status --clear-intervention`.")
+			pastNoReturn()
 		case compensated:
 			rec.Status = domain.StatusCompensated
 			rec.Error = domain.Compensated(failure,
@@ -402,6 +408,11 @@ func (e *Engine) handleFailure(
 				WithOp(op.ID, stepIDAt(op, failedIdx)).
 				WithHint("run `morzer doctor` to see what state the system is in")
 		}
+	case noReturnIdx >= 0:
+		// An abort undoes nothing, so nothing crosses the point -- but
+		// `failed` blocks nothing either, and the next apply would
+		// converge the old release over what that step left.
+		pastNoReturn()
 	default:
 		rec.Status = domain.StatusFailed
 	}
