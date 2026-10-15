@@ -624,6 +624,7 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 						WithHint("inspect the migration output in the log; " +
 							"the database may be partially migrated")
 				}
+				passIfFallbackCannotRead(st, rel, 0)
 				return nil
 
 			case domain.OperationKindHook:
@@ -644,6 +645,7 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 					// the product's tooling to ask.
 					st.Set(engine.KeySchemaVersion, outcome.Result.SchemaVersion)
 				}
+				passIfFallbackCannotRead(st, rel, outcome.Result.SchemaVersion)
 				return nil
 
 			default:
@@ -651,6 +653,56 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 					"the migrate operation has an unsupported kind %q", spec.Kind)
 			}
 		},
+	}
+}
+
+// fallbackRelease is what a failed update's compensation would leave current:
+// the release that was running when it began.
+type fallbackRelease struct {
+	Version       domain.Version
+	Compatibility domain.Compatibility
+
+	// Known is false when its manifest could not be read. Nothing is then
+	// assumed about what it can run against.
+	Known bool
+}
+
+// passIfFallbackCannotRead marks the point of no return once migrations have
+// left a database the fallback release cannot run against.
+//
+// Without it, a failure after `migrate` -- a service that does not start, a
+// health check that never passes -- compensated back to the old release over
+// the migrated database and reported "earlier changes were rolled back": the
+// old release current, recorded at the old schema, reading one it does not
+// understand, and the next boot's `apply` running its migrations against it.
+// That is the rollback RFC 0001 refuses to perform, performed by compensation.
+//
+// The judgement is AssessRollback's, as `rollback` and the unattended gate
+// make it, so the three cannot disagree about what is recoverable. The schema
+// is the one the hook reported, then the one the release declares it produces.
+// A skipped migration is judged too: on a resumed update it is the attempt
+// before the crash that moved the schema. An operation with no fallback --
+// apply, rollback, a first install -- has nothing to protect.
+func passIfFallbackCannotRead(st *engine.State, rel domain.Release, reported int) {
+	fb, err := engine.GetTyped[fallbackRelease](st, engine.KeyFallbackRelease)
+	if err != nil {
+		return
+	}
+	if !fb.Known {
+		st.PassPointOfNoReturn(fmt.Sprintf("the manifest of %s, which a rollback would "+
+			"return to, could not be read, so whether it can run against the migrated "+
+			"database is unknown", fb.Version))
+		return
+	}
+	schema := reported
+	if schema <= 0 {
+		schema = rel.Manifest.Compatibility.DatabaseSchemaProduces
+	}
+	if a := domain.AssessRollback(rel.Manifest.Compatibility, fb.Compatibility, schema); a.RestoreRequired {
+		st.PassPointOfNoReturn(fmt.Sprintf("returning to %s would need a database restore (%s). "+
+			"%s's configuration and containers are left in place, and once the cause is fixed "+
+			"`morzer update --to %s` finishes the update; restoring the pre-update backup is "+
+			"the way back", fb.Version, a.Reason, rel.Version(), rel.Version()))
 	}
 }
 

@@ -329,6 +329,7 @@ the immediate previous one; it runs the same assessment against that target.
 | 15 | *(P4, 2026-08-03)* P4 was **not** gated on RFC 0004, contrary to §11 as written. `--to` resolves a version against the release store, which needs neither the source registry nor a new transport. The gating claim was made before update and rollback existed. |
 | 16 | *(P4, 2026-08-03)* `rollback --to` refuses a target newer than, or equal to, what is installed. Forward is `update --to`, which gates on `upgrade_from` and takes a backup; sideways is `apply`. Accepting either here would silently skip those. |
 | 17 | *(P4, 2026-08-03)* `--to` selects where to go, never whether it is safe. A named target gets the same three-question assessment as the default one, so `--to` cannot be used to route around a refusal. |
+| 18 | *(2026-10-15)* **Refines decision 2.** Compensation never crosses a migration that left the database at a schema the release it would return to cannot read, judged by `AssessRollback` as `rollback` judges it. The migrate step records a point of no return; a later failure undoes only what came after it and ends at requires-manual-intervention, leaving the new release's configuration and containers in place. Before this, a failure after `migrate` compensated toward the old release and reported a rollback the database had not taken, which is decision 5's refusal skipped by the back door. See [logs/no-way-back.md](../logs/no-way-back.md). |
 
 ## 11. Phasing
 

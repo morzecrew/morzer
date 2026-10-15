@@ -67,13 +67,27 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// pruned or damaged was the one case where a renamed project could still
 	// take a deployment's volumes away from it. Reproduced, then fixed:
 	// TestAnUpdateWithNoResolvableBaselineIsRefused.
+	//
+	// The same release is what a failure would fall back to, and what it can
+	// read decides whether falling back is still possible once migrations
+	// have run (stepMigrate). Unreadable here is not a refusal when the
+	// baseline is already recorded: it is recorded as unknown, which the
+	// migrate step treats as unable to read anything.
 	baseline := inst.RuntimeOptions
-	if baseline == nil && !from.IsZero() {
+	var fallback *fallbackRelease
+	if !from.IsZero() {
 		running, relErr := d.resolveCurrentRelease(ctx, from)
-		if relErr != nil {
+		if relErr != nil && baseline == nil {
 			return Result{}, relErr
 		}
-		baseline = runtimeBaseline(inst, running)
+		if baseline == nil {
+			baseline = runtimeBaseline(inst, running)
+		}
+		fallback = &fallbackRelease{
+			Version:       from.Version,
+			Compatibility: running.Manifest.Compatibility,
+			Known:         relErr == nil,
+		}
 	}
 	inst.RuntimeOptions = baseline
 
@@ -112,7 +126,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Description: describe(domain.OpTypeUpdate, from.Version, staged.Version()),
 		From:        from.Version,
 		To:          staged.Version(),
-		Steps:       updateSteps(d, inst, from, source, staged, opts),
+		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts),
 		Flags:       updateFlags(inst, opts),
 	}
 
@@ -350,6 +364,7 @@ func updateSteps(
 	d *Deps,
 	inst domain.Installation,
 	from domain.ReleaseRecord,
+	fallback *fallbackRelease,
 	source, staged domain.Release,
 	opts UpdateOptions,
 ) []engine.Step {
@@ -373,7 +388,7 @@ func updateSteps(
 
 	steps := []engine.Step{
 		stepVerifyBundle(d, inst, source, opts),
-		stepCheckCompatibility(d, from, staged),
+		stepCheckCompatibility(d, from, fallback, staged),
 		stepPreUpdateBackup(d, inst, from, staged, opts),
 		stepStageUpdate(d, from, source, staged, opts),
 	}
@@ -535,7 +550,9 @@ func stepVerifyBundle(d *Deps, inst domain.Installation, source domain.Release, 
 // `--force` deliberately does not bypass it: a release declaring it cannot be
 // installed over what is running is stating a fact about its migrations, not
 // expressing a preference.
-func stepCheckCompatibility(d *Deps, from domain.ReleaseRecord, staged domain.Release) engine.Step {
+func stepCheckCompatibility(
+	d *Deps, from domain.ReleaseRecord, fallback *fallbackRelease, staged domain.Release,
+) engine.Step {
 	return engine.Step{
 		ID:          "check-compatibility",
 		Description: "check compatibility",
@@ -543,6 +560,13 @@ func stepCheckCompatibility(d *Deps, from domain.ReleaseRecord, staged domain.Re
 		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
+			// Here because this step runs early and again on every
+			// resume, which is what keeps the state the migrate step
+			// reads from depending on which process set it.
+			if fallback != nil {
+				st.Set(engine.KeyFallbackRelease, *fallback)
+			}
+
 			report := domain.CheckUpgrade(
 				from.Version,
 				staged.Version(),
