@@ -63,9 +63,10 @@ Three kinds of event, and no others:
 - `operation.finished` — the outcome of an `apply`, `update`, `rollback`,
   `config`, `backup` or `restore`, including **failures**.
 - `check` — a `doctor` result at or above the target's `min_level`.
-- `update.staged` — the [update channel](unattended-updates.md) moved, and the
-  release it points at was fetched and verified. It is sent when the release is
-  staged, before anything decides whether it installs itself, and it is the one
+- `update.staged` — a followed reference moved, and the release it points at
+  was fetched and verified: the [update channel](unattended-updates.md), on a
+  timer tick or `morzer update --stage`, or a reference passed to
+  `update --stage`. It is sent when the release is staged, before anything decides whether it installs itself, and it is the one
   event here that is not an outcome: it may be a decision waiting for a person
   who was not at the terminal when the timer ran.
 

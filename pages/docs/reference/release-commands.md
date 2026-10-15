@@ -398,9 +398,10 @@ again for the bundle that pins those images. Nothing is stored by the manager.
 
 `morzer update --check <ref>` against an `oci://` reference reads the
 repository's version tags and reports the newer releases this installation could
-install. A registry is the only transport that can — a URL has no index — and
-tags that are not versions, like `latest`, are skipped rather than offered as
-something to install by number. `release list` lists what is installed on this
+install. Of the remote transports a registry is the only one that can — a URL
+has no index — and tags that are not versions, like `latest`, are skipped rather
+than offered as something to install by number. On the machine itself, a
+directory holding one release directory per version is listed the same way. `release list` lists what is installed on this
 machine, never a repository.
 
 !!! note "What the registry proves, and what it does not"

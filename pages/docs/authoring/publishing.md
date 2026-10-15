@@ -180,9 +180,9 @@ side and a redirect out of it is refused, so a plain-HTTP mirror will not work.
 No credentials are sent, so a bundle behind authentication needs the registry
 route or an out-of-band download.
 
-**An OCI registry** is the one that lets `morzer update --check` find your newer
-versions, and the only one an installation can follow as a channel, because a
-registry keeps a tag list and a URL does not. Publish the archive as a
+**An OCI registry** is the remote transport that lets `morzer update --check`
+find your newer versions, and the only one an installation can follow as a
+channel, because a registry keeps a tag list and a URL does not. Publish the archive as a
 single-layer artifact:
 
 ```sh
@@ -212,8 +212,9 @@ oras push registry.example/demo/bundle:1.3.0 \
 oras tag registry.example/demo/bundle:1.3.0 stable
 ```
 
-**A channel only moves forward.** A machine following a channel refuses to
-stage a version older than the one it runs, and records the refusal. Moving
+**A machine only follows a channel forward.** The tag can be moved back, but a
+machine following it refuses to stage a version older than the one it runs, and
+records the refusal. Moving
 `stable` back to `1.2.0` after a bad `1.3.0` therefore changes nothing on a
 machine that already took `1.3.0`. Publish `1.3.1` with the fix and move the tag
 to it; an operator who needs the old release now runs `morzer rollback`.
