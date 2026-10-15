@@ -196,6 +196,7 @@
           }
         ]
       },
+      "minProperties": 1,
       "type": "object"
     },
     "kind": {
@@ -510,6 +511,7 @@
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "options": {
@@ -530,6 +532,7 @@
         },
         "type": "object"
       },
+      "minProperties": 1,
       "type": "object"
     },
     "secrets": {

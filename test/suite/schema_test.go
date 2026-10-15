@@ -273,6 +273,62 @@ func TestTheManifestSchemaRequiresWhatTheLoaderRefusesWithout(t *testing.T) {
 	assert.False(t, listed, "the schema offers `runtime:`, which the loader refuses")
 }
 
+// Present is not the same as non-empty. `runtimes: {}`, `images: {}` and a
+// runtime with `files: []` are each refused by the loader, and a schema that
+// only requires the key accepts all three -- so each is emptied in turn, the
+// loader has to refuse it, and the schema has to say it may not be empty.
+func TestTheManifestSchemaRefusesWhatTheLoaderRefusesEmpty(t *testing.T) {
+	var node map[string]any
+	raw, err := os.ReadFile(schemaPath(t, schema.ManifestSchemaFile))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &node))
+	props := object(t, node, "properties")
+
+	data, err := os.ReadFile(filepath.Join(testBundlePath(t), "manifest.yaml"))
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name   string
+		empty  func(t *testing.T, doc map[string]any)
+		node   map[string]any
+		bound  string
+		reason string
+	}{
+		{
+			name:  "runtimes",
+			empty: func(_ *testing.T, doc map[string]any) { doc["runtimes"] = map[string]any{} },
+			node:  object(t, props, "runtimes"), bound: "minProperties",
+		},
+		{
+			name:  "images",
+			empty: func(_ *testing.T, doc map[string]any) { doc["images"] = map[string]any{} },
+			node:  object(t, props, "images"), bound: "minProperties",
+		},
+		{
+			name: "a runtime's files",
+			empty: func(t *testing.T, doc map[string]any) {
+				object(t, object(t, doc, "runtimes"), "compose")["files"] = []any{}
+			},
+			node: object(t, object(t, object(t, object(t, props, "runtimes"),
+				"additionalProperties"), "properties"), "files"),
+			bound: "minItems",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var doc map[string]any
+			require.NoError(t, yaml.Unmarshal(data, &doc))
+			tc.empty(t, doc)
+			out, err := yaml.Marshal(doc)
+			require.NoError(t, err)
+			_, err = release.ParseManifest(out, "manifest.yaml")
+			require.Error(t, err, "the loader accepts %s empty, so there is nothing to agree with", tc.name)
+
+			assert.EqualValues(t, 1, tc.node[tc.bound],
+				"the schema accepts %s empty, which the loader refuses", tc.name)
+		})
+	}
+}
+
 // TestTheInstallationSchemaConstrainsWhatTheWriterProduces.
 //
 // Generated from struct shape alone, the schema said every field was optional
