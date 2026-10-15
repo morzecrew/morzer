@@ -686,6 +686,11 @@ func (d *Deps) runMigrateStep(
 		if err != nil {
 			return 0, err
 		}
+		// A one-shot starts what it depends on, and on an update
+		// recreates a dependency whose configuration changed, so a
+		// failure from here on has services to put back, as one after
+		// start-services does.
+		st.Set(keyServicesTouched, true)
 		res, err := d.Runtime.RunOneShot(ctx, cfg, spec.Service, ports.RunOptions{
 			Timeout: spec.Timeout.Or(30 * time.Minute),
 			Remove:  true,

@@ -152,8 +152,9 @@ nothing but the time to read the error.
 
 A failure rolls the update back: the configuration files return to what they
 were, in the modes they had, and if the new release's services had already been
-started, the release that was running is brought back up with its own secrets
-and waited for until its health checks pass. That is
+started — or a migration service had run, which starts what it depends on —
+the release that was running is brought back up with its own secrets and
+waited for until its health checks pass. That is
 [exit 11](../reference/exit-codes.md): the release that was running is running
 again. The database is not rolled back: if migrations ran, it stays at the
 schema they left, which is allowed only when the old release declares it can

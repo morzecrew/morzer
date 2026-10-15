@@ -121,6 +121,32 @@ func TestAMigrationServiceWithNothingToDoIsNotAFailure(t *testing.T) {
 	}
 }
 
+// A migration service starts what it depends on, and on an update recreates a
+// dependency whose configuration changed -- before start-services, which is
+// what the restore used to look for. A failed migration then left the old
+// release's application running against the new release's database service.
+// Running one counts as touching the services, so the old release is put back.
+func TestAFailedMigrationServicePutsThePreviousReleaseBack(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	withMigrateSteps(t, src,
+		"    - kind: runtime-service\n      service: app\n"+
+			"    - kind: hook\n      command: [\"hooks/migrate\"]\n", nil)
+	h.Runtime.OneShotResults = map[string]ports.ExitResult{"app": {ExitCode: 3}}
+	ups := len(h.Runtime.UpConfigs)
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err), "a failed migration still needs a person")
+	require.Len(t, h.Runtime.UpConfigs, ups+1, "the previous release was not brought back")
+	assert.Equal(t, "1.2.0", h.Runtime.UpConfigs[ups].Env["DEMO_VERSION"])
+}
+
 // What the loader accepts and refuses, through the same decode a bundle gets.
 func TestWhatAMigrateListMayLookLike(t *testing.T) {
 	parse := func(t *testing.T, edit func(string) string) error {

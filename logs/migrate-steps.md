@@ -116,3 +116,27 @@ indexed field names, the loader's executable check, `--no-deps` against the
 daemon, and the schema's two spellings. Eleven killed.
 
 **Drift count: 0.**
+
+## Review, round 1, 2026-10-15
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-10-15T07:20:00Z
+attempt: 2
+claim: with --no-deps gone, a migration service recreates a changed dependency before start-services, which is the only thing the restore (decision 19) looked for, so a failed migration left the old application running against the new release's database service; running a migration service now counts as touching the services
+evidence: internal/lifecycle/ops/apply.go:693
+action: decided
+proposal: ASSUMED — part of decision 14: a migration service's run is a change to the running services, for what a failed update puts back.
+```
+
+- **Fixed — the restore skipped a failed migration service.** Reproduced red
+  (`TestAFailedMigrationServicePutsThePreviousReleaseBack`: no `Up` of 1.2.0).
+- **Kept — every operation defaults to ten minutes.** Unchanged by this
+  branch: `main`'s `ApplyDefaults` already set `DefaultOperationTimeout` on
+  every declared operation, and `manifest.md` documents "Default `10m`". The
+  30-, 60- and 120-minute `Or` fallbacks in its consumers were already
+  unreachable; removing them is a cleanup of its own.
+
+**Drift count: 0.**
