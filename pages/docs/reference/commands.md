@@ -211,7 +211,8 @@ See [following a channel](../operating/updating.md#following-a-channel) for what
 staging leaves behind and what a poll costs.
 
 A failed update rolls back to the release that was running, unless its
-migrations have already left a database that release cannot read. Then it stops
+migrations have already left a database that release cannot read, or cannot be
+shown to read because its manifest no longer loads. Then it stops
 at exit 12 and leaves the new release in place; see [a failure after the
 migrations](../operating/updating.md#a-failure-after-the-migrations). **The
 database is never rolled back automatically**: when a migration cannot be undone,

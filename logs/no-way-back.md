@@ -101,3 +101,20 @@ by the first tests; the last two survived until `TestAnUnreadableFallbackIsNotFa
 was added. Twelve of twelve killed.
 
 **Drift count: 0.**
+
+## Review, round 1, 2026-10-15
+
+- **Fixed — an abort past the point of no return ended `failed`.** Only the
+  compensating branch consulted the point, and `record-state` and
+  `retire-parameters` abort. An update whose release record could not be
+  written after migrating ended `failed`, which blocks nothing, and the next
+  boot's `apply` converged the old release over the migrated database.
+  Reproduced red first (`TestAnAbortPastThePointOfNoReturnNeedsAPerson`,
+  "failed", exit 7); any non-interrupted failure past the point now needs a
+  person. Decision 18 already said "a later failure", so the row stands.
+- **Kept, out of scope — `from` can be stale under `--wait`.** Real, and older
+  than this change: `Update` reads the current release once, before the lock,
+  and the compatibility check and the staging compensator use it as well as the
+  fallback. Re-reading it under the lock is its own change.
+
+**Drift count: 0.**
