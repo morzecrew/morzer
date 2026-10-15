@@ -1717,6 +1717,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release trust
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-loader-enforces" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2541,6 +2552,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release trust
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-loader-enforces" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3187,9 +3209,9 @@ archive and unpacked again. A sibling file would not.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--require-signature<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--signing-key<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 </code></pre></div>
-<p>They are recorded under <code>policy</code> in the installation's state and shown in
-<code>installation.yaml</code>, which is a report: editing it changes nothing. They are not
-yet changeable after <code>init</code>. Keys live with the
+<p>and changed afterwards with <a href="#release-trust"><code>release trust</code></a>. They are recorded
+under <code>policy</code> in the installation's state and shown in <code>installation.yaml</code>,
+which is a report: editing it changes nothing. Keys live with the
 installation and never with the release: a bundle naming the key allowed to sign
 it would be a bundle authorising itself.</p>
 <div class="admonition warning">
@@ -3290,6 +3312,33 @@ one before it are never pruned.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="release-trust">release trust<a class="headerlink" href="#release-trust" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>list
+morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>add<span class="w"> </span>&lt;minisign-public-key&gt;
+morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>remove<span class="w"> </span>&lt;minisign-public-key&gt;
+</code></pre></div>
+<p><code>release trust list</code> shows the keys this installation accepts a release
+signature from, and whether a signature is required at all. <code>init</code> sets both;
+<code>add</code> and <code>remove</code> change the keys afterwards.</p>
+<p><strong>Rotating a vendor key is three steps</strong>, and while both keys are trusted a
+release signed with either installs:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>add<span class="w"> </span>RWQ...new
+morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w"> </span><span class="m">1</span>.5.0<span class="w">              </span><span class="c1"># a release signed with the new key</span>
+morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>remove<span class="w"> </span>RWQ...old
+</code></pre></div>
+<ul>
+<li><strong><code>release trust add</code> parses the key</strong> with the parser verification uses, and refuses one
+  that does not parse. <code>init</code> does the same for <code>--signing-key</code>. Adding a key
+  that is already trusted changes nothing and says so, so a rotation script can
+  be re-run.</li>
+<li><strong><code>release trust remove</code> refuses the last key while a signature is required</strong>, because no
+  release could be installed afterwards, and <code>update.auto_apply</code> needs a
+  required signature. Trust the replacement first. Removing a key that is not
+  trusted is an error naming the keys that are.</li>
+<li>A release already installed stays installed. One signed only with a removed
+  key is refused from the next update, including one already staged.</li>
+</ul>
+<p><code>--dry-run</code> reports what would change, and the refusals above apply to it.</p>
 <h2 id="what-the-loader-enforces">What the loader enforces<a class="headerlink" href="#what-the-loader-enforces" title="Permanent link">&para;</a></h2>
 <p>Rules a bundle must satisfy before any of it runs:</p>
 <ul>

@@ -2899,9 +2899,11 @@ the command line already answers everything. A CI job, a systemd unit and a
 scripted install all take the flags exactly as given.</p>
 <p><code>--require-signature</code> without <code>--signing-key</code> is refused: no bundle could
 satisfy it, and a policy nothing can satisfy is a configuration error rather
-than something to discover on the next update. Both are recorded under
-<code>policy</code> and are not yet changeable after <code>init</code>; <code>installation.yaml</code> shows
-them, but it is a report, and editing it changes nothing.</p>
+than something to discover on the next update. A key that does not parse is
+refused too. The keys change afterwards with <a href="../release-commands/#release-trust"><code>morzer release
+trust</code></a>; whether a signature is required
+cannot yet be changed after <code>init</code>. <code>installation.yaml</code> shows both, but it is a
+report, and editing it changes nothing.</p>
 <div class="admonition warning">
 <p class="admonition-title">Keep the recovery key off this machine</p>
 <p>A recovery key stored on the machine it is meant to recover protects
