@@ -149,7 +149,12 @@ func manifestSchema() map[string]any {
 	// because an editor validating against this schema would otherwise
 	// underline every manifest written the ordinary way.
 	props["images"] = imagesSchema(props["images"])
-	s["required"] = []string{"api_version", "kind", "metadata", "runtime", "images"}
+
+	// `runtime:` is still a field so the loader can refuse it by name
+	// (RFC 0023 decision 23), and a refused field is not one to offer. Kept
+	// in the properties, an editor accepted the block the manager rejects.
+	delete(props, "runtime")
+	s["required"] = []string{"api_version", "kind", "metadata", "runtimes", "images"}
 
 	return s
 }
