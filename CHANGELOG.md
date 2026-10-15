@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`init` accepted a `--signing-key` that is not a minisign public key.** Only its presence was checked, so a typo surfaced at the first update, after the installation had been created around it. The key is now parsed before anything is created.
 - **A schedule systemd cannot parse is refused instead of stored.** `config set backup.schedule`, `config set update.schedule` and `init --backup-schedule` accepted any single line, so a typo such as `every 5m` exited 0 and left a timer systemd would not load: no scheduled backups, or no unattended updates, and nothing said so. The expression is now checked with `systemd-analyze calendar` on the machine that will run it, before anything is written. A host without `systemd-analyze` accepts the value unchecked, as before.
 - **The documented maintenance window did not narrow anything.** The unattended-updates page told you to add `OnCalendar=Sun *-*-* 04:00:00` to the update timer, and a drop-in's `OnCalendar=` *adds* a trigger to the one in the unit — so updates ran on Sunday morning and every night as well. Remove any such drop-in and use `update.schedule` instead.
 

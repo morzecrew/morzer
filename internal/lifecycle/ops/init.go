@@ -106,6 +106,12 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 			WithHint("no bundle could satisfy the policy otherwise; " +
 				"pass the vendor's minisign public key")
 	}
+	// Parsed as well as counted. A key that does not parse used to pass
+	// here and surface at the first update, after the installation it
+	// belongs to had been built around it.
+	if err := d.checkSigningKeys(opts.SigningKeys); err != nil {
+		return Result{}, err
+	}
 
 	// A parameter can only be checked against a release that declares it,
 	// and the whole value of declaring one is that setting it wrong is

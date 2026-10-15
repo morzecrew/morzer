@@ -158,8 +158,10 @@ scripted install all take the flags exactly as given.
 
 `--require-signature` without `--signing-key` is refused: no bundle could
 satisfy it, and a policy nothing can satisfy is a configuration error rather
-than something to discover on the next update. Both are written into
-`installation.yaml` under `policy`, and can be edited there afterwards.
+than something to discover on the next update. A key that does not parse is
+refused too. The keys change afterwards with [`morzer release
+trust`](release-commands.md#release-trust); whether a signature is required
+cannot yet be changed after `init`.
 
 !!! warning "Keep the recovery key off this machine"
 
