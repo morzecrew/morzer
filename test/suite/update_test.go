@@ -433,8 +433,9 @@ func TestAFailureAfterAnUnreadableMigrationIsNotRolledBack(t *testing.T) {
 	assert.Contains(t, err.Error(), "database restore", "the error does not say why")
 	assert.Contains(t, err.Error(), "update --to 1.3.0", "the error does not say how to finish")
 
-	// What came before the migration stays: compensation deletes the
-	// rendered secrets, and the release now running needs them.
+	// What came before the migration stays. Compensating render-secrets
+	// would have deleted the rendered secrets, which the release now
+	// running needs, so their presence is the evidence nothing crossed.
 	assert.DirExists(t, h.Paths.SecretsRenderDir(), "a step before the migration was rolled back")
 
 	// The way forward the error names is one that works.
