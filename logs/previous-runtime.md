@@ -152,3 +152,31 @@ proposal: ASSUMED — part of decision 19: nothing is started against configurat
   nothing.
 
 **Drift count: 1.**
+
+## Review, after #90 merged, 2026-10-15
+
+CodeRabbit's first review, once the PR targeted `main`. Three findings, all
+three reproduced red before the change.
+
+- **Fixed — an unreadable configuration file was replaced with no backup.**
+  A target that exists and cannot be read got no entry, was written anyway,
+  and the rollback could not put it back or flag it; the previous release
+  came back up against the new release's file. Refused before it is touched
+  now. Reproduced with the file at mode 0
+  (`TestAConfigFileThatCannotBeReadIsNotReplaced`).
+- **Fixed — a write that failed part way stranded the files before it.** The
+  backups were recorded only after every write succeeded, so the failed step's
+  own rollback found none. Recorded before the first write now, and written in
+  sorted order so which files a failure leaves replaced is not map order.
+  Reproduced with a second target in a directory nothing can write to
+  (`TestAPartlyWrittenConfigurationIsPutBack`).
+- **Fixed — a failed rollback was dropped from two kinds of intervention.**
+  Only the intervention caused by the rollback named it; a failed step that
+  cannot be undone, or a failure past the point of no return, ran the same
+  compensation and dropped its errors from the message
+  (`TestEveryInterventionNamesTheRollbackThatFailed`).
+
+Sabotage over the three: four mutants, the early record, the refusal, and the
+rollback's errors in each intervention. Four killed.
+
+**Drift count: 1.**
