@@ -322,6 +322,46 @@ func TestAnAbortPastThePointOfNoReturnNeedsAPerson(t *testing.T) {
 	assert.Contains(t, err.Error(), `after step "migrate"`)
 }
 
+// A rollback that fails is the failure that decides what an operator does
+// next, so every intervention names it -- not only the one reached because the
+// rollback failed. Here the failed step needs a person anyway, or the way back
+// had already closed, and an earlier undo failed as well.
+func TestEveryInterventionNamesTheRollbackThatFailed(t *testing.T) {
+	brokenUndo := func(tr *tracker, id string) Step {
+		s := step(tr, id, false, true)
+		s.Compensate = func(context.Context, *State) error {
+			return domain.RuntimeError(nil, "could not put %s back", id)
+		}
+		return s
+	}
+
+	t.Run("the failed step cannot be undone", func(t *testing.T) {
+		eng, _, _ := newEngine()
+		tr := &tracker{}
+		irreversible := step(tr, "migration", true, false)
+		irreversible.RequiresInterventionOnFailure = true
+
+		_, err := eng.Run(context.Background(), operation(brokenUndo(tr, "render"), irreversible), Options{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "could not put render back")
+	})
+
+	t.Run("past the point of no return", func(t *testing.T) {
+		eng, _, _ := newEngine()
+		tr := &tracker{}
+		pivot := step(tr, "migrate", false, false)
+		pivot.Execute = func(ctx context.Context, st *State) error {
+			st.PassPointOfNoReturn("the schema moved")
+			return nil
+		}
+
+		_, err := eng.Run(context.Background(),
+			operation(pivot, brokenUndo(tr, "start"), step(tr, "health", true, false)), Options{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "could not put start back")
+	})
+}
+
 func TestContinuePolicyKeepsGoing(t *testing.T) {
 	eng, _, _ := newEngine()
 	tr := &tracker{}

@@ -369,13 +369,25 @@ func (e *Engine) handleFailure(
 		toCompensate = after
 	}
 
+	// alsoUndone names the compensators that failed, for an error that is
+	// an intervention for another reason. The rollback's own failure is the
+	// one that decides what an operator does next, and without this it is
+	// only in the journal's step records.
+	alsoUndone := func(undone []string) string {
+		if len(undone) == 0 {
+			return ""
+		}
+		return "; the rollback did not complete either (" + strings.Join(undone, "; ") + ")"
+	}
+
 	// Past a point of no return, any failure that is not an interruption
 	// needs a person, whatever the failed step's policy.
-	pastNoReturn := func() {
+	pastNoReturn := func(undone []string) {
 		rec.Status = domain.StatusManualIntervention
 		rec.Error = domain.ManualIntervention(failure,
-			"%s failed at step %q, after step %q made it impossible to roll back: %s",
-			op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID, st.pointOfNoReturn()).
+			"%s failed at step %q, after step %q made it impossible to roll back: %s%s",
+			op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID, st.pointOfNoReturn(),
+			alsoUndone(undone)).
 			WithOp(op.ID, stepIDAt(op, failedIdx)).
 			WithHint("the steps before it were left as they are rather than rolled back. Run " +
 				"`morzer doctor`, repair the cause, and clear the flag with " +
@@ -391,12 +403,13 @@ func (e *Engine) handleFailure(
 		case failedStepMutatedIrreversibly:
 			rec.Status = domain.StatusManualIntervention
 			rec.Error = domain.ManualIntervention(failure,
-				"step %q failed after making changes it cannot undo", op.Steps[failedIdx].ID).
+				"step %q failed after making changes it cannot undo%s",
+				op.Steps[failedIdx].ID, alsoUndone(undone)).
 				WithOp(op.ID, op.Steps[failedIdx].ID).
 				WithHint("run `morzer doctor` for the current state, then repair manually. " +
 					"The operation stays flagged until you clear it with `morzer status --clear-intervention`.")
 		case noReturnIdx >= 0:
-			pastNoReturn()
+			pastNoReturn(undone)
 		case compensated:
 			rec.Status = domain.StatusCompensated
 			rec.Error = domain.Compensated(failure,
@@ -417,7 +430,7 @@ func (e *Engine) handleFailure(
 		// An abort undoes nothing, so nothing crosses the point -- but
 		// `failed` blocks nothing either, and the next apply would
 		// converge the old release over what that step left.
-		pastNoReturn()
+		pastNoReturn(nil)
 	default:
 		rec.Status = domain.StatusFailed
 	}
