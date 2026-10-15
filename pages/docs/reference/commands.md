@@ -158,8 +158,9 @@ scripted install all take the flags exactly as given.
 
 `--require-signature` without `--signing-key` is refused: no bundle could
 satisfy it, and a policy nothing can satisfy is a configuration error rather
-than something to discover on the next update. Both are written into
-`installation.yaml` under `policy`, and can be edited there afterwards.
+than something to discover on the next update. Both are recorded under
+`policy` and are not yet changeable after `init`; `installation.yaml` shows
+them, but it is a report, and editing it changes nothing.
 
 !!! warning "Keep the recovery key off this machine"
 
@@ -210,9 +211,13 @@ morzer update --to 1.3.0
 See [following a channel](../operating/updating.md#following-a-channel) for what
 staging leaves behind and what a poll costs.
 
-A failed update rolls back to the release that was running. **The database is
-never rolled back automatically**: when a migration cannot be undone, the
-release says so through `compatibility.rollback_safe`, and the answer is a
+A failed update rolls back to the release that was running, unless its
+migrations have already left a database that release cannot read, or cannot be
+shown to read because its manifest no longer loads. Then it stops
+at exit 12 and leaves the new release in place; see [a failure after the
+migrations](../operating/updating.md#a-failure-after-the-migrations). **The
+database is never rolled back automatically**: when a migration cannot be undone,
+the release says so through `compatibility.rollback_safe`, and the answer is a
 restore from the backup taken here.
 
 ## rollback

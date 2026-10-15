@@ -112,8 +112,40 @@ type State struct {
 	mu     sync.RWMutex
 	values map[string]any
 
+	// noReturn is why the operation can no longer be compensated over,
+	// once a step has said so. See PassPointOfNoReturn.
+	noReturn string
+
 	bus    *events.Bus
 	stepID string
+}
+
+// PassPointOfNoReturn records that the running step has done something the
+// operation's compensation cannot take back, and why.
+//
+// From then on a failure is not compensated over. Compensating the steps that
+// completed before this one would return the system to a state the change made
+// unusable -- the release that was running, against a database migrated past
+// what it can read -- and report that as a rollback. So those steps stay as they
+// are, only what completed after this one is undone, and the operation ends
+// requiring manual intervention with the reason in its error.
+//
+// The first call wins: the earliest point is the one compensation must not
+// cross.
+func (s *State) PassPointOfNoReturn(reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.noReturn == "" {
+		s.noReturn = reason
+	}
+}
+
+// pointOfNoReturn is the reason given, or empty while the operation can still
+// be compensated.
+func (s *State) pointOfNoReturn() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.noReturn
 }
 
 func newState(opID string, opType domain.OperationType, dryRun bool, bus *events.Bus) *State {
@@ -127,11 +159,21 @@ func newState(opID string, opType domain.OperationType, dryRun bool, bus *events
 }
 
 // Set stores a value for later steps.
+//
+// The map is made on first use so a zero State works, which is what lets a
+// step's own package test it without running an operation around it.
 func (s *State) Set(key string, value any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.values == nil {
+		s.values = make(map[string]any)
+	}
 	s.values[key] = value
 }
+
+// PointOfNoReturn is the reason a step gave for closing the way back, or empty
+// while the operation can still be compensated.
+func (s *State) PointOfNoReturn() string { return s.pointOfNoReturn() }
 
 // Get retrieves a value.
 func (s *State) Get(key string) (any, bool) {
@@ -221,6 +263,12 @@ const (
 	KeyRenderedFiles = "rendered-files"
 	KeyHealthResults = "health-results"
 	KeySchemaVersion = "database-schema-version"
+
+	// KeyFallbackRelease carries what a failed operation's compensation would
+	// leave current, from the operation that knows it to the step that can
+	// make that impossible. Set only by an operation that moves between
+	// releases.
+	KeyFallbackRelease = "fallback-release"
 
 	// KeyRenderedConfig carries the rendered configuration -- target path
 	// to bytes -- from the step that renders it to the attestation that

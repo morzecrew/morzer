@@ -419,8 +419,19 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.RuntimeConfig, services [
 // A non-zero exit is returned as data in ExitResult rather than as an error,
 // because the caller decides what it means: a migration exiting 2 means
 // "nothing to do" under the hook ABI, not failure.
+//
+// The services it depends on are started first, as its `depends_on` asks, and
+// waited for where it names a condition. With `--no-deps`, which this used to
+// pass, a first install ran its migrations before anything had started the
+// database they migrate -- migrate runs before start-services -- so a migration
+// service could never reach it. Measured with Compose v2: under `--no-deps` a
+// dependency is not started and does not resolve; without it, it is started
+// and the condition honoured. The cost, measured too: on an update, a
+// dependency whose configuration changed is recreated before the migration
+// runs rather than by the `up` that follows it, so migrations run against the
+// new release's database service. That is the one they prepare.
 func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, service string, opts ports.RunOptions) (ports.ExitResult, error) {
-	argv := r.args(cfg, "run", "--no-deps")
+	argv := r.args(cfg, "run")
 	if opts.Remove {
 		argv = append(argv, "--rm")
 	}

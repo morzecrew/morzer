@@ -67,13 +67,27 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// pruned or damaged was the one case where a renamed project could still
 	// take a deployment's volumes away from it. Reproduced, then fixed:
 	// TestAnUpdateWithNoResolvableBaselineIsRefused.
+	//
+	// The same release is what a failure would fall back to, and what it can
+	// read decides whether falling back is still possible once migrations
+	// have run (stepMigrate). Unreadable here is not a refusal when the
+	// baseline is already recorded: it is recorded as unknown, which the
+	// migrate step treats as unable to read anything.
 	baseline := inst.RuntimeOptions
-	if baseline == nil && !from.IsZero() {
+	var fallback *fallbackRelease
+	if !from.IsZero() {
 		running, relErr := d.resolveCurrentRelease(ctx, from)
-		if relErr != nil {
+		if relErr != nil && baseline == nil {
 			return Result{}, relErr
 		}
-		baseline = runtimeBaseline(inst, running)
+		if baseline == nil {
+			baseline = runtimeBaseline(inst, running)
+		}
+		fallback = &fallbackRelease{
+			Version:       from.Version,
+			Compatibility: running.Manifest.Compatibility,
+			Known:         relErr == nil,
+		}
 	}
 	inst.RuntimeOptions = baseline
 
@@ -112,7 +126,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Description: describe(domain.OpTypeUpdate, from.Version, staged.Version()),
 		From:        from.Version,
 		To:          staged.Version(),
-		Steps:       updateSteps(d, inst, from, source, staged, opts),
+		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts),
 		Flags:       updateFlags(inst, opts),
 	}
 
@@ -350,6 +364,7 @@ func updateSteps(
 	d *Deps,
 	inst domain.Installation,
 	from domain.ReleaseRecord,
+	fallback *fallbackRelease,
 	source, staged domain.Release,
 	opts UpdateOptions,
 ) []engine.Step {
@@ -373,10 +388,15 @@ func updateSteps(
 
 	steps := []engine.Step{
 		stepVerifyBundle(d, inst, source, opts),
-		stepCheckCompatibility(d, from, staged),
+		stepCheckCompatibility(d, from, fallback, staged),
 		stepPreUpdateBackup(d, inst, from, staged, opts),
-		stepStageUpdate(d, from, source, staged, opts),
 	}
+	// Nothing was running before a first install, so there is nothing to
+	// bring back.
+	if !from.IsZero() {
+		steps = append(steps, stepRestorePoint(d, inst, from, opts.Profile))
+	}
+	steps = append(steps, stepStageUpdate(d, from, source, staged, opts))
 
 	// The convergence pipeline is apply's, reused against the new release.
 	// Duplicating those eleven steps would mean two lists to keep in
@@ -535,7 +555,9 @@ func stepVerifyBundle(d *Deps, inst domain.Installation, source domain.Release, 
 // `--force` deliberately does not bypass it: a release declaring it cannot be
 // installed over what is running is stating a fact about its migrations, not
 // expressing a preference.
-func stepCheckCompatibility(d *Deps, from domain.ReleaseRecord, staged domain.Release) engine.Step {
+func stepCheckCompatibility(
+	d *Deps, from domain.ReleaseRecord, fallback *fallbackRelease, staged domain.Release,
+) engine.Step {
 	return engine.Step{
 		ID:          "check-compatibility",
 		Description: "check compatibility",
@@ -543,6 +565,13 @@ func stepCheckCompatibility(d *Deps, from domain.ReleaseRecord, staged domain.Re
 		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
+			// Here because this step runs early and again on every
+			// resume, which is what keeps the state the migrate step
+			// reads from depending on which process set it.
+			if fallback != nil {
+				st.Set(engine.KeyFallbackRelease, *fallback)
+			}
+
 			report := domain.CheckUpgrade(
 				from.Version,
 				staged.Version(),
@@ -801,7 +830,36 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 			if err := d.State.SetCurrentRelease(ctx, from); err != nil {
 				return err
 			}
+			// A record from before roots were recorded names its
+			// release only through the link, and the link has not
+			// moved: record-state moves it, and record-state did not
+			// run. Replacing it from an empty root failed instead.
+			if from.Root == "" {
+				return nil
+			}
 			return atomicfs.ReplaceSymlink(from.Root, d.Paths.CurrentLink())
+		},
+	}
+}
+
+// stepRestorePoint does nothing on the way forward. Its compensator is the one
+// that brings the previous release's services back up.
+//
+// A step of its own because a compensator runs only when its step ran. The
+// staging step, where this used to live, is skipped when the release is already
+// in the store -- every `update --to`, and so every unattended install of what
+// the channel staged -- and the restore was skipped with it. Placed before
+// staging, so it is compensated after everything else: the configuration and
+// secrets are back by then (restorePreviousRuntime).
+func stepRestorePoint(d *Deps, inst domain.Installation, from domain.ReleaseRecord, profile string) engine.Step {
+	return engine.Step{
+		ID:          "restore-point",
+		Description: "keep " + from.Version.String() + " to bring back on failure",
+		Idempotent:  true,
+		OnFailure:   engine.Abort,
+		Execute:     func(context.Context, *engine.State) error { return nil },
+		Compensate: func(ctx context.Context, st *engine.State) error {
+			return d.restorePreviousRuntime(ctx, st, inst, from, profile)
 		},
 	}
 }
@@ -842,4 +900,67 @@ func stepPruneReleases(d *Deps) engine.Step {
 			return nil
 		},
 	}
+}
+
+// restorePreviousRuntime brings the release that was running back up, when the
+// update got as far as replacing its containers.
+//
+// Compensation used to put back only files, so a failed update left the new
+// release's containers running against the old release's configuration until
+// somebody ran `apply` -- on an unattended machine, until the next boot (RFC
+// 0001 §9, decision 19). Here, from the restore point's compensator, which
+// runs after every later step's: the configuration compensator has put the old
+// files back by now, and the secrets compensator has removed the new release's
+// rendering, so the old release's secrets are rendered again before its
+// services start.
+//
+// Never reached past a point of no return: the engine does not compensate the
+// steps before one, and the restore point is one of them.
+//
+// An error here is a compensation that did not complete, which ends the update
+// at requires-manual-intervention with both failures in its error.
+func (d *Deps) restorePreviousRuntime(
+	ctx context.Context, st *engine.State, inst domain.Installation, from domain.ReleaseRecord, profile string,
+) error {
+	if _, touched := st.Get(keyServicesTouched); !touched {
+		return nil
+	}
+	if _, stale := st.Get(keyConfigNotRestored); stale {
+		return domain.InstallationError(nil,
+			"not bringing %s back up: its configuration could not be put back", from.Version)
+	}
+	st.Detail("bringing %s back up", from.Version)
+
+	previous, err := d.resolveCurrentRelease(ctx, from)
+	if err != nil {
+		return err
+	}
+	schema, err := release.LoadSecretSchema(previous)
+	if err != nil {
+		return err
+	}
+	if _, err := d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema); err != nil {
+		return err
+	}
+	cfg, err := d.runtimeConfig(previous, inst, profile)
+	if err != nil {
+		return err
+	}
+	if err := d.Runtime.Up(ctx, cfg, ports.UpOptions{
+		Wait:          true,
+		WaitTimeout:   5 * time.Minute,
+		RemoveOrphans: true,
+	}); err != nil {
+		return err
+	}
+
+	specs, err := d.checkSpecs(inst, previous, st.OpID, domain.OpTypeUpdate)
+	if err != nil {
+		return err
+	}
+	if len(specs) == 0 {
+		return nil
+	}
+	_, err = d.Health.WaitReady(ctx, specs)
+	return err
 }

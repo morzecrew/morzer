@@ -183,9 +183,20 @@ func TestSchemaDescribesTheFieldsAVendorWrites(t *testing.T) {
 	assert.Equal(t, "string", object(t, requirements, "memory")["type"],
 		"a byte size is written as a string, e.g. 2GiB")
 
+	// An operation is one step or, for migrate, a list of them, and the
+	// first spelling is the one every bundle written so far uses.
 	operations := object(t, object(t, props, "operations"), "additionalProperties")
-	timeout := object(t, object(t, operations, "properties"), "timeout")
+	spellings, ok := operations["oneOf"].([]any)
+	require.True(t, ok, "an operation's two spellings are not both stated")
+	require.Len(t, spellings, 2)
+	step, ok := spellings[0].(map[string]any)
+	require.True(t, ok)
+	timeout := object(t, object(t, step, "properties"), "timeout")
 	assert.Equal(t, "string", timeout["type"], "a duration is written as a string, e.g. 10m")
+	list, ok := spellings[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "array", list["type"])
+	assert.Equal(t, step, list["items"], "a step in a list is not the same shape as a step alone")
 
 	// A vendor's own block is passed through untouched, so the schema must
 	// not constrain it.

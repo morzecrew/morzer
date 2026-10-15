@@ -182,6 +182,12 @@ A bundle that carries everything is a bundle every transport has to move, and a
 release that was 2 MB becomes 800 MB. Bundling only what is private is what
 keeps that proportionate.
 
+It also decides how the bundle can travel. **A bundle fetched over HTTPS or from
+a registry may be at most 512 MiB compressed**, so an 800 MB bundle cannot be
+followed as an `update.channel` or fetched by URL. It reaches the machine as a
+file and is installed from a path, as in [installing
+offline](../operating/installing-offline.md).
+
 Declare what the bundle expands to, so the manager can size its extraction
 budget:
 
