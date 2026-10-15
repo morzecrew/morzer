@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/fakes"
@@ -830,5 +831,100 @@ func TestARollbackDisablesWhatItHadAlreadyEnabled(t *testing.T) {
 	if !runner.Ran("disable demo.service") {
 		t.Errorf("the unit enabled before the failure was left enabled, with its "+
 			"file removed:\n%s", runner.CommandLines())
+	}
+}
+
+// A schedule is parsed by systemd's own parser before it is stored, and the
+// answer is the exit status -- the one thing systemd-analyze promises.
+func TestValidateScheduleAsksSystemdAnalyze(t *testing.T) {
+	ctx := context.Background()
+	s, runner, _ := newSupervisor(t)
+	runner.OnExit("calendar -- every 5m", 1,
+		"Failed to parse calendar specification 'every 5m': Invalid argument")
+
+	err := s.ValidateSchedule(ctx, "every 5m")
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("a schedule systemd refused was not a validation error: %v", err)
+	}
+
+	if err := s.ValidateSchedule(ctx, "Sun *-*-* 04:00:00"); err != nil {
+		t.Fatalf("a schedule systemd accepted was refused: %v", err)
+	}
+	// `--`, or an expression beginning with a dash is read as a flag.
+	if !runner.Ran("systemd-analyze calendar -- Sun *-*-* 04:00:00") {
+		t.Errorf("the expression was not passed as an operand:\n%s", runner.CommandLines())
+	}
+}
+
+// Empty is the adapter's own default, and a host without systemd-analyze has
+// nothing to ask: neither may refuse, and neither runs anything.
+func TestValidateScheduleAcceptsWhatItCannotJudge(t *testing.T) {
+	ctx := context.Background()
+	s, runner, _ := newSupervisor(t)
+	if err := s.ValidateSchedule(ctx, "   "); err != nil {
+		t.Errorf("an empty schedule, which renders the default, was refused: %v", err)
+	}
+
+	runner.LookErr = errors.New("not installed")
+	runner.OnExit("calendar", 1, "should never be asked")
+	if err := s.ValidateSchedule(ctx, "every 5m"); err != nil {
+		t.Errorf("a host without systemd-analyze refused a schedule: %v", err)
+	}
+	if runner.Ran("calendar") {
+		t.Errorf("something was run with nothing to run:\n%s", runner.CommandLines())
+	}
+}
+
+// Against the real parser, because the scripted tests above assume what it
+// does: exit 0 for what OnCalendar= accepts, non-zero for what it does not.
+// If that assumption is wrong, this is the test that says so.
+func TestValidateScheduleAgainstTheRealParser(t *testing.T) {
+	runner := exec.New()
+	if _, err := runner.Look("systemd-analyze"); err != nil {
+		t.Skip("systemd-analyze is not installed")
+	}
+	s := systemd.New(runner, systemd.WithUnitDir(t.TempDir()))
+	ctx := context.Background()
+
+	// The defaults included: a check that refused one of this adapter's own
+	// schedules would refuse an operator's attempt to type it back in.
+	// Blank too, which the parser itself refuses: it means the default here,
+	// and `config set update.schedule=` must not be turned into an error.
+	for _, ok := range []string{"", "   ", "Sun *-*-* 04:00:00", "*:0/5", "daily",
+		systemd.DefaultBackupSchedule, systemd.DefaultUpdateSchedule, systemd.DefaultFleetSchedule} {
+		if err := s.ValidateSchedule(ctx, ok); err != nil {
+			t.Errorf("%q is a calendar systemd accepts, and was refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"every 5m", "definitely-not-a-calendar", "-1"} {
+		if err := s.ValidateSchedule(ctx, bad); !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("%q is not a calendar, and was accepted: %v", bad, err)
+		}
+	}
+}
+
+// A parser that could not be run at all is not a verdict on the schedule. It
+// is reported as the failure it is, rather than as "invalid" -- which would
+// send an operator to rewrite an expression that was fine -- or as "valid".
+func TestValidateScheduleReportsAParserThatDidNotRun(t *testing.T) {
+	s, runner, _ := newSupervisor(t)
+	runner.OnError("calendar", errors.New("signal: killed"))
+
+	err := s.ValidateSchedule(context.Background(), "Sun *-*-* 04:00:00")
+	if err == nil {
+		t.Fatal("a parser that never ran was taken as accepting the schedule")
+	}
+	if errors.Is(err, domain.ErrValidation) {
+		t.Errorf("a parser that never ran was reported as refusing the schedule: %v", err)
+	}
+
+	// And one that ran and was killed by a signal from outside, which the
+	// runner reports as an exit with code -1. Only a parser that finished
+	// gave a verdict.
+	s, runner, _ = newSupervisor(t)
+	runner.OnExit("calendar", -1, "")
+	err = s.ValidateSchedule(context.Background(), "Sun *-*-* 04:00:00")
+	if err == nil || errors.Is(err, domain.ErrValidation) {
+		t.Errorf("a parser killed by a signal was read as a verdict: %v", err)
 	}
 }

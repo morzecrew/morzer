@@ -78,9 +78,12 @@ var settings = map[string]setting{
 	"backup.schedule": {
 		Description: "when scheduled backups run, as a systemd OnCalendar expression",
 		Read:        func(i domain.Installation) string { return i.Policy.BackupSchedule },
-		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+		Apply: func(ctx context.Context, d *Deps, i *domain.Installation, raw string) error {
 			schedule := strings.TrimSpace(raw)
 			if err := domain.ValidateBackupSchedule(schedule); err != nil {
+				return err
+			}
+			if err := d.checkSchedule(ctx, schedule); err != nil {
 				return err
 			}
 			i.Policy.BackupSchedule = schedule
@@ -94,9 +97,12 @@ var settings = map[string]setting{
 	"update.schedule": {
 		Description: "when the update timer follows the channel, as a systemd OnCalendar expression",
 		Read:        func(i domain.Installation) string { return i.Update.Schedule },
-		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+		Apply: func(ctx context.Context, d *Deps, i *domain.Installation, raw string) error {
 			schedule := strings.TrimSpace(raw)
 			if err := domain.ValidateUpdateSchedule(schedule); err != nil {
+				return err
+			}
+			if err := d.checkSchedule(ctx, schedule); err != nil {
 				return err
 			}
 			i.Update.Schedule = schedule
@@ -147,6 +153,22 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Update.Channel = "" },
 	},
+}
+
+// checkSchedule asks the supervisor whether it can run a schedule, before the
+// schedule is stored.
+//
+// The domain bounds the shape -- one line, a sane length -- and stops there on
+// purpose; whether `every 5m` is a calendar is systemd's to say. Without this a
+// schedule systemd cannot parse was stored, rendered, and left a timer that
+// does not load: no scheduled backups, or no unattended updates, from a
+// command that exited 0. Refused here, at the door, for the reason
+// checkChannelIsFollowable refuses an unwatchable channel.
+func (d *Deps) checkSchedule(ctx context.Context, schedule string) error {
+	if d.Supervisor == nil {
+		return nil
+	}
+	return d.Supervisor.ValidateSchedule(ctx, schedule)
 }
 
 // checkChannelIsFollowable refuses a reference this manager could never watch.

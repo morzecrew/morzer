@@ -131,6 +131,19 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 
+	// The schedule too, and for the same reason: systemd refusing it would
+	// surface at unit installation, after everything before it was built.
+	// Shape first, so a value with a line break is refused as one rather
+	// than handed to a parser.
+	if schedule := strings.TrimSpace(opts.BackupSchedule); schedule != "" {
+		if err := domain.ValidateBackupSchedule(schedule); err != nil {
+			return Result{}, err
+		}
+		if err := d.checkSchedule(ctx, schedule); err != nil {
+			return Result{}, err
+		}
+	}
+
 	// A plan validates the bundle here, and warns about it, from the bundle
 	// at its source -- because the copy inside stepStageRelease is the staged
 	// one and a plan stages nothing.

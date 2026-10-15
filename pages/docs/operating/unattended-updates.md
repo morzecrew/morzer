@@ -81,8 +81,10 @@ morzer config unset update.schedule   # back to daily at 03:30
 
 There is no second maintenance-window mechanism, deliberately: systemd already
 expresses this better than one would, including "the first Sunday of the
-month" and "weekdays only". `systemd-analyze calendar 'Sun *-*-* 04:00:00'`
-shows when an expression next elapses before you set it.
+month" and "weekdays only". The setting is refused if systemd cannot parse
+the expression, so a typo never becomes a timer that does not load, and
+`systemd-analyze calendar 'Sun *-*-* 04:00:00'` shows when an expression next
+elapses before you set it.
 
 **Do not narrow the window with a drop-in.** `OnCalendar=` in a drop-in *adds* a
 trigger to the one the manager wrote, so `systemctl edit demo-update.timer`

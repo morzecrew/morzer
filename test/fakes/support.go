@@ -526,6 +526,14 @@ var _ ports.Supervisor = (*Supervisor)(nil)
 
 func (s *Supervisor) Available(ctx context.Context) bool { return s.Present }
 
+// ValidateSchedule accepts everything unless Fail["ValidateSchedule"] is set,
+// which is how a test plays a schedule the init system refuses.
+func (s *Supervisor) ValidateSchedule(ctx context.Context, expr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Fail["ValidateSchedule"]
+}
+
 // InstallUnits models the systemd adapter's enablement rules, not a
 // convenient approximation of them (RFC 0030 §8.1).
 //

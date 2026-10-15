@@ -39,6 +39,9 @@ type Supervisor struct {
 
 	// systemctl is the binary path, injectable for tests.
 	systemctl string
+
+	// analyze is systemd-analyze, which owns the calendar grammar.
+	analyze string
 }
 
 type Option func(*Supervisor)
@@ -54,7 +57,8 @@ func withSystemctl(path string) Option {
 }
 
 func New(runner exec.Runner, opts ...Option) *Supervisor {
-	s := &Supervisor{runner: runner, unitDir: UnitDir, systemctl: "systemctl"}
+	s := &Supervisor{runner: runner, unitDir: UnitDir, systemctl: "systemctl",
+		analyze: "systemd-analyze"}
 	for _, o := range opts {
 		o(s)
 	}
@@ -281,6 +285,46 @@ func (s *Supervisor) Status(ctx context.Context, unit string) (ports.UnitState, 
 		Enabled:  props["UnitFileState"] == "enabled" || props["UnitFileState"] == "enabled-runtime",
 		ExitCode: exitCode,
 	}, nil
+}
+
+// ValidateSchedule parses expr the way OnCalendar= will, with systemd's own
+// parser rather than a copy of its grammar.
+//
+// Run on the machine that will load the unit, so the answer is the one this
+// systemd version gives. systemd ships systemd-analyze beside systemctl; a host
+// without it has nothing to ask, and the value is accepted unchecked, as every
+// value was before this check existed. Refusing there would block a schedule
+// on exactly the hosts least likely to render it. It needs no running systemd
+// -- `calendar` is a pure parse -- so a container with the package installed
+// is checked too.
+func (s *Supervisor) ValidateSchedule(ctx context.Context, expr string) error {
+	if strings.TrimSpace(expr) == "" {
+		return nil
+	}
+	if _, err := s.runner.Look(s.analyze); err != nil {
+		return nil
+	}
+	// `--` because an expression is an operand, never a flag, whatever
+	// character it starts with.
+	_, err := s.runner.Run(ctx, exec.Command{
+		Argv:          []string{s.analyze, "calendar", "--", expr},
+		Timeout:       30 * time.Second,
+		CaptureOutput: true,
+	})
+	if err == nil {
+		return nil
+	}
+	// A verdict only from a parser that finished. One killed by a signal from
+	// outside -- the OOM killer, an operator's kill -- exits -1, and calling
+	// that "cannot parse" would send somebody to rewrite a good expression.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode > 0 {
+		return domain.ValidationError(nil, "systemd cannot parse the schedule %q", expr).
+			WithHint("it would be written to OnCalendar= and the timer would not load; " +
+				"`systemd-analyze calendar '<expression>'` shows what one means, " +
+				"e.g. `Sun *-*-* 04:00:00` or `*:0/5`")
+	}
+	return domain.Internal(err, "cannot run %s calendar", s.analyze)
 }
 
 func parseProperties(out string) map[string]string {

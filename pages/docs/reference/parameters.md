@@ -187,6 +187,12 @@ until it was a setting it could not be changed afterwards at all. Changing it
 rewrites the timer unit; unsetting it returns the default rather than turning
 backups off, because an empty `OnCalendar` is a unit systemd refuses to load.
 
+Both schedules are checked with systemd's own parser before they are stored —
+by `config set`, and by `init --backup-schedule` before anything is created — so
+an expression systemd cannot read is refused rather than left as a timer that
+never loads. On a host without `systemd-analyze` there is nothing to ask, and
+the value is stored as given.
+
 ## Turning scheduled backups off
 
 Two ways, and they are not the same thing.
