@@ -174,6 +174,17 @@ type UpdateCandidate struct {
 	// Refused says why this candidate was not staged, in the operator's
 	// words. Empty when it was.
 	Refused string `json:"refused,omitempty"`
+
+	// Failed names the unattended install of this candidate that did not
+	// finish, and how it ended. Set, the timer leaves the candidate alone
+	// until the channel moves or an operator installs it by hand: a retry
+	// nobody asked for repeats the pre-update backup and the migration
+	// every tick, and hides the failure a person should look at
+	// (RFC 0001 §8).
+	//
+	// No schema bump: an older manager does not read the field, and so
+	// retries, which is what it did before the field existed.
+	Failed string `json:"failed,omitempty"`
 }
 
 func (c UpdateCandidate) IsZero() bool { return c.UpstreamDigest == "" }

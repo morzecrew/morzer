@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"slices"
 	"time"
@@ -142,6 +143,14 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 			"cannot read the update candidate: "+domain.AsError(err).Message)
 	case candidate.IsStaged():
 		out.StagedRelease = &candidate
+		if candidate.Failed != "" {
+			// The timer has stopped trying, and that is a decision
+			// waiting for a person exactly as the staged line is.
+			out.Problems = append(out.Problems, fmt.Sprintf(
+				"%s did not install unattended (%s); the timer leaves it alone "+
+					"until the channel moves, and `morzer update --to %s` tries again",
+				candidate.Version, candidate.Failed, candidate.Version))
+		}
 	case !candidate.IsZero():
 		// A refused candidate is a problem rather than a section: the
 		// operator needs to know their channel produced something

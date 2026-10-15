@@ -106,6 +106,25 @@ A release left staged is also a **successful** tick. It is the configured
 behaviour when the gate refuses, and a unit that failed every night because a
 release is waiting would train you to ignore it.
 
+### A release that fails to install is tried once
+
+When an unattended install fails, the release stays staged and the timer stops
+trying it. Each attempt costs a pre-update backup that retention never removes,
+and a migration run against your database, so retrying on every tick would
+repeat both and hide the failure behind the next attempt. You get one
+`operation.finished` notification for the failure, and `morzer status` keeps
+saying the release did not install until something changes:
+
+- **The channel moves.** Whatever the tag points at next is a new release to the
+  timer, and is installed as normal if the gate admits it.
+- **You install it yourself** with `morzer update --to <version>`, once you know
+  why it failed.
+
+While an operation is flagged for manual intervention, a tick does nothing at
+all: it fetches nothing, installs nothing, and fails with the same refusal
+`update` gives, naming the operation. Clear the flag with `morzer status
+--clear-intervention` once the machine is repaired.
+
 ## Dev mode: a machine that is a sandbox from birth
 
 ```sh
