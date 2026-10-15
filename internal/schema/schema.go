@@ -150,7 +150,25 @@ func manifestSchema() map[string]any {
 	// underline every manifest written the ordinary way.
 	props["images"] = imagesSchema(props["images"])
 	props["operations"] = operationsSchema(props["operations"])
-	s["required"] = []string{"api_version", "kind", "metadata", "runtime", "images"}
+
+	// `runtime:` is still a field so the loader can refuse it by name
+	// (RFC 0023 decision 23), and a refused field is not one to offer. Kept
+	// in the properties, an editor accepted the block the manager rejects.
+	delete(props, "runtime")
+	s["required"] = []string{"api_version", "kind", "metadata", "runtimes", "images"}
+
+	// Required and present is still `runtimes: {}`, which the loader refuses
+	// as declaring no runtime; likewise `images: {}`, and a runtime whose
+	// `files` is empty. The bounds say what `required` cannot.
+	atLeastOne(props["runtimes"], "minProperties")
+	atLeastOne(props["images"], "minProperties")
+	if runtimes, ok := props["runtimes"].(map[string]any); ok {
+		if entry, ok := runtimes["additionalProperties"].(map[string]any); ok {
+			if fields, ok := entry["properties"].(map[string]any); ok {
+				atLeastOne(fields["files"], "minItems")
+			}
+		}
+	}
 
 	return s
 }
@@ -220,6 +238,17 @@ func imagesSchema(generated any) any {
 		},
 	}
 	return mapping
+}
+
+// atLeastOne bounds a map or list node below by one, under the keyword its
+// type uses. It panics on a node that is not a schema object, as withEnum does
+// and for its reason: a renamed field must fail generation, not drop a bound.
+func atLeastOne(node any, keyword string) {
+	m, ok := node.(map[string]any)
+	if !ok {
+		panic(fmt.Sprintf("atLeastOne: %T is not a schema object", node))
+	}
+	m[keyword] = 1
 }
 
 // operationsSchema states the two spellings of an operation: one step as a

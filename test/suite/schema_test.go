@@ -3,6 +3,7 @@ package suite
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/release"
 	"github.com/morzecrew/morzer/internal/schema"
 )
 
@@ -170,11 +172,8 @@ func TestSchemaDescribesTheFieldsAVendorWrites(t *testing.T) {
 	assert.Contains(t, apiVersion["enum"], "selfhost/v1alpha1",
 		"the schema must name the api_version this manager reads")
 
-	required, ok := node["required"].([]any)
-	require.True(t, ok, "the schema must state what a manifest cannot omit")
-	for _, field := range []string{"api_version", "kind", "metadata", "runtime", "images"} {
-		assert.Contains(t, required, field)
-	}
+	// What a manifest cannot omit is checked against the loader, below,
+	// rather than against a second hand-written list.
 
 	// The scalar wrappers marshal to strings with their own syntax.
 	// Reflecting into them would describe Go's representation rather than
@@ -206,6 +205,128 @@ func TestSchemaDescribesTheFieldsAVendorWrites(t *testing.T) {
 	assert.NotEqual(t, false, extensions["additionalProperties"],
 		"extensions is deliberately free-form; a schema that closed it would "+
 			"reject data the loader accepts")
+}
+
+// The schema's `required` and the loader's refusals are two statements of one
+// rule, and nothing held them together: the list was written by hand, so it
+// went on requiring `runtime` after the loader stopped reading it in 0.3.0, and
+// never required the `runtimes` the loader refuses a manifest without. Anything
+// validating against the published file -- an editor through `$schema`, a
+// vendor's CI -- rejected every bundle this manager accepts.
+//
+// So each top-level key of the example manifest is removed in turn, and the
+// loader has to refuse the result exactly when the schema calls the key
+// required.
+func TestTheManifestSchemaRequiresWhatTheLoaderRefusesWithout(t *testing.T) {
+	var node map[string]any
+	raw, err := os.ReadFile(schemaPath(t, schema.ManifestSchemaFile))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &node))
+
+	list, ok := node["required"].([]any)
+	require.True(t, ok, "the schema must state what a manifest cannot omit")
+	required := map[string]bool{}
+	for _, field := range list {
+		name, ok := field.(string)
+		require.True(t, ok, "a required entry is not a field name: %v", field)
+		required[name] = true
+	}
+
+	data, err := os.ReadFile(filepath.Join(testBundlePath(t), "manifest.yaml"))
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, yaml.Unmarshal(data, &doc))
+
+	parse := func(doc map[string]any) error {
+		out, err := yaml.Marshal(doc)
+		require.NoError(t, err)
+		_, err = release.ParseManifest(out, "manifest.yaml")
+		return err
+	}
+	// Through the same round trip as every case below, or a value the
+	// re-encoding mangles would read as a key the loader requires.
+	require.NoError(t, parse(doc), "the example manifest has to load before "+
+		"removing anything from it means something")
+
+	for key := range doc {
+		t.Run(key, func(t *testing.T) {
+			without := maps.Clone(doc)
+			delete(without, key)
+			err := parse(without)
+			if required[key] {
+				assert.Error(t, err, "the schema requires %s and the loader "+
+					"accepts a manifest without it", key)
+			} else {
+				assert.NoError(t, err, "the loader refuses a manifest without %s "+
+					"and the schema does not require it", key)
+			}
+		})
+	}
+	for key := range required {
+		_, carried := doc[key]
+		assert.True(t, carried, "the schema requires %s, which no manifest "+
+			"the loader accepts here carries", key)
+	}
+
+	// Refused by the loader, so an editor should underline it too.
+	_, listed := object(t, node, "properties")["runtime"]
+	assert.False(t, listed, "the schema offers `runtime:`, which the loader refuses")
+}
+
+// Present is not the same as non-empty. `runtimes: {}`, `images: {}` and a
+// runtime with `files: []` are each refused by the loader, and a schema that
+// only requires the key accepts all three -- so each is emptied in turn, the
+// loader has to refuse it, and the schema has to say it may not be empty.
+func TestTheManifestSchemaRefusesWhatTheLoaderRefusesEmpty(t *testing.T) {
+	var node map[string]any
+	raw, err := os.ReadFile(schemaPath(t, schema.ManifestSchemaFile))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &node))
+	props := object(t, node, "properties")
+
+	data, err := os.ReadFile(filepath.Join(testBundlePath(t), "manifest.yaml"))
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name   string
+		empty  func(t *testing.T, doc map[string]any)
+		node   map[string]any
+		bound  string
+		reason string
+	}{
+		{
+			name:  "runtimes",
+			empty: func(_ *testing.T, doc map[string]any) { doc["runtimes"] = map[string]any{} },
+			node:  object(t, props, "runtimes"), bound: "minProperties",
+		},
+		{
+			name:  "images",
+			empty: func(_ *testing.T, doc map[string]any) { doc["images"] = map[string]any{} },
+			node:  object(t, props, "images"), bound: "minProperties",
+		},
+		{
+			name: "a runtime's files",
+			empty: func(t *testing.T, doc map[string]any) {
+				object(t, object(t, doc, "runtimes"), "compose")["files"] = []any{}
+			},
+			node: object(t, object(t, object(t, object(t, props, "runtimes"),
+				"additionalProperties"), "properties"), "files"),
+			bound: "minItems",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var doc map[string]any
+			require.NoError(t, yaml.Unmarshal(data, &doc))
+			tc.empty(t, doc)
+			out, err := yaml.Marshal(doc)
+			require.NoError(t, err)
+			_, err = release.ParseManifest(out, "manifest.yaml")
+			require.Error(t, err, "the loader accepts %s empty, so there is nothing to agree with", tc.name)
+
+			assert.EqualValues(t, 1, tc.node[tc.bound],
+				"the schema accepts %s empty, which the loader refuses", tc.name)
+		})
+	}
 }
 
 // TestTheInstallationSchemaConstrainsWhatTheWriterProduces.

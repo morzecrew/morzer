@@ -196,6 +196,7 @@
           }
         ]
       },
+      "minProperties": 1,
       "type": "object"
     },
     "kind": {
@@ -502,30 +503,6 @@
       },
       "type": "object"
     },
-    "runtime": {
-      "additionalProperties": false,
-      "properties": {
-        "files": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "profiles": {
-          "additionalProperties": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "type": "object"
-        },
-        "project": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "runtimes": {
       "additionalProperties": {
         "additionalProperties": false,
@@ -534,6 +511,7 @@
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "options": {
@@ -554,6 +532,7 @@
         },
         "type": "object"
       },
+      "minProperties": 1,
       "type": "object"
     },
     "secrets": {
@@ -576,7 +555,7 @@
     "api_version",
     "kind",
     "metadata",
-    "runtime",
+    "runtimes",
     "images"
   ],
   "title": "morzer release manifest",
