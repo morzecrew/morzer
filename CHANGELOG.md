@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`morzer config set update.schedule`**: when the update timer follows the channel — and installs, if `update.auto_apply` allows — as a systemd `OnCalendar` expression. This is the maintenance window RFC 0016 always said `OnCalendar` was, and nothing let you set it: every installation ticked daily at 03:30. Unsetting it returns to that default. A sandbox that should follow `main` within minutes sets `*:0/5`.
 
+- **`morzer status` shows the update channel a machine follows**: when the timer looks at it, and whether it installs what it finds or only stages it. A channel set while `update.check` is off is reported as not polled, since no timer exists then. Until now the schedule was visible only in the unit file.
+
 ### Changed
 
 - **Building from source needs Go 1.26 or newer.** The `golang.org/x` modules moved their `go` directive to 1.26.0 together, and that directive is a requirement rather than a preference, so taking any of their updates raises this floor. Published binaries are unaffected.

@@ -57,6 +57,10 @@ func StatusDoc(d *ui.Doc, s ops.Status) *ui.Doc {
 			Label: "staged", Value: t.Active(s.StagedRelease.Version.String()),
 			Note: "(not installed)"})
 	}
+	if f := s.Following; f != nil {
+		fields = append(fields, ui.Field{
+			Label: "following", Value: f.Channel, Note: followingNote(f)})
+	}
 	for _, f := range []ui.Field{
 		{Label: "profile", Value: s.Profile},
 		{Label: "url", Value: s.PublicURL},
@@ -73,6 +77,23 @@ func StatusDoc(d *ui.Doc, s ops.Status) *ui.Doc {
 	statusFooter(d, s)
 	statusAttention(d, s)
 	return d
+}
+
+// followingNote says when the channel is looked at and what happens then: the
+// two things an operator changes about it, and the two a dev machine following
+// `main` is most often wrong about.
+func followingNote(f *ops.Following) string {
+	if !f.Polled {
+		return "(not polled: update.check is off)"
+	}
+	when := "daily"
+	if f.Schedule != "" {
+		when = "on " + f.Schedule
+	}
+	if f.AutoApply {
+		return "(" + when + ", installs what it may)"
+	}
+	return "(" + when + ", stages only)"
 }
 
 func statusServices(d *ui.Doc, s ops.Status) {

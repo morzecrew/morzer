@@ -375,3 +375,25 @@ func TestAValueAScriptSubstitutesIsNeverWrapped(t *testing.T) {
 			"the key was reflowed at %d columns:\n%q", width, out)
 	}
 }
+
+// The goldens draw two of the four ways a channel can be followed; the note
+// is where the other two differ, and a dev machine is most often wrong about
+// exactly these.
+func TestFollowingNoteSaysWhenAndWhat(t *testing.T) {
+	const ch = "oci://registry.example/demo/bundle:main"
+	for _, tc := range []struct {
+		f    ops.Following
+		want string
+	}{
+		{ops.Following{Channel: ch}, "(not polled: update.check is off)"},
+		{ops.Following{Channel: ch, Polled: true}, "(daily, stages only)"},
+		{ops.Following{Channel: ch, Polled: true, Schedule: "*:0/15"}, "(on *:0/15, stages only)"},
+		{ops.Following{Channel: ch, Polled: true, AutoApply: true}, "(daily, installs what it may)"},
+	} {
+		var b bytes.Buffer
+		require.NoError(t, ui.Render(&b, ui.ModePlain, nil, ops.Status{Product: "demo", Following: &tc.f}))
+		if got := flatten(b.String()); !strings.Contains(got, tc.want) {
+			t.Errorf("following %+v drew %q, missing %q", tc.f, got, tc.want)
+		}
+	}
+}

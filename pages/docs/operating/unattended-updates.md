@@ -66,7 +66,12 @@ it. A machine that accepts the setting and then refuses to act every night is
 worse than one that refuses the setting: you would believe it was armed.
 
 Setting a channel installs a `<product>-update.timer`; clearing it removes the
-timer again.
+timer again. `morzer status` shows the channel on its `following` line, with
+when the timer looks and whether it installs what it finds:
+
+```text
+  following     oci://registry.example/demo/bundle:stable (on Sun *-*-* 04:00:00, installs what it may)
+```
 
 ### The maintenance window is an `OnCalendar` expression
 
