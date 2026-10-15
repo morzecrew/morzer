@@ -62,8 +62,8 @@ func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect p
 			// precisely so it does not become a runtime surprise.
 			return domain.ValidationError(nil,
 				"installation policy requires a signature but configures no signing keys").
-				WithHint("add policy.signing_keys to installation.yaml, " +
-					"or clear require_signature")
+				WithHint("trust one with `morzer release trust add <key>`; " +
+					"installation.yaml is a report, and editing it changes nothing")
 		}
 		// No keys means no opinion. The checksum verifier still runs.
 		return nil
@@ -117,6 +117,19 @@ func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect p
 		WithHint("this bundle was not signed by a key this installation trusts. " +
 			"Do not install it; check where it came from, and check " +
 			"policy.signing_keys names the vendor's current key.")
+}
+
+var _ ports.KeyChecker = (*Verifier)(nil)
+
+// CheckKey parses one key with the parser verification uses, so a key accepted
+// here is one Verify can use.
+func (v *Verifier) CheckKey(key string) error {
+	if _, err := gominisign.NewPublicKey(strings.TrimSpace(key)); err != nil {
+		return domain.ValidationError(err, "%q is not a valid minisign public key", key).
+			WithHint("a minisign public key is a single base64 line, " +
+				"as printed by `minisign -G`")
+	}
+	return nil
 }
 
 // parseKeys turns configured strings into keys, reporting a bad one by

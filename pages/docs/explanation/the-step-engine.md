@@ -51,6 +51,13 @@ Compensation runs newest-first and **includes the step that failed** — it may
 have mutated before failing, which is exactly the case a `Verify` failure
 describes.
 
+A step that **succeeded** can also close the way back. A migration that leaves
+the database at a schema the previous release cannot read has made every earlier
+step unsafe to undo: putting them back would run the old release against a
+database it does not understand. The step records a *point of no return* with
+its reason. A later failure then undoes only what came after it, ends at
+`requires-manual-intervention`, and the reason is in the error and the journal.
+
 ## The distinction that matters most
 
 Three outcomes that a lesser design would collapse into "error":

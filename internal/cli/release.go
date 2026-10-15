@@ -55,7 +55,79 @@ func newReleaseCommand(app *App) *cobra.Command {
 		installationScope(newReleaseFetchCommand(app)),
 		installationScope(newReleaseIngestCommand(app)),
 		installationScope(newReleasePruneCommand(app)),
+		installationScope(newReleaseTrustCommand(app)),
 	)
+	return cmd
+}
+
+// newReleaseTrustCommand builds `morzer release trust`.
+//
+// Under `release` because what it governs is which releases this machine will
+// install. Not `config set`: the keys are a list, and rotating one is two steps
+// a single assignment cannot express.
+func newReleaseTrustCommand(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "trust",
+		Short: "Manage the keys a release must be signed with",
+		Long: "The minisign public keys this installation accepts a release signature\n" +
+			"from. To rotate a vendor key, trust the new one, install a release it\n" +
+			"signed, then remove the old one: while both are trusted, a release\n" +
+			"signed with either installs.\n\n" +
+			"The last key cannot be removed while a signature is required, which\n" +
+			"update.auto_apply also needs.",
+	}
+
+	add := &cobra.Command{
+		Use:     "add <minisign-public-key>",
+		Short:   "Trust release signatures made with a key",
+		Long:    "Parses the key before recording it. Adding a key already trusted changes nothing.",
+		Example: "  morzer release trust add RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := ops.TrustAdd(cmd.Context(), app.Deps, app.operationOptions(), args[0])
+			if err != nil {
+				return err
+			}
+			app.finish(result)
+			return nil
+		},
+	}
+
+	remove := &cobra.Command{
+		Use:   "remove <minisign-public-key>",
+		Short: "Stop trusting release signatures made with a key",
+		Long: "A release already installed stays installed. One signed only with this\n" +
+			"key is refused from the next update on, including one already staged.\n\n" +
+			"Removing the last key, which only a machine that requires no signature\n" +
+			"may do, turns signature checking off.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := ops.TrustRemove(cmd.Context(), app.Deps, app.operationOptions(), args[0])
+			if err != nil {
+				return err
+			}
+			app.finish(result)
+			return nil
+		},
+	}
+
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List the trusted release signing keys",
+		Long: "The keys a release signature is checked against, and whether a\n" +
+			"signature is required at all. With none required, a signed release is\n" +
+			"still checked and an unsigned one is installed.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			report, err := ops.TrustList(cmd.Context(), app.Deps)
+			if err != nil {
+				return err
+			}
+			return app.render(report)
+		},
+	}
+
+	cmd.AddCommand(add, remove, list)
 	return cmd
 }
 

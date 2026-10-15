@@ -333,9 +333,10 @@ func (d *Deps) stageCandidate(ctx context.Context, pinned ports.Ref) (domain.Rel
 	}
 	if !current.IsZero() && resolved.Version.LessThan(current.Version) {
 		// A channel that moved backwards is a vendor pulling a release,
-		// and the answer is not to quietly downgrade a running machine:
-		// `update` refuses a backwards move anyway, so staging one would
-		// only produce a candidate nobody can install.
+		// and the answer is not to quietly downgrade a running machine.
+		// It has to stop here: `update` only warns about a backwards move
+		// (domain.CheckUpgrade), so a candidate staged here would be
+		// installed by the next tick allowed to apply.
 		return domain.Release{}, domain.ValidationError(nil,
 			"the channel points at %s, older than the installed %s",
 			resolved.Version, current.Version).
