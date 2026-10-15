@@ -2476,6 +2476,11 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 until it was a setting it could not be changed afterwards at all. Changing it
 rewrites the timer unit; unsetting it returns the default rather than turning
 backups off, because an empty <code>OnCalendar</code> is a unit systemd refuses to load.</p>
+<p>Both schedules are checked with systemd's own parser before they are stored —
+by <code>config set</code>, and by <code>init --backup-schedule</code> before anything is created — so
+an expression systemd cannot read is refused rather than left as a timer that
+never loads. On a host without <code>systemd-analyze</code> there is nothing to ask, and
+the value is stored as given.</p>
 <h2 id="turning-scheduled-backups-off">Turning scheduled backups off<a class="headerlink" href="#turning-scheduled-backups-off" title="Permanent link">&para;</a></h2>
 <p>Two ways, and they are not the same thing.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>backup.scheduled<span class="o">=</span><span class="nb">false</span><span class="w">   </span><span class="c1"># this machine's backups are not morzer's job</span>

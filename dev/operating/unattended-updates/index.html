@@ -2317,8 +2317,10 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 </code></pre></div>
 <p>There is no second maintenance-window mechanism, deliberately: systemd already
 expresses this better than one would, including "the first Sunday of the
-month" and "weekdays only". <code>systemd-analyze calendar 'Sun *-*-* 04:00:00'</code>
-shows when an expression next elapses before you set it.</p>
+month" and "weekdays only". The setting is refused if systemd cannot parse
+the expression, so a typo never becomes a timer that does not load, and
+<code>systemd-analyze calendar 'Sun *-*-* 04:00:00'</code> shows when an expression next
+elapses before you set it.</p>
 <p><strong>Do not narrow the window with a drop-in.</strong> <code>OnCalendar=</code> in a drop-in <em>adds</em> a
 trigger to the one the manager wrote, so <code>systemctl edit demo-update.timer</code>
 with <code>OnCalendar=Sun *-*-* 04:00:00</code> runs updates on Sunday <strong>and</strong> every night.
