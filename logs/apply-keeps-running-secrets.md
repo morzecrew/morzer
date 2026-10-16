@@ -73,3 +73,24 @@ secret only the previous release declares, so a container of that release that
 restarts cannot read it. Before #104 such an update removed every secret.
 Rendering the previous release's secrets back would close the gap, but that
 work belongs to the restore point and is not done here.
+
+The second point in the same review is the other half of the first. The
+compensator kept the secrets once `start-services` had begun, but that step
+records it before `Up` returns. An `Up` that failed having started nothing
+therefore left plaintext that no container read. The
+`service start` case of `TestAFailedApplyThatStartedNothingRemovesItsSecrets`
+reproduced it. Neither marker can answer the question decision 20 asks, so the
+compensator now asks the runtime whether anything is running when it runs, and
+the preflight record from the previous entry is gone. A runtime that cannot
+answer still counts as running.
+
+```divergence
+decision: 20
+grade: LOCKED
+kind: resolved
+at: 2026-10-16T14:52:20Z
+attempt: 3
+claim: the compensator removes the secrets only when the runtime reports nothing running, which covers containers an earlier operation started, a start-services that started some or none, and a runtime that cannot answer; this supersedes the preflight record of attempt 2
+evidence: internal/lifecycle/ops/apply.go:383-387
+action: decided
+```

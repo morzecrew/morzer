@@ -202,7 +202,7 @@ func applySteps(d *Deps, inst domain.Installation, rel domain.Release, opts Opti
 	return []engine.Step{
 		stepPreflight(d, inst, rel, opts),
 		stepLoadSecrets(d, inst, rel),
-		stepRenderSecrets(d, inst, rel),
+		stepRenderSecrets(d, inst, rel, opts),
 		stepRenderConfiguration(d, inst, rel, opts),
 		stepValidateRuntime(d, inst, rel, opts),
 		stepPullImages(d, inst, rel, opts),
@@ -239,15 +239,9 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 
 			// The port check only makes sense when the project is not
 			// already running: on a converged system the product's
-			// own listeners would be reported as conflicts. Running
-			// containers also read the secrets this operation is about
-			// to render, so a failure must leave them in place, and a
-			// runtime that cannot say may have containers up.
-			running, err := d.projectRunning(ctx, inst, rel, opts)
-			if running || err != nil {
-				st.Set(keyServicesRunning, true)
-			}
-			if !running {
+			// own listeners would be reported as conflicts. A runtime
+			// that cannot answer gets the check.
+			if running, _ := d.projectRunning(ctx, inst, rel, opts); !running {
 				// Resolved, not read raw: `requirements.ports`
 				// may name a parameter, and checking 18080
 				// while the deployment publishes 9000 is the
@@ -329,10 +323,11 @@ func stepLoadSecrets(d *Deps, inst domain.Installation, rel domain.Release) engi
 
 // stepRenderSecrets writes decrypted secrets to tmpfs.
 //
-// Compensation removes them. If a later step fails, leaving plaintext
-// credentials on a filesystem that may not be tmpfs on every host is not a
-// state to walk away from.
-func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {
+// Compensation removes them while no container reads them. If a later step
+// fails, leaving plaintext credentials nothing uses on a filesystem that may
+// not be tmpfs on every host is not a state to walk away from; removing them
+// from under a running container only breaks its next restart.
+func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, opts Options) engine.Step {
 	return engine.Step{
 		ID:          "render-secrets",
 		Description: "render secrets to " + d.Paths.SecretsRenderDir(),
@@ -376,17 +371,17 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release) en
 			}
 			return nil
 		},
-		// Removed only while nothing was started from them. Containers
-		// preflight found running, and those start-services brought up,
-		// are still up and read these files: an apply has nothing
-		// earlier to put back. An update that got as far as
+		// Removed only while nothing was started from them, which the
+		// runtime is asked rather than this operation remembering:
+		// containers an earlier apply started read these files too, and
+		// a start-services that failed may have started some or none. A
+		// runtime that cannot answer may have them up. An apply has
+		// nothing earlier to put back. An update that got as far as
 		// start-services renders the previous release's secrets over
 		// them on restore, which prunes whatever that release does not
 		// declare; one that stopped earlier leaves the new release's.
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			_, running := st.Get(keyServicesRunning)
-			_, touched := st.Get(keyServicesTouched)
-			if running || touched {
+			if running, err := d.projectRunning(ctx, inst, rel, opts); running || err != nil {
 				return nil
 			}
 			return atomicfs.RemoveAll(d.Paths.SecretsRenderDir())
@@ -899,9 +894,6 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 // keyServicesTouched says start-services began replacing containers, so a
 // failed update has more to put back than files.
 const keyServicesTouched = "services-touched"
-
-// keyServicesRunning says preflight found the project up, or could not tell.
-const keyServicesRunning = "services-running"
 
 // keyConfigNotRestored says the configuration compensator could not put every
 // file back, so nothing may be started against what is there.

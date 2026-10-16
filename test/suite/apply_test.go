@@ -380,20 +380,25 @@ func TestApplyCompensatesWhenHealthChecksFail(t *testing.T) {
 }
 
 // TestAFailedApplyThatStartedNothingRemovesItsSecrets: with no container
-// started from them, rendered secrets are plaintext nobody reads.
+// started from them, rendered secrets are plaintext nobody reads. That holds
+// when start-services ran but the runtime started nothing.
 func TestAFailedApplyThatStartedNothingRemovesItsSecrets(t *testing.T) {
-	h := newHarness(t)
-	h.install()
-	h.setHookEnv()
+	for name, method := range map[string]string{"image pull": "Pull", "service start": "Up"} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			h.setHookEnv()
 
-	h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+			h.Runtime.Fail[method] = domain.RuntimeError(nil, "injected: %s refused", method)
 
-	result, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
-	require.Error(t, err)
-	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+			result, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+			require.ErrorContains(t, err, "injected: "+method)
+			require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
 
-	assert.NoDirExists(t, h.Paths.SecretsRenderDir(),
-		"compensation left plaintext secrets that nothing started from")
+			assert.NoDirExists(t, h.Paths.SecretsRenderDir(),
+				"compensation left plaintext secrets that nothing started from")
+		})
+	}
 }
 
 // TestAFailedApplyOverRunningServicesKeepsTheirSecrets: this apply started
