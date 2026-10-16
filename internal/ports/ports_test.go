@@ -73,6 +73,38 @@ func TestParseRefRefusesWhatItCannotUse(t *testing.T) {
 	}
 }
 
+// A refusal quotes the reference so the operator can see what is wrong with it,
+// and the update timer writes refusals to the journal: a password in the
+// reference must not ride along.
+func TestParseRefRefusalsWithholdThePassword(t *testing.T) {
+	for _, input := range []string{
+		// Does not parse, so where the userinfo ends is unknown.
+		"https://user:hunter2%zz@releases.example/demo.tar.zst",
+		"http://user:hunter2@releases.example/demo.tar.zst",
+		"file://user:hunter2@host/opt/demo",
+	} {
+		_, err := ports.ParseRef(input)
+		if err == nil {
+			t.Fatalf("ParseRef(%q) was accepted", input)
+		}
+		e := domain.AsError(err)
+		if text := err.Error() + e.Hint; strings.Contains(text, "hunter2") {
+			t.Errorf("ParseRef(%q) refusal carries the password: %s", input, text)
+		}
+	}
+
+	_, err := ports.ParseRef("https://user:hunter2%zz@releases.example/demo.tar.zst")
+	if !strings.Contains(err.Error(), "invalid release reference") {
+		t.Errorf("the refusal no longer says the reference does not parse: %v", err)
+	}
+	// Without userinfo there is nothing to withhold, and the operator needs
+	// to see what does not parse.
+	_, err = ports.ParseRef("https://releases.example/%zz")
+	if !strings.Contains(err.Error(), "releases.example/%zz") {
+		t.Errorf("a reference with nothing to withhold is not shown: %v", err)
+	}
+}
+
 func TestRefRoundTripsThroughItsString(t *testing.T) {
 	cases := []string{
 		"./bundle",
