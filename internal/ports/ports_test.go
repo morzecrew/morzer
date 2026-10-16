@@ -82,6 +82,9 @@ func TestParseRefRefusalsWithholdThePassword(t *testing.T) {
 		"https://user:hunter2%zz@releases.example/demo.tar.zst",
 		"http://user:hunter2@releases.example/demo.tar.zst",
 		"file://user:hunter2@host/opt/demo",
+		// A registry takes its credentials from `docker login`, and a
+		// password in the reference only ever reached error messages.
+		"oci://user:hunter2@registry.example/demo/bundle:1.2.0",
 	} {
 		_, err := ports.ParseRef(input)
 		if err == nil {

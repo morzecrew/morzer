@@ -128,7 +128,16 @@ func ParseRef(s string) (Ref, error) {
 				WithHint("write file:///absolute/path -- three slashes")
 		}
 		return Ref{Scheme: "file", Location: u.Path}, nil
-	case "https", "oci":
+	case "oci":
+		// A registry takes its credentials from `docker login`. The
+		// source reads userinfo as part of the repository, so a password
+		// here authenticated nothing and reached only error messages.
+		if u.User != nil {
+			return Ref{}, domain.Usage("oci reference %q carries credentials", shown).
+				WithHint("remove them from the reference and run `docker login` for the registry")
+		}
+		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil
+	case "https":
 		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil
 	case "http":
 		return Ref{}, domain.Usage("refusing plaintext http reference %q", shown).
