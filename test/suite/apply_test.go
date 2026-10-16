@@ -371,10 +371,29 @@ func TestApplyCompensatesWhenHealthChecksFail(t *testing.T) {
 	assert.Equal(t, domain.StatusCompensated, result.Record.Status)
 	assert.Equal(t, domain.ExitCompensated, domain.ExitCode(err))
 
-	// The rendered secrets were cleaned up: leaving plaintext credentials
-	// behind after a failed apply is not a state to walk away from.
+	// The services it started are still running, since an apply has no
+	// earlier release to put back, and they read their secrets from here.
+	// Every boot runs an apply, so removing them left a machine whose
+	// database was slow to come up with containers that cannot restart.
+	assert.FileExists(t, filepath.Join(h.Paths.SecretsRenderDir(), "db_password"),
+		"compensation removed the secrets of services that are still running")
+}
+
+// TestAFailedApplyThatStartedNothingRemovesItsSecrets: with no container
+// started from them, rendered secrets are plaintext nobody reads.
+func TestAFailedApplyThatStartedNothingRemovesItsSecrets(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+
+	h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+
+	result, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+
 	assert.NoDirExists(t, h.Paths.SecretsRenderDir(),
-		"compensation must remove the rendered secrets")
+		"compensation left plaintext secrets that nothing started from")
 }
 
 func TestApplyFailsClosedWhenTheRuntimeCannotStart(t *testing.T) {

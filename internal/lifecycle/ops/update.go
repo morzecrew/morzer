@@ -910,9 +910,9 @@ func stepPruneReleases(d *Deps) engine.Step {
 // somebody ran `apply` -- on an unattended machine, until the next boot (RFC
 // 0001 §9, decision 19). Here, from the restore point's compensator, which
 // runs after every later step's: the configuration compensator has put the old
-// files back by now, and the secrets compensator has removed the new release's
-// rendering, so the old release's secrets are rendered again before its
-// services start.
+// files back by now, and the old release's secrets are rendered over the new
+// release's before its services start; rendering prunes any file the old
+// release does not declare.
 //
 // Never reached past a point of no return: the engine does not compensate the
 // steps before one, and the restore point is one of them.

@@ -369,7 +369,15 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release) en
 			}
 			return nil
 		},
+		// Removed only while nothing was started from them. Once
+		// start-services has run, its containers are still up and read
+		// these files: an apply has nothing earlier to put back, and an
+		// update's restore renders the previous release's secrets over
+		// them, which prunes whatever that release does not declare.
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			if _, touched := st.Get(keyServicesTouched); touched {
+				return nil
+			}
 			return atomicfs.RemoveAll(d.Paths.SecretsRenderDir())
 		},
 	}
