@@ -1,7 +1,8 @@
 # RFC 0031 — Images of pruned releases
 
 - **Status:** 📝 Draft — written 2026-10-15, **P1 (a spike) is the next work**.
-  Nothing is built.
+  Nothing is built. Ruled 2026-10-16: decisions 1, 3, 4, 5 and 9 as written,
+  11 and 12 settled, 13 added.
 - **Scope:** What happens to container images when a release is pruned. Today
   the release directory goes, including the image layout a bundle carried, and
   every image the runtime pulled or ingested for that release stays in its
@@ -272,7 +273,15 @@ for a plan and an act (§2), which is a defect in today's output, not a feature
 of this one. `images.skipped` carries §4.2's reason when the image step did not
 run at all.
 
-### 4.7 Alternatives considered
+### 4.7 Locking
+
+`release prune` takes this installation's deployment lock, as `update`,
+`apply` and `rollback` do, and so waits for or refuses beside an update of the
+same installation exactly as they do. Dev mode's prune is a step of `update`
+and already runs under it. Nothing is taken across installations; §7's race is
+the cost, and decision 11 the row that reopens it.
+
+### 4.8 Alternatives considered
 
 - **Lean on the daemon's in-use refusal alone.** Cheapest: try to remove every
   candidate unforced and let the daemon say no. Rejected on the measurement in
@@ -305,18 +314,25 @@ run at all.
   - directory removal failing — no image removal is attempted;
   - `ErrImageInUse` from the runtime — reported as kept, prune exits 0;
   - a runtime without the capability — nothing removed, one line saying so;
-  - `--dry-run` — the same lists, `dry_run: true`, and the fake records no call.
+  - `--dry-run` — the same lists, `dry_run: true`, and the fake records no call;
+  - `release prune` while another process holds the deployment lock — refused
+    as `update` is, nothing removed; and dev mode's prune inside `update` still
+    runs, which a prune taking the lock itself would break.
 - **Docker lane**, against a real daemon: a pulled digest reference and a
   bundled alias are removed; a reference whose image a stopped container uses
   comes back as `ErrImageInUse`, not as a generic runtime error.
 - **Sabotage** of the exclusion (drop another installation from `referenced`)
   must fail the two-installation case — that row is the reason the design is
-  not §4.7's first alternative.
+  not §4.8's first alternative.
 
 ## 6. Docs
 
 - `reference/release-commands.md`, `release prune`: what goes with a release,
-  what is kept and why, the JSON shape including `dry_run`.
+  what is kept and why, the JSON shape including `dry_run`, and that it takes
+  the deployment lock. One paragraph for images leaked by prunes before this
+  shipped (decision 13): they are not reclaimed, and the operator who wants
+  them back lists the product's repositories with `docker image ls` and
+  removes what no remaining release names.
 - `operating/several-installations.md`: images are shared, and a prune in one
   installation never removes what another still names.
 - `operating/unattended-updates.md`, dev mode: the store no longer grows with
@@ -357,18 +373,19 @@ run at all.
 
 | # | Decision | Grade | Why |
 | --- | --- | --- | --- |
-| 1 | Images are removed only as part of pruning a release, never by a separate sweep of the store | ASSUMED | The manager knows why it put an image there only through a release; a sweep would judge images it did not place. |
+| 1 | Images are removed only as part of pruning a release, never by a separate sweep of the store | ASSUMED | The manager knows why it put an image there only through a release; a sweep would judge images it did not place. Ruled by the author 2026-10-16. |
 | 2 | Candidates are `RuntimeImageRefs` of the releases this prune removes — pulled refs and bundled aliases — and nothing named only in Compose files | ASSUMED | It is exactly what the manager made the store hold for that release (image.go:320). An undeclared image was never pulled under the manager's identity. |
-| 3 | Excluded: every `RuntimeImageRefs` of every release directory remaining in every installation `DiscoverProducts` finds, whatever its role | LOCKED | Any directory present is a `rollback --to` / `update --to` target, and a removed name is a refused offline rollback there (0011 decision 20). Reversing it deletes another installation's ability to roll back. |
-| 4 | The daemon's unforced in-use refusal is a guard for containers, not for references; the design may not rely on it in place of decision 3 | LOCKED | Measured (§2.1): removing one of several names succeeds while a container uses the image. |
-| 5 | An `Undecidable` directory, or any release manifest on the machine that does not load, withholds all image removal for that prune; directories are still pruned and the report names the cause | LOCKED | An unreadable manifest names images nobody can enumerate; guessing deletes another installation's images. Consequence accepted: one broken directory disables removal machine-wide until it is removed. |
+| 3 | Excluded: every `RuntimeImageRefs` of every release directory remaining in every installation `DiscoverProducts` finds, whatever its role | LOCKED | Any directory present is a `rollback --to` / `update --to` target, and a removed name is a refused offline rollback there (0011 decision 20). Reversing it deletes another installation's ability to roll back. Ruled by the author 2026-10-16. |
+| 4 | The daemon's unforced in-use refusal is a guard for containers, not for references; the design may not rely on it in place of decision 3 | LOCKED | Measured (§2.1): removing one of several names succeeds while a container uses the image. Ruled by the author 2026-10-16. |
+| 5 | An `Undecidable` directory, or any release manifest on the machine that does not load, withholds all image removal for that prune; directories are still pruned and the report names the cause | LOCKED | An unreadable manifest names images nobody can enumerate; guessing deletes another installation's images. Consequence accepted: one broken directory disables removal machine-wide until it is removed. Ruled by the author 2026-10-16. |
 | 6 | Removal is a new optional, type-asserted runtime capability `ImageRemover`; never forced | ASSUMED | 0023 decision 7 lets the port grow methods; optional means a runtime without a store declines rather than stubs, and Podman can implement it, which is 0023 §6's real test. |
 | 7 | Order: compute the set from the manifests, remove directories, then images | ASSUMED | Interrupted, the reverse leaves a release whose images are gone; this order leaves only leaked images, which is today's state. |
 | 8 | A failed image removal never fails the prune: kept, with the runtime's reason, exit 0 | ASSUMED | Reclamation is not the operation; a prune that failed over disk it could not reclaim would be retried into the same refusal. |
-| 9 | On by default on both pruning paths — `release prune` and dev mode's `prune-releases` — with no opt-out in P2; production still never prunes automatically | ASSUMED | Pruning already says the release is unwanted, and the manager cannot install a pruned release's images without its directory. An opt-out is added when an operator asks for one, not before. |
+| 9 | On by default on both pruning paths — `release prune` and dev mode's `prune-releases` — with no opt-out in P2; production still never prunes automatically | ASSUMED | Pruning already says the release is unwanted, and the manager cannot install a pruned release's images without its directory. An opt-out is added when an operator asks for one, not before. Ruled by the author 2026-10-16. |
 | 10 | `release prune` reports images removed and kept, `--dry-run` lists them, and the JSON gains `dry_run` | ASSUMED | The JSON cannot tell a plan from an act today (release.go:428). Additive keys only, so existing readers keep working. |
-| 11 | Whether `release prune` takes its own installation's deployment lock, and whether anything coordinates with another installation's fetch in progress | OPEN | Today it takes none (§2). P2 measures the window in §7 against a real daemon and decides; taking the own lock is the default if nothing argues otherwise. |
-| 12 | Whether the report distinguishes "name removed, bytes kept" from "image deleted" | OPEN | The daemon reports both (`Untagged:` / `Deleted:`). Settle in P2 if the distinction turns out to matter to an operator reading it; otherwise report the name. |
+| 11 | `release prune` takes its own installation's deployment lock; nothing coordinates with another installation's fetch | ASSUMED | Every other writer of an installation's releases holds that lock, and today prune takes none (§2). Dev mode's `prune-releases` runs inside `update`, which already holds it (update.go:120, :833), so the CLI takes it around `PruneReleases` (release.go:423) rather than the function taking it, which would contend with the lock its caller holds. A machine-wide lock would close §7's window too, but is new machinery for a window nobody has measured; P1 measures it and a real window reopens this row. Was `OPEN`. Ruled by the author 2026-10-16. |
+| 12 | The report names each reference removed and does not distinguish "name removed, bytes kept" from "image deleted"; the docs say a removed name may free no disk | ASSUMED | The daemon reports both (`Untagged:` / `Deleted:`), and what the operator asked for is that the manager stop leaking names. Freed bytes are added when an operator asks for them. Was `OPEN`. Ruled by the author 2026-10-16. |
+| 13 | Images of releases pruned before this ships are not reclaimed; the docs say once how to clear them by hand | ASSUMED | Their manifests went with their directories, so nothing names them as the manager's, and finding them means sweeping the store, which decision 1 rules out: a pulled image cannot be told from anyone else's. Bundled aliases (`<repo>:morzer-sha256-<hex>`) could be, since only the manager creates them, but they are not the pulled images the request is about. Ruled by the author 2026-10-16. |
 
 ## 9. Phasing
 
@@ -379,7 +396,7 @@ run at all.
   else. A finding that contradicts decision 3 or 4 halts P2.
 - **P2 — build.** `ImageRemover` on the port and the Compose adapter; the
   sets, the fail-safe, the order and the report in `PruneReleases`; the
-  `dry_run` key; dev mode's step picks it up by calling the same function.
-  Decisions 11 and 12 settled and logged.
+  `dry_run` key; the deployment lock in `release prune`; dev mode's step picks
+  it up by calling the same function.
 - **Demand-gated.** An opt-out (decision 9); the Quadlet implementation, which
   lands with [0023](0023-runtimes-beyond-compose.md) P3 rather than ahead of it.
