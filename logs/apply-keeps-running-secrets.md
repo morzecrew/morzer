@@ -42,3 +42,34 @@ not take the plaintext out of anything that has already read it; it only stops a
 container that restarts.
 
 **Drift count: 0.**
+
+## Review, 2026-10-16
+
+Review of #104 found that the implementation was narrower than decision 20. The
+row removes the secrets "only while nothing was started from them", but the
+compensator asked only whether *this* operation had run `start-services`. An
+`apply` or `update` that began over running containers and failed before
+starting anything, at an image pull for example, still removed the secrets
+those containers read. `TestAFailedApplyOverRunningServicesKeepsTheirSecrets`
+and `TestAFailedUpdateKeepsTheSecretsOfTheRunningRelease` reproduced it.
+Preflight now records that the project was running, and a runtime that cannot
+answer counts as running. The row's wording now names both cases. What it
+decides is unchanged.
+
+```divergence
+decision: 20
+grade: LOCKED
+kind: resolved
+at: 2026-10-16T14:46:47Z
+attempt: 2
+claim: the compensator now keeps the secrets when preflight found the project running or could not tell, as well as after start-services, so it removes them only while nothing was started from them, as decision 20 says
+evidence: internal/lifecycle/ops/apply.go:246-249
+action: decided
+```
+
+Not covered: an `update` that stops before `start-services` leaves the previous
+release running against the new release's rendering. Rendering prunes any
+secret only the previous release declares, so a container of that release that
+restarts cannot read it. Before #104 such an update removed every secret.
+Rendering the previous release's secrets back would close the gap, but that
+work belongs to the restore point and is not done here.

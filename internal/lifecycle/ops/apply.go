@@ -239,8 +239,15 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 
 			// The port check only makes sense when the project is not
 			// already running: on a converged system the product's
-			// own listeners would be reported as conflicts.
-			if !d.projectRunning(ctx, inst, rel, opts) {
+			// own listeners would be reported as conflicts. Running
+			// containers also read the secrets this operation is about
+			// to render, so a failure must leave them in place, and a
+			// runtime that cannot say may have containers up.
+			running, err := d.projectRunning(ctx, inst, rel, opts)
+			if running || err != nil {
+				st.Set(keyServicesRunning, true)
+			}
+			if !running {
 				// Resolved, not read raw: `requirements.ports`
 				// may name a parameter, and checking 18080
 				// while the deployment publishes 9000 is the
@@ -262,18 +269,18 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 	}
 }
 
-// projectRunning reports whether any service of the project is up. Errors are
-// treated as "not running", because this only selects which checks to run.
-func (d *Deps) projectRunning(ctx context.Context, inst domain.Installation, rel domain.Release, opts Options) bool {
+// projectRunning reports whether any service of the project is up. An error
+// leaves that unknown, and each caller decides which way unknown counts.
+func (d *Deps) projectRunning(ctx context.Context, inst domain.Installation, rel domain.Release, opts Options) (bool, error) {
 	cfg, err := d.runtimeConfig(rel, inst, opts.Profile)
 	if err != nil {
-		return false
+		return false, err
 	}
 	states, err := d.Runtime.Status(ctx, cfg)
 	if err != nil {
-		return false
+		return false, err
 	}
-	return anyRunning(states)
+	return anyRunning(states), nil
 }
 
 // stepLoadSecrets decrypts the secret state into memory.
@@ -369,13 +376,17 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release) en
 			}
 			return nil
 		},
-		// Removed only while nothing was started from them. Once
-		// start-services has run, its containers are still up and read
-		// these files: an apply has nothing earlier to put back, and an
-		// update's restore renders the previous release's secrets over
-		// them, which prunes whatever that release does not declare.
+		// Removed only while nothing was started from them. Containers
+		// preflight found running, and those start-services brought up,
+		// are still up and read these files: an apply has nothing
+		// earlier to put back. An update that got as far as
+		// start-services renders the previous release's secrets over
+		// them on restore, which prunes whatever that release does not
+		// declare; one that stopped earlier leaves the new release's.
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			if _, touched := st.Get(keyServicesTouched); touched {
+			_, running := st.Get(keyServicesRunning)
+			_, touched := st.Get(keyServicesTouched)
+			if running || touched {
 				return nil
 			}
 			return atomicfs.RemoveAll(d.Paths.SecretsRenderDir())
@@ -888,6 +899,9 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 // keyServicesTouched says start-services began replacing containers, so a
 // failed update has more to put back than files.
 const keyServicesTouched = "services-touched"
+
+// keyServicesRunning says preflight found the project up, or could not tell.
+const keyServicesRunning = "services-running"
 
 // keyConfigNotRestored says the configuration compensator could not put every
 // file back, so nothing may be started against what is there.

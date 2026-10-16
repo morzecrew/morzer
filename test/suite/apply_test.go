@@ -396,6 +396,38 @@ func TestAFailedApplyThatStartedNothingRemovesItsSecrets(t *testing.T) {
 		"compensation left plaintext secrets that nothing started from")
 }
 
+// TestAFailedApplyOverRunningServicesKeepsTheirSecrets: this apply started
+// nothing, but the previous one did, and those containers read the same files.
+// A runtime that cannot say what is running may have them up too.
+func TestAFailedApplyOverRunningServicesKeepsTheirSecrets(t *testing.T) {
+	for name, statusErr := range map[string]error{
+		"running":   nil,
+		"not known": domain.RuntimeError(nil, "injected: daemon not answering"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			h.setHookEnv()
+			_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+			require.NoError(t, err)
+			ups := len(h.Runtime.CallsMatching("Up"))
+
+			h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+			if statusErr != nil {
+				h.Runtime.Fail["Status"] = statusErr
+			}
+
+			result, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+			require.ErrorContains(t, err, "registry unreachable")
+			require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+			require.Len(t, h.Runtime.CallsMatching("Up"), ups, "the failed apply must stop before start-services")
+
+			assert.FileExists(t, filepath.Join(h.Paths.SecretsRenderDir(), "db_password"),
+				"compensation removed the secrets of services that may still be running")
+		})
+	}
+}
+
 func TestApplyFailsClosedWhenTheRuntimeCannotStart(t *testing.T) {
 	h := newHarness(t)
 	h.install()
