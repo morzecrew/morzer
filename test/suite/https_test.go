@@ -168,6 +168,16 @@ func TestHTTPSRefusalsWithholdThePassword(t *testing.T) {
 		"unauthorized": func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
 		},
+		"gone": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusGone)
+		},
+		"unavailable": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		},
+		"cut short": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", "1024")
+			_, _ = w.Write([]byte("not all of it"))
+		},
 	}
 	for name, handler := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -188,6 +198,18 @@ func TestHTTPSRefusalsWithholdThePassword(t *testing.T) {
 		_, err := source.Resolve(context.Background(),
 			ports.Ref{Scheme: "https", Location: "user:hunter2@" + host + "/demo.tar.zst"})
 		require.Error(t, err)
+		assert.NotContains(t, err.Error()+domain.AsError(err).Hint, "hunter2")
+	})
+
+	t.Run("cancelled while waiting to retry", func(t *testing.T) {
+		source, host := serveBundle(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}), https.WithBackoff(time.Hour))
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+		_, err := source.Resolve(ctx,
+			ports.Ref{Scheme: "https", Location: "user:hunter2@" + host + "/demo.tar.zst"})
+		require.ErrorContains(t, err, "cancelled")
 		assert.NotContains(t, err.Error()+domain.AsError(err).Hint, "hunter2")
 	})
 }
