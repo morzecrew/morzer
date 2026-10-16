@@ -5,6 +5,8 @@ demo
   release       1.2.0
   previous      1.1.0
   staged        1.3.0 (not installed)
+  following     oci://registry.example/demo/bundle:main (not polled:
+                update.check is off)
   profile       embedded
   url           https://demo.example
 

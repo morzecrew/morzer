@@ -149,7 +149,26 @@ func manifestSchema() map[string]any {
 	// because an editor validating against this schema would otherwise
 	// underline every manifest written the ordinary way.
 	props["images"] = imagesSchema(props["images"])
-	s["required"] = []string{"api_version", "kind", "metadata", "runtime", "images"}
+	props["operations"] = operationsSchema(props["operations"])
+
+	// `runtime:` is still a field so the loader can refuse it by name
+	// (RFC 0023 decision 23), and a refused field is not one to offer. Kept
+	// in the properties, an editor accepted the block the manager rejects.
+	delete(props, "runtime")
+	s["required"] = []string{"api_version", "kind", "metadata", "runtimes", "images"}
+
+	// Required and present is still `runtimes: {}`, which the loader refuses
+	// as declaring no runtime; likewise `images: {}`, and a runtime whose
+	// `files` is empty. The bounds say what `required` cannot.
+	atLeastOne(props["runtimes"], "minProperties")
+	atLeastOne(props["images"], "minProperties")
+	if runtimes, ok := props["runtimes"].(map[string]any); ok {
+		if entry, ok := runtimes["additionalProperties"].(map[string]any); ok {
+			if fields, ok := entry["properties"].(map[string]any); ok {
+				atLeastOne(fields["files"], "minItems")
+			}
+		}
+	}
 
 	return s
 }
@@ -216,6 +235,45 @@ func imagesSchema(generated any) any {
 				"description": "A digest-pinned reference; the image is pulled.",
 			},
 			entry,
+		},
+	}
+	return mapping
+}
+
+// atLeastOne bounds a map or list node below by one, under the keyword its
+// type uses. It panics on a node that is not a schema object, as withEnum does
+// and for its reason: a renamed field must fail generation, not drop a bound.
+func atLeastOne(node any, keyword string) {
+	m, ok := node.(map[string]any)
+	if !ok {
+		panic(fmt.Sprintf("atLeastOne: %T is not a schema object", node))
+	}
+	m[keyword] = 1
+}
+
+// operationsSchema states the two spellings of an operation: one step as a
+// mapping, which is how every operation was written before `migrate` could list
+// several, and a list of them. Reflection sees only the list, which is the Go
+// type, and would underline every manifest written the ordinary way.
+//
+// Which names may list several is the loader's rule, not this schema's: it is
+// stated in the description rather than encoded per name, because the map's
+// keys are open.
+func operationsSchema(generated any) any {
+	mapping, ok := generated.(map[string]any)
+	if !ok {
+		return generated
+	}
+	list, ok := mapping["additionalProperties"].(map[string]any)
+	if !ok {
+		return generated
+	}
+	step := list["items"]
+	mapping["additionalProperties"] = map[string]any{
+		"description": "One step, or, for `migrate` only, a list of steps run in order.",
+		"oneOf": []any{
+			step,
+			map[string]any{"type": "array", "items": step, "minItems": 1},
 		},
 	}
 	return mapping

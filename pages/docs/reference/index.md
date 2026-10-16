@@ -72,6 +72,10 @@ here. The reference column points at the section that documents it; the
 | `morzer release fetch` | Fetch a release bundle into the release store | [release-commands](release-commands.md#release-fetch) |
 | `morzer release ingest` | Load the images the installed release carries into the local store | [release-commands](release-commands.md#release-ingest) |
 | `morzer release prune` | Remove old releases beyond the retention policy | [release-commands](release-commands.md#release-prune) |
+| `morzer release trust` | Manage the keys a release must be signed with | [release-commands](release-commands.md#release-trust) |
+| `morzer release trust add` | Trust release signatures made with a key | [release-commands](release-commands.md#release-trust) |
+| `morzer release trust remove` | Stop trusting release signatures made with a key | [release-commands](release-commands.md#release-trust) |
+| `morzer release trust list` | List the trusted release signing keys | [release-commands](release-commands.md#release-trust) |
 | `morzer ls` | List the installations on this machine | [installation-commands](installation-commands.md#installation-list) |
 | `morzer installation` | List, export and rebuild the installations on this machine | [installation-commands](installation-commands.md#morzer-installation) |
 | `morzer installation list` | List the installations on this machine | [installation-commands](installation-commands.md#installation-list) |

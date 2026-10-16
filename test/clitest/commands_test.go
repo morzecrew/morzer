@@ -60,6 +60,17 @@ func TestInitRefusesAPolicyNothingCouldSatisfy(t *testing.T) {
 		StderrContains("--signing-key")
 }
 
+// And a key that is not one: it used to pass here and surface at the first
+// update, after the installation had been built around it.
+func TestInitRefusesASigningKeyThatDoesNotParse(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("init", "--product", "demo", "--no-recovery-recipient",
+		"--install-units=false", "--require-signature", "--signing-key", "RWQnotakey").
+		ExitCode(domain.ExitUsage).
+		StderrContains("not a valid minisign public key")
+}
+
 func TestInitInsistsOnARecoveryDecision(t *testing.T) {
 	r := clitest.New(t)
 

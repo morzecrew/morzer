@@ -507,10 +507,17 @@ func checkReferencedFiles(rel domain.Release) error {
 	}
 	check("secrets.schema", rel.Manifest.Secrets.Schema)
 
-	for name, op := range rel.Manifest.Operations {
-		if op.Kind == domain.OperationKindHook && len(op.Command) > 0 {
-			check("operations."+name+".command", op.Command[0])
-			checkExecutable(rel, op.Command[0], "operations."+name, &missing)
+	for name, steps := range rel.Manifest.Operations {
+		for i, op := range steps {
+			if op.Kind != domain.OperationKindHook || len(op.Command) == 0 {
+				continue
+			}
+			field := "operations." + name
+			if len(steps) > 1 {
+				field = fmt.Sprintf("operations.%s[%d]", name, i)
+			}
+			check(field+".command", op.Command[0])
+			checkExecutable(rel, op.Command[0], field, &missing)
 		}
 	}
 	for _, hc := range rel.Manifest.Health.Checks {

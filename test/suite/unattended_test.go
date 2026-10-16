@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -853,4 +854,207 @@ func TestWhatChangedIsDecidedUnderTheLock(t *testing.T) {
 		"the value the operator asked for was applied in memory and never written")
 	assert.Contains(t, res.Summary, "update.check",
 		"the summary reported no change for a change it made")
+}
+
+// recoverableChannel is a machine following a channel whose release passes the
+// gate: its migrations leave the database at a schema the installed release can
+// still read.
+//
+// The hook is patched with the declaration. The gate reads only what the
+// release declares, but a failed install is judged by the schema the hook
+// reports, and the fixture's hook migrates to 14 whatever the manifest says.
+//
+// Its smoke test fails while failSmoke's marker exists: a failure after the
+// services start that the release put back does not repeat, because nothing
+// runs a smoke test on the way back. An injected Up failure would fail the
+// restore as well, and test that instead.
+func recoverableChannel(t *testing.T) (*harness, *fakeRegistry) {
+	t.Helper()
+	h, registry, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		for file, edit := range map[string][2]string{
+			"manifest.yaml": {"database_schema_produces: 14", "database_schema_produces: 12"},
+			"hooks/migrate": {"target=14", "target=12"},
+			"hooks/smoke-test": {"set -eu\n", "set -eu\n[ ! -f \"${DEMO_DATA_DIR:?}/.fail-smoke\" ] || " +
+				"{ echo \"injected smoke failure\" >&2; exit 1; }\n"},
+		} {
+			path := filepath.Join(dir, file)
+			raw, err := os.ReadFile(path)
+			require.NoError(t, err)
+			patched := strings.Replace(string(raw), edit[0], edit[1], 1)
+			require.NotEqual(t, string(raw), patched, "%s no longer says %q", file, edit[0])
+			require.NoError(t, os.WriteFile(path, []byte(patched), 0o755))
+		}
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+	return h, registry
+}
+
+// failSmoke makes the channel's release fail its smoke test until the
+// returned function is called.
+func failSmoke(t *testing.T, h *harness) (heal func()) {
+	t.Helper()
+	marker := filepath.Join(h.Paths.DataDir(), ".fail-smoke")
+	require.NoError(t, os.MkdirAll(filepath.Dir(marker), 0o755))
+	require.NoError(t, os.WriteFile(marker, nil, 0o644))
+	return func() { require.NoError(t, os.Remove(marker)) }
+}
+
+// countUpdates is how many update operations the journal holds, which is how
+// many times something tried to install.
+func countUpdates(t *testing.T, h *harness) int {
+	t.Helper()
+	recs, err := h.Deps.State.Operations(context.Background(), ports.Filter{})
+	require.NoError(t, err)
+	n := 0
+	for _, rec := range recs {
+		if rec.Type == domain.OpTypeUpdate {
+			n++
+		}
+	}
+	return n
+}
+
+func countBackups(t *testing.T, h *harness) int {
+	t.Helper()
+	refs, err := h.Backup.List(context.Background())
+	require.NoError(t, err)
+	return len(refs)
+}
+
+// TestAFailedUnattendedInstallIsNotRetried.
+//
+// The tag does not move, so every tick finds the same staged release, and it
+// used to install it again: another pre-update backup kept forever, another
+// migration, another failure -- every tick, for a failure RFC 0001 §8 says a
+// person should look at rather than have retried. Once is the tick's to try;
+// the second attempt is the operator's.
+func TestAFailedUnattendedInstallIsNotRetried(t *testing.T) {
+	h, _ := recoverableChannel(t)
+	ctx := context.Background()
+
+	heal := failSmoke(t, h)
+	_, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.Error(t, err, "the injected failure must fail the first install")
+
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	require.True(t, candidate.IsStaged(), "the failed release is no longer staged")
+	assert.Contains(t, candidate.Failed, string(domain.StatusCompensated),
+		"the candidate does not record how its install ended")
+
+	updates, backups := countUpdates(t, h), countBackups(t, h)
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err, "leaving a failed release alone is a quiet tick, not a failing unit")
+	assert.Contains(t, res.Summary(), "update --to 1.3.0",
+		"the tick does not say how to try again")
+	assert.Equal(t, updates, countUpdates(t, h), "the tick installed the failed release again")
+	assert.Equal(t, backups, countBackups(t, h), "the tick took another pre-update backup")
+
+	st, err := ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Contains(t, strings.Join(st.Problems, "\n"), "did not install unattended",
+		"status does not say the timer stopped trying")
+
+	// The operator's retry is an ordinary update, and it retires the record.
+	heal()
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{To: "1.3.0"})
+	require.NoError(t, err)
+	candidate, err = h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.True(t, candidate.IsZero(), "the installed release is still recorded as failed")
+}
+
+// TestAChannelThatMovesIsTriedAgain is the other way out: the vendor publishes
+// again, and the timer installs what it now points at as it would anything new.
+func TestAChannelThatMovesIsTriedAgain(t *testing.T) {
+	h, registry := recoverableChannel(t)
+	ctx := context.Background()
+
+	heal := failSmoke(t, h)
+	_, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.Error(t, err)
+	heal()
+
+	// A new artefact behind the same tag: same bundle, different manifest
+	// digest, which is what a channel moving looks like to a poll.
+	var manifest map[string]any
+	require.NoError(t, json.Unmarshal(registry.manifest, &manifest))
+	manifest["annotations"] = map[string]string{"org.example.republished": "1"}
+	registry.manifest, err = json.Marshal(manifest)
+	require.NoError(t, err)
+	registry.manifestDig = digestOf(registry.manifest)
+
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	assert.True(t, res.Applied, "a moved channel was not installed: %s", res.Summary())
+}
+
+// TestATickDoesNothingWhileAnInterventionIsOpen.
+//
+// Asserted against a record the tick did not write, because the failed-install
+// skip above would otherwise answer first for an install that ended needing a
+// person -- and report a quiet night from the machine that most needs one.
+func TestATickDoesNothingWhileAnInterventionIsOpen(t *testing.T) {
+	h, registry := recoverableChannel(t)
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, domain.OperationRecord{
+		SchemaVersion: 1, ID: "op_stuck", Type: domain.OpTypeUpdate,
+		Status: domain.StatusManualIntervention, StartedAt: domain.NewTime(h.Deps.Now()),
+	}))
+
+	_, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitPreflight, domain.ExitCode(err), "the refusal is not the intervention gate's")
+	assert.Contains(t, err.Error(), "op_stuck", "the refusal does not name the operation")
+	assert.Zero(t, registry.manifestBytes.Load()+registry.blobBytes.Load(),
+		"the tick contacted the registry while an intervention was open")
+}
+
+// TestATickThatNeverStartedTheInstallRecordsNothing.
+//
+// A refusal before the operation ran -- here, somebody else holding the lock --
+// says nothing about the release. Recording it as a failed install would leave
+// a good release uninstalled until the vendor happened to publish again.
+func TestATickThatNeverStartedTheInstallRecordsNothing(t *testing.T) {
+	h, _ := recoverableChannel(t)
+	ctx := context.Background()
+
+	// Staged first, so the tick's poll finds nothing new and the lock is
+	// met by the install rather than by the staging.
+	_, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{})
+	require.NoError(t, err)
+
+	release, err := h.Locker.Acquire(ctx, "deployment", ports.LockOptions{})
+	require.NoError(t, err)
+	defer func() { _ = release() }()
+
+	_, err = ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.ErrorIs(t, err, domain.ErrLocked, "the lock was not what stopped the install")
+
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, candidate.Failed, "an install that never started was recorded as failed")
+}
+
+// TestARunningOperationIsNotAnIntervention.
+//
+// The tick's first refusal is for a record waiting on a person, and only that:
+// a record that is merely running is somebody's backup in progress, met later
+// as the lock it holds so the unit exits 0. Refusing on it here would turn every
+// tick that overlapped an operator into a failed unit.
+func TestARunningOperationIsNotAnIntervention(t *testing.T) {
+	h, _ := recoverableChannel(t)
+	ctx := context.Background()
+
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, domain.OperationRecord{
+		SchemaVersion: 1, ID: "op_busy", Type: domain.OpTypeBackup,
+		Status: domain.StatusRunning, StartedAt: domain.NewTime(h.Deps.Now()),
+	}))
+
+	_, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{Options: ops.Options{DryRun: true}})
+	require.NoError(t, err, "a running operation was refused as if it needed a person")
 }

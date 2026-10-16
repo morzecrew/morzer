@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"slices"
 	"time"
@@ -50,6 +51,10 @@ type Status struct {
 	// A pointer for the same reason the two above are.
 	StagedRelease *domain.UpdateCandidate `json:"staged_release,omitempty"`
 
+	// Following is the channel this machine watches with nobody present.
+	// Absent when it follows none, which is the default.
+	Following *Following `json:"following,omitempty"`
+
 	Services []ports.ServiceState `json:"services"`
 	Health   []ports.HealthResult `json:"health,omitempty"`
 
@@ -67,6 +72,21 @@ type Status struct {
 	// Problems are conditions worth an operator's notice that are not
 	// themselves failures of this command.
 	Problems []string `json:"problems,omitempty"`
+}
+
+// Following is what the update timer does: when it looks at the channel, and
+// whether it installs what it finds there.
+type Following struct {
+	Channel string `json:"channel"`
+
+	// Polled is false when `update.check` is off, and then no timer exists
+	// to look: a channel set alone is followed by nothing.
+	Polled bool `json:"polled"`
+
+	// Schedule is the timer's OnCalendar expression. Empty is the
+	// supervisor's default, a daily tick.
+	Schedule  string `json:"schedule,omitempty"`
+	AutoApply bool   `json:"auto_apply"`
 }
 
 type BackupSummary struct {
@@ -113,6 +133,16 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		Profile:        inst.Profile,
 		PublicURL:      inst.PublicURL(),
 	}
+	if inst.Update.FollowsChannel() {
+		out.Following = &Following{
+			// Without its password, as every recorded release source
+			// is: this is the output an operator pastes into a ticket.
+			Channel:   ports.RedactRefCredentials(inst.Update.Channel),
+			Polled:    inst.Update.Check,
+			Schedule:  inst.Update.Schedule,
+			AutoApply: inst.Update.AutoApply,
+		}
+	}
 
 	current, err := d.State.CurrentRelease(ctx)
 	switch {
@@ -142,6 +172,14 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 			"cannot read the update candidate: "+domain.AsError(err).Message)
 	case candidate.IsStaged():
 		out.StagedRelease = &candidate
+		if candidate.Failed != "" {
+			// The timer has stopped trying, and that is a decision
+			// waiting for a person exactly as the staged line is.
+			out.Problems = append(out.Problems, fmt.Sprintf(
+				"%s did not install unattended (%s); the timer leaves it alone "+
+					"until the channel moves, and `morzer update --to %s` tries again",
+				candidate.Version, candidate.Failed, candidate.Version))
+		}
 	case !candidate.IsZero():
 		// A refused candidate is a problem rather than a section: the
 		// operator needs to know their channel produced something

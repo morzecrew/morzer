@@ -185,6 +185,17 @@ type Verifier interface {
 	Verify(ctx context.Context, bundle BundlePath, expect Expectation) error
 }
 
+// KeyChecker is a Verifier that can say whether a public key is one it could
+// ever check a signature against, before any bundle exists to check.
+//
+// Optional, because the checksum verifier has no keys to judge. Asked where a
+// key is written -- `init`, `release trust add` -- so a malformed one is a
+// configuration error at the terminal rather than every later bundle refused as
+// unsigned.
+type KeyChecker interface {
+	CheckKey(key string) error
+}
+
 // Names a bundle may ship its own integrity evidence under. They are part of
 // the release contract rather than an adapter's private detail: a vendor's
 // publishing pipeline writes them, a third party checks them with `sha256sum
@@ -228,6 +239,10 @@ func DigestString(algo string, sum []byte) string {
 	return fmt.Sprintf("%s:%x", algo, sum)
 }
 
+// UnparseableRef stands in for a reference RedactRefCredentials cannot vouch
+// for.
+const UnparseableRef = "(a reference that does not parse, withheld in case it carries a password)"
+
 // RedactRefCredentials strips anything secret from a reference before it is
 // written to state or shown to anyone.
 //
@@ -241,12 +256,19 @@ func DigestString(algo string, sum []byte) string {
 // `update --check` has somewhere to look, and it is read back into `status`
 // output, `doctor` output and the JSON envelope; a password stored there would
 // surface in all three.
+//
+// A reference that does not parse and has an @ in it comes back as
+// UnparseableRef: where its userinfo ends is exactly what the parse could not
+// say, so no part of it is known to be safe to show.
 func RedactRefCredentials(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || !strings.Contains(trimmed, "://") {
 		return trimmed
 	}
 	u, err := url.Parse(trimmed)
+	if err != nil && strings.Contains(trimmed, "@") {
+		return UnparseableRef
+	}
 	if err != nil || u.User == nil {
 		return trimmed
 	}

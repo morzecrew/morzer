@@ -196,6 +196,7 @@
           }
         ]
       },
+      "minProperties": 1,
       "type": "object"
     },
     "kind": {
@@ -235,35 +236,75 @@
     },
     "operations": {
       "additionalProperties": {
-        "additionalProperties": false,
-        "properties": {
-          "command": {
-            "items": {
-              "type": "string"
+        "description": "One step, or, for `migrate` only, a list of steps run in order.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "enum": [
+                  "hook",
+                  "runtime-service"
+                ],
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              },
+              "timeout": {
+                "description": "A duration, e.g. 30s or 10m.",
+                "examples": [
+                  "30s",
+                  "10m"
+                ],
+                "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
+                "type": "string"
+              }
             },
+            "type": "object"
+          },
+          {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "enum": [
+                    "hook",
+                    "runtime-service"
+                  ],
+                  "type": "string"
+                },
+                "service": {
+                  "type": "string"
+                },
+                "timeout": {
+                  "description": "A duration, e.g. 30s or 10m.",
+                  "examples": [
+                    "30s",
+                    "10m"
+                  ],
+                  "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "minItems": 1,
             "type": "array"
-          },
-          "kind": {
-            "enum": [
-              "hook",
-              "runtime-service"
-            ],
-            "type": "string"
-          },
-          "service": {
-            "type": "string"
-          },
-          "timeout": {
-            "description": "A duration, e.g. 30s or 10m.",
-            "examples": [
-              "30s",
-              "10m"
-            ],
-            "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
-            "type": "string"
           }
-        },
-        "type": "object"
+        ]
       },
       "type": "object"
     },
@@ -462,30 +503,6 @@
       },
       "type": "object"
     },
-    "runtime": {
-      "additionalProperties": false,
-      "properties": {
-        "files": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "profiles": {
-          "additionalProperties": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "type": "object"
-        },
-        "project": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "runtimes": {
       "additionalProperties": {
         "additionalProperties": false,
@@ -494,6 +511,7 @@
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "options": {
@@ -514,6 +532,7 @@
         },
         "type": "object"
       },
+      "minProperties": 1,
       "type": "object"
     },
     "secrets": {
@@ -536,7 +555,7 @@
     "api_version",
     "kind",
     "metadata",
-    "runtime",
+    "runtimes",
     "images"
   ],
   "title": "morzer release manifest",

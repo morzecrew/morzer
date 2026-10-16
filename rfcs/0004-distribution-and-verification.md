@@ -422,6 +422,7 @@ between the schema editors validate against and the types the manager enforces.
 | 21 | Both the OCI manifest and the bundle layer are verified against the registry's own digests by this adapter, because the client library does not. See §12. |
 | 22 | HTTPS and OCI both delegate to the local source once the bytes are on disk. A bundle that was safer or less safe depending on how it arrived would defeat the property the content digest exists to establish. |
 | 23 | No flag skips TLS verification, and a certificate failure is named rather than retried. An `--insecure` that existed would be reached for at the moment it should not be, and retrying an untrusted certificate only delays a message that never mentioned it. |
+| 24 | **Added 2026-10-15** (see [logs/release-trust-keys.md](../logs/release-trust-keys.md)): the trusted keys change after `init` through `morzer release trust add`, `remove` and `list`, not `config set`. A key is parsed where it is written, at `init` and at `add`, and the last key cannot be removed while `require_signature` is set, which `update.auto_apply` requires. This table made the keys an `init`-time value and never said how they change, so rotating a vendor key meant re-creating the installation; a rotation is two steps a single assignment cannot express. Whether a signature is required stays fixed at `init`. |
 
 ## 11. Phasing
 

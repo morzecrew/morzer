@@ -33,6 +33,10 @@ func statusFixtures() []fixture {
 		PublicURL:      "https://demo.example",
 		SupportURL:     "https://support.example/demo",
 		CurrentRelease: &domain.ReleaseRecord{Version: version("1.2.0")},
+		Following: &ops.Following{
+			Channel: "oci://registry.example/demo/bundle:stable", Polled: true,
+			Schedule: "Sun *-*-* 04:00:00", AutoApply: true,
+		},
 		Services: []ports.ServiceState{
 			{Name: "app", State: "running", Health: ports.HealthHealthy},
 			{Name: "postgres", State: "running", Health: ports.HealthHealthy},
@@ -59,6 +63,7 @@ func statusFixtures() []fixture {
 		CurrentRelease:  &domain.ReleaseRecord{Version: version("1.2.0")},
 		PreviousRelease: &domain.ReleaseRecord{Version: version("1.1.0")},
 		StagedRelease:   &domain.UpdateCandidate{Version: version("1.3.0")},
+		Following:       &ops.Following{Channel: "oci://registry.example/demo/bundle:main"},
 		Services: []ports.ServiceState{
 			{Name: "app", State: "running", Health: ports.HealthHealthy},
 			{Name: "background-worker", State: "exited (137)"},
@@ -87,9 +92,12 @@ func statusFixtures() []fixture {
 
 	return []fixture{
 		{
-			name:   "status-healthy",
-			value:  healthy,
-			fields: []string{"demo", "1.2.0", "embedded", "postgres", "running", "bkp_01KZP9ZZTK"},
+			name:  "status-healthy",
+			value: healthy,
+			fields: []string{
+				"demo", "1.2.0", "embedded", "postgres", "running", "bkp_01KZP9ZZTK",
+				"bundle:stable", "Sun *-*-* 04:00:00",
+			},
 		},
 		{
 			name:  "status-troubled",
@@ -97,6 +105,7 @@ func statusFixtures() []fixture {
 			fields: []string{
 				"sandbox", "1.3.0", "background-worker", "exited (137)",
 				"connection refused", "op_01KZPA2222", "pid 4242", "registry",
+				"update.check is off",
 			},
 		},
 	}

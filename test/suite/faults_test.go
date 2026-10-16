@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/adapters/verify"
+	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
+	"github.com/morzecrew/morzer/internal/adapters/verify/minisign"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -555,4 +558,21 @@ func assertJournalled(t *testing.T, h *harness, id string) {
 	data, _ := os.ReadFile(h.Paths.JournalFile())
 	t.Errorf("operation %s never reached the journal, so --resume and doctor "+
 		"cannot see it. Journal holds:\n%s", id, data)
+}
+
+// `init` parses the keys it is given before anything exists, as it checks the
+// recovery recipient.
+func TestInitRefusesASigningKeyThatDoesNotParse(t *testing.T) {
+	h := newHarness(t)
+	h.Deps.Verifier = verify.NewChain(checksum.New(), minisign.New())
+	_, key := minisignKeypair(t)
+
+	_, err := ops.Init(context.Background(), h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true,
+		RequireSignature: true, SigningKeys: []string{key, key[:len(key)-4]},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a valid minisign public key")
+	_, statErr := os.Stat(h.Paths.InstallationState())
+	assert.True(t, os.IsNotExist(statErr), "init wrote an installation before refusing its key")
 }
