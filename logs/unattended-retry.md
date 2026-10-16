@@ -107,3 +107,15 @@ back". That is outside this task and is reported to the author, not fixed here.
   because a re-read is not exclusion.
 
 **Drift count: 0.**
+
+## Ruled, 2026-10-16
+
+**Ruled 2026-10-16 by the author: "D-28: accept, D-29: accept, D-20: accept".**
+The two decisions above are RFC 0016 decisions 28 and 29, with the two
+discovery entries as their second halves. The halted entry on decision 20 is
+decision 30, which refines it rather than editing it. Its rationale is worded
+after #90 rather than as the proposal had it: since RFC 0001 decision 18, a
+health check that never passes after a migration the previous release cannot
+read ends needing intervention, not compensated.
+
+**Drift count: 0.**
