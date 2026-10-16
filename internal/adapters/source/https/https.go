@@ -166,7 +166,11 @@ func (s *Source) download(ctx context.Context, ref ports.Ref) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := s.fetchInto(ctx, target, path); err != nil {
+	// A reference may carry basic-auth credentials, and every refusal
+	// below is printed, journaled and, from the update timer, written to
+	// the system journal; messages name the URL without its password.
+	shown := ports.RedactRefCredentials(target)
+	if err := s.fetchInto(ctx, target, shown, path); err != nil {
 		_ = os.Remove(path)
 		return "", err
 	}
@@ -181,22 +185,23 @@ func (s *Source) download(ctx context.Context, ref ports.Ref) (string, error) {
 // reference that reached this source claiming to be https must actually be one.
 func (s *Source) targetURL(ref ports.Ref) (string, error) {
 	raw := Scheme + "://" + ref.Location
+	shown := ports.RedactRefCredentials(raw)
 
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", domain.Usage("invalid https reference %q: %v", ref.Location, err)
+		return "", domain.Usage("invalid https reference %q", shown)
 	}
 	if u.Scheme != Scheme {
-		return "", domain.Usage("refusing a non-https reference %q", raw)
+		return "", domain.Usage("refusing a non-https reference %q", shown)
 	}
 	if u.Host == "" {
-		return "", domain.Usage("the https reference %q names no host", raw)
+		return "", domain.Usage("the https reference %q names no host", shown)
 	}
 	return u.String(), nil
 }
 
 // fetchInto downloads with retries, writing to path.
-func (s *Source) fetchInto(ctx context.Context, target, path string) error {
+func (s *Source) fetchInto(ctx context.Context, target, shown, path string) error {
 	attempts := max(s.attempts, 1)
 
 	var lastErr error
@@ -209,12 +214,12 @@ func (s *Source) fetchInto(ctx context.Context, target, path string) error {
 			delay := time.Duration(attempt-1) * s.backoff
 			select {
 			case <-ctx.Done():
-				return domain.Interrupted("download of %s was cancelled", target)
+				return domain.Interrupted("download of %s was cancelled", shown)
 			case <-time.After(delay):
 			}
 		}
 
-		err := s.attemptFetch(ctx, target, path)
+		err := s.attemptFetch(ctx, target, shown, path)
 		if err == nil {
 			return nil
 		}
@@ -226,7 +231,7 @@ func (s *Source) fetchInto(ctx context.Context, target, path string) error {
 	}
 
 	return domain.ValidationError(lastErr,
-		"cannot download %s after %d attempts", target, attempts).
+		"cannot download %s after %d attempts", shown, attempts).
 		WithHint("check the URL and the network; the bundle can also be fetched " +
 			"out of band and installed from a path")
 }
@@ -238,7 +243,7 @@ func (s *Source) fetchInto(ctx context.Context, target, path string) error {
 // for a message that never mentions the certificate. There is deliberately no
 // flag to skip verification: a bundle fetched over a connection nothing
 // authenticated is a bundle from nobody in particular.
-func certificateProblem(err error, target string) error {
+func certificateProblem(err error, shown string) error {
 	var certErr *tls.CertificateVerificationError
 	var hostErr x509.HostnameError
 	var authorityErr x509.UnknownAuthorityError
@@ -246,12 +251,12 @@ func certificateProblem(err error, target string) error {
 	switch {
 	case errors.As(err, &certErr), errors.As(err, &authorityErr):
 		return domain.ValidationError(err,
-			"the TLS certificate for %s is not trusted by this machine", target).
+			"the TLS certificate for %s is not trusted by this machine", shown).
 			WithHint("install the issuing CA, or fetch the bundle out of band and " +
 				"install it from a path. There is no option to skip verification.")
 	case errors.As(err, &hostErr):
 		return domain.ValidationError(err,
-			"the TLS certificate for %s is issued for a different name", target).
+			"the TLS certificate for %s is issued for a different name", shown).
 			WithHint("check the URL; a certificate for another host proves nothing about this one")
 	default:
 		return nil
@@ -266,10 +271,10 @@ func isRetryable(err error) bool {
 	return errors.As(err, &r)
 }
 
-func (s *Source) attemptFetch(ctx context.Context, target, path string) error {
+func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return domain.Usage("cannot build a request for %s: %v", target, err)
+		return domain.Usage("cannot build a request for %s", shown)
 	}
 	req.Header.Set("Accept", "application/octet-stream")
 
@@ -281,48 +286,48 @@ func (s *Source) attemptFetch(ctx context.Context, target, path string) error {
 		if errors.As(err, &typed) {
 			return typed
 		}
-		if certErr := certificateProblem(err, target); certErr != nil {
+		if certErr := certificateProblem(err, shown); certErr != nil {
 			return certErr
 		}
 		// A refused connection or a reset mid-handshake is what retrying
 		// is for.
-		return retryable{domain.RuntimeError(err, "cannot reach %s", target)}
+		return retryable{domain.RuntimeError(err, "cannot reach %s", shown)}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if err := checkStatus(target, resp); err != nil {
+	if err := checkStatus(shown, resp); err != nil {
 		return err
 	}
-	if err := s.checkDeclaredSize(target, resp); err != nil {
+	if err := s.checkDeclaredSize(shown, resp); err != nil {
 		return err
 	}
-	return s.copyBody(target, resp, path)
+	return s.copyBody(shown, resp, path)
 }
 
-func checkStatus(target string, resp *http.Response) error {
+func checkStatus(shown string, resp *http.Response) error {
 	switch {
 	case resp.StatusCode == http.StatusOK:
 		return nil
 
 	case resp.StatusCode == http.StatusNotFound:
 		return domain.ValidationError(domain.ErrReleaseNotFound,
-			"no bundle at %s (404)", target).
+			"no bundle at %s (404)", shown).
 			WithHint("check the URL; a release may have been renamed or withdrawn")
 
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		// Retrying will not produce credentials.
 		return domain.ValidationError(nil,
-			"access to %s was refused (%d)", target, resp.StatusCode).
+			"access to %s was refused (%d)", shown, resp.StatusCode).
 			WithHint("this build sends no credentials; fetch the bundle out of band " +
 				"and install it from a path")
 
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 		return retryable{domain.RuntimeError(nil,
-			"%s returned %d", target, resp.StatusCode)}
+			"%s returned %d", shown, resp.StatusCode)}
 
 	default:
 		return domain.ValidationError(nil,
-			"%s returned %d", target, resp.StatusCode)
+			"%s returned %d", shown, resp.StatusCode)
 	}
 }
 
@@ -331,20 +336,20 @@ func checkStatus(target string, resp *http.Response) error {
 // The header is a claim by the server that is about to send the body, so it is
 // checked *and* the body is bounded while it streams. This one only saves the
 // transfer.
-func (s *Source) checkDeclaredSize(target string, resp *http.Response) error {
+func (s *Source) checkDeclaredSize(shown string, resp *http.Response) error {
 	if s.maxBody <= 0 || resp.ContentLength < 0 {
 		return nil
 	}
 	if resp.ContentLength > s.maxBody {
 		return domain.ValidationError(nil,
-			"%s declares %d bytes, over the limit of %d", target, resp.ContentLength, s.maxBody).
+			"%s declares %d bytes, over the limit of %d", shown, resp.ContentLength, s.maxBody).
 			WithHint("no release bundle should be this large; check the URL")
 	}
 	return nil
 }
 
 // copyBody streams the response to disk, bounded.
-func (s *Source) copyBody(target string, resp *http.Response, path string) error {
+func (s *Source) copyBody(shown string, resp *http.Response, path string) error {
 	out, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return domain.Internal(err, "cannot create the download file")
@@ -360,14 +365,14 @@ func (s *Source) copyBody(target string, resp *http.Response, path string) error
 
 	written, err := io.Copy(out, body)
 	if err != nil {
-		return retryable{domain.RuntimeError(err, "the download of %s failed", target)}
+		return retryable{domain.RuntimeError(err, "the download of %s failed", shown)}
 	}
 	if s.maxBody > 0 && written > s.maxBody {
 		// A server that lied about Content-Length, or sent none at all.
 		// Refused here rather than after, which is why the copy is
 		// bounded instead of measured.
 		return domain.ValidationError(nil,
-			"%s sent more than the limit of %d bytes", target, s.maxBody).
+			"%s sent more than the limit of %d bytes", shown, s.maxBody).
 			WithHint("the response does not look like a release bundle")
 	}
 	return nil
