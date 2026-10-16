@@ -105,6 +105,12 @@ func ParseRef(s string) (Ref, error) {
 	shown := RedactRefCredentials(s)
 	u, err := url.Parse(s)
 	if err != nil {
+		// What does not parse may be inside the userinfo, where the
+		// parser's complaint quotes part of the password.
+		if shown == UnparseableRef {
+			return Ref{}, domain.Usage("invalid release reference %s", shown).
+				WithHint("check it for a %% that does not start an escape, or a character that needs one")
+		}
 		// url.Error repeats the whole reference; its inner error names
 		// only what does not parse.
 		var uerr *url.Error

@@ -100,6 +100,12 @@ func TestParseRefRefusalsWithholdThePassword(t *testing.T) {
 	if !strings.Contains(err.Error(), "invalid release reference") {
 		t.Errorf("the refusal no longer says the reference does not parse: %v", err)
 	}
+	// The parser quotes the escape it rejects, and inside userinfo that
+	// escape is part of the password.
+	_, err = ports.ParseRef("https://user:s3%crt@releases.example/demo.tar.zst")
+	if strings.Contains(err.Error(), "%cr") {
+		t.Errorf("the refusal carries part of the password: %v", err)
+	}
 	// Without userinfo there is nothing to withhold, and the operator needs
 	// to see what does not parse.
 	_, err = ports.ParseRef("https://releases.example/%zz")
