@@ -7,6 +7,8 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/infra/logging"
+	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 )
@@ -441,12 +443,26 @@ func (r UnattendedResult) Summary() string {
 // The promise the gate makes is narrower than it first reads, and the naming
 // matters because an operator will rely on it: this does *not* promise no human
 // will be needed. An unattended update can still stop at
-// requires-manual-intervention through a failed migration hook, a health check
-// that never passes, or a converge the engine cannot compensate. What it bounds
+// requires-manual-intervention through a failed migration hook or a converge
+// the engine cannot compensate, and one whose health checks never pass ends
+// compensated, back on the old release, which is a failure too. What it bounds
 // is the *unrecoverable* failure -- the one that cannot wait until morning.
+//
+// Either way it is tried once. A tick that finds the same candidate again
+// leaves it alone (UpdateCandidate.Failed), and one that finds an operation
+// waiting for a person does nothing but say so.
 func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (UnattendedResult, error) {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
+		return UnattendedResult{}, err
+	}
+
+	// Nothing at all while an operation waits for a person: no fetch, no
+	// install, only the refusal naming it. First, because the skip below
+	// would otherwise answer for an install that ended needing
+	// intervention, and the machine that most needs looking at would
+	// report a quiet night.
+	if err := d.refuseOpenIntervention(ctx); err != nil {
 		return UnattendedResult{}, err
 	}
 
@@ -477,6 +493,13 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 		return out, nil
 	}
 
+	if candidate.Failed != "" {
+		out.Skipped = fmt.Sprintf("%s did not install (%s) and is not retried "+
+			"until the channel moves; `morzer update --to %s` tries again",
+			candidate.Version, candidate.Failed, candidate.Version)
+		return out, nil
+	}
+
 	out.Assessment, err = d.assessUnattended(ctx, inst, candidate)
 	if err != nil {
 		return out, err
@@ -495,7 +518,69 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 	result, err := Update(ctx, d, UpdateOptions{Options: opts.Options, To: candidate.Version.String()})
 	out.Update = &result
 	out.Applied = err == nil
+	if err != nil && result.Record.ID != "" {
+		d.markInstallFailed(ctx, opts.Options, candidate, result.Record)
+	}
 	return out, err
+}
+
+// refuseOpenIntervention is the tick's answer while an operation is flagged for
+// manual intervention: the same refusal `update` gives, before anything is
+// fetched.
+//
+// Narrower than gateUnfinished on purpose. That also refuses over a record
+// that is merely running, and a tick that meets an operator's backup in
+// progress is a lock question, answered later as one so the unit exits 0.
+func (d *Deps) refuseOpenIntervention(ctx context.Context) error {
+	unfinished, err := d.State.UnfinishedOperations(ctx)
+	if err != nil {
+		return err
+	}
+	var open []domain.OperationRecord
+	for _, rec := range unfinished {
+		if rec.Status.NeedsAttention() {
+			open = append(open, rec)
+		}
+	}
+	if len(open) == 0 {
+		return nil
+	}
+	res := preflight.NoUnfinishedOperation(open).Run(ctx)
+	return domain.Preflight(nil, "%s", res.Message).WithHint("%s", res.Remedy)
+}
+
+// markInstallFailed records on the candidate that installing it ran and did
+// not finish, so the next tick skips it instead of repeating it.
+//
+// Only for an operation that ran: a refusal before the engine started -- the
+// lock, a preflight -- says nothing about the release, and marking it would
+// leave a good release uninstalled until the channel moved.
+//
+// Read, compared and written under the deployment lock, which every other
+// writer of the candidate holds. The update that failed has released it by
+// now, so an operator's `update --stage`, or a manual retry that installed the
+// release and retired the record, could otherwise land between the read and
+// the write and be overwritten by a stale record. The digest comparison is
+// what catches either one once the lock is ours.
+//
+// The update's own error is the one the tick returns. Not marking -- the lock
+// is held, the write fails -- costs one retry on the next tick, which is the
+// behaviour before this record existed, so it is a warning.
+func (d *Deps) markInstallFailed(
+	ctx context.Context, opts Options, attempted domain.UpdateCandidate, rec domain.OperationRecord,
+) {
+	err := d.withLock(ctx, d.newOpID(), domain.OpTypeRelease, opts, func(ctx context.Context) error {
+		current, err := d.State.UpdateCandidate(ctx)
+		if err != nil || current.UpstreamDigest != attempted.UpstreamDigest {
+			return err
+		}
+		current.Failed = fmt.Sprintf("%s ended %s", rec.ID, rec.Status)
+		return d.State.SetUpdateCandidate(ctx, current)
+	})
+	if err != nil {
+		logging.FromContext(ctx).Warn("cannot record the failed install on the update candidate",
+			"error", err)
+	}
 }
 
 // assessUnattended answers whether the staged candidate may install itself.
