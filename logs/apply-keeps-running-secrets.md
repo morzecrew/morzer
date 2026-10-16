@@ -94,3 +94,20 @@ claim: the compensator removes the secrets only when the runtime reports nothing
 evidence: internal/lifecycle/ops/apply.go:383-387
 action: decided
 ```
+
+Review of #104 raised the gap noted above as a finding. Closing it means the
+restore point re-renders the previous release's secrets when the update stopped
+before `start-services`, and decision 19 scopes the restore to updates that got
+that far.
+
+```divergence
+decision: 19
+grade: LOCKED
+class: spec-gap
+at: 2026-10-16T16:37:20Z
+attempt: 3
+claim: an update that fails before start-services leaves the previous release running against the new release's rendered secrets, pruned of any only the previous release declares; the restore point that would render them back returns early because nothing was touched, and widening it is outside decision 19
+evidence: internal/lifecycle/ops/update.go:925-927
+action: halted
+proposal: LOCKED — when an update stops before start-services and the secrets were kept, the restore point renders the previous release's secrets over them and brings nothing up; a failure to render ends at requires-manual-intervention
+```
