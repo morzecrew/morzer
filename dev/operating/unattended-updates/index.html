@@ -726,6 +726,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#a-release-that-fails-to-install-is-tried-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A release that fails to install is tried once
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2108,6 +2119,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#a-release-that-fails-to-install-is-tried-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A release that fails to install is tried once
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2341,6 +2363,23 @@ somebody deploys by hand is a unit whose alerts get muted.</p>
 <p>A release left staged is also a <strong>successful</strong> tick. It is the configured
 behaviour when the gate refuses, and a unit that failed every night because a
 release is waiting would train you to ignore it.</p>
+<h3 id="a-release-that-fails-to-install-is-tried-once">A release that fails to install is tried once<a class="headerlink" href="#a-release-that-fails-to-install-is-tried-once" title="Permanent link">&para;</a></h3>
+<p>When an unattended install fails, the release stays staged and the timer stops
+trying it. Each attempt costs a pre-update backup that retention never removes,
+and a migration run against your database, so retrying on every tick would
+repeat both and hide the failure behind the next attempt. You get one
+<code>operation.finished</code> notification for the failure, and <code>morzer status</code> keeps
+saying the release did not install until something changes:</p>
+<ul>
+<li><strong>The channel moves.</strong> Whatever the tag points at next is a new release to the
+  timer, and is installed as normal if the gate admits it.</li>
+<li><strong>You install it yourself</strong> with <code>morzer update --to &lt;version&gt;</code>, once you know
+  why it failed.</li>
+</ul>
+<p>While an operation is flagged for manual intervention, a tick does nothing at
+all: it fetches nothing, installs nothing, and fails with the same refusal
+<code>update</code> gives, naming the operation. Clear the flag with <code>morzer status
+--clear-intervention</code> once the machine is repaired.</p>
 <h2 id="dev-mode-a-machine-that-is-a-sandbox-from-birth">Dev mode: a machine that is a sandbox from birth<a class="headerlink" href="#dev-mode-a-machine-that-is-a-sandbox-from-birth" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--mode<span class="w"> </span>dev<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>--release<span class="w"> </span>./bundle
 </code></pre></div>
