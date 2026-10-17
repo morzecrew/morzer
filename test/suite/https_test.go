@@ -159,6 +159,84 @@ func TestHTTPSDoesNotRetryANotFound(t *testing.T) {
 	assert.EqualValues(t, 1, attempts.Load(), "a 404 must not be retried")
 }
 
+// TestHTTPSRefusalsWithholdThePassword: a reference may carry basic-auth
+// credentials, and the source's refusals are printed, journaled and, from the
+// update timer, written to the system journal.
+func TestHTTPSRefusalsWithholdThePassword(t *testing.T) {
+	cases := map[string]http.HandlerFunc{
+		"not found": http.NotFound,
+		"unauthorized": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		},
+		"gone": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusGone)
+		},
+		"unavailable": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		},
+		// The client quotes a Location it cannot parse, and nothing stops a
+		// server from echoing the credentials it was sent.
+		"malformed redirect": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Location", "https://user:hunter2@%zz/demo.tar.zst")
+			w.WriteHeader(http.StatusFound)
+		},
+		"cut short": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", "1024")
+			_, _ = w.Write([]byte("not all of it"))
+		},
+	}
+	for name, handler := range cases {
+		t.Run(name, func(t *testing.T) {
+			source, host := serveBundle(t, handler, https.WithBackoff(time.Millisecond))
+			_, err := source.Resolve(context.Background(),
+				ports.Ref{Scheme: "https", Location: "user:hunter2@" + host + "/demo.tar.zst"})
+			require.Error(t, err)
+			text := err.Error() + domain.AsError(err).Hint
+			assert.NotContains(t, text, "hunter2")
+			assert.Contains(t, text, "user", "the refusal no longer names the reference")
+		})
+	}
+
+	t.Run("unreachable", func(t *testing.T) {
+		source, host := serveBundle(t, http.NotFoundHandler(), https.WithBackoff(time.Millisecond))
+		// A port nothing listens on, on the host the source trusts.
+		host = strings.Split(host, ":")[0] + ":1"
+		_, err := source.Resolve(context.Background(),
+			ports.Ref{Scheme: "https", Location: "user:hunter2@" + host + "/demo.tar.zst"})
+		require.Error(t, err)
+		assert.NotContains(t, err.Error()+domain.AsError(err).Hint, "hunter2")
+		assert.Contains(t, err.Error(), "connection refused", "the cause no longer says why")
+	})
+
+	// A password that needs escaping, echoed back as written or as decoded.
+	for name, echoed := range map[string]string{"escaped": "hunter%402", "decoded": "hunter@2"} {
+		t.Run("malformed redirect echoing the "+name+" password", func(t *testing.T) {
+			source, host := serveBundle(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", "https://user:"+echoed+"@%zz/demo.tar.zst")
+				w.WriteHeader(http.StatusFound)
+			}), https.WithBackoff(time.Millisecond))
+			_, err := source.Resolve(context.Background(),
+				ports.Ref{Scheme: "https", Location: "user:hunter%402@" + host + "/demo.tar.zst"})
+			require.ErrorContains(t, err, "cannot reach")
+			text := err.Error() + domain.AsError(err).Hint
+			assert.NotContains(t, text, "hunter%402")
+			assert.NotContains(t, text, "hunter@2")
+		})
+	}
+
+	t.Run("cancelled while waiting to retry", func(t *testing.T) {
+		source, host := serveBundle(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}), https.WithBackoff(time.Hour))
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+		_, err := source.Resolve(ctx,
+			ports.Ref{Scheme: "https", Location: "user:hunter2@" + host + "/demo.tar.zst"})
+		require.ErrorContains(t, err, "cancelled")
+		assert.NotContains(t, err.Error()+domain.AsError(err).Hint, "hunter2")
+	})
+}
+
 func TestHTTPSRefusesAnOversizedDeclaration(t *testing.T) {
 	source, host := serveBundle(t, http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {

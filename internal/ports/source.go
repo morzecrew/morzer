@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -99,9 +100,24 @@ func ParseRef(s string) (Ref, error) {
 		return Ref{Scheme: "file", Location: s}, nil
 	}
 
+	// Every refusal below quotes the reference, and the update timer writes
+	// refusals to the journal, so the quote never carries a password.
+	shown := RedactRefCredentials(s)
 	u, err := url.Parse(s)
 	if err != nil {
-		return Ref{}, domain.Usage("invalid release reference %q: %v", s, err)
+		// What does not parse may be inside the userinfo, where the
+		// parser's complaint quotes part of the password.
+		if shown == UnparseableRef {
+			return Ref{}, domain.Usage("invalid release reference %s", shown).
+				WithHint("check it for a %% that does not start an escape, or a character that needs one")
+		}
+		// url.Error repeats the whole reference; its inner error names
+		// only what does not parse.
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
+		return Ref{}, domain.Usage("invalid release reference %q: %v", shown, err)
 	}
 
 	switch u.Scheme {
@@ -114,14 +130,23 @@ func ParseRef(s string) (Ref, error) {
 		// carries a port and is not.
 		if host := strings.ToLower(u.Host); host != "" && host != "localhost" {
 			return Ref{}, domain.Usage(
-				"file references are local paths, but %q names the host %q", s, u.Host).
+				"file references are local paths, but %q names the host %q", shown, u.Host).
 				WithHint("write file:///absolute/path -- three slashes")
 		}
 		return Ref{Scheme: "file", Location: u.Path}, nil
-	case "https", "oci":
+	case "oci":
+		// A registry takes its credentials from `docker login`. The
+		// source reads userinfo as part of the repository, so a password
+		// here authenticated nothing and reached only error messages.
+		if u.User != nil {
+			return Ref{}, domain.Usage("oci reference %q carries credentials", shown).
+				WithHint("remove them from the reference and run `docker login` for the registry")
+		}
+		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil
+	case "https":
 		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil
 	case "http":
-		return Ref{}, domain.Usage("refusing plaintext http reference %q", s).
+		return Ref{}, domain.Usage("refusing plaintext http reference %q", shown).
 			WithHint("use https, or fetch the bundle out of band and pass a path")
 	default:
 		return Ref{}, domain.Usage("unsupported release reference scheme %q", u.Scheme).
