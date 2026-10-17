@@ -7,10 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-17
+
+Most of this release is about what a failed `update` leaves behind. The previous
+release's services now come back up with their own secrets; an update whose
+migrations left a database the old release cannot read stops at exit 12 instead
+of reporting a rollback that did not happen; an unattended update that failed is
+tried once rather than on every tick; and a failed `apply` or `update` no longer
+removes the secrets running containers read. The update timer gets a real
+maintenance window, `update.schedule`, after the documented drop-in turned out to
+add a trigger rather than narrow one. `release trust` rotates signing keys
+without re-creating the installation, and `operations.migrate` may list several
+steps.
+
+Upgrading is automatic: the installation schema moves 10 → 11 on the first read
+and converts nothing. Going back is not, because a 0.3.x manager declines the
+installation rather than dropping `update.schedule`. If you followed the old
+unattended-updates page and added an `OnCalendar=` drop-in to the update timer,
+remove it and set `update.schedule` instead. A bundle whose `operations.migrate`
+is a list declares `min_manager_version: "0.4.0"`, which a 0.3.x manager refuses
+as needing a newer manager.
+
 ### Added
 
 - **`morzer config set update.schedule`**: when the update timer follows the channel — and installs, if `update.auto_apply` allows — as a systemd `OnCalendar` expression. This is the maintenance window RFC 0016 always said `OnCalendar` was, and nothing let you set it: every installation ticked daily at 03:30. Unsetting it returns to that default. A sandbox that should follow `main` within minutes sets `*:0/5`.
-
 - **`morzer status` shows the update channel a machine follows**: when the timer looks at it, and whether it installs what it finds or only stages it. A channel set while `update.check` is off is reported as not polled, since no timer exists then. Until now the schedule was visible only in the unit file.
 - **`morzer release trust add|remove|list`: the keys a release must be signed with can change after `init`.** Rotating a vendor key used to mean re-creating the installation. Trust the new key, install a release it signed, then remove the old one. A key is parsed before it is trusted, adding one already trusted changes nothing, and the last key cannot be removed while a signature is required, which `update.auto_apply` also needs.
 - **`operations.migrate` may list several steps**, run in order before services start, on `apply` and every `update`: migrations, then the application's own bootstrap, for example. A failure in any of them stops for manual intervention as a failed migration always has. A manifest using a list declares `compatibility.min_manager_version: "0.4.0"`, so an older manager refuses it as needing a newer manager instead of reporting a malformed operation.
@@ -20,11 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Building from source needs Go 1.26 or newer.** The `golang.org/x` modules moved their `go` directive to 1.26.0 together, and that directive is a requirement rather than a preference, so taking any of their updates raises this floor. Published binaries are unaffected.
 - **A dev-mode installation's update timer has no `RandomizedDelaySec`.** The half-hour spread exists so a vendor's registry does not see every customer at once, and a sandbox polls its own vendor's registry; with it, a five-minute schedule ticked every five to thirty-five minutes. Production timers keep it whatever the schedule.
 - **Installation schema 10 → 11**, for `update.schedule`. Migration is automatic and converts nothing. The bump is for the write path, as schema 7 was for `policy.backup_schedule`: without it, an older manager's `config set` would drop the field and its next reconciliation would put the timer back on 03:30 without saying so. With it, an older manager declines the installation instead.
+- **`init --dry-run` refuses a bundle the real run would refuse.** It reported "would create an installation" for a manifest the next command rejected. It now validates a local bundle's manifest and exits 2 naming it, as the run would, and `--json` carries `manifest_validated`. A remote reference is still not fetched for a plan, and the plan now says it did not validate the manifest instead of staying silent.
+- **Release notes print as the vendor wrote them.** Where a bundle's `RELEASE.md` is shown, `update --check` among them, it is no longer styled or reflowed: reflowing broke the fenced command blocks an operator copies. Dropping the renderer took ten modules out of the build and 6.7 MB out of the binary.
 
 ### Fixed
 
-- **A release reference's password could reach the update timer's journal.** When a reference was refused, as malformed, as plaintext `http`, or as a `file://` URL naming a host, the error quoted it in full, password included, and a malformed one twice. `config set update.channel` refuses such a channel, but a state file edited by hand, imported or restored could still carry one, and the timer then logged its password on every tick. The refusal now quotes the reference without its password, or withholds a malformed one entirely when it has userinfo. The https source's own errors, a 404, a refused login, an unreachable server, quoted the URL with its password too, and now leave it out, as they do a malformed redirect that echoes it back.
-- **An `oci://` reference carrying a username and password is refused.** The registry source takes its credentials from `docker login` and read userinfo as part of the repository name, so the password authenticated nothing and appeared only in error messages. Remove it from the reference and log in to the registry instead.
 - **A failed `apply` or `update` removed the secrets of running services.** When an `apply` failed after starting services, for example on a health check that never passed, its rollback deleted the rendered secrets while those containers kept running, so any that restarted could not read them. Every boot runs an `apply`, so a database slow to come up after a reboot was enough. The same happened to services already running when an `apply` or `update` began, if it failed before starting anything, for example on an image pull. The secrets now stay whenever services may be reading them; an operation that fails with nothing running still removes them.
 - **A failed unattended update was installed again on every tick.** The staged release stayed staged and nothing recorded that installing it had failed, so each tick took another pre-update backup, which retention never removes, ran the migrations again, and failed again. The tick now tries a release once: after a failure it leaves the release alone until the channel moves or an operator runs `morzer update --to <version>`, and `status` says so. A tick also does nothing while an operation waits for manual intervention, where it used to fetch and stage first.
 - **`init` accepted a `--signing-key` that is not a minisign public key.** Only its presence was checked, so a typo surfaced at the first update, after the installation had been created around it. The key is now parsed before anything is created.
@@ -35,6 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A schedule systemd cannot parse is refused instead of stored.** `config set backup.schedule`, `config set update.schedule` and `init --backup-schedule` accepted any single line, so a typo such as `every 5m` exited 0 and left a timer systemd would not load: no scheduled backups, or no unattended updates, and nothing said so. The expression is now checked with `systemd-analyze calendar` on the machine that will run it, before anything is written. A host without `systemd-analyze` accepts the value unchecked, as before.
 - **The published manifest schema rejected every bundle this manager accepts.** `schemas/selfhost-v1alpha1-manifest.json` still required the `runtime:` block that stopped being read in 0.3.0, and did not require the `runtimes:` the manager refuses a manifest without, so an editor following `$schema` or a CI validating against the file failed a valid bundle. It now requires `runtimes` and no longer offers `runtime`, and refuses an empty `runtimes`, `images` or runtime `files` as the loader does. Tests remove each top-level key of a manifest in turn, and empty each of those three, and fail when the loader and the schema disagree.
 - **The documented maintenance window did not narrow anything.** The unattended-updates page told you to add `OnCalendar=Sun *-*-* 04:00:00` to the update timer, and a drop-in's `OnCalendar=` *adds* a trigger to the one in the unit — so updates ran on Sunday morning and every night as well. Remove any such drop-in and use `update.schedule` instead.
+- **`apply --dry-run` and `update --dry-run` described a plan in the past tense.** They printed "demo 1.2.0 applied" and "updated demo from 1.2.0 to 1.2.0" beneath the line saying nothing was changed. They now say what they would do, as `init --dry-run` already did.
+- **A manifest refusal named a temporary copy instead of the bundle you passed.** A plan, or an install from an archive, read the manifest from a staging directory and named `/tmp/morzer-plan-…/manifest.yaml`, which was gone before you could look. It now names the `--release` path or the archive.
+- **`installation.yaml` could describe a change the manager never recorded.** It was written before the state store, so a refused state write left the report ahead of the record, and every backup copies the report, so a later restore brought back as true an installation that was never recorded. The state is written first now: a failure can only leave the report stale, and the next successful save rewrites it.
+
+### Security
+
+- **A release reference's password could reach the update timer's journal.** When a reference was refused, as malformed, as plaintext `http`, or as a `file://` URL naming a host, the error quoted it in full, password included, and a malformed one twice. `config set update.channel` refuses such a channel, but a state file edited by hand, imported or restored could still carry one, and the timer then logged its password on every tick. The refusal now quotes the reference without its password, or withholds a malformed one entirely when it has userinfo. The https source's own errors, a 404, a refused login, an unreachable server, quoted the URL with its password too, and now leave it out, as they do a malformed redirect that echoes it back.
+- **An `oci://` reference carrying a username and password is refused.** The registry source takes its credentials from `docker login` and read userinfo as part of the repository name, so the password authenticated nothing and appeared only in error messages. Remove it from the reference and log in to the registry instead.
+- **A release's notes could write to the operator's terminal and clipboard.** A bundle's `RELEASE.md` reached the terminal byte for byte, so an escape sequence in it, such as one that sets the clipboard, ran the moment you ran `update --check`, and the same bytes went into notification bodies. Terminal control sequences and bare control characters are now stripped from notes in every output mode, before they reach a notifier.
 
 ## [0.3.0] - 2026-08-21
 
@@ -287,7 +316,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/morzecrew/morzer/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/morzecrew/morzer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/morzecrew/morzer/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/morzecrew/morzer/compare/v0.1.0...v0.1.1
