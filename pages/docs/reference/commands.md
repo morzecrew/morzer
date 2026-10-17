@@ -90,6 +90,7 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`exec`](#exec) | Run a command inside a running service. |
 | [`backup`](#backup) | Back up the database, files, configuration and secret state. |
 | [`restore`](#restore) | Restore from a backup. |
+| [`notify`](#notify) | Manage where operation outcomes are reported. |
 | [`version`](#version) | Print version, commit, and supported manifest API versions. |
 | [`completion install`](#completion-install) | Put the shell completion script where your shell reads it. |
 | [`config`](parameters.md#changing-one-after-install) | Read and change the release parameters. |
@@ -504,6 +505,26 @@ right answer instead — it restores the original id, so the guard never fires.
 Restore declares that it requires manual intervention on failure: a half-restored
 database is a state no automatic action can repair, so a failure here exits
 [12](exit-codes.md) rather than pretending compensation succeeded.
+
+## notify
+
+### notify target
+
+Manages the webhooks this deployment reports to. See
+[notifications](../operating/notifications.md) for what is sent.
+
+`morzer notify target add [url]` records a target. It checks what the target
+names before recording it, and sends nothing: an `https` URL with no password
+in it, and any secret it reads, set and well formed. `morzer notify target list`
+shows them, naming a URL kept in a secret by its secret.
+`morzer notify target remove <url|name>` stops reporting to one.
+
+| Flag | Meaning |
+| --- | --- |
+| `--name` | What diagnostics call the target. Required with `--url-secret`. |
+| `--url-secret` | Name of a secret holding the whole URL, in place of `[url]`, for services where the URL is the credential. |
+| `--credentials` | Name of a secret holding a header to send: a YAML document with `header` and `value`. |
+| `--min-level` | Lowest `doctor` finding sent to this target: `warn` or `error`. Default `error`. |
 
 ## version
 

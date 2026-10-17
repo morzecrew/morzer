@@ -211,6 +211,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if d.Objects != nil && inst.Backup.HasTargets() {
 		checks = append(checks, d.checkAttestationsPushed(inst))
 	}
+	if inst.Notify.HasTargets() {
+		checks = append(checks, d.checkNotifyTargets(inst))
+	}
 
 	return checks
 }

@@ -17,40 +17,48 @@ notification, that correct and loud failure is a journal entry nobody reads.
 
 ## Configuring a target
 
-```yaml title="installation.yaml"
-notify:
-  targets:
-    - url: https://hooks.example/morzer
-      credentials: notify-webhook
-      min_level: error
+```sh
+morzer notify target add https://hooks.example/morzer
+morzer notify target list
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `url` | The endpoint. Must be `https`. |
-| `url_secret` | Names a secret holding the whole URL, for services where the URL *is* the credential. Exclusive with `url`. |
-| `credentials` | Names a secret holding a small YAML document with `header` and `value`, sent with each request. |
-| `min_level` | Lowest `doctor` severity this target receives: `warn` or `error`. Default `error`. |
-| `name` | Label used in diagnostics. Required with `url_secret`, since nothing else is safe to print. |
+The target is checked when you add it, and nothing is sent to it: the URL must
+be `https`, a password in it is refused, and any secret it names must be set
+and well formed. Several targets each receive every event, and one failing does
+not stop the others. `morzer notify target remove <url|name>` stops reporting
+to one, and `morzer status` names the targets a machine reports to.
 
-Several targets each receive every event. One failing does not stop the others.
+| Flag | Meaning |
+| --- | --- |
+| `[url]` | The endpoint. Must be `https`. |
+| `--url-secret` | Names a secret holding the whole URL, for services where the URL *is* the credential. In place of `[url]`. |
+| `--credentials` | Names a secret holding a small YAML document with `header` and `value`, sent with each request. |
+| `--min-level` | Lowest `doctor` severity this target receives: `warn` or `error`. Default `error`. |
+| `--name` | Label used in diagnostics. Required with `--url-secret`, since nothing else is safe to print. |
+
+A header carrying a bearer token goes in a secret:
+
+```sh
+printf 'header: Authorization\nvalue: Bearer %s\n' "$TOKEN" | morzer secret set notify-webhook
+morzer notify target add https://hooks.example/morzer --credentials notify-webhook
+```
+
+The targets are recorded in the installation, and `installation.yaml` lists
+them; that file is a report the manager rewrites, so change them with these
+commands rather than by editing it. If a secret a target reads is removed
+later, the target is dropped when a command starts, and `morzer doctor` warns
+about it by name until you fix the secret or remove the target.
 
 ### When the URL is the credential
 
 A Slack or Teams incoming-webhook URL is a bearer token spelled as a path.
-Putting one in `url` writes it into a file you will paste into support tickets,
-into `doctor` output, and into an `installation export` that travels beside a
-recovery key.
-
-```yaml
-notify:
-  targets:
-    - name: chat
-      url_secret: notify-chat-url
-```
+Putting one in `[url]` writes it into a file you will paste into support
+tickets, into `doctor` output, and into an `installation export` that travels
+beside a recovery key.
 
 ```sh
 morzer secret set notify-chat-url
+morzer notify target add --name chat --url-secret notify-chat-url
 ```
 
 Diagnostics then name the target `chat` and never say where it points, which is

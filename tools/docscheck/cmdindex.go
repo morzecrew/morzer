@@ -64,6 +64,7 @@ var referencePage = map[string]string{
 	"exec":         "reference/commands.md",
 	"backup":       "reference/commands.md",
 	"restore":      "reference/commands.md",
+	"notify":       "reference/commands.md",
 	"version":      "reference/commands.md",
 	"config":       "reference/parameters.md#changing-one-after-install",
 	"secret":       "reference/secret-commands.md",

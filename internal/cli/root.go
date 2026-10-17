@@ -536,6 +536,7 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupOperate, installationScope(newRollbackCommand(app))),
 		grouped(groupOperate, installationScope(newConfigCommand(app))),
 		grouped(groupOperate, installationScope(newSecretCommand(app))),
+		grouped(groupOperate, installationScope(newNotifyCommand(app))),
 		grouped(groupOperate, machineScope(newDoctorCommand(app))),
 
 		// The four that reach into what is running, after the ones that
