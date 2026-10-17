@@ -371,10 +371,66 @@ func TestApplyCompensatesWhenHealthChecksFail(t *testing.T) {
 	assert.Equal(t, domain.StatusCompensated, result.Record.Status)
 	assert.Equal(t, domain.ExitCompensated, domain.ExitCode(err))
 
-	// The rendered secrets were cleaned up: leaving plaintext credentials
-	// behind after a failed apply is not a state to walk away from.
-	assert.NoDirExists(t, h.Paths.SecretsRenderDir(),
-		"compensation must remove the rendered secrets")
+	// The services it started are still running, since an apply has no
+	// earlier release to put back, and they read their secrets from here.
+	// Every boot runs an apply, so removing them left a machine whose
+	// database was slow to come up with containers that cannot restart.
+	assert.FileExists(t, filepath.Join(h.Paths.SecretsRenderDir(), "db_password"),
+		"compensation removed the secrets of services that are still running")
+}
+
+// TestAFailedApplyThatStartedNothingRemovesItsSecrets: with no container
+// started from them, rendered secrets are plaintext nobody reads. That holds
+// when start-services ran but the runtime started nothing.
+func TestAFailedApplyThatStartedNothingRemovesItsSecrets(t *testing.T) {
+	for name, method := range map[string]string{"image pull": "Pull", "service start": "Up"} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			h.setHookEnv()
+
+			h.Runtime.Fail[method] = domain.RuntimeError(nil, "injected: %s refused", method)
+
+			result, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+			require.ErrorContains(t, err, "injected: "+method)
+			require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+
+			assert.NoDirExists(t, h.Paths.SecretsRenderDir(),
+				"compensation left plaintext secrets that nothing started from")
+		})
+	}
+}
+
+// TestAFailedApplyOverRunningServicesKeepsTheirSecrets: this apply started
+// nothing, but the previous one did, and those containers read the same files.
+// A runtime that cannot say what is running may have them up too.
+func TestAFailedApplyOverRunningServicesKeepsTheirSecrets(t *testing.T) {
+	for name, statusErr := range map[string]error{
+		"running":   nil,
+		"not known": domain.RuntimeError(nil, "injected: daemon not answering"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			h.setHookEnv()
+			_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+			require.NoError(t, err)
+			ups := len(h.Runtime.CallsMatching("Up"))
+
+			h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+			if statusErr != nil {
+				h.Runtime.Fail["Status"] = statusErr
+			}
+
+			result, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+			require.ErrorContains(t, err, "registry unreachable")
+			require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+			require.Len(t, h.Runtime.CallsMatching("Up"), ups, "the failed apply must stop before start-services")
+
+			assert.FileExists(t, filepath.Join(h.Paths.SecretsRenderDir(), "db_password"),
+				"compensation removed the secrets of services that may still be running")
+		})
+	}
 }
 
 func TestApplyFailsClosedWhenTheRuntimeCannotStart(t *testing.T) {

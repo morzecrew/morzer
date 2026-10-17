@@ -202,7 +202,7 @@ func applySteps(d *Deps, inst domain.Installation, rel domain.Release, opts Opti
 	return []engine.Step{
 		stepPreflight(d, inst, rel, opts),
 		stepLoadSecrets(d, inst, rel),
-		stepRenderSecrets(d, inst, rel),
+		stepRenderSecrets(d, inst, rel, opts),
 		stepRenderConfiguration(d, inst, rel, opts),
 		stepValidateRuntime(d, inst, rel, opts),
 		stepPullImages(d, inst, rel, opts),
@@ -239,8 +239,9 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 
 			// The port check only makes sense when the project is not
 			// already running: on a converged system the product's
-			// own listeners would be reported as conflicts.
-			if !d.projectRunning(ctx, inst, rel, opts) {
+			// own listeners would be reported as conflicts. A runtime
+			// that cannot answer gets the check.
+			if running, _ := d.projectRunning(ctx, inst, rel, opts); !running {
 				// Resolved, not read raw: `requirements.ports`
 				// may name a parameter, and checking 18080
 				// while the deployment publishes 9000 is the
@@ -262,18 +263,18 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 	}
 }
 
-// projectRunning reports whether any service of the project is up. Errors are
-// treated as "not running", because this only selects which checks to run.
-func (d *Deps) projectRunning(ctx context.Context, inst domain.Installation, rel domain.Release, opts Options) bool {
+// projectRunning reports whether any service of the project is up. An error
+// leaves that unknown, and each caller decides which way unknown counts.
+func (d *Deps) projectRunning(ctx context.Context, inst domain.Installation, rel domain.Release, opts Options) (bool, error) {
 	cfg, err := d.runtimeConfig(rel, inst, opts.Profile)
 	if err != nil {
-		return false
+		return false, err
 	}
 	states, err := d.Runtime.Status(ctx, cfg)
 	if err != nil {
-		return false
+		return false, err
 	}
-	return anyRunning(states)
+	return anyRunning(states), nil
 }
 
 // stepLoadSecrets decrypts the secret state into memory.
@@ -322,10 +323,11 @@ func stepLoadSecrets(d *Deps, inst domain.Installation, rel domain.Release) engi
 
 // stepRenderSecrets writes decrypted secrets to tmpfs.
 //
-// Compensation removes them. If a later step fails, leaving plaintext
-// credentials on a filesystem that may not be tmpfs on every host is not a
-// state to walk away from.
-func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {
+// Compensation removes them while no container reads them. If a later step
+// fails, leaving plaintext credentials nothing uses on a filesystem that may
+// not be tmpfs on every host is not a state to walk away from; removing them
+// from under a running container only breaks its next restart.
+func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, opts Options) engine.Step {
 	return engine.Step{
 		ID:          "render-secrets",
 		Description: "render secrets to " + d.Paths.SecretsRenderDir(),
@@ -369,7 +371,19 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release) en
 			}
 			return nil
 		},
+		// Removed only while nothing was started from them, which the
+		// runtime is asked rather than this operation remembering:
+		// containers an earlier apply started read these files too, and
+		// a start-services that failed may have started some or none. A
+		// runtime that cannot answer may have them up. An apply has
+		// nothing earlier to put back. An update that got as far as
+		// start-services renders the previous release's secrets over
+		// them on restore, which prunes whatever that release does not
+		// declare; one that stopped earlier leaves the new release's.
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			if running, err := d.projectRunning(ctx, inst, rel, opts); running || err != nil {
+				return nil
+			}
 			return atomicfs.RemoveAll(d.Paths.SecretsRenderDir())
 		},
 	}
