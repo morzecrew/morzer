@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/adapters/source"
@@ -264,6 +265,26 @@ func certificateProblem(err error, shown string) error {
 }
 
 // retryable marks a failure worth trying again.
+// withoutPassword returns err, or nil when its text carries the reference's
+// password. The client strips the password from the URLs it quotes, but it
+// quotes a Location header it cannot parse verbatim, and nothing stops a
+// server from echoing the credentials it was sent.
+func withoutPassword(err error, target string) error {
+	u, perr := url.Parse(target)
+	if perr != nil || u.User == nil {
+		return err
+	}
+	password, ok := u.User.Password()
+	if !ok || password == "" {
+		return err
+	}
+	_, escaped, _ := strings.Cut(u.User.String(), ":")
+	if text := err.Error(); strings.Contains(text, password) || strings.Contains(text, escaped) {
+		return nil
+	}
+	return err
+}
+
 type retryable struct{ error }
 
 func isRetryable(err error) bool {
@@ -291,7 +312,7 @@ func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) e
 		}
 		// A refused connection or a reset mid-handshake is what retrying
 		// is for.
-		return retryable{domain.RuntimeError(err, "cannot reach %s", shown)}
+		return retryable{domain.RuntimeError(withoutPassword(err, target), "cannot reach %s", shown)}
 	}
 	defer func() { _ = resp.Body.Close() }()
 

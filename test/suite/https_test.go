@@ -174,6 +174,12 @@ func TestHTTPSRefusalsWithholdThePassword(t *testing.T) {
 		"unavailable": func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		},
+		// The client quotes a Location it cannot parse, and nothing stops a
+		// server from echoing the credentials it was sent.
+		"malformed redirect": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Location", "https://user:hunter2@%zz/demo.tar.zst")
+			w.WriteHeader(http.StatusFound)
+		},
 		"cut short": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Length", "1024")
 			_, _ = w.Write([]byte("not all of it"))
@@ -199,7 +205,24 @@ func TestHTTPSRefusalsWithholdThePassword(t *testing.T) {
 			ports.Ref{Scheme: "https", Location: "user:hunter2@" + host + "/demo.tar.zst"})
 		require.Error(t, err)
 		assert.NotContains(t, err.Error()+domain.AsError(err).Hint, "hunter2")
+		assert.Contains(t, err.Error(), "connection refused", "the cause no longer says why")
 	})
+
+	// A password that needs escaping, echoed back as written or as decoded.
+	for name, echoed := range map[string]string{"escaped": "hunter%402", "decoded": "hunter@2"} {
+		t.Run("malformed redirect echoing the "+name+" password", func(t *testing.T) {
+			source, host := serveBundle(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", "https://user:"+echoed+"@%zz/demo.tar.zst")
+				w.WriteHeader(http.StatusFound)
+			}), https.WithBackoff(time.Millisecond))
+			_, err := source.Resolve(context.Background(),
+				ports.Ref{Scheme: "https", Location: "user:hunter%402@" + host + "/demo.tar.zst"})
+			require.ErrorContains(t, err, "cannot reach")
+			text := err.Error() + domain.AsError(err).Hint
+			assert.NotContains(t, text, "hunter%402")
+			assert.NotContains(t, text, "hunter@2")
+		})
+	}
 
 	t.Run("cancelled while waiting to retry", func(t *testing.T) {
 		source, host := serveBundle(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
