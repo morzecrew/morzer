@@ -796,6 +796,26 @@ func TestAnUnreadableFallbackIsNotFallenBackTo(t *testing.T) {
 	assert.Contains(t, err.Error(), "could not be read")
 }
 
+// TestAFailedUpdateKeepsTheSecretsOfTheRunningRelease: an update that stops
+// before start-services leaves the previous release's containers running, and
+// they read their secrets from the same directory.
+func TestAFailedUpdateKeepsTheSecretsOfTheRunningRelease(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ups := len(h.Runtime.CallsMatching("Up"))
+
+	h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.Error(t, err)
+	require.Len(t, h.Runtime.CallsMatching("Up"), ups, "the failed update must stop before start-services")
+
+	assert.FileExists(t, filepath.Join(h.Paths.SecretsRenderDir(), "db_password"),
+		"compensation removed the secrets of the release that is still running")
+}
+
 // TestUpdateFaultInjection is RFC 0001 §6's extension of the engine's
 // fault-injection loop to the update pipeline: fail at each step in turn and
 // assert the release pointer always ends where it started.

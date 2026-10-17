@@ -137,7 +137,9 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 	// Asked once, before anything changes, because it decides both which
 	// steps run and what the summary may claim. Asking again afterwards
 	// would report on a deployment the operation had already altered.
-	running := d.projectRunning(ctx, inst, rel, opts.Options)
+	// A runtime that cannot answer counts as not running: nothing is
+	// recreated.
+	running, _ := d.projectRunning(ctx, inst, rel, opts.Options)
 
 	opID := d.newOpID()
 	op := engine.Operation{
