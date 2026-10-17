@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The schema URL in every scaffolded manifest returned 404.** `release new` writes a `yaml-language-server` modeline naming `https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json`, which is also the schema's own `$id`, and nothing published the schemas there: the documentation site is versioned, and they lived only in the repository. Each docs release now publishes `schemas/` at the site root beside `install.sh`, so an editor following the modeline gets the schema.
+
 ## [0.4.0] - 2026-10-17
 
 Most of this release is about what a failed `update` leaves behind. The previous
