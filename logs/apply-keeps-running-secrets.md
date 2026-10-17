@@ -111,3 +111,7 @@ evidence: internal/lifecycle/ops/update.go:925-927
 action: halted
 proposal: LOCKED — when an update stops before start-services and the secrets were kept, the restore point renders the previous release's secrets over them and brings nothing up; a failure to render ends at requires-manual-intervention
 ```
+
+**Ruled 2026-10-17 by the author:** #104 merges without widening the restore
+point, and the gap is tracked in
+[#106](https://github.com/morzecrew/morzer/issues/106) with the proposal above.
