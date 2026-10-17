@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The publishing page told you to configure signing keys by editing `installation.yaml`.** That file is a report the manager writes, and an edit to it changes nothing, so a machine set up from the page required no signature from your key. The page now shows `init --signing-key … --require-signature` and `morzer release trust add`. The updating, backups, parameters and release-command pages treated the same file as configuration and are corrected too, and the hook ABI page no longer lists `preflight`, `pre-update` and `post-update` as phases a hook runs in: they are reserved, and no release runs one.
+
 ## [0.4.0] - 2026-10-17
 
 Most of this release is about what a failed `update` leaves behind. The previous
