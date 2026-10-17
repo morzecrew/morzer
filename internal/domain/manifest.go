@@ -577,8 +577,11 @@ const (
 	OpSmokeTest = "smoke_test"
 	OpBackup    = "backup"
 	OpRestore   = "restore"
-	OpPreflight = "preflight"
 )
+
+// OperationNames are the only operations a manifest may declare. Any other
+// name would load and never run, so Validate refuses it.
+var OperationNames = []string{OpMigrate, OpSmokeTest, OpBackup, OpRestore}
 
 // BackupSpec is what the release says about backing up storage the manager can
 // reach without a client for whatever wrote it.
@@ -1137,6 +1140,10 @@ func (m *Manifest) Validate() error {
 	// operations
 	for name, steps := range m.Operations {
 		switch {
+		case !slices.Contains(OperationNames, name):
+			v.add("operations."+name, "is not an operation the manager runs; the operations are %s",
+				strings.Join(OperationNames, ", "))
+			continue
 		case len(steps) == 0:
 			v.add("operations."+name, "must declare at least one step")
 		case len(steps) > 1 && name != OpMigrate:

@@ -279,6 +279,33 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			},
 			"operations.migrate.kind",
 		},
+		// A name the manager never looks up loads and never runs, so the
+		// vendor's customer silently gets no smoke test.
+		"an operation the manager never runs": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSteps{
+					"post_migrate": {{Kind: OperationKindHook, Command: []string{"hooks/migrate"}}},
+				}
+			},
+			"operations.post_migrate: is not an operation the manager runs; " +
+				"the operations are migrate, smoke_test, backup, restore",
+		},
+		"a misspelled operation": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSteps{
+					"smoke-test": {{Kind: OperationKindHook, Command: []string{"hooks/migrate"}}},
+				}
+			},
+			"operations.smoke-test: is not an operation",
+		},
+		"a preflight operation, which nothing ever ran": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSteps{
+					"preflight": {{Kind: OperationKindHook, Command: []string{"hooks/migrate"}}},
+				}
+			},
+			"operations.preflight: is not an operation",
+		},
 		"a negative timeout": {
 			func(m *Manifest) {
 				m.Operations = map[string]OperationSteps{

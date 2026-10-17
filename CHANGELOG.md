@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An operation under a name the manager never runs is refused.** `operations` accepted any name, so a misspelled `smoke-test:` or an invented `post_migrate:` loaded cleanly and never ran, and the bundle's customer got no smoke test and no error. `preflight`, which the manifest reference listed as looked up, was never run either. A manifest may now declare only `migrate`, `smoke_test`, `backup` and `restore`, and **a bundle declaring any other operation, `preflight` included, is now refused** with the field named and the four listed. The published manifest schema closes the names the same way, so an editor underlines one before the manager sees it.
+
 ## [0.4.0] - 2026-10-17
 
 Most of this release is about what a failed `update` leaves behind. The previous
