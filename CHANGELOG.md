@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The update timer fetched a private `oci://` channel without credentials.** systemd sets no `HOME` for the manager's units, and the registry client looked for the Docker configuration only under `HOME`, so it went anonymous and the registry refused it, while `docker compose pull` in the same run found root's login through the password database. The manager now finds the configuration the way the `docker` CLI does: `DOCKER_CONFIG`, then `HOME`, then the password database.
+
 ## [0.4.0] - 2026-10-17
 
 Most of this release is about what a failed `update` leaves behind. The previous

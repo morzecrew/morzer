@@ -26,6 +26,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/user"
+	"path/filepath"
 	"strings"
 
 	"github.com/opencontainers/go-digest"
@@ -497,9 +499,13 @@ func remoteRepository(reference string) (*remote.Repository, error) {
 	}
 	repo.PlainHTTP = isLoopbackRegistry(repo.Reference.Registry)
 
-	store, err := credentials.NewStoreFromDocker(credentials.StoreOptions{
-		AllowPlaintextPut: false,
-	})
+	configPath, err := dockerConfigPath()
+	var store *credentials.DynamicStore
+	if err == nil {
+		store, err = credentials.NewStore(configPath, credentials.StoreOptions{
+			AllowPlaintextPut: false,
+		})
+	}
 	if err != nil {
 		// No Docker configuration is not an error: a public registry
 		// needs none, and failing here would make an anonymous pull
@@ -514,6 +520,28 @@ func remoteRepository(reference string) (*remote.Repository, error) {
 		Credential: credentials.Credential(store),
 	}
 	return repo, nil
+}
+
+// dockerConfigPath is where `docker login` wrote the registry credentials.
+//
+// The docker CLI's rule rather than oras's: DOCKER_CONFIG, then HOME, then the
+// passwd entry. oras stops at HOME, and systemd sets no HOME for a unit without
+// User=, which is every timer this manager installs. So under the update timer
+// `docker compose pull` authenticated to a registry that the manager's own
+// fetch of the channel reached anonymously.
+func dockerConfigPath() (string, error) {
+	if dir := os.Getenv("DOCKER_CONFIG"); dir != "" {
+		return filepath.Join(dir, "config.json"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		u, uerr := user.Current()
+		if uerr != nil {
+			return "", uerr
+		}
+		home = u.HomeDir
+	}
+	return filepath.Join(home, ".docker", "config.json"), nil
 }
 
 // isLoopbackRegistry reports whether a registry host is this machine.
