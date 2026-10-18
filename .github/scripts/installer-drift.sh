@@ -10,7 +10,8 @@
 #   1. Are the published copies the same bytes? The comparison is anchored at
 #      the release tag rather than at main, because main legitimately moves on
 #      after a release: what must agree is the asset, the site copy, and
-#      `install.sh` as it was at that tag.
+#      `install.sh` as it was at that tag. The site's `schemas/` is compared
+#      the same way.
 #   2. Does the script an operator actually gets install the release? Run the
 #      *published* copy -- the site one by preference, since that is what
 #      `curl -fsSL .../install.sh | sh` fetches. Running the checkout's copy
@@ -79,6 +80,22 @@ if curl -fsSL -o "${work}/site.sh" "${site_base}/install.sh"; then
 	fi
 elif [ -n "$tagged" ]; then
 	problem "${site_base}/install.sh is not published"
+fi
+
+# The schemas every scaffolded manifest's modeline names, anchored at the tag
+# for the same reason. A tag from before they were published at the root has
+# nothing at the site to compare.
+if git cat-file -e "${tag}:.github/scripts/publish-site-root.sh" 2>/dev/null; then
+	while read -r name; do
+		git show "${tag}:${name}" >"${work}/at-tag.json"
+		if ! curl -fsSL -o "${work}/site.json" "${site_base}/${name}"; then
+			problem "${site_base}/${name} is not published"
+		elif [ "$(digest_of_file "${work}/site.json")" != "$(digest_of_file "${work}/at-tag.json")" ]; then
+			problem "the site copy of ${name} is not ${name} at ${tag}"
+		fi
+	done < <(git ls-tree --name-only "${tag}" schemas/)
+else
+	echo "notice: ${tag} predates publishing the schemas at the site root"
 fi
 
 # --- 2. the published script installs the published release ----------------

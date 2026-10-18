@@ -548,6 +548,7 @@ running it.
 | 15e | `--require-signature` and `--no-verify-signature` together are refused before anything is downloaded | Letting argument order decide whether verification happens is how a runbook that inherited both silently stops verifying. |
 | 16 | Completions are installed by running `morzer completion install`, never by the script itself | Where a shell reads completions from belongs in one implementation, versioned with the binary and tested. A completion written to the wrong directory produces no error — just a Tab key that does nothing — so a drifting second copy would never announce itself. |
 | 17 | Completions default on for an interactive install, off otherwise; failure warns and never fails the install | Somebody at a terminal wants the tool to work; a Dockerfile does not want writes into a build's home directory. And the binary being installed is the thing that was asked for. |
+| 18 | **Refines decision 11** (2026-10-18): `install.sh` and `schemas/` are published at the root only by a docs release that moves `latest`, and the nightly job compares the site's `schemas/` with the newest release as it does `install.sh` | The step ran on every docs release, so a backport tag on an older line, 0.3.5 after 0.4.0, would replace the root's files with older ones. Re-publishing on every release guarded against mike dropping a root file; the root now follows the `latest` alias instead, and a dropped file is caught by the nightly job and fixed by re-running the newest tag's docs release. |
 
 ## 12. Phasing
 
