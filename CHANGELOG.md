@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`update.randomized_delay` sets how late an update tick may run.** A production update timer always waited up to 1800 seconds at random, whatever `update.schedule` said, and a dev-mode one never did. Set a duration such as `10m`, or `0` for none; unset keeps those defaults. `morzer status` shows the delay beside the schedule.
+
+### Changed
+
+- **Only the newest pre-update backups are kept past retention.** Every pre-update backup was exempt from pruning forever, so a machine that updates every few minutes kept a full backup per update until its disk filled. Now the newest three are exempt, and older ones are pruned like any other backup, locally and on backup targets. **The first backup taken after upgrading prunes the older ones already there**, unless it runs with `--no-prune`. Change the three with `morzer config set retention.pre_update_backups=<n>`; the newest is never pruned. Installation state moves to schema 12, so an older manager refuses it rather than dropping either setting.
+
 ### Fixed
 
 - **A `runtime-service` smoke test, backup or restore is refused when the bundle loads.** Only `migrate` can run a one-shot container. The other three handed the step to the hook runner, which a `runtime-service` step gives no command, so a `runtime-service` smoke test failed every `apply` that reached it with an internal error, a restore failed the same way, and a backup was refused only once one ran. The manifest now refuses a `runtime-service` under any operation but `migrate`, naming `hook` as what the others support.

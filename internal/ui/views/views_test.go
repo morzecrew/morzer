@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -390,6 +391,10 @@ func TestFollowingNoteSaysWhenAndWhat(t *testing.T) {
 		{ops.Following{Channel: ch, Polled: true}, "(daily, stages only)"},
 		{ops.Following{Channel: ch, Polled: true, Schedule: "*:0/15"}, "(on *:0/15, stages only)"},
 		{ops.Following{Channel: ch, Polled: true, AutoApply: true}, "(daily, installs what it may)"},
+		{
+			ops.Following{Channel: ch, Polled: true, Schedule: "*:0/15", RandomizedDelay: domain.Duration(5 * time.Minute)},
+			"(on *:0/15, up to 5m0s late, stages only)",
+		},
 	} {
 		var b bytes.Buffer
 		require.NoError(t, ui.Render(&b, ui.ModePlain, nil, ops.Status{Product: "demo", Following: &tc.f}))

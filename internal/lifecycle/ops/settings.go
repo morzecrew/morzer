@@ -113,6 +113,45 @@ var settings = map[string]setting{
 		// and `update.check`'s question, not this one's.
 		Clear: func(i *domain.Installation) { i.Update.Schedule = "" },
 	},
+	"update.randomized_delay": {
+		Description: "how long each update tick may wait at random, as a duration such as 30m; 0 for none",
+		// The value in force rather than the stored one, because unset
+		// means half an hour in production and none on a sandbox.
+		Read: func(i domain.Installation) string {
+			return domain.Duration(i.UpdateRandomizedDelay()).String()
+		},
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			if strings.TrimSpace(raw) == "" {
+				i.Update.RandomizedDelay = nil
+				return nil
+			}
+			var delay domain.Duration
+			if err := delay.UnmarshalText([]byte(raw)); err != nil {
+				return err
+			}
+			i.Update.RandomizedDelay = &delay
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Update.RandomizedDelay = nil },
+	},
+	"retention.pre_update_backups": {
+		Description: "how many of the newest pre-update backups retention keeps; at least 1",
+		Read: func(i domain.Installation) string {
+			return strconv.Itoa(i.RetentionPreUpdateBackups())
+		},
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			n, err := strconv.Atoi(strings.TrimSpace(raw))
+			if err != nil || n < 1 {
+				return domain.Usage("%q is not a count of at least 1", raw).
+					WithHint("the newest pre-update backup is never pruned; "+
+						"`config unset` returns to the default, %d",
+						domain.DefaultRetentionPreUpdateBackups)
+			}
+			i.Policy.RetainPreUpdateBackups = n
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Policy.RetainPreUpdateBackups = 0 },
+	},
 	"backup.scheduled": {
 		Description: "whether this manager runs backups on a timer at all (RFC 0030 row 4)",
 		Read: func(i domain.Installation) string {
@@ -450,8 +489,10 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		// A sandbox polls its vendor's own registry, so the jitter
 		// that spreads customers across that registry protects nobody
 		// and turns "every five minutes" into "every five to
-		// thirty-five" (RFC 0016 decision 26).
-		SkipUpdateJitter: inst.IsDev(),
+		// thirty-five" (RFC 0016 decision 26). An operator's
+		// `update.randomized_delay` wins in either mode (decision 31).
+		SkipUpdateJitter: inst.UpdateRandomizedDelay() == 0,
+		UpdateJitter:     inst.UpdateRandomizedDelay(),
 
 		// A target to publish to is the whole precondition (RFC 0026
 		// P4). There is no second flag gating this the way `update.check`

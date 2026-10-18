@@ -92,7 +92,12 @@ import (
 // through, and let the next reconciliation put the update timer back on 03:30:
 // a dev VM that followed a channel within minutes would start following it
 // once a night, and nothing would say so.
-const InstallationSchemaVersion = 11
+// Bumped to 12 for `update.randomized_delay` and
+// `policy.retain_pre_update_backups`, for the write path once more. An older
+// manager's `config set` would drop both: a production machine set to no delay
+// would go back to half an hour, and one keeping three pre-update backups would
+// go back to keeping every one, which is the disk filling up again.
+const InstallationSchemaVersion = 12
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -443,6 +448,29 @@ type UpdateConfig struct {
 	// trigger rather than replacing one, so it widens the window it was
 	// meant to narrow. That was the documented route before this field.
 	Schedule string `yaml:"schedule" json:"schedule,omitempty"`
+
+	// RandomizedDelay is the update timer's spread: each tick waits a random
+	// time up to this long. Nil takes the mode's default, 1800 seconds in
+	// production and none on a sandbox (RFC 0016 decision 26); a pointer,
+	// because an operator's `0` means none and is not the same as unset
+	// (decision 31).
+	RandomizedDelay *Duration `yaml:"randomized_delay,omitempty" json:"randomized_delay,omitempty"`
+}
+
+// DefaultUpdateRandomizedDelay is the update timer's spread in production
+// when the installation sets none.
+const DefaultUpdateRandomizedDelay = 30 * time.Minute
+
+// UpdateRandomizedDelay resolves the update timer's spread.
+func (i Installation) UpdateRandomizedDelay() time.Duration {
+	switch {
+	case i.Update.RandomizedDelay != nil:
+		return i.Update.RandomizedDelay.Duration()
+	case i.IsDev():
+		return 0
+	default:
+		return DefaultUpdateRandomizedDelay
+	}
 }
 
 // FollowsChannel reports whether a channel is configured.
@@ -616,6 +644,12 @@ type Policy struct {
 	// vendor's manifest.
 	RetainReleases int `yaml:"retain_releases" json:"retain_releases,omitempty"`
 	RetainBackups  int `yaml:"retain_backups" json:"retain_backups,omitempty"`
+
+	// RetainPreUpdateBackups is how many of the newest pre-update backups
+	// retention keeps past RetainBackups. Zero is the default, 3. They were
+	// all kept, forever, until a machine updating every ten minutes kept a
+	// full backup per update (RFC 0001 decision 21).
+	RetainPreUpdateBackups int `yaml:"retain_pre_update_backups" json:"retain_pre_update_backups,omitempty"`
 
 	// SkipBackupBeforeUpdate turns off the pre-update backup for every
 	// update on this installation.
@@ -804,6 +838,20 @@ func (i Installation) RetentionBackups(m Manifest) int {
 	return DefaultRetentionBackups
 }
 
+// RetentionPreUpdateBackups resolves how many pre-update backups retention
+// keeps. The manifest has no say: what a failed update needs to recover from
+// is the operator's arrangement, not the vendor's.
+func (i Installation) RetentionPreUpdateBackups() int {
+	if i.Policy.RetainPreUpdateBackups > 0 {
+		return i.Policy.RetainPreUpdateBackups
+	}
+	return DefaultRetentionPreUpdateBackups
+}
+
+// DefaultRetentionPreUpdateBackups is the number of pre-update backups kept
+// when the installation sets none.
+const DefaultRetentionPreUpdateBackups = 3
+
 // Validate checks the installation is internally consistent. Called after
 // loading, so a hand-edited installation.yaml fails loudly at the start of an
 // operation rather than halfway through it.
@@ -918,6 +966,9 @@ func (i Installation) Validate() error {
 	}
 	if i.Policy.RetainBackups < 0 {
 		v.add("policy.retain_backups", "must not be negative")
+	}
+	if i.Policy.RetainPreUpdateBackups < 0 {
+		v.add("policy.retain_pre_update_backups", "must not be negative")
 	}
 
 	// An unsatisfiable policy is refused where it is written rather than

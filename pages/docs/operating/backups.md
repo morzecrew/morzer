@@ -341,6 +341,17 @@ Governed by `retention.backups` in the manifest, or `policy.retain_backups` in
 your installation when you want a different number than the vendor chose. **The
 most recent backup is never pruned**, whatever the number says.
 
+Pre-update backups are counted apart. The newest three are kept on top of that
+number, so the update you just ran can still be undone, and older ones are
+pruned like any other backup. A machine that updates every few minutes would
+otherwise keep a full backup per update. Change the three with
+`retention.pre_update_backups`; **the newest pre-update backup is never
+pruned**, so the least it takes is `1`:
+
+```sh
+morzer config set retention.pre_update_backups=5
+```
+
 `--no-prune` skips the retention pass for one run.
 
 ## Restoring
@@ -455,7 +466,7 @@ morzer backup push <id>
 `--no-push` takes a local-only backup for the run, when you already know the
 medium is disconnected. `--no-prune-remote` skips the retention pass on the
 targets; retention there follows the same policy as locally, and never removes
-the most recent backup.
+the most recent backup or the newest pre-update backups.
 
 ### Credentials
 

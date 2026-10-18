@@ -90,6 +90,9 @@ func followingNote(f *ops.Following) string {
 	if f.Schedule != "" {
 		when = "on " + f.Schedule
 	}
+	if f.RandomizedDelay > 0 {
+		when += ", up to " + f.RandomizedDelay.String() + " late"
+	}
 	if f.AutoApply {
 		return "(" + when + ", installs what it may)"
 	}

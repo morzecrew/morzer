@@ -222,7 +222,7 @@ func RunBackupEngineSuite(t *testing.T, newEngine BackupEngineFactory) {
 		create(t, h, "manual")
 
 		removed, err := h.Engine.Prune(ctx, ports.RetentionPolicy{
-			Keep: 1, KeepReasons: []string{"pre-update"},
+			Keep: 1, KeepPreUpdate: 1,
 		})
 		require.NoError(t, err)
 		assert.NotContains(t, idsOf(removed), exempt.ID,
@@ -231,6 +231,48 @@ func RunBackupEngineSuite(t *testing.T, newEngine BackupEngineFactory) {
 
 		_, err = h.Engine.Inspect(ctx, ports.BackupRef{ID: exempt.ID})
 		require.NoError(t, err, "the exempt backup is gone from disk")
+	})
+
+	// RFC 0001 decision 3, as refined: only the newest pre-update backups
+	// are exempt. A machine that updates every ten minutes kept one full
+	// backup per update, forever.
+	t.Run("only the newest pre-update backups are exempt", func(t *testing.T) {
+		h := newEngine(t)
+		oldest := create(t, h, "pre-update")
+		older := create(t, h, "pre-update")
+		kept := create(t, h, "pre-update")
+		newest := create(t, h, "pre-update")
+		manual := create(t, h, "manual")
+
+		removed, err := h.Engine.Prune(ctx, ports.RetentionPolicy{Keep: 1, KeepPreUpdate: 2})
+		require.NoError(t, err)
+
+		ids := idsOf(removed)
+		assert.ElementsMatch(t, []string{oldest.ID, older.ID}, ids,
+			"a policy keeping two pre-update backups pruned something else")
+		for _, ref := range []ports.BackupRef{manual, newest, kept} {
+			_, err := h.Engine.Inspect(ctx, ports.BackupRef{ID: ref.ID})
+			require.NoError(t, err, "backup %s is gone from disk", ref.ID)
+		}
+		for _, ref := range []ports.BackupRef{oldest, older} {
+			_, err := h.Engine.Inspect(ctx, ports.BackupRef{ID: ref.ID})
+			require.Error(t, err, "backup %s was reported pruned and is still there", ref.ID)
+		}
+	})
+
+	// The newest pre-update backup is the one an operator reaches for when
+	// the update they just ran went wrong, so no policy prunes it.
+	t.Run("the newest pre-update backup survives a policy keeping none", func(t *testing.T) {
+		h := newEngine(t)
+		older := create(t, h, "pre-update")
+		newest := create(t, h, "pre-update")
+		create(t, h, "manual")
+
+		removed, err := h.Engine.Prune(ctx, ports.RetentionPolicy{Keep: 1, KeepPreUpdate: 0})
+		require.NoError(t, err)
+		assert.Equal(t, []string{older.ID}, idsOf(removed))
+		_, err = h.Engine.Inspect(ctx, ports.BackupRef{ID: newest.ID})
+		require.NoError(t, err, "the newest pre-update backup is gone from disk")
 	})
 
 	// "Nothing in a backup is readable without a key except its manifest" is

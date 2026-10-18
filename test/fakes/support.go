@@ -398,28 +398,21 @@ func (b *Backup) Prune(ctx context.Context, policy ports.RetentionPolicy) ([]por
 		return nil, err
 	}
 
-	keep := policy.Keep
-	if keep < 1 {
-		keep = 1
-	}
-	if len(b.order) <= keep {
-		return nil, nil
-	}
-
-	// KeepReasons used to be ignored here, which made every test involving
+	// The exemption used to be ignored here, which made every test involving
 	// retention agree that a pre-update backup survives while proving
 	// nothing about the engine that has to keep it -- and that backup is
 	// the one an operator reaches for when the update they just ran went
 	// wrong.
-	exempt := make(map[string]bool, len(policy.KeepReasons))
-	for _, r := range policy.KeepReasons {
-		exempt[r] = true
+	reasons := make([]string, len(b.order))
+	for i, id := range b.order {
+		reasons[i] = b.backups[id].Reason
 	}
 
 	var removed []ports.BackupRef
-	kept := append([]string(nil), b.order[:keep]...)
-	for _, id := range b.order[keep:] {
-		if exempt[b.backups[id].Reason] {
+	var kept []string
+	for i, prune := range policy.Prunes(reasons) {
+		id := b.order[i]
+		if !prune {
 			kept = append(kept, id)
 			continue
 		}

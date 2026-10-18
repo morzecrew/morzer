@@ -643,7 +643,7 @@ func stepPreUpdateBackup(
 		Execute: func(ctx context.Context, st *engine.State) error {
 			ref, err := d.Backup.Create(ctx, ports.Scope{
 				Components: ports.AllComponents,
-				Reason:     "pre-update",
+				Reason:     ports.ReasonPreUpdate,
 			}, map[string]string{
 				"from": from.Version.String(),
 				"to":   staged.Version().String(),

@@ -430,8 +430,8 @@ func stepPruneRemoteBackups(d *Deps, inst domain.Installation, rel domain.Releas
 				return err
 			}
 			policy := ports.RetentionPolicy{
-				Keep:        inst.RetentionBackups(rel.Manifest),
-				KeepReasons: []string{"pre-update"},
+				Keep:          inst.RetentionBackups(rel.Manifest),
+				KeepPreUpdate: inst.RetentionPreUpdateBackups(),
 			}
 
 			// Every target is pruned even after one fails. Returning at
@@ -521,9 +521,9 @@ func stepPruneBackups(d *Deps, inst domain.Installation, rel domain.Release) eng
 		Execute: func(ctx context.Context, st *engine.State) error {
 			removed, err := d.Backup.Prune(ctx, ports.RetentionPolicy{
 				Keep: inst.RetentionBackups(rel.Manifest),
-				// A pre-update backup is exempt until the update
-				// it guards has been confirmed good.
-				KeepReasons: []string{"pre-update"},
+				// The newest pre-update backups are exempt, so the
+				// update they guard can still be undone.
+				KeepPreUpdate: inst.RetentionPreUpdateBackups(),
 			})
 			if err != nil {
 				return err

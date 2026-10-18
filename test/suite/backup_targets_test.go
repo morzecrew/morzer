@@ -310,6 +310,75 @@ func TestAPreUpdateBackupIsExemptOnTheTargetToo(t *testing.T) {
 			"operator reaches for when the update they were guarding goes wrong")
 }
 
+// Only the newest pre-update backups are exempt (RFC 0001 decision 21), here
+// and on the target, as many as `retention.pre_update_backups` says. A machine
+// updating every ten minutes kept one full backup per update, forever.
+func TestOnlyTheNewestPreUpdateBackupsSurviveRetention(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	inst, offsite := h.withTargets(t)
+	inst.Policy.RetainPreUpdateBackups = -1
+	require.Error(t, h.Deps.State.SaveInstallation(ctx, inst), "a negative count was written")
+	inst.Policy.RetainPreUpdateBackups = 0
+	inst.Policy.RetainBackups = 1
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	set := func(v string) error {
+		_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+			Set: map[string]string{"retention.pre_update_backups": v},
+		})
+		return err
+	}
+	// Zero would read as "prune them all", which the newest never is.
+	for _, bad := range []string{"0", "-1", "many"} {
+		require.Error(t, set(bad), "%q was stored as a count", bad)
+	}
+	require.NoError(t, set("2"))
+	var err error
+
+	var guards []string
+	for range 3 {
+		res, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{
+			Reason: ports.ReasonPreUpdate, Verify: true, Prune: true, Push: true, PruneRemote: true,
+		})
+		require.NoError(t, err)
+		ref, ok := res.Data.(ports.BackupRef)
+		require.True(t, ok)
+		guards = append(guards, ref.ID)
+	}
+	_, err = ops.Backup(ctx, h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+	})
+	require.NoError(t, err)
+
+	local, err := h.Deps.Backup.List(ctx)
+	require.NoError(t, err)
+	remote, err := localdir.New().List(ctx, mustTarget(t, offsite))
+	require.NoError(t, err)
+	for where, ids := range map[string][]string{"locally": idsOfRefs(local), "on the target": idsOfManifests(remote)} {
+		assert.NotContains(t, ids, guards[0], "the oldest pre-update backup survived %s", where)
+		assert.Contains(t, ids, guards[1], "a pre-update backup the setting keeps was pruned %s", where)
+		assert.Contains(t, ids, guards[2], "the newest pre-update backup was pruned %s", where)
+		assert.Len(t, ids, 3, "%s holds %v", where, ids)
+	}
+}
+
+func idsOfRefs(refs []ports.BackupRef) []string {
+	out := make([]string, len(refs))
+	for i, r := range refs {
+		out[i] = r.ID
+	}
+	return out
+}
+
+func idsOfManifests(ms []ports.BackupManifest) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.ID
+	}
+	return out
+}
+
 // TestRetentionFailingOnATargetDoesNotFailTheBackup.
 //
 // Unlike the push, this is `Continue`: the backup was taken and it is off the

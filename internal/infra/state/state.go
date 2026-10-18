@@ -344,6 +344,15 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// still means exactly that. The bump is for the write
 			// path, as 6 -> 7 was for the backup timer's schedule.
 			i.SchemaVersion = 11
+		case 11:
+			// 11 -> 12 added `update.randomized_delay` and
+			// `policy.retain_pre_update_backups`. Nothing to convert:
+			// absent, each takes the default it took before, the mode's
+			// spread and three pre-update backups. The last is a change
+			// of behaviour, from keeping every one, and it is the one
+			// RFC 0001 decision 21 asks for. The bump is for the write
+			// path, as 10 -> 11 was.
+			i.SchemaVersion = 12
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

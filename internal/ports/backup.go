@@ -136,6 +136,10 @@ type Scope struct {
 	Reason string
 }
 
+// ReasonPreUpdate is the reason of the backup an update takes before it
+// changes anything. Retention keeps the newest of these past its own count.
+const ReasonPreUpdate = "pre-update"
+
 // BackupRef identifies a backup. It is opaque to the lifecycle layer: only
 // the engine that produced it knows how to resolve it.
 type BackupRef struct {
@@ -378,7 +382,28 @@ type RetentionPolicy struct {
 	// never pruned, whatever Keep says.
 	Keep int
 
-	// KeepReasons are reasons exempt from pruning, e.g. a pre-update
-	// backup kept until the update is confirmed good.
-	KeepReasons []string
+	// KeepPreUpdate is how many of the newest pre-update backups are kept
+	// whatever Keep says. The newest is never pruned, whatever this says:
+	// it is the backup an operator reaches for when the update they just
+	// ran went wrong (RFC 0001 decision 3, refined by decision 21).
+	KeepPreUpdate int
+}
+
+// Prunes reports which entries of a newest-first listing the policy removes,
+// given each entry's reason. The local engine and the targets prune by it, so
+// the two cannot disagree about what a policy means.
+func (p RetentionPolicy) Prunes(reasons []string) []bool {
+	keep, keepPreUpdate := max(p.Keep, 1), max(p.KeepPreUpdate, 1)
+	out := make([]bool, len(reasons))
+	preUpdate := 0
+	for i, reason := range reasons {
+		if reason == ReasonPreUpdate {
+			preUpdate++
+			if preUpdate <= keepPreUpdate {
+				continue
+			}
+		}
+		out[i] = i >= keep
+	}
+	return out
 }
