@@ -101,7 +101,14 @@ delete the drop-in and use the setting.
 
 `RandomizedDelaySec` spreads installations across half an hour so a vendor's
 registry does not see every customer at the same second, and `Persistent=true`
-catches up a tick missed while the machine was off.
+catches up a tick missed while the machine was off. Set the spread with
+`update.randomized_delay`, `0` for none; `morzer status` shows it beside the
+schedule:
+
+```sh
+morzer config set update.randomized_delay=10m
+morzer config unset update.randomized_delay   # back to 30m, or none in dev mode
+```
 
 ### A tick that cannot take the lock exits 0
 
@@ -116,8 +123,8 @@ release is waiting would train you to ignore it.
 ### A release that fails to install is tried once
 
 When an unattended install fails, the release stays staged and the timer stops
-trying it. Each attempt costs a pre-update backup that retention never removes,
-and a migration run against your database, so retrying on every tick would
+trying it. Each attempt costs a full pre-update backup and a migration run
+against your database, so retrying on every tick would
 repeat both and hide the failure behind the next attempt. You get one
 `operation.finished` notification for the failure, and `morzer status` keeps
 saying the release did not install until something changes:
@@ -150,9 +157,10 @@ what will happen to a real one. It relaxes:
   machine they are not: every development build carries a prerelease version,
   and a check answering "1.4.1-dev.7 is available" is a check nobody reads.
 - **The update timer's spread.** A sandbox's timer has no
-  `RandomizedDelaySec`, so `update.schedule='*:0/5'` follows the channel every
-  five minutes rather than every five to thirty-five. The spread exists for a
-  vendor's customers, and a sandbox polls its own vendor's registry.
+  `RandomizedDelaySec` unless you set `update.randomized_delay`, so
+  `update.schedule='*:0/5'` follows the channel every five minutes rather than
+  every five to thirty-five. The spread exists for a vendor's customers, and a
+  sandbox polls its own vendor's registry.
 
 It relaxes **nothing about verification**. Signature checking, digest pinning
 and `SHA256SUMS` completeness are unchanged, because the sandbox's entire value

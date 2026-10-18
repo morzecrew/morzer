@@ -1,6 +1,9 @@
 package ports
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Supervisor manages the host init system's view of the product: the unit
 // that starts it at boot and the timer that backs it up.
@@ -141,7 +144,14 @@ type UnitParams struct {
 	// True on a sandbox, which polls its vendor's own registry and wants a
 	// short schedule to mean what it says. Named for the unsafe direction,
 	// as SkipBackupTimer is: a caller that forgets it keeps the jitter.
+	// True too when an operator set `update.randomized_delay` to 0.
 	SkipUpdateJitter bool
+
+	// UpdateJitter is the update timer's RandomizedDelaySec, from
+	// `update.randomized_delay` (RFC 0016 decision 31). Zero is the
+	// supervisor's default; SkipUpdateJitter is how none is said, so a
+	// caller that forgets this field keeps the spread too.
+	UpdateJitter time.Duration
 
 	// FleetSchedule is the schedule expression for publishing this
 	// installation's fleet row.

@@ -91,6 +91,10 @@ type Following struct {
 	// supervisor's default, a daily tick.
 	Schedule  string `json:"schedule,omitempty"`
 	AutoApply bool   `json:"auto_apply"`
+
+	// RandomizedDelay is how late a tick may run: the timer's spread, as
+	// `update.randomized_delay` resolves it. Zero is none.
+	RandomizedDelay domain.Duration `json:"randomized_delay"`
 }
 
 type BackupSummary struct {
@@ -145,6 +149,8 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 			Polled:    inst.Update.Check,
 			Schedule:  inst.Update.Schedule,
 			AutoApply: inst.Update.AutoApply,
+
+			RandomizedDelay: domain.Duration(inst.UpdateRandomizedDelay()),
 		}
 	}
 

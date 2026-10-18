@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -134,5 +135,31 @@ func TestUnitsCarriesEveryFieldIntoTheRendering(t *testing.T) {
 	}
 	if strings.Contains(string(timer.Contents), "RandomizedDelaySec") {
 		t.Errorf("SkipUpdateJitter did not reach the rendering:\n%s", timer.Contents)
+	}
+
+	// And the delay itself, which an operator sets as `update.randomized_delay`.
+	for _, tc := range []struct {
+		jitter time.Duration
+		want   string
+	}{
+		{10 * time.Minute, "RandomizedDelaySec=600\n"},
+		{0, "RandomizedDelaySec=1800\n"},
+	} {
+		units, err := s.Units(ports.UnitParams{Product: "demo", UpdateTimer: true, UpdateJitter: tc.jitter})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found bool
+		for _, u := range units {
+			if u.Name == "demo-update.timer" {
+				found = true
+				if !strings.Contains(string(u.Contents), tc.want) {
+					t.Errorf("UpdateJitter %s did not render %q:\n%s", tc.jitter, tc.want, u.Contents)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("UpdateJitter %s took the update timer away", tc.jitter)
+		}
 	}
 }

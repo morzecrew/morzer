@@ -310,6 +310,75 @@ func TestAPreUpdateBackupIsExemptOnTheTargetToo(t *testing.T) {
 			"operator reaches for when the update they were guarding goes wrong")
 }
 
+// Only the newest pre-update backups are exempt (RFC 0001 decision 21), here
+// and on the target, as many as `retention.pre_update_backups` says. A machine
+// updating every ten minutes kept one full backup per update, forever.
+func TestOnlyTheNewestPreUpdateBackupsSurviveRetention(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	inst, offsite := h.withTargets(t)
+	inst.Policy.RetainPreUpdateBackups = -1
+	require.Error(t, h.Deps.State.SaveInstallation(ctx, inst), "a negative count was written")
+	inst.Policy.RetainPreUpdateBackups = 0
+	inst.Policy.RetainBackups = 1
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	set := func(v string) error {
+		_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+			Set: map[string]string{"retention.pre_update_backups": v},
+		})
+		return err
+	}
+	// Zero would read as "prune them all", which the newest never is.
+	for _, bad := range []string{"0", "-1", "many"} {
+		require.Error(t, set(bad), "%q was stored as a count", bad)
+	}
+	require.NoError(t, set("2"))
+	var err error
+
+	var guards []string
+	for range 3 {
+		res, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{
+			Reason: ports.ReasonPreUpdate, Verify: true, Prune: true, Push: true, PruneRemote: true,
+		})
+		require.NoError(t, err)
+		ref, ok := res.Data.(ports.BackupRef)
+		require.True(t, ok)
+		guards = append(guards, ref.ID)
+	}
+	_, err = ops.Backup(ctx, h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+	})
+	require.NoError(t, err)
+
+	local, err := h.Deps.Backup.List(ctx)
+	require.NoError(t, err)
+	remote, err := localdir.New().List(ctx, mustTarget(t, offsite))
+	require.NoError(t, err)
+	for where, ids := range map[string][]string{"locally": idsOfRefs(local), "on the target": idsOfManifests(remote)} {
+		assert.NotContains(t, ids, guards[0], "the oldest pre-update backup survived %s", where)
+		assert.Contains(t, ids, guards[1], "a pre-update backup the setting keeps was pruned %s", where)
+		assert.Contains(t, ids, guards[2], "the newest pre-update backup was pruned %s", where)
+		assert.Len(t, ids, 3, "%s holds %v", where, ids)
+	}
+}
+
+func idsOfRefs(refs []ports.BackupRef) []string {
+	out := make([]string, len(refs))
+	for i, r := range refs {
+		out[i] = r.ID
+	}
+	return out
+}
+
+func idsOfManifests(ms []ports.BackupManifest) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.ID
+	}
+	return out
+}
+
 // TestRetentionFailingOnATargetDoesNotFailTheBackup.
 //
 // Unlike the push, this is `Continue`: the backup was taken and it is off the
@@ -898,6 +967,110 @@ func TestAPreUpdateBackupThatCannotBePushedWarnsRatherThanFailingTheUpdate(t *te
 		"the update succeeded without telling the operator their pre-update "+
 			"backup is only on the machine being updated")
 	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+}
+
+// TestASuccessfulUpdatePrunesWhereItsBackupLanded.
+//
+// Retention runs once a new backup exists, and an update takes one: without
+// this, a machine that only ever updates keeps every pre-update backup. Where
+// the copy did not land, or when the update took none, there is nothing newer
+// to make room for, so nothing there is pruned.
+func TestASuccessfulUpdatePrunesWhereItsBackupLanded(t *testing.T) {
+	remote := ports.TargetRef{Scheme: "memory", Path: "/backups"}
+
+	// Two pre-update backups on the machine and the target, over a policy
+	// that keeps one: what an update-only machine has collected.
+	seeded := func(t *testing.T) (*harness, *fakes.BackupTarget, []string) {
+		t.Helper()
+		h := newHarness(t)
+		inst := h.install()
+		fake := fakes.NewBackupTarget()
+		h.Deps.Targets = fake
+		h.Backup.Root = filepath.Join(h.Root, "var", "backups")
+		require.NoError(t, os.MkdirAll(h.Backup.Root, 0o700))
+		inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+		inst.Policy.RetainBackups = 1
+		inst.Policy.RetainPreUpdateBackups = 1
+		require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+		h.setHookEnv()
+		applyBaseline(t, h)
+
+		var old []string
+		for range 2 {
+			res, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+				Reason: ports.ReasonPreUpdate, Verify: true, Push: true,
+			})
+			require.NoError(t, err)
+			ref, ok := res.Data.(ports.BackupRef)
+			require.True(t, ok)
+			old = append(old, ref.ID)
+		}
+		return h, fake, old
+	}
+	ctx := context.Background()
+	held := func(t *testing.T, h *harness, fake *fakes.BackupTarget) (local, onTarget []string) {
+		t.Helper()
+		refs, err := h.Deps.Backup.List(ctx)
+		require.NoError(t, err)
+		manifests, err := fake.List(ctx, remote)
+		require.NoError(t, err)
+		return idsOfRefs(refs), idsOfManifests(manifests)
+	}
+
+	t.Run("on the machine and on the target", func(t *testing.T) {
+		h, fake, old := seeded(t)
+
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+		require.NoError(t, err)
+
+		local, onTarget := held(t, h, fake)
+		for where, ids := range map[string][]string{"on the machine": local, "on the target": onTarget} {
+			assert.Len(t, ids, 1, "%s holds %v", where, ids)
+			assert.NotContains(t, ids, old[1], "an older pre-update backup survived %s", where)
+		}
+	})
+
+	t.Run("not on a target the copy missed", func(t *testing.T) {
+		h, fake, old := seeded(t)
+		fake.FailPushAt = ports.BackupManifestFileName
+
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+		require.NoError(t, err)
+
+		local, onTarget := held(t, h, fake)
+		assert.Len(t, local, 1, "the machine holds %v", local)
+		assert.ElementsMatch(t, old, onTarget,
+			"the update pruned a target its backup never reached")
+	})
+
+	t.Run("not when the update took no backup", func(t *testing.T) {
+		h, fake, old := seeded(t)
+
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{
+			Options: ops.Options{Force: true, SkipBackup: true},
+			Ref:     stageUpgradeSource(t, h),
+		})
+		require.NoError(t, err)
+
+		local, onTarget := held(t, h, fake)
+		assert.ElementsMatch(t, old, local, "an update without a backup pruned the machine")
+		assert.ElementsMatch(t, old, onTarget, "an update without a backup pruned the target")
+	})
+
+	t.Run("not when the update failed", func(t *testing.T) {
+		h, fake, old := seeded(t)
+		src := stageRecoverableUpgradeSource(t, h)
+		// 1.3.0 never becomes healthy, so the update compensates.
+		h.Health.FailingWaits = 1
+
+		result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+		require.Error(t, err)
+		require.Equal(t, domain.StatusCompensated, result.Record.Status)
+
+		local, onTarget := held(t, h, fake)
+		assert.Subset(t, local, old, "a failed update pruned the machine")
+		assert.Subset(t, onTarget, old, "a failed update pruned the target")
+	})
 }
 
 // TestRetentionNeverRemovesTheLastCopyOnATarget, whatever the policy says.

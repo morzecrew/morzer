@@ -310,7 +310,10 @@ func backupSteps(d *Deps, inst domain.Installation, rel domain.Release, opts Bac
 	if opts.Prune {
 		steps = append(steps, stepPruneBackups(d, inst, rel))
 		if opts.PruneRemote && inst.Backup.HasTargets() {
-			steps = append(steps, stepPruneRemoteBackups(d, inst, rel))
+			steps = append(steps, stepPruneRemoteBackups(d, inst, rel,
+				func(ctx context.Context, _ *engine.State) ([]ports.TargetRef, error) {
+					return d.resolveTargets(ctx, inst)
+				}))
 		}
 	}
 	return steps
@@ -412,12 +415,15 @@ func (d *Deps) unpush(ctx context.Context, refs []ports.RemoteRef) {
 	}
 }
 
-// stepPruneRemoteBackups applies retention on each target.
+// stepPruneRemoteBackups applies retention on each target `which` returns.
 //
 // `Continue`, like the local pass and for the same reason: the backup is taken
 // and it is off the machine, which is everything the operation promised. A
 // target that stays fuller than intended is a warning, not a failed backup.
-func stepPruneRemoteBackups(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {
+func stepPruneRemoteBackups(
+	d *Deps, inst domain.Installation, rel domain.Release,
+	which func(context.Context, *engine.State) ([]ports.TargetRef, error),
+) engine.Step {
 	return engine.Step{
 		ID:          "prune-remote-backups",
 		Description: "apply retention on the backup targets",
@@ -425,13 +431,13 @@ func stepPruneRemoteBackups(d *Deps, inst domain.Installation, rel domain.Releas
 		OnFailure:   engine.Continue,
 		Timeout:     30 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			targets, err := d.resolveTargets(ctx, inst)
+			targets, err := which(ctx, st)
 			if err != nil {
 				return err
 			}
 			policy := ports.RetentionPolicy{
-				Keep:        inst.RetentionBackups(rel.Manifest),
-				KeepReasons: []string{"pre-update"},
+				Keep:          inst.RetentionBackups(rel.Manifest),
+				KeepPreUpdate: inst.RetentionPreUpdateBackups(),
 			}
 
 			// Every target is pruned even after one fails. Returning at
@@ -521,9 +527,9 @@ func stepPruneBackups(d *Deps, inst domain.Installation, rel domain.Release) eng
 		Execute: func(ctx context.Context, st *engine.State) error {
 			removed, err := d.Backup.Prune(ctx, ports.RetentionPolicy{
 				Keep: inst.RetentionBackups(rel.Manifest),
-				// A pre-update backup is exempt until the update
-				// it guards has been confirmed good.
-				KeepReasons: []string{"pre-update"},
+				// The newest pre-update backups are exempt, so the
+				// update they guard can still be undone.
+				KeepPreUpdate: inst.RetentionPreUpdateBackups(),
 			})
 			if err != nil {
 				return err

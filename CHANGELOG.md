@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`update.randomized_delay` sets how late an update tick may run.** A production update timer always waited up to 1800 seconds at random, whatever `update.schedule` said, and a dev-mode one never did. Set a duration in whole seconds, such as `10m`, or `0` for none; unset keeps those defaults. `morzer status` shows the delay beside the schedule.
+
+### Changed
+
+- **Only the newest pre-update backups are kept past retention.** Every pre-update backup was exempt from pruning forever, so a machine that updates every few minutes kept a full backup per update until its disk filled. Now the newest three are exempt, and older ones are pruned like any other backup, locally and on backup targets. A successful update now applies retention too, after its pre-update backup, so a machine that only updates is pruned as well. **The first backup or update after upgrading prunes the older ones already there**, unless it is a backup run with `--no-prune`. Change the three with `morzer config set retention.pre_update_backups=<n>`; the newest is never pruned. Installation state moves to schema 12, so an older manager refuses it rather than dropping either setting.
 - **`morzer notify target add|remove|list`: notification targets are set by a command.** The notifications page said to configure them in `installation.yaml`, which is a report the manager rewrites, and nothing else wrote them. A target is checked when it is added, and nothing is sent to it: the URL must be `https` with no password in it, and every secret it names must be set and well formed. A URL kept in a secret is named by the target's `--name` wherever it is shown. `status` names the targets, and `doctor` warns about one whose secret has gone, which was dropped with only a log line.
 
 ### Fixed
