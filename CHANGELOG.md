@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`backup.before_update`: a dev-mode machine can stop taking pre-update backups.** The installation's `skip_backup_before_update` was honoured by `update` but no command could set it, so a sandbox following a channel every ten minutes took a full backup before every update. `morzer config set backup.before_update=false` turns it off on a dev-mode machine. A production machine refuses, because that backup is what a failed migration is recovered from; `update --skip-backup --force` still skips it for one update.
 - **`update.randomized_delay` sets how late an update tick may run.** A production update timer always waited up to 1800 seconds at random, whatever `update.schedule` said, and a dev-mode one never did. Set a duration in whole seconds, such as `10m`, or `0` for none; unset keeps those defaults. `morzer status` shows the delay beside the schedule.
 
 ### Changed

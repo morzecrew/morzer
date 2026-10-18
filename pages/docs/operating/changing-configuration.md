@@ -90,6 +90,7 @@ A plan never claims a service was re-created; it says what *would* happen.
 | The deployment profile | `apply --profile` for one run; otherwise re-install |
 | The keys a release must be signed with | [`release trust add` / `remove`](../reference/release-commands.md#release-trust) |
 | How many pre-update backups to keep | `config set retention.pre_update_backups=<n>` |
+| No pre-update backup on a dev-mode machine | `config set backup.before_update=false` |
 | Domains, whether a signature is required, release and backup retention | Not yet changeable after `init` |
 | The service topology | The vendor's, in the release's Compose files |
 
