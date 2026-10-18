@@ -2752,7 +2752,19 @@ one most likely to have rotted.</p>
 <p>Governed by <code>retention.backups</code> in the manifest, or <code>policy.retain_backups</code> in
 your installation when you want a different number than the vendor chose. <strong>The
 most recent backup is never pruned</strong>, whatever the number says.</p>
-<p><code>--no-prune</code> skips the retention pass for one run.</p>
+<p>Pre-update backups are counted apart. The newest three are kept on top of that
+number, so the update you just ran can still be undone, and older ones are
+pruned like any other backup. A machine that updates every few minutes would
+otherwise keep a full backup per update. Change the three with
+<code>retention.pre_update_backups</code>; <strong>the newest pre-update backup is never
+pruned</strong>, so the least it takes is <code>1</code>:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>retention.pre_update_backups<span class="o">=</span><span class="m">5</span>
+</code></pre></div>
+<p>Retention runs only once a newer backup exists. <code>morzer backup</code> applies it
+after the backup it takes. A successful update applies it after its
+pre-update backup, on this machine and on each target the copy reached. An
+update that took no backup, or failed, prunes nothing.</p>
+<p><code>--no-prune</code> skips <code>morzer backup</code>'s retention pass for one run.</p>
 <h2 id="restoring">Restoring<a class="headerlink" href="#restoring" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
 morzer<span class="w"> </span>restore<span class="w"> </span>--backup<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
@@ -2838,7 +2850,7 @@ morzer<span class="w"> </span>backup<span class="w"> </span>push<span class="w">
 <p><code>--no-push</code> takes a local-only backup for the run, when you already know the
 medium is disconnected. <code>--no-prune-remote</code> skips the retention pass on the
 targets; retention there follows the same policy as locally, and never removes
-the most recent backup.</p>
+the most recent backup or the newest pre-update backups.</p>
 <h3 id="credentials">Credentials<a class="headerlink" href="#credentials" title="Permanent link">&para;</a></h3>
 <p><code>file://</code> needs none, which is why it is the target a recovery can always reach.</p>
 <p>The others take the <code>--credentials</code> flag, naming a secret that holds a small

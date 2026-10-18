@@ -2426,6 +2426,7 @@ the same bundle again to reach the same answer. <code>status</code> reports it.<
     D --&gt; E[apply's convergence pipeline]
     E --&gt; F{healthy?}
     F --&gt;|yes| G[record the new release]
+    G --&gt; K[apply backup retention]
     F --&gt;|no| I{can the old release read the database now?}
     I --&gt;|yes| H[compensate: the release that was running, containers included]
     I --&gt;|no| J[stop: requires-manual-intervention, exit 12]</code></pre>

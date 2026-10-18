@@ -2355,7 +2355,12 @@ Earlier versions of this page recommended exactly that; if you followed it,
 delete the drop-in and use the setting.</p>
 <p><code>RandomizedDelaySec</code> spreads installations across half an hour so a vendor's
 registry does not see every customer at the same second, and <code>Persistent=true</code>
-catches up a tick missed while the machine was off.</p>
+catches up a tick missed while the machine was off. Set the spread with
+<code>update.randomized_delay</code>, <code>0</code> for none; <code>morzer status</code> shows it beside the
+schedule:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.randomized_delay<span class="o">=</span>10m
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>update.randomized_delay<span class="w">   </span><span class="c1"># back to 30m, or none in dev mode</span>
+</code></pre></div>
 <h3 id="a-tick-that-cannot-take-the-lock-exits-0">A tick that cannot take the lock exits 0<a class="headerlink" href="#a-tick-that-cannot-take-the-lock-exits-0" title="Permanent link">&para;</a></h3>
 <p>Your interactive <code>backup</code> or <code>apply</code> is in the way; the next tick is soon.
 Queueing would make the start time unpredictable, and a failing unit every time
@@ -2365,8 +2370,8 @@ behaviour when the gate refuses, and a unit that failed every night because a
 release is waiting would train you to ignore it.</p>
 <h3 id="a-release-that-fails-to-install-is-tried-once">A release that fails to install is tried once<a class="headerlink" href="#a-release-that-fails-to-install-is-tried-once" title="Permanent link">&para;</a></h3>
 <p>When an unattended install fails, the release stays staged and the timer stops
-trying it. Each attempt costs a pre-update backup that retention never removes,
-and a migration run against your database, so retrying on every tick would
+trying it. Each attempt costs a full pre-update backup and a migration run
+against your database, so retrying on every tick would
 repeat both and hide the failure behind the next attempt. You get one
 <code>operation.finished</code> notification for the failure, and <code>morzer status</code> keeps
 saying the release did not install until something changes:</p>
@@ -2395,9 +2400,10 @@ what will happen to a real one. It relaxes:</p>
   machine they are not: every development build carries a prerelease version,
   and a check answering "1.4.1-dev.7 is available" is a check nobody reads.</li>
 <li><strong>The update timer's spread.</strong> A sandbox's timer has no
-  <code>RandomizedDelaySec</code>, so <code>update.schedule='*:0/5'</code> follows the channel every
-  five minutes rather than every five to thirty-five. The spread exists for a
-  vendor's customers, and a sandbox polls its own vendor's registry.</li>
+  <code>RandomizedDelaySec</code> unless you set <code>update.randomized_delay</code>, so
+  <code>update.schedule='*:0/5'</code> follows the channel every five minutes rather than
+  every five to thirty-five. The spread exists for a vendor's customers, and a
+  sandbox polls its own vendor's registry.</li>
 </ul>
 <p>It relaxes <strong>nothing about verification</strong>. Signature checking, digest pinning
 and <code>SHA256SUMS</code> completeness are unchanged, because the sandbox's entire value

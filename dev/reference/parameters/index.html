@@ -2464,12 +2464,20 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td>When the update timer follows the channel — and installs, if <code>update.auto_apply</code> allows — as a systemd <code>OnCalendar</code> expression. This is the maintenance window. Absent takes daily at 03:30. See <a href="../../operating/unattended-updates/#the-maintenance-window-is-an-oncalendar-expression">unattended updates</a>.</td>
 </tr>
 <tr>
+<td><code>update.randomized_delay</code></td>
+<td>How long each update tick may wait at random, as a duration in whole seconds such as <code>30m</code>; <code>0</code> for none. Absent takes 30 minutes, or none on a <a href="../../operating/unattended-updates/#dev-mode-a-machine-that-is-a-sandbox-from-birth">dev-mode</a> machine. <code>morzer status</code> shows it with the schedule.</td>
+</tr>
+<tr>
 <td><code>backup.schedule</code></td>
 <td>When scheduled backups run, as a systemd <code>OnCalendar</code> expression. Absent takes the nightly default.</td>
 </tr>
 <tr>
 <td><code>backup.scheduled</code></td>
 <td>Whether this manager runs backups on a timer at all. Absent means it does.</td>
+</tr>
+<tr>
+<td><code>retention.pre_update_backups</code></td>
+<td>How many of the newest pre-update backups retention keeps, on top of the ordinary count; at least <code>1</code>. Absent takes <code>3</code>. See <a href="../../operating/backups/#retention">retention</a>.</td>
 </tr>
 </tbody>
 </table>
