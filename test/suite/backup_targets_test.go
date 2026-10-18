@@ -976,7 +976,6 @@ func TestAPreUpdateBackupThatCannotBePushedWarnsRatherThanFailingTheUpdate(t *te
 // the copy did not land, or when the update took none, there is nothing newer
 // to make room for, so nothing there is pruned.
 func TestASuccessfulUpdatePrunesWhereItsBackupLanded(t *testing.T) {
-	ctx := context.Background()
 	remote := ports.TargetRef{Scheme: "memory", Path: "/backups"}
 
 	// Two pre-update backups on the machine and the target, over a policy
@@ -992,13 +991,13 @@ func TestASuccessfulUpdatePrunesWhereItsBackupLanded(t *testing.T) {
 		inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
 		inst.Policy.RetainBackups = 1
 		inst.Policy.RetainPreUpdateBackups = 1
-		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+		require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
 		h.setHookEnv()
 		applyBaseline(t, h)
 
 		var old []string
 		for range 2 {
-			res, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{
+			res, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
 				Reason: ports.ReasonPreUpdate, Verify: true, Push: true,
 			})
 			require.NoError(t, err)
@@ -1008,6 +1007,7 @@ func TestASuccessfulUpdatePrunesWhereItsBackupLanded(t *testing.T) {
 		}
 		return h, fake, old
 	}
+	ctx := context.Background()
 	held := func(t *testing.T, h *harness, fake *fakes.BackupTarget) (local, onTarget []string) {
 		t.Helper()
 		refs, err := h.Deps.Backup.List(ctx)
