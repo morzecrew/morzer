@@ -121,7 +121,8 @@ func ResolveNotifyTarget(
 // the refusal may print.
 func checkNotifyURL(raw, shown string) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
+	// Hostname, not Host: `https://:443/hook` has a port and nowhere to send.
+	if err != nil || u.Hostname() == "" {
 		return domain.Usage("%s is not a URL", shown).
 			WithHint("write https://hooks.example/morzer")
 	}

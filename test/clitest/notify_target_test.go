@@ -45,8 +45,12 @@ func TestNotifyTargetAddRefusesWhatTheWiringWouldDrop(t *testing.T) {
 		args []string
 		says string
 	}{
-		"plaintext":                 {[]string{"http://hooks.example/morzer"}, "must be https"},
-		"no host":                   {[]string{"https:///morzer"}, "is not a URL"},
+		"plaintext":          {[]string{"http://hooks.example/morzer"}, "must be https"},
+		"no host":            {[]string{"https:///morzer"}, "is not a URL"},
+		"a port and no host": {[]string{"https://:443/morzer"}, "is not a URL"},
+		// The parser finds no host and no userinfo, so the password sat
+		// in the path, and the refusal printed it.
+		"a password and no host":    {[]string{"https:////ops:hunter2@hooks.example/morzer"}, "is not a URL"},
 		"a password in the url":     {[]string{"https://ops:hunter2@hooks.example/morzer"}, "carries a credential"},
 		"no endpoint at all":        {nil, "neither url nor url_secret"},
 		"a url secret with no name": {[]string{"--url-secret", "plain_url"}, "must set a name"},

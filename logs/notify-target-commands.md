@@ -111,3 +111,16 @@ before the fix:
   check exists to stop. `ResolveNotifyTarget` now refuses a header name or value
   that `httpguts` rejects, which is net/http's own test. `golang.org/x/net` was
   already a dependency and is now a direct one, at the same version.
+
+## Review: a URL with no host
+
+Raised by CodeRabbit on #112, each reproduced by a failing test before the fix:
+
+- **`https:////user:pass@host` kept its password.** The parser reads an empty
+  host, so there is no userinfo to redact, and the password sits in the path.
+  `domain.RedactURLCredentials` now withholds a hostless URL whose first
+  segment holds an @, as it withholds one that does not parse. An @ further
+  down a hostless path, as in `file:///srv/demo@1.2.0.tar.zst`, is still shown.
+  The redactor is shared, so a release reference is covered too.
+- **`https://:443/hook` was accepted.** `u.Host` is `:443`; the check now reads
+  `u.Hostname()`, so a URL with a port and no host is refused as not a URL.

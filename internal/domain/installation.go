@@ -577,15 +577,24 @@ const UnparseableURL = "(a reference that does not parse, withheld in case it ca
 // username. ports.RedactRefCredentials says why and where it runs; it lives
 // here so a domain type can name itself safely.
 //
-// A URL that does not parse and has an @ in it comes back as UnparseableURL.
+// A URL that does not parse and has an @ in it comes back as UnparseableURL,
+// and so does one whose first segment holds an @ the parser did not read as
+// userinfo: `https:////user:pass@host` parses, with no host, and the password
+// in its path.
 func RedactURLCredentials(raw string) string {
 	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || !strings.Contains(trimmed, "://") {
+	_, rest, found := strings.Cut(trimmed, "://")
+	if !found {
 		return trimmed
 	}
 	u, err := url.Parse(trimmed)
 	if err != nil && strings.Contains(trimmed, "@") {
 		return UnparseableURL
+	}
+	if err == nil && u.User == nil && u.Host == "" {
+		if first, _, _ := strings.Cut(strings.TrimLeft(rest, "/"), "/"); strings.Contains(first, "@") {
+			return UnparseableURL
+		}
 	}
 	if err != nil || u.User == nil {
 		return trimmed
