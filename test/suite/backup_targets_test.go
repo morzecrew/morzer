@@ -242,6 +242,35 @@ func TestPushIsTheRetryForAFailedPush(t *testing.T) {
 	assert.Positive(t, h.Backup.Verified[ref.ID])
 }
 
+// A backup kept on the machine prunes nothing on a target. Retention runs once
+// a newer backup exists (RFC 0001 decision 22), and the target has none.
+func TestALocalBackupLeavesTheTargetsAlone(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	inst, offsite := h.withTargets(t)
+	for range 3 {
+		_, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{
+			Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+		})
+		require.NoError(t, err)
+	}
+	inst.Policy.RetainBackups = 1
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	result, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{
+		Reason: "manual", Verify: true, Prune: true, Push: false, PruneRemote: true,
+	})
+	require.NoError(t, err)
+	for _, step := range result.Record.Steps {
+		assert.NotEqual(t, "prune-remote-backups", step.ID,
+			"a backup that pushes nothing planned a pass on the targets")
+	}
+
+	manifests, err := localdir.New().List(ctx, mustTarget(t, offsite))
+	require.NoError(t, err)
+	assert.Len(t, manifests, 3, "a backup that stayed on the machine pruned the target")
+}
+
 // TestRetentionOnATargetKeepsTheSamePolicyAsLocally, and never the most recent
 // backup.
 func TestRetentionOnATargetKeepsTheSamePolicyAsLocally(t *testing.T) {
