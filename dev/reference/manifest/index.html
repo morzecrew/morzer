@@ -3321,8 +3321,10 @@ with permissions nobody chose.</p>
 </tbody>
 </table>
 <h2 id="operations">operations<a class="headerlink" href="#operations" title="Permanent link">&para;</a></h2>
-<p>A map of well-known name to how it runs. The manager looks up <code>migrate</code>,
-<code>smoke_test</code>, <code>backup</code>, <code>restore</code> and <code>preflight</code> by convention.</p>
+<p>A map of operation name to how it runs. The manager runs four operations,
+<code>migrate</code>, <code>smoke_test</code>, <code>backup</code> and <code>restore</code>, and refuses a manifest that
+declares any other name, since an operation under a misspelled or invented name
+would never run.</p>
 <table>
 <thead>
 <tr>
