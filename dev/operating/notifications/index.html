@@ -2155,54 +2155,60 @@ systemd, a backup runs on a timer with nobody watching — and
 "success" cannot mean "still only on the doomed machine". Without a
 notification, that correct and loud failure is a journal entry nobody reads.</p>
 <h2 id="configuring-a-target">Configuring a target<a class="headerlink" href="#configuring-a-target" title="Permanent link">&para;</a></h2>
-<div class="highlight"><span class="filename">installation.yaml</span><pre><span></span><code><span class="nt">notify</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">targets</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://hooks.example/morzer</span>
-<span class="w">      </span><span class="nt">credentials</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">notify-webhook</span>
-<span class="w">      </span><span class="nt">min_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">error</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>notify<span class="w"> </span>target<span class="w"> </span>add<span class="w"> </span>https://hooks.example/morzer
+morzer<span class="w"> </span>notify<span class="w"> </span>target<span class="w"> </span>list
 </code></pre></div>
+<p>The target is checked when you add it, and nothing is sent to it: the URL must
+be <code>https</code>, a password in it is refused, and any secret it names must be set
+and well formed. Several targets each receive every event, and one failing does
+not stop the others. <code>morzer notify target remove &lt;url|name&gt;</code> stops reporting
+to one, and <code>morzer status</code> names the targets a machine reports to.</p>
 <table>
 <thead>
 <tr>
-<th>Field</th>
+<th>Flag</th>
 <th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>url</code></td>
+<td><code>[url]</code></td>
 <td>The endpoint. Must be <code>https</code>.</td>
 </tr>
 <tr>
-<td><code>url_secret</code></td>
-<td>Names a secret holding the whole URL, for services where the URL <em>is</em> the credential. Exclusive with <code>url</code>.</td>
+<td><code>--url-secret</code></td>
+<td>Names a secret holding the whole URL, for services where the URL <em>is</em> the credential. In place of <code>[url]</code>.</td>
 </tr>
 <tr>
-<td><code>credentials</code></td>
+<td><code>--credentials</code></td>
 <td>Names a secret holding a small <abbr title="YAML Ain't Markup Language">YAML</abbr> document with <code>header</code> and <code>value</code>, sent with each request.</td>
 </tr>
 <tr>
-<td><code>min_level</code></td>
+<td><code>--min-level</code></td>
 <td>Lowest <code>doctor</code> severity this target receives: <code>warn</code> or <code>error</code>. Default <code>error</code>.</td>
 </tr>
 <tr>
-<td><code>name</code></td>
-<td>Label used in diagnostics. Required with <code>url_secret</code>, since nothing else is safe to print.</td>
+<td><code>--name</code></td>
+<td>Label used in diagnostics. Required with <code>--url-secret</code>, since nothing else is safe to print.</td>
 </tr>
 </tbody>
 </table>
-<p>Several targets each receive every event. One failing does not stop the others.</p>
+<p>A header carrying a bearer token goes in a secret:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">printf</span><span class="w"> </span><span class="s1">'header: Authorization\nvalue: Bearer %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$TOKEN</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>morzer<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>notify-webhook
+morzer<span class="w"> </span>notify<span class="w"> </span>target<span class="w"> </span>add<span class="w"> </span>https://hooks.example/morzer<span class="w"> </span>--credentials<span class="w"> </span>notify-webhook
+</code></pre></div>
+<p>The targets are recorded in the installation, and <code>installation.yaml</code> lists
+them; that file is a report the manager rewrites, so change them with these
+commands rather than by editing it. If a secret a target reads is removed
+later, the target is dropped when a command starts, and <code>morzer doctor</code> warns
+about it by name until you fix the secret or remove the target.</p>
 <h3 id="when-the-url-is-the-credential">When the URL is the credential<a class="headerlink" href="#when-the-url-is-the-credential" title="Permanent link">&para;</a></h3>
 <p>A Slack or Teams incoming-webhook URL is a bearer token spelled as a path.
-Putting one in <code>url</code> writes it into a file you will paste into support tickets,
-into <code>doctor</code> output, and into an <code>installation export</code> that travels beside a
-recovery key.</p>
-<div class="highlight"><pre><span></span><code><span class="nt">notify</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">targets</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">chat</span>
-<span class="w">      </span><span class="nt">url_secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">notify-chat-url</span>
-</code></pre></div>
+Putting one in <code>[url]</code> writes it into a file you will paste into support
+tickets, into <code>doctor</code> output, and into an <code>installation export</code> that travels
+beside a recovery key.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>notify-chat-url
+morzer<span class="w"> </span>notify<span class="w"> </span>target<span class="w"> </span>add<span class="w"> </span>--name<span class="w"> </span>chat<span class="w"> </span>--url-secret<span class="w"> </span>notify-chat-url
 </code></pre></div>
 <p>Diagnostics then name the target <code>chat</code> and never say where it points, which is
 the trade: you lose "unreachable host x" and keep the token out of your logs.</p>

@@ -1602,6 +1602,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#notify" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="notify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notify-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#version" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2496,6 +2524,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#notify" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="notify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notify-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#version" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2772,6 +2828,10 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <tr>
 <td><a href="#restore"><code>restore</code></a></td>
 <td>Restore from a backup.</td>
+</tr>
+<tr>
+<td><a href="#notify"><code>notify</code></a></td>
+<td>Manage where operation outcomes are reported.</td>
 </tr>
 <tr>
 <td><a href="#version"><code>version</code></a></td>
@@ -3396,6 +3456,41 @@ right answer instead — it restores the original id, so the guard never fires.<
 <p>Restore declares that it requires manual intervention on failure: a half-restored
 database is a state no automatic action can repair, so a failure here exits
 <a href="../exit-codes/">12</a> rather than pretending compensation succeeded.</p>
+<h2 id="notify">notify<a class="headerlink" href="#notify" title="Permanent link">&para;</a></h2>
+<h3 id="notify-target">notify target<a class="headerlink" href="#notify-target" title="Permanent link">&para;</a></h3>
+<p>Manages the webhooks this deployment reports to. See
+<a href="../../operating/notifications/">notifications</a> for what is sent.</p>
+<p><code>morzer notify target add [url]</code> records a target. It checks what the target
+names before recording it, and sends nothing: an <code>https</code> URL with no password
+in it, and any secret it reads, set and well formed. <code>morzer notify target list</code>
+shows them, naming a URL kept in a secret by its secret.
+<code>morzer notify target remove &lt;url|name&gt;</code> stops reporting to one.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--name</code></td>
+<td>What diagnostics call the target. Required with <code>--url-secret</code>.</td>
+</tr>
+<tr>
+<td><code>--url-secret</code></td>
+<td>Name of a secret holding the whole URL, in place of <code>[url]</code>, for services where the URL is the credential.</td>
+</tr>
+<tr>
+<td><code>--credentials</code></td>
+<td>Name of a secret holding a header to send: a <abbr title="YAML Ain't Markup Language">YAML</abbr> document with <code>header</code> and <code>value</code>.</td>
+</tr>
+<tr>
+<td><code>--min-level</code></td>
+<td>Lowest <code>doctor</code> finding sent to this target: <code>warn</code> or <code>error</code>. Default <code>error</code>.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="version">version<a class="headerlink" href="#version" title="Permanent link">&para;</a></h2>
 <p>Prints the manager version, the commit it was built from, and the manifest API
 versions it can read.</p>
