@@ -397,7 +397,7 @@ would never run.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `kind` | enum | `hook` — an executable in the release, run under the [hook ABI](hooks.md); or `runtime-service` — a one-shot container from the Compose project. |
+| `kind` | enum | `hook` — an executable in the release, run under the [hook ABI](hooks.md); or `runtime-service` — a one-shot container from the Compose project, for `migrate` only. `smoke_test`, `backup` and `restore` must be hooks. |
 | `command` | list | For `hook`: argv, release-relative. Not allowed for `runtime-service`. |
 | `service` | string | For `runtime-service`: the Compose service to run. Not allowed for `hook`. |
 | `timeout` | duration | Time budget. Default `10m`. |

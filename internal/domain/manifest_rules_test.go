@@ -305,6 +305,29 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 				}
 			},
 			"operations.preflight: is not an operation",
+		"a runtime-service smoke_test, which only migrate can run": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSteps{
+					"smoke_test": {{Kind: OperationKindRuntimeService, Service: "app"}},
+				}
+			},
+			"operations.smoke_test.kind: must be \"hook\"; only migrate runs a \"runtime-service\"",
+		},
+		"a runtime-service backup, which only migrate can run": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSteps{
+					"backup": {{Kind: OperationKindRuntimeService, Service: "app"}},
+				}
+			},
+			"operations.backup.kind: must be \"hook\"; only migrate runs a \"runtime-service\"",
+		},
+		"a runtime-service restore, which only migrate can run": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSteps{
+					"restore": {{Kind: OperationKindRuntimeService, Service: "app"}},
+				}
+			},
+			"operations.restore.kind: must be \"hook\"; only migrate runs a \"runtime-service\"",
 		},
 		"a negative timeout": {
 			func(m *Manifest) {
