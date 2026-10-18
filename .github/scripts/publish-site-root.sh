@@ -17,8 +17,8 @@
 # mike touches only the version directory, index.html and versions.json, so a
 # sibling file at the root survives a deploy. That is a property of mike's
 # behaviour rather than a promise it makes, which is why this runs on every docs
-# release rather than once, and why the nightly job fetches the published file
-# and compares it.
+# release that moves `latest` rather than once, and why the nightly job fetches
+# the published files and compares them.
 set -euo pipefail
 
 branch="${1:-gh-pages}"
