@@ -65,8 +65,12 @@ apart.
 
 ### Phases
 
-`PHASE` is one of `preflight`, `pre-update`, `post-update`, `migrate`,
-`smoke-test`, `backup`, `restore`, `health-check`.
+`PHASE` is one of `migrate`, `smoke-test`, `backup`, `restore` or
+`health-check`.
+
+`preflight`, `pre-update` and `post-update` are reserved. The ABI names them,
+but no release of the manager runs a hook in them, so a hook may branch on them
+and nothing reaches the branch.
 
 The same executable may be invoked in more than one phase; branching on `PHASE`
 is how one hook serves several.
