@@ -33,7 +33,8 @@ does not accept is refused before anything is created:
         hint: log_level accepts debug, info, warn, error; default info -- Application log verbosity
 ```
 
-The chosen values are recorded in `installation.yaml`:
+The chosen values are recorded in the installation's state, and shown in
+`installation.yaml`:
 
 ```yaml
 parameters:
