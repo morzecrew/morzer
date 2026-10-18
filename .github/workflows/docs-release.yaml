@@ -68,7 +68,7 @@ jobs:
       # After mike, and on every docs release. mike owns index.html and
       # versions.json at the root; a sibling file surviving that is its
       # behaviour rather than its promise, so this re-publishes rather than
-      # trusting the last one is still there. The nightly job checks the
-      # published bytes against this repository's.
-      - name: Publish install.sh at the site root
-        run: .github/scripts/publish-install-script.sh
+      # trusting the last one is still there. The nightly job checks
+      # install.sh's published bytes against this repository's.
+      - name: Publish install.sh and the schemas at the site root
+        run: .github/scripts/publish-site-root.sh
