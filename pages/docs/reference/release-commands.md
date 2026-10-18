@@ -132,8 +132,9 @@ yet.
 
 `--signing-key` is how a vendor checks their own signing pipeline in CI: it
 needs no installation on the machine, because there is no policy to read there.
-On a deployment host, the installation's `policy.signing_keys`, set at `init`,
-decides instead. See [Verification](#verification).
+On a deployment host, the installation's trusted keys decide instead: set at
+`init`, and changed with [`release trust`](#release-trust). See
+[Verification](#verification).
 
 ## release pack
 
@@ -395,6 +396,13 @@ exists to prevent.
 Credentials come from the ambient Docker configuration, so an operator who has
 run `docker login` for the registry their *images* come from does not log in
 again for the bundle that pins those images. Nothing is stored by the manager.
+
+The configuration is found where the `docker` CLI finds it:
+`$DOCKER_CONFIG/config.json`, or else `.docker/config.json` in the home
+directory of the user the manager runs as, from the password database when
+`HOME` is unset. The systemd units run as root with no `HOME`, so a channel the
+update timer follows reads `/root/.docker/config.json`: log in as root
+(`sudo docker login registry.example`).
 
 `morzer update --check <ref>` against an `oci://` reference reads the
 repository's version tags and reports the newer releases this installation could

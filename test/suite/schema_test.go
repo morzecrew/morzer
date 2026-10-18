@@ -329,6 +329,25 @@ func TestTheManifestSchemaRefusesWhatTheLoaderRefusesEmpty(t *testing.T) {
 	}
 }
 
+// TestTheManifestSchemaNamesOnlyTheOperationsTheLoaderRuns: an operation under
+// any other name loads nowhere, and an editor underlining `smoke-test` is the
+// earliest a vendor can learn it would never have run.
+func TestTheManifestSchemaNamesOnlyTheOperationsTheLoaderRuns(t *testing.T) {
+	var node map[string]any
+	raw, err := os.ReadFile(schemaPath(t, schema.ManifestSchemaFile))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &node))
+
+	operations := object(t, object(t, node, "properties"), "operations")
+	enum, ok := object(t, operations, "propertyNames")["enum"].([]any)
+	require.True(t, ok, "operations has no closed list of names")
+	var names []string
+	for _, n := range enum {
+		names = append(names, fmt.Sprint(n))
+	}
+	assert.Equal(t, domain.OperationNames, names)
+}
+
 // TestTheInstallationSchemaConstrainsWhatTheWriterProduces.
 //
 // Generated from struct shape alone, the schema said every field was optional

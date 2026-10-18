@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Publish install.sh at the gh-pages root, beside mike's version directories.
+# Publish install.sh and schemas/ at the gh-pages root, beside mike's version
+# directories.
 #
 # The site is versioned: mike deploys each minor into its own subdirectory and
 # owns the root, where it writes index.html and versions.json. A URL under a
@@ -7,6 +8,11 @@
 # the script to a docs version that has nothing to do with the release being
 # installed, and .../latest/install.sh moves when the docs move. The root is the
 # only place with the right lifetime.
+#
+# The schemas have the same problem. Every scaffolded manifest names
+# .../schemas/selfhost-v1alpha1-manifest.json in its yaml-language-server
+# modeline, a bundle outlives any docs version, and the file name already
+# carries the API version that decides which schema applies.
 #
 # mike touches only the version directory, index.html and versions.json, so a
 # sibling file at the root survives a deploy. That is a property of mike's
@@ -16,12 +22,13 @@
 set -euo pipefail
 
 branch="${1:-gh-pages}"
-source_file="${2:-install.sh}"
 
-if [ ! -f "$source_file" ]; then
-	echo "error: $source_file is not here; run this from the repository root" >&2
-	exit 1
-fi
+for path in install.sh schemas; do
+	if [ ! -e "$path" ]; then
+		echo "error: $path is not here; run this from the repository root" >&2
+		exit 1
+	fi
+done
 
 if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
 	# Before the first docs deploy there is no branch to publish into. That
@@ -41,8 +48,12 @@ trap cleanup EXIT
 git fetch --no-tags --depth 1 origin "$branch"
 git worktree add --force "$work" "origin/${branch}" >/dev/null
 
-cp "$source_file" "${work}/install.sh"
+cp install.sh "${work}/install.sh"
 chmod 0755 "${work}/install.sh"
+# Replaced whole rather than copied over, so a schema the repository stops
+# publishing stops answering at its URL.
+rm -rf "${work}/schemas"
+cp -R schemas "${work}/schemas"
 
 cd "$work"
 
@@ -55,12 +66,12 @@ cd "$work"
 #
 # Staging makes all three cases the same question: absent stages as a new file
 # and differs, changed differs, unchanged does not.
-git add install.sh
-if git diff --cached --quiet -- install.sh; then
-	echo "install.sh at the site root is already these bytes"
+git add -A install.sh schemas
+if git diff --cached --quiet -- install.sh schemas; then
+	echo "install.sh and schemas/ at the site root are already these bytes"
 	exit 0
 fi
 
-git commit -m "🔧 chore(docs): publish install.sh at the site root"
+git commit -m "🔧 chore(docs): publish install.sh and schemas at the site root"
 git push origin "HEAD:${branch}"
-echo "published install.sh to the ${branch} root"
+echo "published install.sh and schemas/ to the ${branch} root"
