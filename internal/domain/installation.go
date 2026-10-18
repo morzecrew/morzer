@@ -781,6 +781,16 @@ func ValidateBackupSchedule(raw string) error { return validateSchedule("a backu
 // the state file.
 func ValidateUpdateSchedule(raw string) error { return validateSchedule("an update schedule", raw) }
 
+// ValidateUpdateRandomizedDelay refuses a spread the timer cannot render. It
+// renders whole seconds, so 500ms would run with no delay while `status`
+// reported one.
+func ValidateUpdateRandomizedDelay(d Duration) error {
+	if d.Duration()%time.Second != 0 {
+		return ValidationError(nil, "the update delay must be whole seconds, and %s is not", d)
+	}
+	return nil
+}
+
 func validateSchedule(what, raw string) error {
 	// The raw value, before any trim. This guard runs on load and on save,
 	// where `raw` *is* what gets rendered -- so trimming first and scanning
@@ -1008,10 +1018,10 @@ func (i Installation) Validate() error {
 	if i.Policy.RetainPreUpdateBackups < 0 {
 		v.add("policy.retain_pre_update_backups", "must not be negative")
 	}
-	// The timer renders whole seconds, so 500ms would run with no delay
-	// while `status` reported one.
-	if d := i.Update.RandomizedDelay; d != nil && d.Duration()%time.Second != 0 {
-		v.add("update.randomized_delay", "must be whole seconds, and %s is not", d)
+	if d := i.Update.RandomizedDelay; d != nil {
+		if err := ValidateUpdateRandomizedDelay(*d); err != nil {
+			v.add("update.randomized_delay", "%s", AsError(err).Message)
+		}
 	}
 
 	// An unsatisfiable policy is refused where it is written rather than

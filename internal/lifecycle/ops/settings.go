@@ -35,6 +35,11 @@ type setting struct {
 	// Read renders the current value, for `config get`.
 	Read func(domain.Installation) string
 
+	// Stored renders what the installation records, where Read renders a
+	// default in its place. Change detection compares it, so a value equal
+	// to the default is still recorded when set and removed when unset.
+	Stored func(domain.Installation) string
+
 	// Apply validates the raw text and records it. It takes a pointer
 	// because a setting may touch more than the field it names.
 	Apply func(context.Context, *Deps, *domain.Installation, string) error
@@ -129,8 +134,17 @@ var settings = map[string]setting{
 			if err := delay.UnmarshalText([]byte(raw)); err != nil {
 				return err
 			}
+			if err := domain.ValidateUpdateRandomizedDelay(delay); err != nil {
+				return err
+			}
 			i.Update.RandomizedDelay = &delay
 			return nil
+		},
+		Stored: func(i domain.Installation) string {
+			if i.Update.RandomizedDelay == nil {
+				return ""
+			}
+			return i.Update.RandomizedDelay.String()
 		},
 		Clear: func(i *domain.Installation) { i.Update.RandomizedDelay = nil },
 	},
@@ -150,7 +164,8 @@ var settings = map[string]setting{
 			i.Policy.RetainPreUpdateBackups = n
 			return nil
 		},
-		Clear: func(i *domain.Installation) { i.Policy.RetainPreUpdateBackups = 0 },
+		Stored: func(i domain.Installation) string { return strconv.Itoa(i.Policy.RetainPreUpdateBackups) },
+		Clear:  func(i *domain.Installation) { i.Policy.RetainPreUpdateBackups = 0 },
 	},
 	"backup.scheduled": {
 		Description: "whether this manager runs backups on a timer at all (RFC 0030 row 4)",
@@ -342,7 +357,7 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		if !ok {
 			return Result{}, unknownSetting(name)
 		}
-		if s.Read(next) == s.Read(zeroFor(next, s)) {
+		if s.stored(next) == s.stored(zeroFor(next, s)) {
 			continue
 		}
 		s.Clear(&next)
@@ -354,11 +369,11 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		if !ok {
 			return Result{}, unknownSetting(name)
 		}
-		before := s.Read(next)
+		before := s.stored(next)
 		if err := s.Apply(ctx, d, &next, opts.Set[name]); err != nil {
 			return Result{}, err
 		}
-		if s.Read(next) == before {
+		if s.stored(next) == before {
 			continue
 		}
 		changed = append(changed, name)
@@ -408,19 +423,19 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		changed = changed[:0]
 		for _, name := range opts.Unset {
 			s := settings[name]
-			before := s.Read(fresh)
+			before := s.stored(fresh)
 			s.Clear(&fresh)
-			if s.Read(fresh) != before {
+			if s.stored(fresh) != before {
 				changed = append(changed, name)
 			}
 		}
 		for _, name := range sortedSettingNames(opts.Set) {
 			s := settings[name]
-			before := s.Read(fresh)
+			before := s.stored(fresh)
 			if err := s.Apply(ctx, d, &fresh, opts.Set[name]); err != nil {
 				return err
 			}
-			if s.Read(fresh) != before {
+			if s.stored(fresh) != before {
 				changed = append(changed, name)
 			}
 		}
@@ -568,6 +583,13 @@ func (d *Deps) refreshUnits(ctx context.Context, inst domain.Installation) error
 		return nil
 	}
 	return d.Supervisor.RemoveUnits(ctx, stale)
+}
+
+func (s setting) stored(inst domain.Installation) string {
+	if s.Stored != nil {
+		return s.Stored(inst)
+	}
+	return s.Read(inst)
 }
 
 // zeroFor returns the installation with one setting cleared, so "already at its

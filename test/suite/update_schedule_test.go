@@ -343,12 +343,55 @@ func TestTheUpdateDelayCanBeSetAndUnset(t *testing.T) {
 	// The timer takes whole seconds, so 500ms would render as none.
 	for _, bad := range []string{"-5m", "soon", "1800", "500ms", "1m0.5s"} {
 		require.Error(t, set("update.randomized_delay", bad), "%q was stored as a delay", bad)
+		_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+			Options: ops.Options{DryRun: true},
+			Set:     map[string]string{"update.randomized_delay": bad},
+		})
+		require.Error(t, err, "a plan accepted %q, which the run refuses", bad)
 	}
 
 	_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Unset: []string{"update.randomized_delay"}})
 	require.NoError(t, err)
 	assert.Contains(t, updateTimer(t, unitDir), "Persistent=true\nRandomizedDelaySec=1800\n\n[Install]",
 		"unset did not return production to its half-hour spread")
+}
+
+// A value equal to the default is still the operator's, so set records it and
+// unset removes it: the default is the manager's to change, and theirs is not.
+func TestADefaultSetByNameIsRecorded(t *testing.T) {
+	h, _ := followingMachine(t, "")
+	ctx := context.Background()
+	names := []string{"retention.pre_update_backups", "update.randomized_delay"}
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	delay := domain.Duration(domain.DefaultUpdateRandomizedDelay)
+	inst.Update.RandomizedDelay = &delay
+	inst.Policy.RetainPreUpdateBackups = domain.DefaultRetentionPreUpdateBackups
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	// One setting per call: a call that changes anything saves every value
+	// it was given, which would hide one that was not seen to change.
+	for _, name := range names {
+		_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Unset: []string{name}})
+		require.NoError(t, err)
+	}
+	inst, err = h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, inst.Update.RandomizedDelay, "unset left the recorded default delay")
+	assert.Zero(t, inst.Policy.RetainPreUpdateBackups, "unset left the recorded default count")
+
+	for name, value := range map[string]string{
+		"retention.pre_update_backups": "3",
+		"update.randomized_delay":      "30m",
+	} {
+		_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: map[string]string{name: value}})
+		require.NoError(t, err)
+	}
+	inst, err = h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotNil(t, inst.Update.RandomizedDelay, "set did not record 30m, the default")
+	assert.Equal(t, 3, inst.Policy.RetainPreUpdateBackups, "set did not record 3, the default")
 }
 
 // A sandbox has no spread unless its operator asks for one.

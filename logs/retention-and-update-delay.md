@@ -157,3 +157,19 @@ Raised by CodeRabbit, against `2445834`:
   top of the random delay. The note now describes the setting: "random delay up
   to 5m0s". Setting `AccuracySec` would rewrite every installation's timer
   unit, which is out of scope here.
+
+Raised by CodeRabbit, against `4a5e343`:
+
+- **A plan accepted a sub-second delay that the run refuses.** The whole-second
+  check ran only in `Validate`, at save, so `config set --dry-run
+  update.randomized_delay=500ms` planned a change the same command then
+  refused. `domain.ValidateUpdateRandomizedDelay` now holds the check, and both
+  `Validate` and the setting call it.
+- **A value equal to the default was not recorded, and could not be unset.**
+  Change detection compared what `config get` shows, which is the value in
+  force. Setting `30m` in production, or `3` pre-update backups, reported "no
+  change" and stored nothing. Unsetting a stored `30m` also reported "no change"
+  and left it stored. RFC 0016 decision 31 makes an operator's value distinct
+  from unset.
+  Change detection now compares the stored value; `config get` still shows the
+  value in force.
