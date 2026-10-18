@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **The schema URL in every scaffolded manifest returned 404.** `release new` writes a `yaml-language-server` modeline naming `https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json`, which is also the schema's own `$id`, and nothing published the schemas there: the documentation site is versioned, and they lived only in the repository. Each docs release now publishes `schemas/` at the site root beside `install.sh`, so an editor following the modeline gets the schema.
+- **A `runtime-service` smoke test, backup or restore is refused when the bundle loads.** Only `migrate` can run a one-shot container. The other three handed the step to the hook runner, which a `runtime-service` step gives no command, so a `runtime-service` smoke test failed every `apply` that reached it with an internal error, a restore failed the same way, and a backup was refused only once one ran. The manifest now refuses a `runtime-service` under any operation but `migrate`, naming `hook` as what the others support.
 
 ## [0.4.0] - 2026-10-17
 
