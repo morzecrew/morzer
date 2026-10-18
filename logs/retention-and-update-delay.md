@@ -145,3 +145,15 @@ Raised by CodeAnt:
 - **Text `status` says nothing about a zero delay.** Not changed. Zero is "no
   delay", which the schedule note already implies, and `status --json` carries
   `randomized_delay` either way.
+
+Raised by CodeRabbit, against `2445834`:
+
+- **Prune with an unreadable manifest, and a sub-second delay.** The same two
+  findings as above, already fixed in `4a5e343`. CodeRabbit suggested pruning
+  around an unreadable entry. Pruning nothing that run is simpler, and the next
+  backup retries the prune.
+- **The status note promised a bound the timer does not keep.** "up to 5m0s
+  late" left out systemd's `AccuracySec`, one minute by default, which comes on
+  top of the random delay. The note now describes the setting: "random delay up
+  to 5m0s". Setting `AccuracySec` would rewrite every installation's timer
+  unit, which is out of scope here.

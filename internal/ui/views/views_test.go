@@ -393,7 +393,7 @@ func TestFollowingNoteSaysWhenAndWhat(t *testing.T) {
 		{ops.Following{Channel: ch, Polled: true, AutoApply: true}, "(daily, installs what it may)"},
 		{
 			ops.Following{Channel: ch, Polled: true, Schedule: "*:0/15", RandomizedDelay: domain.Duration(5 * time.Minute)},
-			"(on *:0/15, up to 5m0s late, stages only)",
+			"(on *:0/15, random delay up to 5m0s, stages only)",
 		},
 	} {
 		var b bytes.Buffer
