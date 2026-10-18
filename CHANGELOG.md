@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **The update timer fetched a private `oci://` channel without credentials.** systemd sets no `HOME` for the manager's units, and the registry client looked for the Docker configuration only under `HOME`, so it went anonymous and the registry refused it, while `docker compose pull` in the same run found root's login through the password database. The manager now finds the configuration the way the `docker` CLI does: `DOCKER_CONFIG`, then `HOME`, then the password database.
+- **A `runtime-service` smoke test, backup or restore is refused when the bundle loads.** Only `migrate` can run a one-shot container. The other three handed the step to the hook runner, which a `runtime-service` step gives no command, so a `runtime-service` smoke test failed every `apply` that reached it with an internal error, a restore failed the same way, and a backup was refused only once one ran. The manifest now refuses a `runtime-service` under any operation but `migrate`, naming `hook` as what the others support.
 
 ## [0.4.0] - 2026-10-17
 
