@@ -38,6 +38,8 @@ func TestNotifyTargetAddRefusesWhatTheWiringWouldDrop(t *testing.T) {
 	r := NewInstalled(t)
 	r.SetSecret("half_creds", "header: Authorization\n")
 	r.SetSecret("plain_url", "http://hooks.example/T0/B1/XXsecretXX")
+	r.SetSecret("bad_header", "header: Authorization Bearer\nvalue: x\n")
+	r.SetSecret("bad_value", "header: Authorization\nvalue: \"Bearer a\\nX-Injected: b\"\n")
 
 	for name, tc := range map[string]struct {
 		args []string
@@ -52,6 +54,13 @@ func TestNotifyTargetAddRefusesWhatTheWiringWouldDrop(t *testing.T) {
 		"a plaintext url secret":    {[]string{"--name", "chat", "--url-secret", "plain_url"}, "must be https"},
 		"half a credential":         {[]string{"https://hooks.example/a", "--credentials", "half_creds"}, "no header and value"},
 		"an unknown level":          {[]string{"https://hooks.example/a", "--min-level", "info"}, "min_level"},
+		// Validate runs before the credential refusal and names the target.
+		"a password and an unknown level": {
+			[]string{"https://ops:hunter2@hooks.example/morzer", "--min-level", "info"}, "min_level",
+		},
+		// net/http refuses these at every delivery, which drops them.
+		"a header name http refuses":  {[]string{"https://hooks.example/a", "--credentials", "bad_header"}, "not a valid HTTP header"},
+		"a header value http refuses": {[]string{"https://hooks.example/a", "--credentials", "bad_value"}, "not a valid HTTP header"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			res := r.Run(append([]string{"notify", "target", "add"}, tc.args...)...).

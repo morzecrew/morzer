@@ -110,4 +110,17 @@ func TestANotifyPasswordWrittenByHandIsNotShown(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, status.Notify, 1)
 	assert.NotContains(t, status.Notify[0], "hunter2")
+
+	// Nor what removing it says, or refusing a typed url that is not one.
+	_, err = ops.NotifyTargetRemove(context.Background(), h.Deps, ops.Options{},
+		"https://ops:hunter2@other.example/morzer")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "hunter2")
+	for _, dry := range []bool{true, false} {
+		res, err := ops.NotifyTargetRemove(context.Background(), h.Deps, ops.Options{DryRun: dry},
+			"https://ops:hunter2@hooks.example/morzer")
+		require.NoError(t, err)
+		assert.Contains(t, res.Summary, "hooks.example")
+		assert.NotContains(t, res.Summary, "hunter2")
+	}
 }

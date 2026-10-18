@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"golang.org/x/net/http/httpguts"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -102,6 +103,15 @@ func ResolveNotifyTarget(
 			"the secret %q sets no header and value", cfg.Credentials).
 			WithHint("it is a small YAML document with both, e.g. " +
 				"`header: Authorization` and `value: Bearer …`")
+	}
+	// The same silence by another route: net/http refuses such a header on
+	// every request, so each delivery fails and is dropped. Neither is quoted,
+	// because the value is the credential.
+	if !httpguts.ValidHeaderFieldName(creds.Header) || !httpguts.ValidHeaderFieldValue(creds.Value) {
+		return NotifyEndpoint{}, domain.ValidationError(nil,
+			"the secret %q is not a valid HTTP header", cfg.Credentials).
+			WithHint("a header name is one token, such as `Authorization`, and " +
+				"its value is one line")
 	}
 	out.Header, out.Value = creds.Header, creds.Value
 	return out, nil
@@ -235,7 +245,9 @@ func NotifyTargetRemove(ctx context.Context, d *Deps, opts Options, which string
 			return which != "" && (strings.TrimSpace(t.Name) == which || strings.TrimSpace(t.URL) == which)
 		})
 		if idx < 0 {
-			e := domain.Usage("%s is not a notify target of this installation", which)
+			// What was typed may be a URL with a password in it.
+			e := domain.Usage("%s is not a notify target of this installation",
+				ports.RedactRefCredentials(which))
 			if !current.Notify.HasTargets() {
 				return e.WithHint("this installation reports to no notify target")
 			}
@@ -285,7 +297,7 @@ func notifyTargets(inst domain.Installation) []NotifyTarget {
 			level = "error"
 		}
 		out = append(out, NotifyTarget{
-			Target:      ports.RedactRefCredentials(t.Label()),
+			Target:      t.Label(),
 			URLSecret:   t.URLSecret,
 			Credentials: t.Credentials,
 			MinLevel:    level,
@@ -312,7 +324,7 @@ func (d *Deps) checkNotifyTargets(inst domain.Installation) preflight.Check {
 			for _, t := range inst.Notify.Targets {
 				if _, err := ResolveNotifyTarget(ctx, d.Secrets, t); err != nil {
 					problems = append(problems, fmt.Sprintf("%s (%s)",
-						ports.RedactRefCredentials(t.Label()), domain.AsError(err).Message))
+						t.Label(), domain.AsError(err).Message))
 				}
 			}
 			if len(problems) > 0 {

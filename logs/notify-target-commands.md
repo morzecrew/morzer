@@ -92,3 +92,22 @@ evidence: internal/cli/notify.go:58
 action: decided
 proposal: ASSUMED — `doctor` warns about a notify target that would be dropped, naming it by its label and never by a URL read from a secret.
 ```
+
+## Review: three ways a target still went wrong
+
+Raised by CodeRabbit and CodeAnt on #112, each reproduced by a failing test
+before the fix:
+
+- **A password in a hand-written URL reached output through `Label()`.** `list`,
+  `status` and `doctor` wrapped the label in `ports.RedactRefCredentials`, but
+  `remove`'s summaries, `add`'s refusals and `Validate`'s `min_level` refusal
+  did not. The redaction now happens inside `Label()`, once, and the wraps are
+  gone. `remove`'s "not a notify target" refusal echoes what was typed, which
+  may be such a URL, so it is redacted too. The redactor moved to
+  `domain.RedactURLCredentials` so the domain type can use it.
+  `ports.RedactRefCredentials` calls it.
+- **A credential document whose header net/http refuses was accepted.** Every
+  delivery then failed and was dropped, which is the silent channel the empty
+  check exists to stop. `ResolveNotifyTarget` now refuses a header name or value
+  that `httpguts` rejects, which is net/http's own test. `golang.org/x/net` was
+  already a dependency and is now a direct one, at the same version.
