@@ -421,6 +421,7 @@ func updateSteps(
 	// query later without asking them to remember.
 	convergeOpts := opts.Options
 	convergeOpts.SourceRef = ports.RedactRefCredentials(opts.Ref)
+	convergeOpts.PreviousVersion = from.Version
 	steps = append(steps, applySteps(d, inst, converge, convergeOpts)...)
 	steps = append(steps, stepRetireParameters(d, staged, retired))
 

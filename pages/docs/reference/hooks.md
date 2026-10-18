@@ -32,11 +32,11 @@ the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`.
 | `<PRODUCT>_PRODUCT` | The product name itself. |
 | `<PRODUCT>_INSTALLATION_ID` | Identifies this deployment on this machine. |
 | `<PRODUCT>_OPERATION_ID` | The operation the hook is running inside. Appears in the journal and in error output. |
-| `<PRODUCT>_OPERATION_TYPE` | `init`, `apply`, `update`, `rollback`, `backup`, `restore`. |
+| `<PRODUCT>_OPERATION_TYPE` | `apply`, `update`, `rollback`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `init` is reserved: no hook runs under it. |
 | `<PRODUCT>_PHASE` | Where in the lifecycle this invocation sits — see below. |
 | `<PRODUCT>_RELEASE_VERSION` | Version of the release the hook belongs to. |
 | `<PRODUCT>_RELEASE_DIR` | Absolute path to the release root. Same as the working directory. |
-| `<PRODUCT>_PREVIOUS_VERSION` | The version being replaced, during an update or rollback. |
+| `<PRODUCT>_PREVIOUS_VERSION` | The version being replaced, during an update or rollback. Absent otherwise, a first install included. |
 | `<PRODUCT>_DATA_DIR` | Persistent product data. |
 | `<PRODUCT>_BACKUP_DIR` | Where a backup hook writes, and a restore hook reads. Its contents are an ABI — see [below](#what-is-in-backup_dir). |
 | `<PRODUCT>_SECRETS_DIR` | The tmpfs directory secrets are rendered to. |
@@ -62,6 +62,31 @@ Absent under a runtime that has no such notion. A project is Compose's grouping
 primitive; a runtime without one would have to invent a value, and a hook
 branching on a variable that is always set cannot tell the two situations
 apart.
+
+### A migration service
+
+A `runtime-service` migrate step is a container, not a hook, and gets the part
+of the table above that means the same inside one, set in its environment:
+
+`PRODUCT`, `INSTALLATION_ID`, `OPERATION_ID`, `OPERATION_TYPE`, `PHASE`,
+`RELEASE_VERSION`, `PREVIOUS_VERSION`, `LOG_LEVEL` and `DRY_RUN`, each with the
+product prefix.
+
+Left out:
+
+- **The host paths**, `RELEASE_DIR`, `DATA_DIR`, `BACKUP_DIR`, `SECRETS_DIR`
+  and `CONFIG_FILE`. They name the manager's filesystem, and the container sees
+  only what its Compose service mounts.
+- **`RESULT_FD`.** No descriptor is open in the container, so a migration
+  service cannot report `schema_version`. Declare
+  [`database_schema_produces`](manifest.md#database_schema_produces-is-what-opts-a-release-into-unattended-updates)
+  instead.
+- **Parameters and the runtime's variables.** A service receives parameters the
+  way the release's Compose file passes them, as it does when it runs as part of
+  the deployment.
+
+The values are passed on the `docker compose run` command line, which other
+users on the machine can read. None of them is a secret.
 
 ### Phases
 

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A migration service is told what is running it.** A `runtime-service` migrate step received none of the hook ABI's variables, so it could not tell an update from a re-apply or learn the version it was migrating to. It now gets the ones that mean the same inside a container: the product, installation and operation ids, `OPERATION_TYPE`, `PHASE`, `RELEASE_VERSION`, `PREVIOUS_VERSION`, `LOG_LEVEL` and `DRY_RUN`. Host paths and `RESULT_FD` are left out, so a service still reports its schema through `database_schema_produces`.
 - **`update.randomized_delay` sets how late an update tick may run.** A production update timer always waited up to 1800 seconds at random, whatever `update.schedule` said, and a dev-mode one never did. Set a duration in whole seconds, such as `10m`, or `0` for none; unset keeps those defaults. `morzer status` shows the delay beside the schedule.
 
 ### Changed
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A migrate step and the smoke test were always told the operation was `apply`.** `OPERATION_TYPE` was `apply` and `PREVIOUS_VERSION` was absent on every run, so an update from 1.2.0 looked like a re-apply. They are now told `update` or `rollback` and the version being replaced. A first install is still `apply`, as the hook ABI reference now says.
 - **A backport release would have replaced the installer at the site root with its older copy.** Every docs release published `install.sh`, and now `schemas/`, at the site root, so tagging 0.3.5 after 0.4.0 would have served 0.3.5's installer and schemas to everyone. Only a release that moves the documentation's `latest` alias publishes them now. The nightly check compares the published schemas with the newest release, as it already did `install.sh`.
 - **The update timer fetched a private `oci://` channel without credentials.** systemd sets no `HOME` for the manager's units, and the registry client looked for the Docker configuration only under `HOME`, so it went anonymous and the registry refused it, while `docker compose pull` in the same run found root's login through the password database. The manager now finds the configuration the way the `docker` CLI does: `DOCKER_CONFIG`, then `HOME`, then the password database.
 - **An operation under a name the manager never runs is refused.** `operations` accepted any name, so a misspelled `smoke-test:` or an invented `post_migrate:` loaded cleanly and never ran, and the bundle's customer got no smoke test and no error. `preflight`, which the manifest reference listed as looked up, was never run either. A manifest may now declare only `migrate`, `smoke_test`, `backup` and `restore`, and **a bundle declaring any other operation, `preflight` included, is now refused** with the field named and the four listed. The published manifest schema closes the names the same way, so an editor underlines one before the manager sees it.

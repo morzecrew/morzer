@@ -335,7 +335,9 @@ func rollbackSteps(
 	steps := []engine.Step{
 		stepPointToPrevious(d, current, previousRel),
 	}
-	return append(steps, applySteps(d, inst, previousRel, opts.Options)...)
+	converge := opts.Options
+	converge.PreviousVersion = current.Version
+	return append(steps, applySteps(d, inst, previousRel, converge)...)
 }
 
 // stepPointToPrevious swaps the release pointer and the current symlink.

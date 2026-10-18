@@ -104,8 +104,10 @@ type Runtime struct {
 	ExecResults map[string]ports.ExitResult
 	ExecArgv    [][]string
 
-	// OneShotResults maps a service name to its exit result.
+	// OneShotResults maps a service name to its exit result, and OneShots
+	// records what each run was handed.
 	OneShotResults map[string]ports.ExitResult
+	OneShots       []ports.RunOptions
 
 	// Storage is what Volumes reports.
 	Storage ports.ProjectStorage
@@ -478,6 +480,7 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.OneShots = append(r.OneShots, opts)
 	if res, ok := r.OneShotResults[service]; ok {
 		return res, nil
 	}

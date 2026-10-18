@@ -141,6 +141,19 @@ func HookEnvVars(e HookEnv) map[string]string {
 	return out
 }
 
+// ServiceEnvVars is the part of the hook ABI a migration service receives: what
+// means the same inside a container. Host paths name the manager's filesystem,
+// the result descriptor is not open in there, parameters reach a service the
+// way the vendor's Compose file wires them, and the runtime's own variables
+// describe the host's view of the project.
+func ServiceEnvVars(e HookEnv) map[string]string {
+	e.ReleaseDir, e.DataDir, e.BackupDir, e.SecretsDir, e.ConfigFile = "", "", "", "", ""
+	e.Parameters, e.Extra = nil, nil
+	out := HookEnvVars(e)
+	delete(out, e.Var("RESULT_FD"))
+	return out
+}
+
 // HookResultFD is the descriptor a hook writes its structured result to.
 //
 // Not stdout: stdout goes to the log and the live view, and a hook forced to

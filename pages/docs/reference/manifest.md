@@ -411,7 +411,9 @@ condition it names, so a migration service can reach the database on a first
 install, before the deployment's other services have ever started. On an update,
 a dependency whose configuration changed is recreated at that point, so
 migrations run against the new release's database service. Exit `2` means
-"nothing to do", as it does for a hook.
+"nothing to do", as it does for a hook. It is told which operation is running
+it and which version that replaces, through the
+[hook ABI variables a container can use](hooks.md#a-migration-service).
 
 ### Several migrate steps
 

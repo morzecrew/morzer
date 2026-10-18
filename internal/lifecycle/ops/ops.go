@@ -203,6 +203,11 @@ type Options struct {
 	// re-converges what is already installed and `rollback` returns to a
 	// release that arrived earlier, so neither changes the answer.
 	SourceRef string
+
+	// PreviousVersion is the release this run replaces, which a migrate
+	// step and the smoke test receive as PREVIOUS_VERSION. Set by `update`
+	// and `rollback`; `apply` replaces nothing, a first install included.
+	PreviousVersion domain.Version
 }
 
 // NewOperationID returns a ULID: lexicographically sortable and
