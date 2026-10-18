@@ -246,8 +246,9 @@ and the fact that everything the manager owns is already keyed by product.
 names and the comment on every secret recipient. Changing it is a migration, not
 a flag: export, `init` under the new name, import, restore.
 
-**No machine-level registry file.** `/etc/*/installation.yaml` is the truth, and
-`morzer ls` reads exactly that. A second index would be one more thing to keep in
+**No machine-level registry file.** Which installations exist is read off the
+filesystem: `morzer ls` lists each `/etc/*/` that holds an `installation.yaml`.
+A second index would be one more thing to keep in
 sync — wrong precisely when a machine had been rebuilt by hand, which is when
 somebody is reading it.
 

@@ -36,7 +36,7 @@ published version stays readable until it is explicitly deprecated.
 | `kind` | string | ✅ | Must be `application-release`. |
 | `metadata` | table | ✅ | Identity of the release. |
 | `providers` | table | | Which port implementation to use for each capability. |
-| `runtime` | table | | **Deprecated.** The Compose project and its files. Superseded by `runtimes`, and still read. |
+| `runtime` | table | | **Removed in 0.3.0.** A manifest carrying it is refused; see [runtime (removed in 0.3.0)](#runtime-removed-in-030). |
 | `runtimes` | map | ✅ | Which runtimes this release supports, keyed by runtime name, and the files each is declared with. |
 | `requirements` | table | | What the machine must provide. |
 | `parameters` | map | | Knobs an operator may set, typed and defaulted. See [Parameters](parameters.md). |
