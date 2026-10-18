@@ -124,3 +124,15 @@ Raised by CodeRabbit on #112, each reproduced by a failing test before the fix:
   The redactor is shared, so a release reference is covered too.
 - **`https://:443/hook` was accepted.** `u.Host` is `:443`; the check now reads
   `u.Hostname()`, so a URL with a port and no host is refused as not a URL.
+
+## Review: a URL with no `//`
+
+Raised by CodeAnt on #112, reproduced by a failing test before the fix:
+
+- **`https:/user:pass@host` and `https:user:pass@host` kept their password.**
+  The redactor returned anything without `://` as written, so the "is not a
+  URL" refusal printed the password. It now looks at any reference holding an
+  @: one that does not parse is withheld, userinfo loses its password, and a
+  URL with a scheme and no host is withheld when its first segment holds an @.
+  A reference with no scheme, such as `demo@1.2.0.tar.zst`, is a path and is
+  shown.

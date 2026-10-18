@@ -578,29 +578,29 @@ const UnparseableURL = "(a reference that does not parse, withheld in case it ca
 // here so a domain type can name itself safely.
 //
 // A URL that does not parse and has an @ in it comes back as UnparseableURL,
-// and so does one whose first segment holds an @ the parser did not read as
-// userinfo: `https:////user:pass@host` parses, with no host, and the password
-// in its path.
+// and so does one with a scheme and no host whose first segment holds an @:
+// `https:////user:pass@host`, `https:/user:pass@host` and
+// `https:user:pass@host` all parse with no userinfo and the password in the
+// path.
 func RedactURLCredentials(raw string) string {
 	trimmed := strings.TrimSpace(raw)
-	_, rest, found := strings.Cut(trimmed, "://")
-	if !found {
+	if !strings.Contains(trimmed, "@") {
 		return trimmed
 	}
 	u, err := url.Parse(trimmed)
-	if err != nil && strings.Contains(trimmed, "@") {
+	switch {
+	case err != nil:
 		return UnparseableURL
-	}
-	if err == nil && u.User == nil && u.Host == "" {
-		if first, _, _ := strings.Cut(strings.TrimLeft(rest, "/"), "/"); strings.Contains(first, "@") {
+	case u.User != nil:
+		u.User = url.User(u.User.Username())
+		return u.String()
+	case u.Scheme != "" && u.Host == "":
+		rest := strings.TrimLeft(trimmed[len(u.Scheme)+1:], "/")
+		if first, _, _ := strings.Cut(rest, "/"); strings.Contains(first, "@") {
 			return UnparseableURL
 		}
 	}
-	if err != nil || u.User == nil {
-		return trimmed
-	}
-	u.User = url.User(u.User.Username())
-	return u.String()
+	return trimmed
 }
 
 // BackupConfig is the operator's backup arrangement beyond the local disk.
