@@ -2352,9 +2352,6 @@ act on.</p>
 <p><code>doctor</code> and <code>status</code> can report the same thing, and they are off by default:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.check<span class="o">=</span><span class="nb">true</span>
 </code></pre></div>
-<div class="highlight"><span class="filename">installation.yaml</span><pre><span></span><code><span class="nt">update</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">check</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</code></pre></div>
 <p>A check contacts the vendor's registry, which reveals an IP, a timestamp and by
 inference the version you are running. For a product you chose to self-host,
 turning that on by default would be a phone-home nobody agreed to — so

@@ -2438,8 +2438,9 @@ and the fact that everything the manager owns is already keyed by product.</p>
 <p><strong>No renaming.</strong> The product name is the paths, the Compose project, the unit
 names and the comment on every secret recipient. Changing it is a migration, not
 a flag: export, <code>init</code> under the new name, import, restore.</p>
-<p><strong>No machine-level registry file.</strong> <code>/etc/*/installation.yaml</code> is the truth, and
-<code>morzer ls</code> reads exactly that. A second index would be one more thing to keep in
+<p><strong>No machine-level registry file.</strong> Which installations exist is read off the
+filesystem: <code>morzer ls</code> lists each <code>/etc/*/</code> that holds an <code>installation.yaml</code>.
+A second index would be one more thing to keep in
 sync — wrong precisely when a machine had been rebuilt by hand, which is when
 somebody is reading it.</p>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>

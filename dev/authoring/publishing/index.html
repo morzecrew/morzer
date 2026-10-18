@@ -2404,13 +2404,18 @@ install.</p>
 <code>morzer sign</code> command on purpose: building signing into the manager would invite
 the signing key onto a deployment host, which is the one machine it should never
 be on.</p>
-<p>Publish the public half where your users will look for it. They put it in their
-installation:</p>
-<div class="highlight"><span class="filename">installation.yaml</span><pre><span></span><code><span class="nt">policy</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">require_signature</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<span class="w">  </span><span class="nt">signing_keys</span><span class="p">:</span>
-<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3</span>
+<p>Publish the public half where your users will look for it. They hand it to
+<code>init</code>, or trust it on an installation that already exists:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># At creation, with the rest of their init flags:</span>
+morzer<span class="w"> </span>init<span class="w"> </span>…<span class="w"> </span>--signing-key<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3<span class="w"> </span>--require-signature
+
+<span class="c1"># Or on an installation that already exists:</span>
+morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>add<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 </code></pre></div>
+<p><code>--require-signature</code> is chosen at <code>init</code>. Without it, a signed release is still
+checked against the trusted keys and an unsigned one installs. To rotate your
+key, have users trust the new one, ship a release signed with it, then have
+them run <code>morzer release trust remove &lt;old-public-key&gt;</code>.</p>
 <div class="admonition warning">
 <p class="admonition-title">Say what a signature means, and what it does not</p>
 <p>It proves a bundle came from the holder of your key. It does not prove the

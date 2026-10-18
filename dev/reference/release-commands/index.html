@@ -2767,8 +2767,9 @@ check on a bundle that is entirely correct — the operator simply has not chose
 yet.</p>
 <p><code>--signing-key</code> is how a vendor checks their own signing pipeline in CI: it
 needs no installation on the machine, because there is no policy to read there.
-On a deployment host, the installation's <code>policy.signing_keys</code>, set at <code>init</code>,
-decides instead. See <a href="#verification">Verification</a>.</p>
+On a deployment host, the installation's trusted keys decide instead: set at
+<code>init</code>, and changed with <a href="#release-trust"><code>release trust</code></a>. See
+<a href="#verification">Verification</a>.</p>
 <h2 id="release-pack">release pack<a class="headerlink" href="#release-pack" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>pack<span class="w"> </span>&lt;bundle-dir&gt;<span class="w"> </span><span class="o">[</span>--platform<span class="w"> </span>linux/amd64<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
 </code></pre></div>

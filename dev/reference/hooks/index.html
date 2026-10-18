@@ -2394,8 +2394,11 @@ primitive; a runtime without one would have to invent a value, and a hook
 branching on a variable that is always set cannot tell the two situations
 apart.</p>
 <h3 id="phases">Phases<a class="headerlink" href="#phases" title="Permanent link">&para;</a></h3>
-<p><code>PHASE</code> is one of <code>preflight</code>, <code>pre-update</code>, <code>post-update</code>, <code>migrate</code>,
-<code>smoke-test</code>, <code>backup</code>, <code>restore</code>, <code>health-check</code>.</p>
+<p><code>PHASE</code> is one of <code>migrate</code>, <code>smoke-test</code>, <code>backup</code>, <code>restore</code> or
+<code>health-check</code>.</p>
+<p><code>preflight</code>, <code>pre-update</code> and <code>post-update</code> are reserved. The <abbr title="Application Binary Interface">ABI</abbr> names them,
+but no release of the manager runs a hook in them, so a hook may branch on them
+and nothing reaches the branch.</p>
 <p>The same executable may be invoked in more than one phase; branching on <code>PHASE</code>
 is how one hook serves several.</p>
 <h2 id="what-is-in-backup_dir">What is in <code>BACKUP_DIR</code><a class="headerlink" href="#what-is-in-backup_dir" title="Permanent link">&para;</a></h2>
