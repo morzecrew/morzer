@@ -166,6 +166,33 @@ func recipientsDoc(d *ui.Doc, recipients []ports.Recipient) *ui.Doc {
 }
 
 func init() {
+	ui.Register(ui.View[[]ops.NotifyTarget]{
+		Rich:  func(w io.Writer, t *theme.Theme, v []ops.NotifyTarget) { emit(w, notifyDoc(doc(w, t), v)) },
+		Plain: func(w io.Writer, v []ops.NotifyTarget) { emit(w, notifyDoc(plainDoc(w), v)) },
+	})
+}
+
+// notifyDoc lists the notify targets by what may be printed about them: a URL
+// kept in a secret is named by the secret, never shown.
+func notifyDoc(d *ui.Doc, targets []ops.NotifyTarget) *ui.Doc {
+	rows := make([][]string, 0, len(targets))
+	for _, t := range targets {
+		rows = append(rows, []string{t.Target, t.MinLevel, t.URLSecret, t.Credentials})
+	}
+	d.Table(0, ui.Table{
+		Columns: []ui.Column{
+			{Header: "target", Essential: true},
+			{Header: "min level"},
+			{Header: "url secret"},
+			{Header: "credentials"},
+		},
+		Rows:  rows,
+		Empty: "no notify targets; nothing is reported off this machine",
+	})
+	return d
+}
+
+func init() {
 	ui.Register(ui.View[ops.TrustReport]{
 		Rich:  func(w io.Writer, t *theme.Theme, v ops.TrustReport) { emit(w, trustDoc(doc(w, t), v)) },
 		Plain: func(w io.Writer, v ops.TrustReport) { emit(w, trustDoc(plainDoc(w), v)) },

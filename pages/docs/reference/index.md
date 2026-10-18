@@ -38,6 +38,11 @@ here. The reference column points at the section that documents it; the
 | `morzer secret recipients add` | Add a recipient and re-encrypt the state for it | [secret-commands](secret-commands.md#secret-recipients-add) |
 | `morzer secret recipients remove` | Remove a recipient and re-encrypt without it | [secret-commands](secret-commands.md#secret-recipients-remove) |
 | `morzer secret recipients generate-recovery-key` | Create an offline recovery identity; show its public key | [secret-commands](secret-commands.md#secret-recipients-generate-recovery-key) |
+| `morzer notify` | Manage where operation outcomes are reported | [commands](commands.md#notify) |
+| `morzer notify target` | Manage the webhooks this deployment reports to | [commands](commands.md#notify-target) |
+| `morzer notify target add` | Report to a webhook | [commands](commands.md#notify-target) |
+| `morzer notify target remove` | Stop reporting to a webhook | [commands](commands.md#notify-target) |
+| `morzer notify target list` | List the webhooks this deployment reports to | [commands](commands.md#notify-target) |
 | `morzer doctor` | Run read-only diagnostics | [commands](commands.md#doctor) |
 | `morzer logs` | Read the deployment's logs | [commands](commands.md#logs) |
 | `morzer ps` | List the deployment's containers | [commands](commands.md#ps) |

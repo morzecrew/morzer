@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`morzer notify target add|remove|list`: notification targets are set by a command.** The notifications page said to configure them in `installation.yaml`, which is a report the manager rewrites, and nothing else wrote them. A target is checked when it is added, and nothing is sent to it: the URL must be `https` with no password in it, and every secret it names must be set and well formed. A URL kept in a secret is named by the target's `--name` wherever it is shown. `status` names the targets, and `doctor` warns about one whose secret has gone, which was dropped with only a log line.
+
 ### Fixed
 
 - **The update timer fetched a private `oci://` channel without credentials.** systemd sets no `HOME` for the manager's units, and the registry client looked for the Docker configuration only under `HOME`, so it went anonymous and the registry refused it, while `docker compose pull` in the same run found root's login through the password database. The manager now finds the configuration the way the `docker` CLI does: `DOCKER_CONFIG`, then `HOME`, then the password database.

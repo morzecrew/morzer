@@ -109,13 +109,15 @@ func TestBuildNotifierResolvesTheURLFromASecret(t *testing.T) {
 	}
 }
 
-// TestReadSecretValueNamesWhatIsMissing.
-func TestReadSecretValueNamesWhatIsMissing(t *testing.T) {
-	if _, err := readSecretValue(context.Background(), secrets(nil), "absent"); err == nil ||
+// TestBuildNotifierNamesTheMissingSecret.
+func TestBuildNotifierNamesTheMissingSecret(t *testing.T) {
+	app := &App{}
+	cfg := domain.NotifyTargetConfig{Name: "chat", URLSecret: "absent"}
+	if _, err := app.buildNotifier(context.Background(), cfg, secrets(nil)); err == nil ||
 		!strings.Contains(err.Error(), "absent") {
 		t.Errorf("want a refusal naming the secret, got %v", err)
 	}
-	if _, err := readSecretValue(context.Background(), nil, "absent"); err == nil {
+	if _, err := app.buildNotifier(context.Background(), cfg, nil); err == nil {
 		t.Error("a nil secret store must be reported, not dereferenced")
 	}
 }

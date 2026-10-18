@@ -266,7 +266,7 @@ func DigestString(algo string, sum []byte) string {
 
 // UnparseableRef stands in for a reference RedactRefCredentials cannot vouch
 // for.
-const UnparseableRef = "(a reference that does not parse, withheld in case it carries a password)"
+const UnparseableRef = domain.UnparseableURL
 
 // RedactRefCredentials strips anything secret from a reference before it is
 // written to state or shown to anyone.
@@ -285,18 +285,4 @@ const UnparseableRef = "(a reference that does not parse, withheld in case it ca
 // A reference that does not parse and has an @ in it comes back as
 // UnparseableRef: where its userinfo ends is exactly what the parse could not
 // say, so no part of it is known to be safe to show.
-func RedactRefCredentials(raw string) string {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || !strings.Contains(trimmed, "://") {
-		return trimmed
-	}
-	u, err := url.Parse(trimmed)
-	if err != nil && strings.Contains(trimmed, "@") {
-		return UnparseableRef
-	}
-	if err != nil || u.User == nil {
-		return trimmed
-	}
-	u.User = url.User(u.User.Username())
-	return u.String()
-}
+func RedactRefCredentials(raw string) string { return domain.RedactURLCredentials(raw) }

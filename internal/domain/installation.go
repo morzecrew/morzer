@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -555,6 +556,10 @@ func (t NotifyTargetConfig) Validate() error {
 //
 // Never the URL when it came from a secret: the whole reason that form exists
 // is that the URL is the credential.
+//
+// Nor a password in the URL: `notify target add` refuses one, but a target
+// written by hand before the command existed may carry it, and every message
+// that names a target names it by this.
 func (t NotifyTargetConfig) Label() string {
 	if t.Name != "" {
 		return t.Name
@@ -562,7 +567,40 @@ func (t NotifyTargetConfig) Label() string {
 	if strings.TrimSpace(t.URLSecret) != "" {
 		return "(url from secret " + t.URLSecret + ")"
 	}
-	return t.URL
+	return RedactURLCredentials(t.URL)
+}
+
+// UnparseableURL stands in for a URL RedactURLCredentials cannot vouch for.
+const UnparseableURL = "(a reference that does not parse, withheld in case it carries a password)"
+
+// RedactURLCredentials removes the password from a URL's userinfo, keeping the
+// username. ports.RedactRefCredentials says why and where it runs; it lives
+// here so a domain type can name itself safely.
+//
+// A URL that does not parse and has an @ in it comes back as UnparseableURL,
+// and so does one with a scheme and no host whose first segment holds an @:
+// `https:////user:pass@host`, `https:/user:pass@host` and
+// `https:user:pass@host` all parse with no userinfo and the password in the
+// path.
+func RedactURLCredentials(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.Contains(trimmed, "@") {
+		return trimmed
+	}
+	u, err := url.Parse(trimmed)
+	switch {
+	case err != nil:
+		return UnparseableURL
+	case u.User != nil:
+		u.User = url.User(u.User.Username())
+		return u.String()
+	case u.Scheme != "" && u.Host == "":
+		rest := strings.TrimLeft(trimmed[len(u.Scheme)+1:], "/")
+		if first, _, _ := strings.Cut(rest, "/"); strings.Contains(first, "@") {
+			return UnparseableURL
+		}
+	}
+	return trimmed
 }
 
 // BackupConfig is the operator's backup arrangement beyond the local disk.
