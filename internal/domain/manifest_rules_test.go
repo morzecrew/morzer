@@ -306,6 +306,14 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			},
 			"operations.preflight: is not an operation",
 		},
+		"an operation name carrying a terminal escape, which the error escapes": {
+			func(m *Manifest) {
+				m.Operations = map[string]OperationSteps{
+					"bad\x1b[2J": {{Kind: OperationKindHook, Command: []string{"hooks/migrate"}}},
+				}
+			},
+			`operations.bad\x1b[2J: is not an operation`,
+		},
 		"a runtime-service smoke_test, which only migrate can run": {
 			func(m *Manifest) {
 				m.Operations = map[string]OperationSteps{

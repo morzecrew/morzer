@@ -57,3 +57,16 @@ proposal: LOCKED — part of RFC 0018 decision 15: preflight is not an operation
 The `preflight` *hook phase* (`ports.PhasePreflight`) is a separate name and is
 left alone here. Like `pre-update` and `post-update` it is declared and never
 run, which is the docs item of the same requests (M9), not this one.
+
+## Review: a refusal echoes the bundle's keys raw
+
+CodeRabbit found that the new refusal puts the operation's name, a map key the
+bundle controls, into the error as written, so a key such as `"bad\e[2J"`
+reached stderr as an escape sequence. The same is true of every map-keyed field
+(`runtimes.<name>`, `images.<name>`, `backup.volumes.<name>`,
+`extensions.<ns>`), and of every validator that shares `validationErrors`:
+manifest, installation, secrets, parameters and export. The fix is in
+`validationErrors.add`, once, rather than at the one call site the review named:
+a problem holding a character `strconv.IsPrint` rejects is written escaped.
+No RFC row settles error text, so this is an implementation detail, not a
+divergence.

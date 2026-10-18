@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An operation under a name the manager never runs is refused.** `operations` accepted any name, so a misspelled `smoke-test:` or an invented `post_migrate:` loaded cleanly and never ran, and the bundle's customer got no smoke test and no error. `preflight`, which the manifest reference listed as looked up, was never run either. A manifest may now declare only `migrate`, `smoke_test`, `backup` and `restore`, and **a bundle declaring any other operation, `preflight` included, is now refused** with the field named and the four listed. The published manifest schema closes the names the same way, so an editor underlines one before the manager sees it.
 - **A `runtime-service` smoke test, backup or restore is refused when the bundle loads.** Only `migrate` can run a one-shot container. The other three handed the step to the hook runner, which a `runtime-service` step gives no command, so a `runtime-service` smoke test failed every `apply` that reached it with an internal error, a restore failed the same way, and a backup was refused only once one ran. The manifest now refuses a `runtime-service` under any operation but `migrate`, naming `hook` as what the others support.
 
+### Security
+
+- **A refusal no longer sends a bundle's control characters to the terminal.** A manifest, installation or secrets refusal names the field at fault, and a field under a map, such as an operation, a runtime or an extension, is named by its key as the bundle wrote it. A key carrying an escape sequence reached the terminal raw, so a release could clear the screen or rewrite what the operator read. A refusal holding a character that is not printable is now written escaped, `\x1b` rather than the character itself.
+
 ## [0.4.0] - 2026-10-17
 
 Most of this release is about what a failed `update` leaves behind. The previous
