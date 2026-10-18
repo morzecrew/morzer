@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`morzer notify target add|remove|list`: notification targets are set by a command.** The notifications page said to configure them in `installation.yaml`, which is a report the manager rewrites, and nothing else wrote them. A target is checked when it is added, and nothing is sent to it: the URL must be `https` with no password in it, and every secret it names must be set and well formed. A URL kept in a secret is named by the target's `--name` wherever it is shown. `status` names the targets, and `doctor` warns about one whose secret has gone, which was dropped with only a log line.
 
+### Fixed
+
+- **A `runtime-service` smoke test, backup or restore is refused when the bundle loads.** Only `migrate` can run a one-shot container. The other three handed the step to the hook runner, which a `runtime-service` step gives no command, so a `runtime-service` smoke test failed every `apply` that reached it with an internal error, a restore failed the same way, and a backup was refused only once one ran. The manifest now refuses a `runtime-service` under any operation but `migrate`, naming `hook` as what the others support.
+
 ## [0.4.0] - 2026-10-17
 
 Most of this release is about what a failed `update` leaves behind. The previous
