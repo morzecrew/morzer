@@ -132,8 +132,9 @@ yet.
 
 `--signing-key` is how a vendor checks their own signing pipeline in CI: it
 needs no installation on the machine, because there is no policy to read there.
-On a deployment host, the installation's `policy.signing_keys`, set at `init`,
-decides instead. See [Verification](#verification).
+On a deployment host, the installation's trusted keys decide instead: set at
+`init`, and changed with [`release trust`](#release-trust). See
+[Verification](#verification).
 
 ## release pack
 

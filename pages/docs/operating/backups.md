@@ -62,7 +62,7 @@ doctor` reports that as `secrets.recovery-recipient`.
 | ~~`secrets`~~ | **retired.** `export` carries the same state byte for byte, plus the recipient roles |
 
 `config` and `export` look similar and are not. `config` holds
-`installation.yaml`, the file an operator edits — and `doctor` ships a
+`installation.yaml`, the report an operator reads — and `doctor` ships a
 `config.installation-file` check for it disagreeing with the authoritative
 state, which is exactly what makes it useful in an incident review and useless
 for rebuilding a machine. `export` is the authoritative record. Naming both

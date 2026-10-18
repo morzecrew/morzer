@@ -50,11 +50,6 @@ act on.
 morzer config set update.check=true
 ```
 
-```yaml title="installation.yaml"
-update:
-  check: true
-```
-
 A check contacts the vendor's registry, which reveals an IP, a timestamp and by
 inference the version you are running. For a product you chose to self-host,
 turning that on by default would be a phone-home nobody agreed to — so

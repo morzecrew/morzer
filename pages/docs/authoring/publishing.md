@@ -136,15 +136,21 @@ The private half belongs in your release pipeline and nowhere else. There is no
 the signing key onto a deployment host, which is the one machine it should never
 be on.
 
-Publish the public half where your users will look for it. They put it in their
-installation:
+Publish the public half where your users will look for it. They hand it to
+`init`, or trust it on an installation that already exists:
 
-```yaml title="installation.yaml"
-policy:
-  require_signature: true
-  signing_keys:
-    - RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
+```sh
+# At creation, with the rest of their init flags:
+morzer init … --signing-key RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3 --require-signature
+
+# Or on an installation that already exists:
+morzer release trust add RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 ```
+
+`--require-signature` is chosen at `init`. Without it, a signed release is still
+checked against the trusted keys and an unsigned one installs. To rotate your
+key, have users trust the new one, ship a release signed with it, then have
+them run `morzer release trust remove <old-public-key>`.
 
 !!! warning "Say what a signature means, and what it does not"
 
