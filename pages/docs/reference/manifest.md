@@ -390,8 +390,10 @@ with permissions nobody chose.
 
 ## operations
 
-A map of well-known name to how it runs. The manager looks up `migrate`,
-`smoke_test`, `backup`, `restore` and `preflight` by convention.
+A map of operation name to how it runs. The manager runs four operations,
+`migrate`, `smoke_test`, `backup` and `restore`, and refuses a manifest that
+declares any other name, since an operation under a misspelled or invented name
+would never run.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
