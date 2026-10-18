@@ -3102,6 +3102,12 @@ exists to prevent.</p>
 <p>Credentials come from the ambient Docker configuration, so an operator who has
 run <code>docker login</code> for the registry their <em>images</em> come from does not log in
 again for the bundle that pins those images. Nothing is stored by the manager.</p>
+<p>The configuration is found where the <code>docker</code> <abbr title="Command-Line Interface">CLI</abbr> finds it:
+<code>$DOCKER_CONFIG/config.json</code>, or else <code>.docker/config.json</code> in the home
+directory of the user the manager runs as, from the password database when
+<code>HOME</code> is unset. The systemd units run as root with no <code>HOME</code>, so a channel the
+update timer follows reads <code>/root/.docker/config.json</code>: log in as root
+(<code>sudo docker login registry.example</code>).</p>
 <p><code>morzer update --check &lt;ref&gt;</code> against an <code>oci://</code> reference reads the
 repository's version tags and reports the newer releases this installation could
 install. Of the remote transports a registry is the only one that can — a URL
