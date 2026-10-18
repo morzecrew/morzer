@@ -3335,7 +3335,7 @@ with permissions nobody chose.</p>
 <tr>
 <td><code>kind</code></td>
 <td>enum</td>
-<td><code>hook</code> — an executable in the release, run under the <a href="../hooks/">hook <abbr title="Application Binary Interface">ABI</abbr></a>; or <code>runtime-service</code> — a one-shot container from the Compose project.</td>
+<td><code>hook</code> — an executable in the release, run under the <a href="../hooks/">hook <abbr title="Application Binary Interface">ABI</abbr></a>; or <code>runtime-service</code> — a one-shot container from the Compose project, for <code>migrate</code> only. <code>smoke_test</code>, <code>backup</code> and <code>restore</code> must be hooks.</td>
 </tr>
 <tr>
 <td><code>command</code></td>
