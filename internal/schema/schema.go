@@ -256,9 +256,9 @@ func atLeastOne(node any, keyword string) {
 // several, and a list of them. Reflection sees only the list, which is the Go
 // type, and would underline every manifest written the ordinary way.
 //
-// Which names may list several is the loader's rule, not this schema's: it is
-// stated in the description rather than encoded per name, because the map's
-// keys are open.
+// The names are closed, as the loader closes them (domain.OperationNames).
+// Which of them may list several is stated in the description rather than
+// encoded per name, so the two spellings stay one definition.
 func operationsSchema(generated any) any {
 	mapping, ok := generated.(map[string]any)
 	if !ok {
@@ -276,6 +276,7 @@ func operationsSchema(generated any) any {
 			map[string]any{"type": "array", "items": step, "minItems": 1},
 		},
 	}
+	mapping["propertyNames"] = map[string]any{"enum": domain.OperationNames}
 	return mapping
 }
 

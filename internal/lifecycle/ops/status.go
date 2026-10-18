@@ -55,6 +55,10 @@ type Status struct {
 	// Absent when it follows none, which is the default.
 	Following *Following `json:"following,omitempty"`
 
+	// Notify names where outcomes are reported, never by a value read from
+	// a secret. Absent when nothing is.
+	Notify []string `json:"notify,omitempty"`
+
 	Services []ports.ServiceState `json:"services"`
 	Health   []ports.HealthResult `json:"health,omitempty"`
 
@@ -148,6 +152,10 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 
 			RandomizedDelay: domain.Duration(inst.UpdateRandomizedDelay()),
 		}
+	}
+
+	for _, t := range notifyTargets(inst) {
+		out.Notify = append(out.Notify, t.Target)
 	}
 
 	current, err := d.State.CurrentRelease(ctx)

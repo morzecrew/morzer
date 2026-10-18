@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -60,6 +61,9 @@ func StatusDoc(d *ui.Doc, s ops.Status) *ui.Doc {
 	if f := s.Following; f != nil {
 		fields = append(fields, ui.Field{
 			Label: "following", Value: f.Channel, Note: followingNote(f)})
+	}
+	if len(s.Notify) > 0 {
+		fields = append(fields, ui.Field{Label: "notify", Value: strings.Join(s.Notify, ", ")})
 	}
 	for _, f := range []ui.Field{
 		{Label: "profile", Value: s.Profile},

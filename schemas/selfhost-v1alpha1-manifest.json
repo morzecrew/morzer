@@ -306,6 +306,14 @@
           }
         ]
       },
+      "propertyNames": {
+        "enum": [
+          "migrate",
+          "smoke_test",
+          "backup",
+          "restore"
+        ]
+      },
       "type": "object"
     },
     "parameters": {

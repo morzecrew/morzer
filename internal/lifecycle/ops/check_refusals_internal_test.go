@@ -245,6 +245,15 @@ func TestSourceRefIsStoredWithoutCredentials(t *testing.T) {
 		// everything, since where its password ends cannot be known.
 		{"https://user:hunter2%zz@releases.example/demo.tar.zst", ports.UnparseableRef},
 		{"https://releases.example:port/demo.tar.zst", "https://releases.example:port/demo.tar.zst"},
+		// No host, so no userinfo either: the password parses as path.
+		{"https:////user:hunter2@releases.example/demo.tar.zst", ports.UnparseableRef},
+		// Without `//` there is no authority at all, so the same again.
+		{"https:/user:hunter2@releases.example/demo.tar.zst", ports.UnparseableRef},
+		{"https:user:hunter2@releases.example/demo.tar.zst", ports.UnparseableRef},
+		// A path is not a URL, and its @ is not a credential.
+		{"demo@1.2.0.tar.zst", "demo@1.2.0.tar.zst"},
+		// An @ further down a hostless path is not a credential.
+		{"file:///srv/bundles/demo@1.2.0.tar.zst", "file:///srv/bundles/demo@1.2.0.tar.zst"},
 		{"./local/bundle", "./local/bundle"},
 		{"", ""},
 	}

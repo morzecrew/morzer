@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// `.github/scripts/publish-install-script.sh` driven against a real git remote.
+// `.github/scripts/publish-site-root.sh` driven against a real git remote.
 //
 // The script is what puts `install.sh` at the documentation site's root, which
 // is the URL the README and the installation page tell people to curl. It ran
@@ -52,6 +52,10 @@ func newPublishRepo(t *testing.T) *publishRepo {
 	r.git("add", "-A")
 	r.git("commit", "-qm", "mike")
 	r.git("push", "-q", "-u", "origin", "gh-pages")
+
+	// The schemas sit beside install.sh in a checkout, untracked here for the
+	// same reason it is: the source tree, not the branch being written.
+	r.write("schemas/selfhost-v1alpha1-manifest.json", `{"title":"manifest"}`)
 	return r
 }
 
@@ -71,7 +75,11 @@ func (r *publishRepo) git(args ...string) string { return r.run(r.work, "git", a
 
 func (r *publishRepo) write(name, body string) {
 	r.t.Helper()
-	if err := os.WriteFile(filepath.Join(r.work, name), []byte(body), 0o644); err != nil {
+	path := filepath.Join(r.work, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		r.t.Fatal(err)
 	}
 }
@@ -79,7 +87,7 @@ func (r *publishRepo) write(name, body string) {
 // publish runs the real script from the working clone.
 func (r *publishRepo) publish() string {
 	r.t.Helper()
-	script, err := filepath.Abs(filepath.Join("..", "..", ".github", "scripts", "publish-install-script.sh"))
+	script, err := filepath.Abs(filepath.Join("..", "..", ".github", "scripts", "publish-site-root.sh"))
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -90,7 +98,13 @@ func (r *publishRepo) publish() string {
 // what the site actually serves.
 func (r *publishRepo) published() (string, bool) {
 	r.t.Helper()
-	cmd := exec.Command("git", "show", "origin/gh-pages:install.sh")
+	return r.publishedAt("install.sh")
+}
+
+// publishedAt reads any path back out of the branch on the remote.
+func (r *publishRepo) publishedAt(path string) (string, bool) {
+	r.t.Helper()
+	cmd := exec.Command("git", "show", "origin/gh-pages:"+path)
 	cmd.Dir = r.work
 	out, err := cmd.Output()
 	if err != nil {
@@ -199,5 +213,56 @@ func TestARewrittenRootIsRepublished(t *testing.T) {
 	}
 	if body != "#!/bin/sh\necho one\n" {
 		t.Errorf("the rewritten copy was not replaced: %q", body)
+	}
+}
+
+// TestTheSchemasArePublishedAtTheRoot: every scaffolded manifest's
+// yaml-language-server modeline names .../schemas/<file> at the site root, and
+// mike's version directories are no place for it, for the reason install.sh is
+// not under one either.
+func TestTheSchemasArePublishedAtTheRoot(t *testing.T) {
+	r := newPublishRepo(t)
+	r.write("install.sh", "#!/bin/sh\necho one\n")
+	r.write("schemas/selfhost-v1alpha1-secrets.json", `{"title":"secrets"}`)
+
+	out := r.publish()
+
+	for path, want := range map[string]string{
+		"schemas/selfhost-v1alpha1-manifest.json": `{"title":"manifest"}`,
+		"schemas/selfhost-v1alpha1-secrets.json":  `{"title":"secrets"}`,
+	} {
+		body, ok := r.publishedAt(path)
+		if !ok {
+			t.Errorf("%s is not on the branch after publishing:\n%s", path, out)
+			continue
+		}
+		if body != want {
+			t.Errorf("%s published as %q, not the source's bytes", path, body)
+		}
+	}
+}
+
+// TestASchemaNoLongerShippedStopsBeingServed: the root is replaced, not
+// added to, so a schema the repository stops publishing does not linger at a
+// URL that still answers.
+func TestASchemaNoLongerShippedStopsBeingServed(t *testing.T) {
+	r := newPublishRepo(t)
+	r.write("install.sh", "#!/bin/sh\necho one\n")
+	r.write("schemas/retired.json", `{}`)
+	r.publish()
+	if _, ok := r.publishedAt("schemas/retired.json"); !ok {
+		t.Fatal("the schema was not published in the first place")
+	}
+
+	if err := os.Remove(filepath.Join(r.work, "schemas", "retired.json")); err != nil {
+		t.Fatal(err)
+	}
+	r.publish()
+
+	if _, ok := r.publishedAt("schemas/retired.json"); ok {
+		t.Error("a schema the source no longer has is still published")
+	}
+	if _, ok := r.publishedAt("schemas/selfhost-v1alpha1-manifest.json"); !ok {
+		t.Error("the schemas that remain were removed with it")
 	}
 }
