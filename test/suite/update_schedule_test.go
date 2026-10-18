@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -264,12 +265,17 @@ func TestStatusSaysHowTheChannelIsFollowed(t *testing.T) {
 
 	assert.Nil(t, following(), "a machine following no channel has nothing to report about one")
 
+	// Production's spread, which nothing below changes.
+	const spread = domain.Duration(domain.DefaultUpdateRandomizedDelay)
+
 	set(map[string]string{"update.channel": channel})
-	assert.Equal(t, &ops.Following{Channel: channel}, following(),
+	assert.Equal(t, &ops.Following{Channel: channel, RandomizedDelay: spread}, following(),
 		"with update.check off no timer exists, and status has to say the channel is not polled")
 
 	set(map[string]string{"update.check": "true", "update.schedule": "*:0/15"})
-	assert.Equal(t, &ops.Following{Channel: channel, Polled: true, Schedule: "*:0/15"}, following())
+	assert.Equal(t, &ops.Following{
+		Channel: channel, Polled: true, Schedule: "*:0/15", RandomizedDelay: spread,
+	}, following())
 
 	// Through the state rather than `config set`, which would first need a
 	// signing key this test has no use for beyond passing validation.
@@ -280,7 +286,7 @@ func TestStatusSaysHowTheChannelIsFollowed(t *testing.T) {
 	inst.Update.AutoApply = true
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 	assert.Equal(t, &ops.Following{
-		Channel: channel, Polled: true, Schedule: "*:0/15", AutoApply: true,
+		Channel: channel, Polled: true, Schedule: "*:0/15", AutoApply: true, RandomizedDelay: spread,
 	}, following())
 }
 
@@ -302,4 +308,102 @@ func TestStatusDoesNotPrintAChannelPassword(t *testing.T) {
 	require.NotNil(t, st.Following)
 	assert.NotContains(t, st.Following.Channel, "s3cr3t-token")
 	assert.Contains(t, st.Following.Channel, "robot@registry.example/demo/bundle:main")
+}
+
+// The spread is a setting too (RFC 0016 decision 31): an operator sets how late
+// a tick may run, or none, and `status` shows it beside the schedule.
+func TestTheUpdateDelayCanBeSetAndUnset(t *testing.T) {
+	h, unitDir := followingMachine(t, "")
+	ctx := context.Background()
+	set := func(name, value string) error {
+		_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: map[string]string{name: value}})
+		return err
+	}
+	require.NoError(t, set("update.channel", "oci://registry.example/demo/bundle:stable"))
+	require.NoError(t, set("update.check", "true"))
+
+	require.NoError(t, set("update.randomized_delay", "10m"))
+	assert.Contains(t, updateTimer(t, unitDir), "Persistent=true\nRandomizedDelaySec=600\n\n[Install]")
+	status, err := ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	require.NotNil(t, status.Following)
+	assert.Equal(t, domain.Duration(10*time.Minute), status.Following.RandomizedDelay,
+		"status does not show the spread the timer was given")
+
+	// Zero is none, stored as a value rather than as absent, so it is not
+	// the production default coming back.
+	require.NoError(t, set("update.randomized_delay", "0"))
+	timer := updateTimer(t, unitDir)
+	assert.NotContains(t, timer, "RandomizedDelaySec", "a delay of 0 still spreads the ticks")
+	assert.Contains(t, timer, "Persistent=true\n\n[Install]")
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, inst.Update.RandomizedDelay, "a delay of 0 was stored as unset")
+
+	// The timer takes whole seconds, so 500ms would render as none.
+	for _, bad := range []string{"-5m", "soon", "1800", "500ms", "1m0.5s"} {
+		require.Error(t, set("update.randomized_delay", bad), "%q was stored as a delay", bad)
+		_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+			Options: ops.Options{DryRun: true},
+			Set:     map[string]string{"update.randomized_delay": bad},
+		})
+		require.Error(t, err, "a plan accepted %q, which the run refuses", bad)
+	}
+
+	_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Unset: []string{"update.randomized_delay"}})
+	require.NoError(t, err)
+	assert.Contains(t, updateTimer(t, unitDir), "Persistent=true\nRandomizedDelaySec=1800\n\n[Install]",
+		"unset did not return production to its half-hour spread")
+}
+
+// A value equal to the default is still the operator's, so set records it and
+// unset removes it: the default is the manager's to change, and theirs is not.
+func TestADefaultSetByNameIsRecorded(t *testing.T) {
+	h, _ := followingMachine(t, "")
+	ctx := context.Background()
+	names := []string{"retention.pre_update_backups", "update.randomized_delay"}
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	delay := domain.Duration(domain.DefaultUpdateRandomizedDelay)
+	inst.Update.RandomizedDelay = &delay
+	inst.Policy.RetainPreUpdateBackups = domain.DefaultRetentionPreUpdateBackups
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	// One setting per call: a call that changes anything saves every value
+	// it was given, which would hide one that was not seen to change.
+	for _, name := range names {
+		_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Unset: []string{name}})
+		require.NoError(t, err)
+	}
+	inst, err = h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, inst.Update.RandomizedDelay, "unset left the recorded default delay")
+	assert.Zero(t, inst.Policy.RetainPreUpdateBackups, "unset left the recorded default count")
+
+	for name, value := range map[string]string{
+		"retention.pre_update_backups": "3",
+		"update.randomized_delay":      "30m",
+	} {
+		_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: map[string]string{name: value}})
+		require.NoError(t, err)
+	}
+	inst, err = h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotNil(t, inst.Update.RandomizedDelay, "set did not record 30m, the default")
+	assert.Equal(t, 3, inst.Policy.RetainPreUpdateBackups, "set did not record 3, the default")
+}
+
+// A sandbox has no spread unless its operator asks for one.
+func TestASandboxUpdateDelayCanBeSet(t *testing.T) {
+	h, unitDir := followingMachine(t, domain.ModeDev)
+	_, err := ops.SetSettings(context.Background(), h.Deps, ops.SetSettingsOptions{
+		Set: map[string]string{
+			"update.channel":          "oci://registry.example/demo/bundle:main",
+			"update.check":            "true",
+			"update.randomized_delay": "2m",
+		},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, updateTimer(t, unitDir), "Persistent=true\nRandomizedDelaySec=120\n\n[Install]")
 }

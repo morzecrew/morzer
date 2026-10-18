@@ -1088,27 +1088,25 @@ func (e *Engine) Prune(ctx context.Context, policy ports.RetentionPolicy) ([]por
 	if err != nil {
 		return nil, err
 	}
-	keep := policy.Keep
-	if keep < 1 {
-		keep = 1
-	}
-	if len(refs) <= keep {
-		return nil, nil
-	}
 
-	exempt := make(map[string]bool, len(policy.KeepReasons))
-	for _, r := range policy.KeepReasons {
-		exempt[r] = true
+	// refs is newest-first, which is the order Prunes reads.
+	reasons := make([]string, len(refs))
+	for i, ref := range refs {
+		manifest, err := readManifest(ref.Path)
+		if err != nil {
+			// List read it a moment ago. Pruning by a guessed reason could
+			// remove a pre-update backup the policy keeps.
+			return nil, err
+		}
+		reasons[i] = manifest.Reason
 	}
 
 	var removed []ports.BackupRef
-	// refs is newest-first, so everything past `keep` is a candidate.
-	for _, ref := range refs[keep:] {
-		if len(exempt) > 0 {
-			if manifest, err := readManifest(ref.Path); err == nil && exempt[manifest.Reason] {
-				continue
-			}
+	for i, prune := range policy.Prunes(reasons) {
+		if !prune {
+			continue
 		}
+		ref := refs[i]
 		if err := atomicfs.RemoveAll(ref.Path); err != nil {
 			return removed, err
 		}

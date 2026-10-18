@@ -387,6 +387,10 @@ type UnitParams struct {
 	// is the one installation it does nothing for.
 	SkipUpdateJitter bool
 
+	// UpdateJitter is the update timer's RandomizedDelaySec. Zero renders
+	// DefaultUpdateJitter.
+	UpdateJitter time.Duration
+
 	// UpdateTimer generates the update pair at all. A machine that follows
 	// no channel gets no timer -- an installed unit that has nothing to poll
 	// would contact nothing on a schedule and read, in `systemctl
@@ -536,6 +540,9 @@ StandardError=journal
 // hour on every tick turns "follow main every five minutes" into every five to
 // thirty-five.
 //
+// An operator sets the spread, or none, as `update.randomized_delay` (RFC 0016
+// decision 31); the two defaults above are what an unset one means.
+//
 // Persistent catches up a tick missed while the machine was off, which is the
 // case a laptop-shaped deployment hits daily.
 const updateTimerTemplate = `[Unit]
@@ -545,7 +552,7 @@ Description={{.Description}}
 OnCalendar={{.UpdateSchedule}}
 Persistent=true
 {{- if not .SkipUpdateJitter}}
-RandomizedDelaySec=1800
+RandomizedDelaySec={{printf "%.0f" .UpdateJitter.Seconds}}
 {{- end}}
 
 [Install]
@@ -618,6 +625,10 @@ const DefaultFleetSchedule = "*-*-* *:00:00"
 // manager spending somebody else's budget by nobody's decision.
 const DefaultUpdateSchedule = "*-*-* 03:30:00"
 
+// DefaultUpdateJitter is the update timer's spread when the installation sets
+// none. See updateTimerTemplate for what it protects.
+const DefaultUpdateJitter = 30 * time.Minute
+
 // DefaultBackupSchedule is a nightly backup at a quiet hour.
 const DefaultBackupSchedule = "*-*-* 02:30:00"
 
@@ -652,6 +663,9 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	}
 	if strings.TrimSpace(p.FleetSchedule) == "" {
 		p.FleetSchedule = DefaultFleetSchedule
+	}
+	if p.UpdateJitter <= 0 {
+		p.UpdateJitter = DefaultUpdateJitter
 	}
 	if p.Description == "" {
 		p.Description = p.Product + " (managed by morzer)"
@@ -781,6 +795,7 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		UpdateSchedule:   params.UpdateSchedule,
 		UpdateTimer:      params.UpdateTimer,
 		SkipUpdateJitter: params.SkipUpdateJitter,
+		UpdateJitter:     params.UpdateJitter,
 		FleetSchedule:    params.FleetSchedule,
 		FleetTimer:       params.FleetTimer,
 	})

@@ -145,9 +145,10 @@ func targetSummary(refs []ports.TargetRef) string {
 // remoteRetention applies the retention policy to a target.
 //
 // The same policy as the local pass and the same refusal: never the most
-// recent, never an exempt reason. Two passes over one policy is one policy too
-// few to contradict itself; they run at different times against different
-// listings, so the worst they can disagree about is an extra copy retained.
+// recent, never the newest pre-update backups. Two passes over one policy is one
+// policy too few to contradict itself; they run at different times against
+// different listings, so the worst they can disagree about is an extra copy
+// retained.
 func (d *Deps) remoteRetention(
 	ctx context.Context, ref ports.TargetRef, policy ports.RetentionPolicy,
 ) ([]string, error) {
@@ -156,25 +157,18 @@ func (d *Deps) remoteRetention(
 		return nil, err
 	}
 
-	keep := policy.Keep
-	if keep < 1 {
-		keep = 1
-	}
-	if len(manifests) <= keep {
-		return nil, nil
-	}
-
-	exempt := make(map[string]bool, len(policy.KeepReasons))
-	for _, r := range policy.KeepReasons {
-		exempt[r] = true
+	// List is newest-first, which is the order Prunes reads.
+	reasons := make([]string, len(manifests))
+	for i, m := range manifests {
+		reasons[i] = m.Reason
 	}
 
 	var removed []string
-	// List is newest-first, so everything past keep is a candidate.
-	for _, m := range manifests[keep:] {
-		if exempt[m.Reason] {
+	for i, prune := range policy.Prunes(reasons) {
+		if !prune {
 			continue
 		}
+		m := manifests[i]
 		if err := d.Targets.Remove(ctx, ports.RemoteRef{Target: ref, ID: m.ID}); err != nil {
 			return removed, err
 		}
@@ -1039,14 +1033,20 @@ func (d *Deps) pushPreUpdateBackup(
 	// of the rest, so an operator fixing one unreachable target could not tell
 	// whether the others had worked.
 	var failed []string
+	var pushed []ports.RemoteRef
 	for _, target := range targets {
-		if _, err := d.Targets.Push(ctx, target, ref.Path, ref.ID); err != nil {
+		remote, err := d.Targets.Push(ctx, target, ref.Path, ref.ID)
+		if err != nil {
 			st.Warn("the pre-update backup is on this machine but could not be "+
 				"copied to %s: %s. Run `morzer backup push %s` once it is reachable",
 				target, domain.AsError(err).Message, ref.ID)
 			failed = append(failed, target.String())
+			continue
 		}
+		pushed = append(pushed, remote)
 	}
+	// Retention after the update prunes only where the copy landed.
+	st.Set(engine.KeyPushedBackups, pushed)
 	if len(failed) < len(targets) {
 		st.Detail("%s, copied to %d of %d target(s)", ref.ID, len(targets)-len(failed), len(targets))
 	}

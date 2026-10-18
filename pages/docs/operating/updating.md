@@ -135,6 +135,7 @@ flowchart TD
     D --> E[apply's convergence pipeline]
     E --> F{healthy?}
     F -->|yes| G[record the new release]
+    G --> K[apply backup retention]
     F -->|no| I{can the old release read the database now?}
     I -->|yes| H[compensate: the release that was running, containers included]
     I -->|no| J[stop: requires-manual-intervention, exit 12]

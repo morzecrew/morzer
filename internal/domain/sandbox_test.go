@@ -78,6 +78,7 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Policy.SigningKeys":            keep("whose releases this machine will install -- public keys, and a sandbox testing an update needs the same set"),
 		"Policy.RetainReleases":         keep("local disk retention"),
 		"Policy.RetainBackups":          keep("local disk retention"),
+		"Policy.RetainPreUpdateBackups": keep("local disk retention"),
 		"Policy.SkipBackupBeforeUpdate": keep("local behaviour"),
 		"Policy.StaleBackupAfter":       keep("when doctor warns; local"),
 		"Policy.BackupSchedule": keep("when scheduled backups run -- local behaviour, and a " +
@@ -93,9 +94,10 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Update": keep("how this machine learns a release exists"),
 		"Update.Check": keep("whether to contact the vendor's registry unprompted -- " +
 			"a read, and testing an update is what a sandbox is for"),
-		"Update.Channel":   keep("a reference this machine follows; a read"),
-		"Update.AutoApply": keep("installs what the channel offers, here"),
-		"Update.Schedule":  keep("when this machine's own timer ticks; it reaches nothing"),
+		"Update.Channel":         keep("a reference this machine follows; a read"),
+		"Update.AutoApply":       keep("installs what the channel offers, here"),
+		"Update.Schedule":        keep("when this machine's own timer ticks; it reaches nothing"),
+		"Update.RandomizedDelay": keep("how late this machine's own timer may tick; it reaches nothing"),
 
 		"Notify":         drop("a sandbox must not report into production's alerting"),
 		"Notify.Targets": drop("a webhook URL is itself the credential, and it travels in the export"),

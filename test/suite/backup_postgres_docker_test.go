@@ -413,7 +413,7 @@ func TestPruneKeepsTheReasonsItWasToldTo(t *testing.T) {
 	assert.Equal(t, made[2].ID, listed[0].ID, "List must be newest first")
 
 	removed, err := engine.Prune(ctx, ports.RetentionPolicy{
-		Keep: 1, KeepReasons: []string{"pre-update"},
+		Keep: 1, KeepPreUpdate: 1,
 	})
 	require.NoError(t, err)
 

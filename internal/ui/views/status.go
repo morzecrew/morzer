@@ -94,6 +94,10 @@ func followingNote(f *ops.Following) string {
 	if f.Schedule != "" {
 		when = "on " + f.Schedule
 	}
+	// The setting, not a bound: systemd's AccuracySec can add a minute.
+	if f.RandomizedDelay > 0 {
+		when += ", random delay up to " + f.RandomizedDelay.String()
+	}
 	if f.AutoApply {
 		return "(" + when + ", installs what it may)"
 	}
