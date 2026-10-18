@@ -1148,6 +1148,13 @@ func (m *Manifest) Validate() error {
 				field = fmt.Sprintf("operations.%s[%d]", name, i)
 			}
 			v.checkOperation(field, op)
+			// Only migrate dispatches on the kind. The others hand the
+			// step's command to the hook runner, and a runtime-service
+			// step has none.
+			if op.Kind == OperationKindRuntimeService && name != OpMigrate {
+				v.add(field+".kind", "must be %q; only %s runs a %q",
+					OperationKindHook, OpMigrate, OperationKindRuntimeService)
+			}
 		}
 	}
 	// A list is what an older manager cannot decode, which is the point
