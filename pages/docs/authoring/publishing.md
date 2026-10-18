@@ -149,8 +149,8 @@ morzer release trust add RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO
 
 `--require-signature` is chosen at `init`. Without it, a signed release is still
 checked against the trusted keys and an unsigned one installs. To rotate your
-key, have users trust the new one, ship a release signed with it, then
-`morzer release trust remove` the old one.
+key, have users trust the new one, ship a release signed with it, then have
+them run `morzer release trust remove <old-public-key>`.
 
 !!! warning "Say what a signature means, and what it does not"
 
