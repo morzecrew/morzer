@@ -85,3 +85,42 @@ with `backup.scheduled=false` it is never pruned at all. Pruning after a
 successful update would close that. It is a change to what `update` does on
 every machine, and the ruling does not cover it, so it is not built here. It
 needs the author's ruling.
+
+```divergence
+decision: RFC 0001 D-21
+grade: LOCKED
+class: spec-gap
+at: 2026-10-18T14:30:15Z
+attempt: 1
+claim: D-21 prunes older pre-update backups, but retention runs only in `backup`, so a machine that updates and never takes a scheduled backup still keeps every pre-update backup
+evidence: internal/lifecycle/ops/backup.go:311
+action: halted
+proposal: LOCKED — refines D-21: a successful update applies retention as its last step, locally once it has taken its pre-update backup and on each target that backup reached. Retention runs only once a newer backup exists, so an update that took no backup, or failed, prunes nothing.
+```
+
+## Ruled 2026-10-18 by the author
+
+- M10: the reading above is confirmed. An unset delay keeps 1800 seconds in
+  production and none on a sandbox; a set one wins in either mode.
+- M3: the only condition for pruning is that a new backup exists. The
+  pre-update backup is one, so a successful update prunes, as proposed above.
+  RFC 0001 row 22.
+
+## As built, the update's retention
+
+- Two steps close the update, `prune-backups` and `prune-remote-backups`, the
+  same ones `backup` runs. Last and `Continue`, so a failed update removes
+  nothing and a failed prune never fails an update that converged.
+- `prune-backups` is skipped when the state holds no backup ref: a first
+  install, `--skip-backup`, or `policy.skip_backup_before_update`.
+- The pre-update push records the copies that landed under
+  `pushed-backups`, and `prune-remote-backups` prunes only those targets. A
+  copy the update makes is best effort, unlike `backup`'s, so a target it
+  missed holds nothing newer.
+
+## Open: `backup --no-push` still prunes the targets
+
+`backupSteps` adds `prune-remote-backups` whenever `--no-prune-remote` is
+absent, pushed or not (`internal/lifecycle/ops/backup.go:312`). A local-only
+backup therefore prunes targets that received nothing new, which the 2026-10-18
+ruling says it should not. It predates this branch and is not changed here.

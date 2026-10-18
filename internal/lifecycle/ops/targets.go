@@ -1033,14 +1033,20 @@ func (d *Deps) pushPreUpdateBackup(
 	// of the rest, so an operator fixing one unreachable target could not tell
 	// whether the others had worked.
 	var failed []string
+	var pushed []ports.RemoteRef
 	for _, target := range targets {
-		if _, err := d.Targets.Push(ctx, target, ref.Path, ref.ID); err != nil {
+		remote, err := d.Targets.Push(ctx, target, ref.Path, ref.ID)
+		if err != nil {
 			st.Warn("the pre-update backup is on this machine but could not be "+
 				"copied to %s: %s. Run `morzer backup push %s` once it is reachable",
 				target, domain.AsError(err).Message, ref.ID)
 			failed = append(failed, target.String())
+			continue
 		}
+		pushed = append(pushed, remote)
 	}
+	// Retention after the update prunes only where the copy landed.
+	st.Set(engine.KeyPushedBackups, pushed)
 	if len(failed) < len(targets) {
 		st.Detail("%s, copied to %d of %d target(s)", ref.ID, len(targets)-len(failed), len(targets))
 	}

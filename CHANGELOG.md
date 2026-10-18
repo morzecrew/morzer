@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Only the newest pre-update backups are kept past retention.** Every pre-update backup was exempt from pruning forever, so a machine that updates every few minutes kept a full backup per update until its disk filled. Now the newest three are exempt, and older ones are pruned like any other backup, locally and on backup targets. **The first backup taken after upgrading prunes the older ones already there**, unless it runs with `--no-prune`. Change the three with `morzer config set retention.pre_update_backups=<n>`; the newest is never pruned. Installation state moves to schema 12, so an older manager refuses it rather than dropping either setting.
+- **Only the newest pre-update backups are kept past retention.** Every pre-update backup was exempt from pruning forever, so a machine that updates every few minutes kept a full backup per update until its disk filled. Now the newest three are exempt, and older ones are pruned like any other backup, locally and on backup targets. A successful update now applies retention too, after its pre-update backup, so a machine that only updates is pruned as well. **The first backup or update after upgrading prunes the older ones already there**, unless it is a backup run with `--no-prune`. Change the three with `morzer config set retention.pre_update_backups=<n>`; the newest is never pruned. Installation state moves to schema 12, so an older manager refuses it rather than dropping either setting.
 
 ### Fixed
 

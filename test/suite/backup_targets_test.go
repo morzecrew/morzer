@@ -969,6 +969,110 @@ func TestAPreUpdateBackupThatCannotBePushedWarnsRatherThanFailingTheUpdate(t *te
 	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
 }
 
+// TestASuccessfulUpdatePrunesWhereItsBackupLanded.
+//
+// Retention runs once a new backup exists, and an update takes one: without
+// this, a machine that only ever updates keeps every pre-update backup. Where
+// the copy did not land, or when the update took none, there is nothing newer
+// to make room for, so nothing there is pruned.
+func TestASuccessfulUpdatePrunesWhereItsBackupLanded(t *testing.T) {
+	ctx := context.Background()
+	remote := ports.TargetRef{Scheme: "memory", Path: "/backups"}
+
+	// Two pre-update backups on the machine and the target, over a policy
+	// that keeps one: what an update-only machine has collected.
+	seeded := func(t *testing.T) (*harness, *fakes.BackupTarget, []string) {
+		t.Helper()
+		h := newHarness(t)
+		inst := h.install()
+		fake := fakes.NewBackupTarget()
+		h.Deps.Targets = fake
+		h.Backup.Root = filepath.Join(h.Root, "var", "backups")
+		require.NoError(t, os.MkdirAll(h.Backup.Root, 0o700))
+		inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "memory:///backups"}}
+		inst.Policy.RetainBackups = 1
+		inst.Policy.RetainPreUpdateBackups = 1
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+		h.setHookEnv()
+		applyBaseline(t, h)
+
+		var old []string
+		for range 2 {
+			res, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{
+				Reason: ports.ReasonPreUpdate, Verify: true, Push: true,
+			})
+			require.NoError(t, err)
+			ref, ok := res.Data.(ports.BackupRef)
+			require.True(t, ok)
+			old = append(old, ref.ID)
+		}
+		return h, fake, old
+	}
+	held := func(t *testing.T, h *harness, fake *fakes.BackupTarget) (local, onTarget []string) {
+		t.Helper()
+		refs, err := h.Deps.Backup.List(ctx)
+		require.NoError(t, err)
+		manifests, err := fake.List(ctx, remote)
+		require.NoError(t, err)
+		return idsOfRefs(refs), idsOfManifests(manifests)
+	}
+
+	t.Run("on the machine and on the target", func(t *testing.T) {
+		h, fake, old := seeded(t)
+
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+		require.NoError(t, err)
+
+		local, onTarget := held(t, h, fake)
+		for where, ids := range map[string][]string{"on the machine": local, "on the target": onTarget} {
+			assert.Len(t, ids, 1, "%s holds %v", where, ids)
+			assert.NotContains(t, ids, old[1], "an older pre-update backup survived %s", where)
+		}
+	})
+
+	t.Run("not on a target the copy missed", func(t *testing.T) {
+		h, fake, old := seeded(t)
+		fake.FailPushAt = ports.BackupManifestFileName
+
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+		require.NoError(t, err)
+
+		local, onTarget := held(t, h, fake)
+		assert.Len(t, local, 1, "the machine holds %v", local)
+		assert.ElementsMatch(t, old, onTarget,
+			"the update pruned a target its backup never reached")
+	})
+
+	t.Run("not when the update took no backup", func(t *testing.T) {
+		h, fake, old := seeded(t)
+
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{
+			Options: ops.Options{Force: true, SkipBackup: true},
+			Ref:     stageUpgradeSource(t, h),
+		})
+		require.NoError(t, err)
+
+		local, onTarget := held(t, h, fake)
+		assert.ElementsMatch(t, old, local, "an update without a backup pruned the machine")
+		assert.ElementsMatch(t, old, onTarget, "an update without a backup pruned the target")
+	})
+
+	t.Run("not when the update failed", func(t *testing.T) {
+		h, fake, old := seeded(t)
+		src := stageRecoverableUpgradeSource(t, h)
+		// 1.3.0 never becomes healthy, so the update compensates.
+		h.Health.FailingWaits = 1
+
+		result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+		require.Error(t, err)
+		require.Equal(t, domain.StatusCompensated, result.Record.Status)
+
+		local, onTarget := held(t, h, fake)
+		assert.Subset(t, local, old, "a failed update pruned the machine")
+		assert.Subset(t, onTarget, old, "a failed update pruned the target")
+	})
+}
+
 // TestRetentionNeverRemovesTheLastCopyOnATarget, whatever the policy says.
 //
 // A policy of zero is a configuration mistake, and honouring it literally on a

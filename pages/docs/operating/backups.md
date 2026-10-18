@@ -352,7 +352,12 @@ pruned**, so the least it takes is `1`:
 morzer config set retention.pre_update_backups=5
 ```
 
-`--no-prune` skips the retention pass for one run.
+Retention runs only once a newer backup exists. `morzer backup` applies it
+after the backup it takes. A successful update applies it after its
+pre-update backup, on this machine and on each target the copy reached. An
+update that took no backup, or failed, prunes nothing.
+
+`--no-prune` skips `morzer backup`'s retention pass for one run.
 
 ## Restoring
 
