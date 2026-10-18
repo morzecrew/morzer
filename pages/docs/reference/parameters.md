@@ -179,7 +179,7 @@ morzer config unset update.channel           # back to absent, which is always t
 | `update.channel` | A mutable reference to follow. See [following a channel](../operating/updating.md#following-a-channel). |
 | `update.auto_apply` | Install what the channel offers, when the release declares a failure cannot end needing a database restore. |
 | `update.schedule` | When the update timer follows the channel — and installs, if `update.auto_apply` allows — as a systemd `OnCalendar` expression. This is the maintenance window. Absent takes daily at 03:30. See [unattended updates](../operating/unattended-updates.md#the-maintenance-window-is-an-oncalendar-expression). |
-| `update.randomized_delay` | How long each update tick may wait at random, as a duration such as `30m`; `0` for none. Absent takes 30 minutes, or none on a [dev-mode](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth) machine. `morzer status` shows it with the schedule. |
+| `update.randomized_delay` | How long each update tick may wait at random, as a duration in whole seconds such as `30m`; `0` for none. Absent takes 30 minutes, or none on a [dev-mode](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth) machine. `morzer status` shows it with the schedule. |
 | `backup.schedule` | When scheduled backups run, as a systemd `OnCalendar` expression. Absent takes the nightly default. |
 | `backup.scheduled` | Whether this manager runs backups on a timer at all. Absent means it does. |
 | `retention.pre_update_backups` | How many of the newest pre-update backups retention keeps, on top of the ordinary count; at least `1`. Absent takes `3`. See [retention](../operating/backups.md#retention). |

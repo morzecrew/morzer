@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`update.randomized_delay` sets how late an update tick may run.** A production update timer always waited up to 1800 seconds at random, whatever `update.schedule` said, and a dev-mode one never did. Set a duration such as `10m`, or `0` for none; unset keeps those defaults. `morzer status` shows the delay beside the schedule.
+- **`update.randomized_delay` sets how late an update tick may run.** A production update timer always waited up to 1800 seconds at random, whatever `update.schedule` said, and a dev-mode one never did. Set a duration in whole seconds, such as `10m`, or `0` for none; unset keeps those defaults. `morzer status` shows the delay beside the schedule.
 
 ### Changed
 

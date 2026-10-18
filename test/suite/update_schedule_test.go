@@ -340,7 +340,8 @@ func TestTheUpdateDelayCanBeSetAndUnset(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, inst.Update.RandomizedDelay, "a delay of 0 was stored as unset")
 
-	for _, bad := range []string{"-5m", "soon", "1800"} {
+	// The timer takes whole seconds, so 500ms would render as none.
+	for _, bad := range []string{"-5m", "soon", "1800", "500ms", "1m0.5s"} {
 		require.Error(t, set("update.randomized_delay", bad), "%q was stored as a delay", bad)
 	}
 

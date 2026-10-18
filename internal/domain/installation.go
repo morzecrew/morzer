@@ -970,6 +970,11 @@ func (i Installation) Validate() error {
 	if i.Policy.RetainPreUpdateBackups < 0 {
 		v.add("policy.retain_pre_update_backups", "must not be negative")
 	}
+	// The timer renders whole seconds, so 500ms would run with no delay
+	// while `status` reported one.
+	if d := i.Update.RandomizedDelay; d != nil && d.Duration()%time.Second != 0 {
+		v.add("update.randomized_delay", "must be whole seconds, and %s is not", d)
+	}
 
 	// An unsatisfiable policy is refused where it is written rather than
 	// where it would be enforced. Requiring a signature with no key to check

@@ -114,7 +114,7 @@ var settings = map[string]setting{
 		Clear: func(i *domain.Installation) { i.Update.Schedule = "" },
 	},
 	"update.randomized_delay": {
-		Description: "how long each update tick may wait at random, as a duration such as 30m; 0 for none",
+		Description: "how long each update tick may wait at random, as a duration in whole seconds such as 30m; 0 for none",
 		// The value in force rather than the stored one, because unset
 		// means half an hour in production and none on a sandbox.
 		Read: func(i domain.Installation) string {

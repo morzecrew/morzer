@@ -124,3 +124,24 @@ proposal: LOCKED — refines D-21: a successful update applies retention as its 
 absent, pushed or not (`internal/lifecycle/ops/backup.go:312`). A local-only
 backup therefore prunes targets that received nothing new, which the 2026-10-18
 ruling says it should not. It predates this branch and is not changed here.
+
+## Review on #116
+
+Raised by CodeAnt:
+
+- **An update took a pre-update backup and pruned nothing.** The open item
+  above, built as ruled in `2445834`.
+- **Prune treated a manifest it could not reread as an ordinary backup.** List
+  reads every manifest, and Prune reads them again for their reasons. A reread
+  failing between the two left the reason empty, so an older pre-update backup
+  could be pruned against the policy. It now fails the prune, which removes
+  nothing; the step is `Continue`, so the backup or update still succeeds. A
+  manifest that changes between two reads a moment apart cannot be arranged
+  from a test, so this one has no red test.
+- **A sub-second delay rendered as none.** `500ms` was accepted, and the unit
+  rendered `RandomizedDelaySec=0` while `status` showed 500ms. `Validate` now
+  refuses a delay that is not whole seconds, which covers `config set` and a
+  hand-written installation file.
+- **Text `status` says nothing about a zero delay.** Not changed. Zero is "no
+  delay", which the schedule note already implies, and `status --json` carries
+  `randomized_delay` either way.

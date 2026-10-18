@@ -1092,9 +1092,13 @@ func (e *Engine) Prune(ctx context.Context, policy ports.RetentionPolicy) ([]por
 	// refs is newest-first, which is the order Prunes reads.
 	reasons := make([]string, len(refs))
 	for i, ref := range refs {
-		if manifest, err := readManifest(ref.Path); err == nil {
-			reasons[i] = manifest.Reason
+		manifest, err := readManifest(ref.Path)
+		if err != nil {
+			// List read it a moment ago. Pruning by a guessed reason could
+			// remove a pre-update backup the policy keeps.
+			return nil, err
 		}
+		reasons[i] = manifest.Reason
 	}
 
 	var removed []ports.BackupRef
