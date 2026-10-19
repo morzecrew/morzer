@@ -428,7 +428,9 @@ func stepPruneRemoteBackups(d *Deps, inst domain.Installation, rel domain.Releas
 		OnFailure:   engine.Continue,
 		Timeout:     30 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			pushed, _ := engine.GetTyped[[]ports.RemoteRef](st, engine.KeyPushedBackups)
+			// Absent when no copy left the machine this run, as after an
+			// update that took no backup: there is nothing to prune for.
+			pushed := engine.MustGet[[]ports.RemoteRef](st, engine.KeyPushedBackups)
 			policy := ports.RetentionPolicy{
 				Keep:          inst.RetentionBackups(rel.Manifest),
 				KeepPreUpdate: inst.RetentionPreUpdateBackups(),

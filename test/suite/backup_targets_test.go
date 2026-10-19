@@ -1075,11 +1075,13 @@ func TestASuccessfulUpdatePrunesWhereItsBackupLanded(t *testing.T) {
 	t.Run("not when the update took no backup", func(t *testing.T) {
 		h, fake, old := seeded(t)
 
-		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{
+		result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{
 			Options: ops.Options{Force: true, SkipBackup: true},
 			Ref:     stageUpgradeSource(t, h),
 		})
 		require.NoError(t, err)
+		// Nothing reached a target, which is not a failed step to warn about.
+		assert.Empty(t, failedStepID(result.Record))
 
 		local, onTarget := held(t, h, fake)
 		assert.ElementsMatch(t, old, local, "an update without a backup pruned the machine")
