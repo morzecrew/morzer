@@ -183,6 +183,7 @@ morzer config unset update.channel           # back to absent, which is always t
 | `update.randomized_delay` | How long each update tick may wait at random, as a duration in whole seconds such as `30m`; `0` for none. Absent takes 30 minutes, or none on a [dev-mode](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth) machine. `morzer status` shows it with the schedule. |
 | `backup.schedule` | When scheduled backups run, as a systemd `OnCalendar` expression. Absent takes the nightly default. |
 | `backup.scheduled` | Whether this manager runs backups on a timer at all. Absent means it does. |
+| `backup.before_update` | Whether an update takes a backup before it changes anything. Absent means it does. Only a [dev-mode](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth) machine may set `false`; on a production machine, `update --skip-backup --force` skips it for one update. |
 | `retention.pre_update_backups` | How many of the newest pre-update backups retention keeps, on top of the ordinary count; at least `1`. Absent takes `3`. See [retention](../operating/backups.md#retention). |
 
 `backup.schedule` is the same value `morzer init --backup-schedule` takes, and

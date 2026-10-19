@@ -190,6 +190,30 @@ var settings = map[string]setting{
 		// and the same one an absent field takes.
 		Clear: func(i *domain.Installation) { i.Policy.SkipScheduledBackups = false },
 	},
+	"backup.before_update": {
+		Description: "whether an update takes a backup before it changes anything; only a dev-mode installation may turn it off",
+		Read: func(i domain.Installation) string {
+			return strconv.FormatBool(!i.Policy.SkipBackupBeforeUpdate)
+		},
+		// Positive here and negative in the record, as `backup.scheduled`
+		// is. Off is a sandbox's choice only (RFC 0016 decision 32): on a
+		// production machine this backup is what a failed migration is
+		// recovered from, and one update can still skip it with
+		// `--skip-backup --force`, which the journal records.
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			v, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return domain.Usage("%q is not a boolean (true or false)", raw)
+			}
+			if !v && !i.IsDev() {
+				return domain.Usage("only a dev-mode installation may turn off the pre-update backup").
+					WithHint("to skip it for one update, run `morzer update --skip-backup --force`")
+			}
+			i.Policy.SkipBackupBeforeUpdate = !v
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Policy.SkipBackupBeforeUpdate = false },
+	},
 	"update.channel": {
 		Description: "a mutable reference to follow, e.g. oci://registry.example/demo/bundle:stable",
 		Read:        func(i domain.Installation) string { return i.Update.Channel },

@@ -224,7 +224,9 @@ failed migration is recovered from, and it is the backup a refused rollback will
 name.
 
 `--skip-backup` exists and requires `--force`, and the choice is recorded in the
-journal so an incident review can see it was made deliberately.
+journal so an incident review can see it was made deliberately. A dev-mode
+machine can turn the backup off for every update with
+`morzer config set backup.before_update=false`; a production machine cannot.
 
 ## When it fails
 

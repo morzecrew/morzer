@@ -469,9 +469,11 @@ morzer backup push <id>
 ```
 
 `--no-push` takes a local-only backup for the run, when you already know the
-medium is disconnected. `--no-prune-remote` skips the retention pass on the
-targets; retention there follows the same policy as locally, and never removes
-the most recent backup or the newest pre-update backups.
+medium is disconnected. It prunes nothing on the targets, which received no
+newer backup. `--no-prune-remote` skips the retention pass on the targets;
+retention there follows the same policy as locally, runs only on the targets
+the backup reached, and never removes the most recent backup or the newest
+pre-update backups.
 
 ### Credentials
 

@@ -431,7 +431,7 @@ func updateSteps(
 	prune.Check = tookNoBackup
 	steps = append(steps, prune)
 	if inst.Backup.HasTargets() {
-		steps = append(steps, stepPruneRemoteBackups(d, inst, staged, reachedTargets))
+		steps = append(steps, stepPruneRemoteBackups(d, inst, staged))
 	}
 
 	// A sandbox prunes after every update; a production machine does not,
@@ -613,17 +613,6 @@ func stepCheckCompatibility(
 func tookNoBackup(_ context.Context, st *engine.State) (bool, error) {
 	ref, err := engine.GetTyped[ports.BackupRef](st, engine.KeyBackupRef)
 	return err != nil || ref.IsZero(), nil
-}
-
-// reachedTargets is where the pre-update backup landed. A target the copy
-// missed holds nothing newer to make room for, so it is not pruned.
-func reachedTargets(_ context.Context, st *engine.State) ([]ports.TargetRef, error) {
-	pushed, _ := engine.GetTyped[[]ports.RemoteRef](st, engine.KeyPushedBackups)
-	out := make([]ports.TargetRef, len(pushed))
-	for i, remote := range pushed {
-		out[i] = remote.Target
-	}
-	return out, nil
 }
 
 // stepPreUpdateBackup takes the backup an operator will want if this goes

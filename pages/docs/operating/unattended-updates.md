@@ -152,7 +152,8 @@ what will happen to a real one. It relaxes:
   is nothing here to be unable to recover.
 - **Retention.** It prunes old releases after every update, which a fast rebuild
   loop needs — one release directory per build, each with its own images.
-- **`--skip-backup`**, without `--force`.
+- **`--skip-backup`**, without `--force`, and **`backup.before_update=false`**,
+  which turns the pre-update backup off for every update, the timer's included.
 - **Prereleases.** They are admissible update candidates. On a production
   machine they are not: every development build carries a prerelease version,
   and a check answering "1.4.1-dev.7 is available" is a check nobody reads.
