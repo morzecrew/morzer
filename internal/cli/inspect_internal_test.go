@@ -216,6 +216,30 @@ func TestExecOutputGoesThroughUnframed(t *testing.T) {
 	}
 }
 
+// TestARefusalAfterTheCommandRanKeepsItsOutputInTheEnvelope: a service that
+// stopped while the command ran is refused after the command printed, and the
+// envelope is all a --json consumer reads.
+func TestARefusalAfterTheCommandRanKeepsItsOutputInTheEnvelope(t *testing.T) {
+	var out bytes.Buffer
+	app := &App{json: jsonout.New(jsonout.Options{Out: &out})}
+	ran := ops.ExecResult{Service: "db", ExitCode: 1, Stderr: "service \"db\" is not running\n"}
+	refusal := domain.RuntimeError(domain.ErrRuntime, "service db is exited")
+
+	if err := app.finishExec(ran, refusal); err != refusal {
+		t.Fatalf("the refusal was replaced: %v", err)
+	}
+	if app.jsonData != ran {
+		t.Errorf("the envelope carries %#v, not what the command printed", app.jsonData)
+	}
+
+	// A refusal before anything ran has nothing to carry.
+	app.jsonData = nil
+	_ = app.finishExec(ops.ExecResult{}, refusal)
+	if app.jsonData != nil {
+		t.Errorf("a command that never ran reported a result: %#v", app.jsonData)
+	}
+}
+
 func TestAnOrdinaryFailureIsStillMappedAndStillPrinted(t *testing.T) {
 	err := domain.Usage("no")
 	if got := exitCodeFor(err); got != domain.ExitUsage {

@@ -383,13 +383,29 @@ func ExecInService(ctx context.Context, d *Deps, opts ExecOptions) (ExecResult, 
 		return ExecResult{Service: opts.Service}, err
 	}
 
-	return ExecResult{
+	out := ExecResult{
 		Service:  opts.Service,
 		ExitCode: res.ExitCode,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
 		Duration: res.Duration,
-	}, nil
+	}
+
+	// Asked again when the command failed, because the pre-check and the exec
+	// are two calls and the container can stop between them. Compose then
+	// exits 1 with its own message, which would pass for the command's status
+	// (#97). Journalled above all the same: a command that ran until its
+	// container stopped looks the same from here, and a human was inside.
+	// A status that cannot be read says nothing about the service, and then
+	// the command's own exit code is the better answer.
+	if res.ExitCode != 0 {
+		if states, err := d.Runtime.Status(ctx, dep.Config); err == nil {
+			if err := requireRunning(states, opts.Service); err != nil {
+				return out, err
+			}
+		}
+	}
+	return out, nil
 }
 
 // confirmRunning refuses a service that is not up, naming the state it is in.
@@ -398,15 +414,34 @@ func confirmRunning(ctx context.Context, d *Deps, dep deployment, service string
 	if err != nil {
 		return err
 	}
-
 	names := make([]string, 0, len(states))
 	for _, s := range states {
+		if s.Name == service {
+			return requireRunning(states, service)
+		}
 		names = append(names, s.Name)
+	}
+
+	hint := "run `morzer ps` to see what this deployment runs"
+	if len(names) > 0 {
+		hint = "this deployment runs " + strings.Join(names, ", ")
+	}
+	return domain.Usage("this deployment has no service named %q", service).
+		WithHint("%s", hint)
+}
+
+// requireRunning refuses a service none of whose instances the listing shows
+// running. A scaled service is listed once per instance, and Compose runs the
+// command in any one that is up.
+func requireRunning(states []ports.ServiceState, service string) error {
+	for _, s := range states {
+		if s.Name == service && s.State == ports.StateRunning {
+			return nil
+		}
+	}
+	for _, s := range states {
 		if s.Name != service {
 			continue
-		}
-		if s.State == ports.StateRunning {
-			return nil
 		}
 		// The state, because "exited (137)" and "restarting" send an
 		// operator to different places -- and the second is why they
@@ -416,13 +451,11 @@ func confirmRunning(ctx context.Context, d *Deps, dep deployment, service string
 			service, s.State).
 			WithHint("`morzer logs %s` says why; `morzer apply` brings it back", service)
 	}
-
-	hint := "run `morzer ps` to see what this deployment runs"
-	if len(names) > 0 {
-		hint = "this deployment runs " + strings.Join(names, ", ")
-	}
-	return domain.Usage("this deployment has no service named %q", service).
-		WithHint("%s", hint)
+	// Only the recheck gets here: the pre-check found the service, so its
+	// containers were removed while the command ran.
+	return domain.RuntimeError(domain.ErrRuntime,
+		"service %s has no containers any more, so there is none to run a command in", service).
+		WithHint("`morzer apply` brings it back")
 }
 
 // execRecord is the journal entry for one exec.
