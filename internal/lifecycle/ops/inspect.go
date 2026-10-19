@@ -414,19 +414,34 @@ func confirmRunning(ctx context.Context, d *Deps, dep deployment, service string
 	if err != nil {
 		return err
 	}
-	return requireRunning(states, service)
-}
-
-// requireRunning refuses a service the listing does not show running.
-func requireRunning(states []ports.ServiceState, service string) error {
 	names := make([]string, 0, len(states))
 	for _, s := range states {
+		if s.Name == service {
+			return requireRunning(states, service)
+		}
 		names = append(names, s.Name)
+	}
+
+	hint := "run `morzer ps` to see what this deployment runs"
+	if len(names) > 0 {
+		hint = "this deployment runs " + strings.Join(names, ", ")
+	}
+	return domain.Usage("this deployment has no service named %q", service).
+		WithHint("%s", hint)
+}
+
+// requireRunning refuses a service none of whose instances the listing shows
+// running. A scaled service is listed once per instance, and Compose runs the
+// command in any one that is up.
+func requireRunning(states []ports.ServiceState, service string) error {
+	for _, s := range states {
+		if s.Name == service && s.State == ports.StateRunning {
+			return nil
+		}
+	}
+	for _, s := range states {
 		if s.Name != service {
 			continue
-		}
-		if s.State == ports.StateRunning {
-			return nil
 		}
 		// The state, because "exited (137)" and "restarting" send an
 		// operator to different places -- and the second is why they
@@ -436,13 +451,11 @@ func requireRunning(states []ports.ServiceState, service string) error {
 			service, s.State).
 			WithHint("`morzer logs %s` says why; `morzer apply` brings it back", service)
 	}
-
-	hint := "run `morzer ps` to see what this deployment runs"
-	if len(names) > 0 {
-		hint = "this deployment runs " + strings.Join(names, ", ")
-	}
-	return domain.Usage("this deployment has no service named %q", service).
-		WithHint("%s", hint)
+	// Only the recheck gets here: the pre-check found the service, so its
+	// containers were removed while the command ran.
+	return domain.RuntimeError(domain.ErrRuntime,
+		"service %s has no containers any more, so there is none to run a command in", service).
+		WithHint("`morzer apply` brings it back")
 }
 
 // execRecord is the journal entry for one exec.

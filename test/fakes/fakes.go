@@ -567,9 +567,13 @@ func (r *Runtime) Status(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.
 	for _, s := range r.Services {
 		out = append(out, s)
 	}
-	// Sorted so assertions are stable: map iteration is not.
+	// Sorted so assertions are stable: map iteration is not. The instances of
+	// a scaled service come in container order, as Compose lists them.
+	before := func(a, b ports.ServiceState) bool {
+		return a.Name < b.Name || a.Name == b.Name && a.Container < b.Container
+	}
 	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j].Name < out[j-1].Name; j-- {
+		for j := i; j > 0 && before(out[j], out[j-1]); j-- {
 			out[j], out[j-1] = out[j-1], out[j]
 		}
 	}

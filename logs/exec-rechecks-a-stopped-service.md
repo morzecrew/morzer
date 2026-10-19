@@ -48,7 +48,7 @@ proposal: ASSUMED — a command that exits non-zero is followed by the same runn
 
 ## As built
 
-- `ExecInService` runs `confirmRunning` again when the command exits
+- `ExecInService` runs the running check again when the command exits
   non-zero, and returns its refusal with the command's output attached.
 - The CLI prints that output before the error, so a command that ran until its
   container stopped still shows what it printed.
@@ -70,3 +70,19 @@ proposal: ASSUMED — a command that exits non-zero is followed by the same runn
   red against the first version.
 - The command reference promised a refusal for any command whose service
   stopped while it ran. Only a failed command is checked, and it now says so.
+
+## Review, second round
+
+- The running check returned on the first row with the service's name. A
+  scaled service is one row per instance, and Compose 5.5.1 runs `exec` in an
+  instance that is up: with `app-1` exited and `app-2` running, `compose exec`
+  ran in `app-2`. The check refused it, both before the command and in the new
+  recheck. It now refuses only when no instance runs.
+  `TestExecRunsInAScaledServiceWhileOneInstanceIsUp` was red before. The fake's
+  `Status` now orders one service's rows by container, as Compose does, so that
+  test is red on every run rather than on half of them.
+- A recheck that no longer listed the service was refused as a misspelt name,
+  with exit 2. The pre-check had already found the service, so its containers
+  were removed while the command ran. That is now a runtime refusal with exit
+  7, and the unknown-name refusal stays with the pre-check.
+  `TestExecRefusesAServiceRemovedWhileTheCommandRan` was red before.

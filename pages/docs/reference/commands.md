@@ -383,7 +383,9 @@ prompts waits for an answer nobody can give. There is no `--user` and no
 shortcut for running as root.
 
 A service that is not running is refused by name, with the state it is in, and
-exit 7. So is a command that fails because its service stopped: a failed
+exit 7. A scaled service is refused only when none of its instances is running,
+because Compose runs the command in one that is. A command that fails because
+its service stopped or its containers were removed is refused too: a failed
 command is checked against the service's state again, after whatever it
 printed, so the runtime's own failure is not passed off as the command's exit
 code. A command that succeeded is not checked, and a state that cannot be read
