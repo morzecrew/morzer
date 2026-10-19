@@ -97,6 +97,9 @@
         "retain_backups": {
           "type": "integer"
         },
+        "retain_pre_update_backups": {
+          "type": "integer"
+        },
         "retain_releases": {
           "type": "integer"
         },
@@ -179,6 +182,15 @@
         },
         "check": {
           "type": "boolean"
+        },
+        "randomized_delay": {
+          "description": "A duration, e.g. 30s or 10m.",
+          "examples": [
+            "30s",
+            "10m"
+          ],
+          "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
+          "type": "string"
         },
         "schedule": {
           "type": "string"
