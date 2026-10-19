@@ -692,6 +692,8 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 			return len(steps) == 0, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
+			env := d.hookEnv(inst, rel, opts.PreviousVersion, st.OpID,
+				st.OpType, ports.PhaseMigrate, st.DryRun)
 			reported := 0
 			for i, spec := range steps {
 				// Named by position only when there is more than
@@ -702,7 +704,7 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 					which = fmt.Sprintf("migration step %d of %d", i+1, len(steps))
 					st.Detail("%s", which)
 				}
-				schema, err := d.runMigrateStep(ctx, st, inst, rel, spec, which)
+				schema, err := d.runMigrateStep(ctx, st, rel, env, spec, which)
 				if err != nil {
 					return err
 				}
@@ -725,7 +727,7 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 // runMigrateStep runs one step of the migrate operation and returns the schema
 // version it reported, or zero.
 func (d *Deps) runMigrateStep(
-	ctx context.Context, st *engine.State, inst domain.Installation, rel domain.Release,
+	ctx context.Context, st *engine.State, rel domain.Release, env ports.HookEnv,
 	spec domain.OperationSpec, which string,
 ) (int, error) {
 	switch spec.Kind {
@@ -740,6 +742,7 @@ func (d *Deps) runMigrateStep(
 		// start-services does.
 		st.Set(keyServicesTouched, true)
 		res, err := d.Runtime.RunOneShot(ctx, cfg, spec.Service, ports.RunOptions{
+			Env:     ports.ServiceEnvVars(env),
 			Timeout: spec.Timeout.Or(30 * time.Minute),
 			Remove:  true,
 		})
@@ -763,9 +766,6 @@ func (d *Deps) runMigrateStep(
 		return 0, nil
 
 	case domain.OperationKindHook:
-		env := d.hookEnv(inst, rel, domain.Version{}, st.OpID,
-			domain.OpTypeApply, ports.PhaseMigrate, st.DryRun)
-
 		outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env,
 			spec.Timeout.Or(30*time.Minute))
 		if err != nil {
@@ -971,8 +971,8 @@ func stepSmokeTest(d *Deps, inst domain.Installation, rel domain.Release, opts O
 			return !declared, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			env := d.hookEnv(inst, rel, domain.Version{}, st.OpID,
-				domain.OpTypeApply, ports.PhaseSmokeTest, st.DryRun)
+			env := d.hookEnv(inst, rel, opts.PreviousVersion, st.OpID,
+				st.OpType, ports.PhaseSmokeTest, st.DryRun)
 
 			outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env, spec.Timeout.Or(10*time.Minute))
 			if err != nil {

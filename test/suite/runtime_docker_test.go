@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
+	"github.com/morzecrew/morzer/internal/domain"
 	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/contract"
@@ -293,19 +294,37 @@ services:
   echoer:
     image: %s
     profiles: ["tools"]
-    command: ["sh", "-c", "echo GOT=$${MIGRATION_MODE:-unset}"]
+    command: ["env"]
 `, dockerlab.ImageBusybox))
+
+	// What a migration service is handed (#99), with a host path set so the
+	// container can show it was left out.
+	env := ports.ServiceEnvVars(ports.HookEnv{
+		Product:         "demo",
+		InstallationID:  "inst_01TESTINSTALLATION",
+		OperationID:     "op_01TESTOPERATION",
+		OperationType:   domain.OpTypeUpdate,
+		Phase:           ports.PhaseMigrate,
+		ReleaseVersion:  domain.MustParseVersion("1.3.0"),
+		PreviousVersion: domain.MustParseVersion("1.2.0"),
+		ReleaseDir:      "/var/lib/demo/releases/1.3.0",
+		LogLevel:        "info",
+	})
+	require.Len(t, env, 9)
 
 	res, err := compose.New(infraexec.New()).RunOneShot(context.Background(), cfg, "echoer",
 		ports.RunOptions{
 			Remove:  true,
-			Env:     map[string]string{"MIGRATION_MODE": "offline"},
+			Env:     env,
 			Timeout: 2 * time.Minute,
 		})
 
 	require.NoError(t, err)
-	assert.Contains(t, res.Stdout, "GOT=offline",
-		"the hook ABI's variables must reach the one-shot container")
+	for name, value := range env {
+		assert.Contains(t, res.Stdout, name+"="+value+"\n",
+			"the hook ABI's variables must reach the one-shot container")
+	}
+	assert.NotContains(t, res.Stdout, "DEMO_RELEASE_DIR")
 }
 
 // TestComposeRunOneShotStartsWhatItDependsOn is a first install's migration.

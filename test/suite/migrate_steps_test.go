@@ -147,6 +147,89 @@ func TestAFailedMigrationServicePutsThePreviousReleaseBack(t *testing.T) {
 	assert.Equal(t, "1.2.0", h.Runtime.UpConfigs[ups].Env["DEMO_VERSION"])
 }
 
+// tellsContext appends the operation it runs under, the version it replaces and
+// its phase, so a test can read back what each run was told.
+const tellsContext = `#!/bin/sh
+set -eu
+echo "${DEMO_OPERATION_TYPE:-unset} ${DEMO_PREVIOUS_VERSION:-none} ${DEMO_PHASE:-unset}" >> "${DEMO_DATA_DIR:?}/.context"
+`
+
+// A migrate step and the smoke test are told the operation running them and,
+// on an update, the version it replaces (#100). Every one was told `apply`
+// with no previous version, so an update and a re-apply looked the same.
+func TestAStepIsToldWhatIsRunningIt(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	withMigrateSteps(t, src, "    - kind: hook\n      command: [\"hooks/migrate\"]\n"+
+		"    - kind: hook\n      command: [\"hooks/context\"]\n",
+		map[string]string{"context": tellsContext, "smoke-test": tellsContext})
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+	// The second rollback bounces back to 1.3.0, the release with the hook,
+	// so it is told it replaces 1.2.0.
+	for range 2 {
+		_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+		require.NoError(t, err)
+	}
+
+	told, err := os.ReadFile(filepath.Join(h.Paths.DataDir(), ".context"))
+	require.NoError(t, err)
+	assert.Equal(t, "update 1.2.0 migrate\nupdate 1.2.0 smoke-test\n"+
+		"apply none migrate\napply none smoke-test\n"+
+		"rollback 1.2.0 migrate\nrollback 1.2.0 smoke-test\n", string(told))
+}
+
+// A migration service gets the hook ABI's variables that mean the same inside
+// a container (#99). Host paths name the manager's filesystem, the result
+// descriptor is not open in there, and parameters reach a service the way the
+// vendor's Compose file wires them.
+func TestAMigrationServiceIsToldWhatIsRunningIt(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	withMigrateSteps(t, src,
+		"    - kind: runtime-service\n      service: app\n"+
+			"    - kind: hook\n      command: [\"hooks/migrate\"]\n", nil)
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+
+	require.Len(t, h.Runtime.OneShots, 1)
+	env := h.Runtime.OneShots[0].Env
+	installation, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	for name, want := range map[string]string{
+		"DEMO_PRODUCT":          "demo",
+		"DEMO_INSTALLATION_ID":  installation.ID,
+		"DEMO_OPERATION_TYPE":   "update",
+		"DEMO_PHASE":            "migrate",
+		"DEMO_RELEASE_VERSION":  "1.3.0",
+		"DEMO_PREVIOUS_VERSION": "1.2.0",
+		"DEMO_LOG_LEVEL":        "info",
+		"DEMO_DRY_RUN":          "0",
+	} {
+		assert.Equal(t, want, env[name], name)
+	}
+	assert.NotEmpty(t, env["DEMO_OPERATION_ID"])
+	for name := range env {
+		for _, host := range []string{"_DIR", "_FILE", "_FD", "_PARAM_", "_COMPOSE_PROJECT"} {
+			assert.NotContains(t, name, host, "%s means nothing inside the container", name)
+		}
+	}
+}
+
 // What the loader accepts and refuses, through the same decode a bundle gets.
 func TestWhatAMigrateListMayLookLike(t *testing.T) {
 	parse := func(t *testing.T, edit func(string) string) error {
