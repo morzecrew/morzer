@@ -55,3 +55,18 @@ proposal: ASSUMED — a command that exits non-zero is followed by the same runn
 - If the CI cause is stale `ps` output, the second check comes later and is
   likelier to see the stop, but it is not guaranteed to. #97 stays open for
   that.
+
+## Review, 2026-10-19
+
+- The recheck replaced the command's exit code with any error from reading the
+  status. A status that cannot be read is no evidence about the service, so
+  the command's exit code now stands then.
+  `TestExecKeepsTheCommandsExitCodeWhenTheRecheckCannotRead` was red against
+  the first version.
+- With `--json`, the refusal returned before the result was put in the
+  envelope, so the output the command printed was lost there. The CLI's
+  handling moved into `finishExec`, which carries the result whenever the
+  command ran. `TestARefusalAfterTheCommandRanKeepsItsOutputInTheEnvelope` was
+  red against the first version.
+- The command reference promised a refusal for any command whose service
+  stopped while it ran. Only a failed command is checked, and it now says so.

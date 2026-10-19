@@ -383,9 +383,11 @@ prompts waits for an answer nobody can give. There is no `--user` and no
 shortcut for running as root.
 
 A service that is not running is refused by name, with the state it is in, and
-exit 7. So is one that stops while the command runs, after whatever the command
-printed: a command that fails is checked against the service's state again, so
-the runtime's own failure is not passed off as the command's exit code.
+exit 7. So is a command that fails because its service stopped: a failed
+command is checked against the service's state again, after whatever it
+printed, so the runtime's own failure is not passed off as the command's exit
+code. A command that succeeded is not checked, and a state that cannot be read
+leaves the command's exit code as it was.
 
 Journaled with its type, service, argv and exit code — and never its output. The
 argv is redacted with this installation's known secret values first, because a

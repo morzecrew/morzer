@@ -445,6 +445,27 @@ func TestExecRefusesAServiceThatStoppedAfterThePreCheck(t *testing.T) {
 			"before its container stopped has output an operator needs")
 }
 
+// TestExecKeepsTheCommandsExitCodeWhenTheRecheckCannotRead: the recheck can
+// only turn a failure into a refusal when it sees the service down. A status
+// it could not read is no evidence, and replacing the command's exit code with
+// the runtime's error would hand a script the wrong failure.
+func TestExecKeepsTheCommandsExitCodeWhenTheRecheckCannotRead(t *testing.T) {
+	h := newHarness(t)
+	h.running(t)
+	h.Runtime.ExecResults["app"] = ports.ExitResult{ExitCode: 3, Stderr: "no such table\n"}
+	h.Runtime.OnCall = func(method string) {
+		if method == "Exec" {
+			h.Runtime.Fail["Status"] = domain.RuntimeError(nil, "injected: daemon unreachable")
+		}
+	}
+
+	res, err := ops.ExecInService(context.Background(), h.Deps, ops.ExecOptions{
+		Service: "app", Argv: []string{"psql"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, res.ExitCode)
+}
+
 func TestExecNamesTheServicesWhenAskedForOneThatDoesNotExist(t *testing.T) {
 	h := newHarness(t)
 	h.running(t)

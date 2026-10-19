@@ -446,41 +446,46 @@ func newExecCommand(app *App) *cobra.Command {
 				Service: args[0],
 				Argv:    args[1:],
 			})
-
-			if app.json != nil {
-				if err != nil {
-					return err
-				}
-				app.jsonData = result
-			} else {
-				// The command's own streams, unchanged and
-				// unframed: an operator piping `morzer exec db --
-				// pg_dump` into a file must get the dump and not
-				// a report about it. Before the error too: a
-				// service that stopped mid-command is refused
-				// after it printed.
-				fmt.Fprint(app.Stream.Err, result.Stderr)
-				app.passThrough(result.Stdout)
-			}
-			if err != nil {
-				return err
-			}
-
-			// The container's status, propagated. A manager that
-			// returned 0 for a command that failed inside would make
-			// this unusable in a script.
-			if result.ExitCode != 0 {
-				return exitStatus{
-					code: result.ExitCode,
-					cause: domain.RuntimeError(domain.ErrRuntime,
-						"the command in %s exited %d",
-						result.Service, result.ExitCode),
-				}
-			}
-			return nil
+			return app.finishExec(result, err)
 		},
 	}
 	return cmd
+}
+
+// finishExec presents what `exec` ran and decides its exit.
+//
+// A refusal can come after the command ran: a service that stopped while it ran
+// is refused once it has printed, and that is the only refusal carrying a
+// non-zero exit code. Its output is shown before the error, and with --json it
+// rides in the envelope beside it.
+func (a *App) finishExec(result ops.ExecResult, err error) error {
+	ran := err == nil || result.ExitCode != 0
+	if a.json != nil {
+		if ran {
+			a.jsonData = result
+		}
+	} else {
+		// The command's own streams, unchanged and unframed: an
+		// operator piping `morzer exec db -- pg_dump` into a file must
+		// get the dump and not a report about it.
+		fmt.Fprint(a.Stream.Err, result.Stderr)
+		a.passThrough(result.Stdout)
+	}
+	if err != nil {
+		return err
+	}
+
+	// The container's status, propagated. A manager that returned 0 for a
+	// command that failed inside would make this unusable in a script.
+	if result.ExitCode != 0 {
+		return exitStatus{
+			code: result.ExitCode,
+			cause: domain.RuntimeError(domain.ErrRuntime,
+				"the command in %s exited %d",
+				result.Service, result.ExitCode),
+		}
+	}
+	return nil
 }
 
 // exitStatus carries a container command's own exit code out to the process

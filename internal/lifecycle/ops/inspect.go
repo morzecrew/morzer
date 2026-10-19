@@ -396,9 +396,13 @@ func ExecInService(ctx context.Context, d *Deps, opts ExecOptions) (ExecResult, 
 	// exits 1 with its own message, which would pass for the command's status
 	// (#97). Journalled above all the same: a command that ran until its
 	// container stopped looks the same from here, and a human was inside.
+	// A status that cannot be read says nothing about the service, and then
+	// the command's own exit code is the better answer.
 	if res.ExitCode != 0 {
-		if err := confirmRunning(ctx, d, dep, opts.Service); err != nil {
-			return out, err
+		if states, err := d.Runtime.Status(ctx, dep.Config); err == nil {
+			if err := requireRunning(states, opts.Service); err != nil {
+				return out, err
+			}
 		}
 	}
 	return out, nil
@@ -410,7 +414,11 @@ func confirmRunning(ctx context.Context, d *Deps, dep deployment, service string
 	if err != nil {
 		return err
 	}
+	return requireRunning(states, service)
+}
 
+// requireRunning refuses a service the listing does not show running.
+func requireRunning(states []ports.ServiceState, service string) error {
 	names := make([]string, 0, len(states))
 	for _, s := range states {
 		names = append(names, s.Name)
