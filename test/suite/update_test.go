@@ -254,6 +254,36 @@ func TestTheInstallationCanTurnOffThePreUpdateBackup(t *testing.T) {
 	})
 }
 
+// A sandbox can stop taking pre-update backups for good; a production machine
+// cannot, because that backup is what a failed migration is recovered from.
+// One production update can still skip it with `--skip-backup --force`.
+func TestOnlyASandboxTurnsOffThePreUpdateBackup(t *testing.T) {
+	ctx := context.Background()
+	set := func(h *harness, value string) error {
+		_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{
+			Set: map[string]string{"backup.before_update": value},
+		})
+		return err
+	}
+	skips := func(h *harness) bool {
+		inst, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		return inst.Policy.SkipBackupBeforeUpdate
+	}
+
+	prod, _ := followingMachine(t, "")
+	require.Error(t, set(prod, "false"), "production turned off its pre-update backup")
+	assert.False(t, skips(prod))
+	require.NoError(t, set(prod, "true"), "turning the backup on is always allowed")
+
+	dev, _ := followingMachine(t, domain.ModeDev)
+	require.NoError(t, set(dev, "false"))
+	assert.True(t, skips(dev), "the sandbox's choice was not recorded")
+	_, err := ops.SetSettings(ctx, dev.Deps, ops.SetSettingsOptions{Unset: []string{"backup.before_update"}})
+	require.NoError(t, err)
+	assert.False(t, skips(dev), "unset did not bring the backup back")
+}
+
 // TestUpdateRetiresAParameterTheNewReleaseDropped.
 //
 // A vendor may stop declaring a parameter, and the operator should be told
