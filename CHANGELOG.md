@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-19
+
+Most of this release is about the data the manager decides to remove. A failed
+`update` no longer deletes a secret the running release still reads,
+`backup --no-push` no longer prunes the backup targets, and an operation queued
+behind the deployment lock refuses a plan made for a release that has since
+moved. Only the newest three pre-update backups are kept past retention, where
+every one was, which filled the disk of a machine that updates often. A manifest that names an operation the manager
+never runs, or gives a `runtime-service` step to anything but `migrate`, is
+refused when it loads instead of doing nothing or failing at `apply`.
+Notification targets are set with `notify target add`, and a migrate step is
+told which operation is running it.
+
+Upgrading moves the installation schema 11 → 12 on the first read and converts
+nothing. Going back is not automatic, because a 0.4.x manager declines the
+installation rather than dropping `update.randomized_delay` and
+`retention.pre_update_backups`. Three more things change on upgrade:
+
+- The first backup or update after upgrading prunes the pre-update backups
+  beyond the newest three, locally and on backup targets. To keep more, run
+  `morzer config set retention.pre_update_backups=<n>` straight after
+  upgrading, before the next scheduled backup or update.
+- A bundle that loaded under 0.4.0 may now be refused. `operations` may name
+  only `migrate`, `smoke_test`, `backup` and `restore`, and only `migrate` may
+  be a `runtime-service` step. Either mistake was a step that never ran or one
+  that failed every time it was reached.
+- A migrate step or smoke test that branched on `OPERATION_TYPE=apply` now
+  sees `update` or `rollback` on those operations, with `PREVIOUS_VERSION` set.
+
 ### Added
 
 - **A migration service is told what is running it.** A `runtime-service` migrate step received none of the hook ABI's variables, so it could not tell an update from a re-apply or learn the version it was migrating to. It now gets the ones that mean the same inside a container: the product, installation and operation ids, `OPERATION_TYPE`, `PHASE`, `RELEASE_VERSION`, `PREVIOUS_VERSION`, `LOG_LEVEL` and `DRY_RUN`. Host paths and `RESULT_FD` are left out, so a service still reports its schema through `database_schema_produces`.
@@ -346,7 +375,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.4.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/morzecrew/morzer/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/morzecrew/morzer/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/morzecrew/morzer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/morzecrew/morzer/compare/v0.1.1...v0.2.0
