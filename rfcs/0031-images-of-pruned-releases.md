@@ -1,12 +1,11 @@
 # RFC 0031 — Images of pruned releases
 
 - **Status:** 📝 Draft — written 2026-10-15. **P1 (the spike) done
-  2026-10-19, and its finding halts P2** (§2.2): removing a bundled alias
-  also removes the same repository's digest reference, and the daemon treats
-  differently spelled references as one, so §4.1's string subtraction does not
-  keep the names decision 3 excludes. Next: the author's ruling on that
-  finding, then P2. Nothing is built. Ruled 2026-10-16: decisions 1, 3, 4, 5
-  and 9 as written, 11 and 12 settled, 13 added.
+  2026-10-19** (§2.2). Its finding, that §4.1's string subtraction does not
+  keep the names decision 3 excludes, is answered by decision 14, and **P2 is
+  the next work**. Nothing is built. Ruled 2026-10-16: decisions 1, 3, 4, 5
+  and 9 as written, 11 and 12 settled, 13 added. Ruled 2026-10-19: 14 added,
+  4 and 11 stand.
 - **Scope:** What happens to container images when a release is pruned. Today
   the release directory goes, including the image layout a bundle carried, and
   every image the runtime pulled or ingested for that release stays in its
@@ -246,8 +245,9 @@ prints only `Untagged: R@D` and leaves `A` (exit 0).
 `docker image rm docker.io/library/rfc31p1-norm:a` printed
 `Untagged: rfc31p1-norm:a`; and `R:t@D` above is the name `R@D`.
 
-**Finding: §4.1 does not keep the names decision 3 excludes. Under §9 this
-halts P2.** `remove = candidates − referenced` subtracts strings. A pruned
+**Finding: §4.1 as first written did not keep the names decision 3 excludes.
+Under §9 this halted P2.** `remove = candidates − referenced` subtracted
+strings. A pruned
 release's alias `A` is not the string `R@D` a remaining release pulls by, so
 `A` is in `remove`, and removing `A` removes `R@D`. That happens wherever one
 image, from one repository and pinned by one digest, is bundled by a pruned
@@ -261,9 +261,9 @@ the same with no alias: manifests that pin `postgres:17@D` and
 `docker.io/library/postgres@D` are two references to §4.1 and one name to the
 daemon, so pruning one release removes the name the other resolves by.
 Decision 4 stands; this is one more way the refusal is no guard for
-references. One shape that closes both, for the author to rule on and not
-adopted here: subtract normalized references, and count an alias
-`R:morzer-sha256-<hex>` as also naming `R@sha256:<hex>`.
+references. Closed by subtracting normalized references, an alias
+`R:morzer-sha256-<hex>` counting as `R@sha256:<hex>`: decision 14, ruled
+2026-10-19, and §4.1.
 
 **Bytes.** Removing the last name deleted a layer only when nothing else held
 it. A 50 MB layer made by `docker build` stayed after `Deleted: <image id>`,
@@ -330,8 +330,18 @@ is real in the row's sense is the author's ruling.
 candidates = ⋃ RuntimeImageRefs(r)   for r in the releases this prune removes
 referenced = ⋃ RuntimeImageRefs(r)   for every release directory that remains,
                                      in every installation DiscoverProducts finds
-remove     = candidates − referenced
+remove     = { c in candidates : key(c) ∉ { key(r) : r in referenced } }
 ```
+
+`key` is the name the daemon resolves, not the string a manifest spells
+(§2.2, decision 14): the normalized repository — `postgres`,
+`docker.io/library/postgres` and `index.docker.io/library/postgres` are one —
+with the digest, and an alias `R:morzer-sha256-<hex>` keyed as
+`R@sha256:<hex>`. Removing an alias also removes its repository's digest
+reference on the same image, so an alias may go only when no remaining
+release names that repository and digest by either spelling. A reference no
+key can be computed for is kept, for the reason §4.2 keeps everything when the
+machine cannot be read.
 
 `referenced` is every release directory still on disk, in this installation and
 in every other, whatever its role — current, previous, staged, or merely
@@ -540,9 +550,10 @@ the cost, and decision 11 the row that reopens it.
 | 8 | A failed image removal never fails the prune: kept, with the runtime's reason, exit 0 | ASSUMED | Reclamation is not the operation; a prune that failed over disk it could not reclaim would be retried into the same refusal. |
 | 9 | On by default on both pruning paths — `release prune` and dev mode's `prune-releases` — with no opt-out in P2; production still never prunes automatically | ASSUMED | Pruning already says the release is unwanted, and the manager cannot install a pruned release's images without its directory. An opt-out is added when an operator asks for one, not before. Ruled by the author 2026-10-16. |
 | 10 | `release prune` reports images removed and kept, `--dry-run` lists them, and the JSON gains `dry_run` | ASSUMED | The JSON cannot tell a plan from an act today (release.go:428). Additive keys only, so existing readers keep working. |
-| 11 | `release prune` takes its own installation's deployment lock; nothing coordinates with another installation's fetch | ASSUMED | Every other writer of an installation's releases holds that lock, and today prune takes none (§2). Dev mode's `prune-releases` runs inside `update`, which already holds it (update.go:120, :833), so the CLI takes it around `PruneReleases` (release.go:423) rather than the function taking it, which would contend with the lock its caller holds. A machine-wide lock would close §7's window too, but is new machinery for a window nobody has measured; P1 measures it and a real window reopens this row. Was `OPEN`. Ruled by the author 2026-10-16. |
+| 11 | `release prune` takes its own installation's deployment lock; nothing coordinates with another installation's fetch | ASSUMED | Every other writer of an installation's releases holds that lock, and today prune takes none (§2). Dev mode's `prune-releases` runs inside `update`, which already holds it (update.go:120, :833), so the CLI takes it around `PruneReleases` (release.go:423) rather than the function taking it, which would contend with the lock its caller holds. A machine-wide lock would close §7's window too, but is new machinery for a window nobody has measured; P1 measures it and a real window reopens this row. Was `OPEN`. Ruled by the author 2026-10-16. P1 measured tens of milliseconds per prune (§2.2), and the author ruled 2026-10-19 that this does not reopen the row. |
 | 12 | The report names each reference removed and does not distinguish "name removed, bytes kept" from "image deleted"; the docs say a removed name may free no disk | ASSUMED | The daemon reports both (`Untagged:` / `Deleted:`), and what the operator asked for is that the manager stop leaking names. Freed bytes are added when an operator asks for them. Was `OPEN`. Ruled by the author 2026-10-16. |
 | 13 | Images of releases pruned before this ships are not reclaimed; the docs say once how to clear them by hand | ASSUMED | Their manifests went with their directories, so nothing names them as the manager's, and finding them means sweeping the store, which decision 1 rules out: a pulled image cannot be told from anyone else's. Bundled aliases (`<repo>:morzer-sha256-<hex>`) could be, since only the manager creates them, but they are not the pulled images the request is about. Ruled by the author 2026-10-16. |
+| 14 | **Refines decision 3.** The exclusion compares the names the daemon resolves, not strings: each reference is keyed by its normalized repository and digest, and a bundled alias `R:morzer-sha256-<hex>` is keyed as `R@sha256:<hex>`. A candidate is removed only when no remaining reference has its key, and one whose key cannot be computed is kept | LOCKED | Measured in P1 (§2.2): removing a tag removes the same repository's digest references unless another tag of it stays, so a pruned release's alias took a remaining release's pulled `R@D` with it; and `postgres:17@D`, `postgres@D` and `docker.io/library/postgres@D` are one name to the daemon and three strings to §4.1. String subtraction kept neither promise decision 3 makes. Ruled by the author 2026-10-19. |
 
 ## 9. Phasing
 
@@ -551,7 +562,7 @@ the cost, and decision 11 the row that reopens it.
   alias; the exact in-use conflict output, to pin `ErrImageInUse`; and the
   §7 race window. Ships the measurements in this RFC (§2.1 grows) and nothing
   else. A finding that contradicts decision 3 or 4 halts P2. Done 2026-10-19,
-  §2.2, and its finding halts P2.
+  §2.2; its finding halted P2 until decision 14 answered it.
 - **P2 — build.** `ImageRemover` on the port and the Compose adapter; the
   sets, the fail-safe, the order and the report in `PruneReleases`; the
   `dry_run` key; the deployment lock in `release prune`; dev mode's step picks
