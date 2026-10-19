@@ -46,3 +46,8 @@ proposal: LOCKED — RFC 0018 decision (next free number): runtime-service is ac
 Backup's own refusal at run time (`backup.go:268-271`) is left in place. A
 manifest that passed validation can no longer reach it, but it costs nothing
 and it covers a manifest built in code rather than loaded.
+
+## Recorded 2026-10-19
+
+The proposal above is RFC 0018 decision 16, added once #110's decision 15 had
+merged.
