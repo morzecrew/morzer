@@ -149,6 +149,9 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		if err := d.gateUnfinished(ctx, ""); err != nil {
 			return err
 		}
+		if err := d.refuseMovedRelease(ctx, domain.OpTypeRollback, current); err != nil {
+			return err
+		}
 		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
 		return err
