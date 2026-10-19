@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -275,4 +276,40 @@ func TestADevModeUpdateRemovesThePrunedReleasesImages(t *testing.T) {
 	assert.Equal(t, []string{pulled(appRepo, 10)}, h.Runtime.RemovedImages,
 		"1.1.0 is retained, and 1.2.0 is the previous release")
 	assert.True(t, slices.Contains(h.Runtime.Calls, "RemoveImage"))
+}
+
+// Out of time, the prune stops removing and says so. Each call after the
+// deadline would fail at once and be reported as the runtime refusing a name
+// it was never asked about.
+func TestAPruneOutOfTimeTriesNoFurtherImage(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.pruneable(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.Runtime.OnCall = func(method string) {
+		if method == "RemoveImage" {
+			cancel()
+		}
+	}
+
+	res, err := ops.PruneReleases(ctx, h.Deps, 1, false)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{pulled(appRepo, 3)}, h.Runtime.RemovedImages)
+	require.Len(t, res.Images.Kept, 1)
+	assert.Equal(t, pulled(dbRepo, 3), res.Images.Kept[0].Ref)
+	assert.Contains(t, res.Images.Kept[0].Why, "not tried")
+}
+
+// `--timeout` bounds `release prune` as it bounds every other command. The
+// step engine applies it for the commands that run steps; this one runs none.
+func TestReleasePruneHonoursTheTimeout(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.pruneable(t)
+
+	res, _ := ops.PruneReleasesLocked(context.Background(), h.Deps, 1, ops.Options{Timeout: time.Nanosecond})
+	assert.Empty(t, h.Runtime.RemovedImages, "the prune ran past the deadline it was given")
+	assert.Empty(t, res.Images.Removed)
 }

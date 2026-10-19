@@ -112,3 +112,23 @@ Sabotage, each run against the suite and restored:
 | No lock in `PruneReleasesLocked` | `TestReleasePruneRefusesWhileTheDeploymentIsLocked` |
 | The in-use text not matched, against Docker 29.7.2 | `TestRemoveImageAgainstARealDaemon/a_name_a_stopped_container_uses`, `TestRemoveImageTellsARefusalFromAnAbsentName` |
 | `docker image rm -f` | the same two |
+
+## Review, 2026-10-20
+
+- Dev mode's `prune-releases` step kept its five-minute timeout, and it now
+  removes images, each of which may take minutes. Past the deadline every
+  further removal failed at once and was reported as kept with the runtime's
+  message, a reason that was not one. The step has 30 minutes, and a prune out
+  of time stops removing and reports the rest as `not tried`.
+  `TestAPruneOutOfTimeTriesNoFurtherImage` was red before.
+- `release prune --timeout` was passed through and never applied: the flag
+  reaches only the step engine, and this command runs no steps.
+  `PruneReleasesLocked` applies it to the context, as `backup push` does.
+  `TestReleasePruneHonoursTheTimeout` was red before.
+- The manual cleanup for images earlier prunes left pointed at
+  `morzer release list`, which lists one installation's releases and no
+  images. It now says to check every installation `morzer ls` shows, with
+  `release show` for the images.
+- The fake runtime's `HasImage` still found a name `RemoveImage` had taken.
+  It now answers as the daemon would until the name is pulled or ingested
+  again. `TestTheFakeStoreForgetsARemovedImage` was red before.

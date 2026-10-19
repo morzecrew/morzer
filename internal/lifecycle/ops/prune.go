@@ -135,6 +135,14 @@ type KeptImage struct {
 // prune runs as a step of `update`, which already holds it (RFC 0031 decision
 // 11).
 func PruneReleasesLocked(ctx context.Context, d *Deps, keep int, opts Options) (PruneResult, error) {
+	// Bounded by `--timeout` here, as `backup push` is: the flag otherwise
+	// reaches only the step engine, which this command does not run.
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+
 	var out PruneResult
 	err := d.withLock(ctx, d.newOpID(), domain.OpTypeRelease, opts, func(ctx context.Context) error {
 		var err error
@@ -211,10 +219,18 @@ func PruneReleases(ctx context.Context, d *Deps, keep int, dryRun bool) (PruneRe
 
 	out.Images.Skipped = plan.skipped
 	out.Images.Kept = append(out.Images.Kept, plan.kept...)
-	for _, ref := range plan.remove {
+	for i, ref := range plan.remove {
 		if dryRun {
 			out.Images.Removed = append(out.Images.Removed, ref)
 			continue
+		}
+		// Out of time, every further call fails at once, and reporting
+		// each as the runtime's refusal would name a reason that is not one.
+		if err := ctx.Err(); err != nil {
+			for _, rest := range plan.remove[i:] {
+				out.Images.Kept = append(out.Images.Kept, KeptImage{Ref: rest, Why: "not tried: " + err.Error()})
+			}
+			break
 		}
 		if err := plan.remover.RemoveImage(ctx, ref); err != nil {
 			out.Images.Kept = append(out.Images.Kept, KeptImage{Ref: ref, Why: keptBecause(err)})

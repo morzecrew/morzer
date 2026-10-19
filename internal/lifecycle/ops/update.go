@@ -906,7 +906,9 @@ func stepPruneReleases(d *Deps) engine.Step {
 		Description: "prune old releases",
 		Idempotent:  true,
 		OnFailure:   engine.Continue,
-		Timeout:     5 * time.Minute,
+		// Directories and then their images, and removing an image's last
+		// name deletes its layers, which for a large one takes minutes.
+		Timeout: 30 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
 			res, err := PruneReleases(ctx, d, 0, false)
 			if err != nil {
