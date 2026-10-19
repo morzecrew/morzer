@@ -173,11 +173,18 @@ func TestAStepIsToldWhatIsRunningIt(t *testing.T) {
 	require.NoError(t, err)
 	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
+	// The second rollback bounces back to 1.3.0, the release with the hook,
+	// so it is told it replaces 1.2.0.
+	for range 2 {
+		_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+		require.NoError(t, err)
+	}
 
 	told, err := os.ReadFile(filepath.Join(h.Paths.DataDir(), ".context"))
 	require.NoError(t, err)
 	assert.Equal(t, "update 1.2.0 migrate\nupdate 1.2.0 smoke-test\n"+
-		"apply none migrate\napply none smoke-test\n", string(told))
+		"apply none migrate\napply none smoke-test\n"+
+		"rollback 1.2.0 migrate\nrollback 1.2.0 smoke-test\n", string(told))
 }
 
 // A migration service gets the hook ABI's variables that mean the same inside
