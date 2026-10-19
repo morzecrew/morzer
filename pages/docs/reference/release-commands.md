@@ -668,9 +668,14 @@ ran. `dry_run` tells a plan from an act; `removed` reads the same in both.
 
 **Releases pruned by an older manager left their images behind, and those are
 not reclaimed.** Their manifests went with their directories, so nothing says
-which images were the manager's. To clear them by hand, list the product's repositories with
-`docker image ls <repository>` and remove, with `docker image rm`, the ones no
-release left in `morzer release list` names.
+which images were the manager's. To clear them by hand, list the product's
+repositories with `docker image ls <repository>`, and remove with
+`docker image rm`, never `-f`, only a name that no remaining release of **any**
+installation uses. For each installation `morzer ls` shows,
+`morzer --product <name> release list` lists its releases and
+`morzer --product <name> release show <version>` the images each one names. A
+bundled image is in the store as `<repo>:morzer-sha256-<hex>`, the digest with
+its colon replaced.
 
 ## release trust
 
