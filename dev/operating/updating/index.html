@@ -2437,14 +2437,17 @@ nothing but the time to read the error.</p>
 were, in the modes they had, and if the new release's services had already been
 started — or a migration service had run, which starts what it depends on —
 the release that was running is brought back up with its own secrets and
-waited for until its health checks pass. That is
+waited for until its health checks pass. If the update stopped before starting
+anything, the release that was running never stopped, and its secrets are
+rendered back for it, including any the new release no longer declares. That is
 <a href="../../reference/exit-codes/">exit 11</a>: the release that was running is running
 again. The database is not rolled back: if migrations ran, it stays at the
 schema they left, which is allowed only when the old release declares it can
 read it (see below).</p>
 <p>If bringing it back fails as well, the deployment matches neither release —
 some services may be the new release's and some the old one's — and the update
-stops at exit 12 with both failures in the error. So does a configuration file
+stops at exit 12 with both failures in the error. So does a failure to render
+the old release's secrets back. So does a configuration file
 that could not be put back: the old release is not started against the new
 release's files.</p>
 <h3 id="a-failure-after-the-migrations">A failure after the migrations<a class="headerlink" href="#a-failure-after-the-migrations" title="Permanent link">&para;</a></h3>
