@@ -414,6 +414,101 @@ func TestExecRefusesAServiceThatIsNotRunning(t *testing.T) {
 	}
 }
 
+// TestExecRefusesAServiceThatStoppedAfterThePreCheck (#97).
+//
+// The pre-check and the exec are two calls, so the container can stop between
+// them. Compose then exits 1 with its own message, and that read as the
+// command's own status: exit 1 instead of 7, and no word from the manager
+// about the service.
+func TestExecRefusesAServiceThatStoppedAfterThePreCheck(t *testing.T) {
+	h := newHarness(t)
+	h.running(t)
+	h.Runtime.ExecResults["app"] = ports.ExitResult{
+		ExitCode: 1, Stderr: "service \"app\" is not running\n",
+	}
+	h.Runtime.OnCall = func(method string) {
+		if method == "Exec" {
+			h.Runtime.Services["app"] = ports.ServiceState{
+				Name: "app", Container: "demo-app-1", State: "exited", ExitCode: 0,
+			}
+		}
+	}
+
+	res, err := ops.ExecInService(context.Background(), h.Deps, ops.ExecOptions{
+		Service: "app", Argv: []string{"true"},
+	})
+	require.Error(t, err, "Compose's exit 1 was passed off as the command's")
+	assert.True(t, errors.Is(err, domain.ErrRuntime))
+	assert.Contains(t, err.Error(), "service app is exited")
+	assert.Equal(t, "service \"app\" is not running\n", res.Stderr,
+		"what Compose or the command printed was dropped; a command that ran "+
+			"before its container stopped has output an operator needs")
+}
+
+// TestExecRunsInAScaledServiceWhileOneInstanceIsUp: Compose runs the command
+// in any instance that is up, so a stopped first instance is no reason to
+// refuse.
+func TestExecRunsInAScaledServiceWhileOneInstanceIsUp(t *testing.T) {
+	h := newHarness(t)
+	h.running(t)
+	h.Runtime.Services["app"] = ports.ServiceState{
+		Name: "app", Container: "demo-app-1", State: "exited", ExitCode: 137,
+	}
+	h.Runtime.Services["app#2"] = ports.ServiceState{
+		Name: "app", Container: "demo-app-2", State: ports.StateRunning,
+	}
+	h.Runtime.ExecResults["app"] = ports.ExitResult{ExitCode: 3}
+
+	res, err := ops.ExecInService(context.Background(), h.Deps, ops.ExecOptions{
+		Service: "app", Argv: []string{"false"},
+	})
+	require.NoError(t, err, "refused on the first instance listed")
+	assert.Equal(t, 3, res.ExitCode)
+}
+
+// TestExecRefusesAServiceRemovedWhileTheCommandRan: the pre-check already found
+// the service, so a later listing without it is a removed container rather
+// than a name the operator got wrong.
+func TestExecRefusesAServiceRemovedWhileTheCommandRan(t *testing.T) {
+	h := newHarness(t)
+	h.running(t)
+	h.Runtime.ExecResults["app"] = ports.ExitResult{ExitCode: 1}
+	h.Runtime.OnCall = func(method string) {
+		if method == "Exec" {
+			delete(h.Runtime.Services, "app")
+		}
+	}
+
+	_, err := ops.ExecInService(context.Background(), h.Deps, ops.ExecOptions{
+		Service: "app", Argv: []string{"true"},
+	})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitRuntime, domain.ExitCode(err),
+		"a container removed under the command was reported as a misspelt service")
+	assert.NotContains(t, err.Error(), "no service named")
+}
+
+// TestExecKeepsTheCommandsExitCodeWhenTheRecheckCannotRead: the recheck can
+// only turn a failure into a refusal when it sees the service down. A status
+// it could not read is no evidence, and replacing the command's exit code with
+// the runtime's error would hand a script the wrong failure.
+func TestExecKeepsTheCommandsExitCodeWhenTheRecheckCannotRead(t *testing.T) {
+	h := newHarness(t)
+	h.running(t)
+	h.Runtime.ExecResults["app"] = ports.ExitResult{ExitCode: 3, Stderr: "no such table\n"}
+	h.Runtime.OnCall = func(method string) {
+		if method == "Exec" {
+			h.Runtime.Fail["Status"] = domain.RuntimeError(nil, "injected: daemon unreachable")
+		}
+	}
+
+	res, err := ops.ExecInService(context.Background(), h.Deps, ops.ExecOptions{
+		Service: "app", Argv: []string{"psql"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, res.ExitCode)
+}
+
 func TestExecNamesTheServicesWhenAskedForOneThatDoesNotExist(t *testing.T) {
 	h := newHarness(t)
 	h.running(t)

@@ -149,6 +149,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
 			return err
 		}
+		if err := d.refuseMovedRelease(ctx, from); err != nil {
+			return err
+		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
 		return err
 	})
@@ -920,7 +923,10 @@ func stepPruneReleases(d *Deps) engine.Step {
 }
 
 // restorePreviousRuntime brings the release that was running back up, when the
-// update got as far as replacing its containers.
+// update got as far as replacing its containers. When it stopped earlier, the
+// previous release is still up and only its secrets are put back, if
+// render-secrets' compensator kept the new release's for those containers: the
+// new release may not declare one they read (RFC 0001 decision 25).
 //
 // Compensation used to put back only files, so a failed update left the new
 // release's containers running against the old release's configuration until
@@ -940,6 +946,11 @@ func (d *Deps) restorePreviousRuntime(
 	ctx context.Context, st *engine.State, inst domain.Installation, from domain.ReleaseRecord, profile string,
 ) error {
 	if _, touched := st.Get(keyServicesTouched); !touched {
+		if _, kept := st.Get(keySecretsKept); kept {
+			st.Detail("putting back the secrets of %s", from.Version)
+			_, err := d.renderReleaseSecrets(ctx, from)
+			return err
+		}
 		return nil
 	}
 	if _, stale := st.Get(keyConfigNotRestored); stale {
@@ -948,15 +959,8 @@ func (d *Deps) restorePreviousRuntime(
 	}
 	st.Detail("bringing %s back up", from.Version)
 
-	previous, err := d.resolveCurrentRelease(ctx, from)
+	previous, err := d.renderReleaseSecrets(ctx, from)
 	if err != nil {
-		return err
-	}
-	schema, err := release.LoadSecretSchema(previous)
-	if err != nil {
-		return err
-	}
-	if _, err := d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema); err != nil {
 		return err
 	}
 	cfg, err := d.runtimeConfig(previous, inst, profile)
@@ -980,4 +984,21 @@ func (d *Deps) restorePreviousRuntime(
 	}
 	_, err = d.Health.WaitReady(ctx, specs)
 	return err
+}
+
+// renderReleaseSecrets renders a release's secrets over the directory its
+// containers read, pruning any it does not declare.
+func (d *Deps) renderReleaseSecrets(ctx context.Context, rec domain.ReleaseRecord) (domain.Release, error) {
+	rel, err := d.resolveCurrentRelease(ctx, rec)
+	if err != nil {
+		return domain.Release{}, err
+	}
+	schema, err := release.LoadSecretSchema(rel)
+	if err != nil {
+		return domain.Release{}, err
+	}
+	if _, err := d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema); err != nil {
+		return domain.Release{}, err
+	}
+	return rel, nil
 }
