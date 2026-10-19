@@ -1649,6 +1649,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-migration-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A migration service
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phases" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2098,6 +2109,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-migration-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A migration service
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phases" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2319,7 +2341,7 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_OPERATION_TYPE</code></td>
-<td><code>init</code>, <code>apply</code>, <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>.</td>
+<td><code>apply</code>, <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>: the operation running the hook. A first install is <code>apply</code>, as every re-apply is, a boot's included. <code>init</code> is reserved: no hook runs under it.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_PHASE</code></td>
@@ -2335,7 +2357,7 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_PREVIOUS_VERSION</code></td>
-<td>The version being replaced, during an update or rollback.</td>
+<td>The version being replaced, during an update or rollback. Absent otherwise, a first install included.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_DATA_DIR</code></td>
@@ -2393,6 +2415,27 @@ fixed to — so a hook that needs one should test for it rather than assume it.<
 primitive; a runtime without one would have to invent a value, and a hook
 branching on a variable that is always set cannot tell the two situations
 apart.</p>
+<h3 id="a-migration-service">A migration service<a class="headerlink" href="#a-migration-service" title="Permanent link">&para;</a></h3>
+<p>A <code>runtime-service</code> migrate step is a container, not a hook, and gets the part
+of the table above that means the same inside one, set in its environment:</p>
+<p><code>PRODUCT</code>, <code>INSTALLATION_ID</code>, <code>OPERATION_ID</code>, <code>OPERATION_TYPE</code>, <code>PHASE</code>,
+<code>RELEASE_VERSION</code>, <code>PREVIOUS_VERSION</code>, <code>LOG_LEVEL</code> and <code>DRY_RUN</code>, each with the
+product prefix.</p>
+<p>Left out:</p>
+<ul>
+<li><strong>The host paths</strong>, <code>RELEASE_DIR</code>, <code>DATA_DIR</code>, <code>BACKUP_DIR</code>, <code>SECRETS_DIR</code>
+  and <code>CONFIG_FILE</code>. They name the manager's filesystem, and the container sees
+  only what its Compose service mounts.</li>
+<li><strong><code>RESULT_FD</code>.</strong> No descriptor is open in the container, so a migration
+  service cannot report <code>schema_version</code>. Declare
+  <a href="../manifest/#database_schema_produces-is-what-opts-a-release-into-unattended-updates"><code>database_schema_produces</code></a>
+  instead.</li>
+<li><strong>Parameters and the runtime's variables.</strong> A service receives parameters the
+  way the release's Compose file passes them, as it does when it runs as part of
+  the deployment.</li>
+</ul>
+<p>The values are passed on the <code>docker compose run</code> command line, which other
+users on the machine can read. None of them is a secret.</p>
 <h3 id="phases">Phases<a class="headerlink" href="#phases" title="Permanent link">&para;</a></h3>
 <p><code>PHASE</code> is one of <code>migrate</code>, <code>smoke-test</code>, <code>backup</code>, <code>restore</code> or
 <code>health-check</code>.</p>

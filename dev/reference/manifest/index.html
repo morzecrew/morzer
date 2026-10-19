@@ -3364,7 +3364,9 @@ condition it names, so a migration service can reach the database on a first
 install, before the deployment's other services have ever started. On an update,
 a dependency whose configuration changed is recreated at that point, so
 migrations run against the new release's database service. Exit <code>2</code> means
-"nothing to do", as it does for a hook.</p>
+"nothing to do", as it does for a hook. It is told which operation is running
+it and which version that replaces, through the
+<a href="../hooks/#a-migration-service">hook <abbr title="Application Binary Interface">ABI</abbr> variables a container can use</a>.</p>
 <h3 id="several-migrate-steps">Several migrate steps<a class="headerlink" href="#several-migrate-steps" title="Permanent link">&para;</a></h3>
 <p><code>migrate</code> alone may list several steps instead of one. They run in order, on
 <code>apply</code> and on every <code>update</code>, after images are pulled and before services
