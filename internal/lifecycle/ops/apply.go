@@ -98,6 +98,9 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
 			return err
 		}
+		if err := d.refuseMovedRelease(ctx, current); err != nil {
+			return err
+		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts, inst.ID, prior))
 		return err
 	})
@@ -1153,6 +1156,59 @@ func (d *Deps) refreshResumable(ctx context.Context, opType domain.OperationType
 			WithHint("re-run `morzer %s --resume` to continue the current one", opType)
 	}
 	return fresh, nil
+}
+
+// refuseMovedRelease refuses to run a plan made for a release that is no longer
+// current, under the deployment lock.
+//
+// Every operation that acts on the current release reads it before the lock is
+// taken, and plans against it: the version it journals as "from", the
+// compatibility gate, the release whose operations and hooks it runs, the
+// PREVIOUS_VERSION those hooks are told. With --wait, the holder we queued
+// behind may have been an update or a rollback that moved it. Re-planning here
+// is not an option -- a plan's checks ran outside the lock, some against a
+// fetched bundle -- so the operator re-runs it against what is installed now.
+//
+// Not the whole record: an apply rewrites the record of the release it is
+// already on, and its time and operation id move nothing a plan read.
+func (d *Deps) refuseMovedRelease(ctx context.Context, planned domain.ReleaseRecord) error {
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil {
+		return err
+	}
+	return refuseMoved("installed", planned, current)
+}
+
+// refuseMoved compares a release record a plan read before the lock with the
+// same record read under it.
+//
+// Root and digest name the release. The schema it recorded is what update and
+// rollback check compatibility against, and an apply of the same release whose
+// migrations went further records a new one.
+func refuseMoved(which string, planned, now domain.ReleaseRecord) error {
+	if now.Root != planned.Root || now.Digest != planned.Digest {
+		return domain.Usage(
+			"the %s release changed from %s to %s while waiting for the deployment lock",
+			which, describeRelease(planned), describeRelease(now)).
+			WithHint("run the same command again to plan against %s", describeRelease(now))
+	}
+	if now.SchemaAtInstall != planned.SchemaAtInstall {
+		return domain.Usage(
+			"the database schema recorded for the %s release %s changed from %d to %d "+
+				"while waiting for the deployment lock",
+			which, describeRelease(now), planned.SchemaAtInstall, now.SchemaAtInstall).
+			WithHint("run the same command again to plan against schema %d", now.SchemaAtInstall)
+	}
+	return nil
+}
+
+// describeRelease names a release record for a message, including the absence
+// of one, whose version renders as an empty string.
+func describeRelease(r domain.ReleaseRecord) string {
+	if r.IsZero() {
+		return "none"
+	}
+	return r.Version.String()
 }
 
 // findResumable locates the operation --resume should continue.

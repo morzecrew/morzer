@@ -33,7 +33,7 @@ class: spec-gap
 at: 2026-10-19T12:10:32Z
 attempt: 1
 claim: decision 19 scopes the restore point to updates that reached start-services; one that stopped earlier kept the new release's secrets for the previous release's running containers, pruned of any only the previous release declares
-evidence: internal/lifecycle/ops/update.go:946
+evidence: internal/lifecycle/ops/update.go:949
 action: halted
 proposal: LOCKED — when an update stops before start-services and the secrets were kept, the restore point renders the previous release's secrets over them and brings nothing up; a failure to render ends at requires-manual-intervention
 ```
