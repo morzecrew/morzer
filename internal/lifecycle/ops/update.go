@@ -149,7 +149,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
 			return err
 		}
-		if err := d.refuseMovedRelease(ctx, domain.OpTypeUpdate, from); err != nil {
+		if err := d.refuseMovedRelease(ctx, from); err != nil {
 			return err
 		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))

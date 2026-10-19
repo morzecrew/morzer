@@ -39,7 +39,21 @@ attempt: 1
 claim: apply, update, rollback, backup and restore planned against the release read before the deployment lock and ran that plan after --wait let another operation move it
 evidence: internal/lifecycle/ops/apply.go:1169
 action: decided
-proposal: ASSUMED — an operation that acts on the current release re-reads it under the deployment lock and refuses, with the release it found named, when its root or digest moved; recorded as RFC 0001 decision 24
+proposal: ASSUMED — an operation that acts on the current release re-reads it under the deployment lock and refuses, with the release it found named, when its root, digest or recorded schema moved, and a rollback without --to also when the previous release moved; recorded as RFC 0001 decision 24
 ```
 
 **Drift count: 0.**
+
+## Review, 2026-10-19
+
+- Root and digest were not all a plan read. An `apply` of the same release
+  records the schema its migrate step reports, and `update` and `rollback`
+  check compatibility against that schema, so a change to it is refused too.
+- A rollback without `--to` takes its target from the previous pointer. An
+  update and a rollback back, both while it waited, leave the installed release
+  where it was and move that pointer. It is read again under the lock as well.
+- The hint named `morzer update`, which needs a bundle or `--to`. It now says
+  to run the same command again.
+
+`TestAWaitingRollbackRefusesWhatMovedAroundTheRelease` was red for both before
+the change.

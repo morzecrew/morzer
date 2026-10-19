@@ -149,8 +149,20 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		if err := d.gateUnfinished(ctx, ""); err != nil {
 			return err
 		}
-		if err := d.refuseMovedRelease(ctx, domain.OpTypeRollback, current); err != nil {
+		if err := d.refuseMovedRelease(ctx, current); err != nil {
 			return err
+		}
+		// Without --to, the target came from the previous pointer, which
+		// an update and a rollback back move while leaving the installed
+		// release where it was.
+		if opts.To == "" {
+			now, err := d.State.PreviousRelease(ctx)
+			if err != nil {
+				return err
+			}
+			if err := refuseMoved("previous", previous, now); err != nil {
+				return err
+			}
 		}
 		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))

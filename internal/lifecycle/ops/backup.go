@@ -80,7 +80,7 @@ func Backup(ctx context.Context, d *Deps, opts BackupOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeBackup, opts.Options, func(ctx context.Context) error {
-		if err := d.refuseMovedRelease(ctx, domain.OpTypeBackup, current); err != nil {
+		if err := d.refuseMovedRelease(ctx, current); err != nil {
 			return err
 		}
 		var err error
@@ -637,7 +637,7 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeRestore, opts.Options, func(ctx context.Context) error {
-		if err := d.refuseMovedRelease(ctx, domain.OpTypeRestore, current); err != nil {
+		if err := d.refuseMovedRelease(ctx, current); err != nil {
 			return err
 		}
 		var err error
