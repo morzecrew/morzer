@@ -2848,9 +2848,11 @@ have, verifying it again on the way:</p>
 morzer<span class="w"> </span>backup<span class="w"> </span>push<span class="w"> </span>&lt;id&gt;
 </code></pre></div>
 <p><code>--no-push</code> takes a local-only backup for the run, when you already know the
-medium is disconnected. <code>--no-prune-remote</code> skips the retention pass on the
-targets; retention there follows the same policy as locally, and never removes
-the most recent backup or the newest pre-update backups.</p>
+medium is disconnected. It prunes nothing on the targets, which received no
+newer backup. <code>--no-prune-remote</code> skips the retention pass on the targets;
+retention there follows the same policy as locally, runs only on the targets
+the backup reached, and never removes the most recent backup or the newest
+pre-update backups.</p>
 <h3 id="credentials">Credentials<a class="headerlink" href="#credentials" title="Permanent link">&para;</a></h3>
 <p><code>file://</code> needs none, which is why it is the target a recovery can always reach.</p>
 <p>The others take the <code>--credentials</code> flag, naming a secret that holds a small
