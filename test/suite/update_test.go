@@ -846,6 +846,62 @@ func TestAFailedUpdateKeepsTheSecretsOfTheRunningRelease(t *testing.T) {
 		"compensation removed the secrets of the release that is still running")
 }
 
+// TestAFailedUpdatePutsBackASecretOnlyTheRunningReleaseDeclares (#106).
+//
+// Rendering prunes what the release being rendered does not declare. So the
+// update's render-secrets removed a secret 1.3.0 dropped, while 1.2.0's
+// containers were still running and reading it, and one that restarted after
+// the failed pull could not read it.
+func TestAFailedUpdatePutsBackASecretOnlyTheRunningReleaseDeclares(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Secrets.Seed(map[string]string{"smtp_password": "a-real-smtp-password"})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	smtp := filepath.Join(h.Paths.SecretsRenderDir(), "smtp_password")
+	require.FileExists(t, smtp, "1.2.0 declares smtp_password, so applying it renders one")
+
+	src := stageUpgradeSource(t, h)
+	schemaPath := filepath.Join(src, "secrets.schema.yaml")
+	raw, err := os.ReadFile(schemaPath)
+	require.NoError(t, err)
+	at := strings.Index(string(raw), "  - name: smtp_password")
+	require.Positive(t, at, "1.3.0 no longer declares smtp_password last")
+	require.NoError(t, os.WriteFile(schemaPath, raw[:at], 0o644))
+
+	ups := len(h.Runtime.CallsMatching("Up"))
+	h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+
+	result, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	require.Len(t, h.Runtime.CallsMatching("Up"), ups, "the failed update must stop before start-services")
+	assert.Equal(t, domain.StatusCompensated, result.Record.Status)
+
+	assert.FileExists(t, smtp, "1.2.0 is still running, and its smtp_password is gone")
+}
+
+// TestAFailedUpdateThatCannotPutBackTheSecretsNeedsAHuman: the cost of the
+// above, accepted with it. 1.2.0 is running against the new release's secrets,
+// which is a state nothing should report as cleanly rolled back.
+func TestAFailedUpdateThatCannotPutBackTheSecretsNeedsAHuman(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Pull" {
+			h.Secrets.Fail["Render"] = domain.SecretsError(nil, "injected: cannot render")
+		}
+	}
+
+	result, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status)
+	assert.Contains(t, err.Error(), "injected: cannot render")
+}
+
 // TestUpdateFaultInjection is RFC 0001 §6's extension of the engine's
 // fault-injection loop to the update pipeline: fail at each step in turn and
 // assert the release pointer always ends where it started.

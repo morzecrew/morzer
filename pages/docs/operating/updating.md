@@ -150,7 +150,9 @@ A failure rolls the update back: the configuration files return to what they
 were, in the modes they had, and if the new release's services had already been
 started — or a migration service had run, which starts what it depends on —
 the release that was running is brought back up with its own secrets and
-waited for until its health checks pass. That is
+waited for until its health checks pass. If the update stopped before starting
+anything, the release that was running never stopped, and its secrets are
+rendered back for it, including any the new release no longer declares. That is
 [exit 11](../reference/exit-codes.md): the release that was running is running
 again. The database is not rolled back: if migrations ran, it stays at the
 schema they left, which is allowed only when the old release declares it can
@@ -158,7 +160,8 @@ read it (see below).
 
 If bringing it back fails as well, the deployment matches neither release —
 some services may be the new release's and some the old one's — and the update
-stops at exit 12 with both failures in the error. So does a configuration file
+stops at exit 12 with both failures in the error. So does a failure to render
+the old release's secrets back. So does a configuration file
 that could not be put back: the old release is not started against the new
 release's files.
 
