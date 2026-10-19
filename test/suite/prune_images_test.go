@@ -313,3 +313,22 @@ func TestReleasePruneHonoursTheTimeout(t *testing.T) {
 	assert.Empty(t, h.Runtime.RemovedImages, "the prune ran past the deadline it was given")
 	assert.Empty(t, res.Images.Removed)
 }
+
+// The fake's store forgets a removed name, so a test that asks afterwards gets
+// the daemon's answer.
+func TestTheFakeStoreForgetsARemovedImage(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	ref := pulled(appRepo, 3)
+	require.NoError(t, h.Runtime.Pull(ctx, ports.RuntimeConfig{}, []string{ref}))
+	require.NoError(t, h.Runtime.RemoveImage(ctx, ref))
+
+	present, err := h.Runtime.HasImage(ctx, ref)
+	require.NoError(t, err)
+	assert.False(t, present)
+
+	require.NoError(t, h.Runtime.Pull(ctx, ports.RuntimeConfig{}, []string{ref}))
+	present, err = h.Runtime.HasImage(ctx, ref)
+	require.NoError(t, err)
+	assert.True(t, present, "a name pulled again is there again")
+}
