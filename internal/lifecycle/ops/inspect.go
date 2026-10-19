@@ -383,13 +383,25 @@ func ExecInService(ctx context.Context, d *Deps, opts ExecOptions) (ExecResult, 
 		return ExecResult{Service: opts.Service}, err
 	}
 
-	return ExecResult{
+	out := ExecResult{
 		Service:  opts.Service,
 		ExitCode: res.ExitCode,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
 		Duration: res.Duration,
-	}, nil
+	}
+
+	// Asked again when the command failed, because the pre-check and the exec
+	// are two calls and the container can stop between them. Compose then
+	// exits 1 with its own message, which would pass for the command's status
+	// (#97). Journalled above all the same: a command that ran until its
+	// container stopped looks the same from here, and a human was inside.
+	if res.ExitCode != 0 {
+		if err := confirmRunning(ctx, d, dep, opts.Service); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
 }
 
 // confirmRunning refuses a service that is not up, naming the state it is in.

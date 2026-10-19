@@ -446,19 +446,24 @@ func newExecCommand(app *App) *cobra.Command {
 				Service: args[0],
 				Argv:    args[1:],
 			})
-			if err != nil {
-				return err
-			}
 
 			if app.json != nil {
+				if err != nil {
+					return err
+				}
 				app.jsonData = result
 			} else {
 				// The command's own streams, unchanged and
 				// unframed: an operator piping `morzer exec db --
 				// pg_dump` into a file must get the dump and not
-				// a report about it.
+				// a report about it. Before the error too: a
+				// service that stopped mid-command is refused
+				// after it printed.
 				fmt.Fprint(app.Stream.Err, result.Stderr)
 				app.passThrough(result.Stdout)
+			}
+			if err != nil {
+				return err
 			}
 
 			// The container's status, propagated. A manager that

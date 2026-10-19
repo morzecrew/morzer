@@ -414,6 +414,37 @@ func TestExecRefusesAServiceThatIsNotRunning(t *testing.T) {
 	}
 }
 
+// TestExecRefusesAServiceThatStoppedAfterThePreCheck (#97).
+//
+// The pre-check and the exec are two calls, so the container can stop between
+// them. Compose then exits 1 with its own message, and that read as the
+// command's own status: exit 1 instead of 7, and no word from the manager
+// about the service.
+func TestExecRefusesAServiceThatStoppedAfterThePreCheck(t *testing.T) {
+	h := newHarness(t)
+	h.running(t)
+	h.Runtime.ExecResults["app"] = ports.ExitResult{
+		ExitCode: 1, Stderr: "service \"app\" is not running\n",
+	}
+	h.Runtime.OnCall = func(method string) {
+		if method == "Exec" {
+			h.Runtime.Services["app"] = ports.ServiceState{
+				Name: "app", Container: "demo-app-1", State: "exited", ExitCode: 0,
+			}
+		}
+	}
+
+	res, err := ops.ExecInService(context.Background(), h.Deps, ops.ExecOptions{
+		Service: "app", Argv: []string{"true"},
+	})
+	require.Error(t, err, "Compose's exit 1 was passed off as the command's")
+	assert.True(t, errors.Is(err, domain.ErrRuntime))
+	assert.Contains(t, err.Error(), "service app is exited")
+	assert.Equal(t, "service \"app\" is not running\n", res.Stderr,
+		"what Compose or the command printed was dropped; a command that ran "+
+			"before its container stopped has output an operator needs")
+}
+
 func TestExecNamesTheServicesWhenAskedForOneThatDoesNotExist(t *testing.T) {
 	h := newHarness(t)
 	h.running(t)

@@ -382,7 +382,10 @@ Not an interactive shell: there is no TTY and no stdin, so a command that
 prompts waits for an answer nobody can give. There is no `--user` and no
 shortcut for running as root.
 
-A service that is not running is refused by name, with the state it is in.
+A service that is not running is refused by name, with the state it is in, and
+exit 7. So is one that stops while the command runs, after whatever the command
+printed: a command that fails is checked against the service's state again, so
+the runtime's own failure is not passed off as the command's exit code.
 
 Journaled with its type, service, argv and exit code — and never its output. The
 argv is redacted with this installation's known secret values first, because a
