@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023**, **0031** and **0032** have work anybody can pick up: 0027, 0028 and 0029 have each shipped
+only **0023** and **0032** have work anybody can pick up, and **0031**'s waits on a ruling: 0027, 0028 and 0029 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, a host somebody believes was compromised,
 demand for a darwin tier. Those are not stalls, and 0027's own text says that if
@@ -85,10 +85,10 @@ phase shipped, and a reader deciding what to work on needs the other half.
   darwin archive and the tier around it — is gated on somebody who is not the
   author asking for it.
 - **[0031 — Images of pruned releases](0031-images-of-pruned-releases.md).**
-  📝 Draft. Nothing is built; P1 is a measurement on a real daemon — what an
-  unforced `docker image rm` does to a digest-named image, and the exact
-  in-use refusal — before P2 adds an optional removal capability to the
-  runtime port.
+  📝 Draft. Nothing is built. P1, the measurement on a real daemon, is done,
+  and its finding halts P2 until the author rules: removing a bundled alias
+  also removes the same repository's digest reference, so the exclusion as
+  designed does not hold.
 - **[0032 — Secrets a non-root container can read](0032-secrets-a-non-root-container-can-read.md).**
   📝 Draft, execution-ready. Nothing is built; P1 is the whole of it, one PR:
   a numeric `owner` per secret, set when the file is rendered.
