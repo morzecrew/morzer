@@ -1,8 +1,11 @@
 # RFC 0031 — Images of pruned releases
 
-- **Status:** 📝 Draft — written 2026-10-15, **P1 (a spike) is the next work**.
-  Nothing is built. Ruled 2026-10-16: decisions 1, 3, 4, 5 and 9 as written,
-  11 and 12 settled, 13 added.
+- **Status:** 📝 Draft — written 2026-10-15. **P1 (the spike) done
+  2026-10-19** (§2.2). Its finding, that §4.1's string subtraction does not
+  keep the names decision 3 excludes, is answered by decision 14, and **P2 is
+  the next work**. Nothing is built. Ruled 2026-10-16: decisions 1, 3, 4, 5
+  and 9 as written, 11 and 12 settled, 13 added. Ruled 2026-10-19: 14 added,
+  4 and 11 stand.
 - **Scope:** What happens to container images when a release is pruned. Today
   the release directory goes, including the image layout a bundle carried, and
   every image the runtime pulled or ingested for that release stays in its
@@ -136,9 +139,162 @@ images *by name*, and a removed alias is a refused rollback there
 for containers. It is not a guard for other installations, and the design may
 not lean on it as one (decision 4).
 
-Not measured, and P1's job: what `docker image rm repo@sha256:…` does to an
-image the daemon recorded as a digest reference after a pull, which is how
-every non-bundled image of a release is named.
+What `docker image rm repo@sha256:…` does to an image the daemon recorded as
+a digest reference after a pull, which is how every non-bundled image of a
+release is named, P1 measured: §2.2. It also refines the rule above: the
+daemon guards the last repository on an image, not the last name.
+
+### 2.2 Measured in P1: digest references, aliases, the refusal, the window
+
+Docker Engine 29.7.2 (API 1.55), Compose 5.5.1, 2026-10-19, on the **classic
+image store**: `docker info` reports storage driver `overlay2` and no
+`driver-type io.containerd.snapshotter.v1`. A fresh Engine 29 install uses the
+containerd image store, which removes images by separate code; nothing here
+was measured on it. Each image is busybox plus its own label or layer, so it
+has its own ID, pushed to a throwaway `registry:2` on `localhost:34781`, its local
+names removed, and pulled back by digest. Below, `R` is
+`localhost:34781/rfc31p1/<repo>`, `D` its digest, and `A` the alias
+`R:morzer-sha256-<hex of D>`; output is otherwise verbatim, with IDs
+shortened.
+
+**A pulled image** carries one name and no tag:
+
+```text
+$ docker pull -q R@D
+$ docker image inspect --format '{{json .RepoTags}} {{json .RepoDigests}}' <id>
+[] ["R@D"]
+$ docker image rm R@D                   # no container
+Untagged: R@D
+Deleted: sha256:8f7fca60498b…           # exit 0, image gone
+$ docker image rm R@D                   # again
+Error response from daemon: No such image: R@D             # exit 1
+```
+
+A manifest may pin `R:t@D`; the pinning rule permits a tag beside the digest.
+`docker pull R:t@D` records `R@D` and no tag `t`, and `docker image rm R:t@D`
+prints `Untagged: R:t@D` and removes `R@D` (exit 0).
+
+**A bundled image.** What `ingestOne` runs, with the registry standing in for
+the loopback server — `docker pull 127.0.0.1:34781/rfc31p1/bundled@D`,
+`docker tag` of that to `A`, `docker image rm` of the loopback name — leaves
+one tag and no digest reference. The manifest's own reference does not
+resolve, as decision 19 of 0011 says:
+
+```text
+$ docker image inspect --format '{{json .RepoTags}} {{json .RepoDigests}}' <id>
+["A"] []
+$ docker image inspect R@D
+Error response from daemon: No such image: R@D             # exit 1
+$ docker image rm A                     # no container
+Untagged: A
+Deleted: sha256:d768a207a486…           # exit 0, image gone
+```
+
+**The in-use refusal**, which `ErrImageInUse` is classified from. A container
+created from the name; the text is the same stopped and running, and the same
+for `A`:
+
+```text
+$ docker image rm R@D
+Error response from daemon: conflict: unable to remove repository reference "R@D" (must force) - container 5044c9c7c33e is using its referenced image 8f7fca60498b
+                                        # exit 1
+$ curl --unix-socket /var/run/docker.sock -X DELETE http://localhost/v1.55/images/R@D
+{"message":"conflict: unable to remove repository reference \"R@D\" (must force) - container 352df8c5e9b9 is using its referenced image 8f7fca60498b"}
+                                        # HTTP 409
+```
+
+An absent reference is `No such image: R@D`: also exit 1, HTTP 404. The exit
+status does not tell the two apart, so the adapter reads stderr and keys on
+`conflict: unable to remove repository reference`. By image ID the text
+differs (`unable to delete 8f7fca60498b (must be forced) - image is being used
+by stopped container …`, and `(cannot be forced) … running container …`), and
+the design never removes by ID.
+
+**The refusal guards the last repository, not the last name.** The daemon
+counts one repository's names — at most one tag, and any digest references —
+as a single reference. With a container running:
+
+| Names on the image | `docker image rm` of | Result |
+| --- | --- | --- |
+| `R@D`, `R:t` | `R@D` | conflict, exit 1 |
+| `R@D`, `R:t` | `R:t` | conflict, exit 1 |
+| `R@D`, `other:t` | `R@D` | `Untagged: R@D`, exit 0 |
+| `R@D`, `A`, `third:t` | `A` | `Untagged: A`, `Untagged: R@D`, exit 0 |
+
+§2.1's two names were two tags of one repository, which count as two.
+
+**Removing a tag removes that repository's digest references with it**, in the
+same call, when no other tag of the repository stays on the image. No
+container; the image is bundled by one release (`A`) and pulled by another
+(`R@D`):
+
+```text
+$ docker image inspect --format '{{json .RepoTags}} {{json .RepoDigests}}' <id>
+["A"] ["R@D"]
+$ docker image rm A
+Untagged: A
+Untagged: R@D
+Deleted: sha256:14cb573321c1…           # exit 0
+```
+
+The same whichever came first, the ingest or the pull. Removing `R@D` instead
+prints only `Untagged: R@D` and leaves `A` (exit 0).
+
+**The daemon normalizes names.** `busybox@sha256:fd7dc986…` and
+`docker.io/library/busybox@sha256:fd7dc986…` inspect to the same ID;
+`docker image rm docker.io/library/rfc31p1-norm:a` printed
+`Untagged: rfc31p1-norm:a`; and `R:t@D` above is the name `R@D`.
+
+**Finding: §4.1 as first written did not keep the names decision 3 excludes.
+Under §9 this halted P2.** `remove = candidates − referenced` subtracted
+strings. A pruned
+release's alias `A` is not the string `R@D` a remaining release pulls by, so
+`A` is in `remove`, and removing `A` removes `R@D`. That happens wherever one
+image, from one repository and pinned by one digest, is bundled by a pruned
+release and pulled by a remaining one: one product installed from a bundle in
+one installation and from its registry in another, a vendor that stopped
+bundling an image between two releases, two products sharing a base pinned by
+the same digest. The daemon refuses only while a container uses the image and
+every name on it is in `R`; with a name in another repository the digest
+reference goes while the container runs (the table's last row). Spelling does
+the same with no alias: manifests that pin `postgres:17@D` and
+`docker.io/library/postgres@D` are two references to §4.1 and one name to the
+daemon, so pruning one release removes the name the other resolves by.
+Decision 4 stands; this is one more way the refusal is no guard for
+references. Closed by subtracting normalized references, an alias
+`R:morzer-sha256-<hex>` counting as `R@sha256:<hex>`: decision 14, ruled
+2026-10-19, and §4.1.
+
+**Bytes.** Removing the last name deleted a layer only when nothing else held
+it. A 50 MB layer made by `docker build` stayed after `Deleted: <image id>`,
+because BuildKit's cache held it; a 50 MB layer made by `docker commit` went,
+and `rm` printed `Deleted:` twice, image then layer. §6's wording and decision
+12 stand.
+
+**The §7 window**, from the prune listing release directories to
+`docker image rm` returning, timing what §4.4 does in its order: list two
+installations' nine release directories, read each 5 KB manifest (read, not
+parsed), `RemoveAll` the pruned one, remove one reference. Times include
+starting the `docker` CLI, as the adapter does; listing and reading took 0.2 ms
+or less. 30 runs per case, milliseconds, on a daemon other jobs share:
+
+| Case | `RemoveAll` p50 | `rm` p50 | Window min / p50 / p90 / max |
+| --- | --- | --- | --- |
+| `R@D`, image and its 50 MB layer deleted | 0.0 | 18.5 | 16.5 / 18.6 / 22.7 / 23.9 |
+| `A`, same image, and a 50 MB `images/` layout | 2.9 | 18.4 | 19.3 / 21.3 / 39.3 / 57.9 |
+| `R@D` untagged, bytes kept by `A` | 0.0 | 9.8 | 8.7 / 9.9 / 11.2 / 14.4 |
+
+Each further reference in one prune adds an `rm`, 10–19 ms p50, to the window
+of every reference after it. The other installation has to fit into it its
+`.staging-*` directory appearing, the fetch, the rename, and its first look at
+the image: `docker image inspect`, 9.0 ms p50 (n=30). For an alias that look
+is `ingest-images`, the step after staging. For a pulled reference it is
+`pull-images`, after `validate-runtime`, whose `docker compose config` alone
+took 63.2 ms min and 81.7 ms p50 (n=30) — longer than any one-reference
+window above. The fetch and the engine's own work between steps were not
+timed. Decision 11 makes a real window the condition for reopening it; this
+one is not zero, it is a few tens of milliseconds per prune, and whether that
+is real in the row's sense is the author's ruling.
 
 ## 3. Goals / Non-goals
 
@@ -174,8 +330,18 @@ every non-bundled image of a release is named.
 candidates = ⋃ RuntimeImageRefs(r)   for r in the releases this prune removes
 referenced = ⋃ RuntimeImageRefs(r)   for every release directory that remains,
                                      in every installation DiscoverProducts finds
-remove     = candidates − referenced
+remove     = { c in candidates : key(c) ∉ { key(r) : r in referenced } }
 ```
+
+`key` is the name the daemon resolves, not the string a manifest spells
+(§2.2, decision 14): the normalized repository — `postgres`,
+`docker.io/library/postgres` and `index.docker.io/library/postgres` are one —
+with the digest, and an alias `R:morzer-sha256-<hex>` keyed as
+`R@sha256:<hex>`. Removing an alias also removes its repository's digest
+reference on the same image, so an alias may go only when no remaining
+release names that repository and digest by either spelling. A reference no
+key can be computed for is kept, for the reason §4.2 keeps everything when the
+machine cannot be read.
 
 `referenced` is every release directory still on disk, in this installation and
 in every other, whatever its role — current, previous, staged, or merely
@@ -224,9 +390,10 @@ type ImageRemover interface {
 }
 ```
 
-The Compose adapter answers it with `docker image rm <ref>`, without `-f`;
-classifying the conflict response as `ErrImageInUse` is P1's to pin from the
-daemon's real output. Podman's `podman image rm` has the same unforced
+The Compose adapter answers it with `docker image rm <ref>`, without `-f`. The
+response is `ErrImageInUse` when stderr carries `conflict: unable to remove
+repository reference`, measured in §2.2; exit status 1 alone is also what an
+absent reference returns. Podman's `podman image rm` has the same unforced
 semantics, so the Quadlet adapter can implement it rather than stub it — the
 condition [0023](0023-runtimes-beyond-compose.md) §6 actually cares about. A
 runtime without the capability removes nothing, and the prune says so once.
@@ -351,8 +518,8 @@ the cost, and decision 11 the row that reopens it.
   removing *after* the other installation pulled or ingested the same
   reference. Its converge then meets a missing image: a re-pull for a pulled
   reference, and for a bundled alias the refusal 0011 decision 20 prescribes,
-  which `release ingest` repairs. Accepted for P2, and measured in P1;
-  decision 11 is where it changes.
+  which `release ingest` repairs. Accepted for P2, and measured in P1
+  (§2.2); decision 11 is where it changes.
 - **Non-morzer workloads that use the same image but have no container yet**
   lose the name and re-pull. The daemon protects any that have one (§2.1).
   Named, accepted: the manager pulled that reference for its own release.
@@ -383,9 +550,10 @@ the cost, and decision 11 the row that reopens it.
 | 8 | A failed image removal never fails the prune: kept, with the runtime's reason, exit 0 | ASSUMED | Reclamation is not the operation; a prune that failed over disk it could not reclaim would be retried into the same refusal. |
 | 9 | On by default on both pruning paths — `release prune` and dev mode's `prune-releases` — with no opt-out in P2; production still never prunes automatically | ASSUMED | Pruning already says the release is unwanted, and the manager cannot install a pruned release's images without its directory. An opt-out is added when an operator asks for one, not before. Ruled by the author 2026-10-16. |
 | 10 | `release prune` reports images removed and kept, `--dry-run` lists them, and the JSON gains `dry_run` | ASSUMED | The JSON cannot tell a plan from an act today (release.go:428). Additive keys only, so existing readers keep working. |
-| 11 | `release prune` takes its own installation's deployment lock; nothing coordinates with another installation's fetch | ASSUMED | Every other writer of an installation's releases holds that lock, and today prune takes none (§2). Dev mode's `prune-releases` runs inside `update`, which already holds it (update.go:120, :833), so the CLI takes it around `PruneReleases` (release.go:423) rather than the function taking it, which would contend with the lock its caller holds. A machine-wide lock would close §7's window too, but is new machinery for a window nobody has measured; P1 measures it and a real window reopens this row. Was `OPEN`. Ruled by the author 2026-10-16. |
+| 11 | `release prune` takes its own installation's deployment lock; nothing coordinates with another installation's fetch | ASSUMED | Every other writer of an installation's releases holds that lock, and today prune takes none (§2). Dev mode's `prune-releases` runs inside `update`, which already holds it (update.go:120, :833), so the CLI takes it around `PruneReleases` (release.go:423) rather than the function taking it, which would contend with the lock its caller holds. A machine-wide lock would close §7's window too, but is new machinery for a window nobody has measured; P1 measures it and a real window reopens this row. Was `OPEN`. Ruled by the author 2026-10-16. P1 measured tens of milliseconds per prune (§2.2), and the author ruled 2026-10-19 that this does not reopen the row. |
 | 12 | The report names each reference removed and does not distinguish "name removed, bytes kept" from "image deleted"; the docs say a removed name may free no disk | ASSUMED | The daemon reports both (`Untagged:` / `Deleted:`), and what the operator asked for is that the manager stop leaking names. Freed bytes are added when an operator asks for them. Was `OPEN`. Ruled by the author 2026-10-16. |
 | 13 | Images of releases pruned before this ships are not reclaimed; the docs say once how to clear them by hand | ASSUMED | Their manifests went with their directories, so nothing names them as the manager's, and finding them means sweeping the store, which decision 1 rules out: a pulled image cannot be told from anyone else's. Bundled aliases (`<repo>:morzer-sha256-<hex>`) could be, since only the manager creates them, but they are not the pulled images the request is about. Ruled by the author 2026-10-16. |
+| 14 | **Refines decision 3.** The exclusion compares the names the daemon resolves, not strings: each reference is keyed by its normalized repository and digest, and a bundled alias `R:morzer-sha256-<hex>` is keyed as `R@sha256:<hex>`. A candidate is removed only when no remaining reference has its key, and one whose key cannot be computed is kept | LOCKED | Measured in P1 (§2.2): removing a tag removes the same repository's digest references unless another tag of it stays, so a pruned release's alias took a remaining release's pulled `R@D` with it; and `postgres:17@D`, `postgres@D` and `docker.io/library/postgres@D` are one name to the daemon and three strings to §4.1. String subtraction kept neither promise decision 3 makes. Ruled by the author 2026-10-19. |
 
 ## 9. Phasing
 
@@ -393,7 +561,8 @@ the cost, and decision 11 the row that reopens it.
   does to a pulled image (named by digest, usually untagged) and to a bundled
   alias; the exact in-use conflict output, to pin `ErrImageInUse`; and the
   §7 race window. Ships the measurements in this RFC (§2.1 grows) and nothing
-  else. A finding that contradicts decision 3 or 4 halts P2.
+  else. A finding that contradicts decision 3 or 4 halts P2. Done 2026-10-19,
+  §2.2; its finding halted P2 until decision 14 answered it.
 - **P2 — build.** `ImageRemover` on the port and the Compose adapter; the
   sets, the fail-safe, the order and the report in `PruneReleases`; the
   `dry_run` key; the deployment lock in `release prune`; dev mode's step picks
