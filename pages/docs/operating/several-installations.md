@@ -16,6 +16,13 @@ What they do share is the host: one Docker daemon, one port space, one
 filesystem, one set of CPUs. morzer does not pretend otherwise. This page is
 about making that sharing legible rather than preventing it.
 
+The daemon's image store is shared too. Two installations of one product, or
+two products built on one base image, hold the same images under the same
+names. `release prune` in one installation removes a pruned release's images
+only when no release left in *any* installation names them, so a prune here
+never costs another installation a rollback target. See
+[`release prune`](../reference/release-commands.md#release-prune).
+
 ## What is on this machine
 
 ```sh

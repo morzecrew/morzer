@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`release prune` removes the images of the releases it prunes.** A release directory went and every image the runtime pulled or loaded for it stayed, so a dev machine following a channel, which prunes after every update, filled its disk one build's images at a time. The pruned releases' images now go with them, on both `release prune` and dev mode's automatic prune. A name stays when any release left on the machine, in any installation and whatever its role, still names it; spellings the daemon treats as one name, such as `postgres@sha256:…` and `docker.io/library/postgres@sha256:…`, count as one. Nothing is forced: a name a container uses is reported as kept, and the prune still succeeds. If any release directory on the machine cannot be read, no image is removed and the report names the directory. Images left by earlier prunes are not reclaimed; the `release prune` reference says how to clear them by hand.
+
+### Changed
+
+- **`release prune` takes the deployment lock**, so it waits for or refuses beside an `update` of the same installation, and honours `--wait`. Its `--json` output gains `dry_run`, without which a plan and an act read the same, and `images` with what was removed, what was kept and why, and why removal was skipped.
+
 ## [0.5.0] - 2026-10-19
 
 Most of this release is about the data the manager decides to remove. A failed

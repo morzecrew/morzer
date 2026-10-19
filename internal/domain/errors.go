@@ -119,6 +119,11 @@ var (
 	// failure mode nobody has thought of yet -- and every other
 	// implementation of the port -- lands on the safe side by default.
 	ErrMeasureIncomplete = errors.New("the measurement did not run")
+
+	// ErrImageInUse marks an image name the runtime would not remove
+	// because a container uses its image (RFC 0031 §2.2). A reason to keep
+	// the name, never to retry it or to force it.
+	ErrImageInUse = errors.New("image in use by a container")
 )
 
 // Error is the manager's structured error. Message says what happened; Hint

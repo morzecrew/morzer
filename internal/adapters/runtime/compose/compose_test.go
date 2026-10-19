@@ -2,6 +2,7 @@ package compose_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -335,6 +336,43 @@ func TestHasImageDistinguishesPresentFromAbsent(t *testing.T) {
 	runner2.OnError("image inspect", &exec.ExitError{ExitCode: 1, Stderr: "No such image"})
 	if ok, err := absent.HasImage(context.Background(), "app@sha256:bbb"); err != nil || ok {
 		t.Errorf("HasImage(absent) = %v, %v; absence is not an error", ok, err)
+	}
+}
+
+// RemoveImage tells the three answers apart by stderr, because `docker image rm`
+// exits 1 for all of them (RFC 0031 §2.2): the in-use refusal is a reason to
+// keep the name, an absent name is already the outcome, and anything else is
+// an error. And it never forces.
+func TestRemoveImageTellsARefusalFromAnAbsentName(t *testing.T) {
+	removed, runner := newRuntime()
+	if err := removed.RemoveImage(context.Background(), "app@sha256:aaa"); err != nil {
+		t.Fatalf("RemoveImage = %v", err)
+	}
+	if got := strings.Join(runner.Calls()[0].Argv, " "); !strings.HasSuffix(got, "image rm app@sha256:aaa") {
+		t.Errorf("ran %q; a forced removal deletes bytes under every other name", got)
+	}
+
+	inUse, runner2 := newRuntime()
+	runner2.OnError("image rm", &exec.ExitError{ExitCode: 1, Stderr: `Error response from daemon: conflict: ` +
+		`unable to remove repository reference "app@sha256:aaa" (must force) - container 5044c9c7c33e ` +
+		`is using its referenced image 8f7fca60498b`})
+	if err := inUse.RemoveImage(context.Background(), "app@sha256:aaa"); !errors.Is(err, domain.ErrImageInUse) {
+		t.Errorf("the in-use refusal came back as %v", err)
+	}
+
+	absent, runner3 := newRuntime()
+	runner3.OnError("image rm", &exec.ExitError{ExitCode: 1,
+		Stderr: "Error response from daemon: No such image: app@sha256:aaa"})
+	if err := absent.RemoveImage(context.Background(), "app@sha256:aaa"); err != nil {
+		t.Errorf("an absent name is already removed, got %v", err)
+	}
+
+	down, runner4 := newRuntime()
+	runner4.OnError("image rm", &exec.ExitError{ExitCode: 1,
+		Stderr: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"})
+	err := down.RemoveImage(context.Background(), "app@sha256:aaa")
+	if err == nil || errors.Is(err, domain.ErrImageInUse) {
+		t.Errorf("a daemon that is down came back as %v", err)
 	}
 }
 

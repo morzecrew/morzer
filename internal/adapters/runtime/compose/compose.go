@@ -676,6 +676,44 @@ func (r *Runtime) HasImage(ctx context.Context, imageRef string) (bool, error) {
 		imageRef, firstLine(exitErr.Stderr))
 }
 
+// RemoveImage removes one name from the local store with `docker image rm`,
+// never `-f`.
+//
+// The exit status cannot tell a refusal from an absent name -- both are 1 -- so
+// stderr decides, on the texts RFC 0031 §2.2 measured on Docker 29.7.2. By name
+// the refusal is always `conflict: unable to remove repository reference`;
+// nothing here removes by image ID, where the text differs.
+func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
+	res, err := r.runner.Run(ctx, exec.Command{
+		Argv: []string{r.docker, "image", "rm", ref},
+		// Deleting the last name deletes the layers no other image holds,
+		// and a multi-gigabyte image on a slow disk is not quick.
+		Timeout:       5 * time.Minute,
+		Redact:        r.redact,
+		CaptureOutput: true,
+	})
+	if err == nil {
+		return nil
+	}
+
+	var exitErr *exec.ExitError
+	if !asExit(err, &exitErr) {
+		return domain.RuntimeError(err, "cannot remove %s", ref)
+	}
+
+	stderr := res.Stderr + exitErr.Stderr
+	switch {
+	case strings.Contains(stderr, "conflict: unable to remove repository reference"):
+		return domain.RuntimeError(domain.ErrImageInUse, "a container uses %s", ref)
+	case strings.Contains(strings.ToLower(stderr), "no such image"):
+		// Removing an alias takes its repository's digest references on
+		// the same image with it, so this is the ordinary second half of
+		// one prune, not a failure.
+		return nil
+	}
+	return domain.RuntimeError(err, "cannot remove %s: %s", ref, firstLine(exitErr.Stderr))
+}
+
 // ProbeRegistry checks that an image's registry is reachable, without
 // transferring any layers.
 //
@@ -726,4 +764,5 @@ func firstLine(s string) string {
 var (
 	_ ports.RegistryProber = (*Runtime)(nil)
 	_ ports.ImageInspector = (*Runtime)(nil)
+	_ ports.ImageRemover   = (*Runtime)(nil)
 )

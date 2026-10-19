@@ -489,36 +489,58 @@ func newReleasePruneCommand(app *App) *cobra.Command {
 		Long: "Never removes the current or previous release, whatever the retention\n" +
 			"setting says: rollback depends on both being present. A release\n" +
 			"staged and not yet installed is exempt too, for the same reason:\n" +
-			"pruning the candidate a poll just fetched makes staging pointless.",
+			"pruning the candidate a poll just fetched makes staging pointless.\n\n" +
+			"The images a pruned release put in the runtime's store go with it, unless\n" +
+			"a release left on this machine, in any installation, still names them.\n" +
+			"Takes the deployment lock, so it waits for or refuses beside an update.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			res, err := ops.PruneReleases(cmd.Context(), app.Deps, keep, app.Flags.dryRun)
+			res, err := ops.PruneReleasesLocked(cmd.Context(), app.Deps, keep, app.operationOptions())
 			if err != nil {
 				return err
 			}
 
 			if app.json != nil {
-				app.jsonData = map[string]any{
-					"removed": res.Removed, "retained": res.Retained}
+				app.jsonData = res
 				return nil
 			}
-			if len(res.Removed) == 0 {
-				app.finish(ops.Result{Summary: "nothing to prune"})
-				return nil
-			}
-			verb := "removed"
-			if app.Flags.dryRun {
-				verb = "would remove"
-			}
-			app.finish(ops.Result{
-				Summary: fmt.Sprintf("%s %d release(s): %v",
-					verb, len(res.Removed), res.Removed)})
+			app.finish(ops.Result{Summary: pruneSummary(res)})
 			return nil
 		},
 	}
 
 	cmd.Flags().IntVar(&keep, "keep", 0, "number of non-active releases to retain; 0 uses the policy")
 	return cmd
+}
+
+// pruneSummary is `release prune` for a terminal: the releases, then what
+// became of their images, one name to a line.
+func pruneSummary(res ops.PruneResult) string {
+	if len(res.Removed) == 0 {
+		return "nothing to prune"
+	}
+	removed, kept := "removed", "kept"
+	if res.DryRun {
+		removed, kept = "would remove", "would keep"
+	}
+
+	lines := []string{fmt.Sprintf("%s %d release(s): %v", removed, len(res.Removed), res.Removed)}
+	if len(res.Images.Removed) > 0 {
+		lines = append(lines, fmt.Sprintf("%s %d image(s):", removed, len(res.Images.Removed)))
+		for _, ref := range res.Images.Removed {
+			lines = append(lines, "  "+ref)
+		}
+	}
+	if len(res.Images.Kept) > 0 {
+		lines = append(lines, fmt.Sprintf("%s %d image(s):", kept, len(res.Images.Kept)))
+		for _, k := range res.Images.Kept {
+			lines = append(lines, fmt.Sprintf("  %s: %s", k.Ref, k.Why))
+		}
+	}
+	if res.Images.Skipped != "" {
+		lines = append(lines, fmt.Sprintf("%s no images: %s", removed, res.Images.Skipped))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // releaseRoot resolves an optional version argument to a release directory.

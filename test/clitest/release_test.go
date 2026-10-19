@@ -173,6 +173,19 @@ func TestReleasePruneJSON(t *testing.T) {
 	out := r.Run("release", "prune", "--keep", "1", "--json").ExitCode(0)
 	out.Field("data.removed")
 	out.Field("data.retained")
+
+	// Every release here names the current release's images, so none goes:
+	// the lists are empty rather than absent, and the act says it was one.
+	if dry, _ := out.Field("data.dry_run").(bool); dry {
+		t.Error("an act reported itself as a dry run")
+	}
+	out.FieldLen("data.images.removed", 0)
+	out.FieldLen("data.images.kept", 0)
+
+	plan := r.Run("release", "prune", "--keep", "0", "--dry-run", "--json").ExitCode(0)
+	if dry, _ := plan.Field("data.dry_run").(bool); !dry {
+		t.Error("a plan read the same as an act")
+	}
 }
 
 func storeEntries(t *testing.T, r *clitest.Runner) int {

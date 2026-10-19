@@ -63,6 +63,11 @@ type Runtime struct {
 	IngestedFrom string
 	IngestedRefs []string
 
+	// RemovedImages records what RemoveImage removed, in order, and
+	// ImagesInUse are the names it refuses as a container's.
+	RemovedImages []string
+	ImagesInUse   []string
+
 	// localImages are the names ingest left behind. Unexported because a
 	// test arranges them by ingesting rather than by writing the field:
 	// which name becomes resolvable is the behaviour under test.
@@ -160,6 +165,7 @@ var (
 	_ ports.Runtime         = (*Runtime)(nil)
 	_ ports.ImageInspector  = (*Runtime)(nil)
 	_ ports.ImageIngester   = (*Runtime)(nil)
+	_ ports.ImageRemover    = (*Runtime)(nil)
 	_ ports.VolumeInspector = (*Runtime)(nil)
 	_ ports.VolumeCapturer  = (*Runtime)(nil)
 	_ ports.OptionResolver  = (*Runtime)(nil)
@@ -604,6 +610,21 @@ func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []str
 		}
 		r.localImages = append(r.localImages, alias)
 	}
+	return nil
+}
+
+// RemoveImage refuses a name in ImagesInUse the way the daemon does, and
+// records every other.
+func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
+	if err := r.record("RemoveImage"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if slices.Contains(r.ImagesInUse, ref) {
+		return domain.RuntimeError(domain.ErrImageInUse, "a container uses %s", ref)
+	}
+	r.RemovedImages = append(r.RemovedImages, ref)
 	return nil
 }
 

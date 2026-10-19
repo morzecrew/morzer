@@ -608,11 +608,69 @@ converge on bytes nobody verified.
 ## release prune
 
 Removes old releases beyond the retention policy. The running release and the
-one before it are never pruned.
+one before it are never pruned, and neither is a release staged and not yet
+installed.
 
 | Flag | Meaning |
 | --- | --- |
 | `--keep` | Number of non-active releases to retain. `0` uses the manifest's policy. |
+
+**A pruned release's images leave the runtime's image store with it**: the
+digest references it pulled and the `<repo>:morzer-sha256-<hex>` names it
+loaded from its bundle. A name stays when any release directory left on this
+machine still names it, in this installation or any other, whatever that
+release's role. `postgres@sha256:…` and `docker.io/library/postgres@sha256:…`
+count as one name, and so do a bundled image's alias and the digest reference
+it stands for. Images a release never declared, such as one hard-coded in a
+Compose file, are never touched.
+
+- **Removed means the name, not necessarily the bytes.** The image is deleted
+  only when no other name and no container holds it, and a layer only when no
+  other image shares it. A prune may free less disk than the images' sizes add
+  up to.
+- **Nothing is forced.** A name the runtime refuses because a container uses
+  its image is reported as kept, with the reason, and the prune still exits 0.
+  So does any other name it could not remove.
+- **One unreadable directory stops all image removal.** If a release directory
+  in any installation has a manifest that does not load, or a directory under
+  `/etc` cannot be opened, the releases are pruned and no image is removed. The
+  report names the directory; remove it if it is not a release. A fetch in
+  progress meets this rule until it finishes.
+- **Takes the deployment lock**, so it waits for or refuses beside an `update`
+  of the same installation, as `update` does. `--wait` waits. `--dry-run` takes
+  no lock and removes nothing.
+
+```console
+$ morzer release prune --keep 1 --dry-run
+would remove 2 release(s): [1.4.0-dev.7.g3be286c 1.4.0-dev.6.g91aa0e2]
+would remove 2 image(s):
+  registry.example/erp/backend@sha256:4f1c…
+  registry.example/erp/worker@sha256:0b9d…
+```
+
+With `--json`, `data` is:
+
+```json
+{
+  "dry_run": true,
+  "removed": ["1.4.0-dev.7.g3be286c", "1.4.0-dev.6.g91aa0e2"],
+  "retained": 1,
+  "images": {
+    "removed": ["registry.example/erp/backend@sha256:4f1c…"],
+    "kept": [{"ref": "registry.example/erp/worker@sha256:0b9d…", "why": "a container uses it"}],
+    "skipped": ""
+  }
+}
+```
+
+`images.skipped` is why no image was removed at all, and empty when removal
+ran. `dry_run` tells a plan from an act; `removed` reads the same in both.
+
+**Releases pruned by an older manager left their images behind, and those are
+not reclaimed.** Their manifests went with their directories, so nothing says
+which images were the manager's. To clear them by hand, list the product's repositories with
+`docker image ls <repository>` and remove, with `docker image rm`, the ones no
+release left in `morzer release list` names.
 
 ## release trust
 

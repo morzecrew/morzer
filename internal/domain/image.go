@@ -382,3 +382,43 @@ func DigestFromRef(ref string) string {
 	}
 	return rest[:dash] + ":" + rest[dash+1:]
 }
+
+// ImageKey is the name the daemon resolves a reference to: its normalized
+// repository and its digest, with a local alias keyed as the digest reference
+// it stands for. False when the reference pins no digest.
+//
+// RFC 0031 decision 14. Removing a tag removes its repository's digest
+// references on the same image, so `R:morzer-sha256-<hex>` and `R@sha256:<hex>`
+// are one name for the purpose of deciding what a removal takes with it. And
+// `postgres@D`, `postgres:17@D` and `docker.io/library/postgres@D` are three
+// strings and one name.
+func ImageKey(ref string) (string, bool) {
+	digest := DigestFromRef(ref)
+	if digest == "" {
+		return "", false
+	}
+	return normalizeRepository(RepositoryOf(ref)) + "@" + digest, true
+}
+
+// normalizeRepository spells a repository the way the daemon stores it.
+//
+// Docker's rule: the first path component is a registry host only when it
+// contains a dot or a colon, is `localhost`, or has an upper-case letter;
+// otherwise the host is docker.io. `index.docker.io` is docker.io, and a
+// docker.io repository with no namespace is under `library/`.
+func normalizeRepository(repo string) string {
+	host, path := "docker.io", repo
+	if slash := strings.Index(repo, "/"); slash >= 0 {
+		first := repo[:slash]
+		if strings.ContainsAny(first, ".:") || first == "localhost" || strings.ToLower(first) != first {
+			host, path = first, repo[slash+1:]
+		}
+	}
+	if host == "index.docker.io" {
+		host = "docker.io"
+	}
+	if host == "docker.io" && !strings.Contains(path, "/") {
+		path = "library/" + path
+	}
+	return host + "/" + path
+}

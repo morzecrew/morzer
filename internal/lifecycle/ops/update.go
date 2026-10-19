@@ -917,6 +917,17 @@ func stepPruneReleases(d *Deps) engine.Step {
 				return nil
 			}
 			st.Detail("removed %v", res.Removed)
+			if len(res.Images.Removed) > 0 {
+				st.Detail("removed %d image(s): %v", len(res.Images.Removed), res.Images.Removed)
+			}
+			for _, k := range res.Images.Kept {
+				st.Detail("kept image %s: %s", k.Ref, k.Why)
+			}
+			// A warning, because the cause outlives this update: until
+			// it is fixed, no update on this machine removes images.
+			if res.Images.Skipped != "" {
+				st.Warn("removed no images: %s", res.Images.Skipped)
+			}
 			return nil
 		},
 	}
