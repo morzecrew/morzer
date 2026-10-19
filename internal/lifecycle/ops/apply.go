@@ -379,12 +379,13 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, op
 		// containers an earlier apply started read these files too, and
 		// a start-services that failed may have started some or none. A
 		// runtime that cannot answer may have them up. An apply has
-		// nothing earlier to put back. An update that got as far as
-		// start-services renders the previous release's secrets over
-		// them on restore, which prunes whatever that release does not
-		// declare; one that stopped earlier leaves the new release's.
+		// nothing earlier to put back. An update renders the previous
+		// release's secrets over the ones kept here on restore, which
+		// prunes whatever that release does not declare
+		// (restorePreviousRuntime).
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			if running, err := d.projectRunning(ctx, inst, rel, opts); running || err != nil {
+				st.Set(keySecretsKept, true)
 				return nil
 			}
 			return atomicfs.RemoveAll(d.Paths.SecretsRenderDir())
@@ -897,6 +898,10 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 // keyServicesTouched says start-services began replacing containers, so a
 // failed update has more to put back than files.
 const keyServicesTouched = "services-touched"
+
+// keySecretsKept says render-secrets' compensator left its directory for the
+// containers reading it, so it still holds this operation's secrets.
+const keySecretsKept = "secrets-kept"
 
 // keyConfigNotRestored says the configuration compensator could not put every
 // file back, so nothing may be started against what is there.
