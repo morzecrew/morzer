@@ -2395,7 +2395,8 @@ what will happen to a real one. It relaxes:</p>
   is nothing here to be unable to recover.</li>
 <li><strong>Retention.</strong> It prunes old releases after every update, which a fast rebuild
   loop needs — one release directory per build, each with its own images.</li>
-<li><strong><code>--skip-backup</code></strong>, without <code>--force</code>.</li>
+<li><strong><code>--skip-backup</code></strong>, without <code>--force</code>, and <strong><code>backup.before_update=false</code></strong>,
+  which turns the pre-update backup off for every update, the timer's included.</li>
 <li><strong>Prereleases.</strong> They are admissible update candidates. On a production
   machine they are not: every development build carries a prerelease version,
   and a check answering "1.4.1-dev.7 is available" is a check nobody reads.</li>

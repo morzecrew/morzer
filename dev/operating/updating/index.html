@@ -2495,7 +2495,9 @@ about its migrations, not expressing a preference.</p>
 failed migration is recovered from, and it is the backup a refused rollback will
 name.</p>
 <p><code>--skip-backup</code> exists and requires <code>--force</code>, and the choice is recorded in the
-journal so an incident review can see it was made deliberately.</p>
+journal so an incident review can see it was made deliberately. A dev-mode
+machine can turn the backup off for every update with
+<code>morzer config set backup.before_update=false</code>; a production machine cannot.</p>
 <h2 id="when-it-fails">When it fails<a class="headerlink" href="#when-it-fails" title="Permanent link">&para;</a></h2>
 <p>The release pointer goes back to what was running, and the previously-running
 release is what comes back up. The staged release and the backup both stay —

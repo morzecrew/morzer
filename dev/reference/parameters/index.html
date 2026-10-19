@@ -2476,6 +2476,10 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td>Whether this manager runs backups on a timer at all. Absent means it does.</td>
 </tr>
 <tr>
+<td><code>backup.before_update</code></td>
+<td>Whether an update takes a backup before it changes anything. Absent means it does. Only a <a href="../../operating/unattended-updates/#dev-mode-a-machine-that-is-a-sandbox-from-birth">dev-mode</a> machine may set <code>false</code>; on a production machine, <code>update --skip-backup --force</code> skips it for one update.</td>
+</tr>
+<tr>
 <td><code>retention.pre_update_backups</code></td>
 <td>How many of the newest pre-update backups retention keeps, on top of the ordinary count; at least <code>1</code>. Absent takes <code>3</code>. See <a href="../../operating/backups/#retention">retention</a>.</td>
 </tr>
