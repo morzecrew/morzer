@@ -91,8 +91,9 @@ phase shipped, and a reader deciding what to work on needs the other half.
   when an operator asks to keep them, and the Quadlet implementation with
   0023 P3.
 - **[0032 — Secrets a non-root container can read](0032-secrets-a-non-root-container-can-read.md).**
-  📝 Draft, execution-ready. Nothing is built; P1 is the whole of it, one PR:
-  a numeric `owner` per secret, set when the file is rendered.
+  📝 Draft, execution-ready, and every decision is ruled. Nothing is built; P1
+  is the whole of it, one PR: a numeric `owner` per secret, set when the file
+  is rendered.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and

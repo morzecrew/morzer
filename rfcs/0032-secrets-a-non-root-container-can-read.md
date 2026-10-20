@@ -2,6 +2,8 @@
 
 - **Status:** 📝 Draft — written 2026-10-17, **execution-ready, one PR**.
   Nothing is built. Ruled 2026-10-17: one owner per secret (decision 2).
+  Ruled 2026-10-20: the floor is `0.6.0` (decision 9), and a darwin manager
+  refuses `owner` until 0029's spike has measured Docker Desktop (decision 10).
 - **Scope:** Who owns a rendered secret file. Today every file under the render
   directory is `0400` and owned by the manager, which is root on every machine
   that runs units, so a container whose image runs as any other user cannot
@@ -193,6 +195,13 @@ later as `Permission denied` inside a container the operator did not write.
 Giving a file to one's own uid and group needs no privilege, which is what the
 non-root test lanes use (§5).
 
+A darwin manager refuses every declared `owner` before the chown, whatever its
+privilege, with a hint naming [0029](0029-macos-as-a-development-host.md)
+(decision 10). Run as root there, the chown would succeed, and what Docker
+Desktop then shows the container is unmeasured. That would be decision 6's
+fallback again: a file that renders and verifies cleanly and may still be
+refused inside the container.
+
 ### 4.4 Verified like the mode
 
 `stepRenderSecrets`'s `Verify` gains the owner beside the mode (apply.go:363):
@@ -246,7 +255,8 @@ never reaches the strict decode that would call `owner` an unknown field.
   would pass against one implementation only.
 - **Refusal:** with an owner that is not the process's uid, `Render` fails
   naming the secret, and no file is left at the final name. Skipped when the
-  test runs as root, where the chown would succeed.
+  test runs as root, where the chown would succeed. The darwin refusal
+  (decision 10) is compiled and vetted by the darwin check; no lane runs it.
 - **Docker lane, the requester's done-when:** the lane's one root is a
   container, so the render runs there. The built binary renders into a
   bind-mounted directory as root, then §2.1 runs as a test. A Compose file
@@ -278,10 +288,11 @@ never reaches the strict decode that would call `owner` an unknown field.
   read is refused. Accepted and documented. Mapping uids through the daemon's
   configuration would make the manager depend on reading it.
 - **macOS.** Docker Desktop maps ownership across virtiofs rather than carrying
-  it, and the manager there runs as a user, so §4.3 refuses. Left `OPEN`
-  (decision 10) for [0029](0029-macos-as-a-development-host.md)'s spike, which
-  already has to assert that a bind-mounted secrets directory is readable with
-  the modes the release declares.
+  it, and the manager there runs as a user. A darwin manager refuses `owner`
+  (decision 10, §4.3), so a bundle that uses it does not apply on macOS until
+  [0029](0029-macos-as-a-development-host.md)'s spike. That spike already has
+  to assert that a bind-mounted secrets directory is readable with the modes
+  the release declares, and its result reopens the row.
 - **Misread as weakening the directory.** The directory keeps its mode and
   owner. What changes is which single uid can open one file through a mount
   the vendor declared.
@@ -298,8 +309,8 @@ never reaches the strict decode that would call `owner` an unknown field.
 | 6 | A manager that cannot give the file away (`EPERM`) refuses to render that secret; it never falls back to owning it | ASSUMED | The fallback renders and verifies cleanly and fails later, inside a container, as `Permission denied`. |
 | 7 | `Verify` checks the owner beside the mode, and `RenderedFile` carries it | ASSUMED | The mode is verified rather than assumed for the same reason, and the owner is now part of the same security property. |
 | 8 | A schema using `owner` needs `compatibility.min_manager_version` ≥ `SecretOwnerMinManagerVersion`, checked in `LoadSecretSchema` | ASSUMED | The mechanism of [0018](0018-the-pre-1-0-manifest-surface.md) decision 1, used the way the migrate list uses it: an older manager says it is too old instead of calling `owner` an unknown field. |
-| 9 | `SecretOwnerMinManagerVersion` is the release that ships this, expected `0.5.0` | OPEN | Whatever the next tag is. The executor sets it and the CHANGELOG names it. |
-| 10 | What a darwin manager does with `owner` | OPEN | Settled by [0029](0029-macos-as-a-development-host.md)'s Docker Desktop spike. Until then decision 6 applies, and a darwin manager running as a user refuses. |
+| 9 | `SecretOwnerMinManagerVersion` is `0.6.0` | ASSUMED | The release that ships this. 0.5.0 shipped without it, and a new schema field is a minor release before 1.0. The CHANGELOG names it. Was `OPEN`. Ruled by the author 2026-10-20. |
+| 10 | A darwin manager refuses every declared `owner` before the chown, whatever its privilege, naming [0029](0029-macos-as-a-development-host.md) | ASSUMED | What Docker Desktop shows a container for a file given to another uid is unmeasured. Without the privilege, decision 6 already refuses. Run as root, the chown succeeds, and the result is decision 6's fallback: a clean render the container may still refuse. Consequence accepted: a bundle using `owner` does not apply on macOS. 0029's Docker Desktop spike reopens the row. Was `OPEN`. Ruled by the author 2026-10-20. |
 | 11 | User-namespace remapping and rootless Docker are documented, not handled | ASSUMED | Handling them means reading the daemon's uid map, a dependency this manager does not have. |
 
 ## 9. Phasing
