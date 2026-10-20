@@ -1145,6 +1145,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The secret schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#images-that-do-not-run-as-root" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Images that do not run as root
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2105,6 +2122,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The secret schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#images-that-do-not-run-as-root" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Images that do not run as root
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2370,6 +2404,33 @@ is a convention — <code>secrets.schema</code> in the manifest names wherever y
 and rotate it on request. Declaring <code>services</code> means a rotation restarts only
 those, rather than the whole product. Declaring <code>rotation_period</code> means <code>doctor</code>
 reminds an operator — advisory, and never a failure.</p>
+<h3 id="images-that-do-not-run-as-root">Images that do not run as root<a class="headerlink" href="#images-that-do-not-run-as-root" title="Permanent link">&para;</a></h3>
+<p>A distroless or hardened image usually runs as a user other than root, and it
+cannot read a secret file owned by root with mode <code>0400</code>. Compose will not fix
+that for you: on a file secret it ignores <code>uid</code>, <code>gid</code> and <code>mode</code>, and says so —</p>
+<div class="highlight"><pre><span></span><code>secrets `uid`, `gid` and `mode` are not supported, they will be ignored
+</code></pre></div>
+<p>— so <code>user: "0:0"</code> is the usual workaround, and it gives up what the image was
+built for. Instead, give the rendered file to the image's user:</p>
+<div class="highlight"><span class="filename">secrets.schema.yaml</span><pre><span></span><code><span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">backend_key</span>
+<span class="w">    </span><span class="nt">generator</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="nv">hex</span><span class="p p-Indicator">,</span><span class="nt"> length</span><span class="p">:</span><span class="w"> </span><span class="nv">64</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">owner</span><span class="p">:</span><span class="w"> </span><span class="s">"65532:65532"</span><span class="w">        </span><span class="c1"># distroless nonroot</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">backend</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>and declare <code>compatibility.min_manager_version: "0.6.0"</code> in the manifest.</p>
+<p>The owner is numeric because the user that reads the file is the image's, and a
+name would resolve through the host's users instead. Read it from the image:</p>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>image<span class="w"> </span>inspect<span class="w"> </span>--format<span class="w"> </span><span class="s1">'{{.Config.User}}'</span><span class="w"> </span>&lt;image&gt;
+</code></pre></div>
+<p>If the service's Compose <code>user:</code> overrides the image's, the owner is that one.
+Two services running as different users need two declarations with the same
+value: a file has one owner, and its mode lets nobody else read it.</p>
+<p>The owner is a uid on the host. With user-namespace remapping or rootless
+Docker, the container's 65532 is a different uid on the host, so the read is
+refused; the manager does not map ids through the daemon's configuration. On
+macOS the manager refuses <code>owner</code> altogether for now. The
+<a href="../../reference/manifest/#owner">secret schema reference</a> has the rest.</p>
 <h2 id="validate-as-you-go">Validate as you go<a class="headerlink" href="#validate-as-you-go" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product
 </code></pre></div>

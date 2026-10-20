@@ -1848,6 +1848,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The secret schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#owner" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>owner</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2526,6 +2543,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="The secret schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#owner" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>owner</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3685,6 +3719,11 @@ by convention — declares what secrets exist, so <code>init</code> can provisio
 <td>duration</td>
 <td>Advisory; <code>doctor</code> warns when a secret is older.</td>
 </tr>
+<tr>
+<td><code>owner</code></td>
+<td>string</td>
+<td>Numeric uid, or <code>uid:gid</code>, the rendered file is given to. Absent, the file is the manager's. See below.</td>
+</tr>
 </tbody>
 </table>
 <p>Generator <code>kind</code> is one of <code>password</code>, <code>hex</code>, <code>base64</code>, <code>uuid</code>, <code>age-key</code>, or
@@ -3692,6 +3731,42 @@ absent — meaning the operator must supply the value.</p>
 <p>The default password alphabet excludes characters that are ambiguous read aloud
 or that need shell quoting. Secrets get copied by humans more often than anyone
 plans for.</p>
+<h3 id="owner"><code>owner</code><a class="headerlink" href="#owner" title="Permanent link">&para;</a></h3>
+<p>A Compose file secret is a bind mount of the rendered file as it is. Compose
+ignores <code>uid</code>, <code>gid</code> and <code>mode</code> on a file secret, so the file's owner on the
+host decides who can read it inside the container. Every file is <code>0400</code>, so
+that is its owner and nobody else. A service whose image runs as a user other
+than root reads its secret only when the declaration gives the file to that
+user:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">backend_key</span>
+<span class="w">    </span><span class="nt">generator</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="nv">hex</span><span class="p p-Indicator">,</span><span class="nt"> length</span><span class="p">:</span><span class="w"> </span><span class="nv">64</span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="nt">owner</span><span class="p">:</span><span class="w"> </span><span class="s">"65532:65532"</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">backend</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<ul>
+<li><strong>Numeric, and quoted.</strong> One or two decimal ids, each from 0 to 4294967294,
+  as a string. A name is refused: it would resolve through the host's users,
+  and the user that reads the file is the one in the image.</li>
+<li><strong>One owner per secret.</strong> Two services running as different users need two
+  declarations with the same value.</li>
+<li><strong>Without a gid</strong>, the group is left as the manager's. The file is <code>0400</code>,
+  so its group cannot read it either way.</li>
+<li><strong>Applied on every render:</strong> <code>apply</code>, an update and its restore,
+  <code>secret render</code>, and the re-render after <code>secret set</code>, <code>generate</code>, <code>rotate</code>
+  and <code>edit</code>. A release that drops <code>owner</code> renders the file back to the
+  manager.</li>
+<li><strong>A manager that cannot give the file away refuses</strong> to render it, exit 6,
+  naming the secret. It never falls back to a file it owns, which would fail
+  later as <code>Permission denied</code> inside the container. The manager runs as root
+  wherever it installs units, and only root can give a file to another user.</li>
+<li><strong>A manager on macOS refuses every <code>owner</code>.</strong> What Docker Desktop shows a
+  container for a file given to another user has not been measured yet
+  (RFC 0029).</li>
+</ul>
+<p>A schema that declares <code>owner</code> needs the manifest to declare
+<code>compatibility.min_manager_version: "0.6.0"</code> or later. An older manager then
+says it is too old, instead of calling <code>owner</code> an unknown field.</p>
 <hr />
 <h2 id="validating-a-manifest">Validating a manifest<a class="headerlink" href="#validating-a-manifest" title="Permanent link">&para;</a></h2>
 <p>A <abbr title="JavaScript Object Notation">JSON</abbr> Schema for <code>selfhost/v1alpha1</code> ships with every release, generated from

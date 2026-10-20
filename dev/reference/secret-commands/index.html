@@ -2477,6 +2477,13 @@ reported missing by <code>doctor</code>.</p>
 <p>Renders secrets to the tmpfs directory the product reads. <code>apply</code> does this as
 one of its steps; running it directly is for recovering a <code>/run</code> that was
 cleared by a reboot without a full converge.</p>
+<p>Each file is <code>0400</code> in a <code>0700</code> directory. It lists every file it wrote, with
+its mode and its owner as <code>uid:gid</code>, which is the one user a container can read
+the file as. With <code>--json</code>, each file carries <code>name</code>, <code>path</code>, <code>mode</code>, <code>size</code>,
+<code>uid</code> and <code>gid</code>; never a value.</p>
+<p>A declaration with an <a href="../manifest/#owner"><code>owner</code></a> has its file given to that
+user. A manager that cannot do that, because it is not root, refuses with exit
+6 and names the secret.</p>
 <h2 id="secret-recipients">secret recipients<a class="headerlink" href="#secret-recipients" title="Permanent link">&para;</a></h2>
 <p>Manages who can decrypt the secret state.</p>
 <p>The state is always encrypted for at least two recipients: this machine, and an
