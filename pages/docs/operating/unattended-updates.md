@@ -151,7 +151,11 @@ what will happen to a real one. It relaxes:
 - **The recovery gate.** Auto-apply installs whatever the channel offers: there
   is nothing here to be unable to recover.
 - **Retention.** It prunes old releases after every update, which a fast rebuild
-  loop needs — one release directory per build, each with its own images.
+  loop needs — one release directory per build, each with its own images. The
+  images a pruned release pulled go with it, so the image store no longer grows
+  by one build's images per update. An image that a release left on the
+  machine still names stays; see
+  [`release prune`](../reference/release-commands.md#release-prune).
 - **`--skip-backup`**, without `--force`, and **`backup.before_update=false`**,
   which turns the pre-update backup off for every update, the timer's included.
 - **Prereleases.** They are admissible update candidates. On a production

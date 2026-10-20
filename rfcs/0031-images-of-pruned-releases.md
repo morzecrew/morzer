@@ -1,11 +1,16 @@
 # RFC 0031 — Images of pruned releases
 
-- **Status:** 📝 Draft — written 2026-10-15. **P1 (the spike) done
+- **Status:** 🚧 In progress — written 2026-10-15. **P1 (the spike) done
   2026-10-19** (§2.2). Its finding, that §4.1's string subtraction does not
-  keep the names decision 3 excludes, is answered by decision 14, and **P2 is
-  the next work**. Nothing is built. Ruled 2026-10-16: decisions 1, 3, 4, 5
-  and 9 as written, 11 and 12 settled, 13 added. Ruled 2026-10-19: 14 added,
-  4 and 11 stand.
+  keep the names decision 3 excludes, is answered by decision 14. **P2 built
+  2026-10-20**: `release prune` and dev mode's prune remove the images only
+  the pruned releases named. What remains is demand-gated (§9). Two proposals
+  from the build wait in
+  [logs/prune-release-images.md](../logs/prune-release-images.md): a name
+  already absent counts as removed rather than kept (§4.5, decision 8), and
+  0023 §6's count of optional capabilities is now 9. Ruled 2026-10-16:
+  decisions 1, 3, 4, 5 and 9 as written, 11 and 12 settled, 13 added. Ruled
+  2026-10-19: 14 added, 4 and 11 stand.
 - **Scope:** What happens to container images when a release is pruned. Today
   the release directory goes, including the image layout a bundle carried, and
   every image the runtime pulled or ingested for that release stays in its

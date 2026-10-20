@@ -63,6 +63,15 @@ type Runtime struct {
 	IngestedFrom string
 	IngestedRefs []string
 
+	// RemovedImages records what RemoveImage removed, in order, and
+	// ImagesInUse are the names it refuses as a container's.
+	RemovedImages []string
+	ImagesInUse   []string
+
+	// removed are names RemoveImage took out of the store and nothing has
+	// put back, so HasImage answers as the daemon would afterwards.
+	removed map[string]bool
+
 	// localImages are the names ingest left behind. Unexported because a
 	// test arranges them by ingesting rather than by writing the field:
 	// which name becomes resolvable is the behaviour under test.
@@ -160,6 +169,7 @@ var (
 	_ ports.Runtime         = (*Runtime)(nil)
 	_ ports.ImageInspector  = (*Runtime)(nil)
 	_ ports.ImageIngester   = (*Runtime)(nil)
+	_ ports.ImageRemover    = (*Runtime)(nil)
 	_ ports.VolumeInspector = (*Runtime)(nil)
 	_ ports.VolumeCapturer  = (*Runtime)(nil)
 	_ ports.OptionResolver  = (*Runtime)(nil)
@@ -255,6 +265,9 @@ func (r *Runtime) Pull(ctx context.Context, cfg ports.RuntimeConfig, images []st
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.PulledImages = append(r.PulledImages, images...)
+	for _, ref := range images {
+		delete(r.removed, ref)
+	}
 	return nil
 }
 
@@ -603,7 +616,27 @@ func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []str
 			return domain.ValidationError(nil, "%q is not pinned by digest", ref)
 		}
 		r.localImages = append(r.localImages, alias)
+		delete(r.removed, alias)
 	}
+	return nil
+}
+
+// RemoveImage refuses a name in ImagesInUse the way the daemon does, and
+// records every other.
+func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
+	if err := r.record("RemoveImage"); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if slices.Contains(r.ImagesInUse, ref) {
+		return domain.RuntimeError(domain.ErrImageInUse, "a container uses %s", ref)
+	}
+	r.RemovedImages = append(r.RemovedImages, ref)
+	if r.removed == nil {
+		r.removed = map[string]bool{}
+	}
+	r.removed[ref] = true
 	return nil
 }
 
@@ -615,6 +648,9 @@ func (r *Runtime) HasImage(ctx context.Context, imageRef string) (bool, error) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.removed[imageRef] {
+		return false, nil
+	}
 	for _, present := range append(append([]string{}, r.PulledImages...), r.localImages...) {
 		if present == imageRef {
 			return true, nil

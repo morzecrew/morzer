@@ -356,3 +356,54 @@ func TestShortImageRefLeavesAReferenceWithNoDigestAlone(t *testing.T) {
 		}
 	}
 }
+
+// ImageKey is the exclusion's whole correctness (RFC 0031 decision 14): two
+// references the daemon resolves to one name must key the same, or a prune
+// removes the name another release resolves by. Every row in the first group
+// is a spelling P1 measured as the same name.
+func TestImageKeyIsTheNameTheDaemonResolves(t *testing.T) {
+	d := "sha256:" + strings.Repeat("a", 64)
+	alias := "morzer-sha256-" + strings.Repeat("a", 64)
+
+	same := map[string][]string{
+		"docker.io/library/postgres@" + d: {
+			"postgres@" + d,
+			"postgres:17@" + d,
+			"docker.io/library/postgres@" + d,
+			"index.docker.io/library/postgres@" + d,
+			"postgres:" + alias,
+		},
+		"localhost:34781/rfc31p1/app@" + d: {
+			"localhost:34781/rfc31p1/app@" + d,
+			"localhost:34781/rfc31p1/app:" + alias,
+		},
+		"docker.io/myorg/app@" + d:          {"myorg/app@" + d, "docker.io/myorg/app:" + alias},
+		"localhost/app@" + d:                {"localhost/app@" + d},
+		"registry.example/erp/backend@" + d: {"registry.example/erp/backend:t@" + d},
+		"Registry/app@" + d:                 {"Registry/app@" + d},
+	}
+	for want, refs := range same {
+		for _, ref := range refs {
+			got, ok := ImageKey(ref)
+			if !ok || got != want {
+				t.Errorf("ImageKey(%q) = %q, %t; want %q", ref, got, ok, want)
+			}
+		}
+	}
+
+	// Different names stay different: another digest, another namespace.
+	a, _ := ImageKey("postgres@" + d)
+	for _, other := range []string{
+		"postgres@sha256:" + strings.Repeat("b", 64),
+		"myorg/postgres@" + d,
+		"registry.example/postgres@" + d,
+	} {
+		if k, _ := ImageKey(other); k == a {
+			t.Errorf("%q keys the same as postgres@%s", other, d)
+		}
+	}
+
+	if got, ok := ImageKey("postgres:17"); ok {
+		t.Errorf("an unpinned reference keyed as %q", got)
+	}
+}

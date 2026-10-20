@@ -540,6 +540,21 @@ type ImageIngester interface {
 	IngestImages(ctx context.Context, layoutDir string, refs []string) error
 }
 
+// ImageRemover removes a name from the local image store.
+//
+// Optional and type-asserted, like ImageInspector and ImageIngester: a runtime
+// with no local store has nothing to remove, and a mandatory method would make
+// it answer a question it cannot have. Used only for the images of releases a
+// prune removed (RFC 0031); deciding which names may go is the caller's.
+type ImageRemover interface {
+	// RemoveImage removes ref from the local store. Never forced. A
+	// reference the store refuses because a container uses its image is
+	// domain.ErrImageInUse, which the caller reports as kept and does not
+	// retry. Idempotent: a reference already absent is not an error,
+	// because the name is gone either way.
+	RemoveImage(ctx context.Context, ref string) error
+}
+
 // VolumeInspector reports the storage a project's resolved configuration
 // declares.
 //
