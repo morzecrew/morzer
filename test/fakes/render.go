@@ -3,7 +3,6 @@ package fakes
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -18,9 +17,6 @@ import (
 // asked to write 0400" would let a real adapter regress to 0644 while the
 // shared suite stayed green.
 func renderToDisk(targetDir string, schema domain.SecretSchema, set domain.SecretSet) ([]ports.RenderedFile, error) {
-	if err := schema.OwnerRefusal(runtime.GOOS); err != nil {
-		return nil, err
-	}
 	if err := atomicfs.MkdirExact(targetDir, 0o700); err != nil {
 		return nil, err
 	}
