@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-20
+
+Two things that live on the machine. A pruned release's images now leave the
+store with it, on `release prune` and on dev mode's automatic prune, so a dev
+machine following a channel no longer fills its disk one build's images at a
+time. And a secret can be given to the user its container runs as, so an image
+that does not run as root reads its Compose file secret without `user: "0:0"`.
+
+Upgrading changes no schema: the installation stays at 12, and a bundle built
+for 0.5.0 installs unchanged. Three things behave differently:
+
+- The first prune after upgrading also removes the images of the releases it
+  prunes. It removes only names that no release left on the machine uses, in
+  any installation, and never forces a removal. While any release directory
+  on the machine cannot be read, it removes no image at all. Images left by
+  earlier prunes stay; the `release prune` reference says how to clear them
+  by hand.
+- `release prune` takes the deployment lock. A script that runs it while an
+  `update` of the same installation holds the lock is now refused with exit 4,
+  unless it passes `--wait`.
+- A bundle whose secret schema declares `owner` needs
+  `compatibility.min_manager_version: "0.6.0"`, and a manager running as root
+  to apply it. A manager on macOS refuses `owner`, and user-namespace
+  remapping and rootless Docker are not handled.
+
+The JSON changes are additive: `release prune --json` gains `dry_run` and
+`images`, and `secret render --json` gains `uid` and `gid`.
+
 ### Added
 
 - **`release prune` removes the images of the releases it prunes.** A release directory went and every image the runtime pulled or loaded for it stayed, so a dev machine following a channel, which prunes after every update, filled its disk one build's images at a time. The pruned releases' images now go with them, on both `release prune` and dev mode's automatic prune. A name stays when any release left on the machine, in any installation and whatever its role, still names it; spellings the daemon treats as one name, such as `postgres@sha256:…` and `docker.io/library/postgres@sha256:…`, count as one. Nothing is forced: a name a container uses is reported as kept, and the prune still succeeds. If any release directory on the machine cannot be read, no image is removed and the report names the directory. Images left by earlier prunes are not reclaimed; the `release prune` reference says how to clear them by hand.
@@ -384,7 +412,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.5.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/morzecrew/morzer/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/morzecrew/morzer/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/morzecrew/morzer/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/morzecrew/morzer/compare/v0.2.0...v0.3.0
