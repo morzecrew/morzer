@@ -199,7 +199,7 @@ func TestSecretRenderWritesToTmpfsAtFourHundred(t *testing.T) {
 	}
 	for _, f := range files {
 		file, _ := f.(map[string]any)
-		if uid, _ := file["uid"].(float64); int(uid) != os.Geteuid() {
+		if uid, ok := file["uid"].(float64); !ok || int(uid) != os.Geteuid() {
 			t.Errorf("%v: uid = %v, want this process's %d", file["name"], file["uid"], os.Geteuid())
 		}
 		if _, ok := file["gid"].(float64); !ok {
