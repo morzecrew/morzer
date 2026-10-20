@@ -21,6 +21,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -377,6 +378,9 @@ func (s *Store) Metadata(ctx context.Context) ([]ports.SecretMetadata, error) {
 // declaration are deleted. A stale secret file left behind after a schema
 // change is a credential on disk with nobody responsible for rotating it.
 func (s *Store) Render(ctx context.Context, targetDir string, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
+	if err := schema.OwnerRefusal(runtime.GOOS); err != nil {
+		return nil, err
+	}
 	set, err := s.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -410,15 +414,23 @@ func (s *Store) Render(ctx context.Context, targetDir string, schema domain.Secr
 		fileName := decl.FileName()
 		expected[fileName] = true
 
-		if err := atomicfs.WriteFileIn(root, fileName, []byte(value.Reveal()), 0o400); err != nil {
-			return nil, domain.SecretsError(err, "cannot render secret %q", decl.Name)
+		uid, gid := decl.Owner.IDs()
+		if err := atomicfs.WriteFileInAs(root, fileName, []byte(value.Reveal()), 0o400, uid, gid); err != nil {
+			return nil, decl.RenderError(err)
 		}
+		info, err := root.Stat(fileName)
+		if err != nil {
+			return nil, decl.RenderError(err)
+		}
+		uid, gid = atomicfs.Owner(info)
 
 		rendered = append(rendered, ports.RenderedFile{
 			Name: decl.Name,
 			Path: filepath.Join(targetDir, fileName),
 			Mode: 0o400,
 			Size: value.Len(),
+			UID:  uid,
+			GID:  gid,
 		})
 	}
 

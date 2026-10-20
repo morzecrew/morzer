@@ -2,7 +2,9 @@ package domain
 
 import (
 	"errors"
+	"io/fs"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -548,4 +550,82 @@ func TestDeprecationWarningReadsTheMap(t *testing.T) {
 	if _, deprecated := (Manifest{APIVersion: APIVersionV1Alpha1}).DeprecationWarning(); deprecated {
 		t.Error("the supported api_version reported itself deprecated")
 	}
+}
+
+func TestSecretOwnerIsNumeric(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want SecretOwner
+	}{
+		{"65532", SecretOwner{UID: 65532, Set: true}},
+		{"65532:65532", SecretOwner{UID: 65532, GID: 65532, HasGID: true, Set: true}},
+		{"0", SecretOwner{Set: true}},
+		{"4294967294:0", SecretOwner{UID: 4294967294, HasGID: true, Set: true}},
+	} {
+		var o SecretOwner
+		require.NoError(t, o.UnmarshalText([]byte(tc.in)), tc.in)
+		assert.Equal(t, tc.want, o, tc.in)
+		assert.Equal(t, tc.in, o.String(), "an owner prints as it was written")
+	}
+
+	for _, in := range []string{"nonroot", "-1", "4294967295", "1:2:3", " 65532", "", "65532:", ":65532", "+1", "1_000"} {
+		var o SecretOwner
+		err := o.UnmarshalText([]byte(in))
+		require.Error(t, err, "%q is not an owner", in)
+		assert.Equal(t, ExitUsage, ExitCode(err), in)
+	}
+
+	t.Run("a name is refused with the reason", func(t *testing.T) {
+		var o SecretOwner
+		e := AsError(o.UnmarshalText([]byte("nonroot")))
+		assert.Contains(t, e.Hint, "the image's", "the hint says why a name cannot work")
+	})
+
+	t.Run("only a quoted owner decodes", func(t *testing.T) {
+		var d SecretDeclaration
+		require.NoError(t, yaml.UnmarshalWithOptions([]byte("name: a\nowner: \"65532:65532\"\n"), &d, yaml.Strict()))
+		assert.Equal(t, uint32(65532), d.Owner.GID)
+
+		err := yaml.UnmarshalWithOptions([]byte("name: a\nowner: 65532\n"), &d, yaml.Strict())
+		require.Error(t, err, "the published schema types owner as a string")
+		assert.Contains(t, err.Error(), "quoted")
+	})
+
+	t.Run("the ids os.Chown takes", func(t *testing.T) {
+		uid, gid := SecretOwner{}.IDs()
+		assert.Equal(t, [2]int{-1, -1}, [2]int{uid, gid}, "undeclared leaves the file alone")
+		uid, gid = SecretOwner{UID: 65532, Set: true}.IDs()
+		assert.Equal(t, [2]int{65532, -1}, [2]int{uid, gid}, "without a gid the group is left")
+	})
+}
+
+func TestADarwinManagerRefusesEveryOwner(t *testing.T) {
+	owned := SecretSchema{Secrets: []SecretDeclaration{
+		{Name: "plain"},
+		{Name: "backend_key", Owner: SecretOwner{UID: 65532, Set: true}},
+	}}
+
+	err := owned.OwnerRefusal("darwin")
+	require.Error(t, err, "RFC 0032 decision 10: macOS gives no rendered secret away")
+	assert.Equal(t, ExitSecrets, ExitCode(err))
+	assert.Contains(t, err.Error(), `"backend_key"`)
+	assert.Contains(t, AsError(err).Hint, "RFC 0029")
+
+	assert.NoError(t, owned.OwnerRefusal("linux"))
+	assert.NoError(t, SecretSchema{Secrets: owned.Secrets[:1]}.OwnerRefusal("darwin"),
+		"a schema declaring no owner renders on macOS as before")
+}
+
+func TestAnUnprivilegedChownIsNamedForWhatItIs(t *testing.T) {
+	owned := SecretDeclaration{Name: "backend_key", Owner: SecretOwner{UID: 65532, Set: true}}
+	eperm := &fs.PathError{Op: "fchown", Path: "backend_key.tmp", Err: syscall.EPERM}
+
+	e := AsError(owned.RenderError(eperm))
+	assert.Equal(t, ExitSecrets, ExitCode(e))
+	assert.Contains(t, e.Message, `"backend_key"`)
+	assert.Contains(t, e.Message, "65532")
+	assert.Contains(t, e.Hint, "root")
+
+	plain := AsError(SecretDeclaration{Name: "db"}.RenderError(eperm))
+	assert.Empty(t, plain.Hint, "without an owner, EPERM is not about giving the file away")
 }

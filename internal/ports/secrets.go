@@ -145,6 +145,11 @@ type RenderedFile struct {
 	Path string `json:"path"`
 	Mode uint32 `json:"mode"`
 	Size int    `json:"size"`
+
+	// UID and GID are the file's owner as rendered, read back from it: the
+	// one user a container can read it as (RFC 0032).
+	UID int `json:"uid"`
+	GID int `json:"gid"`
 }
 
 // SecretMetadata is the displayable facts about a secret.

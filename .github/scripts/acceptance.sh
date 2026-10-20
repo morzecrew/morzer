@@ -64,6 +64,10 @@ WEB_HTTP_PORT="${ACCEPTANCE_WEB_HTTP_PORT:-18090}"
 WEB_API_PORT="${ACCEPTANCE_WEB_API_PORT:-18091}"
 WEB_MOVED_PORT="${ACCEPTANCE_WEB_MOVED_PORT:-18092}"
 
+# The secret owner scenario starts nothing, but init still takes the bundle's
+# port parameter, and a value of its own keeps it from naming another's.
+OWNER_HTTP_PORT="${ACCEPTANCE_OWNER_HTTP_PORT:-18096}"
+
 # Whether this script started the registry, and so owns stopping it.
 STARTED_REGISTRY=0
 
@@ -90,6 +94,7 @@ cleanup() {
 	step "cleaning up"
 	docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
 	docker compose -p web down -v --remove-orphans >/dev/null 2>&1 || true
+	docker compose -p owner down --remove-orphans >/dev/null 2>&1 || true
 	if [ "${STARTED_REGISTRY}" = "1" ]; then
 		docker rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
 	fi
@@ -1108,6 +1113,104 @@ info "plain fleet ls renders the absent installation and exits ${fleet_plain_sta
 # arrives with the first target and leaves with the last is asserted against the
 # supervisor port in the suite. Neither needs Docker, and a step here that ran
 # `doctor` and printed a sentence would read like a check without being one.
+
+step "a container that is not root reads the secret given to its user"
+# RFC 0032's done-when, and §2.1 as a test. A Compose file secret is a bind
+# mount of the host file as it is, so its owner decides who reads it, and only
+# root can give a file away. The manager is root wherever it installs units and
+# this script is not, so the render runs in a container as root. Only what it
+# needs is mounted, each at its own path: the binary, sops and the installation.
+#
+# sops is mounted from the host, so it has to run in a busybox container. CI
+# installs the static release binary; a distribution's build is usually linked
+# against the host's libc, and ACCEPTANCE_SOPS names a static one instead.
+OWNER_SOPS="${ACCEPTANCE_SOPS:-$(command -v sops)}"
+if ! docker run --rm --volume "${OWNER_SOPS}:/usr/local/bin/sops:ro" "${HELPER_IMAGE}" \
+	sops --version --disable-version-check >/dev/null 2>&1; then
+	[ -z "${CI:-}" ] ||
+		fail "${OWNER_SOPS} does not run in a busybox container; CI installs a static sops"
+	info "SKIPPED: ${OWNER_SOPS} does not run in a busybox container; set ACCEPTANCE_SOPS to a static sops"
+else
+	OWNER_ROOT="${WORK}/owner-root"
+	OWNER_BUNDLE="${WORK}/bundle-owner"
+	OWNER_FLOOR="$(sed -n 's/^const SecretOwnerMinManagerVersion = "\(.*\)"$/\1/p' \
+		"${ROOT_DIR}/internal/domain/secret.go")"
+	[ -n "${OWNER_FLOOR}" ] || fail "cannot read SecretOwnerMinManagerVersion from the source"
+
+	# session_key is given to 65532 and declares no service, so `secret set`
+	# below stores the value and restarts nothing: there is no Compose in the
+	# container to restart with, and nothing here was ever started.
+	prepare_bundle testdata/bundle "${OWNER_BUNDLE}"
+	sed -i '0,/^    services: \[app\]$/s//    owner: "65532:65532"/' "${OWNER_BUNDLE}/secrets.schema.yaml"
+	sed -i "s/^  min_manager_version: \"0.0.0\"$/  min_manager_version: \"${OWNER_FLOOR}\"/" \
+		"${OWNER_BUNDLE}/manifest.yaml"
+	grep -q 'owner: "65532:65532"' "${OWNER_BUNDLE}/secrets.schema.yaml" ||
+		fail "the owner bundle's secret schema was not rewritten"
+
+	"${MORZER}" --root "${OWNER_ROOT}" init \
+		--release "${OWNER_BUNDLE}" \
+		--profile embedded \
+		--domain owner.example \
+		--no-recovery-recipient \
+		--install-units=false \
+		--set http_port="${OWNER_HTTP_PORT}" >/dev/null
+
+	# Decision 6: a manager that cannot give the file away says so, rather
+	# than rendering one it owns that the container is refused later.
+	expect_exit 6 "${MORZER}" --root "${OWNER_ROOT}" --plain secret render
+
+	# The directory is this script's, 0700, as in §2.1. In production it is
+	# root's, and so is the Compose that mounts from it; here the Compose
+	# client runs as this user and has to reach the file.
+	OWNER_SECRETS="${OWNER_ROOT}/run/demo/secrets"
+	mkdir -p "${OWNER_SECRETS}"
+	chmod 0700 "${OWNER_SECRETS}"
+
+	as_root() {
+		docker run --rm --interactive \
+			--volume "${MORZER}:${MORZER}:ro" \
+			--volume "${OWNER_SOPS}:/usr/local/bin/sops:ro" \
+			--volume "${OWNER_ROOT}:${OWNER_ROOT}" \
+			"${HELPER_IMAGE}" "${MORZER}" --root "${OWNER_ROOT}" --plain "$@"
+	}
+	printf '%s' first-owned-value | as_root secret set session_key >/dev/null
+	as_root secret render >/dev/null </dev/null
+
+	cat >"${WORK}/owner-compose.yaml" <<EOF
+services:
+  owner:
+    image: ${HELPER_IMAGE}
+    user: "65532:65532"
+    command: ["cat", "/run/secrets/session_key"]
+    secrets: [session_key]
+  stranger:
+    image: ${HELPER_IMAGE}
+    user: "10001:10001"
+    command: ["cat", "/run/secrets/session_key"]
+    secrets: [session_key]
+secrets:
+  session_key:
+    file: ${OWNER_SECRETS}/session_key
+EOF
+	# What the service printed, without Compose's own progress on stderr.
+	read_as() {
+		docker compose -p owner -f "${WORK}/owner-compose.yaml" run --rm --no-deps "$1" 2>/dev/null
+	}
+
+	[ "$(read_as owner)" = "first-owned-value" ] ||
+		fail "the service running as 65532 cannot read the secret given to it: $(read_as owner)"
+	if read_as stranger >/dev/null; then
+		fail "a service running as 10001 read a secret given to 65532"
+	fi
+	info "65532 reads its secret, and 10001 is refused it"
+
+	# A rotation writes a new file, which has to be given away again.
+	printf '%s' second-owned-value | as_root secret set session_key >/dev/null
+	as_root secret render >/dev/null </dev/null
+	[ "$(read_as owner)" = "second-owned-value" ] ||
+		fail "after a rotation, 65532 does not read the new value: $(read_as owner)"
+	info "after a rotation, 65532 reads the new value"
+fi
 
 step "the journal recorded every operation"
 status_field '.data.last_operation.type'

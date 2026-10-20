@@ -608,6 +608,7 @@ Each declaration:
 | `file` | string | Filename under the render directory. Defaults to `name`. |
 | `services` | list | Compose services that consume it. A rotation restarts exactly these. |
 | `rotation_period` | duration | Advisory; `doctor` warns when a secret is older. |
+| `owner` | string | Numeric uid, or `uid:gid`, the rendered file is given to. Absent, the file is the manager's. See below. |
 
 Generator `kind` is one of `password`, `hex`, `base64`, `uuid`, `age-key`, or
 absent — meaning the operator must supply the value.
@@ -615,6 +616,46 @@ absent — meaning the operator must supply the value.
 The default password alphabet excludes characters that are ambiguous read aloud
 or that need shell quoting. Secrets get copied by humans more often than anyone
 plans for.
+
+### `owner`
+
+A Compose file secret is a bind mount of the rendered file as it is. Compose
+ignores `uid`, `gid` and `mode` on a file secret, so the file's owner on the
+host decides who can read it inside the container. Every file is `0400`, so
+that is its owner and nobody else. A service whose image runs as a user other
+than root reads its secret only when the declaration gives the file to that
+user:
+
+```yaml
+secrets:
+  - name: backend_key
+    generator: {kind: hex, length: 64}
+    owner: "65532:65532"
+    services: [backend]
+```
+
+- **Numeric, and quoted.** One or two decimal ids, each from 0 to 4294967294,
+  as a string. A name is refused: it would resolve through the host's users,
+  and the user that reads the file is the one in the image.
+- **One owner per secret.** Two services running as different users need two
+  declarations with the same value.
+- **Without a gid**, the group is left as the manager's. The file is `0400`,
+  so its group cannot read it either way.
+- **Applied on every render:** `apply`, an update and its restore,
+  `secret render`, and the re-render after `secret set`, `generate`, `rotate`
+  and `edit`. A release that drops `owner` renders the file back to the
+  manager.
+- **A manager that cannot give the file away refuses** to render it, exit 6,
+  naming the secret. It never falls back to a file it owns, which would fail
+  later as `Permission denied` inside the container. The manager runs as root
+  wherever it installs units, and only root can give a file to another user.
+- **A manager on macOS refuses every `owner`.** What Docker Desktop shows a
+  container for a file given to another user has not been measured yet
+  (RFC 0029).
+
+A schema that declares `owner` needs the manifest to declare
+`compatibility.min_manager_version: "0.6.0"` or later. An older manager then
+says it is too old, instead of calling `owner` an unknown field.
 
 ---
 

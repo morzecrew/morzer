@@ -193,6 +193,46 @@ and rotate it on request. Declaring `services` means a rotation restarts only
 those, rather than the whole product. Declaring `rotation_period` means `doctor`
 reminds an operator — advisory, and never a failure.
 
+### Images that do not run as root
+
+A distroless or hardened image usually runs as a user other than root, and it
+cannot read a secret file owned by root with mode `0400`. Compose will not fix
+that for you: on a file secret it ignores `uid`, `gid` and `mode`, and says so —
+
+```text
+secrets `uid`, `gid` and `mode` are not supported, they will be ignored
+```
+
+— so `user: "0:0"` is the usual workaround, and it gives up what the image was
+built for. Instead, give the rendered file to the image's user:
+
+```yaml title="secrets.schema.yaml"
+secrets:
+  - name: backend_key
+    generator: {kind: hex, length: 64}
+    owner: "65532:65532"        # distroless nonroot
+    services: [backend]
+```
+
+and declare `compatibility.min_manager_version: "0.6.0"` in the manifest.
+
+The owner is numeric because the user that reads the file is the image's, and a
+name would resolve through the host's users instead. Read it from the image:
+
+```sh
+docker image inspect --format '{{.Config.User}}' <image>
+```
+
+If the service's Compose `user:` overrides the image's, the owner is that one.
+Two services running as different users need two declarations with the same
+value: a file has one owner, and its mode lets nobody else read it.
+
+The owner is a uid on the host. With user-namespace remapping or rootless
+Docker, the container's 65532 is a different uid on the host, so the read is
+refused; the manager does not map ids through the daemon's configuration. On
+macOS the manager refuses `owner` altogether for now. The
+[secret schema reference](../reference/manifest.md#owner) has the rest.
+
 ## Validate as you go
 
 ```sh

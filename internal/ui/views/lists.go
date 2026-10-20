@@ -241,14 +241,16 @@ func init() {
 	})
 }
 
-// renderedDoc lists where the secrets were written, and with what mode.
+// renderedDoc lists where the secrets were written, with what mode, and whose
+// they are: the owner is the one user a container can read the file as.
 //
 // Never a value: this command exists to put secrets on tmpfs for the product to
 // read, and printing one here would put it in the operator's scrollback.
 func renderedDoc(d *ui.Doc, files []ports.RenderedFile) *ui.Doc {
 	rows := make([][]string, 0, len(files))
 	for _, f := range files {
-		rows = append(rows, []string{f.Name, f.Path, fmt.Sprintf("%04o", f.Mode)})
+		rows = append(rows, []string{f.Name, f.Path, fmt.Sprintf("%04o", f.Mode),
+			fmt.Sprintf("%d:%d", f.UID, f.GID)})
 	}
 
 	d.Table(0, ui.Table{
@@ -256,6 +258,7 @@ func renderedDoc(d *ui.Doc, files []ports.RenderedFile) *ui.Doc {
 			{Header: "name", Essential: true},
 			{Header: "path", Essential: true},
 			{Header: "mode", Right: true},
+			{Header: "owner", Right: true},
 		},
 		Rows:  rows,
 		Empty: "the release declares no secret files",

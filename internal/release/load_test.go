@@ -326,6 +326,52 @@ func TestLoadSecretSchemaOnABundleThatDeclaresNone(t *testing.T) {
 	}
 }
 
+func TestASchemaDeclaringAnOwnerNeedsTheFloor(t *testing.T) {
+	withOwner := func(floor string) string {
+		return bundle(t, func(d string) {
+			edit(t, filepath.Join(d, "secrets.schema.yaml"), func(s string) string {
+				return strings.Replace(s, "    services: [app]\n", "    owner: \"65532:65532\"\n    services: [app]\n", 1)
+			})
+			edit(t, filepath.Join(d, "manifest.yaml"), func(s string) string {
+				line := ""
+				if floor != "" {
+					line = "  min_manager_version: \"" + floor + "\"\n"
+				}
+				return strings.Replace(s, "  min_manager_version: \"0.0.0\"\n", line, 1)
+			})
+		})
+	}
+
+	for _, floor := range []string{"", "0.5.0"} {
+		rel, err := release.Load(withOwner(floor))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		_, err = release.LoadSecretSchema(rel)
+		if err == nil {
+			t.Fatalf("an owner under a floor of %q was accepted; an older manager would call it an unknown field", floor)
+		}
+		for _, want := range []string{"owner", domain.SecretOwnerMinManagerVersion} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal should name %q: %v", want, err)
+			}
+		}
+	}
+
+	rel, err := release.Load(withOwner(domain.SecretOwnerMinManagerVersion))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	schema, err := release.LoadSecretSchema(rel)
+	if err != nil {
+		t.Fatalf("a schema at the floor must load: %v", err)
+	}
+	decl, _ := schema.Declaration("session_key")
+	if decl.Owner.String() != "65532:65532" {
+		t.Errorf("owner = %q, want 65532:65532", decl.Owner)
+	}
+}
+
 // TestAManifestForANewerManagerSaysSo.
 //
 // Strict decoding rejects an unknown field before anything reads

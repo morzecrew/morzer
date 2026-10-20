@@ -308,6 +308,15 @@ var scalarSchemas = map[reflect.Type]map[string]any{
 		"description": "A byte size, e.g. 2GiB.",
 		"examples":    []string{"2GiB", "512MiB"},
 	},
+	reflect.TypeOf(domain.SecretOwner{}): {
+		"type":     "string",
+		"pattern":  `^\d{1,10}(?::\d{1,10})?$`,
+		"examples": []string{"65532", "65532:65532"},
+		"description": "The numeric uid, or uid:gid, the rendered file is given to, each from 0 " +
+			"to 4294967294. A name is refused: the user that reads the file is the image's, " +
+			"not this host's. Needs compatibility.min_manager_version " +
+			domain.SecretOwnerMinManagerVersion + " or later.",
+	},
 	reflect.TypeOf(domain.FileMode(0)): {
 		"type":        "string",
 		"pattern":     `^0?[0-7]{3,4}$`,

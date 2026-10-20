@@ -362,6 +362,7 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, op
 			}
 
 			files := engine.MustGet[[]ports.RenderedFile](st, engine.KeyRenderedFiles)
+			schema := engine.MustGet[domain.SecretSchema](st, engine.KeySecretSchema)
 			for _, f := range files {
 				ok, detail, err := atomicfs.CheckMode(f.Path, 0o400)
 				if err != nil {
@@ -370,6 +371,22 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, op
 				if !ok {
 					return domain.SecretsError(nil,
 						"rendered secret %s is not 0400: %s", f.Name, detail)
+				}
+
+				// The owner is the same property since RFC 0032: it
+				// decides which one user a container can read the file
+				// as. Undeclared, the file stays the manager's.
+				uid, gid := os.Geteuid(), -1
+				if decl, found := schema.Declaration(f.Name); found && decl.Owner.Set {
+					uid, gid = decl.Owner.IDs()
+				}
+				ok, detail, err = atomicfs.CheckOwner(f.Path, uid, gid)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return domain.SecretsError(nil,
+						"rendered secret %s has the wrong owner: %s", f.Name, detail)
 				}
 			}
 			return nil

@@ -1,6 +1,7 @@
 package clitest_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -189,6 +190,22 @@ func TestSecretRenderWritesToTmpfsAtFourHundred(t *testing.T) {
 	out := r.Run("secret", "render").ExitCode(0)
 	out.StdoutContains("db_password", "0400")
 	out.NoOutputContains(dbPassword)
+
+	// Who can read each file is part of what was rendered (RFC 0032): with
+	// no owner declared, the manager that wrote it.
+	files, _ := r.Run("--json", "secret", "render").ExitCode(0).Field("data").([]any)
+	if len(files) == 0 {
+		t.Fatal("secret render --json listed no files")
+	}
+	for _, f := range files {
+		file, _ := f.(map[string]any)
+		if uid, _ := file["uid"].(float64); int(uid) != os.Geteuid() {
+			t.Errorf("%v: uid = %v, want this process's %d", file["name"], file["uid"], os.Geteuid())
+		}
+		if _, ok := file["gid"].(float64); !ok {
+			t.Errorf("%v: no gid in %v", file["name"], file)
+		}
+	}
 }
 
 // TestSecretCommandsOnAMachineWithNoInstallation records which of them are

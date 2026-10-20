@@ -3,6 +3,7 @@ package fakes
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -17,6 +18,9 @@ import (
 // asked to write 0400" would let a real adapter regress to 0644 while the
 // shared suite stayed green.
 func renderToDisk(targetDir string, schema domain.SecretSchema, set domain.SecretSet) ([]ports.RenderedFile, error) {
+	if err := schema.OwnerRefusal(runtime.GOOS); err != nil {
+		return nil, err
+	}
 	if err := atomicfs.MkdirExact(targetDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -38,14 +42,24 @@ func renderToDisk(targetDir string, schema domain.SecretSchema, set domain.Secre
 		name := decl.FileName()
 		expected[name] = true
 
-		if err := atomicfs.WriteFileIn(root, name, []byte(value.Reveal()), 0o400); err != nil {
-			return nil, err
+		// The owner too, or the contract suite's owner cases would pass
+		// against one implementation only.
+		uid, gid := decl.Owner.IDs()
+		if err := atomicfs.WriteFileInAs(root, name, []byte(value.Reveal()), 0o400, uid, gid); err != nil {
+			return nil, decl.RenderError(err)
 		}
+		info, err := root.Stat(name)
+		if err != nil {
+			return nil, decl.RenderError(err)
+		}
+		uid, gid = atomicfs.Owner(info)
 		out = append(out, ports.RenderedFile{
 			Name: decl.Name,
 			Path: filepath.Join(targetDir, name),
 			Mode: 0o400,
 			Size: value.Len(),
+			UID:  uid,
+			GID:  gid,
 		})
 	}
 

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -163,6 +164,15 @@ func SyncTree(root string) {
 // ../../etc/shadow fails at the syscall rather than at a check someone
 // remembered to write.
 func WriteFileIn(root *os.Root, rel string, data []byte, mode fs.FileMode) error {
+	return WriteFileInAs(root, rel, data, mode, -1, -1)
+}
+
+// WriteFileInAs is WriteFileIn giving the file to uid and gid, as os.Chown
+// takes them: -1 leaves either one with the writer.
+//
+// The owner is set on the temp file, after the mode and before the rename, so
+// the file never exists at its final name with the wrong owner.
+func WriteFileInAs(root *os.Root, rel string, data []byte, mode fs.FileMode, uid, gid int) error {
 	rel, err := cleanRel(rel)
 	if err != nil {
 		return err
@@ -194,6 +204,12 @@ func WriteFileIn(root *os.Root, rel string, data []byte, mode fs.FileMode) error
 	if err := f.Chmod(mode); err != nil {
 		cleanup()
 		return domain.Internal(err, "cannot set mode on %s", rel)
+	}
+	if uid != -1 || gid != -1 {
+		if err := f.Chown(uid, gid); err != nil {
+			cleanup()
+			return domain.Internal(err, "cannot give %s to %d:%d", rel, uid, gid)
+		}
 	}
 	if err := f.Close(); err != nil {
 		_ = root.Remove(tmp)
@@ -402,6 +418,42 @@ func CheckMode(path string, want fs.FileMode) (ok bool, detail string, err error
 		return false, fmt.Sprintf("mode is %04o, expected %04o", got, want.Perm()), nil
 	}
 	return true, "", nil
+}
+
+// Owner is the uid and gid a stat reported, or -1 for each where the platform
+// reports none.
+func Owner(info fs.FileInfo) (uid, gid int) {
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		return int(st.Uid), int(st.Gid)
+	}
+	return -1, -1
+}
+
+// CheckOwner verifies a path's owner the way CheckMode verifies its mode. A
+// want of -1 accepts any id.
+func CheckOwner(path string, wantUID, wantGID int) (ok bool, detail string, err error) {
+	info, statErr := os.Stat(path)
+	if statErr != nil {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			return false, "does not exist", nil
+		}
+		return false, "", domain.Internal(statErr, "cannot stat %s", path)
+	}
+	uid, gid := Owner(info)
+	if (wantUID != -1 && uid != wantUID) || (wantGID != -1 && gid != wantGID) {
+		return false, fmt.Sprintf("owner is %d:%d, expected %s", uid, gid, ownerText(wantUID, wantGID)), nil
+	}
+	return true, "", nil
+}
+
+func ownerText(uid, gid int) string {
+	if gid == -1 {
+		return fmt.Sprintf("uid %d", uid)
+	}
+	if uid == -1 {
+		return fmt.Sprintf("gid %d", gid)
+	}
+	return fmt.Sprintf("%d:%d", uid, gid)
 }
 
 // RemoveAll deletes a tree, tolerating absence.
