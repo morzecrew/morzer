@@ -15,6 +15,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -868,6 +869,10 @@ func (s *SecretStore) Metadata(ctx context.Context) ([]ports.SecretMetadata, err
 // Render writes real files, because the permission invariants are the point.
 func (s *SecretStore) Render(ctx context.Context, targetDir string, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
 	if err := s.fail("Render"); err != nil {
+		return nil, err
+	}
+	// Before anything is read, as the real store refuses.
+	if err := schema.OwnerRefusal(runtime.GOOS); err != nil {
 		return nil, err
 	}
 

@@ -1,10 +1,14 @@
 # RFC 0032 — Secrets a non-root container can read
 
-- **Status:** 📝 Draft — written 2026-10-17, **execution-ready, one PR**.
-  Nothing is built. Ruled 2026-10-17: one owner per secret (decision 2).
-  Ruled 2026-10-20: the floor is `0.6.0` (decision 9), and a darwin manager
-  refuses `owner` (decision 10). 0029's Docker Desktop spike reopens decision
-  10.
+- **Status:** ✅ Complete — written 2026-10-17. **P1 built 2026-10-20**, and P1
+  is all of it: a secret's declaration takes a numeric `owner`, and every render
+  gives the file to it. What remains is demand-gated (§9). Four proposals from
+  the build wait in [logs/secret-owner.md](../logs/secret-owner.md): an
+  unquoted owner is refused, the grammar is checked where the text is decoded,
+  a declared `"0"` is applied as written, and `RenderedFile` carries `uid` and
+  `gid`. Ruled 2026-10-17: one owner per secret (decision 2). Ruled 2026-10-20:
+  the floor is `0.6.0` (decision 9), and a darwin manager refuses `owner`
+  (decision 10). 0029's Docker Desktop spike reopens decision 10.
 - **Scope:** Who owns a rendered secret file. Today every file under the render
   directory is `0400` and owned by the manager, which is root on every machine
   that runs units, so a container whose image runs as any other user cannot

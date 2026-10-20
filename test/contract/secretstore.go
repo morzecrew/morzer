@@ -12,6 +12,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -177,6 +178,72 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 		content, err := os.ReadFile(filepath.Join(targetDir, "db_password"))
 		require.NoError(t, err)
 		assert.Equal(t, "a-real-password", string(content))
+	})
+
+	// RFC 0032. A process can give a file to its own uid and to any group it
+	// belongs to without privilege, so a supplementary group is what makes
+	// "the store set the owner" observable outside root: a store that never
+	// chowns leaves the file in the primary group. As root, any owner is.
+	t.Run("render gives each file to its declared owner, on every render", func(t *testing.T) {
+		store := newStore(t)
+		ctx := context.Background()
+		owner, observable := ownerThisProcessCanGive()
+		if !observable {
+			t.Log("this process is not root and belongs to no second group, so a store " +
+				"that ignored owner would pass the assertions below")
+		}
+		uid, gid := owner.IDs()
+
+		require.NoError(t, store.Set(ctx, "backend_key", domain.NewSecret("first-value")))
+		schema := domain.SecretSchema{Secrets: []domain.SecretDeclaration{
+			{Name: "backend_key", Required: true, Owner: owner},
+		}}
+		targetDir := filepath.Join(t.TempDir(), "secrets")
+		path := filepath.Join(targetDir, "backend_key")
+
+		files, err := store.Render(ctx, targetDir, schema)
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+		assertOwner(t, path, uid, gid)
+		assert.Equal(t, [2]int{uid, gid}, [2]int{files[0].UID, files[0].GID},
+			"the rendered file reports the owner it was given")
+
+		// A rotation writes a new temp file, which has to be given away
+		// again.
+		require.NoError(t, store.Set(ctx, "backend_key", domain.NewSecret("second-value")))
+		_, err = store.Render(ctx, targetDir, schema)
+		require.NoError(t, err)
+		assertOwner(t, path, uid, gid)
+
+		// A release that drops owner renders the file back to the manager.
+		_, err = store.Render(ctx, targetDir, domain.SecretSchema{Secrets: []domain.SecretDeclaration{
+			{Name: "backend_key", Required: true},
+		}})
+		require.NoError(t, err)
+		assertOwner(t, path, os.Geteuid(), os.Getegid())
+	})
+
+	t.Run("render refuses an owner it cannot give the file to", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root can give a file to anyone")
+		}
+		store := newStore(t)
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "backend_key", domain.NewSecret("a-value")))
+
+		other := uint32(65532)
+		if os.Geteuid() == int(other) {
+			other++
+		}
+		targetDir := filepath.Join(t.TempDir(), "secrets")
+		_, err := store.Render(ctx, targetDir, domain.SecretSchema{Secrets: []domain.SecretDeclaration{
+			{Name: "backend_key", Required: true, Owner: domain.SecretOwner{UID: other, Set: true}},
+		}})
+		require.Error(t, err, "a file the manager kept would render and be refused inside the container")
+		assert.Equal(t, domain.ExitSecrets, domain.ExitCode(err))
+		assert.Contains(t, err.Error(), `"backend_key"`)
+		assert.NoFileExists(t, filepath.Join(targetDir, "backend_key"),
+			"no file exists at the final name with the wrong owner")
 	})
 
 	t.Run("render prunes files no declaration backs", func(t *testing.T) {
@@ -434,4 +501,31 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 				"the old machine key must be gone from the recipient set")
 		}
 	})
+}
+
+// ownerThisProcessCanGive is an owner a chown by this process succeeds for,
+// and whether a store that ignored it would be seen to: root may give a file
+// to anyone, and anybody else to their own uid and a group of theirs that is
+// not their primary one.
+func ownerThisProcessCanGive() (domain.SecretOwner, bool) {
+	if os.Geteuid() == 0 {
+		return domain.SecretOwner{UID: 65532, GID: 65532, HasGID: true, Set: true}, true
+	}
+	uid, primary := uint32(os.Geteuid()), os.Getegid()
+	groups, _ := os.Getgroups()
+	for _, g := range groups {
+		if g != primary {
+			return domain.SecretOwner{UID: uid, GID: uint32(g), HasGID: true, Set: true}, true
+		}
+	}
+	return domain.SecretOwner{UID: uid, GID: uint32(primary), HasGID: true, Set: true}, false
+}
+
+func assertOwner(t *testing.T, path string, uid, gid int) {
+	t.Helper()
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	st, ok := info.Sys().(*syscall.Stat_t)
+	require.True(t, ok, "this platform reports no owner")
+	assert.Equal(t, [2]int{uid, gid}, [2]int{int(st.Uid), int(st.Gid)}, "owner of %s", path)
 }

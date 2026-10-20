@@ -1,11 +1,13 @@
 package domain
 
 import (
+	"errors"
 	"log/slog"
 	"maps"
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 // Redacted is what a secret renders as anywhere other than the file it is
@@ -149,6 +151,31 @@ type SecretDeclaration struct {
 
 	// RotationPeriod is advisory: `doctor` warns when a secret is older.
 	RotationPeriod Duration `yaml:"rotation_period" json:"rotation_period,omitempty"`
+
+	// Owner is the numeric uid, optionally :gid, the rendered file is given
+	// to. Absent means the manager's own, which is root wherever units run.
+	Owner SecretOwner `yaml:"owner" json:"owner,omitzero"`
+}
+
+// SecretOwnerMinManagerVersion is the manager release that gives a rendered
+// secret to its declared owner. A schema using `owner` needs its manifest to
+// declare at least this, so an older manager refuses the bundle as too old
+// rather than calling `owner` an unknown field (RFC 0032 decision 8).
+const SecretOwnerMinManagerVersion = "0.6.0"
+
+// RenderError explains a failure to write the declaration's file.
+//
+// EPERM on a declared owner is a manager without the privilege to give the
+// file away. The file is never left with the manager instead (RFC 0032
+// decision 6): it would render and verify cleanly, and be refused minutes
+// later inside a container.
+func (d SecretDeclaration) RenderError(err error) error {
+	if d.Owner.Set && errors.Is(err, syscall.EPERM) {
+		return SecretsError(err, "cannot give secret %q to owner %s", d.Name, d.Owner).
+			WithHint("giving a file to another user needs root; run the manager as root, " +
+				"as it runs wherever it installs units")
+	}
+	return SecretsError(err, "cannot render secret %q", d.Name)
 }
 
 // FileName is the name the secret is rendered under.
@@ -294,6 +321,33 @@ func (s SecretSchema) ServicesFor(names []string) []string {
 }
 
 var secretNamePattern = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-."
+
+// DeclaresOwner reports whether any secret names an owner.
+func (s SecretSchema) DeclaresOwner() bool {
+	return slices.ContainsFunc(s.Secrets, func(d SecretDeclaration) bool { return d.Owner.Set })
+}
+
+// OwnerRefusal is why a manager on goos refuses to render the schema, or nil.
+//
+// macOS refuses every declared owner, as root or not (RFC 0032 decision 10).
+// Docker Desktop maps ownership across its file sharing, and what a container
+// sees for a file given to another uid is unmeasured, so a chown that
+// succeeds there renders and verifies cleanly and may still be refused inside
+// the container.
+func (s SecretSchema) OwnerRefusal(goos string) error {
+	if goos != "darwin" {
+		return nil
+	}
+	for _, d := range s.Secrets {
+		if d.Owner.Set {
+			return SecretsError(nil, "secret %q declares owner %s, and a manager on macOS "+
+				"does not give a rendered secret away", d.Name, d.Owner).
+				WithHint("Docker Desktop maps file ownership, and what a container sees for a " +
+					"file given to another user is not measured yet (RFC 0029). Apply this release on Linux")
+		}
+	}
+	return nil
+}
 
 // Validate checks the schema. Secret names become filenames, so they are
 // constrained the same way manifest paths are.

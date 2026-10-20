@@ -164,10 +164,10 @@ func listFixtures() []fixture {
 		{
 			name: "rendered-secrets",
 			value: []ports.RenderedFile{
-				{Name: "db_password", Path: "/run/demo/secrets/db_password", Mode: 0o400},
+				{Name: "db_password", Path: "/run/demo/secrets/db_password", Mode: 0o400, UID: 65532, GID: 65532},
 				{Name: "session_key", Path: "/run/demo/secrets/session_key", Mode: 0o440},
 			},
-			fields: []string{"db_password", "/run/demo/secrets/db_password", "0400"},
+			fields: []string{"db_password", "/run/demo/secrets/db_password", "0400", "65532:65532"},
 		},
 		{
 			name: "remote-backups",

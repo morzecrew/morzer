@@ -224,3 +224,94 @@ func (b *ByteSize) UnmarshalText(raw []byte) error {
 	*b = ByteSize(n)
 	return nil
 }
+
+// SecretOwner is the numeric uid, optionally with a gid, that a rendered
+// secret file is given to (RFC 0032). The zero value is "not declared", which
+// leaves the file with the manager.
+//
+// Numeric only: a name resolves through the host's user database, and the
+// user that has to read the file is the one in the image's. `nonroot` on the
+// host, where it exists at all, is not 65532 in a distroless image.
+type SecretOwner struct {
+	UID, GID uint32
+	HasGID   bool
+	Set      bool
+}
+
+// maxOwnerID is the largest id an owner may name. One more is chown(2)'s
+// "leave unchanged", which as an owner means nothing.
+const maxOwnerID = math.MaxUint32 - 1
+
+func (o SecretOwner) String() string {
+	if !o.Set {
+		return ""
+	}
+	s := strconv.FormatUint(uint64(o.UID), 10)
+	if o.HasGID {
+		s += ":" + strconv.FormatUint(uint64(o.GID), 10)
+	}
+	return s
+}
+
+// IDs is the owner as os.Chown takes it, with -1 for an id left unchanged.
+func (o SecretOwner) IDs() (uid, gid int) {
+	uid, gid = -1, -1
+	if o.Set {
+		uid = int(o.UID)
+	}
+	if o.HasGID {
+		gid = int(o.GID)
+	}
+	return uid, gid
+}
+
+func (o SecretOwner) MarshalText() ([]byte, error) { return []byte(o.String()), nil }
+
+// UnmarshalYAML refuses anything that is not a string. An unquoted 65532 is
+// unambiguous to YAML, but the published schema describes the field as a
+// string, and a vendor validating against it in CI would be told that a
+// schema this manager accepts is wrong.
+func (o *SecretOwner) UnmarshalYAML(unmarshal func(any) error) error {
+	var raw any
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return ValidationError(nil, "owner must be a quoted string").
+			WithHint(`quote it -- owner: "65532" or "65532:65532"`)
+	}
+	return o.UnmarshalText([]byte(s))
+}
+
+// UnmarshalText takes one or two decimal ids separated by a colon, with
+// nothing around them.
+func (o *SecretOwner) UnmarshalText(b []byte) error {
+	s := string(b)
+	uidText, gidText, hasGID := strings.Cut(s, ":")
+	uid, uidOK := parseOwnerID(uidText)
+	gid, gidOK := parseOwnerID(gidText)
+	if !uidOK || (hasGID && !gidOK) {
+		err := ValidationError(nil, "invalid owner %q", s)
+		if strings.IndexFunc(s, isLetter) >= 0 {
+			return err.WithHint("an owner is numeric: a name would resolve through this host's " +
+				"users, and the user that reads the file is the image's. " +
+				"`docker image inspect --format '{{.Config.User}}' <image>` shows it")
+		}
+		return err.WithHint(`an owner is a uid or uid:gid, each from 0 to 4294967294, e.g. "65532:65532"`)
+	}
+	*o = SecretOwner{UID: uid, GID: gid, HasGID: hasGID, Set: true}
+	return nil
+}
+
+// parseOwnerID reads one id. strconv.ParseUint in base 10 already refuses a
+// sign, a space and an underscore; only the range is left to check.
+func parseOwnerID(s string) (uint32, bool) {
+	n, err := strconv.ParseUint(s, 10, 32)
+	if err != nil || n > maxOwnerID {
+		return 0, false
+	}
+	return uint32(n), true
+}
+
+func isLetter(r rune) bool { return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') }

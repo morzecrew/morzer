@@ -259,6 +259,20 @@ func LoadSecretSchema(rel domain.Release) (domain.SecretSchema, error) {
 		e := domain.AsError(err)
 		return domain.SecretSchema{}, domain.ValidationError(err, "%s: %s", path, e.Message)
 	}
+	// An older manager decodes the schema strictly and would call `owner` an
+	// unknown field. Declaring the floor makes the manifest preamble refuse
+	// the bundle as needing a newer manager first (RFC 0032 decision 8).
+	if minimum := domain.MustParseVersion(domain.SecretOwnerMinManagerVersion); schema.DeclaresOwner() &&
+		rel.Manifest.Compatibility.MinManagerVersion.LessThan(minimum) {
+		declared := "none"
+		if v := rel.Manifest.Compatibility.MinManagerVersion; !v.IsZero() {
+			declared = v.String()
+		}
+		return domain.SecretSchema{}, domain.ValidationError(nil,
+			"%s: a secret declares owner, so compatibility.min_manager_version must be at least %s, "+
+				"and the manifest declares %s", path, minimum, declared).
+			WithHint("an older manager cannot read owner; the floor makes it say it is too old instead")
+	}
 	return schema, nil
 }
 

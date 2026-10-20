@@ -137,6 +137,15 @@ Renders secrets to the tmpfs directory the product reads. `apply` does this as
 one of its steps; running it directly is for recovering a `/run` that was
 cleared by a reboot without a full converge.
 
+Each file is `0400` in a `0700` directory. It lists every file it wrote, with
+its mode and its owner as `uid:gid`, which is the one user a container can read
+the file as. With `--json`, each file carries `name`, `path`, `mode`, `size`,
+`uid` and `gid`; never a value.
+
+A declaration with an [`owner`](manifest.md#owner) has its file given to that
+user. A manager that cannot do that, because it is not root, refuses with exit
+6 and names the secret.
+
 ## secret recipients
 
 Manages who can decrypt the secret state.
