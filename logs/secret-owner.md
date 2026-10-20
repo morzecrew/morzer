@@ -135,3 +135,17 @@ binary that does not run in the container fails it. A distribution's `sops` is
 usually linked against the host's libc; there, outside CI, the step says it is
 skipped and `ACCEPTANCE_SOPS` names a static one. It was run here with the
 checksum-verified 3.13.3 release binary.
+
+## Review, 2026-10-20
+
+- `WriteFileInAs` fsynced the temp file before setting its mode and owner,
+  so neither was covered by the fsync before the rename published the file.
+  The mode had been set after the fsync since before this change. The fsync
+  now follows both. No test can crash between the two, and in production the
+  render directory is a tmpfs that a crash empties anyway, so this rests on
+  what fsync promises rather than on a red run.
+- The fake refused a macOS owner only after reading the secrets and checking
+  the required ones, so a missing secret came first where the real store
+  refuses the owner first. It now refuses before reading, as `sopsage` does.
+- `TestSecretRenderWritesToTmpfsAtFourHundred` read a missing `uid` as 0, which
+  would pass as root. It now fails when the key is absent.

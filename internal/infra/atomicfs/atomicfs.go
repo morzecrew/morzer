@@ -196,10 +196,6 @@ func WriteFileInAs(root *os.Root, rel string, data []byte, mode fs.FileMode, uid
 		cleanup()
 		return domain.Internal(err, "cannot write %s", rel)
 	}
-	if err := f.Sync(); err != nil {
-		cleanup()
-		return domain.Internal(err, "cannot fsync %s", rel)
-	}
 	// Create honours mode only modulo umask, so set it explicitly.
 	if err := f.Chmod(mode); err != nil {
 		cleanup()
@@ -210,6 +206,12 @@ func WriteFileInAs(root *os.Root, rel string, data []byte, mode fs.FileMode, uid
 			cleanup()
 			return domain.Internal(err, "cannot give %s to %d:%d", rel, uid, gid)
 		}
+	}
+	// After the mode and the owner, so the fsync makes them durable with the
+	// data before the rename publishes the file.
+	if err := f.Sync(); err != nil {
+		cleanup()
+		return domain.Internal(err, "cannot fsync %s", rel)
 	}
 	if err := f.Close(); err != nil {
 		_ = root.Remove(tmp)
