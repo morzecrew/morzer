@@ -2221,6 +2221,12 @@ never contend for anything the manager owns.</p>
 <p>What they do share is the host: one Docker daemon, one port space, one
 filesystem, one set of CPUs. morzer does not pretend otherwise. This page is
 about making that sharing legible rather than preventing it.</p>
+<p>The daemon's image store is shared too. Two installations of one product, or
+two products built on one base image, hold the same images under the same
+names. <code>release prune</code> in one installation removes a pruned release's images
+only when no release left in <em>any</em> installation names them, so a prune here
+never costs another installation a rollback target. See
+<a href="../../reference/release-commands/#release-prune"><code>release prune</code></a>.</p>
 <h2 id="what-is-on-this-machine">What is on this machine<a class="headerlink" href="#what-is-on-this-machine" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>ls
 </code></pre></div>

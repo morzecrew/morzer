@@ -3304,7 +3304,8 @@ to serve that name, a missing image would let a digest-pinned deployment
 converge on bytes nobody verified.</p>
 <h2 id="release-prune">release prune<a class="headerlink" href="#release-prune" title="Permanent link">&para;</a></h2>
 <p>Removes old releases beyond the retention policy. The running release and the
-one before it are never pruned.</p>
+one before it are never pruned, and neither is a release staged and not yet
+installed.</p>
 <table>
 <thead>
 <tr>
@@ -3319,6 +3320,61 @@ one before it are never pruned.</p>
 </tr>
 </tbody>
 </table>
+<p><strong>A pruned release's images leave the runtime's image store with it</strong>: the
+digest references it pulled and the <code>&lt;repo&gt;:morzer-sha256-&lt;hex&gt;</code> names it
+loaded from its bundle. A name stays when any release directory left on this
+machine still names it, in this installation or any other, whatever that
+release's role. <code>postgres@sha256:…</code> and <code>docker.io/library/postgres@sha256:…</code>
+count as one name, and so do a bundled image's alias and the digest reference
+it stands for. Images a release never declared, such as one hard-coded in a
+Compose file, are never touched.</p>
+<ul>
+<li><strong>Removed means the name, not necessarily the bytes.</strong> The image is deleted
+  only when no other name and no container holds it, and a layer only when no
+  other image shares it. A prune may free less disk than the images' sizes add
+  up to.</li>
+<li><strong>Nothing is forced.</strong> A name the runtime refuses because a container uses
+  its image is reported as kept, with the reason, and the prune still exits 0.
+  So does any other name it could not remove.</li>
+<li><strong>One unreadable directory stops all image removal.</strong> If a release directory
+  in any installation has a manifest that does not load, or a directory under
+  <code>/etc</code> cannot be opened, the releases are pruned and no image is removed. The
+  report names the directory; remove it if it is not a release. A fetch in
+  progress meets this rule until it finishes.</li>
+<li><strong>Takes the deployment lock</strong>, so it waits for or refuses beside an <code>update</code>
+  of the same installation, as <code>update</code> does. <code>--wait</code> waits. <code>--dry-run</code> takes
+  no lock and removes nothing.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>release<span class="w"> </span>prune<span class="w"> </span>--keep<span class="w"> </span><span class="m">1</span><span class="w"> </span>--dry-run
+<span class="go">would remove 2 release(s): [1.4.0-dev.7.g3be286c 1.4.0-dev.6.g91aa0e2]</span>
+<span class="go">would remove 2 image(s):</span>
+<span class="go">  registry.example/erp/backend@sha256:4f1c…</span>
+<span class="go">  registry.example/erp/worker@sha256:0b9d…</span>
+</code></pre></div>
+<p>With <code>--json</code>, <code>data</code> is:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"dry_run"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"removed"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"1.4.0-dev.7.g3be286c"</span><span class="p">,</span><span class="w"> </span><span class="s2">"1.4.0-dev.6.g91aa0e2"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"retained"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"images"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"removed"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"registry.example/erp/backend@sha256:4f1c…"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"kept"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"ref"</span><span class="p">:</span><span class="w"> </span><span class="s2">"registry.example/erp/worker@sha256:0b9d…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"why"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a container uses it"</span><span class="p">}],</span>
+<span class="w">    </span><span class="nt">"skipped"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>images.skipped</code> is why no image was removed at all, and empty when removal
+ran. <code>dry_run</code> tells a plan from an act; <code>removed</code> reads the same in both.</p>
+<p><strong>Releases pruned by an older manager left their images behind, and those are
+not reclaimed.</strong> Their manifests went with their directories, so nothing says
+which images were the manager's. To clear them by hand, list the product's
+repositories with <code>docker image ls &lt;repository&gt;</code>, and remove with
+<code>docker image rm</code>, never <code>-f</code>, only a name that no remaining release of <strong>any</strong>
+installation uses. For each installation <code>morzer ls</code> shows,
+<code>morzer --product &lt;name&gt; release list</code> lists its releases and
+<code>morzer --product &lt;name&gt; release show &lt;version&gt;</code> the images each one names. A
+bundled image is in the store as <code>&lt;repo&gt;:morzer-sha256-&lt;hex&gt;</code>, the digest with
+its colon replaced.</p>
 <h2 id="release-trust">release trust<a class="headerlink" href="#release-trust" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>list
 morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>add<span class="w"> </span>&lt;minisign-public-key&gt;
