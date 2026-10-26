@@ -56,6 +56,10 @@ func withSystemctl(path string) Option {
 	return func(s *Supervisor) { s.systemctl = path }
 }
 
+// rollbackBudget bounds the undo of a failed InstallUnits, which runs whether
+// or not the caller's context is still live.
+const rollbackBudget = time.Minute
+
 func New(runner exec.Runner, opts ...Option) *Supervisor {
 	s := &Supervisor{runner: runner, unitDir: UnitDir, systemctl: "systemctl",
 		analyze: "systemd-analyze"}
@@ -144,6 +148,13 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 		// else's error, and a cleanup that fails must not replace the
 		// failure that caused it.
 		//
+		// Detached from cancellation and bounded, as the engine's
+		// compensation is. An interrupt is a common way to get here, and
+		// on the cancelled context every stop and disable failed while
+		// the files were still removed below.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackBudget)
+		defer cancel()
+
 		// Stopped before anything is disabled or removed, for the reason
 		// RemoveUnits stops first: a timer left running over a deleted
 		// file is one systemd can no longer describe.

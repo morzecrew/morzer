@@ -1014,3 +1014,48 @@ func TestValidateScheduleReportsAParserThatDidNotRun(t *testing.T) {
 		t.Errorf("a parser killed by a signal was read as a verdict: %v", err)
 	}
 }
+
+// cancelAt cancels the operation's context the moment a matching command is
+// run, standing in for an interrupt landing mid-install, and records whether
+// each later command still had a live context to run under.
+type cancelAt struct {
+	*fakes.Scripted
+	match  string
+	cancel context.CancelFunc
+	live   map[string]bool
+}
+
+func (c *cancelAt) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
+	line := strings.Join(cmd.Argv[1:], " ")
+	if strings.Contains(line, c.match) {
+		c.cancel()
+	}
+	c.live[line] = ctx.Err() == nil
+	return c.Scripted.Run(ctx, cmd)
+}
+
+// An install interrupted mid-way still undoes what it did. Run on the cancelled
+// context, the rollback's stop failed and the file was removed anyway, leaving
+// a timer running that systemd can no longer describe.
+func TestARollbackAfterAnInterruptStillStopsWhatItStarted(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner := &cancelAt{Scripted: fakes.NewScripted(), match: "start demo-backup.timer",
+		cancel: cancel, live: map[string]bool{}}
+	s := systemd.New(runner, systemd.WithUnitDir(t.TempDir()),
+		systemd.WithSystemctl("/usr/bin/systemctl"))
+
+	err := s.InstallUnits(ctx, []ports.Unit{
+		{Name: "demo-update.timer", Contents: []byte("x"), Enable: true},
+		{Name: "demo-backup.timer", Contents: []byte("y"), Enable: true},
+	}, ports.EnableNew)
+	if err == nil {
+		t.Fatal("an interrupted install was reported as done")
+	}
+	for _, want := range []string{"stop demo-update.timer", "disable demo-update.timer"} {
+		if !runner.live[want] {
+			t.Errorf("the rollback ran %q on the cancelled context, so it did nothing:\n%s",
+				want, runner.CommandLines())
+		}
+	}
+}
