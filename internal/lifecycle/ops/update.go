@@ -661,6 +661,19 @@ func stepPreUpdateBackup(
 			}
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
+			// The update is about to reach a registry for its images, so
+			// the helper this backup reads volumes through is fetched now
+			// rather than refused for below. The pull step comes too late:
+			// a machine installed before apply pulled the helper, or one
+			// whose unused busybox `docker image prune -a` removed, has none.
+			if len(staged.Manifest.PulledImageRefs()) > 0 {
+				if current, err := d.currentReleaseFor(ctx); err == nil {
+					if cfg, err := d.runtimeConfig(current, inst, ""); err == nil {
+						d.pullVolumeHelper(ctx, st, cfg)
+					}
+				}
+			}
+
 			ref, err := d.Backup.Create(ctx, ports.Scope{
 				Components: ports.AllComponents,
 				Reason:     ports.ReasonPreUpdate,

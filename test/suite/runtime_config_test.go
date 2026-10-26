@@ -9,6 +9,8 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // The manifest's images are what a release *is*. These lock in the connection
@@ -100,6 +102,65 @@ func TestAnApplyThatCannotPullTheVolumeHelperStillSucceeds(t *testing.T) {
 	require.NoError(t, err, "an apply failed over the image backups read volumes through")
 	assert.True(t, h.Runtime.HelperMissing)
 	assert.Positive(t, h.Runtime.UpCount, "the release's services did not start")
+}
+
+// capturingBackup refuses as the real engine does when the runtime has no
+// volume helper: the fake engine never reads a volume, so it could not see one
+// missing.
+type capturingBackup struct {
+	*fakes.Backup
+	rt *fakes.Runtime
+}
+
+func (b capturingBackup) Create(ctx context.Context, scope ports.Scope, labels map[string]string) (ports.BackupRef, error) {
+	if b.rt.HelperMissing {
+		return ports.BackupRef{}, domain.RuntimeError(domain.ErrToolMissing,
+			"the volume helper image %s is not on this machine", b.rt.HelperImage())
+	}
+	return b.Backup.Create(ctx, scope, labels)
+}
+
+// An update takes its backup before it pulls anything, so the pull step came
+// too late for a machine without the helper: one installed before apply
+// pulled it, or one whose unused busybox `docker image prune -a` removed. The
+// update about to reach a registry fetches the helper before the backup.
+func TestAnUpdatePullsTheVolumeHelperBeforeItsBackup(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	h.Deps.Backup = capturingBackup{Backup: fakes.NewBackup(), rt: h.Runtime}
+	h.Runtime.HelperMissing = true
+
+	_, err := ops.Update(context.Background(), h.Deps,
+		ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.NoError(t, err, "the pre-update backup refused for want of a helper the update could have pulled")
+	assert.False(t, h.Runtime.HelperMissing)
+}
+
+// pinnedHelper reports a helper override that capture would refuse, the way
+// the Compose adapter judges one.
+type pinnedHelper struct {
+	*fakes.Runtime
+	ref    string
+	pinned bool
+}
+
+func (r pinnedHelper) HelperImage() string     { return r.ref }
+func (r pinnedHelper) HelperImagePinned() bool { return r.pinned }
+
+// An override capture refuses is not pulled. `name@anything` names something
+// after the `@`, and is still not a digest every capture accepts.
+func TestAMalformedHelperOverrideIsNotPulled(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	h.Deps.Runtime = pinnedHelper{Runtime: h.Runtime, ref: "busybox@not-a-digest"}
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.NotContains(t, h.Runtime.PulledImages, "busybox@not-a-digest",
+		"an override every capture refuses was pulled, and its failure warned on every apply")
 }
 
 // upper is the same transformation runtimeConfig applies to an image key.

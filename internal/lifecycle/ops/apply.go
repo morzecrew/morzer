@@ -706,9 +706,11 @@ func (d *Deps) pullVolumeHelper(ctx context.Context, st *engine.State, cfg ports
 		return
 	}
 	ref := capturer.HelperImage()
-	// Every capture refuses an override that names no digest, so pulling
-	// it would only move a tag the operator chose.
-	if domain.DigestFromRef(ref) == "" {
+	// Every capture refuses an override the adapter does not count as
+	// pinned, so pulling it would only move a tag the operator chose and
+	// warn about it on every apply. Asked as doctor asks: the pinning rule
+	// is the adapter's, not the port's.
+	if pinner, ok := d.Runtime.(interface{ HelperImagePinned() bool }); ok && !pinner.HelperImagePinned() {
 		return
 	}
 	if err := d.Runtime.Pull(ctx, cfg, []string{ref}); err != nil {

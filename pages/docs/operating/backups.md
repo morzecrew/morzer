@@ -243,7 +243,9 @@ implementation detail and is unreadable under a rootless or remote daemon.
 
 That is one more image to have locally. An `apply` or `update` that pulls the
 release's images from a registry pulls the helper too, so a machine with a
-network has it before its first backup. If that pull fails, for example because
+network has it before its first backup. An `update` pulls it before its
+pre-update backup, so `docker image prune -a`, which removes it between
+backups, does not stop the next update. If that pull fails, for example because
 your registry mirror does not carry busybox, the operation warns and carries on.
 
 A backup never pulls it: a pull in the middle of a backup at 3am on a flaky link
