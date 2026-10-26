@@ -2444,6 +2444,11 @@ what the runtime reports right now:</p>
 <li>an image running that the statement never attested at all;</li>
 <li>the rendered configuration on disk no longer digesting to what was attested.</li>
 </ul>
+<p>An image that only a one-shot <code>migrate</code> service runs is not expected to be
+running, and is not reported missing: the service exits by design once its
+migrations are done. That holds only while nothing the deployment starts runs
+the same digest. A migration that runs the application's own image does not
+hide the application's disappearance.</p>
 <p>The configuration check reports <strong>that</strong> it differs and never how. The digest is
 salted (above), so there is nothing in the statement to diff against — which is
 the trade that keeps a port number out of a document that travels.</p>
