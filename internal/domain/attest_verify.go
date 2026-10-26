@@ -335,14 +335,13 @@ func CompareToLive(stmt Statement, live []LiveImage, onDemand map[string]bool) [
 //
 // Only while nothing started runs the same digest: a migration that runs the
 // application's own image is common, and excusing that digest would hide the
-// application's disappearance. A one-shot that the configuration also starts
-// counts as a one-shot, because the release declared it one.
+// application's disappearance. That includes a service a migrate step names and
+// the configuration also starts -- `app` running its own migrations -- which is
+// expected to be running whatever else the release does with it.
 func OnDemandDigests(started, oneShots map[string]string) map[string]bool {
 	expected := make(map[string]bool, len(started))
-	for service, ref := range started {
-		if _, oneShot := oneShots[service]; !oneShot {
-			expected[DigestFromRef(ref)] = true
-		}
+	for _, ref := range started {
+		expected[DigestFromRef(ref)] = true
 	}
 
 	out := make(map[string]bool, len(oneShots))

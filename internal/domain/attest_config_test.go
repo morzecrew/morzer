@@ -206,11 +206,11 @@ func TestOnlyAOneShotsOwnImageIsExpectedNotToRun(t *testing.T) {
 	assert.Equal(t, map[string]bool{migrate: true}, got,
 		"a migration sharing the application's image hid the application")
 
-	// Declared a one-shot and also started: the declaration decides.
-	got = domain.OnDemandDigests(
-		map[string]string{"app": "reg/app@" + app, "flyway": "reg/flyway@" + migrate},
-		map[string]string{"flyway": "reg/flyway@" + migrate})
-	assert.Equal(t, map[string]bool{migrate: true}, got)
+	// Named by a migrate step and also started: what is started is expected
+	// to run, so the application cannot hide behind its own migrations.
+	assert.Empty(t, domain.OnDemandDigests(
+		map[string]string{"app": "reg/app@" + app},
+		map[string]string{"app": "reg/app@" + app}))
 
 	stmt := domain.Statement{Predicate: domain.Predicate{Images: []domain.AttestedImage{
 		{Ref: "reg/app", Digest: app}, {Ref: "reg/flyway", Digest: migrate},

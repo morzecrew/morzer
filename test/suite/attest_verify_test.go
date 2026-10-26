@@ -239,26 +239,26 @@ func TestAgainstLiveNoticesAnAttestedServiceThatIsGone(t *testing.T) {
 const migrateImage = "registry.example/demo/migrate@sha256:" +
 	"0000000000000000000000000000000000000000000000000000000000000003"
 
-// withMigrationService makes the release migrate with a one-shot service named
-// `migrate` that runs image. A new image is also declared in the manifest, as a
+// withMigrationService makes the release migrate by running service, as a
+// one-shot, on image. A new image is also declared in the manifest, as a
 // release with its own migrations image declares it, so it is attested.
 //
 // `migrate` stays out of what Up starts, which is how the fake spells a service
 // behind a profile.
-func withMigrationService(t *testing.T, h *harness, image string) {
+func withMigrationService(t *testing.T, h *harness, service, image string) {
 	t.Helper()
 	path := filepath.Join(h.Release.Root, "manifest.yaml")
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
 
 	patched := strings.Replace(string(raw), singleMigrate,
-		"  migrate:\n    kind: runtime-service\n    service: migrate\n    timeout: 10m\n", 1)
+		"  migrate:\n    kind: runtime-service\n    service: "+service+"\n    timeout: 10m\n", 1)
 	require.NotEqual(t, string(raw), patched, "the fixture's migrate operation is no longer the one this rewrites")
 	if image == migrateImage {
 		patched = strings.Replace(patched, "\nconfiguration:\n", "  migrate: "+image+"\n\nconfiguration:\n", 1)
 	}
 	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
-	h.Runtime.Images["migrate"] = image
+	h.Runtime.Images[service] = image
 
 	// Reloaded so the digest install records is the patched bundle's.
 	rel, err := release.Load(h.Release.Root)
@@ -272,7 +272,7 @@ func withMigrationService(t *testing.T, h *harness, image string) {
 // the machine a cron or CI gate would be pointed at.
 func TestAgainstLiveExpectsNothingToRunAMigrationImage(t *testing.T) {
 	h := verifyHarness(t)
-	withMigrationService(t, h, migrateImage)
+	withMigrationService(t, h, "migrate", migrateImage)
 	attested(t, h)
 
 	report, err := ops.AttestVerify(context.Background(), h.Deps,
@@ -288,7 +288,7 @@ func TestAgainstLiveExpectsNothingToRunAMigrationImage(t *testing.T) {
 // way to ship one -- must not hide the application's disappearance.
 func TestAgainstLiveStillMissesAServiceThatSharesTheMigrationImage(t *testing.T) {
 	h := verifyHarness(t)
-	withMigrationService(t, h, h.Release.Manifest.Images["app"].Ref)
+	withMigrationService(t, h, "migrate", h.Release.Manifest.Images["app"].Ref)
 	attested(t, h)
 
 	h.Runtime.RemoveService("app")
@@ -298,6 +298,25 @@ func TestAgainstLiveStillMissesAServiceThatSharesTheMigrationImage(t *testing.T)
 	require.NoError(t, err)
 	require.NotEmpty(t, report.Live,
 		"the application is gone and its image was excused because a migration also runs it")
+	assert.Equal(t, "missing", report.Live[0].Kind)
+}
+
+// A migrate step may name a service the deployment also starts, `app` running
+// its own migrations, and that service is still expected to be running. Naming
+// it a one-shot excused its digest, so the application's disappearance went
+// unreported.
+func TestAgainstLiveStillMissesAStartedServiceAMigrationAlsoRuns(t *testing.T) {
+	h := verifyHarness(t)
+	withMigrationService(t, h, "app", h.Release.Manifest.Images["app"].Ref)
+	attested(t, h)
+
+	h.Runtime.RemoveService("app")
+
+	report, err := ops.AttestVerify(context.Background(), h.Deps,
+		ops.VerifyOptions{AgainstLive: true})
+	require.NoError(t, err)
+	require.NotEmpty(t, report.Live,
+		"the application is gone and its image was excused because a migrate step names it")
 	assert.Equal(t, "missing", report.Live[0].Kind)
 }
 
