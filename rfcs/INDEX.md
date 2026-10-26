@@ -164,7 +164,7 @@ number in the filename in sync.
 | [0030](0030-unit-enablement-is-the-operators.md) | Unit enablement is the operator's | ✅ Complete | Where the manager's authority over its own units ends: `systemctl disable` sticks until `init --repair`, an installation can declare no backup timer, and the units stay in `/etc/systemd/system`. |
 | [0031](0031-images-of-pruned-releases.md) | Images of pruned releases | 🚧 In progress | Removing the images a pruned release leaves in the runtime's store, without touching any that a release of another installation on the same machine still names. |
 | [0032](0032-secrets-a-non-root-container-can-read.md) | Secrets a non-root container can read | ✅ Complete | Letting a bundle name the numeric owner of a rendered secret file, so a container that does not run as root can read the Compose file secret the manager renders for it. |
-| [0033](0033-the-schema-a-migration-service-leaves.md) | The schema a migration service leaves | 📝 Draft | Where the schema recorded after a converge comes from when its migrations run in a one-shot container, which has no descriptor to report on |
+| [0033](0033-the-schema-a-migration-service-leaves.md) | The schema a migration service leaves | ✅ Complete | Where the schema recorded after a converge comes from when its migrations run in a one-shot container, which has no descriptor to report on |
 
 ## Status legend
 

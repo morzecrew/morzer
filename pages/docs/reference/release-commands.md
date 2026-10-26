@@ -98,6 +98,12 @@ did not write it.
 It reports **every** violation in one pass rather than the first, because a
 bundle author fixing one problem should not discover the next one on the retry.
 
+It warns, and still exits 0, when the manifest migrates with a
+`runtime-service` step and declares no `database_schema_produces`. A container
+cannot report the schema it leaves, so without the declaration an installation's
+schema stays unknown and its schema checks are skipped; see the
+[manifest reference](manifest.md#database_schema_produces-is-what-opts-a-release-into-unattended-updates).
+
 ### What `--render-check` checks, and what it does not
 
 ```sh

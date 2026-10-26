@@ -245,6 +245,11 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			for _, f := range rel.Manifest.DeprecatedFields() {
 				fmt.Fprintf(app.Stream.Err, "warning: %s\n", f.Message())
 			}
+			// Here alone: it asks the vendor to change the bundle,
+			// which an operator running `init` or `update` cannot.
+			if warning, ok := rel.Manifest.UndeclaredSchemaWarning(); ok {
+				fmt.Fprintf(app.Stream.Err, "warning: %s\n", warning)
+			}
 
 			if err := checkBundleIntegrity(rel); err != nil {
 				return err

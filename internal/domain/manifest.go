@@ -122,6 +122,28 @@ func (m Manifest) DeprecatedFields() []FieldDeprecation {
 	return nil
 }
 
+// UndeclaredSchemaWarning reports a release that migrates with a service and
+// declares no database_schema_produces (RFC 0033 decision 4).
+//
+// A container has no descriptor to report a schema on, so the declaration is
+// the only way the installed schema becomes known; without it every schema
+// check on the installation is skipped. A warning and never a refusal: the
+// bundle installs, and refusing it would fail bundles that install today.
+func (m Manifest) UndeclaredSchemaWarning() (string, bool) {
+	if m.Compatibility.DatabaseSchemaProduces > 0 {
+		return "", false
+	}
+	for _, step := range m.OperationSteps(OpMigrate) {
+		if step.Kind == OperationKindRuntimeService {
+			return fmt.Sprintf("migrate runs the service %q, which cannot report the "+
+				"schema it leaves, and compatibility.database_schema_produces is not "+
+				"declared: the installed schema stays unknown, so rollback and update "+
+				"skip their schema checks", step.Service), true
+		}
+	}
+	return "", false
+}
+
 const KindApplicationRelease = "application-release"
 
 // Manifest is the typed release contract. Field order follows the spec's

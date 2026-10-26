@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -114,6 +115,8 @@ func TestAnUpdateWhoseMigrationsReportNothingRecordsNoSchema(t *testing.T) {
 
 	src := stageRecoverableUpgradeSource(t, h)
 	withMigrateSteps(t, src, serviceMigration, nil)
+	// And no declaration, which would otherwise be recorded (RFC 0033).
+	withProduces(t, src, "")
 
 	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
 	require.NoError(t, err)
@@ -123,6 +126,141 @@ func TestAnUpdateWhoseMigrationsReportNothingRecordsNoSchema(t *testing.T) {
 	assert.Equal(t, "1.3.0", current.Version.String())
 	assert.Zero(t, current.SchemaAtInstall,
 		"the previous release's schema was claimed for a database its successor migrated")
+}
+
+// withProduces sets the bundle's database_schema_produces, or removes it when
+// produces is empty.
+func withProduces(t *testing.T, bundle, produces string) {
+	t.Helper()
+	path := filepath.Join(bundle, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	patched := regexp.MustCompile(`(?m)^  database_schema_produces: .*\n`).ReplaceAllString(string(raw), "")
+	if produces != "" {
+		max := regexp.MustCompile(`(?m)^  database_schema_max: .*\n`)
+		require.True(t, max.MatchString(patched), "the fixture no longer declares database_schema_max")
+		loc := max.FindStringIndex(patched)
+		patched = patched[:loc[1]] + "  database_schema_produces: " + produces + "\n" + patched[loc[1]:]
+	}
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+}
+
+// A migration service cannot report the schema it left, so the release's own
+// declaration is recorded when it succeeds (RFC 0033 decision 1). Before, every
+// release that migrated with a service had an unknown schema, and rollback,
+// update and the unattended gate skipped their schema checks.
+func TestAMigrationServiceRecordsTheSchemaItsReleaseDeclares(t *testing.T) {
+	t.Run("on apply", func(t *testing.T) {
+		h := newHarness(t)
+		withMigrateSteps(t, h.Release.Root, serviceMigration, nil)
+		withProduces(t, h.Release.Root, "12")
+		rel, err := release.Load(h.Release.Root)
+		require.NoError(t, err)
+		h.Release = rel // so install records the patched bundle's digest
+		h.install()
+		h.setHookEnv()
+
+		applyBaseline(t, h)
+
+		current, err := h.Deps.State.CurrentRelease(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, 12, current.SchemaAtInstall)
+	})
+
+	// Exit 2 is "nothing to do": the database is already at what this
+	// release produces (decision 3).
+	for name, exit := range map[string]int{"on update": 0, "on an update with nothing to do": 2} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			h.setHookEnv()
+			applyBaseline(t, h)
+			ctx := context.Background()
+
+			src := stageRecoverableUpgradeSource(t, h)
+			withMigrateSteps(t, src, serviceMigration, nil)
+			withProduces(t, src, "13")
+			h.Runtime.OneShotResults = map[string]ports.ExitResult{"app": {ExitCode: exit}}
+
+			_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+			require.NoError(t, err)
+
+			current, err := h.Deps.State.CurrentRelease(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, "1.3.0", current.Version.String())
+			assert.Equal(t, 13, current.SchemaAtInstall)
+		})
+	}
+}
+
+// A schema a step reported is a measurement, and the declaration never
+// overrides one (decision 2).
+func TestAReportedSchemaWinsOverTheDeclaration(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	// The hook reports 12; the release declares 13.
+	withMigrateSteps(t, src, serviceMigration+
+		"    - kind: hook\n      command: [\"hooks/migrate\"]\n", nil)
+	withProduces(t, src, "13")
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 12, current.SchemaAtInstall, "the declaration replaced what the hook measured")
+}
+
+// A hook that reports nothing does not get the declaration (§4). It has a
+// descriptor to report on and did not use it; substituting the declaration
+// would hide a hook that broke its own contract.
+func TestAHookThatReportsNothingIsNotGivenTheDeclaration(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	withMigrateSteps(t, src, "    - kind: hook\n      command: [\"hooks/silent\"]\n",
+		map[string]string{"silent": "#!/bin/sh\nexit 0\n"})
+	withProduces(t, src, "13")
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, current.SchemaAtInstall, "a silent hook was credited with the declared schema")
+}
+
+// A failed migration service records nothing from the declaration: the
+// operation stops, and the database is wherever the failure left it.
+func TestAFailedMigrationServiceRecordsNoDeclaredSchema(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	withMigrateSteps(t, src, serviceMigration, nil)
+	withProduces(t, src, "13")
+	h.Runtime.OneShotResults = map[string]ports.ExitResult{"app": {ExitCode: 3}}
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.NotEqual(t, 13, current.SchemaAtInstall,
+		"a migration that failed was recorded as having produced the declared schema")
 }
 
 // The second step failing is a failed migrate: the first has changed the

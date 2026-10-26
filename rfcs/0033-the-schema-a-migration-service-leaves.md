@@ -1,8 +1,13 @@
 # RFC 0033 — The schema a migration service leaves
 
-- **Status:** 📝 Draft — proposed 2026-10-26, **decision 1 awaits a ruling**.
-  The carry-forward half of #143 is not designed here; it shipped as a fix
-  beside this draft (decision 5 records it).
+- **Status:** ✅ Complete — proposed and ruled 2026-10-26, **built
+  2026-10-26**: the schema is the release's declaration (decision 1), and
+  `release verify` warns when a release that migrates with a service declares
+  none (decision 4). Two proposals from the build wait in
+  [logs/rfc-0033-schema-from-declaration.md](../logs/rfc-0033-schema-from-declaration.md):
+  `passIfFallbackCannotRead` keeps its fallback for hooks, and only `verify`
+  warns. The carry-forward half of #143 shipped as a fix beside this draft
+  (decision 5 records it).
 - **Scope:** What `ReleaseRecord.SchemaAtInstall` holds after a converge whose
   migrations ran as a `runtime-service` step, which today is always 0. Covers
   where the value comes from, which step's value wins when several run, and
@@ -168,18 +173,16 @@ vendor looks for how a container reports.
 
 ## 10. Unresolved questions
 
-- Decision 1: which mechanism. Everything else follows from it.
-- Decision 4: whether `release verify` warns about a service migration without
-  `database_schema_produces`.
+None. Decisions 1 and 4 were ruled on 2026-10-26.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **The mechanism.** Recommended: record `database_schema_produces` when a `runtime-service` step succeeded and no step reported a schema (§5.1). Alternatives: a result file the manager mounts, or a declared output line (§5, Alternatives). The recommendation needs no contract change and closes the gap decision 18 of RFC 0018 already claims is closed. The alternatives measure instead of trusting, at the cost of a port, an ABI addition and a vendor wrapper. Awaiting the author's ruling. |
+| 1 | `ASSUMED` | **The mechanism.** Record `database_schema_produces` when a `runtime-service` step succeeded and no step reported a schema (§5.1). No contract change, and it makes RFC 0018 decision 18's claim true for the record. A wrong declaration lands where today already is: the schema checks treat an unknown schema as compatible. The alternatives in §5 measure instead of trusting, at the cost of a port, an ABI addition and a vendor wrapper, and stay rejected unless a declaration proves wrong in practice. Was `OPEN`; ruled 2026-10-26. |
 | 2 | `ASSUMED` | A schema a step reported always wins over the declaration, and among reports the last one wins, as today. The declaration fills a gap and never corrects a measurement. |
 | 3 | `ASSUMED` | Exit 2 from a service counts as success for this purpose. "Nothing to do" means the database is already at what this release produces. |
-| 4 | `OPEN` | Whether `release verify` warns when a manifest migrates with a `runtime-service` step and declares no `database_schema_produces`. Settled by whether a vendor-facing nudge is wanted before 1.0; a warning, never a refusal (§8). |
+| 4 | `ASSUMED` | `release verify` warns, and never refuses, when a manifest migrates with a `runtime-service` step and declares no `database_schema_produces`. Without the declaration decision 1 records nothing, and the vendor's CI is where the bundle can still change. A refusal would fail bundles that install today (§8). Was `OPEN`; ruled 2026-10-26. |
 | 5 | `ASSUMED` | *(2026-10-26, shipped with #143's fix)* A converge that reports no schema keeps the recorded one only when it re-records the current release, which covers `apply`, boot and the converge inside `rollback` (RFC 0001 decision 14). An update records what it reported, 0 when nothing did: a new release's migrations may have moved the schema, and the old value would claim one `AssessRollback` reads as safe to return to. |
 
 ## 12. Phasing
