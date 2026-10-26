@@ -143,6 +143,7 @@ carries one.
 | `--target` | Read the backup from a target rather than from this machine. Transfers the identity document and the manifest, not the archive. |
 | `--credentials-file` | Credentials for `--target`, for when the secret store that held them is on the machine that died. |
 | `--mode` | Rebuild as a sandbox with `dev`, which also **drops the export's backup targets**. Omitted keeps whatever the export was; a sandbox can never be imported as production. See [dev mode](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth). |
+| `--install-units` | Install the systemd units when systemd is available, as `init` does. Default `true`. |
 
 With `--from-backup` the positional argument is a backup id rather than a path.
 
@@ -169,11 +170,16 @@ why the messages do.
 What it does, in order:
 
 1. Creates the managed directory layout.
-2. Writes the installation record **with its original id**.
-3. Restores the encrypted secret state from the export.
-4. Generates a **new** age identity for this host.
-5. Re-encrypts the state for that new key plus every non-machine recipient, and
+2. Mints a **new** signing key for this host. The lost machine's key is
+   recorded as its predecessor, because its private half did not travel.
+3. Writes the installation record **with its original id** and the new signing
+   key.
+4. Restores the encrypted secret state from the export.
+5. Generates a **new** age identity for this host.
+6. Re-encrypts the state for that new key plus every non-machine recipient, and
    verifies this machine can now read it.
+7. Installs the systemd units, when systemd is available. A unit that already
+   exists keeps whatever enablement it has.
 
 The old machine's key is dropped. A decommissioned host must not retain the
 ability to decrypt — if it is being replaced because it was compromised, keeping

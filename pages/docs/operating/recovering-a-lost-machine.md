@@ -135,7 +135,9 @@ morzer installation import demo.export.yaml --identity ~/recovery.key
 
 All three restore the installation with its **original id**, generate a new age
 identity for this host, re-encrypt the secret state for it, and revoke the old
-machine's key.
+machine's key. They also mint and record this host's signing key, and install
+the systemd units where systemd runs, so the rebuilt machine needs no `init
+--repair` afterwards.
 
 It prints what it assumed and what to do next. If the identity you passed cannot
 open the export, it says so before creating anything, and names the keys that

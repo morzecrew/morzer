@@ -425,7 +425,21 @@ func (a *App) secretSchema(ctx context.Context) (domain.SecretSchema, error) {
 // The alternative -- restarting everything -- turns a credential rotation into
 // a full outage, which is why the release declares the dependency in the first
 // place.
-func (a *App) restartDependents(ctx context.Context, names []string) ([]string, error) {
+func (a *App) restartDependents(ctx context.Context, names []string) (restarted []string, err error) {
+	// Every caller has written the change before calling this, so a failure
+	// here must not read as though it had not been: exit 6 alone tells a
+	// script under `set -e` the value was not saved. The cause's code is
+	// kept, so the exit status still says whether the render or the runtime
+	// failed.
+	defer func() {
+		if err != nil {
+			e := *domain.AsError(err)
+			e.Message = fmt.Sprintf("the change to %s was stored, and the services "+
+				"that read it were not restarted: %s", strings.Join(names, ", "), e.Message)
+			err = &e
+		}
+	}()
+
 	schema, err := a.secretSchema(ctx)
 	if err != nil {
 		// No release installed: nothing is running to restart.
@@ -449,6 +463,22 @@ func (a *App) restartDependents(ctx context.Context, names []string) ([]string, 
 	if err != nil {
 		return nil, err
 	}
+	cfg, err := a.Deps.RuntimeConfigFor(rel, inst)
+	if err != nil {
+		return nil, err
+	}
+
+	// No container at all, as before the first apply, is nothing to restart
+	// -- and the render would refuse over every required secret not set yet,
+	// which an operator setting them one at a time has not. Whatever creates
+	// the containers renders first. Any container counts, not only a healthy
+	// running one: an unhealthy service is the one an operator is likeliest
+	// to be changing a credential for, and a stopped or paused one reads the
+	// files when it comes back. A runtime that cannot answer may have them
+	// up, as render-secrets' compensator assumes, so it gets the restart.
+	if states, err := a.Deps.Runtime.Status(ctx, cfg); err == nil && len(states) == 0 {
+		return nil, nil
+	}
 
 	// The rendered files must be updated before the restart, or the
 	// services would come back holding the old value.
@@ -456,10 +486,6 @@ func (a *App) restartDependents(ctx context.Context, names []string) ([]string, 
 		return nil, err
 	}
 
-	cfg, err := a.Deps.RuntimeConfigFor(rel, inst)
-	if err != nil {
-		return nil, err
-	}
 	if err := a.Deps.Runtime.Restart(ctx, cfg, services); err != nil {
 		return nil, err
 	}

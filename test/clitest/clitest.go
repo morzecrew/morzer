@@ -365,6 +365,16 @@ func strip(t *testing.T, path, fragment string) {
 	}
 }
 
+// RequireDocker skips a test that reads what the runtime reports. Without a
+// daemon to answer, a command that asks gets an error rather than an empty
+// project, and takes the path for a runtime that cannot say.
+func RequireDocker(t *testing.T) {
+	t.Helper()
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("no Docker daemon answers; skipping a test that reads the runtime")
+	}
+}
+
 // requireSOPS skips when the real secret store cannot run.
 //
 // Same rule the contract suites follow, so `just contract-strict` catches a CI

@@ -564,6 +564,22 @@ type ImageRemover interface {
 	RemoveImage(ctx context.Context, ref string) error
 }
 
+// ServiceImager reports the image each service of a resolved configuration
+// runs, whether or not anything is running it.
+//
+// Optional and type-asserted, like the capabilities around it. It exists for
+// `attest verify --against-live`, which must tell an attested image nothing is
+// running from one that only a one-shot migration service runs: the second is
+// not running by design, and Status cannot say which is which because it
+// reports containers, and a one-shot's container is gone.
+type ServiceImager interface {
+	// ServiceImages maps each named service to its image reference. With
+	// no names it covers the services the configuration starts. A named
+	// service is covered even when the configuration starts it only on
+	// demand, because that is the case the caller is asking about.
+	ServiceImages(ctx context.Context, cfg RuntimeConfig, services ...string) (map[string]string, error)
+}
+
 // VolumeInspector reports the storage a project's resolved configuration
 // declares.
 //
