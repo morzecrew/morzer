@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-26
+
+Fixes found by rehearsing the whole lifecycle on rebuilt and unattended
+machines. An unattended update now takes its pre-update backup, a timer runs
+when it is installed rather than at the next boot, and a networked machine
+pulls the image its backups read volumes through. A rebuilt machine needs no
+`init --repair` after its import. A release that migrates with a service now
+has a known database schema, and keeps a failed migration's last lines of
+output in the error.
+
+Upgrading changes no schema: the installation stays at 12, and a bundle built
+for 0.6.0 installs unchanged. Five things behave differently:
+
+- `installation import` installs the systemd units, as `init` does. On a host
+  running systemd where the manager does not run as root, it now fails at that
+  step; `--install-units=false` opts out.
+- An `apply` or `update` that pulls the release's images from a registry also
+  pulls the pinned volume helper image, and an `update` pulls it before its
+  pre-update backup. A registry or mirror that does not carry it is a warning,
+  not a failure.
+- A release that migrates with a service and declares
+  `database_schema_produces` has that schema recorded after its next
+  successful converge. The schema checks of `rollback`, `update` and the
+  unattended gate, skipped until now, then run against it, so an unattended
+  update that went ahead on 0.6.0 can now be held for a person.
+- Timers installed by 0.6.0 or earlier are enabled and not started, and
+  `config set` does not start them. `morzer init --repair`, or a reboot, does.
+- `release verify` prints a warning, and still exits 0, for a release that
+  migrates with a service and declares no `database_schema_produces`.
+
+No JSON output changed.
+
 ### Fixed
 
 - **A release that migrates with a service never had a known database schema.** A migration run as a one-shot container cannot report the schema it leaves, so the installed schema stayed 0, and `rollback`, `update` and the unattended gate skipped their schema checks. When a migration service succeeds and no step reported a schema, the release's `database_schema_produces` is now recorded as the schema it left. A schema a hook reports still wins over the declaration. `release verify` warns, and still exits 0, when a release migrates with a service and declares no `database_schema_produces`. (#143, RFC 0033)
@@ -427,7 +459,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.6.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/morzecrew/morzer/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/morzecrew/morzer/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/morzecrew/morzer/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/morzecrew/morzer/compare/v0.3.0...v0.4.0

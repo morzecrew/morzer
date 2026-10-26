@@ -25,12 +25,13 @@ rather than misreading it.
 
 | Version | Supported |
 | --- | --- |
-| 0.6.x | ✅ |
-| 0.5.x | ❌ — upgrade to 0.6.x |
-| 0.4.x | ❌ — upgrade to 0.6.x |
-| 0.3.x | ❌ — upgrade to 0.6.x |
-| 0.2.x | ❌ — upgrade to 0.6.x |
-| 0.1.x | ❌ — upgrade to 0.6.x |
+| 0.7.x | ✅ |
+| 0.6.x | ❌ — upgrade to 0.7.x |
+| 0.5.x | ❌ — upgrade to 0.7.x |
+| 0.4.x | ❌ — upgrade to 0.7.x |
+| 0.3.x | ❌ — upgrade to 0.7.x |
+| 0.2.x | ❌ — upgrade to 0.7.x |
+| 0.1.x | ❌ — upgrade to 0.7.x |
 | `main` | Fixes land here first; it is not a release |
 
 ## Verifying a release
