@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -259,6 +260,15 @@ func TestRuntimeContract_Fake(t *testing.T) {
 		rt.StatsResult = []ports.ServiceStats{
 			{Service: "app", Container: "demo-app-1", Replica: 1,
 				CPUPercent: 1.5, MemoryBytes: 64 << 20},
+		}
+
+		// `migrate` is left out of ValidateResult's services, which is
+		// how this fake spells the Compose fixture's profile: a one-shot
+		// nothing starts until it is named.
+		rt.Images = map[string]string{
+			"app":     "registry.example/demo/app@sha256:" + strings.Repeat("a", 64),
+			"db":      "registry.example/demo/db@sha256:" + strings.Repeat("b", 64),
+			"migrate": "registry.example/demo/app@sha256:" + strings.Repeat("a", 64),
 		}
 
 		return rt, ports.RuntimeConfig{Product: "demo"}

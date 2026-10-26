@@ -145,7 +145,8 @@ func TestApplyPullsOnlyTheImagesARegistryServes(t *testing.T) {
 		"the bundled image was pulled from its registry")
 	assert.NotContains(t, h.Runtime.PulledImages, alias,
 		"the alias was pulled, which no registry has ever served")
-	assert.ElementsMatch(t, h.Release.Manifest.PulledImageRefs(), h.Runtime.PulledImages,
+	assert.ElementsMatch(t,
+		append(h.Release.Manifest.PulledImageRefs(), h.Runtime.HelperImage()), h.Runtime.PulledImages,
 		"the pull must be exactly the images a registry serves")
 
 	// The other half: what was pulled is not empty, so this is not passing

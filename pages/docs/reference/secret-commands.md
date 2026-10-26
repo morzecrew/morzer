@@ -41,6 +41,16 @@ The value is read without echo from the terminal, or from stdin when it is
 piped. **There is no flag for the value**: argv is world-readable through
 `/proc`, so a credential passed that way is a credential published.
 
+After storing the value, `set`, `generate`, `rotate` and `edit` render the
+secrets again and restart the services that declare a dependency on what
+changed. When the deployment has no containers at all, as before the first
+`apply`, they restart nothing and render nothing: whatever creates them renders
+first. A container that exists in any state, stopped or unhealthy included, is
+rendered for and restarted. So a release with several values only you have can be given them
+one at a time. If the render or the restart fails, the error says the change
+was stored, and the exit code says which failed: `6` for the render, `7` for
+the runtime.
+
 ## secret generate
 
 ```sh

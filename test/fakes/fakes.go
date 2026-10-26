@@ -171,6 +171,7 @@ var (
 	_ ports.ImageInspector  = (*Runtime)(nil)
 	_ ports.ImageIngester   = (*Runtime)(nil)
 	_ ports.ImageRemover    = (*Runtime)(nil)
+	_ ports.ServiceImager   = (*Runtime)(nil)
 	_ ports.VolumeInspector = (*Runtime)(nil)
 	_ ports.VolumeCapturer  = (*Runtime)(nil)
 	_ ports.OptionResolver  = (*Runtime)(nil)
@@ -268,6 +269,10 @@ func (r *Runtime) Pull(ctx context.Context, cfg ports.RuntimeConfig, images []st
 	r.PulledImages = append(r.PulledImages, images...)
 	for _, ref := range images {
 		delete(r.removed, ref)
+		// Pulled is present, for the helper as for anything else.
+		if ref == r.HelperImage() {
+			r.HelperMissing = false
+		}
 	}
 	return nil
 }
@@ -639,6 +644,27 @@ func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
 	}
 	r.removed[ref] = true
 	return nil
+}
+
+// ServiceImages answers from Images. With no names it covers the services Up
+// starts, which are ValidateResult's, so a service a test leaves out of those
+// is one the configuration runs only on demand -- a one-shot behind a profile.
+func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, services ...string) (map[string]string, error) {
+	if err := r.record("ServiceImages"); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(services) == 0 {
+		services = r.ValidateResult.Services
+	}
+	out := make(map[string]string, len(services))
+	for _, name := range services {
+		if img := r.Images[name]; img != "" {
+			out[name] = img
+		}
+	}
+	return out, nil
 }
 
 // HasImage answers from what was pulled and what was ingested, so a test can

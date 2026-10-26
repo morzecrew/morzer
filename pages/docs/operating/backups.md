@@ -241,9 +241,17 @@ Volumes are read and written through a small container (`busybox`, pinned by
 digest) rather than through the host's storage directory, which is an
 implementation detail and is unreadable under a rootless or remote daemon.
 
-That is one more image to have locally. `morzer doctor` reports it when it is
-absent, with the command to pull it — ask **before** you disconnect the machine,
-not during a backup:
+That is one more image to have locally. An `apply` or `update` that pulls the
+release's images from a registry pulls the helper too, so a machine with a
+network has it before its first backup. An `update` pulls it before its
+pre-update backup, so `docker image prune -a`, which removes it between
+backups, does not stop the next update. If that pull fails, for example because
+your registry mirror does not carry busybox, the operation warns and carries on.
+
+A backup never pulls it: a pull in the middle of a backup at 3am on a flaky link
+is the failure that refusal exists to avoid. On a machine that pulls nothing,
+`morzer doctor` reports the helper when it is absent, with the command to pull
+it — ask **before** you disconnect the machine, not during a backup:
 
 ```sh
 docker pull busybox@sha256:...   # doctor prints the exact reference
