@@ -43,9 +43,10 @@ piped. **There is no flag for the value**: argv is world-readable through
 
 After storing the value, `set`, `generate`, `rotate` and `edit` render the
 secrets again and restart the services that declare a dependency on what
-changed. When nothing of the deployment is running, as before the first
-`apply`, they restart nothing and render nothing: whatever starts the services
-renders first. So a release with several values only you have can be given them
+changed. When the deployment has no containers at all, as before the first
+`apply`, they restart nothing and render nothing: whatever creates them renders
+first. A container that exists in any state, stopped or unhealthy included, is
+rendered for and restarted. So a release with several values only you have can be given them
 one at a time. If the render or the restart fails, the error says the change
 was stored, and the exit code says which failed: `6` for the render, `7` for
 the runtime.

@@ -24,8 +24,9 @@ import (
 // though the value had not been stored.
 
 // restartApp is an installation of the example release, with `session_key` --
-// which the release requires -- never set.
-func restartApp(t *testing.T, running bool) (*App, *fakes.Runtime) {
+// which the release requires -- never set, and services as the runtime reports
+// them.
+func restartApp(t *testing.T, services ...ports.ServiceState) (*App, *fakes.Runtime) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -50,8 +51,8 @@ func restartApp(t *testing.T, running bool) (*App, *fakes.Runtime) {
 	}))
 
 	rt := fakes.NewRuntime()
-	if running {
-		rt.Services["app"] = ports.ServiceState{Name: "app", State: ports.StateRunning}
+	for _, svc := range services {
+		rt.Services[svc.Name] = svc
 	}
 	store := fakes.NewSecretStore()
 	store.Seed(map[string]string{"db_password": "a-stored-password"})
@@ -68,7 +69,7 @@ func restartApp(t *testing.T, running bool) (*App, *fakes.Runtime) {
 }
 
 func TestRestartDependentsWithNothingRunningRendersNothing(t *testing.T) {
-	app, rt := restartApp(t, false)
+	app, rt := restartApp(t)
 
 	restarted, err := app.restartDependents(context.Background(), []string{"db_password"})
 	require.NoError(t, err, "before the first apply there is nothing to restart, "+
@@ -79,7 +80,7 @@ func TestRestartDependentsWithNothingRunningRendersNothing(t *testing.T) {
 }
 
 func TestRestartDependentsSaysTheChangeWasStored(t *testing.T) {
-	app, rt := restartApp(t, true)
+	app, rt := restartApp(t, ports.ServiceState{Name: "app", State: ports.StateRunning})
 
 	_, err := app.restartDependents(context.Background(), []string{"db_password"})
 	require.Error(t, err)
@@ -92,4 +93,24 @@ func TestRestartDependentsSaysTheChangeWasStored(t *testing.T) {
 	assert.Equal(t, domain.ExitSecrets, domain.ExitCode(err),
 		"the exit code still says what failed: the render")
 	assert.NotContains(t, rt.Calls, "Restart:app,db")
+}
+
+// Only a project with no containers at all has nothing to update. An unhealthy
+// service is the one an operator is most likely changing a credential for, and
+// a stopped or paused one still reads the files when it comes back -- so each
+// of these renders, which here fails on the unset `session_key`.
+func TestRestartDependentsRendersForAnyContainerThatExists(t *testing.T) {
+	for _, svc := range []ports.ServiceState{
+		{Name: "app", State: ports.StateRunning, Health: ports.HealthUnhealthy},
+		{Name: "app", State: ports.StatePaused},
+		{Name: "app", State: ports.StateRestarting},
+		{Name: "app", State: "exited"},
+	} {
+		app, _ := restartApp(t, svc)
+
+		_, err := app.restartDependents(context.Background(), []string{"db_password"})
+		require.Error(t, err, "a %s %s service was treated as nothing to restart, "+
+			"and kept the old credentials", svc.State, svc.Health)
+		assert.Contains(t, domain.AsError(err).Message, "session_key")
+	}
 }

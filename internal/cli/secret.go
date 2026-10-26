@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -469,13 +468,15 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 		return nil, err
 	}
 
-	// Nothing running, as before the first apply, is nothing to restart --
-	// and the render would refuse over every required secret not set yet,
-	// which an operator setting them one at a time has not. Whatever starts
-	// the services renders first. A runtime that cannot answer may have them
+	// No container at all, as before the first apply, is nothing to restart
+	// -- and the render would refuse over every required secret not set yet,
+	// which an operator setting them one at a time has not. Whatever creates
+	// the containers renders first. Any container counts, not only a healthy
+	// running one: an unhealthy service is the one an operator is likeliest
+	// to be changing a credential for, and a stopped or paused one reads the
+	// files when it comes back. A runtime that cannot answer may have them
 	// up, as render-secrets' compensator assumes, so it gets the restart.
-	if states, err := a.Deps.Runtime.Status(ctx, cfg); err == nil &&
-		!slices.ContainsFunc(states, ports.ServiceState.Running) {
+	if states, err := a.Deps.Runtime.Status(ctx, cfg); err == nil && len(states) == 0 {
 		return nil, nil
 	}
 
