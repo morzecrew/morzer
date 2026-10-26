@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
 
@@ -54,9 +55,51 @@ func TestApplyPullsTheImagesTheManifestPins(t *testing.T) {
 	// Not "some images were pulled": the exact set the manifest declares.
 	// The defect this guards against was a pull that took this list as an
 	// argument and then pulled whatever the Compose file happened to name.
-	assert.ElementsMatch(t, h.Release.Manifest.ImageRefs(), h.Runtime.PulledImages,
+	// The volume helper is the manager's own image, not the release's.
+	assert.ElementsMatch(t,
+		append(h.Release.Manifest.ImageRefs(), h.Runtime.HelperImage()), h.Runtime.PulledImages,
 		"the pull must follow the manifest, which is the authority on what a "+
 			"release consists of")
+}
+
+// Nothing pulled the helper, so a networked machine's first backup refused
+// with the pull command (#142), the pre-update backup included. An apply that
+// reached a registry for the release's images pulls it too.
+func TestAnApplyThatPullsAlsoPullsTheVolumeHelper(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	h.Runtime.HelperMissing = true
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	assert.Contains(t, h.Runtime.PulledImages, h.Runtime.HelperImage())
+	assert.False(t, h.Runtime.HelperMissing,
+		"the first backup on this machine would refuse for want of the helper")
+}
+
+// A registry that does not carry the helper -- a mirror that serves only the
+// vendor's images -- leaves doctor's warning to say so. The release's images
+// were pulled, and the deployment they make up runs without the helper.
+func TestAnApplyThatCannotPullTheVolumeHelperStillSucceeds(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	h.Runtime.HelperMissing = true
+
+	// The first pull is the release's; the hook arms the failure for the
+	// one after it, which is the helper's.
+	h.Runtime.OnCall = func(method string) {
+		if method == "Pull" {
+			h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: not on this mirror")
+		}
+	}
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err, "an apply failed over the image backups read volumes through")
+	assert.True(t, h.Runtime.HelperMissing)
+	assert.Positive(t, h.Runtime.UpCount, "the release's services did not start")
 }
 
 // upper is the same transformation runtimeConfig applies to an image key.

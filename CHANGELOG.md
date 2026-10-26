@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A networked machine's first backup could refuse for want of the volume helper image.** Backups read volumes through a pinned `busybox`, and nothing pulled it: `apply` pulled only the release's images, and a backup refuses rather than pulls on purpose. So unless somebody had acted on `doctor`'s warning, the first backup failed with `the volume helper image … is not on this machine`, the pre-update backup included. An `apply` or `update` that pulls the release's images from a registry now pulls the helper as well. A failed helper pull is a warning and does not fail the operation. A release whose images all travel in the bundle pulls nothing, so an offline machine still preloads it by hand, as `doctor` says.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the
