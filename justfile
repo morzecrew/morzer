@@ -376,7 +376,8 @@ demo-recovery: build
 
     printf '\n\033[1m== machine B: import ==\033[0m\n'
     ./{{binary}} --root tmp/recovery/b installation import tmp/recovery/demo.export.yaml \
-        --identity tmp/recovery/keys/recovery.key
+        --identity tmp/recovery/keys/recovery.key \
+        --install-units=false
 
     printf '\n\033[1m== machine B: the same secrets, read with B'"'"'s own key ==\033[0m\n'
     ./{{binary}} --root tmp/recovery/b secret list

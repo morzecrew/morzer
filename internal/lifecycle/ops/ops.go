@@ -199,9 +199,10 @@ type Options struct {
 	Profile string
 
 	// SourceRef is where the release being installed came from. Set by
-	// `update`, which is the only operation that introduces one: `apply`
-	// re-converges what is already installed and `rollback` returns to a
-	// release that arrived earlier, so neither changes the answer.
+	// `update`, which introduces one; `init` records its own when it stages
+	// the release. `apply` re-converges what is already installed and
+	// `rollback` returns to a release that arrived earlier, so neither
+	// changes the answer.
 	SourceRef string
 
 	// PreviousVersion is the release this run replaces, which a migrate

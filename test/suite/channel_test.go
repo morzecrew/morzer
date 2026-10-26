@@ -531,3 +531,95 @@ func TestAStoredBundleIsCheckedAgainstTodaysPolicy(t *testing.T) {
 	assert.DirExists(t, h.Paths.ReleaseDir(resolved.Version.String()),
 		"the refusal deleted a release the operator fetched under the old policy")
 }
+
+// TestInitFromARegistryRecordsWhereTheReleaseCameFrom.
+//
+// `update` records the ref it installed from so `update --check` has somewhere
+// to look (RFC 0016 decision 15). `init` makes a release current too, from a
+// ref the operator typed, and recorded nothing -- so a machine installed from a
+// registry refused the bare check until its first update, and `apply`'s
+// carry-forward had nothing to carry.
+func TestInitFromARegistryRecordsWhereTheReleaseCameFrom(t *testing.T) {
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	ctx := context.Background()
+
+	staged := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), staged)
+	retargetManifest(t, staged, h.Root)
+	archivePath := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	writeTarZst(t, staged, archivePath)
+	archive, err := os.ReadFile(archivePath)
+	require.NoError(t, err)
+
+	srv := newFakeRegistry(t, archive, oci.MediaType, 0)
+	sources, err := source.NewRegistry(local.New(), newTestSource(t, srv))
+	require.NoError(t, err)
+	h.Deps.Source = sources
+
+	ref := ociRef(srv, "demo/bundle", "1.2.0").String()
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: ref, GenerateSecrets: true,
+	})
+	require.NoError(t, err)
+
+	// What the issue reported: init, then apply, then the bare check.
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, ref, current.SourceRef,
+		"init installed from a registry and recorded no source")
+
+	res, err := ops.CheckForUpdate(ctx, h.Deps, ops.UpdateCheckOptions{Explicit: true})
+	require.NoError(t, err, "the bare check refused on a machine installed from a ref")
+	assert.Equal(t, ref, res.Ref)
+	assert.Equal(t, "1.3.0", res.Latest.String())
+}
+
+// TestAnUpdateCheckFallsBackToTheChannel.
+//
+// A machine with no recorded source -- installed from a path, or before the
+// source was recorded -- whose operator has since said where releases come
+// from. Refusing the bare check there asks them to type the repository they
+// just configured.
+func TestAnUpdateCheckFallsBackToTheChannel(t *testing.T) {
+	h, _, srv, _ := followingHarness(t)
+	ctx := context.Background()
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	require.Empty(t, current.SourceRef, "the harness is meant to start with no recorded source")
+
+	res, err := ops.CheckForUpdate(ctx, h.Deps, ops.UpdateCheckOptions{Explicit: true})
+	require.NoError(t, err, "the check refused with a channel configured")
+	assert.Equal(t, ociRef(srv, "demo/bundle", "stable").String(), res.Ref)
+	assert.Equal(t, "1.3.0", res.Latest.String())
+}
+
+// A recorded source that cannot list versions is where the running release came
+// from, not where the next one is. `init` and `update` both record a local path,
+// so a machine installed from one refused a bare check with the channel set,
+// where the channel would have answered.
+func TestAnUpdateCheckAsksTheChannelWhenTheRecordedSourceCannotList(t *testing.T) {
+	h, _, srv, _ := followingHarness(t)
+	ctx := context.Background()
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	current.SourceRef = h.Release.Root
+	require.NoError(t, h.Deps.State.SetCurrentRelease(ctx, current))
+
+	res, err := ops.CheckForUpdate(ctx, h.Deps, ops.UpdateCheckOptions{Explicit: true})
+	require.NoError(t, err, "a local path was asked for versions with a channel configured")
+	assert.Equal(t, ociRef(srv, "demo/bundle", "stable").String(), res.Ref)
+	assert.Equal(t, "1.3.0", res.Latest.String())
+
+	// A ref an operator passes is theirs, and is not second-guessed.
+	_, err = ops.CheckForUpdate(ctx, h.Deps, ops.UpdateCheckOptions{
+		Ref: h.Release.Root, Explicit: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot list available versions")
+}
