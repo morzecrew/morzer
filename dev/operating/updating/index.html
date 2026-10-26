@@ -2339,9 +2339,11 @@ a backup in the middle, and a defined answer for every way it can fail.</p>
 <p>Asks the release source what versions it offers, and reports the newest one
 this installation could move to. Nothing is downloaded and nothing is
 installed.</p>
-<p>It needs to know where to look. <code>update</code> records the ref it installed from, so
-after one update from a registry the check has a source; before that, or after
-installing from a local path, pass one:</p>
+<p>It needs to know where to look. <code>init</code> and <code>update</code> record the ref they
+installed from, so a machine installed from a registry has a source. When
+there is none, or it is a local path, which cannot list versions, the check asks
+the repository of <code>update.channel</code>, when one is set. Without a channel, pass
+one:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>update<span class="w"> </span>--check<span class="w"> </span>oci://registry.example/demo/bundle
 </code></pre></div>
 <p>Only an <abbr title="Open Container Initiative">OCI</abbr> registry keeps a tag list, so that is the only transport that can
