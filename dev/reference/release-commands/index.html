@@ -2741,6 +2741,11 @@ did not write it.</p>
 </table>
 <p>It reports <strong>every</strong> violation in one pass rather than the first, because a
 bundle author fixing one problem should not discover the next one on the retry.</p>
+<p>It warns, and still exits 0, when the manifest migrates with a
+<code>runtime-service</code> step and declares no <code>database_schema_produces</code>. A container
+cannot report the schema it leaves, so without the declaration an installation's
+schema stays unknown and its schema checks are skipped; see the
+<a href="../manifest/#database_schema_produces-is-what-opts-a-release-into-unattended-updates">manifest reference</a>.</p>
 <h3 id="what-render-check-checks-and-what-it-does-not">What <code>--render-check</code> checks, and what it does not<a class="headerlink" href="#what-render-check-checks-and-what-it-does-not" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product<span class="w"> </span>--render-check
 </code></pre></div>

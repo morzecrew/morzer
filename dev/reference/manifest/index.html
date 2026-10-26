@@ -3618,6 +3618,13 @@ changes for you.</p>
 <p>Declaring it is not sufficient on its own. See
 <a href="../../operating/unattended-updates/">unattended updates</a> for the whole gate,
 and for what the promise is and is not.</p>
+<p><strong>For a release that migrates with a <code>runtime-service</code> step, it is also the
+schema the manager records.</strong> A container cannot report the schema it leaves, so
+when a migration service succeeds and no step reported one, the declared value
+is recorded as what the database is at. It is how <code>rollback</code>, <code>update</code> and the
+unattended gate learn the schema at all; without it they skip their schema
+checks, and <code>release verify</code> warns. A schema a hook reports always wins over the
+declaration.</p>
 <h2 id="retention">retention<a class="headerlink" href="#retention" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

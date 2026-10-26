@@ -2429,7 +2429,7 @@ product prefix.</p>
 <li><strong><code>RESULT_FD</code>.</strong> No descriptor is open in the container, so a migration
   service cannot report <code>schema_version</code>. Declare
   <a href="../manifest/#database_schema_produces-is-what-opts-a-release-into-unattended-updates"><code>database_schema_produces</code></a>
-  instead.</li>
+  instead: when the service succeeds, that is the schema the manager records.</li>
 <li><strong>Parameters and the runtime's variables.</strong> A service receives parameters the
   way the release's Compose file passes them, as it does when it runs as part of
   the deployment.</li>
