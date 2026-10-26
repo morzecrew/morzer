@@ -44,6 +44,29 @@ func TestSecretSetRefusesAnEmptyValue(t *testing.T) {
 	out.OutputContains("secret remove")
 }
 
+// TestSecretSetBeforeTheFirstApplySucceeds. `init` makes the release current,
+// and a release with two values only the operator has is set one at a time --
+// so the first `secret set` meets a release whose other secret is not set yet.
+// Nothing is running to restart, and exit 6 told a script under `set -e` the
+// value had not been stored when it had.
+func TestSecretSetBeforeTheFirstApplySucceeds(t *testing.T) {
+	r := clitest.New(t)
+	r.Run("init",
+		"--release", r.BundleWithOperatorSecrets(),
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+	).ExitCode(0)
+
+	r.RunWithInput("first-of-two-operator-values\n", "secret", "set", "license_key").
+		ExitCode(0).
+		NoOutputContains("first-of-two-operator-values")
+
+	list := r.Run("secret", "list").ExitCode(0)
+	list.StdoutContains("license_key")
+}
+
 func TestSecretGenerate(t *testing.T) {
 	r := clitest.NewInstalled(t)
 

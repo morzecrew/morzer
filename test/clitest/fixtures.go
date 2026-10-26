@@ -84,6 +84,42 @@ func (r *Runner) Corrupt(parts ...string) *Runner {
 	return r
 }
 
+// BundleWithOperatorSecrets copies the example bundle and declares two more
+// required secrets with no generator, both read by `app`.
+//
+// The example bundle gives every required secret a generator, so `init`
+// leaves nothing for an operator to supply -- and a release that needs two
+// values only a person has, set one at a time, never reached the commands.
+func (r *Runner) BundleWithOperatorSecrets() string {
+	r.t.Helper()
+
+	dir := filepath.Join(r.t.TempDir(), "operator-secrets-bundle")
+	copyDir(r.t, r.Bundle, dir)
+
+	schema := filepath.Join(dir, "secrets.schema.yaml")
+	f, err := os.OpenFile(schema, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	const added = `
+  - name: license_key
+    description: The vendor licence, issued per customer
+    required: true
+    services: [app]
+
+  - name: payment_api_key
+    description: The payment provider's key for this customer
+    required: true
+    services: [app]
+`
+	if _, err := f.WriteString(added); err != nil {
+		r.t.Fatal(err)
+	}
+	return dir
+}
+
 // SetSecret stores a value the way an operator does: piped, never in argv.
 func (r *Runner) SetSecret(name, value string) *Runner {
 	r.t.Helper()

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`secret set` exited 6 before the first `apply`, though the value was stored.** `init` makes the release current, so the restart after a secret change rendered every secret the release declares, and refused over a required one the operator had not set yet. A release needing two values only the operator has could not be given the first without exit 6, which a script under `set -e` reads as the value not being saved. `set`, `generate`, `rotate` and `edit` now restart nothing, and render nothing, when nothing of the deployment is running. When the render or the restart fails on a running deployment, the error now says the change was stored, and the exit code still says which failed.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the
