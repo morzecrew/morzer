@@ -440,6 +440,11 @@ func oneUpdateMode(check, stage, unattended bool, to string) error {
 // every night because a release is waiting would train an operator to ignore it
 // -- which is the one outcome worse than not having the timer.
 func runUnattendedTick(cmd *cobra.Command, app *App, opts ops.Options) error {
+	// A tick that installs takes the same pre-update backup a manual
+	// `update` does, so it needs the same engine, wired the same way: from
+	// the current release, with its absence left to the backup step.
+	_ = app.attachBackupEngine(cmd.Context())
+
 	res, err := ops.RunUnattended(cmd.Context(), app.Deps, ops.UnattendedOptions{Options: opts})
 
 	if errors.Is(err, domain.ErrLocked) {
