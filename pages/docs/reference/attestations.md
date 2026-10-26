@@ -273,6 +273,10 @@ look complete forever.
   1 of 1 attestation(s) are only on this machine
 ```
 
+Both count statements, however many targets there are. With more than one,
+`doctor` says how many statements are missing from at least one of them, since
+a statement can be on one target and not another.
+
 ## What this does not do yet
 
 Stated here rather than discovered:

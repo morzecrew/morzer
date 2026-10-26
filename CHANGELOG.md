@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Attestation counts mixed two units with more than one target.** `doctor` and `attest push` counted each statement once per target that lacked it, and reported that against a total of statements, so two targets after five operations read `10 of 5 attestation(s) are only on this machine`, and the push that closed the gap reported ten. Every count is now of statements: `5 of 5 attestation(s) are missing from at least one of 2 targets`, then `pushed 5 attestation(s) to 2 targets`. With one target, `doctor` still says `only on this machine`. The per-target `missing` and `pushed` fields of `attest push --json` were already per target and are unchanged.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the
