@@ -143,6 +143,28 @@ func RunRuntimeSuite(t *testing.T, newRuntime RuntimeFactory) {
 		assert.GreaterOrEqual(t, res.ExitCode, 0)
 	})
 
+	t.Run("a one-shot's image is reported only when it is named", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+		imager, ok := rt.(ports.ServiceImager)
+		require.True(t, ok, "this runtime cannot report its services' images")
+
+		// `attest verify --against-live` excuses an attested image that
+		// only a one-shot runs. Both halves matter: a one-shot reported
+		// as started would excuse nothing, and one that cannot be
+		// reported at all would leave its image reported as missing.
+		started, err := imager.ServiceImages(ctx, cfg)
+		require.NoError(t, err)
+		require.NotEmpty(t, started,
+			"the fixture's services carry no image, so this proves nothing")
+		assert.NotContains(t, started, "migrate",
+			"a one-shot behind a profile is not something the configuration starts")
+
+		named, err := imager.ServiceImages(ctx, cfg, "migrate")
+		require.NoError(t, err)
+		assert.NotEmpty(t, named["migrate"],
+			"a one-shot named explicitly must be reported even though nothing starts it")
+	})
+
 	runQuiesceSuite(t, newRuntime)
 	runVolumeSuite(t, newRuntime)
 	runInspectionSuite(t, newRuntime)

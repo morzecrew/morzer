@@ -253,7 +253,12 @@ type LiveImage struct {
 // other's disappearance. Closing that means recording the deployed service
 // alongside each image -- a change to the predicate, and one that only the
 // operations which render Compose could fill in. RFC 0025 §12 carries it.
-func CompareToLive(stmt Statement, live []LiveImage) []LiveMismatch {
+//
+// onDemand are digests nothing is expected to be running (OnDemandDigests). An
+// attested image among them is not reported missing, because the one-shot that
+// runs it exits by design; it is still reported if something runs it at a
+// digest nobody attested.
+func CompareToLive(stmt Statement, live []LiveImage, onDemand map[string]bool) []LiveMismatch {
 	// Matched on **digest**, not on the image reference.
 	//
 	// The reference is the wrong key and the first draft used it. The
@@ -307,7 +312,7 @@ func CompareToLive(stmt Statement, live []LiveImage) []LiveMismatch {
 
 	digests := slices.Sorted(maps.Keys(attested))
 	for _, d := range digests {
-		if !seen[d] {
+		if !seen[d] && !onDemand[d] {
 			img := attested[d]
 			out = append(out, LiveMismatch{
 				Kind:     "missing",
@@ -316,6 +321,34 @@ func CompareToLive(stmt Statement, live []LiveImage) []LiveMismatch {
 				Detail: fmt.Sprintf("%s at %s was attested and is not running",
 					img.Ref, short(d)),
 			})
+		}
+	}
+	return out
+}
+
+// OnDemandDigests returns the digests only one-shot services run.
+//
+// started maps each service the deployment starts to its image, and oneShots
+// each one-shot service the release declares to its own. A one-shot's image is
+// not running on a healthy machine, so `--against-live` reporting it missing
+// failed on every installation of a release that migrates with one (#136).
+//
+// Only while nothing started runs the same digest: a migration that runs the
+// application's own image is common, and excusing that digest would hide the
+// application's disappearance. A one-shot that the configuration also starts
+// counts as a one-shot, because the release declared it one.
+func OnDemandDigests(started, oneShots map[string]string) map[string]bool {
+	expected := make(map[string]bool, len(started))
+	for service, ref := range started {
+		if _, oneShot := oneShots[service]; !oneShot {
+			expected[DigestFromRef(ref)] = true
+		}
+	}
+
+	out := make(map[string]bool, len(oneShots))
+	for _, ref := range oneShots {
+		if d := DigestFromRef(ref); d != "" && !expected[d] {
+			out[d] = true
 		}
 	}
 	return out

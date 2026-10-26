@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`attest verify --against-live` reported a migration service's image as missing.** A release that migrates with one-shot services, `flyway` in a container for example, attests their images, and those services exit by design once the migrations are done. So the check failed with exit 3 on every healthy machine running such a release, and could not serve as a cron or CI gate. An image that only the release's `migrate` services run is no longer expected to be running. An image that a service the deployment starts also runs is still reported when nothing runs it.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the
