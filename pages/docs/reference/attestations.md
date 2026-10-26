@@ -179,6 +179,12 @@ Four ways it can disagree, and each is something somebody does by hand:
 - an image running that the statement never attested at all;
 - the rendered configuration on disk no longer digesting to what was attested.
 
+An image that only a one-shot `migrate` service runs is not expected to be
+running, and is not reported missing: the service exits by design once its
+migrations are done. That holds only while nothing the deployment starts runs
+the same digest. A migration that runs the application's own image does not
+hide the application's disappearance.
+
 The configuration check reports **that** it differs and never how. The digest is
 salted (above), so there is nothing in the statement to diff against — which is
 the trade that keeps a port number out of a document that travels.
