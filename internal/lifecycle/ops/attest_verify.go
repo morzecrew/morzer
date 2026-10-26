@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // `morzer attest verify` — reading the record back.
@@ -170,9 +171,13 @@ func AttestVerify(ctx context.Context, d *Deps, opts VerifyOptions) (VerifyRepor
 		if err != nil {
 			return report, err
 		}
+		onDemand, err := d.onDemandDigests(ctx, inst, rel)
+		if err != nil {
+			return report, err
+		}
 		report.LiveChecked = true
 		report.LiveAgainst = newest.Predicate.Operation.ID
-		report.Live = domain.CompareToLive(newest, live)
+		report.Live = domain.CompareToLive(newest, live, onDemand)
 
 		// Two comparisons, one list. They answer the same question about
 		// different halves of a deployment -- what is running, and what
@@ -251,6 +256,41 @@ func (d *Deps) liveImages(
 		})
 	}
 	return out, nil
+}
+
+// onDemandDigests are the images only the release's migration services run.
+//
+// Nil when the release migrates with no service, and when the runtime cannot
+// say what each service runs. The second keeps the image reported missing: a
+// finding an operator can look into, rather than a check that excuses what it
+// cannot see.
+func (d *Deps) onDemandDigests(
+	ctx context.Context, inst domain.Installation, rel domain.Release,
+) (map[string]bool, error) {
+	var oneShots []string
+	for _, step := range rel.Manifest.Operations[domain.OpMigrate] {
+		if step.Kind == domain.OperationKindRuntimeService {
+			oneShots = append(oneShots, step.Service)
+		}
+	}
+	imager, ok := d.Runtime.(ports.ServiceImager)
+	if len(oneShots) == 0 || !ok {
+		return nil, nil
+	}
+
+	cfg, err := d.runtimeConfig(rel, inst, "")
+	if err != nil {
+		return nil, err
+	}
+	started, err := imager.ServiceImages(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	declared, err := imager.ServiceImages(ctx, cfg, oneShots...)
+	if err != nil {
+		return nil, err
+	}
+	return domain.OnDemandDigests(started, declared), nil
 }
 
 // currentReleaseFor loads the installed release, for the comparisons that need

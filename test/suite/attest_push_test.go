@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -313,4 +314,77 @@ func TestDoctorReportsStatementsThatAreOnlyOnThisMachine(t *testing.T) {
 			assert.Equal(t, events.CheckOK, res.Status, res.Message)
 		}
 	}
+}
+
+// Every count is of statements, however many targets there are.
+//
+// The counts used to be of (statement, target) pairs, set against a total of
+// statements: two targets after five operations read "10 of 5 attestation(s)
+// are only on this machine", and the push that closed the gap reported ten. A
+// statement missing from both targets is one statement an operator has to worry
+// about, not two.
+func TestAttestationCountsAreOfStatementsAcrossTargets(t *testing.T) {
+	h := verifyHarness(t)
+	inst, offsite := h.withAttestationTarget(t)
+
+	bare := inst
+	bare.Backup.Targets = nil
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), bare))
+	applyOnce(t, h)
+	applyOnce(t, h)
+
+	local := len(statementsOnDisk(t, h))
+	require.Greater(t, local, 1,
+		"the units cannot be told apart with fewer than two statements")
+
+	second := filepath.Join(t.TempDir(), "second")
+	inst.Backup.Targets = append(inst.Backup.Targets,
+		domain.BackupTargetConfig{URL: "file://" + second})
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	before, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+	var found bool
+	for _, res := range before.Results {
+		if res.ID == "backup.attestations-pushed" {
+			found = true
+			assert.Contains(t, res.Message, fmt.Sprintf("%d of %d attestation(s)", local, local))
+		}
+	}
+	require.True(t, found)
+
+	dry, err := ops.AttestPush(context.Background(), h.Deps, ops.Options{DryRun: true})
+	require.NoError(t, err)
+	assert.Contains(t, dry.Summary,
+		fmt.Sprintf("would push %d attestation(s) to 2 targets", local))
+
+	pushed, err := ops.AttestPush(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.Contains(t, pushed.Summary,
+		fmt.Sprintf("pushed %d attestation(s) to 2 targets", local))
+	assert.ElementsMatch(t, pushedStatements(t, offsite), pushedStatements(t, second))
+
+	again, err := ops.AttestPush(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.Contains(t, again.Summary,
+		fmt.Sprintf("every one of %d attestation(s) is already on 2 targets", local))
+
+	// A statement one target holds and the other lacks is not "only on this
+	// machine", and it is still one statement.
+	gone := pushedStatements(t, second)[0]
+	require.NoError(t, os.Remove(filepath.Join(second, "attestations", gone)))
+
+	partial, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+	found = false
+	for _, res := range partial.Results {
+		if res.ID == "backup.attestations-pushed" {
+			found = true
+			assert.Equal(t, events.CheckWarn, res.Status,
+				"a statement missing from one target was not warned about")
+			assert.Contains(t, res.Message, fmt.Sprintf("1 of %d attestation(s)", local))
+			assert.NotContains(t, res.Message, "only on this machine")
+		}
+	}
+	require.True(t, found, "doctor no longer reports whether attestations reached the targets")
 }

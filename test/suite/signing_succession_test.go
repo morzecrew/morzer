@@ -100,6 +100,53 @@ func TestARebuiltMachineRecordsItsPredecessorAndNotItsKey(t *testing.T) {
 		"the rebuild re-minted the attestation salt and broke its own chain")
 }
 
+// A rebuilt machine is finished when the import is, not when somebody runs `init
+// --repair` afterwards. The import used to leave two things for `doctor` to find:
+// a signing key that the first signature minted and state never recorded, and no
+// units at all. `init` does both for a machine it creates, and an import is a
+// creation too (#135).
+func TestARebuiltMachineNeedsNoRepairAfterItsImport(t *testing.T) {
+	ctx := context.Background()
+
+	requireSOPS(t)
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+
+	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
+	_, err := ops.Export(ctx, origin.Deps, ops.ExportOptions{Path: exportPath})
+	require.NoError(t, err)
+	require.NoError(t, os.RemoveAll(origin.Root))
+
+	rebuilt := newMachine(t, t.TempDir())
+	export, err := ops.LoadExport(exportPath)
+	require.NoError(t, err)
+	_, err = ops.Import(ctx, rebuilt.Deps, ops.ImportOptions{
+		SourcePath:   exportPath,
+		Export:       export,
+		IdentityFile: recoveryPath,
+		InstallUnits: true,
+	})
+	require.NoError(t, err)
+
+	// What the first `update` or `restore` does on the rebuilt machine: it
+	// signs, and a signer with no key mints one.
+	key, err := rebuilt.Deps.Signer.EnsureKey(ctx)
+	require.NoError(t, err)
+
+	got, err := rebuilt.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, key.Line, got.Signing.PublicKey,
+		"the rebuilt machine signs with a key its installation state does not record")
+
+	report, err := ops.Doctor(ctx, rebuilt.Deps)
+	require.NoError(t, err)
+	for _, id := range []string{"secrets.signing-identity", "system.units"} {
+		check := findCheck(t, report, id)
+		assert.Equal(t, "ok", check.Status,
+			"%s after an import: %s (remedy: %s)", id, check.Message, check.Remedy)
+	}
+}
+
 // The key file's permissions are the security property, so they are asserted
 // rather than assumed -- the same way `stepCreateIdentity` asserts the age
 // identity's.

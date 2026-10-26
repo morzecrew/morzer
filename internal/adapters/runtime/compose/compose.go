@@ -267,6 +267,46 @@ func serviceNames(raw string) ([]string, error) {
 	return slices.Sorted(maps.Keys(doc.Services)), nil
 }
 
+// ServiceImages reads each service's image from the merged configuration.
+//
+// Naming the services is what reaches a one-shot behind a profile: `compose
+// config` leaves out a service whose profile is not active, and includes it
+// when it is named, the same way `compose run` starts it. `--profile '*'`
+// would reach it too, but only on Compose releases that accept the wildcard.
+func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, services ...string) (map[string]string, error) {
+	argv := append(r.args(cfg, "config", "--format", "json"), services...)
+	cmd := r.command(cfg, 60*time.Second, argv...)
+	cmd.OnLine = nil
+
+	res, err := r.runner.Run(ctx, cmd)
+	if err != nil {
+		return nil, wrapExit(err, "cannot read the project's images",
+			"run `docker compose config` against the release to see the full diagnostic")
+	}
+	return parseServiceImages(res.Stdout)
+}
+
+// parseServiceImages extracts each service's image from `compose config
+// --format json`. A service with no image, one built rather than pulled, is
+// left out: there is no reference to compare.
+func parseServiceImages(raw string) (map[string]string, error) {
+	var doc struct {
+		Services map[string]struct {
+			Image string `json:"image"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		return nil, domain.RuntimeError(err, "cannot parse the merged compose configuration")
+	}
+	out := make(map[string]string, len(doc.Services))
+	for name, svc := range doc.Services {
+		if svc.Image != "" {
+			out[name] = svc.Image
+		}
+	}
+	return out, nil
+}
+
 // Pull fetches images.
 //
 // Compose pulls what the merged configuration references, which is what the
@@ -765,4 +805,5 @@ var (
 	_ ports.RegistryProber = (*Runtime)(nil)
 	_ ports.ImageInspector = (*Runtime)(nil)
 	_ ports.ImageRemover   = (*Runtime)(nil)
+	_ ports.ServiceImager  = (*Runtime)(nil)
 )

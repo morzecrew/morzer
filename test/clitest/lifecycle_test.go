@@ -164,6 +164,20 @@ func TestInitRepairRestoresTheLayout(t *testing.T) {
 		"--install-units=false").ExitCode(0)
 }
 
+// `doctor` prints `morzer init --repair` as the remedy for several of its
+// warnings, and a remedy has to run as printed. It refused twice over: `init`
+// did not find the installation every other command finds on its own, and it
+// asked again for a recovery recipient the secret state already has (#135).
+func TestInitRepairRunsAsDoctorPrintsIt(t *testing.T) {
+	r := clitest.NewInstalled(t)
+	withRecoveryKey(t, r)
+
+	// --install-units=false only because the unit steps need systemd and
+	// root; it is not part of the remedy.
+	r.Run("init", "--repair", "--install-units=false").
+		ExitCode(0).OutputContains("repaired for demo")
+}
+
 func TestConfigCommands(t *testing.T) {
 	r := clitest.NewInstalled(t)
 
