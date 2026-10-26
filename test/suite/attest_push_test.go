@@ -376,10 +376,15 @@ func TestAttestationCountsAreOfStatementsAcrossTargets(t *testing.T) {
 
 	partial, err := ops.Doctor(context.Background(), h.Deps)
 	require.NoError(t, err)
+	found = false
 	for _, res := range partial.Results {
 		if res.ID == "backup.attestations-pushed" {
+			found = true
+			assert.Equal(t, events.CheckWarn, res.Status,
+				"a statement missing from one target was not warned about")
 			assert.Contains(t, res.Message, fmt.Sprintf("1 of %d attestation(s)", local))
 			assert.NotContains(t, res.Message, "only on this machine")
 		}
 	}
+	require.True(t, found, "doctor no longer reports whether attestations reached the targets")
 }
