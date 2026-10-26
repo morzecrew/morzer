@@ -269,6 +269,10 @@ func (r *Runtime) Pull(ctx context.Context, cfg ports.RuntimeConfig, images []st
 	r.PulledImages = append(r.PulledImages, images...)
 	for _, ref := range images {
 		delete(r.removed, ref)
+		// Pulled is present, for the helper as for anything else.
+		if ref == r.HelperImage() {
+			r.HelperMissing = false
+		}
 	}
 	return nil
 }

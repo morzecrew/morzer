@@ -675,8 +675,47 @@ func stepPullImages(d *Deps, inst domain.Installation, rel domain.Release, opts 
 			// never reaches here to be quietly pulled.
 			images := rel.Manifest.PulledImageRefs()
 			st.Detail("%d image(s)", len(images))
-			return d.Runtime.Pull(ctx, cfg, images)
+			if err := d.Runtime.Pull(ctx, cfg, images); err != nil {
+				return err
+			}
+			// A release pulling nothing may be on a machine with no
+			// network, and that one is doctor's to warn about.
+			if len(images) > 0 {
+				d.pullVolumeHelper(ctx, st, cfg)
+			}
+			return nil
 		},
+	}
+}
+
+// pullVolumeHelper fetches the image backups read volumes through, while this
+// step has just shown the machine can reach a registry (#142).
+//
+// Nothing else pulls it, and a capture refuses rather than pulls on purpose: a
+// pull in the middle of a backup at 3am on a flaky link is the failure that
+// refusal exists to avoid. So a networked machine's first backup, the
+// pre-update one included, refused unless somebody had acted on doctor's
+// warning beforehand.
+//
+// Best effort. The release's images are what this step is for, and a mirror
+// that does not carry the helper is something doctor reports; failing a
+// deployment that runs fine over it would be the wrong trade.
+func (d *Deps) pullVolumeHelper(ctx context.Context, st *engine.State, cfg ports.RuntimeConfig) {
+	capturer, ok := d.Runtime.(ports.VolumeCapturer)
+	if !ok {
+		return
+	}
+	ref := capturer.HelperImage()
+	// Every capture refuses an override the adapter does not count as
+	// pinned, so pulling it would only move a tag the operator chose and
+	// warn about it on every apply. Asked as doctor asks: the pinning rule
+	// is the adapter's, not the port's.
+	if pinner, ok := d.Runtime.(interface{ HelperImagePinned() bool }); ok && !pinner.HelperImagePinned() {
+		return
+	}
+	if err := d.Runtime.Pull(ctx, cfg, []string{ref}); err != nil {
+		st.Warn("cannot pull the volume helper image %s, so a backup cannot capture volumes "+
+			"until it is here: %s", domain.ShortImageRef(ref), domain.AsError(err).Message)
 	}
 }
 
