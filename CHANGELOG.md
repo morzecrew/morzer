@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An unattended update could never take its pre-update backup.** `update --unattended`, which the update timer runs, did not wire the backup engine that a manual `update` wires. With `update.auto_apply` on and the pre-update backup left on, every tick that found a release to install failed at that step with `no backup engine is configured`, exit 10. A tick now takes the same pre-update backup a manual `update` does.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the
