@@ -103,6 +103,18 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 	}
 
 	versions, err := d.Source.List(ctx, parsed)
+	// A recorded source that cannot list -- a local bundle, one file over
+	// HTTPS -- says where the running release came from, not where the next
+	// one is, and `init` and `update` both record a local path. The channel
+	// says that, when one is set. A ref the operator passed is not replaced.
+	if errors.Is(err, domain.ErrUnsupported) && opts.Ref == "" &&
+		inst.Update.Channel != "" && ref != inst.Update.Channel {
+		ref = inst.Update.Channel
+		if parsed, err = ports.ParseRef(ref); err != nil {
+			return UpdateCheckResult{}, err
+		}
+		versions, err = d.Source.List(ctx, parsed)
+	}
 	if err != nil {
 		// Reported rather than swallowed. "This transport cannot
 		// enumerate versions" is a true answer; "up to date" would be a

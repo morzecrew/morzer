@@ -598,3 +598,28 @@ func TestAnUpdateCheckFallsBackToTheChannel(t *testing.T) {
 	assert.Equal(t, ociRef(srv, "demo/bundle", "stable").String(), res.Ref)
 	assert.Equal(t, "1.3.0", res.Latest.String())
 }
+
+// A recorded source that cannot list versions is where the running release came
+// from, not where the next one is. `init` and `update` both record a local path,
+// so a machine installed from one refused a bare check with the channel set,
+// where the channel would have answered.
+func TestAnUpdateCheckAsksTheChannelWhenTheRecordedSourceCannotList(t *testing.T) {
+	h, _, srv, _ := followingHarness(t)
+	ctx := context.Background()
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	current.SourceRef = h.Release.Root
+	require.NoError(t, h.Deps.State.SetCurrentRelease(ctx, current))
+
+	res, err := ops.CheckForUpdate(ctx, h.Deps, ops.UpdateCheckOptions{Explicit: true})
+	require.NoError(t, err, "a local path was asked for versions with a channel configured")
+	assert.Equal(t, ociRef(srv, "demo/bundle", "stable").String(), res.Ref)
+	assert.Equal(t, "1.3.0", res.Latest.String())
+
+	// A ref an operator passes is theirs, and is not second-guessed.
+	_, err = ops.CheckForUpdate(ctx, h.Deps, ops.UpdateCheckOptions{
+		Ref: h.Release.Root, Explicit: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot list available versions")
+}

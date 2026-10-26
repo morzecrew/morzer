@@ -30,9 +30,10 @@ this installation could move to. Nothing is downloaded and nothing is
 installed.
 
 It needs to know where to look. `init` and `update` record the ref they
-installed from, so a machine installed from a registry has a source. Failing
-that, the check asks the repository of `update.channel`, when one is set. After
-installing from a local path with no channel, pass one:
+installed from, so a machine installed from a registry has a source. When
+there is none, or it is a local path, which cannot list versions, the check asks
+the repository of `update.channel`, when one is set. Without a channel, pass
+one:
 
 ```sh
 morzer update --check oci://registry.example/demo/bundle
