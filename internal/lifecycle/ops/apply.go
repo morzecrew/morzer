@@ -754,7 +754,7 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 		Execute: func(ctx context.Context, st *engine.State) error {
 			env := d.hookEnv(inst, rel, opts.PreviousVersion, st.OpID,
 				st.OpType, ports.PhaseMigrate, st.DryRun)
-			reported := 0
+			reported, ranService := 0, false
 			for i, spec := range steps {
 				// Named by position only when there is more than
 				// one, so a single migration reads as it always
@@ -771,6 +771,14 @@ func stepMigrate(d *Deps, inst domain.Installation, rel domain.Release, opts Opt
 				if schema > 0 {
 					reported = schema
 				}
+				ranService = ranService || spec.Kind == domain.OperationKindRuntimeService
+			}
+			// A container has no descriptor to report on, so a service
+			// that succeeded is taken to have left what the release
+			// declares (RFC 0033 decision 1). Never over a report: that
+			// is a measurement, and the declaration only fills a gap.
+			if reported == 0 && ranService {
+				reported = rel.Manifest.Compatibility.DatabaseSchemaProduces
 			}
 			if reported > 0 {
 				// Recorded so rollback can reason about schema

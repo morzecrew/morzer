@@ -121,3 +121,25 @@ func TestTheRemovalReleaseIsAUsableVersion(t *testing.T) {
 		"the removal release is rendered into a vendor-facing sentence and "+
 			"compared against manager versions, so it must parse as one")
 }
+
+// A service cannot report the schema it leaves, so a release migrating with one
+// and declaring nothing is warned about; a declaration, or migrations that are
+// all hooks, is not (RFC 0033 decision 4).
+func TestAServiceMigrationWithoutADeclarationIsWarnedAbout(t *testing.T) {
+	service := domain.OperationSteps{{Kind: domain.OperationKindRuntimeService, Service: "flyway"}}
+	hook := domain.OperationSteps{{Kind: domain.OperationKindHook, Command: []string{"hooks/migrate"}}}
+
+	m := domain.Manifest{Operations: map[string]domain.OperationSteps{domain.OpMigrate: service}}
+	warning, ok := m.UndeclaredSchemaWarning()
+	assert.True(t, ok)
+	assert.Contains(t, warning, "flyway")
+	assert.Contains(t, warning, "database_schema_produces")
+
+	m.Compatibility.DatabaseSchemaProduces = 12
+	_, ok = m.UndeclaredSchemaWarning()
+	assert.False(t, ok, "a release that declares what it produces was warned about")
+
+	m = domain.Manifest{Operations: map[string]domain.OperationSteps{domain.OpMigrate: hook}}
+	_, ok = m.UndeclaredSchemaWarning()
+	assert.False(t, ok, "a hook can report its schema, so it needs no declaration")
+}

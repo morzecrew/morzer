@@ -2,7 +2,9 @@ package clitest_test
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -463,4 +465,37 @@ func TestAPlanRefusesAMissingRequiredParameter(t *testing.T) {
 	r.Run(append(append([]string{}, base...),
 		"--set", "admin_email=ops@demo.example")...).ExitCode(0).
 		OutputContains("would create an installation for demo")
+}
+
+// A release that migrates with a service and declares no
+// database_schema_produces leaves the installed schema unknown, since a
+// container cannot report one (RFC 0033). The vendor's CI is told, and the
+// bundle still verifies: it installs, it only skips the schema checks.
+func TestReleaseVerifyWarnsAServiceMigrationDeclaresNoSchema(t *testing.T) {
+	r := clitest.New(t)
+	path := filepath.Join(r.Bundle, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := strings.Replace(string(raw),
+		"  migrate:\n    kind: hook\n    command: [\"hooks/migrate\"]\n",
+		"  migrate:\n    kind: runtime-service\n    service: app\n", 1)
+	if service == string(raw) {
+		t.Fatal("the fixture's migrate operation is no longer the one this rewrites")
+	}
+	if err := os.WriteFile(path, []byte(service), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Run("release", "verify", r.Bundle).ExitCode(0).
+		StderrContains("warning:", "database_schema_produces")
+
+	declared := strings.Replace(service, "  database_schema_max: 12\n",
+		"  database_schema_max: 12\n  database_schema_produces: 12\n", 1)
+	if err := os.WriteFile(path, []byte(declared), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.Run("release", "verify", r.Bundle).ExitCode(0).
+		NoOutputContains("database_schema_produces")
 }

@@ -1,10 +1,13 @@
 # RFC 0033 — The schema a migration service leaves
 
-- **Status:** 📝 Draft — proposed 2026-10-26. Ruled 2026-10-26: the schema
-  is the release's declaration (decision 1), and `release verify` warns when a
-  release that migrates with a service declares none (decision 4). The
-  carry-forward half of #143 is not designed here; it shipped as a fix beside
-  this draft (decision 5 records it).
+- **Status:** ✅ Complete — proposed and ruled 2026-10-26, **built
+  2026-10-26**: the schema is the release's declaration (decision 1), and
+  `release verify` warns when a release that migrates with a service declares
+  none (decision 4). Two proposals from the build wait in
+  [logs/rfc-0033-schema-from-declaration.md](../logs/rfc-0033-schema-from-declaration.md):
+  `passIfFallbackCannotRead` keeps its fallback for hooks, and only `verify`
+  warns. The carry-forward half of #143 shipped as a fix beside this draft
+  (decision 5 records it).
 - **Scope:** What `ReleaseRecord.SchemaAtInstall` holds after a converge whose
   migrations ran as a `runtime-service` step, which today is always 0. Covers
   where the value comes from, which step's value wins when several run, and

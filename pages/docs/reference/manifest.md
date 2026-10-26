@@ -567,6 +567,14 @@ Declaring it is not sufficient on its own. See
 [unattended updates](../operating/unattended-updates.md) for the whole gate,
 and for what the promise is and is not.
 
+**For a release that migrates with a `runtime-service` step, it is also the
+schema the manager records.** A container cannot report the schema it leaves, so
+when a migration service succeeds and no step reported one, the declared value
+is recorded as what the database is at. It is how `rollback`, `update` and the
+unattended gate learn the schema at all; without it they skip their schema
+checks, and `release verify` warns. A schema a hook reports always wins over the
+declaration.
+
 ## retention
 
 | Field | Type | Default | Meaning |

@@ -80,7 +80,7 @@ Left out:
 - **`RESULT_FD`.** No descriptor is open in the container, so a migration
   service cannot report `schema_version`. Declare
   [`database_schema_produces`](manifest.md#database_schema_produces-is-what-opts-a-release-into-unattended-updates)
-  instead.
+  instead: when the service succeeds, that is the schema the manager records.
 - **Parameters and the runtime's variables.** A service receives parameters the
   way the release's Compose file passes them, as it does when it runs as part of
   the deployment.
