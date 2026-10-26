@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`update --check` refused on a machine installed from a registry until its first update.** `init --release oci://…` recorded no release source, so the bare check said `this installation has no recorded release source`, even with `update.channel` set. `init` now records the ref it installed from, as `update` does. A machine with no recorded source, such as one installed from a local path, now checks the repository of `update.channel` when one is set. A machine installed before this change still has no recorded source; setting `update.channel`, or one update from a ref, gives it one.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the

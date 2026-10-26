@@ -29,9 +29,10 @@ Asks the release source what versions it offers, and reports the newest one
 this installation could move to. Nothing is downloaded and nothing is
 installed.
 
-It needs to know where to look. `update` records the ref it installed from, so
-after one update from a registry the check has a source; before that, or after
-installing from a local path, pass one:
+It needs to know where to look. `init` and `update` record the ref they
+installed from, so a machine installed from a registry has a source. Failing
+that, the check asks the repository of `update.channel`, when one is set. After
+installing from a local path with no channel, pass one:
 
 ```sh
 morzer update --check oci://registry.example/demo/bundle

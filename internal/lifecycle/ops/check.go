@@ -14,7 +14,8 @@ type UpdateCheckOptions struct {
 	Options
 
 	// Ref is where to look. Empty uses the ref recorded with the current
-	// release, which is why `update` records one.
+	// release, which is why `init` and `update` record one, and failing
+	// that the configured channel.
 	Ref string
 
 	// Explicit marks a check an operator asked for by name, which is its
@@ -79,11 +80,18 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 	if ref == "" {
 		ref = current.SourceRef
 	}
+	// The channel's repository, when nothing was recorded: the operator
+	// has said where releases come from, and enumerating it ignores the
+	// tag. Second to the recorded ref, which is where the running release
+	// actually came from (RFC 0016 decision 15).
+	if ref == "" {
+		ref = inst.Update.Channel
+	}
 	if ref == "" {
 		return UpdateCheckResult{}, domain.ValidationError(domain.ErrNotFound,
 			"this installation has no recorded release source").
-			WithHint("pass one -- `morzer update --check <ref>` -- or install the " +
-				"next release from a ref, which records it")
+			WithHint("pass one -- `morzer update --check <ref>` -- set " +
+				"`update.channel`, or install the next release from a ref, which records it")
 	}
 
 	parsed, err := ports.ParseRef(ref)
