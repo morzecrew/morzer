@@ -294,6 +294,15 @@ type ExitResult struct {
 	ExitCode int
 	Stdout   string
 	Stderr   string
+
+	// Output is the last lines of both streams, in the order they arrived:
+	// what an operator watching the run read last. A failure is quoted from
+	// here rather than from Stderr, because a runtime may write its own
+	// progress to stderr ahead of anything the process says, and a process
+	// that reports its failure on stdout would then be quoted as the
+	// runtime's progress.
+	Output string
+
 	Duration time.Duration
 }
 
