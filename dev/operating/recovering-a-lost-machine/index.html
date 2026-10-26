@@ -2428,7 +2428,9 @@ necessarily the one whose <em>secrets</em> you want.</p>
 </code></pre></div>
 <p>All three restore the installation with its <strong>original id</strong>, generate a new age
 identity for this host, re-encrypt the secret state for it, and revoke the old
-machine's key.</p>
+machine's key. They also mint and record this host's signing key, and install
+the systemd units where systemd runs, so the rebuilt machine needs no <code>init
+--repair</code> afterwards.</p>
 <p>It prints what it assumed and what to do next. If the identity you passed cannot
 open the export, it says so before creating anything, and names the keys that
 would work.</p>

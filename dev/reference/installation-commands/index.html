@@ -2502,6 +2502,10 @@ carries one.</p>
 <td><code>--mode</code></td>
 <td>Rebuild as a sandbox with <code>dev</code>, which also <strong>drops the export's backup targets</strong>. Omitted keeps whatever the export was; a sandbox can never be imported as production. See <a href="../../operating/unattended-updates/#dev-mode-a-machine-that-is-a-sandbox-from-birth">dev mode</a>.</td>
 </tr>
+<tr>
+<td><code>--install-units</code></td>
+<td>Install the systemd units when systemd is available, as <code>init</code> does. Default <code>true</code>.</td>
+</tr>
 </tbody>
 </table>
 <p>With <code>--from-backup</code> the positional argument is a backup id rather than a path.</p>
@@ -2526,11 +2530,16 @@ first.</p>
 <p>What it does, in order:</p>
 <ol>
 <li>Creates the managed directory layout.</li>
-<li>Writes the installation record <strong>with its original id</strong>.</li>
+<li>Mints a <strong>new</strong> signing key for this host. The lost machine's key is
+   recorded as its predecessor, because its private half did not travel.</li>
+<li>Writes the installation record <strong>with its original id</strong> and the new signing
+   key.</li>
 <li>Restores the encrypted secret state from the export.</li>
 <li>Generates a <strong>new</strong> age identity for this host.</li>
 <li>Re-encrypts the state for that new key plus every non-machine recipient, and
    verifies this machine can now read it.</li>
+<li>Installs the systemd units, when systemd is available. A unit that already
+   exists keeps whatever enablement it has.</li>
 </ol>
 <p>The old machine's key is dropped. A decommissioned host must not retain the
 ability to decrypt — if it is being replaced because it was compromised, keeping
