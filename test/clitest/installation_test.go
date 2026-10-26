@@ -67,7 +67,10 @@ func TestARecoveredMachineKeepsTheOriginalIdentity(t *testing.T) {
 	// A machine that has never been initialised: import is what creates it.
 	rebuilt := clitest.New(t)
 
-	out := rebuilt.Run("installation", "import", path, "--identity", identity)
+	// --install-units=false for the reason NewInstalled passes it to init:
+	// the unit step needs systemd and root, and a test has neither.
+	out := rebuilt.Run("installation", "import", path, "--identity", identity,
+		"--install-units=false")
 	out.ExitCode(0)
 
 	assertIDMatches(t, rebuilt, originalID)

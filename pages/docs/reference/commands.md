@@ -128,7 +128,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--require-signature` | Refuse any release that is not signed by one of those keys. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
-| `--repair` | Restore missing directories on an existing installation. |
+| `--repair` | Restore missing directories on an existing installation. It finds the installation as every other command does, so `--product` is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag. |
 | `--mode` | What this machine is for: `dev` for a sandbox, or production (the default). Fixed at creation and never changeable — see [unattended updates](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth). |
 
 ### The interactive first run
