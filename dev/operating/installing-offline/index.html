@@ -2220,7 +2220,9 @@ ingest</code> loads it, out of the bundle, with no network.</p>
 <p>The helper image is the manager's own, not the release's: volumes are read
 through a container, so a backup on a disconnected machine that never pulled it
 captures nothing. It is the one image that is not in the release manifest, which
-is exactly why it is easy to miss.</p>
+is exactly why it is easy to miss. A networked <code>apply</code> pulls it alongside the
+release's images, but a release whose images all travel in the bundle pulls
+nothing, so on this machine it is yours to preload.</p>
 <p><strong>Preload the reference <code>doctor</code> prints, not <code>busybox</code>.</strong> If this deployment sets
 <code>MORZER_VOLUME_HELPER_IMAGE</code>, that is the image volume capture will run, and the
 default busybox is not pulled at all. <code>doctor</code> reports whichever one is

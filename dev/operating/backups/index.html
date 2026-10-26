@@ -2680,9 +2680,16 @@ for you, so seeing this message means something was still up.</p>
 <p>Volumes are read and written through a small container (<code>busybox</code>, pinned by
 digest) rather than through the host's storage directory, which is an
 implementation detail and is unreadable under a rootless or remote daemon.</p>
-<p>That is one more image to have locally. <code>morzer doctor</code> reports it when it is
-absent, with the command to pull it — ask <strong>before</strong> you disconnect the machine,
-not during a backup:</p>
+<p>That is one more image to have locally. An <code>apply</code> or <code>update</code> that pulls the
+release's images from a registry pulls the helper too, so a machine with a
+network has it before its first backup. An <code>update</code> pulls it before its
+pre-update backup, so <code>docker image prune -a</code>, which removes it between
+backups, does not stop the next update. If that pull fails, for example because
+your registry mirror does not carry busybox, the operation warns and carries on.</p>
+<p>A backup never pulls it: a pull in the middle of a backup at 3am on a flaky link
+is the failure that refusal exists to avoid. On a machine that pulls nothing,
+<code>morzer doctor</code> reports the helper when it is absent, with the command to pull
+it — ask <strong>before</strong> you disconnect the machine, not during a backup:</p>
 <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>pull<span class="w"> </span>busybox@sha256:...<span class="w">   </span><span class="c1"># doctor prints the exact reference</span>
 </code></pre></div>
 <p>If your registry does not carry busybox, name a different image. Any image with
