@@ -1088,6 +1088,16 @@ func stepRecordState(d *Deps, inst domain.Installation, rel domain.Release, opts
 			if record.SourceRef == "" {
 				record.SourceRef = d.recordedSourceRef(ctx, rel.Root)
 			}
+			// A re-converge whose migrations reported nothing has not
+			// moved the schema, and a migration service never reports
+			// one (#143). Only the current release's, though: an update
+			// whose migrations said nothing may still have moved it, and
+			// the old value would claim a schema rollback reads as safe.
+			if record.SchemaAtInstall == 0 {
+				if current, err := d.State.CurrentRelease(ctx); err == nil && current.Root == rel.Root {
+					record.SchemaAtInstall = current.SchemaAtInstall
+				}
+			}
 			d.adoptStagedCandidate(ctx, &record)
 			if err := d.State.SetCurrentRelease(ctx, record); err != nil {
 				return err
