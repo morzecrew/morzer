@@ -50,6 +50,7 @@ func TestSecretSetRefusesAnEmptyValue(t *testing.T) {
 // Nothing is running to restart, and exit 6 told a script under `set -e` the
 // value had not been stored when it had.
 func TestSecretSetBeforeTheFirstApplySucceeds(t *testing.T) {
+	clitest.RequireDocker(t)
 	r := clitest.New(t)
 	r.Run("init",
 		"--release", r.BundleWithOperatorSecrets(),
