@@ -1016,14 +1016,23 @@ func stepInstallUnits(d *Deps, product string, scope ports.EnableScope) engine.S
 			if err := d.Supervisor.InstallUnits(ctx, units, scope); err != nil {
 				return err
 			}
+			st.Set(keyUnitsInstalled, true)
 			st.Detail("%d unit(s)", len(units))
 			return nil
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			if d.Supervisor == nil {
+			// Only an install that completed. One that failed has
+			// already undone its own changes, and removing every managed
+			// unit after it took the ones a repair had found installed,
+			// the product's service among them.
+			if _, done := st.Get(keyUnitsInstalled); !done || d.Supervisor == nil {
 				return nil
 			}
 			return d.Supervisor.RemoveUnits(ctx, d.Supervisor.ManagedUnitNames(product))
 		},
 	}
 }
+
+// keyUnitsInstalled says install-units completed, so its compensator has
+// something of its own to undo.
+const keyUnitsInstalled = "units-installed"
