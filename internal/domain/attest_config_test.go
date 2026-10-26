@@ -93,7 +93,7 @@ func TestNothingToCompareIsNotAFinding(t *testing.T) {
 // A step's text is not all the manager's own words, and the statement travels.
 //
 // A failing hook contributes the last three lines of its stderr to the step's
-// error, and a hook ships with the release. `lastLines` bounds it by lines,
+// error, and a hook ships with the release. `LastLines` bounds it by lines,
 // which is no bound at all when a line can be a megabyte -- and P4 pushes the
 // document to a bucket automatically.
 func TestAStepsTextCannotCarryWhateverAHookPrinted(t *testing.T) {
@@ -165,7 +165,7 @@ func TestTheLiveComparisonIsBySetAndNotByService(t *testing.T) {
 		assert.Empty(t, domain.CompareToLive(stmt, []domain.LiveImage{
 			{Service: "app", Ref: "reg/db", Digest: b},
 			{Service: "db", Ref: "reg/app", Digest: a},
-		}), "if this now reports, the comparison gained service identity -- update the docs")
+		}, nil), "if this now reports, the comparison gained service identity -- update the docs")
 	})
 
 	t.Run("a stopped service whose digest another still runs", func(t *testing.T) {
@@ -174,7 +174,7 @@ func TestTheLiveComparisonIsBySetAndNotByService(t *testing.T) {
 		}}}
 		assert.Empty(t, domain.CompareToLive(stmt, []domain.LiveImage{
 			{Service: "worker", Ref: "reg/app", Digest: a},
-		}), "if this now reports, the comparison gained service identity -- update the docs")
+		}, nil), "if this now reports, the comparison gained service identity -- update the docs")
 	})
 
 	// And the cases it does catch, beside them, so the pin cannot be read
@@ -185,8 +185,39 @@ func TestTheLiveComparisonIsBySetAndNotByService(t *testing.T) {
 		}}}
 		assert.NotEmpty(t, domain.CompareToLive(stmt, []domain.LiveImage{
 			{Service: "app", Ref: "reg/app", Digest: b},
-		}))
+		}, nil))
 	})
+}
+
+// A one-shot's image is excused from "missing" only while nothing the
+// deployment starts runs it (#136). The local alias carries the digest, so an
+// air-gapped machine's one-shot is recognised too.
+func TestOnlyAOneShotsOwnImageIsExpectedNotToRun(t *testing.T) {
+	const (
+		app     = "sha256:aa00000000000000000000000000000000000000000000000000000000000000"
+		migrate = "sha256:cc00000000000000000000000000000000000000000000000000000000000000"
+	)
+	started := map[string]string{"app": "reg/app@" + app}
+
+	got := domain.OnDemandDigests(started, map[string]string{
+		"flyway": "reg/flyway:morzer-sha256-cc00000000000000000000000000000000000000000000000000000000000000",
+		"seed":   "reg/app@" + app,
+	})
+	assert.Equal(t, map[string]bool{migrate: true}, got,
+		"a migration sharing the application's image hid the application")
+
+	// Named by a migrate step and also started: what is started is expected
+	// to run, so the application cannot hide behind its own migrations.
+	assert.Empty(t, domain.OnDemandDigests(
+		map[string]string{"app": "reg/app@" + app},
+		map[string]string{"app": "reg/app@" + app}))
+
+	stmt := domain.Statement{Predicate: domain.Predicate{Images: []domain.AttestedImage{
+		{Ref: "reg/app", Digest: app}, {Ref: "reg/flyway", Digest: migrate},
+	}}}
+	live := []domain.LiveImage{{Service: "app", Ref: "reg/app", Digest: app}}
+	assert.NotEmpty(t, domain.CompareToLive(stmt, live, nil))
+	assert.Empty(t, domain.CompareToLive(stmt, live, got))
 }
 
 // The bound's own edges, decided rather than inherited.

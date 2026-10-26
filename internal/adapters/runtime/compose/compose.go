@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -267,6 +268,46 @@ func serviceNames(raw string) ([]string, error) {
 	return slices.Sorted(maps.Keys(doc.Services)), nil
 }
 
+// ServiceImages reads each service's image from the merged configuration.
+//
+// Naming the services is what reaches a one-shot behind a profile: `compose
+// config` leaves out a service whose profile is not active, and includes it
+// when it is named, the same way `compose run` starts it. `--profile '*'`
+// would reach it too, but only on Compose releases that accept the wildcard.
+func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, services ...string) (map[string]string, error) {
+	argv := append(r.args(cfg, "config", "--format", "json"), services...)
+	cmd := r.command(cfg, 60*time.Second, argv...)
+	cmd.OnLine = nil
+
+	res, err := r.runner.Run(ctx, cmd)
+	if err != nil {
+		return nil, wrapExit(err, "cannot read the project's images",
+			"run `docker compose config` against the release to see the full diagnostic")
+	}
+	return parseServiceImages(res.Stdout)
+}
+
+// parseServiceImages extracts each service's image from `compose config
+// --format json`. A service with no image, one built rather than pulled, is
+// left out: there is no reference to compare.
+func parseServiceImages(raw string) (map[string]string, error) {
+	var doc struct {
+		Services map[string]struct {
+			Image string `json:"image"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		return nil, domain.RuntimeError(err, "cannot parse the merged compose configuration")
+	}
+	out := make(map[string]string, len(doc.Services))
+	for name, svc := range doc.Services {
+		if svc.Image != "" {
+			out[name] = svc.Image
+		}
+	}
+	return out, nil
+}
+
 // Pull fetches images.
 //
 // Compose pulls what the merged configuration references, which is what the
@@ -443,11 +484,13 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 	argv = append(argv, service)
 	argv = append(argv, opts.Argv...)
 
-	res, err := r.runner.Run(ctx, r.command(cfg, opts.Timeout, argv...))
+	cmd, tail := withOutputTail(r.command(cfg, opts.Timeout, argv...))
+	res, err := r.runner.Run(ctx, cmd)
 	out := ports.ExitResult{
 		ExitCode: res.ExitCode,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
+		Output:   tail.String(),
 		Duration: res.Duration,
 	}
 
@@ -466,11 +509,13 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 func (r *Runtime) Exec(ctx context.Context, cfg ports.RuntimeConfig, service string, argv []string) (ports.ExitResult, error) {
 	full := append(r.args(cfg, "exec", "--no-TTY", service), argv...)
 
-	res, err := r.runner.Run(ctx, r.command(cfg, 5*time.Minute, full...))
+	cmd, tail := withOutputTail(r.command(cfg, 5*time.Minute, full...))
+	res, err := r.runner.Run(ctx, cmd)
 	out := ports.ExitResult{
 		ExitCode: res.ExitCode,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
+		Output:   tail.String(),
 		Duration: res.Duration,
 	}
 	if err != nil {
@@ -482,6 +527,55 @@ func (r *Runtime) Exec(ctx context.Context, cfg ports.RuntimeConfig, service str
 		return out, wrapExit(err, fmt.Sprintf("cannot exec in service %q", service), "")
 	}
 	return out, nil
+}
+
+// outputTailLines bounds ExitResult.Output: a few more lines than any error
+// quotes, and never the whole of a chatty run.
+const outputTailLines = 10
+
+// outputTail keeps the last lines of a run's two streams, in the order they
+// arrived.
+//
+// Stderr alone is not the tail of what a one-shot said. `compose run` writes
+// its own progress there -- "Container demo-migrate-run-1 Created" -- before the
+// container starts, so a migration that reports its failure on stdout left
+// Compose's progress as the last lines of stderr. Measured with Compose 5.5.1.
+// Blank lines are dropped: one is never the reason a run failed.
+type outputTail struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+// withOutputTail returns the command with its output also fed to a tail, and
+// the tail. Lines arrive from both stream readers at once, already redacted.
+func withOutputTail(cmd exec.Command) (exec.Command, *outputTail) {
+	tail := &outputTail{}
+	sink := cmd.OnLine
+	cmd.OnLine = func(l exec.Line) {
+		tail.add(l.Text)
+		if sink != nil {
+			sink(l)
+		}
+	}
+	return cmd, tail
+}
+
+func (t *outputTail) add(text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.lines = append(t.lines, text)
+	if len(t.lines) > outputTailLines {
+		t.lines = t.lines[1:]
+	}
+}
+
+func (t *outputTail) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.Join(t.lines, "\n")
 }
 
 // psEntry is the shape `docker compose ps --format json` emits, one object per
@@ -765,4 +859,5 @@ var (
 	_ ports.RegistryProber = (*Runtime)(nil)
 	_ ports.ImageInspector = (*Runtime)(nil)
 	_ ports.ImageRemover   = (*Runtime)(nil)
+	_ ports.ServiceImager  = (*Runtime)(nil)
 )

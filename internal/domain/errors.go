@@ -11,6 +11,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Code is a stable, machine-readable error code. It is part of the public
@@ -377,4 +378,23 @@ func AsError(err error) *Error {
 		Message:  err.Error(),
 		Err:      fmt.Errorf("%w: %w", ErrInternal, err),
 	}
+}
+
+// LastLines keeps the tail of a process's output, joined onto one line, for an
+// error to quote. The last thing a failing script prints is almost always the
+// reason it failed.
+//
+// Shared because a failed hook and a failed migration service are the same
+// failure to the operator reading it, and two copies of the rule would quote
+// them differently the day one changed.
+func LastLines(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.TrimSpace(strings.Join(lines, "; "))
 }

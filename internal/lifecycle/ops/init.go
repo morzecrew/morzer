@@ -135,7 +135,12 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 				"parameters exist and what they accept")
 	}
 
-	if !opts.NoRecoveryKey && opts.RecoveryRecipient == "" {
+	// A repair over secret state that already has a recovery recipient has
+	// made this choice, and the step that adds one has nothing to do. Asking
+	// again made `doctor`'s `init --repair` remedy fail as printed. Secret
+	// state without one still needs the operator to say so out loud.
+	keepsRecipient := exists && opts.Repair && d.hasRecoveryRecipient(ctx)
+	if !opts.NoRecoveryKey && opts.RecoveryRecipient == "" && !keepsRecipient {
 		return Result{}, domain.Usage("a recovery recipient is required").
 			WithHint("pass --recovery-recipient <age1...>, or --no-recovery-recipient " +
 				"if you accept that losing this machine means losing its secrets")
@@ -324,7 +329,13 @@ func initSteps(d *Deps, opts InitOptions) []engine.Step {
 	)
 
 	if opts.InstallUnits {
-		steps = append(steps, stepInstallUnits(d, opts))
+		// EnableAll, unlike the reconciliation, and the pair is the
+		// whole of RFC 0030 row 1. `init` has nothing to overrule;
+		// `init --repair` is a command somebody runs *because* they
+		// found this machine wrong, so reversing a `systemctl disable`
+		// is a legitimate thing for it to do -- and the only place it
+		// happens.
+		steps = append(steps, stepInstallUnits(d, opts.Product, ports.EnableAll))
 	}
 	return steps
 }
@@ -744,6 +755,11 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			if err := atomicfs.ReplaceSymlink(dest, d.Paths.CurrentLink()); err != nil {
 				return err
 			}
+			// The ref is recorded here, as `update` records its own, because
+			// this is where the release becomes current (RFC 0016 decisions
+			// 15 and 21). Without it a machine installed from a registry
+			// refused `update --check` until its first update, and the
+			// first `apply` carried forward an empty source.
 			return d.State.SetCurrentRelease(ctx, domain.ReleaseRecord{
 				SchemaVersion: domain.InstallationSchemaVersion,
 				Name:          rel.Name(),
@@ -752,6 +768,7 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 				Root:          dest,
 				InstalledAt:   domain.NewTime(d.now()),
 				OperationID:   st.OpID,
+				SourceRef:     ports.RedactRefCredentials(opts.ReleasePath),
 			})
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
@@ -966,7 +983,7 @@ func stepAddRecoveryRecipient(d *Deps, opts InitOptions) engine.Step {
 }
 
 // stepInstallUnits writes the systemd units.
-func stepInstallUnits(d *Deps, opts InitOptions) engine.Step {
+func stepInstallUnits(d *Deps, product string, scope ports.EnableScope) engine.Step {
 	return engine.Step{
 		ID:          "install-units",
 		Description: "install systemd units",
@@ -994,23 +1011,28 @@ func stepInstallUnits(d *Deps, opts InitOptions) engine.Step {
 			if err != nil {
 				return err
 			}
-			// EnableAll, unlike the reconciliation, and the pair is
-			// the whole of RFC 0030 row 1. `init` has nothing to
-			// overrule; `init --repair` is a command somebody runs
-			// *because* they found this machine wrong, so reversing
-			// a `systemctl disable` is a legitimate thing for it to
-			// do -- and the only place it happens.
-			if err := d.Supervisor.InstallUnits(ctx, units, ports.EnableAll); err != nil {
+			// The scope is the caller's: see initSteps and
+			// importSteps for why they differ.
+			if err := d.Supervisor.InstallUnits(ctx, units, scope); err != nil {
 				return err
 			}
+			st.Set(keyUnitsInstalled, true)
 			st.Detail("%d unit(s)", len(units))
 			return nil
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			if d.Supervisor == nil {
+			// Only an install that completed. One that failed has
+			// already undone its own changes, and removing every managed
+			// unit after it took the ones a repair had found installed,
+			// the product's service among them.
+			if _, done := st.Get(keyUnitsInstalled); !done || d.Supervisor == nil {
 				return nil
 			}
-			return d.Supervisor.RemoveUnits(ctx, d.Supervisor.ManagedUnitNames(opts.Product))
+			return d.Supervisor.RemoveUnits(ctx, d.Supervisor.ManagedUnitNames(product))
 		},
 	}
 }
+
+// keyUnitsInstalled says install-units completed, so its compensator has
+// something of its own to undo.
+const keyUnitsInstalled = "units-installed"

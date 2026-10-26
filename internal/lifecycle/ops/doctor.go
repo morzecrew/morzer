@@ -580,13 +580,25 @@ func (d *Deps) checkAttestationsPushed(inst domain.Installation) preflight.Check
 					strings.Join(unreachable, ", "))
 			}
 
-			if missing := report.Missing(); missing > 0 {
+			// "Only on this machine" is true of a statement missing
+			// from the one target there is. With more than one, a
+			// statement can be on one and not another, so the claim
+			// is narrowed to what was counted.
+			missing := report.Missing()
+			switch {
+			case missing == 0:
+				return preflight.OK("%d attestation(s), all pushed", report.Local)
+			case len(report.Targets) == 1:
 				return preflight.Warn(
 					"run `morzer attest push`",
 					"%d of %d attestation(s) are only on this machine",
 					missing, report.Local)
+			default:
+				return preflight.Warn(
+					"run `morzer attest push`",
+					"%d of %d attestation(s) are missing from at least one of %s",
+					missing, report.Local, describeTargetCount(len(report.Targets)))
 			}
-			return preflight.OK("%d attestation(s), all pushed", report.Local)
 		},
 	}
 }

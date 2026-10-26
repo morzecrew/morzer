@@ -376,9 +376,9 @@ func TestRenderCheckIsOptIn(t *testing.T) {
 // TestUpdateCheckRefusesRatherThanReportingUpToDate.
 //
 // The command's value is that it never answers a question nobody asked. A
-// freshly installed machine has no recorded release source -- `init` installs
-// from a path -- so the check must say so rather than report that nothing newer
-// exists.
+// freshly installed machine here records a local path as its source -- `init`
+// installs from one -- and a path keeps no tag list, so the check must say so
+// rather than report that nothing newer exists.
 func TestUpdateCheckRefusesRatherThanReportingUpToDate(t *testing.T) {
 	r := clitest.NewInstalled(t)
 

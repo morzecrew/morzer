@@ -816,10 +816,19 @@ func (d *Deps) runMigrateStep(
 			return 0, nil
 		}
 		if !res.OK() {
-			return 0, domain.RuntimeError(nil,
-				"%s, the service %q, exited with code %d", which, spec.Service, res.ExitCode).
-				WithHint("inspect the migration output in the log; " +
-					"the database may be partially migrated")
+			// Quoted, as a failed hook is, because the error is the
+			// only place the output survives: the one-shot is removed
+			// when it exits, the journal keeps no output, and the presenters
+			// show it only under --verbose, which a unit started by
+			// systemd does not pass.
+			msg := fmt.Sprintf("%s, the service %q, exited with code %d",
+				which, spec.Service, res.ExitCode)
+			if tail := domain.LastLines(res.Output, 3); tail != "" {
+				msg += ": " + tail
+			}
+			return 0, domain.RuntimeError(nil, "%s", msg).
+				WithHint("the database may be partially migrated; " +
+					"the migration's full output is shown only with --verbose")
 		}
 		return 0, nil
 

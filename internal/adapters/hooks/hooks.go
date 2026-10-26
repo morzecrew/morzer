@@ -262,10 +262,10 @@ func jsonShape(text string) string {
 func hookFailure(name string, exitErr *exec.ExitError, outcome Outcome) error {
 	detail := strings.TrimSpace(outcome.Result.Message)
 	if detail == "" {
-		detail = lastLines(outcome.Stderr, 3)
+		detail = domain.LastLines(outcome.Stderr, 3)
 	}
 	if detail == "" {
-		detail = lastLines(outcome.Stdout, 3)
+		detail = domain.LastLines(outcome.Stdout, 3)
 	}
 
 	msg := fmt.Sprintf("hook %q failed with exit code %d", name, exitErr.ExitCode)
@@ -275,18 +275,4 @@ func hookFailure(name string, exitErr *exec.ExitError, outcome Outcome) error {
 
 	return domain.RuntimeError(exitErr, "%s", msg).
 		WithHint("the hook ships with the release; its full output is in the log")
-}
-
-// lastLines keeps the tail of a hook's output. The last thing a failing script
-// prints is almost always the reason it failed.
-func lastLines(s string, n int) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	lines := strings.Split(s, "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
-	}
-	return strings.TrimSpace(strings.Join(lines, "; "))
 }
