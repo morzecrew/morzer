@@ -134,6 +134,11 @@ type AttestPushReport struct {
 
 	// Local is how many statements this machine holds.
 	Local int `json:"local"`
+
+	// pushed is how many statements this run sent to at least one target.
+	// Each target's own count is what is published; this is the total the
+	// summary reports, in the same unit as Local.
+	pushed int
 }
 
 // AttestTargetStatus is one target's share of it.
@@ -168,13 +173,19 @@ func (r AttestPushReport) Unreachable() bool {
 	return slices.ContainsFunc(r.Targets, func(t AttestTargetStatus) bool { return t.Error != "" })
 }
 
-// Missing totals the statements that are not on some target.
+// Missing counts the statements that are not on every target.
+//
+// Statements, not (statement, target) pairs. Summing each target's count read
+// "10 of 5" with two targets, against a total that is a count of statements: a
+// statement missing from both is one record at risk, not two.
 func (r AttestPushReport) Missing() int {
-	var n int
+	missing := map[string]bool{}
 	for _, t := range r.Targets {
-		n += t.Missing
+		for key := range t.missing {
+			missing[key] = true
+		}
 	}
-	return n
+	return len(missing)
 }
 
 // AttestPush copies every statement that is not on a target to it.
@@ -217,23 +228,28 @@ func AttestPush(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
+	sent := map[string]bool{}
 	for i := range report.Targets {
 		status := &report.Targets[i]
 		if status.Error != "" {
 			continue
 		}
 		for _, file := range local {
-			if !status.missing[objectKeyFor(file)] {
+			key := objectKeyFor(file)
+			if !status.missing[key] {
 				continue
 			}
 			if err := pushOne(ctx, d, status.ref, file); err != nil {
 				status.Error = domain.AsError(err).Message
 				break
 			}
+			delete(status.missing, key)
+			sent[file] = true
 			status.Pushed++
 			status.Missing--
 		}
 	}
+	report.pushed = len(sent)
 
 	return Result{Summary: pushSummary(report, false), Data: report}, nil
 }
@@ -363,16 +379,12 @@ func pushSummary(r AttestPushReport, dry bool) string {
 			r.Local, describeTargetCount(len(r.Targets)))
 	}
 
-	var pushed int
-	for _, t := range r.Targets {
-		pushed += t.Pushed
-	}
-	if pushed == 0 && !r.Unreachable() {
+	if r.pushed == 0 && !r.Unreachable() {
 		return fmt.Sprintf("every one of %d attestation(s) is already on %s",
 			r.Local, describeTargetCount(len(r.Targets)))
 	}
 	summary := fmt.Sprintf("pushed %d attestation(s) to %s",
-		pushed, describeTargetCount(len(r.Targets)))
+		r.pushed, describeTargetCount(len(r.Targets)))
 	if r.Unreachable() {
 		summary += "; " + unreachableTargets(r) + " did not answer"
 	}
