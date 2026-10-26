@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A re-apply reset a known database schema to 0.** The schema recorded after a converge came from that run's migrations alone, and a migration that reported none, such as one run as a service, recorded 0. So an `apply`, including the one at every boot, could forget the schema an earlier migration had reported, and `rollback`, `update` and the unattended gate then skipped their schema checks. A converge of the installed release that reports no schema now keeps the recorded one. An update still records only what its migrations report, because a new release's migrations may have moved the schema. How a migration service reports the schema it leaves is proposed in RFC 0033.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the

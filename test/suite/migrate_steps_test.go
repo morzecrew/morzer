@@ -74,6 +74,56 @@ func TestMigrateRunsItsStepsInOrder(t *testing.T) {
 	assert.Equal(t, 12, current.SchemaAtInstall, "the schema the migrations reported was lost")
 }
 
+// serviceMigration is a migrate operation that runs a one-shot service, which
+// has no way to report the schema it left.
+const serviceMigration = "    - kind: runtime-service\n      service: app\n"
+
+// A re-apply whose migrations report nothing has not moved the schema, so it
+// keeps the one recorded (#143). It reset it to 0, and a release that migrates
+// with a service lost any schema it was given -- and with it the schema checks
+// of rollback and the unattended gate.
+func TestAReapplyKeepsASchemaItsMigrationsDoNotReport(t *testing.T) {
+	h := newHarness(t)
+	withMigrateSteps(t, h.Release.Root, serviceMigration, nil)
+	rel, err := release.Load(h.Release.Root)
+	require.NoError(t, err)
+	h.Release = rel // so install records the patched bundle's digest
+
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	setSchema(t, h, 14)
+
+	applyBaseline(t, h)
+
+	current, err := h.Deps.State.CurrentRelease(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 14, current.SchemaAtInstall, "a re-apply that migrated nothing forgot the schema")
+}
+
+// Not carried across an update. A new release's migrations that report nothing
+// may still have moved the schema, and the old value would then claim one the
+// database has left -- which rollback reads as safe to go back to.
+func TestAnUpdateWhoseMigrationsReportNothingRecordsNoSchema(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	withMigrateSteps(t, src, serviceMigration, nil)
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
+	assert.Zero(t, current.SchemaAtInstall,
+		"the previous release's schema was claimed for a database its successor migrated")
+}
+
 // The second step failing is a failed migrate: the first has changed the
 // database, and nothing the manager knows can take that back.
 func TestAFailedLaterStepIsAFailedMigrate(t *testing.T) {
