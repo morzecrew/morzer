@@ -304,6 +304,12 @@ type ImportOptions struct {
 	// who types --mode production is asking for a promotion and is refused
 	// by name.
 	ModeSet bool
+
+	// InstallUnits writes the systemd units, as `init --install-units`
+	// does. An import is how a lost machine comes back, and a rebuilt host
+	// whose service and timers are missing until somebody thinks of `init
+	// --repair` has not finished coming back.
+	InstallUnits bool
 }
 
 // Import rebuilds a machine from an export and an offline recovery key.
@@ -547,6 +553,13 @@ func checkRecoveryKey(export domain.InstallationExport, key, path string) error 
 			key, strings.Join(known, ", "))
 }
 
+// hasRecoveryRecipient reports whether this machine's secret state can already
+// be opened by an offline key. Unreadable answers false, the strict reading.
+func (d *Deps) hasRecoveryRecipient(ctx context.Context) bool {
+	recipients, err := d.Secrets.Recipients(ctx)
+	return err == nil && hasRecoveryRecipient(recipients)
+}
+
 // recoverableSecrets asserts the configured provider supports recovery.
 //
 // A provider that cannot be re-opened under another identity cannot participate
@@ -576,13 +589,27 @@ func importSteps(
 	opts ImportOptions,
 	recoveryStore ports.SecretStore,
 ) []engine.Step {
-	return []engine.Step{
+	steps := []engine.Step{
 		stepCreateDirectories(d),
+		// Before the installation is written, for the reason it is in
+		// `init`: the write records the public half. Without it the
+		// first signature minted a key that state never heard of,
+		// which `doctor` then reported (RFC 0028 §5.3: a rebuilt
+		// machine is a new signer).
+		stepCreateSigningKey(d),
 		stepWriteImportedInstallation(d, export),
 		stepRestoreSecretState(d, export),
 		stepCreateIdentity(d),
 		stepAdoptSecretState(d, export, opts, recoveryStore),
 	}
+	if opts.InstallUnits {
+		// EnableNew, not init's EnableAll. On the fresh host an import
+		// is for, every unit is new and both enable the lot; over an
+		// installation `--force` replaces, a `systemctl disable` the
+		// operator made stays theirs (RFC 0030 row 1).
+		steps = append(steps, stepInstallUnits(d, export.Installation.Product, ports.EnableNew))
+	}
+	return steps
 }
 
 // stepWriteImportedInstallation writes the exported installation verbatim.
@@ -595,6 +622,12 @@ func stepWriteImportedInstallation(d *Deps, export domain.InstallationExport) en
 		Timeout:     time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
 			inst := export.Installation
+			// The key this machine holds, minted by the step before.
+			// Import cleared the predecessor's (SucceedSigning), so
+			// without this state records no key at all.
+			if key := engine.MustGet[string](st, engine.KeySigningKey); key != "" {
+				inst.Signing.PublicKey = key
+			}
 			// The ID and CreatedAt come across untouched. Everything
 			// that keys on them -- backups above all -- keeps
 			// working, which is the reason to import rather than

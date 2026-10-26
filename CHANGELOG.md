@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A machine rebuilt by `installation import` needed an `init --repair` nobody was told to run, and the remedy `doctor` printed for it failed as printed.** The import minted no signing key, so the first `update` or `restore` minted one that installation state never recorded, and it installed no systemd units, so the service and the timers stayed missing. It now mints and records the signing key, keeping the lost machine's as its predecessor, and installs the units as `init` does; `--install-units=false` opts out. Separately, `init --repair` now finds the installation the way every other command does, so `--product` is needed only on a machine with several, and secret state that already has a recovery recipient needs neither `--recovery-recipient` nor `--no-recovery-recipient`. (#135)
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the
