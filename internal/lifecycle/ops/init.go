@@ -755,6 +755,11 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			if err := atomicfs.ReplaceSymlink(dest, d.Paths.CurrentLink()); err != nil {
 				return err
 			}
+			// The ref is recorded here, as `update` records its own, because
+			// this is where the release becomes current (RFC 0016 decisions
+			// 15 and 21). Without it a machine installed from a registry
+			// refused `update --check` until its first update, and the
+			// first `apply` carried forward an empty source.
 			return d.State.SetCurrentRelease(ctx, domain.ReleaseRecord{
 				SchemaVersion: domain.InstallationSchemaVersion,
 				Name:          rel.Name(),
@@ -763,6 +768,7 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 				Root:          dest,
 				InstalledAt:   domain.NewTime(d.now()),
 				OperationID:   st.OpID,
+				SourceRef:     ports.RedactRefCredentials(opts.ReleasePath),
 			})
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
