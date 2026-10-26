@@ -217,6 +217,92 @@ func TestAUnitAddedByAReconciliationIsStillEnabled(t *testing.T) {
 	}
 }
 
+// A timer this call enables is started too, and nothing else is (#139).
+//
+// `systemctl enable` links a unit into the target it is wanted by, and that
+// target is reached at boot. For a timer that meant a schedule an operator had
+// just set, through `config set` or `init`, and that did not fire until the
+// machine next rebooted -- installed, enabled, and listed with no next run.
+//
+// The product's service is the unit that must not follow: starting it runs
+// `apply --startup`, which belongs to boot, and `init` installs it before
+// there is anything to apply. The oneshots are never enabled, so never started.
+func TestATimerItEnablesIsAlsoStarted(t *testing.T) {
+	s, runner, _ := newSupervisor(t)
+	ctx := context.Background()
+
+	units := []ports.Unit{
+		{Name: "demo.service", Contents: []byte("[Unit]\n"), Enable: true},
+		{Name: "demo-backup.service", Contents: []byte("[Unit]\n"), Enable: false},
+		{Name: "demo-backup.timer", Contents: []byte("[Timer]\n"), Enable: true},
+	}
+	if err := s.InstallUnits(ctx, units, ports.EnableNew); err != nil {
+		t.Fatalf("InstallUnits: %v", err)
+	}
+
+	enabledAt, startedAt := -1, -1
+	for i, c := range runner.Calls() {
+		switch strings.Join(c.Argv[1:], " ") {
+		case "enable demo-backup.timer":
+			enabledAt = i
+		case "start demo-backup.timer":
+			startedAt = i
+		}
+	}
+	if startedAt < 0 {
+		t.Fatalf("the timer was enabled and never started, so it waits for a "+
+			"reboot to fire:\n%s", runner.CommandLines())
+	}
+	if startedAt < enabledAt {
+		t.Errorf("the timer was started before it was enabled:\n%s", runner.CommandLines())
+	}
+	if runner.Ran("start demo.service") {
+		t.Errorf("the product's service was started, which runs apply outside boot:\n%s",
+			runner.CommandLines())
+	}
+	if runner.Ran("start demo-backup.service") {
+		t.Errorf("the oneshot backup service was started:\n%s", runner.CommandLines())
+	}
+
+	// A reconciliation enables nothing that exists, so it starts nothing
+	// either: a timer the operator stopped with `disable --now` stays stopped.
+	afterFirst := len(runner.Calls())
+	if err := s.InstallUnits(ctx, units, ports.EnableNew); err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+	if ranIn(runner.Calls()[afterFirst:], "start") {
+		t.Errorf("a reconciliation started a unit it did not enable:\n%s", runner.CommandLines())
+	}
+}
+
+// A timer that cannot be started fails the install, and the rollback undoes
+// the enable. A timer reported as installed that never fires is the defect
+// above, arriving through an error path nobody would read.
+func TestAStartThatFailsRollsTheEnableBack(t *testing.T) {
+	runner := fakes.NewScripted()
+	runner.OnError("start demo-backup.timer", &exec.ExitError{
+		Argv: []string{"systemctl", "start", "demo-backup.timer"}, ExitCode: 1,
+	})
+	s := systemd.New(runner, systemd.WithUnitDir(t.TempDir()),
+		systemd.WithSystemctl("/usr/bin/systemctl"))
+
+	err := s.InstallUnits(context.Background(), []ports.Unit{
+		{Name: "demo-update.timer", Contents: []byte("x"), Enable: true},
+		{Name: "demo-backup.timer", Contents: []byte("y"), Enable: true},
+	}, ports.EnableNew)
+	if err == nil {
+		t.Fatal("a timer that could not be started was reported as installed")
+	}
+
+	for _, want := range []string{
+		"stop demo-update.timer", "disable demo-update.timer", "disable demo-backup.timer",
+	} {
+		if !runner.Ran(want) {
+			t.Errorf("the rollback did not %s:\n%s", want, runner.CommandLines())
+		}
+	}
+}
+
 // enablesSince counts `systemctl enable` calls made after the first n calls.
 //
 // Positional rather than a reset on the runner, so the assertion is about one

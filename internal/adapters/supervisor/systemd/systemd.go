@@ -138,11 +138,18 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 	// are disabled again, and the files it created are removed. Files it
 	// *overwrote* stay, because their previous contents are gone either way
 	// and their existence was not this call's doing.
-	var enabled []string
+	var enabled, started []string
 	rollback := func() {
 		// Best-effort throughout: this runs while returning somebody
 		// else's error, and a cleanup that fails must not replace the
 		// failure that caused it.
+		//
+		// Stopped before anything is disabled or removed, for the reason
+		// RemoveUnits stops first: a timer left running over a deleted
+		// file is one systemd can no longer describe.
+		for _, name := range started {
+			_ = s.Stop(ctx, name)
+		}
 		for _, name := range enabled {
 			_ = s.Disable(ctx, name)
 		}
@@ -175,6 +182,24 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 			return err
 		}
 		enabled = append(enabled, u.Name)
+
+		// A timer is started as well as enabled, and only a timer (#139).
+		// `enable` links it into timers.target, which is reached at boot,
+		// so a schedule set by `config set` or `init` did not fire until
+		// the next reboot. The product's service is enabled and left
+		// alone: starting it runs `apply --startup`, which is boot's.
+		//
+		// Started only where this call enables, so a reconciliation that
+		// leaves an operator's `disable --now` alone leaves it stopped
+		// too. A schedule rewritten under a running timer needs no
+		// restart: the reload above re-arms it from the new file.
+		if strings.HasSuffix(u.Name, ".timer") {
+			if err := s.Start(ctx, u.Name); err != nil {
+				rollback()
+				return err
+			}
+			started = append(started, u.Name)
+		}
 	}
 	return nil
 }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A timer that `init` or `config set` installed did not fire until the next reboot.** The backup, update and fleet timers were enabled and never started, so `systemctl list-timers` showed no next run and the schedule an operator had just set waited for a boot. A timer is now started when it is enabled. The product's own service is still only enabled, because starting it runs `apply --startup`. A timer an operator disabled stays stopped. On a machine set up by an earlier version, `morzer init --repair` starts its timers, and so does a reboot.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the
