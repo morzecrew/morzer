@@ -68,6 +68,21 @@ func newInitCommand(app *App) *cobra.Command {
 				}
 				product = manifest.Metadata.Name
 			}
+			// A repair is about an installation that exists, so it
+			// finds it the way every other command does: the one this
+			// machine has, or the one --config or the environment
+			// named. `doctor` prints `morzer init --repair` as a
+			// remedy, and it refused as printed by asking for a name
+			// nothing else needed. Two installations and no name is
+			// still refused, naming them.
+			if product == "" && repair {
+				if err := app.Deps.RequireInstallationChosen(); err != nil {
+					return err
+				}
+				if app.Deps.ProductNamed || len(app.machineProducts) == 1 {
+					product = app.Deps.Paths.Product
+				}
+			}
 			// A missing product name is not fatal at a terminal: the
 			// wizard below asks for it. It is fatal everywhere else,
 			// and the check moved after the wizard for that reason.
