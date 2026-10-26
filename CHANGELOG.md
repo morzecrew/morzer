@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed migration service's output was lost unless `--verbose` was passed.** A `runtime-service` migrate step that exited non-zero reported only its exit code, and the hint sent the operator to a log that did not hold the output. The container is removed when it exits and the journal keeps no output, so a unit started by systemd, which runs without `--verbose`, lost the migration's error entirely. The error now quotes the last lines the container printed, as a failed hook's does, taken from both streams in the order they arrived, so a migration that reports its failure on stdout is not quoted as Compose's own progress on stderr.
+
 ## [0.6.0] - 2026-10-20
 
 Two things that live on the machine. A pruned release's images now leave the

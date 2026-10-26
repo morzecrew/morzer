@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -145,6 +146,49 @@ func TestAFailedMigrationServicePutsThePreviousReleaseBack(t *testing.T) {
 	assert.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err), "a failed migration still needs a person")
 	require.Len(t, h.Runtime.UpConfigs, ups+1, "the previous release was not brought back")
 	assert.Equal(t, "1.2.0", h.Runtime.UpConfigs[ups].Env["DEMO_VERSION"])
+}
+
+// A failed migration service's output existed nowhere once the step ended
+// (#141): the container ran with --rm, the journal keeps no output, and plain
+// mode prints it only under --verbose, which a unit started by systemd does not
+// pass. The hint sent the operator to a log that did not hold it. The error now
+// quotes what the service said last, as a failed hook's does -- here on stdout,
+// after Compose's own progress on stderr, which is where a real run puts it.
+func TestAFailedMigrationServiceQuotesWhatItSaidLast(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageRecoverableUpgradeSource(t, h)
+	withMigrateSteps(t, src,
+		"    - kind: runtime-service\n      service: app\n"+
+			"    - kind: hook\n      command: [\"hooks/migrate\"]\n", nil)
+	h.Runtime.OneShotResults = map[string]ports.ExitResult{"app": {
+		ExitCode: 1,
+		Stdout:   "migrating to V3\nERROR: relation \"orders\" already exists\n",
+		Stderr:   " Container demo-app-run-1 Creating\n Container demo-app-run-1 Created\n",
+		Output: " Container demo-app-run-1 Creating\n Container demo-app-run-1 Created\n" +
+			"migrating to V3\nERROR: relation \"orders\" already exists\n",
+	}}
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+
+	// The step's own failure, as the presenters print it: its message on
+	// the `failed:` line, its hint beneath.
+	var failed *domain.Error
+	for _, e := range h.Events.OfKind(events.KindStepFinished) {
+		if e.StepID == "migrate" && e.Err != nil {
+			failed = e.Err
+		}
+	}
+	require.NotNil(t, failed, "the migrate step reported no failure")
+	assert.Contains(t, failed.Message, `exited with code 1: `+
+		`Container demo-app-run-1 Created; migrating to V3; ERROR: relation "orders" already exists`)
+	assert.NotContains(t, failed.Hint, "in the log",
+		"the hint names a log that does not hold the output")
 }
 
 // tellsContext appends the operation it runs under, the version it replaces and

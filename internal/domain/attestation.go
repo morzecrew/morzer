@@ -289,7 +289,7 @@ const MaxAttestedText = 300
 // RFC 0025 §10 named this risk and P1 did not act on it: **a step's text is not
 // all the manager's own words.** A failing hook contributes the last three
 // lines of its stderr to the step's error, and a hook ships with the release --
-// so vendor-controlled output reaches a signed artifact. `lastLines` bounds it
+// so vendor-controlled output reaches a signed artifact. `LastLines` bounds it
 // by lines, which is not a bound at all: three lines of a script that prints a
 // megabyte without a newline is a megabyte.
 //

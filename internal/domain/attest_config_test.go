@@ -93,7 +93,7 @@ func TestNothingToCompareIsNotAFinding(t *testing.T) {
 // A step's text is not all the manager's own words, and the statement travels.
 //
 // A failing hook contributes the last three lines of its stderr to the step's
-// error, and a hook ships with the release. `lastLines` bounds it by lines,
+// error, and a hook ships with the release. `LastLines` bounds it by lines,
 // which is no bound at all when a line can be a megabyte -- and P4 pushes the
 // document to a bucket automatically.
 func TestAStepsTextCannotCarryWhateverAHookPrinted(t *testing.T) {

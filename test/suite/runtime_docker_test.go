@@ -379,6 +379,48 @@ services:
 	assert.True(t, db.Running(), "the database the migration depends on is %q", db.State)
 }
 
+// TestComposeRunOneShotOutputEndsWithWhatTheContainerSaid is why a failed
+// migration service is quoted from Output and not from Stderr (#141).
+//
+// `compose run` writes its own progress to stderr before the container starts,
+// so a migration that reports its failure on stdout -- as a twelve-factor
+// application logging there does -- leaves Compose's progress as the last
+// lines of stderr. A scripted runner prints whatever it is told to, so this
+// asks the daemon.
+func TestComposeRunOneShotOutputEndsWithWhatTheContainerSaid(t *testing.T) {
+	dockerlab.Require(t)
+	dockerlab.Pull(t, dockerlab.ImageBusybox)
+
+	cfg := dockerlab.Project(t, fmt.Sprintf(`
+services:
+  db:
+    image: %[1]s
+    command: ["sleep", "300"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 1s
+      retries: 5
+  migrate:
+    image: %[1]s
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "echo 'migrating to V3'; echo 'ERROR: relation orders already exists'; exit 1"]
+`, dockerlab.ImageBusybox))
+
+	res, err := compose.New(infraexec.New()).RunOneShot(context.Background(), cfg, "migrate",
+		ports.RunOptions{Remove: true, Timeout: 2 * time.Minute})
+	require.NoError(t, err)
+	require.Equal(t, 1, res.ExitCode, "%s%s", res.Stdout, res.Stderr)
+
+	assert.True(t, strings.HasSuffix(res.Output, "ERROR: relation orders already exists"),
+		"Output does not end with what the container said last:\n%s", res.Output)
+	assert.NotContains(t, domain.LastLines(res.Stderr, 1), "ERROR",
+		"stderr ended with the container's line, so quoting it would have been enough; "+
+			"if Compose stopped writing progress there, this test's premise is gone")
+}
+
 // TestComposeRunOneShotOnAMisnamedServiceIsAnExitNotAnError records the edge
 // of the "a non-zero exit is data" rule.
 //
