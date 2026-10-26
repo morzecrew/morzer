@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
+	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/fakes"
@@ -145,4 +147,36 @@ func TestARepairReAssertsEnablement(t *testing.T) {
 		"a repair left the timer switched off, so nothing can undo a mistaken disable")
 	assert.Contains(t, issued, "enable demo.service",
 		"a repair left the product's own service switched off")
+}
+
+// A repair whose unit install fails leaves the units it found. The install
+// already undoes its own changes; the step's compensator then removed every
+// managed unit as well, so a timer that would not start during `init --repair`
+// took the product's service file with it.
+func TestAFailedRepairKeepsTheUnitsItFound(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	_, recoveryPub := generateRecoveryKey(t)
+	h := initOriginMachine(t, ctx, recoveryPub)
+
+	unitDir := t.TempDir()
+	runner := fakes.NewScripted()
+	h.Deps.Supervisor = availableSupervisor{Supervisor: systemd.New(runner, systemd.WithUnitDir(unitDir))}
+	units, err := h.Deps.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, h.Deps.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
+	require.FileExists(t, filepath.Join(unitDir, "demo.service"))
+
+	runner.OnError("start demo-backup.timer", &exec.ExitError{
+		Argv: []string{"systemctl", "start", "demo-backup.timer"}, ExitCode: 1,
+	})
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", Repair: true, RecoveryRecipient: recoveryPub,
+		InstallUnits: true,
+	})
+	require.Error(t, err)
+
+	assert.FileExists(t, filepath.Join(unitDir, "demo.service"),
+		"a failed repair removed the product's service, which it had found installed")
 }
