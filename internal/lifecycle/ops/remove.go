@@ -271,8 +271,9 @@ func removeSteps(
 //
 // First, so no timer starts an update or a backup while the rest goes.
 func stepRemoveUnits(d *Deps) engine.Step {
+	// The files on disk, whether or not systemd is running to act on them.
 	installed := func(ctx context.Context) ([]string, error) {
-		if d.Supervisor == nil || !d.Supervisor.Available(ctx) {
+		if d.Supervisor == nil {
 			return nil, nil
 		}
 		return d.Supervisor.InstalledUnits(ctx, d.Paths.Product)
@@ -291,6 +292,15 @@ func stepRemoveUnits(d *Deps) engine.Step {
 			units, err := installed(ctx)
 			if err != nil {
 				return err
+			}
+			// Left and said, not removed: with nothing to stop or disable
+			// them, deleting the files leaves enablement links pointing
+			// at nothing, and saying nothing leaves the product starting
+			// at the next boot that runs systemd.
+			if !d.Supervisor.Available(ctx) {
+				st.Warn("%s left in place: systemd is not running here, so they cannot be "+
+					"stopped or disabled; remove them once it is", strings.Join(units, ", "))
+				return nil
 			}
 			st.Detail("%s", strings.Join(units, ", "))
 			// Every managed name rather than the installed ones, as

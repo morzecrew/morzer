@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/target"
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
 
@@ -350,4 +352,22 @@ func TestUnitsLeftWithoutDirectoriesAreStillRemoved(t *testing.T) {
 
 	assert.Equal(t, domain.StatusSucceeded, res.Record.Status)
 	assert.Empty(t, h.Supervisor.Installed)
+}
+
+// A host where systemd is not running cannot stop or disable a unit, and the
+// files left behind start the product at the next boot that has it -- so the
+// removal says so rather than reporting the step done.
+func TestUnitsAHostCannotStopAreReportedNotIgnored(t *testing.T) {
+	h, inst := removable(t)
+	h.Supervisor.Present = false
+
+	var warned string
+	h.Deps.Bus.SubscribeFunc(func(e events.Event) {
+		if e.Level == events.LevelWarn && strings.Contains(e.Message, "demo.service") {
+			warned = e.Message
+		}
+	})
+
+	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
+	assert.NotEmpty(t, warned, "unit files were left in place without a word")
 }
