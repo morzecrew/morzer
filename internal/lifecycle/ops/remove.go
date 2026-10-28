@@ -372,6 +372,16 @@ func stepTakeDownProject(
 					Options:    inst.RuntimeOptions,
 					WorkingDir: empty,
 				}
+				// Every converge records the options, so only an
+				// installation that has not converged since they were
+				// recorded gets here without them -- and then the
+				// release that named its project is the one that cannot
+				// be read.
+				if inst.RuntimeOptions == nil {
+					st.Warn("this installation records no runtime options, so its project is "+
+						"taken to be named %s; if its release named another, that project "+
+						"is left running", inst.Product)
+				}
 			}
 			st.Detail("%s", how())
 			return d.Runtime.Down(ctx, cfg, ports.DownOptions{

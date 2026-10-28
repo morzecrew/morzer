@@ -402,3 +402,21 @@ func TestAPurgePlanClaimsToKeepNothing(t *testing.T) {
 	})
 	assert.Empty(t, report.Kept)
 }
+
+// An installation that never recorded its runtime options, whose release cannot
+// be read either, has nothing left that names its project; the removal says it
+// assumed the product's name rather than claiming the project is down.
+func TestAProjectNamedByNothingIsAssumedOutLoud(t *testing.T) {
+	h, inst := removable(t)
+	ctx := context.Background()
+	inst.RuntimeOptions = nil
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	require.NoError(t, os.RemoveAll(h.Release.Root))
+
+	var warned bool
+	h.Deps.Bus.SubscribeFunc(func(e events.Event) {
+		warned = warned || (e.Level == events.LevelWarn && strings.Contains(e.Message, "no runtime options"))
+	})
+	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
+	assert.True(t, warned)
+}
