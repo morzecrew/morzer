@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -256,14 +257,18 @@ func removeSteps(
 	if purge {
 		steps = append(steps, stepRemoveEntries("remove-data",
 			"remove data, backups and attestations", d.Paths.VarDir,
-			keepNames(filepath.Base(d.Paths.ManagerDir())), ""))
+			keepNames(filepath.Base(d.Paths.ManagerDir())), "", ""))
 	}
 	return append(steps,
 		stepRemoveEntries("remove-configuration", "remove configuration and keys",
 			d.Paths.EtcDir, d.configurationKept(purge),
-			"and the signing key last, once it has signed this removal's statement"),
+			"and the signing key last, once it has signed this removal's statement", ""),
+		// The record last within the step, as the step is last within
+		// the operation: a failure part way leaves the confirmation a
+		// retry has to ask for.
 		stepRemoveEntries("forget-installation", "forget the installation",
-			d.Paths.ManagerDir(), d.managerKept(purge), ""),
+			d.Paths.ManagerDir(), d.managerKept(purge), "",
+			filepath.Base(d.Paths.InstallationState())),
 	)
 }
 
@@ -451,9 +456,9 @@ func stepRemoveTree(id, description, dir string) engine.Step {
 }
 
 // stepRemoveEntries removes everything directly under dir that keep does not
-// name. The note finishes the plan's line, for what the step leaves to after
-// the operation.
-func stepRemoveEntries(id, description, dir string, keep func(string) bool, note string) engine.Step {
+// name, and the entry called last after all the others. The note finishes the
+// plan's line, for what the step leaves to after the operation.
+func stepRemoveEntries(id, description, dir string, keep func(string) bool, note, last string) engine.Step {
 	return engine.Step{
 		ID:          id,
 		Description: description,
@@ -469,6 +474,9 @@ func stepRemoveEntries(id, description, dir string, keep func(string) bool, note
 			if err != nil {
 				return err
 			}
+			slices.SortStableFunc(names, func(a, b string) int {
+				return cmp.Compare(boolRank(a == last), boolRank(b == last))
+			})
 			for _, name := range names {
 				if err := atomicfs.RemoveAll(filepath.Join(dir, name)); err != nil {
 					return err
@@ -508,6 +516,14 @@ func removableEntries(dir string, keep func(string) bool) ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// boolRank orders false before true.
+func boolRank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func keepNames(names ...string) func(string) bool {

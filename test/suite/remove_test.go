@@ -371,3 +371,24 @@ func TestUnitsAHostCannotStopAreReportedNotIgnored(t *testing.T) {
 	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
 	assert.NotEmpty(t, warned, "unit files were left in place without a word")
 }
+
+// forget-installation forgets the record last, so a failure part way through
+// it still leaves the confirmation a retry has to ask for.
+func TestAFailedForgetKeepsTheRecordForTheRetry(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root removes what a 0500 directory holds, so this arrangement proves nothing")
+	}
+	h, inst := removable(t)
+	stuck := filepath.Join(h.Paths.StagingDir(), "stuck")
+	require.NoError(t, os.MkdirAll(stuck, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(stuck, "f"), nil, 0o644))
+	require.NoError(t, os.Chmod(stuck, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(stuck, 0o755) })
+
+	_, err := ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID,
+	})
+	require.Error(t, err)
+	assert.FileExists(t, h.Paths.InstallationState(),
+		"a retry would no longer ask for the production installation's id")
+}
