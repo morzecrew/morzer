@@ -152,6 +152,14 @@ func (p Paths) LockFile(name string) string {
 	return filepath.Join(p.LockDir(), name+".lock")
 }
 
+// RemovedJournalFile is where `installation remove` moves the journal once it
+// has finished, named after the removal, so a later `init` starts with an empty
+// one and the history stays on disk under a name that says what happened to it
+// (RFC 0034 decision 8).
+func (p Paths) RemovedJournalFile(opID string) string {
+	return filepath.Join(p.ManagerDir(), "operations-removed-"+opID+".jsonl")
+}
+
 // Ephemeral state. Decrypted secrets never leave RunDir.
 
 func (p Paths) SecretsRenderDir() string { return filepath.Join(p.RunDir, "secrets") }

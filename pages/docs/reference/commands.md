@@ -97,7 +97,7 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`secret`](secret-commands.md) | Manage the encrypted secret state. |
 | [`release`](release-commands.md) | Inspect and manage release bundles. |
 | [`ls`](installation-commands.md#installation-list) | List the installations on this machine. |
-| [`installation`](installation-commands.md) | List, export and rebuild installations. |
+| [`installation`](installation-commands.md) | List, export, rebuild and remove installations. |
 
 ---
 

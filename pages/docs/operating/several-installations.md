@@ -236,6 +236,22 @@ morzer --product sandbox config set http_port=18081
 morzer --product sandbox apply
 ```
 
+## Taking one off the machine
+
+```sh
+morzer --product demo installation remove --force --confirm <installation-id>
+```
+
+This removes one installation and nothing of another. Every path, unit and lock
+it touches is derived from `demo`. The images it removes are only those that no
+release of *any* installation names, the same rule `release prune` follows. A
+glob typed by hand, such as `/etc/systemd/system/demo*`, also matches
+`demo-admin`'s units.
+
+By default the data, and the keys that read it, stay on the machine. See
+[`installation remove`](../reference/installation-commands.md#installation-remove)
+for what goes and what stays.
+
 ## What is deliberately not here
 
 **No `--all`.** There is no `morzer update --all`, and there will not be. Three
@@ -263,4 +279,5 @@ somebody is reading it.
 
 - [`morzer ls`](../reference/installation-commands.md#installation-list) — the command surface
 - [Recovering a lost machine](recovering-a-lost-machine.md) — rebuilding one installation
+- [`installation remove`](../reference/installation-commands.md#installation-remove) — taking one off the machine
 - [Changing configuration](changing-configuration.md) — `config set`, which is how a port moves

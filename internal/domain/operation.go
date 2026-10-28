@@ -30,6 +30,11 @@ const (
 	// needs to see, at a glance, that this machine's identity was assumed
 	// rather than created.
 	OpTypeImport OperationType = "import"
+
+	// OpTypeRemove takes an installation off the machine (RFC 0034). Its
+	// record is the last one the installation's journal holds, and the
+	// journal is renamed after it so a later `init` starts with none.
+	OpTypeRemove OperationType = "remove"
 )
 
 // OperationStatus is the lifecycle of one operation.
