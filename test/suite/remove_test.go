@@ -392,3 +392,13 @@ func TestAFailedForgetKeepsTheRecordForTheRetry(t *testing.T) {
 	assert.FileExists(t, h.Paths.InstallationState(),
 		"a retry would no longer ask for the production installation's id")
 }
+
+// A plan writes no statement, so under --purge it keeps no attestation either.
+func TestAPurgePlanClaimsToKeepNothing(t *testing.T) {
+	h, inst := removable(t)
+
+	_, report := removeIt(t, h, ops.RemoveOptions{
+		Options: ops.Options{DryRun: true}, Purge: true, ConfirmedInstallationID: inst.ID,
+	})
+	assert.Empty(t, report.Kept)
+}

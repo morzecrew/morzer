@@ -211,7 +211,7 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 			report.Images = images
 		}
 	}
-	report.Kept = d.keptAfterRemoval(opts.Purge, report.Journal)
+	report.Kept = d.keptAfterRemoval(opts.Purge, opts.DryRun, report.Journal)
 
 	out := Result{Record: result.Record, Data: report}
 	if runErr != nil {
@@ -613,8 +613,13 @@ func (d *Deps) finishRemoval(opID string) string {
 
 // keptAfterRemoval lists the paths a removal leaves, or would leave, that are
 // on disk now.
-func (d *Deps) keptAfterRemoval(purge bool, journal string) []string {
-	candidates := []string{d.Paths.AttestationsDir()}
+func (d *Deps) keptAfterRemoval(purge, dryRun bool, journal string) []string {
+	var candidates []string
+	// Under --purge the directory survives only to hold the removal's own
+	// statement, which a plan does not write.
+	if !purge || !dryRun {
+		candidates = append(candidates, d.Paths.AttestationsDir())
+	}
 	if !purge {
 		candidates = append(candidates,
 			d.Paths.DataDir(), d.Paths.BackupsDir(), d.Paths.SecretsFile(), d.Paths.AgeDir())
