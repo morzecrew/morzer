@@ -448,7 +448,8 @@ vendor's. Its error names the exit code and quotes none of the output, which the
 journal does not keep.
 
 Not an interactive session: there is no TTY and no stdin. `--dry-run` lists the
-steps and the command the task would run.
+steps and the command the task would run. The arguments in that command are
+scrubbed, as they are in the journal, and left out when they cannot be.
 
 The journal keeps the task's name, its service and the arguments, with this
 installation's known secret values scrubbed first, and never the output. When

@@ -161,3 +161,33 @@ packages ran.
   `ServiceImages`, not re-measured here.
 
 **Drift count: 0.**
+
+## Review, round 1 (2026-10-28)
+
+A plan's step line follows decision 13, as the journal does. Its arguments are
+scrubbed, and when this installation's secret values cannot be loaded to scrub
+them, the line names how many it left out. Decision 13 covered the journal. The
+plan prints the same command line to a terminal and to `--json`, and printed it
+raw whenever nothing could scrub it.
+
+```divergence
+decision: 13
+grade: ASSUMED
+class: spec-gap
+at: 2026-10-28T20:28:21Z
+attempt: 2
+claim: decision 13 keeps unscrubbed arguments out of the journal, and the plan's run-task line printed them whenever the redactor could not be armed
+evidence: internal/lifecycle/ops/task.go:270-282
+action: departed
+proposal: ASSUMED — the rule of decision 13 holds for the plan as well: run-task's plan line scrubs the operator's arguments, or names how many it left out when they cannot be scrubbed.
+```
+
+Validation of a task tightened in two places. Neither changes a decision
+recorded above.
+- A `command` whose first entry is empty or blank is refused, because Compose
+  would be asked to run a program with no name.
+- A `description` goes through `ValidateSingleLine`: one line, no control
+  characters, at most 200 characters. It is printed to a terminal, and a
+  bundle's signature is optional.
+
+**Drift count: 0.**

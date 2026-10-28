@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -289,4 +290,24 @@ func TestTaskListSaysWhichTasksThisMachineMayRun(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tasks, 1)
 	assert.True(t, tasks[0].Allowed)
+}
+
+// A plan prints the step it would run, and the operator's arguments are as
+// sensitive there as in the journal: unscrubbed, they are left out of it too.
+func TestAPlanShowsNoArgumentItCouldNotScrub(t *testing.T) {
+	const secret = "a-real-database-password"
+	h := taskHarness(t, domain.ModeDev, seedTask)
+	h.Deps.Redactor = logging.NewRedactor()
+	h.Secrets.Fail["Load"] = domain.SecretsError(nil, "no age identity on this machine")
+
+	_, err := ops.RunTask(context.Background(), h.Deps, ops.TaskOptions{
+		Name: "seed", Args: []string{"--password", secret}, Options: ops.Options{DryRun: true},
+	})
+	require.NoError(t, err)
+
+	plans := h.Events.OfKind(events.KindPlan)
+	require.NotEmpty(t, plans)
+	for _, step := range plans[len(plans)-1].Plan {
+		assert.NotContains(t, step.Description, secret, "the plan printed an argument it could not scrub")
+	}
 }

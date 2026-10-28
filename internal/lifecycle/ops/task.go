@@ -152,7 +152,7 @@ func RunTask(ctx context.Context, d *Deps, opts TaskOptions) (Result, error) {
 		Type:        domain.OpTypeTask,
 		Description: "run task " + opts.Name,
 		To:          rel.Version(),
-		Steps:       taskSteps(d, inst, rel, opts, task),
+		Steps:       taskSteps(d, inst, rel, opts, task, armed),
 		Flags:       d.taskFlags(opts, task, armed),
 	}
 
@@ -238,18 +238,22 @@ func (d *Deps) taskFlags(opts TaskOptions, task domain.TaskSpec, armed bool) map
 // configuration live on tmpfs -- finds the files the service's Compose file
 // mounts, and a task on an unchanged machine rewrites nothing. No pull and no
 // migration: the release was applied, and a task is not a converge.
-func taskSteps(d *Deps, inst domain.Installation, rel domain.Release, opts TaskOptions, task domain.TaskSpec) []engine.Step {
+func taskSteps(
+	d *Deps, inst domain.Installation, rel domain.Release, opts TaskOptions, task domain.TaskSpec, armed bool,
+) []engine.Step {
 	return []engine.Step{
 		stepLoadSecrets(d, inst, rel),
 		stepRenderSecrets(d, inst, rel, opts.Options),
 		stepRenderConfiguration(d, inst, rel, opts.Options),
 		stepValidateRuntime(d, inst, rel, opts.Options),
-		stepRunTask(d, inst, rel, opts, task),
+		stepRunTask(d, inst, rel, opts, task, armed),
 	}
 }
 
 // stepRunTask runs the task's container to completion.
-func stepRunTask(d *Deps, inst domain.Installation, rel domain.Release, opts TaskOptions, task domain.TaskSpec) engine.Step {
+func stepRunTask(
+	d *Deps, inst domain.Installation, rel domain.Release, opts TaskOptions, task domain.TaskSpec, armed bool,
+) engine.Step {
 	argv := append(slices.Clone(task.Command), opts.Args...)
 	timeout := task.Timeout.Or(domain.DefaultOperationTimeout)
 
@@ -264,8 +268,17 @@ func stepRunTask(d *Deps, inst domain.Installation, rel domain.Release, opts Tas
 		// to clear the flag without looking (RFC 0035 decision 9).
 		OnFailure: engine.Abort,
 		Timeout:   timeout,
+		// The operator's arguments by the journal's rule (decision 13):
+		// scrubbed, or left out when nothing could scrub them. The
+		// release's own command is the vendor's and holds no operator
+		// value.
 		PlanDetail: func(ctx context.Context, st *engine.State) (string, string) {
-			return d.redactArgv(argv), ""
+			if armed || len(opts.Args) == 0 {
+				return d.redactArgv(argv), ""
+			}
+			return fmt.Sprintf("%s, and %d argument(s) not shown: this installation's "+
+				"secret values could not be loaded to scrub them",
+				d.redactArgv(task.Command), len(opts.Args)), ""
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
