@@ -440,7 +440,9 @@ the container starts, rather than reported through an exit code that would pass
 for the task's own.
 
 The task's output is printed when it finishes: its stdout on stdout, so a report
-can be piped to a file, and its stderr on stderr. The live view tails it while
+can be piped to a file, and its stderr on stderr. It is kept line by line and
+printed ending in a newline. As with `exec`, the first 256 KiB of each is kept,
+so a longer report is cut. The live view tails it while
 it runs, and `--verbose` prints it as it arrives. The invocation exits with the
 task's own exit code. A non-zero exit fails the operation: it is `failed`, with
 nothing rolled back and nothing flagged, since the task's effects are the
