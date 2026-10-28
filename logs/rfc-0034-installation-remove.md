@@ -158,3 +158,46 @@ tests and the docs.
 - **An installation from before runtime options were recorded,** whose release
   also cannot be read, is taken down under the product name. If its release had
   set another project, that `down` finds nothing and leaves its containers.
+
+## Review, round 1 (2026-10-28)
+
+Two reviewer findings changed behaviour the RFC describes. They are recorded
+here because each is a decision. The other review fixes followed what the RFC
+says: the record is forgotten last within its step, and a purge plan does not
+claim to keep the attestations. Neither needed an entry.
+
+A removal that waited for the lock re-checks the installed release under it, as
+`apply`, `update`, `rollback`, `backup` and `restore` do. The RFC planned from
+the release it read before waiting. An update queued ahead would then have the
+project taken down with the files of a release that is no longer running.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-10-28T20:21:15Z
+attempt: 2
+claim: §5.3 takes the project down with the current release's files and does not say that release can move while the removal waits for the lock
+evidence: internal/lifecycle/ops/remove.go:151-161
+action: decided
+proposal: ASSUMED — under the lock the removal refuses, as the other operations do, when the installed release moved while it waited (`refuseMovedRelease`).
+```
+
+Unit files on a host where systemd is not running are left in place, with a
+warning naming them. §5.3 skips the step when there is no supervisor. That read
+"systemd is absent" as "there are no units", and left files that start the
+product at the next boot that runs systemd, without saying so. Deleting them is
+no better: with nothing to disable them, their enablement links would point at
+nothing.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-10-28T20:21:15Z
+attempt: 2
+claim: §5.3 skips remove-units when no supervisor is available, which leaves unit files in place and reports the step done
+evidence: internal/lifecycle/ops/remove.go:300-311
+action: decided
+proposal: ASSUMED — remove-units looks for the unit files whether or not systemd runs; when it does not, the step leaves them and warns, naming each.
+```

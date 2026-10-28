@@ -111,11 +111,12 @@ func newInstallationRemoveCommand(app *App) *cobra.Command {
 			"Keeps the data and what unlocks it: the named volumes, the data and\n" +
 			"backup directories, the attestations, the journal, the secret state and\n" +
 			"the machine key. --purge removes those too. Nothing on a backup target\n" +
-			"is touched either way.\n\n" +
+			"is removed either way; the removal's own attestation is pushed there.\n\n" +
 			"Destructive: requires --force, and on a production installation\n" +
 			"--confirm <installation-id> as well. A machine left by a failed first\n" +
-			"install, with no installation record, is cleaned with --product.",
-		Example: "  morzer installation remove --dry-run\n" +
+			"install, with no installation record, is cleaned with --product. A plan\n" +
+			"is confirmed like the removal, so --dry-run takes the same flags.",
+		Example: "  morzer installation remove --dry-run --force --confirm inst_01K2Z9X7QK\n" +
 			"  morzer installation remove --force --confirm inst_01K2Z9X7QK\n" +
 			"  morzer installation remove --product demo --force --purge",
 		Args: cobra.NoArgs,

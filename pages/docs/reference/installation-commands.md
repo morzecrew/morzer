@@ -296,7 +296,7 @@ reason naming a field that no longer exists.
 ### installation remove
 
 ```sh
-morzer installation remove --dry-run
+morzer installation remove --dry-run --force --confirm <installation-id>
 morzer installation remove --force --confirm <installation-id>
 morzer installation remove --force --purge --confirm <installation-id>
 ```
@@ -311,6 +311,9 @@ step, and plannable with `--dry-run`.
 | `--force` | Required. Removal is destructive on every machine. |
 | `--confirm` | The installation id, typed out. Required on a production installation, as it is for [`restore`](commands.md#restore). A dev installation needs `--force` alone, and a typed id that names another installation is refused on either. |
 | `--purge` | Also remove the data and what unlocks it — see below. |
+
+A plan is confirmed like the removal itself, because `--dry-run` refuses
+whatever the operation would refuse. Pass it the same flags.
 
 #### What goes and what stays
 
@@ -338,8 +341,9 @@ product again on this machine runs against the kept volumes with the
 credentials they were created with. When you are moving the product off this
 machine for good, pass `--purge`.
 
-**Nothing on a backup target is touched,** `--purge` included. Remote backups
-and attestations are the record that outlives the machine.
+**Nothing on a backup target is removed,** `--purge` included. Remote backups
+and attestations are the record that outlives the machine, and the removal adds
+its own statement to them.
 
 The command ends by saying what it kept and where; `--json` carries the same
 list as `data.kept`.
@@ -348,7 +352,9 @@ list as `data.kept`.
 
 Like other operations, the removal journals its steps and files a signed
 [attestation](attestations.md), which it pushes to the configured targets. The
-signing key is the last thing removed, after it has signed that statement.
+signing key is the last thing removed, after the statement is written. A
+statement that cannot be signed is filed unsigned with a warning, as any
+operation's is, and the key is removed all the same.
 
 The journal is then renamed to
 `/var/lib/<product>/manager/operations-removed-<operation-id>.jsonl`. A later
