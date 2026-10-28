@@ -666,6 +666,10 @@ const TaskNamePattern = `^[a-z][a-z0-9-]{0,62}$`
 
 var taskName = regexp.MustCompile(TaskNamePattern)
 
+// maxTaskDescriptionLen bounds a task's description, which `task list` prints
+// as one table cell.
+const maxTaskDescriptionLen = 200
+
 // BackupSpec is what the release says about backing up storage the manager can
 // reach without a client for whatever wrote it.
 //
@@ -1509,12 +1513,19 @@ func (v *validationErrors) checkTask(field, name string, t TaskSpec) {
 	// Required, unlike a migration service's: the service's own command is
 	// the deployment's long-running process, and a task that started it
 	// again would be a second copy of the product rather than a job.
-	if len(t.Command) == 0 {
+	switch {
+	case len(t.Command) == 0:
 		v.add(field+".command", "is required")
+	case strings.TrimSpace(t.Command[0]) == "":
+		// Compose would be asked to run an executable with no name, and
+		// the task would fail only when an operator ran it.
+		v.add(field+".command", "must name a program first")
 	}
-	// One line, because `task list` prints it as a table cell.
-	if strings.ContainsAny(t.Description, "\r\n") {
-		v.add(field+".description", "must be a single line")
+	// One line with no control characters, because `task list` prints it
+	// to the operator's terminal as a table cell, and a bundle's signature
+	// is optional.
+	if err := ValidateSingleLine(t.Description, maxTaskDescriptionLen); err != nil {
+		v.add(field+".description", "%s", AsError(err).Message)
 	}
 	// Compared back to its own spelling, so an empty entry -- which
 	// ParseMode reads as production -- and " dev " are refused rather than

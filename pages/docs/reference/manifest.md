@@ -475,8 +475,8 @@ tasks:
 | Field | Type | Required | Meaning |
 | --- | --- | :---: | --- |
 | `service` | string | ✅ | The service to run. One behind a Compose profile that is not active is run too, as `compose run` starts it when named. |
-| `command` | list | ✅ | The command, replacing the service's own. The image's entrypoint still runs, so a wrapper that loads `*_FILE` secrets does its work. |
-| `description` | string | | One line, shown by `morzer task list`. |
+| `command` | list | ✅ | The command, replacing the service's own; the first entry names the program. The image's entrypoint still runs, so a wrapper that loads `*_FILE` secrets does its work. |
+| `description` | string | | One line of at most 200 characters, with no control characters, shown by `morzer task list`. |
 | `args` | bool | | Whether an operator may append arguments after `--`. Default `false`, and arguments to a task without it are refused. |
 | `modes` | list | | The machine modes the task may run on: `dev`, `production`. Absent means every mode. |
 | `timeout` | duration | | Time budget. Default `10m`. |
