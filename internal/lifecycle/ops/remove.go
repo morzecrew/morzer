@@ -148,6 +148,16 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeRemove, opts.Options, func(ctx context.Context) error {
+		// Re-checked under the lock, as every operation planned from the
+		// installed release is: with --wait, an update or a rollback queued
+		// ahead may have moved it, and the project would be taken down
+		// with the files of a release that is no longer the one running.
+		if exists && currentErr == nil {
+			if err := d.refuseMovedRelease(ctx, current); err != nil {
+				return err
+			}
+		}
+
 		// Resolved before the first step, because their credentials are
 		// read from the secret state remove-configuration deletes (§5.4).
 		var targets []ports.TargetRef
