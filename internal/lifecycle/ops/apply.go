@@ -633,6 +633,9 @@ func stepValidateRuntime(d *Deps, inst domain.Installation, rel domain.Release, 
 			if err != nil {
 				return err
 			}
+			// Kept for a task, which names a service and is refused
+			// one the configuration does not define (RFC 0035).
+			st.Set(keyRuntimeServices, rendered.Services)
 			st.Detail("%d service(s)", len(rendered.Services))
 			return nil
 		},

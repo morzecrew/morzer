@@ -44,6 +44,7 @@ published version stays readable until it is explicitly deprecated.
 | `configuration` | list | | Templates rendered to absolute paths on the host. |
 | `secrets` | table | | Where the encrypted state lives and where it renders. |
 | `operations` | map | | Named lifecycle operations: migrate, smoke test, backup, restore. |
+| `tasks` | map | | Commands an operator runs by name with `morzer task run`. |
 | `backup` | table | | What the manager may do about the project's volumes. |
 | `bundle` | table | | What the release says about its own packaging, as distinct from what it needs of the host. |
 | `health` | table | | How to tell whether the product is working. |
@@ -447,6 +448,56 @@ again on the next attempt, and every step runs again on every `apply`.
 list that declares less is refused. A manager older than 0.4.0 cannot read the
 list. The declaration is what makes it refuse the bundle as needing a newer
 manager, instead of reporting a malformed operation.
+
+## tasks
+
+A map of task name to a command an operator runs on demand with
+[`morzer task run`](commands.md#task): filling a sandbox with demo data,
+unlocking a user, rebuilding a search index, printing a diagnostic report. Each
+runs as a one-shot container of a service from the release's runtime
+configuration, through the image's entrypoint, as an operation under the
+deployment lock.
+
+```yaml
+compatibility:
+  min_manager_version: "0.8.0"
+
+tasks:
+  seed:
+    description: Fill an empty database with demo data
+    service: backend
+    command: [seed]
+    args: true
+    modes: [dev]
+    timeout: 10m
+```
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `service` | string | ✅ | The service to run. One behind a Compose profile that is not active is run too, as `compose run` starts it when named. |
+| `command` | list | ✅ | The command, replacing the service's own. The image's entrypoint still runs, so a wrapper that loads `*_FILE` secrets does its work. |
+| `description` | string | | One line, shown by `morzer task list`. |
+| `args` | bool | | Whether an operator may append arguments after `--`. Default `false`, and arguments to a task without it are refused. |
+| `modes` | list | | The machine modes the task may run on: `dev`, `production`. Absent means every mode. |
+| `timeout` | duration | | Time budget. Default `10m`. |
+
+Names are lowercase letters, digits and dashes, starting with a letter, so a
+name is typed on a command line without quoting.
+
+**`modes` is a refusal, not a warning.** A task listing `[dev]` is refused on a
+production machine by name, before anything runs, and `--force` does not
+override it. A machine's mode is fixed when it is created.
+
+A task runs whether or not the deployment is up: the container starts the
+services it `depends_on` first, as a migration service does. It gets the same
+[hook ABI variables](hooks.md#a-migration-service), with `OPERATION_TYPE` and
+`PHASE` set to `task`. Any non-zero exit fails it, `2` included; "nothing to
+do" belongs to migrations.
+
+**Tasks need `min_manager_version: "0.8.0"` or later**, and a manifest declaring
+tasks with less is refused. A manager older than 0.8.0 cannot read `tasks:`, and
+the declaration makes it refuse the bundle as needing a newer manager instead of
+reporting an unknown field.
 
 ## backup
 

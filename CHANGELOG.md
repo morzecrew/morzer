@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A release can declare tasks an operator runs by name.** Filling a sandbox with demo data, unlocking a user or rebuilding an index meant `docker exec` by hand: knowing the Compose project's labels, naming the entrypoint wrapper that loads `*_FILE` secrets, and having the container running, with nothing journalled and nothing stopping a sandbox's seed on production. A manifest's new `tasks:` names a service, a command, whether an operator may append arguments, and the machine modes it may run on. `morzer task list` shows them and whether this machine may run each; `morzer task run <task> [-- args...]` runs one as a one-shot container of the service, through its entrypoint, starting its dependencies, as the operation `task`: under the deployment lock, journalled with its arguments scrubbed of known secret values, attested and notified. A task whose `modes` leave out this machine's is refused by name before anything runs, and `--force` does not override it. The task's output is printed when it finishes, its stdout on stdout, and the invocation exits with the task's own exit code. A manifest with tasks needs `compatibility.min_manager_version: "0.8.0"`, so an older manager says it is too old.
+
 ## [0.7.0] - 2026-10-26
 
 Fixes found by rehearsing the whole lifecycle on rebuilt and unattended
