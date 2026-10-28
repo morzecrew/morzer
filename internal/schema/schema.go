@@ -302,6 +302,7 @@ func tasksSchema(generated any) any {
 		list["items"] = withEnum(list["items"], modes)
 	}
 	atLeastOne(fields["command"], "minItems")
+	atLeastOne(fields["service"], "minLength")
 	task["required"] = []string{"service", "command"}
 	mapping["propertyNames"] = map[string]any{"pattern": domain.TaskNamePattern}
 	return mapping

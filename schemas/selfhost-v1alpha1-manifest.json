@@ -586,6 +586,7 @@
             "type": "array"
           },
           "service": {
+            "minLength": 1,
             "type": "string"
           },
           "timeout": {
