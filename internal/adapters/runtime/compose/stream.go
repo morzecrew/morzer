@@ -133,11 +133,17 @@ func (s *streamCloser) disarmKill() {
 }
 
 func (s *streamCloser) Close() error {
+	// Once Read has reaped the leader at the stream's own end, neither half
+	// is left to do. Wait has closed the pipe, and closing it again reports
+	// os.ErrClosed. The leader's id is free for the kernel to reuse, so a
+	// group signal could land on an unrelated group; the shared runner's
+	// post-Wait sweep keeps the same rule.
+	if s.reaped.Load() {
+		s.disarmKill()
+		return nil
+	}
 	closeErr := s.ReadCloser.Close()
-	// Not once Read has reaped the leader at the stream's own end: its id is
-	// then free for the kernel to reuse, and the signal could land on an
-	// unrelated group. The shared runner's post-Wait sweep keeps the same rule.
-	if s.pgid > 0 && !s.reaped.Load() {
+	if s.pgid > 0 {
 		_ = syscall.Kill(-s.pgid, syscall.SIGTERM)
 	}
 	if s.cmd != nil {

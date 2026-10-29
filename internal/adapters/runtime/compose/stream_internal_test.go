@@ -167,15 +167,18 @@ func TestAStreamThatTheRuntimeFailedEndsWithItsError(t *testing.T) {
 // The other half: a stream that ran to its end, or that morzer stopped, is
 // still a clean EOF.
 func TestAStreamThatEndedOrWasStoppedEndsCleanly(t *testing.T) {
+	// Close is checked too: reading to the end reaps the process, and Wait
+	// closes the pipe Close would otherwise close a second time.
 	done := startShellStream(t, context.Background(), "echo one")
-	defer func() { _ = done.Close() }()
 	if _, err := io.ReadAll(done); err != nil {
 		t.Errorf("a stream that ran to its end reported %v", err)
+	}
+	if err := done.Close(); err != nil {
+		t.Errorf("closing a stream that ran to its end: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	stopped := startShellStream(t, ctx, "echo up; sleep 60")
-	defer func() { _ = stopped.Close() }()
 	reader := bufio.NewReader(stopped)
 	if _, err := reader.ReadString('\n'); err != nil {
 		t.Fatal(err)
@@ -183,5 +186,8 @@ func TestAStreamThatEndedOrWasStoppedEndsCleanly(t *testing.T) {
 	cancel()
 	if _, err := io.ReadAll(reader); err != nil {
 		t.Errorf("a stream morzer stopped reported %v", err)
+	}
+	if err := stopped.Close(); err != nil {
+		t.Errorf("closing a stream morzer stopped: %v", err)
 	}
 }
