@@ -182,6 +182,19 @@ in the manager's state beside the update candidate:
   and is journalled. It is the escape hatch for a vendor who withdrew 1.4.0 and
   told customers to go back to 1.3.x.
 
+**Crash safety.** Nothing here couples two writes that a crash could split.
+
+- The installed floor is not stored apart from the release it guards: it is the
+  version in `current-release.json`, which the state store writes atomically
+  (`atomicfs.WriteFile`) as part of activation. There is no second file whose
+  write could lag the activation and let a later update accept an older release.
+- A channel mark is written after the candidate's bundle is verified and
+  *before* the candidate record (`update-candidate.json`), both atomically. A
+  crash between the two leaves a mark with no candidate, and the next poll stages
+  the same version again, which the mark admits. The other order could leave a
+  staged candidate whose channel mark was never raised, so mark-first is the
+  contract. A crash before either write leaves both as they were.
+
 This closes the rollback attack within a channel for any machine that has
 fetched the newer release from it, and turns the existing downgrade warning into
 a refusal. It does nothing for a machine that never fetched the newer release,
@@ -254,6 +267,9 @@ document signed with the same minisign key that signs their bundles:
 - Suite: `update --check` and a peek seeing a higher tag raise no mark, so a
   registry advertising `9.9.9` blocks nothing; switching to another channel
   starts from that channel's mark.
+- Failure injection: a crash after the channel mark is written and before the
+  candidate record, and one before either, each leave a state the next poll
+  recovers from without admitting an older release.
 - Suite: the channel marks survive a manager restart and an `installation
   export`/import (whether import carries them is §11 row 5).
 - Index (if built): a fixture registry serving a valid index; a replayed index
@@ -318,6 +334,7 @@ document signed with the same minisign key that signs their bundles:
 | 12 | `ASSUMED` | Only a bundle that was fetched and verified raises a channel mark. A peek and `update --check` see tags and manifest digests, so they raise nothing: a registry advertising a false high version must not be able to block real releases below it. |
 | 13 | `ASSUMED` | A channel is identified by its reference after `ports.RedactRefCredentials`, in the stored key and in every message and journal entry that names it. |
 | 14 | `ASSUMED` | The installed floor covers every install path, a local bundle path included, since a downgrade is the same act whatever the transport. A path has no channel mark, and freeze detection does not reach it. |
+| 15 | `ASSUMED` | The installed floor is read from `current-release.json`, written atomically at activation, so no separate write can lag it. A channel mark is written before the candidate record, so a crash can leave a raised mark with no candidate, which the next poll repairs, and never a candidate without its mark. |
 
 ## 12. Phasing
 
