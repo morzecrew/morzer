@@ -238,6 +238,11 @@ document signed with the same minisign key that signs their bundles:
   expiry are checked at the peek, since they need no download. The content
   digest is compared once the candidate is fetched and its digest computed,
   before it is staged, and a mismatch refuses the candidate.
+- **When it is checked: every poll, moved or not.** `FollowChannel` returns
+  early when the upstream digest is unchanged, and a frozen channel is precisely
+  one whose digest never changes. So the index is fetched and checked at the
+  start of every poll, before that early return, and its `expires_at` is
+  recorded in state, so `status` and `doctor` report expiry between polls too.
 - **What an expired index does.** It is the freeze signal. Whether it refuses
   to stage, or stages and warns, is the decision in §11 row 3. Either way
   `status` and `doctor` report "the channel's index expired N days ago", which
@@ -288,7 +293,9 @@ document signed with the same minisign key that signs their bundles:
   export`/import (whether import carries them is §11 row 5).
 - Index (if built): a fixture registry serving a valid index; a replayed index
   with a lower sequence; an expired one; one whose digest disagrees with the
-  tag; a bad signature; a different index reusing an accepted sequence. Each is refused or warned per the decisions, against the
+  tag; a bad signature; a different index reusing an accepted sequence; and an
+  index that expires while the channel tag stays unchanged, which must still
+  produce the freeze signal. Each is refused or warned per the decisions, against the
   real minisign verifier.
 
 ## 7. Docs
@@ -350,6 +357,7 @@ document signed with the same minisign key that signs their bundles:
 | 14 | `ASSUMED` | The installed floor covers every install path, a local bundle path included, since a downgrade is the same act whatever the transport. A path has no channel mark, and freeze detection does not reach it. |
 | 15 | `ASSUMED` | The installed floor is read from `current-release.json`, written atomically at activation, so no separate write can lag it. A channel mark is written before the candidate record, so a crash can leave a raised mark with no candidate, which the next poll repairs, and never a candidate without its mark. |
 | 16 | `ASSUMED` | An index is accepted only with a higher sequence, or the same sequence and byte-identical content. A vendor publishes any change under a higher sequence, and two different indexes under one sequence are refused as a publishing error. |
+| 17 | `ASSUMED` | The index is fetched and checked on every poll, before the unchanged-digest early return in `FollowChannel`, and its expiry is recorded in state; a freeze is a channel that never moves, so a check that runs only when it moves never sees one. |
 
 ## 12. Phasing
 
