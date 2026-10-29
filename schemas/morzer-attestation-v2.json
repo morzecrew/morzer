@@ -190,6 +190,11 @@
                   "type": "string"
                 }
               },
+              "required": [
+                "key_id",
+                "operation_id",
+                "at"
+              ],
               "type": "object"
             }
           },

@@ -374,6 +374,11 @@ var scalarSchemas = map[reflect.Type]map[string]any{
 // entry the manager rejects.
 var requiredFields = map[reflect.Type][]string{
 	reflect.TypeOf(domain.VolumeSpec{}): {"consistency"},
+
+	// A signature check in an attestation is its key, its operation and
+	// its time, and the writer never omits one. Without them required, `{}`
+	// validates as a check that names nothing.
+	reflect.TypeOf(domain.SignatureCheck{}): {"key_id", "operation_id", "at"},
 }
 
 // schemaFor renders a Go type as a JSON Schema node.
