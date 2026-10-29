@@ -206,7 +206,7 @@ installations:
     id: inst_01K2Z9QW8ERT6YH3VXNBM5CDFG
     key: RWT7rtLRtKF6w2xzWe+mSOZBhXrz+VxeN1mdnNL2xgQq1jwtbt+ccErb
   - product: web
-    id: inst_01K3A7B2C9DEF4GH5IJ6KL7MNO
+    id: inst_01K3A7B2C9DEF4GH5JK6MN7PQR
     key: RWQ+QYtyW1lxQKN6N1DPOpPdi0VlWcoWadP9MjAAv8cpNYDqQ9jDLnpM
 ```
 
