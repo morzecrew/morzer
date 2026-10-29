@@ -6,6 +6,7 @@ import (
 	"io"
 	osexec "os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -41,6 +42,7 @@ type streamCloser struct {
 
 	waitOnce sync.Once
 	waitErr  error
+	reaped   atomic.Bool
 
 	mu        sync.Mutex
 	killTimer *time.Timer
@@ -87,7 +89,10 @@ func (s *streamCloser) Read(p []byte) (int, error) {
 // wait reaps the process once, for whichever of Read and Close gets there
 // first.
 func (s *streamCloser) wait() error {
-	s.waitOnce.Do(func() { s.waitErr = s.cmd.Wait() })
+	s.waitOnce.Do(func() {
+		s.waitErr = s.cmd.Wait()
+		s.reaped.Store(true)
+	})
 	return s.waitErr
 }
 
@@ -129,7 +134,10 @@ func (s *streamCloser) disarmKill() {
 
 func (s *streamCloser) Close() error {
 	closeErr := s.ReadCloser.Close()
-	if s.pgid > 0 {
+	// Not once Read has reaped the leader at the stream's own end: its id is
+	// then free for the kernel to reuse, and the signal could land on an
+	// unrelated group. The shared runner's post-Wait sweep keeps the same rule.
+	if s.pgid > 0 && !s.reaped.Load() {
 		_ = syscall.Kill(-s.pgid, syscall.SIGTERM)
 	}
 	if s.cmd != nil {

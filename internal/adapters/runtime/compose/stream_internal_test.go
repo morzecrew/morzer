@@ -64,8 +64,14 @@ func TestCloseTerminatesTheWholeProcessGroup(t *testing.T) {
 	if pgid <= 0 {
 		t.Fatal("the stream recorded no process group")
 	}
+	// Bounded, because a Close that signalled nothing still returns -- once
+	// the sleep ends by itself, a minute later, which is the leak.
+	started := time.Now()
 	if err := sc.Close(); err != nil {
 		t.Fatalf("closing the stream: %v", err)
+	}
+	if took := time.Since(started); took > 5*time.Second {
+		t.Fatalf("Close took %s: it waited for the group rather than ending it", took)
 	}
 	waitFor(t, "the process group to die", func() bool { return groupGone(pgid) })
 }
