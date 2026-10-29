@@ -70,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing for a switch.
 
 - **`release show --help` names a flag that exists.** It pointed at
-  `release verify --bundle`; it now names `release verify <path>`.
+  `release verify --bundle`; it now names `release verify <bundle-dir>`.
 
 - **`release archive -o` refuses a name no source would read.** The archive is
   always zstd, and morzer recognises one only by a `.tar.zst` or `.tzst`
