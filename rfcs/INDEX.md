@@ -18,11 +18,11 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** has work anybody can pick up: 0027, 0029 and 0031 have each shipped
+only **0023** and **0039** have work anybody can pick up: 0027, 0029 and 0031 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
-building P2 is the correct outcome. 0037, 0038 and 0039 are proposals waiting on the
+building P2 is the correct outcome. 0037 and 0038 are proposals waiting on the
 author's rulings, and are not work yet. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
 phase shipped, and a reader deciding what to work on needs the other half.
@@ -96,9 +96,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   defect that records a reference's password, stands apart and can be fixed
   now; stored credentials are gated on a vendor asking for them.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
-  📝 Proposed, with its user-facing decisions `OPEN` for the author to rule. P1,
-  the command itself, is one PR once ruled; tagging the pinned images is gated
-  on a vendor asking.
+  📝 Ruled. P1, the command itself, is one PR and ready to build; tagging the
+  pinned images is gated on a vendor asking.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and

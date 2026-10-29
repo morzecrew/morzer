@@ -1,7 +1,8 @@
 # RFC 0039 — Publishing a bundle to an OCI registry
 
-- **Status:** 📝 Draft — proposed, **awaiting the author's rulings** on the
-  `OPEN` decisions in §11; not scheduled
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-29: §11's
+  `OPEN` rows as recommended. **P1, the command, is ready to build**; P2 is
+  gated on a vendor asking
 - **Scope:** A `morzer release push` command that publishes a bundle archive to
   an OCI registry: it checks the archive, refuses to overwrite a published
   version with different content, pushes with morzer's own artifact and layer
@@ -207,8 +208,8 @@ pushed demo 1.3.0 to oci://registry.example/demo/bundle:1.3.0
 
 - **Tagging the images a release pins** (`--tag-images`, raised in #181).
   Images live in other repositories, often under other credentials, and push
-  would need write access to all of them. Decision 8 asks whether it should
-  come later.
+  would need write access to all of them. Decision 8 defers it until a
+  vendor's registry retention deletes a pinned image.
 - **HTTPS uploads.** See Non-goals.
 
 ## 9. Risks
@@ -226,20 +227,20 @@ pushed demo 1.3.0 to oci://registry.example/demo/bundle:1.3.0
 
 ## 10. Unresolved questions
 
-The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design.
+None. The author ruled §11's `OPEN` rows on 2026-10-29.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **Build `release push` now?** Recommended yes. The four steps in §2 are repeated in every vendor pipeline, the push side of `oras-go` is already a dependency, and the command is OCI-only. It reverses 0014 §8's "Publishing" item for OCI. |
-| 2 | `OPEN` | **The reference: repository only, or `:<version>` required?** Recommended: both accepted. Omitted, the tag is the archive's version. Given, it must equal that version, because `List` reads tags as versions and a mismatch makes `update --check` offer a version the bundle does not carry. |
-| 3 | `OPEN` | **A version already published: always refuse (as #181 proposes), or exit 0 when the content digest matches?** Recommended: exit 0 as `already-published` when it matches, and refuse when it differs. Exit 0 lets a re-run converge after a failed channel move. The refusal uses exit 2 (`usage`) with a distinct error message, so no new exit code is needed. |
-| 4 | `OPEN` | **Moving a channel to a version older than the one it points at: allow, warn or refuse?** Recommended warn. Machines already refuse to follow a channel backwards, and a new installation taking the older version may be what the vendor wants. |
+| 1 | `LOCKED` | **Build `release push`.** The four steps in §2 are repeated in every vendor pipeline, the push side of `oras-go` is already a dependency, and the command is OCI-only. It reverses 0014 §8's "Publishing" item for OCI. Ruled by the author 2026-10-29. |
+| 2 | `LOCKED` | **The reference names a repository, and `:<version>` is optional.** Omitted, the tag is the archive's version. Given, it must equal that version, because `List` reads tags as versions and a mismatch makes `update --check` offer a version the bundle does not carry. Ruled by the author 2026-10-29. |
+| 3 | `LOCKED` | **A version already published with the same content is `already-published`, exit 0; with different content, push refuses.** Always refusing, as #181 proposed, would block the re-run that converges after a failed channel move. The refusal uses exit 2 (`usage`) with a distinct error message, so no new exit code is needed. Ruled by the author 2026-10-29. |
+| 4 | `ASSUMED` | **Moving a channel to a version older than the one it points at warns, and moves it.** Machines already refuse to follow a channel backwards (`internal/lifecycle/ops/channel.go`), and a new installation taking the older version may be what the vendor wants. Ruled by the author 2026-10-29. |
 | 5 | `ASSUMED` | The artifact is the shape `oras push --artifact-type` makes (§5.2), with `ArtifactType` as a constant beside `MediaType`, so the OCI source reads bundles published either way. |
 | 6 | `ASSUMED` | The manifest carries the content digest as the annotation `dev.morzer.bundle.digest`, trusted only to refuse. "Same content" needs an identical layer digest, or a pulled layer whose content digest matches. |
-| 7 | `ASSUMED` | Channel tags move only after the version tag resolves to the manifest just pushed, or to the existing one decision 6 confirmed, one at a time. A failure stops the rest and is reported per channel, and a re-run converges under decision 3's recommendation. |
-| 8 | `OPEN` | **`--tag-images`, from #181: later, or never?** Recommended: not in P1, and built only when a vendor's registry retention deletes a pinned image. Push would need write access to every image repository. |
+| 7 | `ASSUMED` | Channel tags move only after the version tag resolves to the manifest just pushed, or to the existing one decision 6 confirmed, one at a time. A failure stops the rest and is reported per channel, and a re-run converges under decision 3. |
+| 8 | `ASSUMED` | **`--tag-images`, from #181, is not in P1.** It is built only when a vendor's registry retention deletes a pinned image: push would need write access to every image repository. Ruled by the author 2026-10-29. |
 | 9 | `ASSUMED` | Credentials are the ambient Docker configuration through `OpenRepository`, with the pull side's loopback-HTTP rule. Push adds no credential flags. |
 | 10 | `ASSUMED` | Output names both digests, each with its use (§5.4); `--json` carries both under distinct keys. |
 | 11 | `ASSUMED` | Before anything is sent, the archive is extracted through the local source and checked as `release verify` checks a directory: sums, templates, and the signature under `--signing-key`. Without that flag a missing signature warns, as `release archive` does. |
@@ -247,4 +248,5 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 ## 12. Phasing
 
 - **P1** — the command, decisions 1–7 and 9–11, the docs in §7. One PR.
-- **P2** — `--tag-images`, only if decision 8 rules for it and a vendor asks.
+- **P2** — `--tag-images`, only when a vendor's registry retention deletes a
+  pinned image (decision 8).
