@@ -151,20 +151,45 @@ func (s *Store) AddRecipient(ctx context.Context, r ports.Recipient) error {
 	if err != nil {
 		return err
 	}
+	// State that does not exist yet has no recipients to keep, and the file
+	// a first write creates is encrypted for the machine. Start from that,
+	// or the state would be created for this key alone and the machine
+	// locked out of it.
+	if len(existing) == 0 {
+		base, err := s.recipientsForEncrypt(ctx)
+		if err != nil {
+			return err
+		}
+		for _, key := range base {
+			existing = append(existing, ports.Recipient{PublicKey: key})
+		}
+	}
+	annotations := s.loadAnnotations()
 	keys := make([]string, 0, len(existing)+1)
 	for _, e := range existing {
-		if e.PublicKey == r.PublicKey {
-			return nil // already a recipient; adding again is a no-op
+		if e.PublicKey != r.PublicKey {
+			keys = append(keys, e.PublicKey)
+			continue
 		}
-		keys = append(keys, e.PublicKey)
+		// Already a recipient, so adding it again is a no-op -- unless a
+		// crash fell between writing the state and writing the sidecar,
+		// which leaves a key nothing says the purpose of. That label is
+		// written now; the machine's own key needs none.
+		if _, labelled := annotations.Recipients[r.PublicKey]; labelled || e.Kind == ports.RecipientMachine {
+			return nil
+		}
+		return s.annotate(annotations, r)
 	}
 	keys = append(keys, r.PublicKey)
 
 	if err := s.reencrypt(ctx, keys); err != nil {
 		return err
 	}
+	return s.annotate(annotations, r)
+}
 
-	annotations := s.loadAnnotations()
+// annotate records what a recipient is for in the sidecar.
+func (s *Store) annotate(annotations recipientAnnotations, r ports.Recipient) error {
 	if r.Kind == "" {
 		r.Kind = ports.RecipientOperator
 	}

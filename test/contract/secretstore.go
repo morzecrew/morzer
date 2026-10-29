@@ -432,6 +432,33 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 		assert.Len(t, after, len(before), "the recipient must not be duplicated")
 	})
 
+	t.Run("a recipient added before the first secret joins the machine's key", func(t *testing.T) {
+		// `init` adds the offline recovery key whether or not the release
+		// gave it a secret to write. On state that does not exist yet the
+		// key has to join the machine's rather than replace it, and still
+		// be there once the first secret is written.
+		store := newStore(t)
+		ctx := context.Background()
+		require.NoError(t, store.AddRecipient(ctx, ports.Recipient{
+			PublicKey: "age1d369794a45rmk3s5kt2s7wn99m2q2zxnxcltshmxt5ydvhafysaq6r63rm",
+			Kind:      ports.RecipientRecovery,
+		}))
+		require.NoError(t, store.Set(ctx, "first", domain.NewSecret("a-value-to-encrypt")))
+
+		set, err := store.Load(ctx)
+		require.NoError(t, err, "the machine can no longer read its own state")
+		assert.True(t, set.Has("first"))
+
+		recipients, err := store.Recipients(ctx)
+		require.NoError(t, err)
+		kinds := map[ports.RecipientKind]bool{}
+		for _, r := range recipients {
+			kinds[r.Kind] = true
+		}
+		assert.True(t, kinds[ports.RecipientMachine], "the machine's own key is not a recipient")
+		assert.True(t, kinds[ports.RecipientRecovery], "the recovery key did not survive the first write")
+	})
+
 	// ReencryptFor is the method recovery is built on. These cases assert
 	// the recipient *set* it produces; that the named keys can actually
 	// decrypt afterwards is a question about cryptography, which a fake

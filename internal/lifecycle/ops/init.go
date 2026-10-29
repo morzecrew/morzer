@@ -948,8 +948,11 @@ func stepAddRecoveryRecipient(d *Deps, opts InitOptions) engine.Step {
 			if err != nil {
 				return false, err
 			}
+			// Labelled as well as present: a key whose label a crash
+			// lost is one `doctor` cannot count, and adding it again is
+			// what writes the label.
 			for _, r := range recipients {
-				if r.PublicKey == opts.RecoveryRecipient {
+				if r.PublicKey == opts.RecoveryRecipient && r.Kind == ports.RecipientRecovery {
 					return true, nil
 				}
 			}
@@ -961,18 +964,11 @@ func stepAddRecoveryRecipient(d *Deps, opts InitOptions) engine.Step {
 				return nil
 			}
 
-			initialised, err := d.Secrets.Initialized(ctx)
-			if err != nil {
-				return err
-			}
-			if !initialised {
-				// Nothing to encrypt for yet. The recipient is
-				// added when the first secret is written, which
-				// reuses the existing recipient list.
-				st.Detail("deferred until the first secret is written")
-				return nil
-			}
-
+			// Added now even when no secret has been written: the
+			// store creates the state for this key and the machine's,
+			// and every later write keeps the recipients it finds. Left
+			// for the first write, the key would be lost, because that
+			// write encrypts for the machine alone.
 			return d.Secrets.AddRecipient(ctx, ports.Recipient{
 				PublicKey: opts.RecoveryRecipient,
 				Kind:      ports.RecipientRecovery,
