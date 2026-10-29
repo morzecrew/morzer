@@ -112,6 +112,7 @@ func main() {
 	checkSupportInventory(&rep, root)
 	checkDescribeExclusions(&rep, root)
 	checkReleaseAssets(&rep, root, pages)
+	checkSkills(&rep, root)
 
 	if rep.failed() {
 		rep.print(os.Stderr)

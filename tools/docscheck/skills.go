@@ -1,0 +1,202 @@
+package main
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/morzecrew/morzer/internal/cli"
+)
+
+// ----------------------------------------------------------------------------
+// 6. Agent skills
+//
+// The skills under skills/ are installed into somebody else's project and read
+// by an agent in place of these pages, where no link checker follows them. Two
+// things in one go stale without a page changing: a command or flag it tells the
+// agent to run, and a link into the published documentation. Both are checked
+// against what the pages are checked against -- the command tree, and the page
+// files the site is built from, down to the heading a link names.
+
+const (
+	skillsDir = "skills"
+
+	// docsSite is the prefix a skill links the documentation under. `latest`
+	// rather than a version, so a link does not need moving at every release.
+	docsSite = "https://morzecrew.github.io/morzer/latest/"
+)
+
+var (
+	siteLinkRe  = regexp.MustCompile(regexp.QuoteMeta(docsSite) + `([^)\s#"]*)(?:#([^)\s"]*))?`)
+	fenceBodyRe = regexp.MustCompile("(?ms)^ {0,3}(?:```|~~~)[^\n]*\n(.*?)^ {0,3}(?:```|~~~) *$")
+	nameLineRe  = regexp.MustCompile(`(?m)^name:\s*(\S+)\s*$`)
+)
+
+func checkSkills(rep *report, root string) {
+	dirs, err := os.ReadDir(filepath.Join(root, skillsDir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		rep.add("skills", "cannot read %s: %v", skillsDir, err)
+		return
+	}
+	tree := cli.CommandTree()
+	for _, d := range dirs {
+		if !d.IsDir() {
+			continue
+		}
+		err := filepath.WalkDir(filepath.Join(root, skillsDir, d.Name()), func(path string, e fs.DirEntry, err error) error {
+			if err != nil || e.IsDir() || !strings.HasSuffix(path, ".md") {
+				return err
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			rep.checks++
+			rel, _ := filepath.Rel(root, path)
+			if filepath.Base(path) == "SKILL.md" {
+				checkSkillName(rep, rel, d.Name(), string(raw))
+			}
+			checkSkillLinks(rep, root, rel, string(raw))
+			checkSkillCommands(rep, tree, rel, string(raw))
+			return nil
+		})
+		if err != nil {
+			rep.add("skills", "cannot read %s: %v", d.Name(), err)
+		}
+	}
+}
+
+// checkSkillName holds the frontmatter's name to the directory's. The installer
+// takes the skill's name from the frontmatter and the reader from the path, and
+// two names for one skill is a skill nobody can ask for by name.
+func checkSkillName(rep *report, rel, dir, raw string) {
+	m := nameLineRe.FindStringSubmatch(raw)
+	if m == nil || m[1] != dir {
+		rep.add("skills", "%s: frontmatter `name` must be %q, the directory's name", rel, dir)
+	}
+}
+
+// checkSkillLinks resolves every link into the published documentation to the
+// page it is built from, and its fragment to a heading on that page.
+func checkSkillLinks(rep *report, root, rel, raw string) {
+	for _, m := range siteLinkRe.FindAllStringSubmatch(raw, -1) {
+		page, ok := sitePage(root, m[1])
+		if !ok {
+			rep.add("skills", "%s links %s%s, which no page under %s builds", rel, docsSite, m[1], docsDir)
+			continue
+		}
+		if m[2] == "" {
+			continue
+		}
+		body, err := os.ReadFile(page)
+		if err != nil || !anchorsIn(fenceRe.ReplaceAllString(string(body), ""))[m[2]] {
+			rep.add("skills", "%s links %s%s#%s, and that page has no such heading", rel, docsSite, m[1], m[2])
+		}
+	}
+}
+
+// sitePage maps a path under the site to the page file it is built from:
+// `authoring/hooks/` is `authoring/hooks.md`, and a directory is its index.
+func sitePage(root, path string) (string, bool) {
+	path = strings.Trim(path, "/")
+	candidates := []string{filepath.Join(root, docsDir, "index.md")}
+	if path != "" {
+		base := filepath.Join(root, docsDir, filepath.FromSlash(path))
+		candidates = []string{base + ".md", filepath.Join(base, "index.md")}
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c, true
+		}
+	}
+	return "", false
+}
+
+// checkSkillCommands resolves every `morzer …` a skill shows as code to a
+// command in the tree, and every long flag after it to a flag that command
+// takes. Prose is left alone: "the morzer repository" names no command.
+func checkSkillCommands(rep *report, tree *cobra.Command, rel, raw string) {
+	var code []string
+	for _, m := range fenceBodyRe.FindAllStringSubmatch(raw, -1) {
+		code = append(code, m[1])
+	}
+	for _, m := range inlineRe.FindAllStringSubmatch(fenceRe.ReplaceAllString(raw, ""), -1) {
+		code = append(code, m[1])
+	}
+	for _, text := range code {
+		for _, line := range strings.Split(text, "\n") {
+			fields := strings.Fields(line)
+			for i, f := range fields {
+				if f == "morzer" {
+					if problem := resolveInvocation(tree, fields[i+1:]); problem != "" {
+						rep.add("skills", "%s: `%s`: %s", rel, strings.TrimSpace(line), problem)
+					}
+				}
+			}
+		}
+	}
+}
+
+// resolveInvocation walks the words after `morzer` down the command tree and
+// checks the long flags that follow. It returns what is wrong, or "".
+func resolveInvocation(tree *cobra.Command, words []string) string {
+	cmd := tree
+	i := 0
+	for ; i < len(words); i++ {
+		w := words[i]
+		if strings.HasPrefix(w, "-") || strings.ContainsAny(w, "<[./$") {
+			break
+		}
+		sub := subcommand(cmd, w)
+		if sub == nil {
+			// A command that only groups others takes no arguments,
+			// so a word it does not know is a misspelt subcommand.
+			if !cmd.Runnable() {
+				return "`" + strings.Join(append(commandPath(cmd), w), " ") + "` is not a command"
+			}
+			break
+		}
+		cmd = sub
+	}
+	for ; i < len(words); i++ {
+		w := words[i]
+		if w == "--" || slices.Contains([]string{"|", "||", "&&", ";", ">", ">>", "\\"}, w) {
+			break
+		}
+		if !strings.HasPrefix(w, "--") {
+			continue
+		}
+		name, _, _ := strings.Cut(strings.TrimPrefix(w, "--"), "=")
+		// Cobra adds these two when the binary runs, not when the tree
+		// is built, so the tree this walks does not carry them.
+		if name == "help" || name == "version" {
+			continue
+		}
+		if cmd.Flags().Lookup(name) == nil && cmd.InheritedFlags().Lookup(name) == nil {
+			return "`--" + name + "` is not a flag of `" + strings.Join(commandPath(cmd), " ") + "`"
+		}
+	}
+	return ""
+}
+
+func subcommand(cmd *cobra.Command, name string) *cobra.Command {
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == name || slices.Contains(sub.Aliases, name) {
+			return sub
+		}
+	}
+	return nil
+}
+
+func commandPath(cmd *cobra.Command) []string {
+	return strings.Fields(cmd.CommandPath())
+}
