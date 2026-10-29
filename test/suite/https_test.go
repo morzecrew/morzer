@@ -237,6 +237,33 @@ func TestHTTPSRefusalsWithholdThePassword(t *testing.T) {
 	})
 }
 
+// TestHTTPSRefusalsNameTheURLNotTheDownload. What arrives is checked as a local
+// archive, and those refusals named the temporary file it was downloaded to --
+// a path that is gone by the time anybody reads the message.
+func TestHTTPSRefusalsNameTheURLNotTheDownload(t *testing.T) {
+	archive := bundleArchive(t)
+	cases := map[string]struct {
+		body   []byte
+		digest string
+	}{
+		"not an archive":     {body: []byte("not zstd at all")},
+		"a different digest": {body: archive, digest: "sha256:" + strings.Repeat("0", 64)},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			source, host := serveBundle(t, http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(tc.body) }))
+			_, err := source.Resolve(context.Background(), ports.Ref{Scheme: "https",
+				Location: "user:hunter2@" + host + "/demo.tar.zst", Digest: tc.digest})
+			require.Error(t, err)
+			text := err.Error() + domain.AsError(err).Hint
+			assert.Contains(t, text, host+"/demo.tar.zst")
+			assert.NotContains(t, text, "bundle-0.tar.zst", "the refusal names the temporary download")
+			assert.NotContains(t, text, "hunter2")
+		})
+	}
+}
+
 func TestHTTPSRefusesAnOversizedDeclaration(t *testing.T) {
 	source, host := serveBundle(t, http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {

@@ -53,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names where the reference came from, and the hint gives the
   `morzer config set update.channel=oci://…` command or, for a reference passed
   on the command line, asks for an `oci://` one.
+- **A refused HTTPS or OCI download names its URL, not a temporary file.** A
+  download that was not a valid archive, or whose content digest did not match,
+  was refused with the path of the temporary file it had been saved to, which
+  was already deleted. The refusal now names the reference it came from, with
+  any password removed.
 
 ## [0.9.0] - 2026-10-29
 

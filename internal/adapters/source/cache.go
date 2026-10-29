@@ -3,6 +3,7 @@ package source
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -60,6 +61,22 @@ func (c *TempCache) Reserve() (string, error) {
 		c.dir = dir
 	}
 	return filepath.Join(c.dir, "bundle-"+itoa(len(c.paths))+".tar.zst"), nil
+}
+
+// NamedAfter rewrites a refusal about a downloaded archive to name the reference
+// it came from.
+//
+// The local source checks what a transport downloaded, and its refusals name
+// the path it was handed: a temporary file in this cache, removed by the time
+// anybody reads the message. ref must already be redacted.
+func NamedAfter(err error, archive, ref string) error {
+	if err == nil {
+		return nil
+	}
+	e := *domain.AsError(err)
+	e.Message = strings.ReplaceAll(e.Message, archive, ref)
+	e.Hint = strings.ReplaceAll(e.Hint, archive, ref)
+	return &e
 }
 
 // Store records a completed download.

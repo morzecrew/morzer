@@ -126,7 +126,8 @@ func (s *Source) Resolve(ctx context.Context, ref ports.Ref) (ports.ResolvedRele
 		Digest:   ref.Digest,
 	})
 	if err != nil {
-		return ports.ResolvedRelease{}, err
+		return ports.ResolvedRelease{}, source.NamedAfter(err, archive,
+			ports.RedactRefCredentials(ref.String()))
 	}
 
 	// The reference the caller gave, not the temp path we resolved through.
@@ -140,7 +141,8 @@ func (s *Source) Fetch(ctx context.Context, ref ports.Ref, destDir string) (port
 	if err != nil {
 		return "", err
 	}
-	return s.local.Fetch(ctx, ports.Ref{Scheme: local.Scheme, Location: archive}, destDir)
+	path, err := s.local.Fetch(ctx, ports.Ref{Scheme: local.Scheme, Location: archive}, destDir)
+	return path, source.NamedAfter(err, archive, ports.RedactRefCredentials(ref.String()))
 }
 
 // List reports that a URL is a bundle, not an index.
