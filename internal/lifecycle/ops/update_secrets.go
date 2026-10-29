@@ -60,18 +60,26 @@ func stepGenerateSecrets(d *Deps, rel domain.Release, replaced *fallbackRelease,
 				return err
 			}
 			names := make([]string, 0, len(todo))
+			// A message rather than a detail, which plain mode prints only
+			// under --verbose: a new credential on the machine is news on
+			// an unattended tick too. The names, never the values.
+			report := func() {
+				if len(names) > 0 {
+					st.Info("generated %s %s adds: %s",
+						secretCount(len(names)), rel.Version(), strings.Join(names, ", "))
+				}
+			}
 			for _, decl := range todo {
 				if err := d.Secrets.Generate(ctx, decl.Name,
 					ports.GenSpec{Generator: decl.Generator}); err != nil {
+					// What was generated stays, and the retry skips
+					// it, so this run is the only one that can name it.
+					report()
 					return err
 				}
 				names = append(names, decl.Name)
 			}
-			// A message rather than a detail, which plain mode prints only
-			// under --verbose: a new credential on the machine is news on
-			// an unattended tick too. The names, never the values.
-			st.Info("generated %s %s adds: %s",
-				secretCount(len(names)), rel.Version(), strings.Join(names, ", "))
+			report()
 			return nil
 		},
 		PlanDetail: func(ctx context.Context, st *engine.State) (string, string) {

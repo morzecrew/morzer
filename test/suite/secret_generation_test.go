@@ -13,6 +13,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 )
 
@@ -230,4 +231,38 @@ func TestAResumedUpdateKeepsTheChoiceNotToGenerate(t *testing.T) {
 	require.NoError(t, err)
 	_, ok := secretValue(t, h, "webhook_key")
 	assert.False(t, ok, "the resumed update generated a secret the interrupted one was told to leave alone")
+}
+
+// failingGenerate fails Generate for one name and passes every other call on.
+type failingGenerate struct {
+	ports.SecretStore
+	name string
+}
+
+func (f failingGenerate) Generate(ctx context.Context, name string, spec ports.GenSpec) error {
+	if name == f.name {
+		return domain.SecretsError(nil, "injected: cannot generate %s", name)
+	}
+	return f.SecretStore.Generate(ctx, name, spec)
+}
+
+// A value generated before a later one fails is kept, and the retry skips it,
+// so the run that generated it is the only one that can name it.
+func TestAnUpdateNamesWhatItGeneratedBeforeAFailure(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	src := stageUpgradeSource(t, h)
+	declareSecret(t, src, webhookKey)
+	declareSecret(t, src, strings.Replace(webhookKey, "webhook_key", "zz_signing_key", 1))
+	h.Deps.Secrets = failingGenerate{SecretStore: h.Deps.Secrets, name: "zz_signing_key"}
+
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	_, ok := secretValue(t, h, "webhook_key")
+	require.True(t, ok, "the first secret was not generated, so this proves nothing")
+	assert.Contains(t, generationMessages(h), "webhook_key",
+		"a secret generated before the failure was never named")
 }
