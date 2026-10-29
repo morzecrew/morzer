@@ -2397,6 +2397,9 @@ of zero is <strong>not</strong> proof that a file was clean — it is proof that
 value this installation currently holds appeared in it, which is a
 smaller claim. A secret that was rotated away, or one that was never
 declared to the manager at all, is not something it can recognise.</p>
+<p>The journal has one more pass. A URL with a password in it, such as a bundle
+reference an older version journalled as typed, has the password taken out of
+every operation's flags, and each one is counted in the journal's number.</p>
 <p>Container logs are the exception that is enforced rather than promised:
 if the secret values cannot be loaded, they are left out of the archive
 entirely and <code>meta.json</code> says so. Everything else still ships.</p>
