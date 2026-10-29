@@ -1,7 +1,9 @@
 package suite
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
 
@@ -414,4 +417,24 @@ func TestRollbackToThePreviousReleaseKeepsWhereItCameFrom(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1.2.0", current.Version.String())
 	assert.Equal(t, source, current.SourceRef, "rollback --to forgot where 1.2.0 came from")
+}
+
+// An unreadable previous-release record has no source or signature check to
+// give, and a `--to` naming its own target does not need it. The rollback goes
+// ahead -- a damaged metadata file must not hold up the recovery an operator
+// aimed -- and the warning says what was not carried.
+func TestRollbackToPastAnUnreadablePreviousRecordWarns(t *testing.T) {
+	h := updatedHarness(t)
+	setSchema(t, h, 12)
+	require.NoError(t, os.WriteFile(h.Paths.PreviousReleaseFile(), []byte("{not json"), 0o640))
+
+	var logs bytes.Buffer
+	ctx := logging.WithLogger(context.Background(), slog.New(slog.NewTextHandler(&logs, nil)))
+	_, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{To: "1.2.0"})
+	require.NoError(t, err, "a damaged previous-release record held up a rollback that names its target")
+
+	current, err := h.Deps.State.CurrentRelease(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String())
+	assert.Contains(t, logs.String(), "previous-release record", "nothing said what was not carried")
 }

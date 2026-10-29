@@ -9,6 +9,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/release"
 )
@@ -247,7 +248,17 @@ func (d *Deps) rollbackEndpoints(ctx context.Context, to string) (current, previ
 		// verified or where it came from, but the previous-release record
 		// does for the one release it names, and naming that release is
 		// a common --to. Any other target has neither on record.
-		if prev, err := d.State.PreviousRelease(ctx); err == nil && prev.Digest == target.Digest {
+		//
+		// An unreadable record has nothing to give, and is not a reason
+		// to refuse: --to names its own target, and a damaged metadata
+		// file must not hold up the recovery an operator aimed. The
+		// demotion that follows replaces it.
+		prev, err := d.State.PreviousRelease(ctx)
+		switch {
+		case err != nil:
+			logging.FromContext(ctx).Warn("cannot read the previous-release record, so the "+
+				"release's signature check and source are not carried with it", "error", err)
+		case prev.Digest == target.Digest:
 			record.SignatureVerified = prev.SignatureVerified
 			record.SourceRef = prev.SourceRef
 		}
