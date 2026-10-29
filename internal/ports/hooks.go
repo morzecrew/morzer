@@ -35,6 +35,10 @@ const (
 	PhaseBackup      HookPhase = "backup"
 	PhaseRestore     HookPhase = "restore"
 	PhaseHealthCheck HookPhase = "health-check"
+
+	// PhaseTask is a release-declared task. No hook runs in it: a task is a
+	// container, and this is what its PHASE says (RFC 0035).
+	PhaseTask HookPhase = "task"
 )
 
 // HookEnv is everything a hook is told about the world it runs in.

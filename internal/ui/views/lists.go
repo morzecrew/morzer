@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
@@ -216,6 +217,46 @@ func trustDoc(d *ui.Doc, r ops.TrustReport) *ui.Doc {
 		Columns: []ui.Column{{Header: "trusted key", Essential: true}},
 		Rows:    rows,
 		Empty:   "no release signing key is trusted",
+	})
+	return d
+}
+
+func init() {
+	ui.Register(ui.View[[]ops.TaskEntry]{
+		Rich:  func(w io.Writer, t *theme.Theme, v []ops.TaskEntry) { emit(w, tasksDoc(doc(w, t), v)) },
+		Plain: func(w io.Writer, v []ops.TaskEntry) { emit(w, tasksDoc(plainDoc(w), v)) },
+	})
+}
+
+// tasksDoc lists the release's tasks with whether this machine may run each,
+// so the refusal `task run` would give is visible before anybody types it.
+func tasksDoc(d *ui.Doc, tasks []ops.TaskEntry) *ui.Doc {
+	rows := make([][]string, 0, len(tasks))
+	for _, t := range tasks {
+		modes := "any"
+		if len(t.Modes) > 0 {
+			modes = strings.Join(t.Modes, ", ")
+		}
+		here, args := "no", "no"
+		if t.Allowed {
+			here = "yes"
+		}
+		if t.Args {
+			args = "yes"
+		}
+		rows = append(rows, []string{t.Name, t.Service, modes, here, args, t.Description})
+	}
+	d.Table(0, ui.Table{
+		Columns: []ui.Column{
+			{Header: "task", Essential: true},
+			{Header: "service"},
+			{Header: "modes"},
+			{Header: "allowed here", Essential: true},
+			{Header: "args"},
+			{Header: "description"},
+		},
+		Rows:  rows,
+		Empty: "the installed release declares no tasks",
 	})
 	return d
 }

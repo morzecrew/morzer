@@ -48,6 +48,9 @@ here. The reference column points at the section that documents it; the
 | `morzer ps` | List the deployment's containers | [commands](commands.md#ps) |
 | `morzer stats` | Show CPU, memory and I/O per container | [commands](commands.md#stats) |
 | `morzer exec` | Run a command inside a running service | [commands](commands.md#exec) |
+| `morzer task` | Run a command the release declares | [commands](commands.md#task) |
+| `morzer task list` | List the tasks the installed release declares | [commands](commands.md#task) |
+| `morzer task run` | Run a task the installed release declares | [commands](commands.md#task) |
 | `morzer support` | Produce evidence somebody else can read | [support-bundle](support-bundle.md#what-a-support-bundle-contains) |
 | `morzer support bundle` | Write one archive describing this installation, safe to send | [support-bundle](support-bundle.md#what-a-support-bundle-contains) |
 | `morzer support redact` | Say whether a file holds any of this installation's secrets | [support-bundle](support-bundle.md#what-a-support-bundle-contains) |

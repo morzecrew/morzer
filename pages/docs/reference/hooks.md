@@ -32,7 +32,7 @@ the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`.
 | `<PRODUCT>_PRODUCT` | The product name itself. |
 | `<PRODUCT>_INSTALLATION_ID` | Identifies this deployment on this machine. |
 | `<PRODUCT>_OPERATION_ID` | The operation the hook is running inside. Appears in the journal and in error output. |
-| `<PRODUCT>_OPERATION_TYPE` | `apply`, `update`, `rollback`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `init` is reserved: no hook runs under it. |
+| `<PRODUCT>_OPERATION_TYPE` | `apply`, `update`, `rollback`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `init` is reserved: no hook runs under it. A [task's container](#a-task) sees `task`. |
 | `<PRODUCT>_PHASE` | Where in the lifecycle this invocation sits — see below. |
 | `<PRODUCT>_RELEASE_VERSION` | Version of the release the hook belongs to. |
 | `<PRODUCT>_RELEASE_DIR` | Absolute path to the release root. Same as the working directory. |
@@ -88,10 +88,17 @@ Left out:
 The values are passed on the `docker compose run` command line, which other
 users on the machine can read. None of them is a secret.
 
+### A task
+
+A [task](manifest.md#tasks) runs in a container the same way, and gets the same
+variables, with `OPERATION_TYPE` and `PHASE` set to `task`. The arguments an
+operator appended follow the task's `command`; nothing else of theirs reaches
+the container.
+
 ### Phases
 
 `PHASE` is one of `migrate`, `smoke-test`, `backup`, `restore` or
-`health-check`.
+`health-check`, and `task` in a [task's container](#a-task), where no hook runs.
 
 `preflight`, `pre-update` and `post-update` are reserved. The ABI names them,
 but no release of the manager runs a hook in them, so a hook may branch on them
