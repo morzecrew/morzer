@@ -50,6 +50,43 @@ func TestConfigListReportsStaleValues(t *testing.T) {
 	assert.Equal(t, []string{"gone"}, report.Stale)
 }
 
+// TestConfigClearsAStaleValueWhileAnotherIsMissing is #190: a recorded value the
+// release no longer declares, and a declared parameter with no default and no
+// value, at once. A rollback that fails after moving its pointer leaves that,
+// and so does a retirement that fails to write. Every `set` was refused over
+// the stale value and the `unset` that clears it over the missing one, so the
+// remedy `config list` names could not be used.
+func TestConfigClearsAStaleValueWhileAnotherIsMissing(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageUpgradeSource(t, h)
+	declareParameter(t, src, "api_key")
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{"gone": "1"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Unset: []string{"gone"}})
+	require.NoError(t, err, "clearing a stale value was refused over a different parameter")
+
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"api_key": "k"},
+	})
+	require.NoError(t, err)
+
+	// Still refused: unsetting the one with no default leaves it without
+	// the value it had.
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Unset: []string{"api_key"}})
+	require.Error(t, err)
+}
+
 func TestConfigSetRecordsAValueAndSaysWhatItDid(t *testing.T) {
 	h := newHarness(t)
 	h.install()

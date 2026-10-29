@@ -234,6 +234,10 @@ func mergeParameters(
 
 	var changed []string
 
+	// Whether this command only clears values the release no longer
+	// declares; the check for missing values below depends on it.
+	clearsOnlyStale := len(opts.Set) == 0
+
 	for _, name := range opts.Unset {
 		// A name the release does not declare and nothing recorded is a
 		// typo, and "unset" would report a change that never named
@@ -244,6 +248,9 @@ func mergeParameters(
 		_, declared := rel.Manifest.Parameters[name]
 		if _, wasRecorded := inst.Parameters[name]; !declared && !wasRecorded {
 			return nil, nil, undeclaredIn(name, rel)
+		}
+		if declared {
+			clearsOnlyStale = false
 		}
 		if _, recorded := next[name]; !recorded {
 			// Not an error: unsetting something already at its
@@ -282,7 +289,13 @@ func mergeParameters(
 	// value for it -- resolvable, because an absent value resolves as empty,
 	// and wrong. This is the other command that can be told a value, so it
 	// is the other command that refuses.
-	if missing := domain.MissingValues(rel.Manifest.Parameters, next); len(missing) > 0 {
+	//
+	// Not over a command that only clears stale values: that takes no value
+	// any declared parameter had, and it is the remedy `config list` names.
+	// Refused, a stale value beside a missing one -- what a rollback that
+	// fails after moving its pointer leaves -- refused every command, each
+	// `set` over the stale value and its `unset` over the missing one.
+	if missing := domain.MissingValues(rel.Manifest.Parameters, next); len(missing) > 0 && !clearsOnlyStale {
 		return nil, nil, domain.Usage(
 			"release %s declares no default for %s, so it cannot be left unset",
 			rel.Version(), strings.Join(missing, ", ")).
