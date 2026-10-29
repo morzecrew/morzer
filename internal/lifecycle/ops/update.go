@@ -118,6 +118,13 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if prior, err = d.findResumable(ctx, domain.OpTypeUpdate); err != nil {
 			return Result{}, err
 		}
+		// The choice the interrupted run journaled holds for its resume.
+		// generate-secrets re-runs, as every idempotent step does, and with
+		// this command's options it would generate what the operator said
+		// to leave alone.
+		if prior != nil && prior.Flags["generate_secrets"] == "false" {
+			opts.NoGenerateSecrets = true
+		}
 	}
 	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
 		return Result{}, err
