@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`installation rotate-signing-key` replaces the key a machine signs its own statements with.** Retiring a key suspected of being stolen meant rebuilding the machine with `installation import`. The command mints a new key, records the old one under `signing.previous_keys` and moves the new one into place, so everything the old key signed still verifies as a predecessor's signature and never as the current key's; it repairs nothing the old key signed, and a fleet roster naming the machine needs the new key.
+
 ### Security
 
 - **A password in a bundle URL no longer reaches the journal or a support bundle.** `morzer update https://user:token@host/…` recorded the reference as typed, so the token sat in the operation journal and travelled in any support bundle sent to a vendor. The journal now keeps the URL without its password, and a support bundle strips URL credentials from every journal record, including ones written before this release. Rotate a token that was used this way.

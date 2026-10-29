@@ -594,15 +594,20 @@ func NoUnfinishedOperation(records []domain.OperationRecord) Check {
 						"then clear the flag with `morzer status --clear-intervention`",
 					"operation %s (%s) requires manual intervention", rec.ID, rec.Type)
 			}
-			// Only apply and update implement --resume; advertising it
-			// for a crashed backup or restore would send the operator
-			// down a road that does not exist.
+			// --resume is advertised only for the operations named
+			// below; advertising it for a crashed backup or restore
+			// would send the operator down a road that does not exist.
 			remedy := "investigate with `morzer doctor`, then acknowledge the record " +
 				"with `morzer status --clear-intervention`"
 			switch rec.Type {
 			case domain.OpTypeApply, domain.OpTypeUpdate:
 				remedy = fmt.Sprintf("resume it with `morzer %s --resume`, "+
 					"or investigate with `morzer doctor`", rec.Type)
+			case domain.OpTypeRotateSigningKey:
+				// Resumed rather than acknowledged: acknowledging a
+				// rotation killed after it recorded the new key leaves
+				// state naming a key that was never moved into place.
+				remedy = "finish it with `morzer installation rotate-signing-key --resume`"
 			}
 			return Fail(remedy,
 				"operation %s (%s) did not finish", rec.ID, rec.Type)
