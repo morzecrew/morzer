@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-29
+
+A machine can now replace the key it signs its own statements with, and its
+statements say which operation verified a release's signature. A password in a
+bundle URL no longer reaches the journal or a support bundle, `doctor` says when
+attestations have no target to go to, a task's output no longer carries
+Compose's progress, and a rollback keeps the source `update --check` asks.
+
+Upgrading moves the installation schema from 12 to 13, with nothing to migrate.
+Once a 0.9.0 manager has written an installation's state, a 0.8.x manager
+refuses it rather than rewriting its release record without the new signature
+check, so that machine cannot go back to 0.8.x. A bundle built for 0.8.0
+installs unchanged. Four things behave differently:
+
+- Attestation statements use the predicate `…/attestation/v2`. `attest verify`
+  reads v1 and v2; a consumer validating statements against
+  `schemas/morzer-attestation-v1.json` needs `morzer-attestation-v2.json` for
+  new ones.
+- After `installation rotate-signing-key`, a fleet roster that pins the
+  machine's key reports its row as `signed-by-another-key` until the roster
+  entry names the new key.
+- A journal written by an earlier `update` given a URL with a password still
+  holds that password on the machine. Support bundles strip it from now on;
+  rotate such a token.
+- With Compose 2.36 or later, the output of a task or a migration service no
+  longer includes Compose's progress for the services it starts.
+
+Statements gain `signature_verified` and `key_id` for an `update`'s own check
+and `signature_verified_when_staged` for every later one. `doctor`'s
+`backup.attestations-pushed` has a new description, and reports on a machine
+with no backup target where it said nothing. A support bundle's journal count
+includes URL passwords it removed, and `installation rotate-signing-key` has a
+payload of its own. No existing field changed meaning.
+
 ### Added
 
 - **`installation rotate-signing-key` replaces the key a machine signs its own statements with.** Retiring a key suspected of being stolen meant rebuilding the machine with `installation import`. The command mints a new key, records the old one under `signing.previous_keys` and moves the new one into place, so everything the old key signed still verifies as a predecessor's signature and never as the current key's; it repairs nothing the old key signed, and a fleet roster naming the machine needs the new key.
@@ -14,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **An attestation says where a release's signature was verified.** Signatures are checked when a release is staged, and no statement said so, not even the `update` that did the checking. An `update`'s statement now sets `signature_verified` and `key_id`, and every later statement about that release carries `signature_verified_when_staged`, naming the operation that verified it. The predicate type is now `…/attestation/v2`, validated by `schemas/morzer-attestation-v2.json`; v1 statements are still read. The installation schema moves to 13, so an older manager refuses the installation rather than rewriting the release record without the check.
-- **`doctor` says when a machine's attestations can never leave it.** An installation with no backup target keeps its whole record local, and `doctor` said nothing about it. It now reports how many statements are on the machine and that no target is configured to push them, as information shown by `doctor --verbose` and in `--json` rather than as a warning, since nothing records whether a machine is air-gapped on purpose. The check's description now reads "attestations have left this machine", or, with no target, "attestations stay on this machine: no backup target".
+- **`doctor` says when a machine's attestations can never leave it.** An installation with no backup target keeps what it writes on the machine, and `doctor` said nothing about it. It now reports how many statements are on the machine and that no target is configured to push them, as information shown by `doctor --verbose` and in `--json` rather than as a warning, since nothing records whether a machine is air-gapped on purpose. The check's description now reads "attestations have left this machine", or, with no target, "attestations: no backup target to push them to".
 
 ### Fixed
 
@@ -531,7 +565,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.8.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/morzecrew/morzer/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/morzecrew/morzer/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/morzecrew/morzer/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/morzecrew/morzer/compare/v0.5.0...v0.6.0
