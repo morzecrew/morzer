@@ -36,8 +36,12 @@ var (
 	siteLinkRe  = regexp.MustCompile(regexp.QuoteMeta(docsSite) + `([^)\s#"]*)(?:#([^)\s"]*))?`)
 	fenceBodyRe = regexp.MustCompile("(?ms)^ {0,3}(?:```|~~~)[^\n]*\n(.*?)^ {0,3}(?:```|~~~) *$")
 	nameLineRe  = regexp.MustCompile(`(?m)^name:\s*(\S+)\s*$`)
+	frontRe     = regexp.MustCompile(`(?s)\A---\n(.*?)\n---\n`)
 )
 
+// checkSkills runs every skill check over each directory under skills/: one
+// with no SKILL.md is not a skill the installer can load, and the rest have
+// each markdown file's commands and links resolved.
 func checkSkills(rep *report, root string) {
 	dirs, err := os.ReadDir(filepath.Join(root, skillsDir))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -50,6 +54,10 @@ func checkSkills(rep *report, root string) {
 	tree := cli.CommandTree()
 	for _, d := range dirs {
 		if !d.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, skillsDir, d.Name(), "SKILL.md")); err != nil {
+			rep.add("skills", "%s/%s has no SKILL.md, so it is not a skill the installer can load", skillsDir, d.Name())
 			continue
 		}
 		err := filepath.WalkDir(filepath.Join(root, skillsDir, d.Name()), func(path string, e fs.DirEntry, err error) error {
@@ -79,7 +87,10 @@ func checkSkills(rep *report, root string) {
 // takes the skill's name from the frontmatter and the reader from the path, and
 // two names for one skill is a skill nobody can ask for by name.
 func checkSkillName(rep *report, rel, dir, raw string) {
-	m := nameLineRe.FindStringSubmatch(raw)
+	var m []string
+	if front := frontRe.FindStringSubmatch(raw); front != nil {
+		m = nameLineRe.FindStringSubmatch(front[1])
+	}
 	if m == nil || m[1] != dir {
 		rep.add("skills", "%s: frontmatter `name` must be %q, the directory's name", rel, dir)
 	}
@@ -195,6 +206,7 @@ func resolveInvocation(tree *cobra.Command, words []string) string {
 	return ""
 }
 
+// subcommand is cmd's child named name, by its name or an alias, or nil.
 func subcommand(cmd *cobra.Command, name string) *cobra.Command {
 	for _, sub := range cmd.Commands() {
 		if sub.Name() == name || slices.Contains(sub.Aliases, name) {
@@ -204,6 +216,7 @@ func subcommand(cmd *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
+// commandPath is cmd's path from the root, `morzer` included, as words.
 func commandPath(cmd *cobra.Command) []string {
 	return strings.Fields(cmd.CommandPath())
 }

@@ -88,11 +88,37 @@ func TestOnlyCodeIsReadForCommands(t *testing.T) {
 	}
 }
 
+// The name is read from the frontmatter alone: a `name:` in the body, in an
+// example, says nothing about what the installer will call the skill.
 func TestASkillIsNamedForItsDirectory(t *testing.T) {
+	cases := map[string]bool{
+		"---\nname: a\ndescription: d\n---\nbody\n":           true,
+		"---\nname: b\n---\nbody\n":                           false,
+		"no frontmatter\n\n```yaml\nname: a\n```\n":           false,
+		"---\ndescription: d\n---\n\n```yaml\nname: a\n```\n": false,
+	}
+	for raw, ok := range cases {
+		var rep report
+		checkSkillName(&rep, "skills/a/SKILL.md", "a", raw)
+		if got := len(rep.problems["skills"]) == 0; got != ok {
+			t.Errorf("%q: passed %v, want %v", raw, got, ok)
+		}
+	}
+}
+
+// A directory under skills/ with no SKILL.md is one the installer cannot load.
+func TestASkillDirectoryWithoutASkillFileIsReported(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, skillsDir, "half-written")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# notes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var rep report
-	checkSkillName(&rep, "skills/a/SKILL.md", "a", "---\nname: a\n---\n")
-	checkSkillName(&rep, "skills/b/SKILL.md", "b", "---\nname: a\n---\n")
-	if got := len(rep.problems["skills"]); got != 1 {
-		t.Errorf("got %d problems, want one for the mismatched name: %v", got, rep.problems["skills"])
+	checkSkills(&rep, root)
+	if len(rep.problems["skills"]) != 1 {
+		t.Errorf("a directory with no SKILL.md passed: %v", rep.problems["skills"])
 	}
 }
