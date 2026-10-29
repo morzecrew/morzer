@@ -609,3 +609,30 @@ func TestInitKeepsTheRecoveryKeyWhenThereIsNoSecretYet(t *testing.T) {
 	}
 	assert.Contains(t, keys, recoveryPub, "the recovery key given to init was dropped")
 }
+
+// TestInitAddsAgainARecoveryKeyWithoutItsLabel: a key that is a recipient but
+// not labelled as the recovery key -- a crash between the state's write and the
+// label's -- is not taken as present, so `init --repair` adds it again, which
+// is what writes the label `doctor` counts.
+func TestInitAddsAgainARecoveryKeyWithoutItsLabel(t *testing.T) {
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	ctx := context.Background()
+	_, recoveryPub := generateRecoveryKey(t)
+
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true})
+	require.NoError(t, err)
+	require.NoError(t, h.Deps.Secrets.AddRecipient(ctx,
+		ports.Recipient{PublicKey: recoveryPub, Kind: ports.RecipientOperator}))
+
+	result, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", Repair: true, RecoveryRecipient: recoveryPub})
+	require.NoError(t, err)
+	for _, s := range result.Record.Steps {
+		if s.ID == "add-recovery-recipient" {
+			assert.Equal(t, domain.StepSucceeded, s.Status, "the unlabelled key was taken as already added")
+			return
+		}
+	}
+	t.Fatal("init has no add-recovery-recipient step")
+}
