@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version it is given and `--require-signature`, installs `minisign` first when
   the runner has none, and puts `morzer` on `PATH` for the steps after it.
 
+- **`morzer release push` publishes an archive to an OCI registry.** It checks
+  the archive as `release verify` does, refuses to overwrite a version with
+  different content, moves `--channel` tags only after the push, and prints both
+  digests. Re-pushing the same content succeeds, so a failed pipeline can re-run.
+
 ### Changed
 
 - **`release build --version-from-git` names the bundle, not the repository.**
