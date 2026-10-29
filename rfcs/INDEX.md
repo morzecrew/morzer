@@ -22,7 +22,7 @@ only **0023** has work anybody can pick up: 0027, 0029 and 0031 have each shippe
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
-building P2 is the correct outcome. 0037 and 0038 are proposals waiting on the
+building P2 is the correct outcome. 0037, 0038 and 0039 are proposals waiting on the
 author's rulings, and are not work yet. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
 phase shipped, and a reader deciding what to work on needs the other half.
@@ -95,6 +95,10 @@ phase shipped, and a reader deciding what to work on needs the other half.
   📝 Proposed, with its user-facing decisions `OPEN`. Its row 1, a journal
   defect that records a reference's password, stands apart and can be fixed
   now; stored credentials are gated on a vendor asking for them.
+- **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
+  📝 Proposed, with its user-facing decisions `OPEN` for the author to rule. P1,
+  the command itself, is one PR once ruled; tagging the pinned images is gated
+  on a vendor asking.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -126,7 +130,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0039**. Before creating an RFC, glance at the table
+The next free number is **0040**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -175,6 +179,7 @@ number in the filename in sync.
 | [0036](0036-generating-a-secret-a-new-release-declares.md) | Generating a secret a new release declares | ✅ Complete | What `update` does with a secret the release it installs adds: which it generates, where, how it is turned off, and why `apply` and `rollback` do not. |
 | [0037](0037-freshness-of-a-signed-release.md) | Freshness of a signed release | 📝 Draft | Stopping a correctly signed but stale release from being installed, or from being the newest a machine ever learns of: rollback to an older release, and a frozen channel. |
 | [0038](0038-credentials-for-https-bundle-sources.md) | Credentials for HTTPS bundle sources | 📝 Draft | Fetching a bundle from an HTTPS server that requires a login, without the credential reaching argv, the journal or another host. |
+| [0039](0039-publishing-a-bundle-to-an-oci-registry.md) | Publishing a bundle to an OCI registry | 📝 Draft | Publishing a bundle archive to an OCI registry with morzer's own command: an existence check, morzer's media types, channel tags moved after the push, and both digests reported. |
 
 ## Status legend
 
