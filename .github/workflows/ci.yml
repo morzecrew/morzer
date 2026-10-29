@@ -82,6 +82,9 @@ jobs:
               # neither lives under a Go path -- without this, the two
               # edits that change what it does trigger nothing.
               - 'install.sh'
+              # The setup action runs install.sh, and its script is shellchecked
+              # with it.
+              - 'actions/**'
               # The scripts the gates below execute, and the workflow that
               # defines them. `acceptance.sh` *is* the acceptance scenario and
               # this file decides when it runs, yet neither matched a filter
