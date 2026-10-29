@@ -159,12 +159,16 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 		const writers = 6
 		names := make([]string, writers)
 		errs := make([]error, writers)
+		// Released together, so the writes overlap rather than each
+		// finishing before the next goroutine is scheduled.
+		start := make(chan struct{})
 		var wg sync.WaitGroup
 		for i := range writers {
 			names[i] = fmt.Sprintf("writer_%d", i)
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				<-start
 				if i%2 == 0 {
 					errs[i] = store.Set(ctx, names[i], domain.NewSecret("set-"+names[i]))
 				} else {
@@ -172,6 +176,7 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 				}
 			}()
 		}
+		close(start)
 		wg.Wait()
 		for i, err := range errs {
 			require.NoError(t, err, names[i])
