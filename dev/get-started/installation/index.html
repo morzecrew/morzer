@@ -555,6 +555,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#in-github-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        In GitHub Actions
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#by-hand" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2053,6 +2064,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#in-github-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        In GitHub Actions
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#by-hand" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2281,6 +2303,42 @@ sh<span class="w"> </span>install.sh<span class="w"> </span>--version<span class
 every release, covered by that release's <code>SHA256SUMS</code>. So the script that
 verifies the archive is itself verifiable against the file it teaches you to
 check.</p>
+<h2 id="in-github-actions">In GitHub Actions<a class="headerlink" href="#in-github-actions" title="Permanent link">&para;</a></h2>
+<p>A workflow that builds or tests a bundle installs morzer with the action in this
+repository:</p>
+<div class="highlight"><pre><span></span><code><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">morzecrew/morzer/actions/setup@&lt;tag or commit&gt;</span>
+<span class="w">  </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.9.0</span>
+</code></pre></div>
+<p>It runs the script above, at the ref you call the action at, as
+<code>--version &lt;version&gt; --require-signature --no-modify-path --no-completions</code>
+into <code>$RUNNER_TEMP/morzer</code>, and puts that directory on <code>PATH</code> for the steps
+after it. A hosted runner has no <code>minisign</code>, so the action installs it first
+from its release archive, checked against a digest the action pins, and the
+signature is always checked. It then fails unless <code>morzer version</code> reports the
+version you asked for.</p>
+<table>
+<thead>
+<tr>
+<th>Input</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>version</code></td>
+<td>The release to install, as <code>X.Y.Z</code>. Required: a job that installs whatever is newest is one nobody can reproduce.</td>
+</tr>
+<tr>
+<td><code>dir</code></td>
+<td>Where to install instead of <code>$RUNNER_TEMP/morzer</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Its outputs are <code>path</code>, the directory, and <code>version</code>, what the binary reports.
+It runs on Linux runners only, and needs <code>curl</code>, <code>sha256sum</code>, <code>tar</code> and <code>zstd</code>,
+which GitHub's Ubuntu runners have; a job container such as <code>ubuntu:24.04</code> has
+no <code>curl</code> or <code>zstd</code> until the job installs them.</p>
 <h2 id="by-hand">By hand<a class="headerlink" href="#by-hand" title="Permanent link">&para;</a></h2>
 <p>The script is doing this. It stays documented because an operator who wants to
 check its work needs to be able to, and because a machine that cannot reach the
