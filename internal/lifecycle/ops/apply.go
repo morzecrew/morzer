@@ -1113,6 +1113,15 @@ func stepRecordState(d *Deps, inst domain.Installation, rel domain.Release, opts
 					record.SchemaAtInstall = current.SchemaAtInstall
 				}
 			}
+			// The signature checked when the release was staged: this
+			// operation's own when it staged it, else the record's for
+			// the same release, carried forward as the schema is.
+			if check, err := engine.GetTyped[domain.SignatureCheck](st, keySignatureCheck); err == nil {
+				record.SignatureVerified = &check
+			} else if current, err := d.State.CurrentRelease(ctx); err == nil &&
+				current.Root == rel.Root && current.Digest == rel.Digest {
+				record.SignatureVerified = current.SignatureVerified
+			}
 			d.adoptStagedCandidate(ctx, &record)
 			if err := d.State.SetCurrentRelease(ctx, record); err != nil {
 				return err

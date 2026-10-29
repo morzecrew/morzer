@@ -87,17 +87,30 @@ deliberate:
 A machine with no salt — one that reached schema 6 by upgrade and has not run
 `init` since — emits **no digest** rather than an unsalted one.
 
-### `signature_verified` is absent, not false
+### Which operation verified the signature
 
-`predicate.verification.signature_verified` is missing from an `apply`'s
-statement, and that is the honest answer rather than a gap.
+Signatures are checked when a release is **staged**: by `init` for the release it
+installs, and by `update` for the one it installs. Every other operation runs
+against a release already on disk and verifies nothing. So
+`predicate.verification` carries two different claims, and never both:
 
-Signatures are checked when a release is **staged**. An `apply` converges onto a
-release already on disk, so it verifies nothing and the document says nothing.
-Writing `false` there would read as *"checked, and it failed"* — a much stronger
-claim, and one an auditor would act on.
+| Field | Claim |
+| --- | --- |
+| `signature_verified`, `key_id` | **This** operation verified the bundle's signature, against the key with this id. Only an `update` makes it. |
+| `signature_verified_when_staged` | An **earlier** operation verified it when it staged this release: `key_id`, the `operation_id` that verified it, and `at`. An `apply`, `rollback`, `config`, `backup`, `task` or `remove` statement carries it. |
 
-So: absent means no claim. Present and `false` would mean a check that failed.
+Neither field is present when no signature was verified: an unsigned release, a
+machine with no signing keys, or a release staged by a version of morzer that
+did not record the check. A release returned to with `rollback --to` is the
+fourth case: it is taken from the release store, which keeps no record of how
+it was verified. Absent means no claim. Neither field is ever `false`,
+which would read as *"checked, and it failed"* — a much stronger claim, and one
+an auditor would act on.
+
+`key_id` is the minisign key id, as `minisign` prints it, so it can be matched to
+`policy.signing_keys` by eye. `when_staged` is the manager's own record of a past
+check, written on the machine that signs this statement: it says what that
+machine recorded, not that the bundle on disk still matches.
 
 ## Steps carry durations, not timestamps
 
@@ -111,8 +124,14 @@ A JSON Schema ships with every release, generated from the Go types that produce
 the document rather than written alongside them:
 
 ```text
-schemas/morzer-attestation-v1.json
+schemas/morzer-attestation-v2.json
 ```
+
+The predicate type is `https://morzecrew.github.io/morzer/attestation/v2`. v2
+adds `signature_verified_when_staged` and nothing else. Statements written
+before it say `…/attestation/v1`, validate against
+`schemas/morzer-attestation-v1.json`, which stays published unchanged, and are
+still read by `attest verify`.
 
 It pins `_type` and `predicateType` to single values, so a document from another
 contract does not validate against it — notably a **SLSA provenance** document,

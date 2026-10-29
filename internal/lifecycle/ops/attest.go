@@ -245,8 +245,10 @@ func attestationInputs(
 	// auditor is actually asking about -- and the part where it is easiest
 	// to write a field that reads as a check and is not one.
 	//
-	// SignatureVerified is **left unset**, which the document renders as an
-	// absent field rather than a false one.
+	// SignatureVerified is **left unset** here, which the document renders
+	// as an absent field rather than a false one. Only `update` verifies a
+	// signature itself, and it fills the field in from what its own
+	// verify-bundle step saw.
 	//
 	// The tempting shortcut is `SignatureVerified: policy.RequireSignature`,
 	// on the reasoning that an operation which completed under that policy
@@ -259,7 +261,8 @@ func attestationInputs(
 	// And `apply` genuinely cannot establish it: signatures are checked when
 	// a release is *staged*, and apply runs against one already on disk. So
 	// the honest output for this operation is silence on the question, which
-	// is what the absent field means.
+	// is what the absent field means -- with the check the staging operation
+	// recorded reported beside it, as that operation's, never this one's.
 	// DigestMatched is left unset for the same reason SignatureVerified is,
 	// and it was the same mistake: `rel.Digest != ""` says the release
 	// *has* a digest, not that anything compared against it. The comparison
@@ -268,6 +271,11 @@ func attestationInputs(
 	in.Verification = domain.AttestedVerification{
 		SignatureRequired: inst.Policy.RequireSignature,
 		DigestPinned:      rel.Digest != "",
+	}
+	// Only when the record describes the release being attested: `update`
+	// passes the record of the release it moved away from.
+	if rel.Digest != "" && record.Digest == rel.Digest {
+		in.Verification.SignatureVerifiedWhenStaged = record.SignatureVerified
 	}
 	return in
 }

@@ -53,19 +53,40 @@ func (c *Chain) Name() string {
 // wants every problem at once, a failed verification means "do not install
 // this" and the remaining answers do not change that.
 func (c *Chain) Verify(ctx context.Context, bundle ports.BundlePath, expect ports.Expectation) error {
+	_, err := c.VerifySigned(ctx, bundle, expect)
+	return err
+}
+
+var _ ports.SignatureReporter = (*Chain)(nil)
+
+// VerifySigned is Verify, passing on the key a member reports a signature
+// verified against. A member that cannot report one is run for its refusal
+// alone.
+func (c *Chain) VerifySigned(ctx context.Context, bundle ports.BundlePath, expect ports.Expectation) (string, error) {
 	if len(c.verifiers) == 0 {
 		// An empty chain would verify everything by verifying nothing,
 		// which is the one failure mode a verification step must not
 		// have.
-		return domain.Internal(nil, "no verifiers are configured")
+		return "", domain.Internal(nil, "no verifiers are configured")
 	}
 
+	var signedBy string
 	for _, v := range c.verifiers {
+		if r, ok := v.(ports.SignatureReporter); ok {
+			key, err := r.VerifySigned(ctx, bundle, expect)
+			if err != nil {
+				return "", err
+			}
+			if key != "" {
+				signedBy = key
+			}
+			continue
+		}
 		if err := v.Verify(ctx, bundle, expect); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return nil
+	return signedBy, nil
 }
 
 var _ ports.KeyChecker = (*Chain)(nil)

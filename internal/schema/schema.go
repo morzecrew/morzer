@@ -46,7 +46,12 @@ const (
 	// predicateType URI inside it, and it can move independently of the
 	// manifest surface. Coupling its filename to `v1alpha1` would promise a
 	// lockstep that does not exist.
-	AttestationSchemaFile = "morzer-attestation-v1.json"
+	AttestationSchemaFile = "morzer-attestation-v2.json"
+
+	// AttestationV1SchemaFile is the schema statements written before v2
+	// validate against. Published and kept, never regenerated: it describes
+	// documents already on machines and in buckets, and those do not change.
+	AttestationV1SchemaFile = "morzer-attestation-v1.json"
 )
 
 const schemaBase = "https://morzecrew.github.io/morzer/schemas/"

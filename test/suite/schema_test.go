@@ -419,6 +419,9 @@ func TestEverySchemaIsCheckedIn(t *testing.T) {
 		schema.SecretSchemaFile,
 		schema.InstallationDocumentSchemaFile,
 		schema.AttestationSchemaFile,
+		// Kept, never regenerated: statements written before v2
+		// validate against it.
+		schema.AttestationV1SchemaFile,
 	}, found,
 		"schemas/ must hold exactly what the generator produces")
 }

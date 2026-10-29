@@ -710,14 +710,19 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 
 			// Verified before it is trusted for anything: hooks run
 			// only from a verified release.
+			var signed *domain.SignatureCheck
 			if d.Verifier != nil {
 				expect := ports.Expectation{
 					Digest:     resolved.Digest,
 					Required:   opts.RequireSignature,
 					PublicKeys: opts.SigningKeys,
 				}
-				if err := d.Verifier.Verify(ctx, ports.BundlePath(dest), expect); err != nil {
+				key, err := d.verifyBundle(ctx, ports.BundlePath(dest), expect)
+				if err != nil {
 					return err
+				}
+				if key != "" {
+					signed = &domain.SignatureCheck{KeyID: key, OperationID: st.OpID, At: domain.NewTime(d.now())}
 				}
 			}
 
@@ -769,6 +774,8 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 				InstalledAt:   domain.NewTime(d.now()),
 				OperationID:   st.OpID,
 				SourceRef:     ports.RedactRefCredentials(opts.ReleasePath),
+
+				SignatureVerified: signed,
 			})
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {

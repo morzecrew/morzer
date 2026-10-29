@@ -183,9 +183,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// statement has a chain nothing can follow. Emitted on failure too --
 	// the update that rolled back is what an incident review reads.
 	if !opts.DryRun {
-		emitAttestation(ctx, d, result.Record,
-			attestationInputs(inst, staged, from, from.Version,
-				renderedConfigFor(result.State)))
+		in := attestationInputs(inst, staged, from, from.Version, renderedConfigFor(result.State))
+		in.Verification.SignatureVerified, in.Verification.KeyID = verifiedHere(result.State)
+		emitAttestation(ctx, d, result.Record, in)
 	}
 
 	if runErr != nil {
@@ -544,6 +544,36 @@ func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engi
 	}
 }
 
+// verifiedHere is the signature this operation's verify-bundle verified, as a
+// statement reports its own check: true and the key, or nothing. The one
+// operation that verifies a signature itself is `update`. Nil state is an update
+// refused before the engine ran, which verified nothing.
+func verifiedHere(st *engine.State) (*bool, string) {
+	if st == nil {
+		return nil, ""
+	}
+	check, err := engine.GetTyped[domain.SignatureCheck](st, keySignatureCheck)
+	if err != nil {
+		return nil, ""
+	}
+	verified := true
+	return &verified, check.KeyID
+}
+
+// keySignatureCheck is the signature verify-bundle verified, if it verified one,
+// which record-state writes into the release record.
+const keySignatureCheck = "signature-check"
+
+// verifyBundle runs the verifier and returns the id of the key a signature
+// verified against, or "" when it verified none -- including when the verifier
+// cannot say, which is then read as no signature verified rather than guessed.
+func (d *Deps) verifyBundle(ctx context.Context, bundle ports.BundlePath, expect ports.Expectation) (string, error) {
+	if r, ok := d.Verifier.(ports.SignatureReporter); ok {
+		return r.VerifySigned(ctx, bundle, expect)
+	}
+	return "", d.Verifier.Verify(ctx, bundle, expect)
+}
+
 // stepVerifyBundle checks the bundle against what the operator expected before
 // anything in it is trusted as configuration or executed as a hook.
 func stepVerifyBundle(d *Deps, inst domain.Installation, source domain.Release, opts UpdateOptions) engine.Step {
@@ -562,13 +592,18 @@ func stepVerifyBundle(d *Deps, inst domain.Installation, source domain.Release, 
 			// bundle: a bundle asserting it needs no signature, or
 			// naming the key that may sign it, would defeat the
 			// check it is supposed to satisfy.
-			err := d.Verifier.Verify(ctx, ports.BundlePath(source.Root), ports.Expectation{
+			key, err := d.verifyBundle(ctx, ports.BundlePath(source.Root), ports.Expectation{
 				Digest:     opts.ExpectDigest,
 				Required:   inst.Policy.RequireSignature,
 				PublicKeys: inst.Policy.SigningKeys,
 			})
 			if err != nil {
 				return err
+			}
+			if key != "" {
+				st.Set(keySignatureCheck, domain.SignatureCheck{
+					KeyID: key, OperationID: st.OpID, At: domain.NewTime(d.now()),
+				})
 			}
 
 			if opts.ExpectDigest == "" {

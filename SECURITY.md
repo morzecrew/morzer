@@ -187,11 +187,6 @@ Stated here rather than discovered during an incident:
   ambient Docker credentials are used.
 - `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
   implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
-- An attestation records what the manager did; it does not record that a
-  signature was *verified during that operation*, because signatures are checked
-  when a release is staged and `apply` runs against one already on disk. The
-  field is absent rather than `false` in that case, so an auditor cannot read
-  "not established" as "checked and failed".
 - An attestation leaves the machine as it is written, to the same targets the
   backups go to, and a push that fails does not fail the operation. So a machine
   lost between writing a statement and pushing it takes that statement with it;
@@ -237,6 +232,16 @@ cannot make that distinction, so it reports both alike.
 
 Kept here because a security policy that only ever grows is one nobody trusts to
 be current.
+
+- **An attestation did not say a release's signature was verified**
+  (closed 2026-10-29). Signatures are checked when a release is staged, and no
+  statement said so, not even the `update` that did the checking. An `update`'s
+  statement now reports its own check with the key it verified against. The
+  release record keeps the check `init` or `update` made, so every later
+  statement about that release reports it as `signature_verified_when_staged`,
+  naming the operation that made it, never as a check of its own. The
+  predicate moved to `…/attestation/v2` to carry the new field; v1 statements
+  are still read. See [Attestations](https://morzecrew.github.io/morzer/latest/reference/attestations/#which-operation-verified-the-signature).
 
 - **A reachable XSS advisory in a markdown dependency** (closed 2026-08-12).
   `goldmark` before 1.7.17 carried [GO-2026-5320](https://osv.dev/GO-2026-5320),

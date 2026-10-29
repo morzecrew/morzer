@@ -20,7 +20,9 @@ package minisign
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -50,9 +52,19 @@ func (v *Verifier) Name() string { return Name }
 // small steps, each independently checkable with standard tools, rather than
 // one bespoke signature over a tree digest only this program can compute.
 func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect ports.Expectation) error {
+	_, err := v.VerifySigned(ctx, bundle, expect)
+	return err
+}
+
+var _ ports.SignatureReporter = (*Verifier)(nil)
+
+// VerifySigned is Verify, naming the key the signature verified against, or ""
+// when it had no keys to check against or the bundle carried no signature it
+// needed.
+func (v *Verifier) VerifySigned(ctx context.Context, bundle ports.BundlePath, expect ports.Expectation) (string, error) {
 	keys, err := parseKeys(expect.PublicKeys)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if len(keys) == 0 {
@@ -60,22 +72,22 @@ func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect p
 			// Reachable only through a hand-edited installation:
 			// Installation.Validate refuses this combination at load,
 			// precisely so it does not become a runtime surprise.
-			return domain.ValidationError(nil,
+			return "", domain.ValidationError(nil,
 				"installation policy requires a signature but configures no signing keys").
 				WithHint("trust one with `morzer release trust add <key>`; " +
 					"installation.yaml is a report, and editing it changes nothing")
 		}
 		// No keys means no opinion. The checksum verifier still runs.
-		return nil
+		return "", nil
 	}
 
 	sigPath, sumsPath, err := locate(string(bundle), expect.SignaturePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if sigPath == "" {
 		if expect.Required {
-			return domain.ValidationError(nil,
+			return "", domain.ValidationError(nil,
 				"installation policy requires a signature, but this bundle has none").
 				WithHint("the bundle should contain %s alongside %s. "+
 					"Obtain a signed bundle, or clear require_signature if you "+
@@ -85,18 +97,18 @@ func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect p
 		// Signing keys configured but nothing signed: a warning shape,
 		// not a failure, because require_signature is the control that
 		// decides whether a signature is mandatory.
-		return nil
+		return "", nil
 	}
 
 	signature, err := gominisign.NewSignatureFromFile(sigPath)
 	if err != nil {
-		return domain.ValidationError(err, "cannot read the signature at %s", sigPath).
+		return "", domain.ValidationError(err, "cannot read the signature at %s", sigPath).
 			WithHint("the file should be minisign output; check it downloaded completely")
 	}
 
 	signed, err := os.ReadFile(sumsPath)
 	if err != nil {
-		return domain.ValidationError(err,
+		return "", domain.ValidationError(err,
 			"the bundle has a signature but no %s to verify against", ports.SumsFileName).
 			WithHint("the signature covers %s; without it there is nothing to check",
 				ports.SumsFileName)
@@ -105,14 +117,14 @@ func (v *Verifier) Verify(ctx context.Context, bundle ports.BundlePath, expect p
 	for _, key := range keys {
 		ok, verifyErr := key.Verify(signed, signature)
 		if ok && verifyErr == nil {
-			return nil
+			return keyID(key), nil
 		}
 	}
 
 	// Deliberately does not say which key failed or how. A signature that
 	// does not verify is a signature that does not verify; the operator's
 	// next step is the same whichever key it was meant for.
-	return domain.ValidationError(domain.ErrValidation,
+	return "", domain.ValidationError(domain.ErrValidation,
 		"the bundle's signature does not verify against any configured signing key").
 		WithHint("this bundle was not signed by a key this installation trusts. " +
 			"Do not install it; check where it came from, and check " +
@@ -130,6 +142,13 @@ func (v *Verifier) CheckKey(key string) error {
 				"as printed by `minisign -G`")
 	}
 	return nil
+}
+
+// keyID renders a key id the way minisign prints it: the eight id bytes read as
+// a little-endian integer, in uppercase hex. The signer adapter prints its own
+// keys the same way, so the two can be matched by eye.
+func keyID(key gominisign.PublicKey) string {
+	return fmt.Sprintf("%016X", binary.LittleEndian.Uint64(key.KeyId[:]))
 }
 
 // parseKeys turns configured strings into keys, reporting a bad one by

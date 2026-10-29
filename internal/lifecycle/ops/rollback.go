@@ -132,7 +132,7 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		Description: describe(domain.OpTypeRollback, current.Version, previous.Version),
 		From:        current.Version,
 		To:          previous.Version,
-		Steps:       rollbackSteps(d, inst, current, previousRel, opts),
+		Steps:       rollbackSteps(d, inst, current, previous, previousRel, opts),
 		Flags:       rollbackFlags(previous, opts),
 	}
 
@@ -343,12 +343,12 @@ func rollbackRefusal(r RollbackReport) error {
 func rollbackSteps(
 	d *Deps,
 	inst domain.Installation,
-	current domain.ReleaseRecord,
+	current, previous domain.ReleaseRecord,
 	previousRel domain.Release,
 	opts RollbackOptions,
 ) []engine.Step {
 	steps := []engine.Step{
-		stepPointToPrevious(d, current, previousRel),
+		stepPointToPrevious(d, current, previous, previousRel),
 	}
 	converge := opts.Options
 	converge.PreviousVersion = current.Version
@@ -361,7 +361,7 @@ func rollbackSteps(
 // runs newest-first and therefore last, has something to undo: a failed
 // rollback must leave the pointer where the operation found it. The final
 // apply step writes the same pointer again, which is idempotent.
-func stepPointToPrevious(d *Deps, current domain.ReleaseRecord, previousRel domain.Release) engine.Step {
+func stepPointToPrevious(d *Deps, current, previous domain.ReleaseRecord, previousRel domain.Release) engine.Step {
 	return engine.Step{
 		ID:          "point-to-previous",
 		Description: "point at " + previousRel.Version().String(),
@@ -384,6 +384,12 @@ func stepPointToPrevious(d *Deps, current domain.ReleaseRecord, previousRel doma
 				// record that describes the database rather than one
 				// implying the rollback migrated it back.
 				SchemaAtInstall: current.SchemaAtInstall,
+			}
+			// The check made when the release was first staged travels
+			// with it, so the statements after a rollback can still say
+			// it was verified, and by which operation.
+			if previous.Digest == previousRel.Digest {
+				record.SignatureVerified = previous.SignatureVerified
 			}
 			if err := d.State.SetCurrentRelease(ctx, record); err != nil {
 				return err
