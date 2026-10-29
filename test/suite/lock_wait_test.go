@@ -42,6 +42,13 @@ func TestAnOperationThatWaitedForTheLockRefusesAMovedRelease(t *testing.T) {
 			_, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{Reason: "manual"})
 			return err
 		},
+		"remove": func(ctx context.Context, h *harness, inst domain.Installation) error {
+			_, err := ops.Remove(ctx, h.Deps, ops.RemoveOptions{
+				Options:                 ops.Options{Force: true},
+				ConfirmedInstallationID: inst.ID,
+			})
+			return err
+		},
 		"restore": func(ctx context.Context, h *harness, inst domain.Installation) error {
 			_, err := ops.Restore(ctx, h.Deps, ops.RestoreOptions{
 				Options:                 ops.Options{Force: true},

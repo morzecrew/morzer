@@ -149,3 +149,47 @@ func firstBytes(b []byte) string {
 	}
 	return string(b)
 }
+
+// `installation remove` is refused without --force, and on production without
+// the id typed out, before anything is journaled (RFC 0034 §5.2).
+func TestInstallationRemoveIsConfirmedTheWayRestoreIs(t *testing.T) {
+	r := clitest.NewInstalled(t)
+	id := installationID(t, r)
+
+	r.Run("installation", "remove").ExitCode(2).OutputContains("requires --force")
+	r.Run("installation", "remove", "--force").ExitCode(2).OutputContains("--confirm " + id)
+
+	plan := r.Run("installation", "remove", "--dry-run", "--force", "--confirm", id).ExitCode(0)
+	plan.OutputContains("would remove demo and keep its data", "/etc/demo/age",
+		"forget the installation", "the signing key last")
+
+	// Nothing was removed by any of that.
+	r.Run("status").ExitCode(0)
+}
+
+// The whole round trip an operator retrying an install takes: remove, see what
+// was kept, and `init` again over it.
+func TestAnInstallationCanBeRemovedAndCreatedAgain(t *testing.T) {
+	clitest.RequireDocker(t)
+	r := clitest.NewInstalled(t)
+	id := installationID(t, r)
+
+	out := r.Run("installation", "remove", "--force", "--confirm", id, "--json").ExitCode(0)
+	out.FieldEquals("data.purged", false).FieldEquals("data.volumes_kept", true)
+	if journal, _ := out.Field("data.journal").(string); !strings.Contains(journal, "operations-removed-") {
+		t.Errorf("the journal was not renamed after the removal: %q", journal)
+	}
+
+	r.Run("ls", "--json").ExitCode(0).FieldLen("data", 0)
+
+	r.Run("init",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--domain", "demo.example",
+		"--no-recovery-recipient",
+		"--install-units=false",
+	).ExitCode(0)
+	if again := installationID(t, r); again == id {
+		t.Errorf("the new installation reused the removed one's id %s", id)
+	}
+}

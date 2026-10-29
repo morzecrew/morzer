@@ -1,7 +1,7 @@
 ---
 title: installation
 icon: lucide/hard-drive-download
-summary: Listing the installations on a machine, and exporting or importing one installation's identity and secret state
+summary: Listing the installations on a machine, exporting or importing one installation's identity and secret state, and removing one
 ---
 
 # `morzer installation`
@@ -290,6 +290,104 @@ Every field of an installation is either carried by the document or excluded
 with a reason, and that accounting is checked against the struct in both
 directions: a field added and left unclassified fails the build, and so does a
 reason naming a field that no longer exists.
+
+## Removing an installation
+
+### installation remove
+
+```sh
+morzer installation remove --dry-run --force --confirm <installation-id>
+morzer installation remove --force --confirm <installation-id>
+morzer installation remove --force --purge --confirm <installation-id>
+```
+
+Takes one installation off this machine, and touches nothing whose path is not
+derived from its product name, so another installation on the same host is
+safe. It runs as an operation: under the deployment lock, journaled step by
+step, and plannable with `--dry-run`.
+
+| Flag | Meaning |
+| --- | --- |
+| `--force` | Required. Removal is destructive on every machine. |
+| `--confirm` | The installation id, typed out. Required on a production installation, as it is for [`restore`](commands.md#restore). A dev installation needs `--force` alone, and a typed id that names another installation is refused on either. |
+| `--purge` | Also remove the data and what unlocks it — see below. |
+
+A plan is confirmed like the removal itself, because `--dry-run` refuses
+whatever the operation would refuse. Pass it the same flags.
+
+#### What goes and what stays
+
+| What | Default | `--purge` |
+| --- | --- | --- |
+| systemd units | removed | removed |
+| containers and networks | removed | removed |
+| named volumes | **kept** | removed |
+| images no release left on the machine names | removed | removed |
+| `/opt/<product>`, the releases | removed | removed |
+| `/run/<product>`, the rendered secrets | removed | removed |
+| `/etc/<product>` configuration and signing key | removed | removed |
+| `/etc/<product>` secret state and `age/`, the machine key | **kept** | removed |
+| `/var/lib/<product>/data` and `backups` | **kept** | removed |
+| `/var/lib/<product>/attestations` | **kept** | only the removal's own |
+| the journal | **kept**, renamed | only the removal's own record, renamed |
+
+The secret state and the machine key stay with the data because they are what
+unlocks it. Backups are encrypted to the machine key, and on an installation
+created with `--no-recovery-recipient` nothing else can read them. A kept
+database volume was created with the credentials the secret state holds.
+
+`init` reuses a machine key and secret state it finds, so installing the same
+product again on this machine runs against the kept volumes with the
+credentials they were created with. When you are moving the product off this
+machine for good, pass `--purge`.
+
+**Nothing on a backup target is removed,** `--purge` included. Remote backups
+and attestations are the record that outlives the machine, and the removal adds
+its own statement to them.
+
+The command ends by saying what it kept and where; `--json` carries the same
+list as `data.kept`.
+
+#### The record it leaves
+
+Like other operations, the removal journals its steps and files a signed
+[attestation](attestations.md), which it pushes to the configured targets. The
+signing key is the last thing removed, after the statement is written. A
+statement that cannot be signed is filed unsigned with a warning, as any
+operation's is, and the key is removed all the same.
+
+The journal is then renamed to
+`/var/lib/<product>/manager/operations-removed-<operation-id>.jsonl`. A later
+`init` starts with an empty journal and inherits no unfinished operation from an
+installation that no longer exists. With `--purge`, the renamed journal holds
+only the removal's record, and `attestations/` holds only its statement.
+
+#### When it fails, or there is no installation record
+
+Every step can be repeated safely. A removal that fails part way is finished by
+fixing the cause and running it again, or with `--resume`. The installation
+record is the last thing it forgets, so the second run asks for the same
+confirmation.
+
+A failed first install leaves directories and a machine key, and no record to
+read an id or a mode from. `--product` names it, and `--force` alone is enough:
+
+```sh
+morzer --product demo installation remove --force --purge
+```
+
+With no record there is no installation to attest to and no target configured,
+so that removal is journaled and files no statement.
+
+A product with nothing of it on the machine is refused, so a typo in
+`--product` removes nothing.
+
+!!! tip "Take a backup first"
+
+    The command takes no backup of its own. `morzer backup` before
+    `installation remove --purge` keeps a copy on your targets, and
+    `installation import --from-backup` with your recovery key brings it back
+    on any machine.
 
 ## Related
 

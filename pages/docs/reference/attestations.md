@@ -6,8 +6,9 @@ summary: The signed statement the manager writes after a lifecycle operation —
 
 # Attestations
 
-After `apply`, `update`, `rollback`, `restore` and `config` — on failure as well
-as success — the manager writes a signed record of what it did:
+After `apply`, `update`, `rollback`, `restore`, `config` and
+`installation remove` — on failure as well as success — the manager writes a
+signed record of what it did:
 
 ```text
 /var/lib/<product>/attestations/op_01K2Z9X7QK8V3H4M5N6P7R8S9T.json

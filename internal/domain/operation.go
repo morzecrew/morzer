@@ -36,6 +36,11 @@ const (
 	// the deployment lock as the vendor's statement of what the command is,
 	// where exec is an operator's command the manager knows nothing about.
 	OpTypeTask OperationType = "task"
+
+	// OpTypeRemove takes an installation off the machine (RFC 0034). Its
+	// record is the last one the installation's journal holds, and the
+	// journal is renamed after it so a later `init` starts with none.
+	OpTypeRemove OperationType = "remove"
 )
 
 // OperationStatus is the lifecycle of one operation.

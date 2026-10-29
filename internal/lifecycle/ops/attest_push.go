@@ -55,10 +55,11 @@ func pushStatement(ctx context.Context, d *Deps, inst domain.Installation, file 
 		d.warnf("cannot resolve where attestations are pushed: %s", domain.AsError(err).Message)
 		return
 	}
-	if len(targets) == 0 {
-		return
-	}
+	pushStatementTo(ctx, d, targets, file)
+}
 
+// pushStatementTo is pushStatement with the targets already resolved.
+func pushStatementTo(ctx context.Context, d *Deps, targets []ports.TargetRef, file string) {
 	for _, target := range targets {
 		// Every target is attempted. Stopping at the first failure hides
 		// the state of the rest, so an operator fixing one unreachable
