@@ -315,6 +315,7 @@ that, the floors in §5.5 become a chore to satisfy rather than a guide.
 | 17 | Diagrams are mermaid, not d2. The theme renders and themes them already; d2 would add a CI binary, a pre-deploy build step, light/dark variants and a gitignored SVG tree. Every diagram supplements prose that stands without it, which is what makes client-side rendering acceptable. See §5.1. |
 | 18 | Docs are versioned by *minor*, not by patch. A patch release rarely changes documentation, and three near-identical entries in a version selector help nobody. `latest` moves only for the newest released minor, so a backport refreshes its own line without sending every reader to older docs. |
 | 19 | The README keeps a "Try it" section rather than linking straight out. It is what a visitor with thirty seconds actually wants, and three commands is cheaper to read than a page load. Everything else links. |
+| 20 | A release's docs deploy when the release is *published*, not when its tag is pushed. The tag starts the release build, which runs the full CI and leaves a draft for a maintainer; docs deployed at the tag named downloads that did not exist yet. Supersedes the trigger in §5's table and decision 3's "tags"; versions, aliases and the root are unchanged. See [logs/docs-on-release-published.md](../logs/docs-on-release-published.md). |
 
 ## 11. Phasing
 
