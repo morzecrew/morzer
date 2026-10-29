@@ -1660,6 +1660,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A task
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phases" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2120,6 +2131,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A task
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phases" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2341,7 +2363,7 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_OPERATION_TYPE</code></td>
-<td><code>apply</code>, <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>: the operation running the hook. A first install is <code>apply</code>, as every re-apply is, a boot's included. <code>init</code> is reserved: no hook runs under it.</td>
+<td><code>apply</code>, <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>: the operation running the hook. A first install is <code>apply</code>, as every re-apply is, a boot's included. <code>init</code> is reserved: no hook runs under it. A <a href="#a-task">task's container</a> sees <code>task</code>.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_PHASE</code></td>
@@ -2436,9 +2458,14 @@ product prefix.</p>
 </ul>
 <p>The values are passed on the <code>docker compose run</code> command line, which other
 users on the machine can read. None of them is a secret.</p>
+<h3 id="a-task">A task<a class="headerlink" href="#a-task" title="Permanent link">&para;</a></h3>
+<p>A <a href="../manifest/#tasks">task</a> runs in a container the same way, and gets the same
+variables, with <code>OPERATION_TYPE</code> and <code>PHASE</code> set to <code>task</code>. The arguments an
+operator appended follow the task's <code>command</code>; nothing else of theirs reaches
+the container.</p>
 <h3 id="phases">Phases<a class="headerlink" href="#phases" title="Permanent link">&para;</a></h3>
 <p><code>PHASE</code> is one of <code>migrate</code>, <code>smoke-test</code>, <code>backup</code>, <code>restore</code> or
-<code>health-check</code>.</p>
+<code>health-check</code>, and <code>task</code> in a <a href="#a-task">task's container</a>, where no hook runs.</p>
 <p><code>preflight</code>, <code>pre-update</code> and <code>post-update</code> are reserved. The <abbr title="Application Binary Interface">ABI</abbr> names them,
 but no release of the manager runs a hook in them, so a hook may branch on them
 and nothing reaches the branch.</p>

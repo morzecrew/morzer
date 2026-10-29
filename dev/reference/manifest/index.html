@@ -1768,6 +1768,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        tasks
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2464,6 +2475,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        tasks
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2757,6 +2779,12 @@ later. Vendor-specific keys go under <code>extensions.&lt;namespace&gt;</code>.<
 <td>map</td>
 <td style="text-align: center;"></td>
 <td>Named lifecycle operations: migrate, smoke test, backup, restore.</td>
+</tr>
+<tr>
+<td><code>tasks</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Commands an operator runs by name with <code>morzer task run</code>.</td>
 </tr>
 <tr>
 <td><code>backup</code></td>
@@ -3428,6 +3456,87 @@ again on the next attempt, and every step runs again on every <code>apply</code>
 list that declares less is refused. A manager older than 0.4.0 cannot read the
 list. The declaration is what makes it refuse the bundle as needing a newer
 manager, instead of reporting a malformed operation.</p>
+<h2 id="tasks">tasks<a class="headerlink" href="#tasks" title="Permanent link">&para;</a></h2>
+<p>A map of task name to a command an operator runs on demand with
+<a href="../commands/#task"><code>morzer task run</code></a>: filling a sandbox with demo data,
+unlocking a user, rebuilding a search index, printing a diagnostic report. Each
+runs as a one-shot container of a service from the release's runtime
+configuration, through the image's entrypoint, as an operation under the
+deployment lock.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.8.0"</span>
+
+<span class="nt">tasks</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">seed</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Fill an empty database with demo data</span>
+<span class="w">    </span><span class="nt">service</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">backend</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">seed</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">args</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">modes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">dev</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>service</code></td>
+<td>string</td>
+<td style="text-align: center;">✅</td>
+<td>The service to run. One behind a Compose profile that is not active is run too, as <code>compose run</code> starts it when named.</td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td>list</td>
+<td style="text-align: center;">✅</td>
+<td>The command, replacing the service's own; the first entry names the program. The image's entrypoint still runs, so a wrapper that loads <code>*_FILE</code> secrets does its work.</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>One line of at most 200 characters, with no control characters, shown by <code>morzer task list</code>.</td>
+</tr>
+<tr>
+<td><code>args</code></td>
+<td>bool</td>
+<td style="text-align: center;"></td>
+<td>Whether an operator may append arguments after <code>--</code>. Default <code>false</code>, and arguments to a task without it are refused.</td>
+</tr>
+<tr>
+<td><code>modes</code></td>
+<td>list</td>
+<td style="text-align: center;"></td>
+<td>The machine modes the task may run on: <code>dev</code>, <code>production</code>. Absent means every mode.</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>duration</td>
+<td style="text-align: center;"></td>
+<td>Time budget. Default <code>10m</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Names are lowercase letters, digits and dashes, starting with a letter, so a
+name is typed on a command line without quoting.</p>
+<p><strong><code>modes</code> is a refusal, not a warning.</strong> A task listing <code>[dev]</code> is refused on a
+production machine by name, before anything runs, and <code>--force</code> does not
+override it. A machine's mode is fixed when it is created.</p>
+<p>A task runs whether or not the deployment is up: the container starts the
+services it <code>depends_on</code> first, as a migration service does. It gets the same
+<a href="../hooks/#a-migration-service">hook <abbr title="Application Binary Interface">ABI</abbr> variables</a>, with <code>OPERATION_TYPE</code> and
+<code>PHASE</code> set to <code>task</code>. Any non-zero exit fails it, <code>2</code> included; "nothing to
+do" belongs to migrations.</p>
+<p><strong>Tasks need <code>min_manager_version: "0.8.0"</code> or later</strong>, and a manifest declaring
+tasks with less is refused. A manager older than 0.8.0 cannot read <code>tasks:</code>, and
+the declaration makes it refuse the bundle as needing a newer manager instead of
+reporting an unknown field.</p>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>What the manager may do about the project's named volumes, which it captures
 itself rather than through the backup hook.</p>

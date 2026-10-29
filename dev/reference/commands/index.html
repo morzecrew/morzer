@@ -1519,6 +1519,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#task" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        task
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2441,6 +2452,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#task" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        task
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2820,6 +2842,10 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <tr>
 <td><a href="#exec"><code>exec</code></a></td>
 <td>Run a command inside a running service.</td>
+</tr>
+<tr>
+<td><a href="#task"><code>task</code></a></td>
+<td>List and run the commands the release declares.</td>
 </tr>
 <tr>
 <td><a href="#backup"><code>backup</code></a></td>
@@ -3276,6 +3302,57 @@ rather than writing down a command line it could not scrub. A credential the
 manager has never
 been told about is beyond that; see
 <a href="../../operating/looking-inside/#it-is-written-down">Looking inside</a>.</p>
+<h2 id="task">task<a class="headerlink" href="#task" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>task<span class="w"> </span>list
+morzer<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>&lt;task&gt;<span class="w"> </span><span class="o">[</span>--<span class="w"> </span>args...<span class="o">]</span>
+</code></pre></div>
+<p>Runs a command the release declares under
+<a href="../manifest/#tasks"><code>tasks</code></a>: a one-shot container of a release service, with the
+task's command, through the image's entrypoint. Where <a href="#exec"><code>exec</code></a> runs a
+command the operator writes, a task is one the vendor wrote and named, and says
+which machines it may run on.</p>
+<p><code>task list</code> shows each task's service, the machine modes it allows, whether this
+machine is one of them, whether it takes arguments, and its description.</p>
+<p><code>task run</code> is an operation, <code>task</code>. It takes the deployment lock, is refused
+while an earlier operation needs attention, and is journalled, attested and
+reported to the notify targets like a converge:</p>
+<ol>
+<li>secrets and configuration are rendered as <code>apply</code> renders them, so a task
+   after a reboot finds the files its service mounts;</li>
+<li>the task's container runs to completion. The services it depends on are
+   started first, so a task runs whether or not the deployment is up.</li>
+</ol>
+<p>Refused before anything runs, and journalled as nothing:</p>
+<ul>
+<li>a task the release does not declare, naming the ones it does;</li>
+<li>arguments to a task whose release does not declare <code>args: true</code> for it;</li>
+<li>a task whose <code>modes</code> do not include this machine's. <code>--force</code> does not override
+  it;</li>
+<li><code>--resume</code>. Running a task's command again is not the same as running it once,
+  and whether that is safe is the vendor's to say.</li>
+</ul>
+<p>A service the release's runtime configuration does not define is refused before
+the container starts, rather than reported through an exit code that would pass
+for the task's own.</p>
+<p>The task's output is printed when it finishes: its stdout on stdout, so a report
+can be piped to a file, and its stderr on stderr. It is kept line by line and
+printed ending in a newline. As with <code>exec</code>, the first 256 KiB of each is kept,
+so a longer report is cut. The live view tails it while
+it runs, and <code>--verbose</code> prints it as it arrives. The invocation exits with the
+task's own exit code. A non-zero exit fails the operation: it is <code>failed</code>, with
+nothing rolled back and nothing flagged, since the task's effects are the
+vendor's. Its error names the exit code and quotes none of the output, which the
+journal does not keep.</p>
+<p>Not an interactive session: there is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin. <code>--dry-run</code> lists the
+steps and the command the task would run. The arguments in that command are
+scrubbed, as they are in the journal, and left out when they cannot be.</p>
+<p>The journal keeps the task's name, its service and the arguments, with this
+installation's known secret values scrubbed first, and never the output. When
+those values cannot be loaded the record carries <code>args_omitted</code> saying why, as
+<a href="#exec"><code>exec</code></a>'s does.</p>
+<p>The arguments are passed on the <code>docker compose run</code> command line, which other
+users on the machine can read while the task runs, so they are not the place for
+a credential.</p>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>Coordinates the release's backup hook, wraps the result in a self-describing
 manifest, and verifies the checksums by re-reading what was written.</p>
