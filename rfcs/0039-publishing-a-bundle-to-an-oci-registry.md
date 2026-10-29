@@ -1,8 +1,9 @@
 # RFC 0039 — Publishing a bundle to an OCI registry
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-29: §11's
-  `OPEN` rows as recommended. **P1, the command, is ready to build**; P2 is
-  gated on a vendor asking
+- **Status:** 🚧 In progress — ruled by the author 2026-10-29: §11's `OPEN`
+  rows as recommended. **P1, the command, built 2026-10-30**; the decisions the
+  build had to make wait in [logs/release-push.md](../logs/release-push.md) as
+  proposed rows 12–19. P2 is gated on a vendor asking
 - **Scope:** A `morzer release push` command that publishes a bundle archive to
   an OCI registry: it checks the archive, refuses to overwrite a published
   version with different content, pushes with morzer's own artifact and layer
