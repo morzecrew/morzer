@@ -115,9 +115,9 @@ version you asked for.
 | `dir` | Where to install instead of `$RUNNER_TEMP/morzer`. |
 
 Its outputs are `path`, the directory, and `version`, what the binary reports.
-It runs on Linux runners only, and needs `curl`, `tar` and `zstd`, which
-GitHub's Ubuntu runners have; a job container such as `ubuntu:24.04` has none
-of them until the job installs them.
+It runs on Linux runners only, and needs `curl`, `sha256sum`, `tar` and `zstd`,
+which GitHub's Ubuntu runners have; a job container such as `ubuntu:24.04` has
+no `curl` or `zstd` until the job installs them.
 
 ## By hand
 
