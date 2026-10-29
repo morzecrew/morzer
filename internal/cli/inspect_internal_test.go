@@ -228,8 +228,24 @@ func TestAnExecWhoseOutputWasCutIsFollowedByAWarning(t *testing.T) {
 	if out.String() != "COPY users" {
 		t.Errorf("stdout is %q, want the command's own and nothing else", out.String())
 	}
-	if !strings.Contains(errOut.String(), "output is cut short: only the start") {
+	if !strings.Contains(errOut.String(), "output is cut short") {
 		t.Errorf("stderr says nothing of the cut: %q", errOut.String())
+	}
+}
+
+// On a terminal both streams share the screen, and the runner keeps no final
+// newline, so the warning has to start a line of its own. It names no stream:
+// the runtime says the output was cut, not which half.
+func TestACutWarningStartsALineOfItsOwn(t *testing.T) {
+	var screen bytes.Buffer
+	app := &App{Stream: ui.Streams{Out: &screen, Err: &screen}}
+
+	_ = app.finishExec(ops.ExecResult{Service: "db", Stdout: "COPY users", Stderr: "notice", Truncated: true}, nil)
+	if !strings.Contains(screen.String(), "COPY users\nwarning: ") {
+		t.Errorf("the warning is joined to the command's last line: %q", screen.String())
+	}
+	if strings.Contains(screen.String(), "each stream") {
+		t.Errorf("the warning says both streams were cut: %q", screen.String())
 	}
 }
 

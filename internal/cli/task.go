@@ -98,7 +98,7 @@ func (a *App) finishTask(run ops.TaskRun, err error) error {
 		fmt.Fprint(a.Stream.Err, endLine(run.Stderr))
 		a.passThrough(endLine(run.Stdout))
 		if run.Truncated {
-			a.warnOutputCut("the task's")
+			a.warnOutputCut("the task's", "")
 		}
 	}
 	// The task's own status, as exec's (decision 12). The step's error

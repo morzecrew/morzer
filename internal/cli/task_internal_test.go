@@ -47,7 +47,7 @@ func TestATaskWhoseOutputWasCutIsFollowedByAWarning(t *testing.T) {
 	if out.String() != "row 1\n" {
 		t.Errorf("stdout is %q, want the task's own and nothing else", out.String())
 	}
-	if !strings.Contains(errOut.String(), "output is cut short: only the start") {
+	if !strings.Contains(errOut.String(), "output is cut short") {
 		t.Errorf("stderr says nothing of the cut: %q", errOut.String())
 	}
 
