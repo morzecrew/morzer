@@ -303,6 +303,11 @@ type ExitResult struct {
 	// runtime's progress.
 	Output string
 
+	// Truncated says Stdout or Stderr holds only the start of what the
+	// process wrote. The runtime keeps a bounded head of each stream, so a
+	// caller handing the output on must say when that is not all of it.
+	Truncated bool
+
 	Duration time.Duration
 }
 

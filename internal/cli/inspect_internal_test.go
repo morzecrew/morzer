@@ -216,6 +216,23 @@ func TestExecOutputGoesThroughUnframed(t *testing.T) {
 	}
 }
 
+// A dump cut at the runner's bound is a dump that restores nothing past it, so
+// the operator is told, on stderr, where the file being written cannot hide it.
+func TestAnExecWhoseOutputWasCutIsFollowedByAWarning(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{Stream: ui.Streams{Out: &out, Err: &errOut}}
+
+	if err := app.finishExec(ops.ExecResult{Service: "db", Stdout: "COPY users", Truncated: true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "COPY users" {
+		t.Errorf("stdout is %q, want the command's own and nothing else", out.String())
+	}
+	if !strings.Contains(errOut.String(), "output is cut short: only the start") {
+		t.Errorf("stderr says nothing of the cut: %q", errOut.String())
+	}
+}
+
 // TestARefusalAfterTheCommandRanKeepsItsOutputInTheEnvelope: a service that
 // stopped while the command ran is refused after the command printed, and the
 // envelope is all a --json consumer reads.

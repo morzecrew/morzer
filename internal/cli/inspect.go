@@ -470,6 +470,9 @@ func (a *App) finishExec(result ops.ExecResult, err error) error {
 		// get the dump and not a report about it.
 		fmt.Fprint(a.Stream.Err, result.Stderr)
 		a.passThrough(result.Stdout)
+		if result.Truncated {
+			a.warnOutputCut("the command's")
+		}
 	}
 	if err != nil {
 		return err
@@ -486,6 +489,14 @@ func (a *App) finishExec(result ops.ExecResult, err error) error {
 		}
 	}
 	return nil
+}
+
+// warnOutputCut says, after a container's output, that the runtime kept only
+// the start of it. On stderr, so a report piped to a file is not changed by it;
+// with --json the payload's `truncated` says the same.
+func (a *App) warnOutputCut(whose string) {
+	fmt.Fprintf(a.Stream.Err,
+		"warning: %s output is cut short: only the start of each stream is kept, and the rest was dropped\n", whose)
 }
 
 // exitStatus carries a container command's own exit code out to the process

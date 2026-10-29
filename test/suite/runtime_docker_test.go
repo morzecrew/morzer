@@ -468,6 +468,19 @@ services:
 	assert.Error(t, err, "a name the configuration does not define was answered")
 }
 
+// TestComposeRunOneShotSaysWhenItsOutputWasCut: the runner keeps the head of
+// each stream, and the result says when that is not all of it.
+func TestComposeRunOneShotSaysWhenItsOutputWasCut(t *testing.T) {
+	rt, cfg := newComposeRuntime(t)
+
+	res, err := rt.RunOneShot(context.Background(), cfg, "migrate", ports.RunOptions{
+		Argv: []string{"sh", "-c", "yes | head -c 300000"}, Remove: true, Timeout: time.Minute,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 0, res.ExitCode, "%s", res.Stderr)
+	assert.True(t, res.Truncated, "300 KB of output came back as all of it")
+}
+
 // TestComposeExecReportsWhatRanInside covers both halves of Exec: a command
 // that succeeds, and one whose non-zero exit is data.
 func TestComposeExecReportsWhatRanInside(t *testing.T) {

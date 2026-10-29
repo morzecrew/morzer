@@ -307,6 +307,29 @@ func TestRunOneShotReturnsANonZeroExitAsData(t *testing.T) {
 	}
 }
 
+// The runner keeps the head of each stream, so a caller printing the output of
+// a one-shot or an exec has to be told when that is not all of it.
+func TestAOneShotAndAnExecSayWhenTheirOutputWasCut(t *testing.T) {
+	r, runner := newRuntime()
+	runner.On("run", exec.Result{Stdout: "row 1", Truncated: true})
+	runner.On("exec", exec.Result{Stdout: "row 1", Truncated: true})
+
+	ran, err := r.RunOneShot(context.Background(), cfg(), "tools", ports.RunOptions{Remove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ran.Truncated {
+		t.Error("a one-shot whose output was cut reported all of it")
+	}
+	execed, err := r.Exec(context.Background(), cfg(), "db", []string{"pg_dump"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !execed.Truncated {
+		t.Error("an exec whose output was cut reported all of it")
+	}
+}
+
 // A service named to `compose config` that is built rather than pulled comes
 // back with no image, where a name the configuration does not define fails the
 // command. Measured with Compose 5.5.1. The first is a service a task can run,

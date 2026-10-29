@@ -492,6 +492,8 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 		Stderr:   res.Stderr,
 		Output:   tail.String(),
 		Duration: res.Duration,
+
+		Truncated: res.Truncated,
 	}
 
 	if err != nil {
@@ -517,6 +519,8 @@ func (r *Runtime) Exec(ctx context.Context, cfg ports.RuntimeConfig, service str
 		Stderr:   res.Stderr,
 		Output:   tail.String(),
 		Duration: res.Duration,
+
+		Truncated: res.Truncated,
 	}
 	if err != nil {
 		var exitErr *exec.ExitError

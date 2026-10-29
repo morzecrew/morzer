@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -31,6 +32,29 @@ func TestATasksOutputAndExitCodeAreItsOwn(t *testing.T) {
 	}
 	if errOut.String() != "warning: slow\n" {
 		t.Errorf("stderr is %q, want the task's own, ended", errOut.String())
+	}
+}
+
+// Output the runtime cut is followed by a warning, on stderr so a report piped
+// to a file is not changed by it.
+func TestATaskWhoseOutputWasCutIsFollowedByAWarning(t *testing.T) {
+	var out, errOut bytes.Buffer
+	app := &App{Stream: ui.Streams{Out: &out, Err: &errOut}}
+
+	if err := app.finishTask(ops.TaskRun{Stdout: "row 1", Truncated: true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "row 1\n" {
+		t.Errorf("stdout is %q, want the task's own and nothing else", out.String())
+	}
+	if !strings.Contains(errOut.String(), "output is cut short: only the start") {
+		t.Errorf("stderr says nothing of the cut: %q", errOut.String())
+	}
+
+	errOut.Reset()
+	_ = app.finishTask(ops.TaskRun{Stdout: "row 1"}, nil)
+	if errOut.Len() != 0 {
+		t.Errorf("a whole output was warned about: %q", errOut.String())
 	}
 }
 

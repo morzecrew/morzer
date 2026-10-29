@@ -272,6 +272,19 @@ func TestATaskOnABuiltServiceBehindAProfileRuns(t *testing.T) {
 	assert.Len(t, h.Runtime.OneShots, before+1)
 }
 
+// The runtime keeps the head of a long output, and the payload says when that
+// is all the operator is getting.
+func TestATaskWhoseOutputWasCutSaysSo(t *testing.T) {
+	h := taskHarness(t, "", reindexTask)
+	h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "row 1", Truncated: true}
+
+	result, err := ops.RunTask(context.Background(), h.Deps, ops.TaskOptions{Name: "reindex"})
+	require.NoError(t, err)
+	run, ok := result.Data.(ops.TaskRun)
+	require.True(t, ok, "the result carries no task run")
+	assert.True(t, run.Truncated, "a cut output was reported as the whole of it")
+}
+
 func TestAPlannedTaskRunsNothing(t *testing.T) {
 	h := taskHarness(t, "", reindexTask)
 	before := len(h.Runtime.OneShots)
