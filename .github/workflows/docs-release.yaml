@@ -56,6 +56,8 @@ jobs:
 
       - name: Resolve the docs version
         id: ver
+        env:
+          GH_TOKEN: ${{ github.token }} # reads which releases are published
         run: .github/scripts/resolve-docs-version.sh
 
       - name: Publish

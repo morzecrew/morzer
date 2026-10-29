@@ -54,3 +54,30 @@ design that shipped then.
 Not run: the workflow itself, which only a published release can trigger. A
 prerelease raises the same event, as a prerelease tag raised the push; that is
 unchanged.
+
+## Review, 2026-10-29
+
+`resolve-docs-version.sh` took the newest minor from every git tag, so a newer
+tag whose release was still a draft kept a published older line's release from
+moving `latest` and the root. RFC 0006 decision 18 and the script's own comment
+say `latest` follows the newest *released* minor, and under the published
+trigger a draft is not released. The script now asks the API for the published
+releases and adds the one being deployed. No decision changes, so no entry: the
+code now does what decision 18 says.
+
+Checked with a stand-in `gh` against three cases: 0.9.1 published while 0.10.0
+is a draft moves `latest`; 0.10.0 published moves it; a 0.8.5 backport with
+0.9.0 published does not.
+
+**Drift count: 0.**
+
+A manual run (`workflow_dispatch`) from a tag whose release is still a draft
+also counted that tag, so it could move `latest` ahead of the release. The
+deployed tag is now counted only when a `published` event runs the workflow, in
+case the API has not caught up with the release that event just published; a
+manual run counts it only if its release is published. Checked with the
+stand-in `gh`: a manual run from a draft v0.10.0 leaves `latest`, one from the
+published v0.9.0 moves it, and a `published` event moves it even when the API
+does not list the release yet.
+
+**Drift count: 0.**
