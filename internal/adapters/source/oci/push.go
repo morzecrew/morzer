@@ -99,6 +99,14 @@ func (s *Source) Push(ctx context.Context, req PushRequest) (PushResult, error) 
 	if err != nil {
 		return res, err
 	}
+	// The pull side's limit, applied before anything is sent: a layer past it
+	// is published where no installation can install it from.
+	if s.maxBlob > 0 && layer.Size > s.maxBlob {
+		return res, domain.ValidationError(nil,
+			"the archive is %d bytes, over the limit of %d an installation pulls from a registry",
+			layer.Size, s.maxBlob).
+			WithHint("hand a bundle this large over as a file")
+	}
 
 	repo, err := remoteRepository(reference)
 	if err != nil {

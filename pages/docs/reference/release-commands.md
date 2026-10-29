@@ -398,6 +398,7 @@ newer version do not follow a channel backwards.
 | A reference that is not `oci://`, names a digest, or names a tag other than the archive's version | 2 |
 | A channel named like a version, such as `--channel 1.4.0`, or one that is not a valid tag | 2 |
 | A directory, or a file that is not a `.tar.zst` | 2 |
+| An archive over 512 MiB, more than an installation pulls from a registry | 2 |
 | An archive `verify` would refuse, or a signature that does not verify under `--signing-key` | 2 |
 | The version already published with different content | 2 |
 | The registry refuses the credentials | 2 |
