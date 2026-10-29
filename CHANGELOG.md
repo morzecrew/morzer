@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pack` and `archive` now refuse any name but `sops-age`, `hooks` and `http`.
   `init` and `update` only warn, so a release already installed keeps working.
 
+- **New installation ids start with `inst_`.** They were minted like operation
+  ids, so an installation's `op_…` id was easy to mistake for one of the
+  journal's operations. An installation created before this keeps its `op_` id:
+  backups, fleet keys and `--confirm` go on accepting it.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its

@@ -223,6 +223,14 @@ func NewOperationID(t time.Time) string {
 	return "op_" + ulid.MustNew(ulid.Timestamp(t), rand.Reader).String()
 }
 
+// newInstallationID returns the id an installation keeps for its life. A ULID
+// like an operation's, under its own prefix: minted by NewOperationID, it read
+// `op_…` beside the journal's operation ids. Installations created before the
+// change keep their `op_` id; nothing parses the prefix.
+func newInstallationID(t time.Time) string {
+	return "inst_" + ulid.MustNew(ulid.Timestamp(t), rand.Reader).String()
+}
+
 // freeSpace reports the bytes available where backups are written.
 func (d *Deps) freeSpace(path string) (int64, error) {
 	if d.FreeSpace != nil {
