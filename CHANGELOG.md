@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--version-from-git git describe`. Those lines now name the value's type.
   `release show --help` no longer points at `release verify --bundle`, a flag
   that does not exist; it names `release verify <path>`.
+- **`release archive -o` refuses a name no source would read.** The archive is
+  always zstd, and morzer recognises one by its `.tar.zst` or `.tzst` suffix, so
+  `-o demo.tar.gz` wrote a file that `tar xzf` could not open and no install
+  would accept. It now exits 2 before writing anything.
 
 ## [0.9.0] - 2026-10-29
 
