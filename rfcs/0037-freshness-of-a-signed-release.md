@@ -220,8 +220,12 @@ document signed with the same minisign key that signs their bundles:
   carrying `index.json` and `index.json.minisig` (mechanics `ASSUMED`). A
   channel with no index is followed exactly as today.
 - **What the machine checks.** The signature, against `policy.signing_keys`.
-  That `sequence` is not lower than the highest it has accepted, so a replayed
-  older index is refused. That `expires_at` is in the future. That
+  That `sequence` is higher than the highest it has accepted, or equal to it with
+  byte-identical content, so a replayed older index is refused. The machine keeps
+  the digest of the index it accepted to make the equal case checkable. A
+  *different* index carrying an accepted sequence is refused and reported as the
+  vendor's publishing error: otherwise an attacker could replay an older signed
+  index that reused the number, with the older tag it matches. That `expires_at` is in the future. That
   `release.digest` matches the bundle the channel tag resolves to, so the index
   and the tag cannot be mixed from different moments.
 - **Which digest it binds.** `release.digest` is the bundle's *content* digest:
@@ -284,7 +288,7 @@ document signed with the same minisign key that signs their bundles:
   export`/import (whether import carries them is §11 row 5).
 - Index (if built): a fixture registry serving a valid index; a replayed index
   with a lower sequence; an expired one; one whose digest disagrees with the
-  tag; a bad signature. Each is refused or warned per the decisions, against the
+  tag; a bad signature; a different index reusing an accepted sequence. Each is refused or warned per the decisions, against the
   real minisign verifier.
 
 ## 7. Docs
@@ -345,6 +349,7 @@ document signed with the same minisign key that signs their bundles:
 | 13 | `ASSUMED` | A channel is identified by its reference after `ports.RedactRefCredentials`, in the stored key and in every message and journal entry that names it. |
 | 14 | `ASSUMED` | The installed floor covers every install path, a local bundle path included, since a downgrade is the same act whatever the transport. A path has no channel mark, and freeze detection does not reach it. |
 | 15 | `ASSUMED` | The installed floor is read from `current-release.json`, written atomically at activation, so no separate write can lag it. A channel mark is written before the candidate record, so a crash can leave a raised mark with no candidate, which the next poll repairs, and never a candidate without its mark. |
+| 16 | `ASSUMED` | An index is accepted only with a higher sequence, or the same sequence and byte-identical content. A vendor publishes any change under a higher sequence, and two different indexes under one sequence are refused as a publishing error. |
 
 ## 12. Phasing
 
