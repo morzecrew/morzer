@@ -159,6 +159,14 @@ func TestAnEmptyListingIsAnEmptyArray(t *testing.T) {
 	}
 }
 
+// declared is zero until it is marked, whatever it holds.
+type declared struct {
+	Marked bool     `json:"marked"`
+	Names  []string `json:"names"`
+}
+
+func (d declared) IsZero() bool { return !d.Marked }
+
 // TestAnEmptyListAnywhereInTheDataIsAnEmptyArray. Only `data` itself was
 // covered, so a report holding a list -- `release prune`'s `removed` -- still
 // said `null` for nothing removed. Every depth a report can put a list at,
@@ -190,6 +198,11 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 		Unset    assessment `json:"unset,omitzero"`
 		Optional []string   `json:"optional,omitzero"`
 		Set      assessment `json:"set,omitzero"`
+		// Zero by its own IsZero, as encoding/json judges it, though not
+		// by its fields.
+		Declared declared `json:"declared,omitzero"`
+		Pair     [2]inner `json:"pair"`
+		None     any      `json:"none"`
 	}
 	in := &report{
 		Pointer:  &inner{},
@@ -199,6 +212,7 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 		Kept:     []string{"x"},
 		internal: []string{"private"},
 		Set:      assessment{OK: true},
+		Declared: declared{Names: []string{"ignored"}},
 	}
 
 	var out bytes.Buffer
@@ -226,6 +240,8 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 		"message": `null`,
 		"kept":    `["x"]`,
 		"set":     `{"ok":true}`,
+		"pair":    `[{"names":[]},{"names":[]}]`,
+		"none":    `null`,
 	} {
 		var compact bytes.Buffer
 		if err := json.Compact(&compact, env.Data[field]); err != nil {
@@ -235,7 +251,7 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 			t.Errorf("%s is %s, want %s", field, got, want)
 		}
 	}
-	for _, field := range []string{"omitted", "unset", "optional"} {
+	for _, field := range []string{"omitted", "unset", "optional", "declared"} {
 		if _, ok := env.Data[field]; ok {
 			t.Errorf("%s was written; a field its tag omits when zero should still be left out", field)
 		}
