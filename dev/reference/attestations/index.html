@@ -2552,12 +2552,28 @@ statement counts as there only when the target holds its signature too, because
 the document goes first and a transfer that died between the two would otherwise
 look complete forever.</p>
 <p><code>doctor</code> reports the same gap under <code>backup.attestations-pushed</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="go">! attestations have reached the configured targets</span>
+<div class="highlight"><pre><span></span><code><span class="go">! attestations have left this machine</span>
 <span class="go">  1 of 1 attestation(s) are only on this machine</span>
 </code></pre></div>
 <p>Both count statements, however many targets there are. With more than one,
 <code>doctor</code> says how many statements are missing from at least one of them, since
 a statement can be on one target and not another.</p>
+<p>An installation with <strong>no backup target</strong> has nowhere to push, so what it
+writes stays on the machine and is lost with it; a target removed earlier keeps
+what it was sent. <code>doctor</code> says how many statements are here, as information
+rather than a warning, which <code>doctor --verbose</code>, plain output and <code>--json</code>
+show:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>doctor<span class="w"> </span>--verbose
+<span class="go">…</span>
+<span class="go">✓ attestations: no backup target to push them to</span>
+<span class="go">  4 attestation(s) on this machine, and no backup target is configured to push them to</span>
+</code></pre></div>
+<p>Not a warning, because nothing records whether a machine is air-gapped on
+purpose, and a warning on every machine that chose to keep its record local
+would teach its operator to read past <code>doctor</code>. The default view folds it into
+the category's tick, like every check that passed. Configuring a
+<a href="../backup-targets/">backup target</a> gives the record somewhere to go, and
+<code>morzer attest push</code> then sends what is already here.</p>
 <h2 id="what-this-does-not-do-yet">What this does not do yet<a class="headerlink" href="#what-this-does-not-do-yet" title="Permanent link">&para;</a></h2>
 <p>Stated here rather than discovered:</p>
 <ul>
