@@ -244,6 +244,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 
 	var (
 		skipBackup bool
+		generate   bool
 		digest     string
 		profile    string
 		to         string
@@ -265,6 +266,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 			opts := app.operationOptions()
 			opts.Profile = profile
 			opts.SkipBackup = skipBackup
+			opts.NoGenerateSecrets = !generate
 
 			// Three flags turn `update` into a different operation, and
 			// each stops short of installing in a different way.
@@ -381,6 +383,8 @@ func newUpdateCommand(app *App) *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVar(&skipBackup, "skip-backup", false,
 		"skip the pre-update backup; requires --force and is recorded in the journal")
+	f.BoolVar(&generate, "generate-secrets", true,
+		"generate the secrets the new release adds with a generator; false leaves them to you")
 	f.StringVar(&digest, "digest", "",
 		"expected bundle content digest; a mismatch refuses the update")
 	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")

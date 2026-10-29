@@ -871,6 +871,10 @@ type fallbackRelease struct {
 	// Known is false when its manifest could not be read. Nothing is then
 	// assumed about what it can run against.
 	Known bool
+
+	// Secrets are the names it declares, which an update does not generate
+	// (RFC 0036 §5.2). Empty when they could not be read.
+	Secrets map[string]bool
 }
 
 // passIfFallbackCannotRead marks the point of no return once migrations have

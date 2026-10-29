@@ -88,6 +88,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 			Compatibility: running.Manifest.Compatibility,
 			Known:         relErr == nil,
 		}
+		if relErr == nil {
+			fallback.Secrets = declaredSecrets(running)
+		}
 	}
 	inst.RuntimeOptions = baseline
 
@@ -340,6 +343,11 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 	if opts.ExpectDigest != "" {
 		flags["expect_digest"] = opts.ExpectDigest
 	}
+	if opts.NoGenerateSecrets {
+		// The reason a new release's secret is still unset after an
+		// update that could have generated it (RFC 0036 decision 5).
+		flags["generate_secrets"] = "false"
+	}
 	return flags
 }
 
@@ -419,6 +427,9 @@ func updateSteps(
 	// there. A dry run ingests from wherever the bundle currently sits, for
 	// the same reason the converge does.
 	steps = append(steps, stepIngestImages(d, fixedRelease(converge)))
+	// Before the converge, so load-secrets reads, registers and renders
+	// what it generates, and still refuses a new secret with no generator.
+	steps = append(steps, stepGenerateSecrets(d, converge, fallback, opts.Options))
 	// The ref the operator resolved is recorded with the release once it
 	// becomes current, which is what gives `update --check` something to
 	// query later without asking them to remember.
