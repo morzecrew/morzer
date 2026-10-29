@@ -133,9 +133,12 @@ The HTTPS source wraps its transport. For every outgoing request, including each
 hop of a redirect, it looks up the request's host:
 
 - The credential is attached only when the request's scheme is `https` and its
-  host **equals** a configured `host`, case-insensitively, port included when one
-  is configured. No suffix or wildcard matching: `downloads.vendor.example` does
-  not authorise `cdn.downloads.vendor.example`.
+  **authority equals** a configured one. Hosts compare case-insensitively, and
+  ports compare after both sides default to 443. So an entry with no port
+  matches port 443 only, and a redirect to `downloads.vendor.example:8443` is a
+  different authority that gets nothing unless it has its own entry. There is no
+  suffix or wildcard matching either: `downloads.vendor.example` does not
+  authorise `cdn.downloads.vendor.example`.
 - Because the check runs per request rather than per reference, a redirect to
   another host goes out without it. That is the behaviour Go already shows for
   userinfo (§3), made explicit and tested rather than inherited.
@@ -164,7 +167,8 @@ is ignored, so one request never carries two answers.
 
 - Adapter, against `httptest` TLS servers: a configured host receives the bearer
   header and the basic header; an unconfigured host receives nothing; a redirect
-  to another host carries nothing; a same-host redirect carries it; a 401 names
+  to another host carries nothing; a redirect to the same host on another port
+  carries nothing; a same-authority redirect carries it; a 401 names
   the secret and not the value; a configured credential beats userinfo.
 - Suite: `update` from an authenticated URL succeeds, and the journal, `status`
   and `describe` hold no part of the value.
@@ -213,7 +217,7 @@ is ignored, so one request never carries two answers.
 | 4 | `OPEN` | **Userinfo references once stored credentials exist: keep silently, warn, or refuse?** Recommended: warn that the password is on the command line and point at `sources.https`, without refusing, since refusing breaks scripts that work today. |
 | 5 | `OPEN` | **Schemes: bearer and basic, or bearer only?** Recommended both: basic is what many simple download servers speak, and it costs one branch. |
 | 6 | `ASSUMED` | The credential's value lives in the installation's secret store and is referenced by name, as backup credentials are (RFC 0009). Rejected: `.netrc` and environment variables (§5.1). |
-| 7 | `ASSUMED` | Matching is per request, exact host (port included when configured), case-insensitive, `https` only, with no suffix or wildcard matching; a redirect to another host never carries the credential. |
+| 7 | `ASSUMED` | Matching is per request, on the exact authority: host case-insensitive, port defaulted to 443 on both sides, `https` only, with no suffix or wildcard matching. A redirect to another host, or to the same host on another port, never carries the credential. |
 | 8 | `ASSUMED` | A configured credential takes precedence over userinfo in the reference, so a request never carries two. |
 | 9 | `ASSUMED` | An export carries the `sources.https` entries and their secrets as it carries backup credentials, encrypted to the recovery recipients. |
 
