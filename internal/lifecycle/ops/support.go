@@ -67,7 +67,8 @@ type SupportEntry struct {
 	Title string `json:"title"`
 	Bytes int64  `json:"bytes"`
 
-	// Redactions is how many secret values were scrubbed out of this file.
+	// Redactions is how many secret values were scrubbed out of this file,
+	// and in the journal how many passwords were taken out of URLs.
 	//
 	// Reported for every entry, including the many that are structurally
 	// incapable of holding one, because a field that appears only when it
@@ -982,7 +983,23 @@ func collectJournal(ctx context.Context, d *Deps, _ *supportSource) ([]supportFi
 	}
 
 	var b strings.Builder
+	removed := 0
 	for _, rec := range records {
+		// A password in a URL is not a value this installation holds, so
+		// the archive's scrubber cannot recognise it. Updates journalled
+		// a bundle URL as typed before the journal redacted it, and those
+		// records are still here. Counted with the scrubber's removals,
+		// so the file's count says it was changed.
+		if len(rec.Flags) > 0 {
+			flags := make(map[string]string, len(rec.Flags))
+			for k, v := range rec.Flags {
+				flags[k] = domain.RedactURLCredentials(v)
+				if flags[k] != strings.TrimSpace(v) {
+					removed++
+				}
+			}
+			rec.Flags = flags
+		}
 		line, err := json.Marshal(rec)
 		if err != nil {
 			return nil, domain.Internal(err, "cannot render a journal record")
@@ -990,7 +1007,7 @@ func collectJournal(ctx context.Context, d *Deps, _ *supportSource) ([]supportFi
 		b.Write(line)
 		b.WriteByte('\n')
 	}
-	return []supportFile{{Name: "journal.jsonl", Data: []byte(b.String())}}, nil
+	return []supportFile{{Name: "journal.jsonl", Data: []byte(b.String()), Redactions: removed}}, nil
 }
 
 func collectDoctor(ctx context.Context, d *Deps, _ *supportSource) ([]supportFile, error) {
