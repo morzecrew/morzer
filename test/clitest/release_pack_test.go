@@ -91,6 +91,40 @@ func TestReleasePackDryRunTouchesNothing(t *testing.T) {
 	}
 }
 
+// TestReleasePackRefusesAnUnknownProviderBeforeTouchingAnything. The check
+// needs only the manifest, so it comes before `--force` deletes a signature and
+// before any image is copied.
+func TestReleasePackRefusesAnUnknownProviderBeforeTouchingAnything(t *testing.T) {
+	r := clitest.New(t)
+	markBundled(t, r.Bundle)
+
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vault := strings.Replace(string(data), "secrets: {name: sops-age}", "secrets: {name: vault}", 1)
+	if vault == string(data) {
+		t.Fatal("the fixture no longer names its secrets provider")
+	}
+	if err := os.WriteFile(manifest, []byte(vault), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	signature := filepath.Join(r.Bundle, "SHA256SUMS.minisig")
+	if err := os.WriteFile(signature, []byte("untrusted comment: fake\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Run("release", "pack", r.Bundle, "--force").ExitCode(2).OutputContains(`"vault"`)
+
+	if _, err := os.Stat(signature); err != nil {
+		t.Errorf("a refused pack deleted the signature: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(r.Bundle, "images")); err == nil {
+		t.Error("a refused pack created an image layout")
+	}
+}
+
 // markBundled marks the fixture's `app` image as travelling in the bundle.
 func markBundled(t *testing.T, dir string) {
 	t.Helper()

@@ -223,6 +223,14 @@ func NewOperationID(t time.Time) string {
 	return "op_" + ulid.MustNew(ulid.Timestamp(t), rand.Reader).String()
 }
 
+// newInstallationID returns the id an installation keeps for its life. A ULID
+// like an operation's, under its own prefix: minted by NewOperationID, it read
+// `op_…` beside the journal's operation ids. Installations created before the
+// change keep their `op_` id; nothing parses the prefix.
+func newInstallationID(t time.Time) string {
+	return "inst_" + ulid.MustNew(ulid.Timestamp(t), rand.Reader).String()
+}
+
 // freeSpace reports the bytes available where backups are written.
 func (d *Deps) freeSpace(path string) (int64, error) {
 	if d.FreeSpace != nil {
@@ -261,6 +269,10 @@ func (d *Deps) newOpID() string {
 // update path alone, so a *first install* of a deprecated bundle said nothing
 // at all -- found while adding the second kind, and fixed rather than
 // reproduced.
+//
+// A provider name this manager does not have is warned about here for the same
+// reason, though it is not a deprecation: `release verify` refuses it, and an
+// operator choosing the bundle is the one other person who can act on it.
 func (d *Deps) warnDeprecations(m domain.Manifest) {
 	if d.Bus == nil {
 		return
@@ -276,6 +288,10 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 		// verify` printed the same message bare all along and read
 		// correctly, which is what located the defect in the join.
 		d.Bus.Publish(events.Message(events.LevelWarn, "%s", f.Message()))
+	}
+	for _, problem := range m.UnknownProviders() {
+		d.Bus.Publish(events.Message(events.LevelWarn,
+			"this bundle names a provider this manager does not have: %s", problem))
 	}
 }
 

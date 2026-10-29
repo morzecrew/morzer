@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/state"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -98,8 +99,11 @@ func TestDoctorReportsARuntimeItCannotReach(t *testing.T) {
 	report, err := ops.Doctor(context.Background(), h.Deps)
 	require.NoError(t, err)
 
+	// A failure, not a warning: nothing the release runs can be up, and a
+	// monitor that reads doctor's exit code has to see it.
 	services := findResult(t, report, "runtime.services")
-	assert.NotEqual(t, "ok", services.Status)
+	assert.Equal(t, "fail", services.Status)
+	assert.Equal(t, events.CheckFail, report.Worst)
 	assert.Contains(t, services.Remedy, "docker info")
 	// The adapter's message already names the failure; prefixing it once
 	// produced "cannot read service status: cannot read service status".
@@ -123,8 +127,9 @@ func TestDoctorReportsServicesThatAreDown(t *testing.T) {
 	report, err := ops.Doctor(context.Background(), h.Deps)
 	require.NoError(t, err)
 
+	// A warning: an operator may have stopped it on purpose.
 	found := findResult(t, report, "runtime.services")
-	assert.NotEqual(t, "ok", found.Status)
+	assert.Equal(t, "warn", found.Status)
 	// The service that is down is named; the one that is up is not the
 	// operator's problem.
 	assert.Contains(t, found.Message, "db")

@@ -149,7 +149,7 @@ func newSupportInspectCommand(app *App) *cobra.Command {
 			"reported as unchecked, which is the honest answer rather than a tick\n" +
 			"nobody earned.\n\n" +
 			"`--key` takes the key itself or a file holding one.",
-		Example: "  morzer support inspect support-demo-op_01M0-20260815T101500Z.tar.zst\n" +
+		Example: "  morzer support inspect support-demo-inst_01M0-20260815T101500Z.tar.zst\n" +
 			"  morzer support inspect bundle.tar.zst.age --identity ~/vendor.key\n" +
 			"  morzer support inspect bundle.tar.zst --key RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3",
 		Args: cobra.ExactArgs(1),

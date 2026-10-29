@@ -309,12 +309,13 @@ The rotation remedy names the command that will actually work: `secret rotate`
 for a secret the release declares a generator for, and `secret set` for one it
 does not — pointing at `rotate` there would point at a command that fails.
 
-One check about images does **fail** rather than warn:
+These checks **fail** rather than warn:
 
 | Check | What it means |
 | --- | --- |
 | `images.bundled` | An image the release marks `from: bundle` is not in the local image store. Fatal, and `apply` refuses on it: a bundled image is deployed under a tag the manager creates, and letting a converge proceed without it would send the deployment to the vendor's registry for whatever that tag pointed at. `morzer release ingest` loads it out of the bundle, with no network. |
 | `runtime.declared` | The runtime this installation is fixed to, and whether this manager drives it. Ok reports the name. It fails when they differ — a state file that arrived from a machine running something else, by import or by hand — and that failure is the one with no fix on this machine: the runtime is chosen when the installation is created and never transitions, so the way out is a manager built for it, or a fresh `init` and a `restore`. On a machine with no installation yet, `doctor` instead checks the tools that runtime needs, which is what `init` will want next. |
+| `runtime.services` | Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. |
 
 ## logs
 

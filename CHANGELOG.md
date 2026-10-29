@@ -26,6 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository that holds only the bundle, a commit that changes no file, such as
   a merge whose result matches one side, no longer moves the version.
 
+- **`doctor` fails when the container runtime cannot be reached.** With the
+  Docker daemon stopped or unreachable, the service check was downgraded to a
+  warning, so `doctor` exited 0 and monitoring that watches its exit code saw a
+  healthy machine. It now exits 3. A stopped service, or a deployment with no
+  containers yet, still only warns.
+
+- **Bundle commands refuse a provider name morzer does not have.** The
+  `secrets`, `backup` and `health` provider names were never read, so a manifest
+  asking for `vault` installed and ran sops-age. `release verify`, `build`,
+  `pack` and `archive` now refuse any name but `sops-age`, `hooks` and `http`.
+  `init` and `update` only warn, so a release already installed keeps working.
+
+- **New installation ids start with `inst_`.** They were minted like operation
+  ids, so an installation's `op_…` id was easy to mistake for one of the
+  journal's operations. An installation created before this keeps its `op_` id:
+  backups, fleet keys and `--confirm` go on accepting it.
+
 ### Fixed
 
 - **A mistyped subcommand fails instead of printing help.** `morzer release

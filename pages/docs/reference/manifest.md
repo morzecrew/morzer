@@ -87,6 +87,11 @@ the core.
 | `backup` | `hooks` | `hooks` |
 | `health` | | `http` |
 
+`release verify`, `build`, `pack` and `archive` refuse a `secrets`,
+`backup` or `health` name outside the Accepted column. `init` and `update` only
+warn about one: a release that names it has always run on the accepted
+provider, and refusing it would strand an installation that is running.
+
 ## runtimes
 
 Which runtimes this release supports. The keys are the declaration: a release

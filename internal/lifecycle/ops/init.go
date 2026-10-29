@@ -662,7 +662,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 			inst.Mode = existing.Mode
 		}
 	} else {
-		inst.ID = NewOperationID(d.now())
+		inst.ID = newInstallationID(d.now())
 	}
 
 	return inst, nil
