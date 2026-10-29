@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"io"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -192,9 +194,14 @@ func emptyLists(v reflect.Value) reflect.Value {
 		out := reflect.New(t).Elem()
 		out.Set(v)
 		for i := range v.NumField() {
-			if f := out.Field(i); f.CanSet() {
-				f.Set(emptyLists(v.Field(i)))
+			f := out.Field(i)
+			// A zero value under `omitzero` is left out of the output, and
+			// a nil list is often what makes it zero: made empty, it would
+			// be written after all.
+			if !f.CanSet() || omitsZero(t.Field(i)) && isZero(v.Field(i)) {
+				continue
 			}
+			f.Set(emptyLists(v.Field(i)))
 		}
 		return out
 	case reflect.Map:
@@ -223,4 +230,18 @@ func emptyLists(v reflect.Value) reflect.Value {
 		return out
 	}
 	return v
+}
+
+func omitsZero(f reflect.StructField) bool {
+	_, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
+	return slices.Contains(strings.Split(opts, ","), "omitzero")
+}
+
+// isZero is the test encoding/json applies for `omitzero`: the type's own
+// IsZero when it has one.
+func isZero(v reflect.Value) bool {
+	if z, ok := v.Interface().(interface{ IsZero() bool }); ok {
+		return z.IsZero()
+	}
+	return v.IsZero()
 }

@@ -167,6 +167,10 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 	type inner struct {
 		Names []string `json:"names"`
 	}
+	type assessment struct {
+		OK      bool     `json:"ok"`
+		Reasons []string `json:"reasons,omitempty"`
+	}
 	type report struct {
 		Removed  []string            `json:"removed"`
 		Nested   inner               `json:"nested"`
@@ -181,6 +185,11 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 		Omitted  []string            `json:"omitted,omitempty"`
 		Kept     []string            `json:"kept"`
 		internal []string
+		// omitzero leaves out a zero value, and a nil list is what makes
+		// these zero: made empty, they would be written.
+		Unset    assessment `json:"unset,omitzero"`
+		Optional []string   `json:"optional,omitzero"`
+		Set      assessment `json:"set,omitzero"`
 	}
 	in := &report{
 		Pointer:  &inner{},
@@ -189,6 +198,7 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 		Any:      inner{},
 		Kept:     []string{"x"},
 		internal: []string{"private"},
+		Set:      assessment{OK: true},
 	}
 
 	var out bytes.Buffer
@@ -215,6 +225,7 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 		"raw":     `null`,
 		"message": `null`,
 		"kept":    `["x"]`,
+		"set":     `{"ok":true}`,
 	} {
 		var compact bytes.Buffer
 		if err := json.Compact(&compact, env.Data[field]); err != nil {
@@ -224,8 +235,10 @@ func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
 			t.Errorf("%s is %s, want %s", field, got, want)
 		}
 	}
-	if _, ok := env.Data["omitted"]; ok {
-		t.Error("an omitempty list was written; it should still be left out")
+	for _, field := range []string{"omitted", "unset", "optional"} {
+		if _, ok := env.Data[field]; ok {
+			t.Errorf("%s was written; a field its tag omits when zero should still be left out", field)
+		}
 	}
 
 	// The caller's value is read, never rewritten.
