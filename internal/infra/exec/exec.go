@@ -128,7 +128,8 @@ type Result struct {
 	Stderr   string
 	Duration time.Duration
 
-	// Truncated reports that output exceeded MaxCapture.
+	// Truncated reports that output was not all kept: it exceeded
+	// MaxCapture, or a line too long to read ended the capture early.
 	Truncated bool
 }
 
@@ -346,7 +347,7 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 			}
 			return
 		}
-		scanLines(stdoutPipe, func(text string) {
+		cut := scanLines(stdoutPipe, func(text string) {
 			text = redactor.string(text)
 			if cmd.CaptureOutput {
 				stdoutBuf.WriteLine(text)
@@ -355,10 +356,13 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 				cmd.OnLine(Line{Stream: StreamStdout, Text: text})
 			}
 		})
+		if cut && cmd.CaptureOutput {
+			stdoutBuf.cut()
+		}
 	}()
 	go func() {
 		defer wg.Done()
-		scanLines(stderrPipe, func(text string) {
+		if scanLines(stderrPipe, func(text string) {
 			text = redactor.string(text)
 			{
 				stderrBuf.WriteLine(text)
@@ -366,7 +370,9 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 			if cmd.OnLine != nil {
 				cmd.OnLine(Line{Stream: StreamStderr, Text: text})
 			}
-		})
+		}) {
+			stderrBuf.cut()
+		}
 	}()
 
 	wg.Wait()
@@ -445,7 +451,8 @@ func (r *runner) Run(ctx context.Context, cmd Command) (Result, error) {
 
 // scanLines reads r line by line, handling lines longer than the default
 // scanner limit -- container logs and JSON output routinely exceed 64 KiB.
-func scanLines(r io.Reader, fn func(string)) {
+// It reports whether the scan stopped early, leaving the rest unseen.
+func scanLines(r io.Reader, fn func(string)) (cut bool) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for sc.Scan() {
@@ -456,7 +463,13 @@ func scanLines(r io.Reader, fn func(string)) {
 	// output is diagnostic. Losing a log line must not fail an operation.
 	if err := sc.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
 		fn(fmt.Sprintf("[output truncated: %v]", err))
+		// The rest is read and dropped. A scanner that stopped leaves the
+		// pipe unread, and a child writing more than it holds would block
+		// there until its timeout.
+		_, _ = io.Copy(io.Discard, r)
+		return true
 	}
+	return false
 }
 
 // boundedBuffer keeps at most max bytes, retaining the head.
@@ -488,6 +501,13 @@ func (b *boundedBuffer) WriteLine(s string) {
 		return
 	}
 	b.buf.WriteString(s)
+}
+
+// cut records that output was dropped before it reached the buffer.
+func (b *boundedBuffer) cut() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.truncated = true
 }
 
 func (b *boundedBuffer) String() string {

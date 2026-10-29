@@ -307,6 +307,49 @@ func TestRunOneShotReturnsANonZeroExitAsData(t *testing.T) {
 	}
 }
 
+// The runner keeps the head of each stream, so a caller printing the output of
+// a one-shot or an exec has to be told when that is not all of it.
+func TestAOneShotAndAnExecSayWhenTheirOutputWasCut(t *testing.T) {
+	r, runner := newRuntime()
+	runner.On("run", exec.Result{Stdout: "row 1", Truncated: true})
+	runner.On("exec", exec.Result{Stdout: "row 1", Truncated: true})
+
+	ran, err := r.RunOneShot(context.Background(), cfg(), "tools", ports.RunOptions{Remove: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ran.Truncated {
+		t.Error("a one-shot whose output was cut reported all of it")
+	}
+	execed, err := r.Exec(context.Background(), cfg(), "db", []string{"pg_dump"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !execed.Truncated {
+		t.Error("an exec whose output was cut reported all of it")
+	}
+}
+
+// A service named to `compose config` that is built rather than pulled comes
+// back with no image, where a name the configuration does not define fails the
+// command. Measured with Compose 5.5.1. The first is a service a task can run,
+// so it is reported, with no reference.
+func TestServiceImagesReportsABuiltServiceWithNoImage(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("config", `{"services":{"pulled":{"image":"busybox:1.36"},"tool":{"build":{"context":"."}}}}`)
+
+	images, err := r.ServiceImages(context.Background(), cfg(), "pulled", "tool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := images["tool"]; !ok || got != "" {
+		t.Errorf("the built service is %q (reported: %v), want it reported with no image", got, ok)
+	}
+	if images["pulled"] != "busybox:1.36" {
+		t.Errorf("the pulled service's image is %q", images["pulled"])
+	}
+}
+
 func TestDownRemovesVolumesOnlyWhenAsked(t *testing.T) {
 	r, runner := newRuntime()
 	if err := r.Down(context.Background(), cfg(), ports.DownOptions{}); err != nil {

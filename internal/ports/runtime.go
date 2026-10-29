@@ -303,6 +303,11 @@ type ExitResult struct {
 	// runtime's progress.
 	Output string
 
+	// Truncated says Stdout or Stderr holds only the start of what the
+	// process wrote. The runtime keeps a bounded head of each stream, so a
+	// caller handing the output on must say when that is not all of it.
+	Truncated bool
+
 	Duration time.Duration
 }
 
@@ -576,7 +581,9 @@ type ServiceImager interface {
 	// ServiceImages maps each named service to its image reference. With
 	// no names it covers the services the configuration starts. A named
 	// service is covered even when the configuration starts it only on
-	// demand, because that is the case the caller is asking about.
+	// demand, because that is the case the caller is asking about. A
+	// service built rather than pulled maps to an empty reference, so a
+	// caller asking whether a service exists is not told it does not.
 	ServiceImages(ctx context.Context, cfg RuntimeConfig, services ...string) (map[string]string, error)
 }
 

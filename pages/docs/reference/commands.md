@@ -387,6 +387,12 @@ Runs one command inside a running container of the named service and propagates
 its exit code, so a failed command fails the invocation. Everything after `--`
 is the container's command line and nothing else; the terminator is required.
 
+The command's output is printed when it ends, its stdout on stdout and its
+stderr on stderr, unchanged. The first 256 KiB of each is kept, so a longer
+output is cut; a warning on stderr after it says so, and with `--json`
+`truncated` is true. The exit code is still the command's own, so `exec`
+cannot carry a dump larger than that.
+
 Not an interactive shell: there is no TTY and no stdin, so a command that
 prompts waits for an answer nobody can give. There is no `--user` and no
 shortcut for running as root.
@@ -450,7 +456,8 @@ for the task's own.
 The task's output is printed when it finishes: its stdout on stdout, so a report
 can be piped to a file, and its stderr on stderr. It is kept line by line and
 printed ending in a newline. As with `exec`, the first 256 KiB of each is kept,
-so a longer report is cut. The live view tails it while
+so a longer report is cut, and a warning on stderr after it says so; with
+`--json`, `truncated` is true. The live view tails it while
 it runs, and `--verbose` prints it as it arrives. The invocation exits with the
 task's own exit code. A non-zero exit fails the operation: it is `failed`, with
 nothing rolled back and nothing flagged, since the task's effects are the

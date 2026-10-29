@@ -43,6 +43,9 @@ type TaskRun struct {
 	ExitCode int    `json:"exit_code"`
 	Stdout   string `json:"stdout,omitempty"`
 	Stderr   string `json:"stderr,omitempty"`
+
+	// Truncated says the runtime kept only the start of the output.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // TaskEntry is one row of `task list`.
@@ -301,7 +304,7 @@ func stepRunTask(
 			}
 			st.Set(keyTaskRun, TaskRun{
 				Task: opts.Name, Service: task.Service, ExitCode: res.ExitCode,
-				Stdout: res.Stdout, Stderr: res.Stderr,
+				Stdout: res.Stdout, Stderr: res.Stderr, Truncated: res.Truncated,
 			})
 
 			// Any non-zero exit, 2 included: "nothing to do" is the

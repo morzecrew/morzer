@@ -162,3 +162,18 @@ func TestRedactionStillAppliesToTheScannedPath(t *testing.T) {
 	assert.True(t, strings.Contains(res.Stdout, "token="),
 		"redaction removed more than the secret")
 }
+
+// A line longer than the scanner takes ends the scan, so nothing after it is
+// kept and the result has to say the output was cut. The rest is still read:
+// a child writing more than a pipe holds would otherwise block until its
+// timeout, and its exit status is the authority on whether it worked.
+func TestALineTooLongForTheScannerCutsTheOutputAndSaysSo(t *testing.T) {
+	res, err := exec.New().Run(context.Background(), exec.Command{
+		Argv: []string{"sh", "-c",
+			`head -c 5000000 /dev/zero | tr '\0' a; echo; yes | head -c 200000; echo done`},
+		CaptureOutput: true,
+		Timeout:       30 * time.Second,
+	})
+	require.NoError(t, err, "the child blocked on a pipe nobody read")
+	assert.True(t, res.Truncated, "output after an over-long line was dropped and not reported")
+}
