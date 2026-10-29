@@ -491,4 +491,12 @@ func TestAPasswordInAJournalledURLStaysOutOfTheArchive(t *testing.T) {
 	require.NotEmpty(t, journal, "the journal is not in the archive")
 	assert.NotContains(t, journal, "s3cret-token", "a password in a bundle URL reached the archive")
 	assert.Contains(t, journal, "bundles.example/demo-1.3.0.tar.zst", "the reference itself was dropped")
+
+	// Counted like any other removal: a reviewer reading 0 would take the
+	// file as untouched.
+	for _, e := range report.Entries {
+		if e.Name == "journal.jsonl" {
+			assert.Equal(t, 1, e.Redactions, "the removed password is not counted")
+		}
+	}
 }
