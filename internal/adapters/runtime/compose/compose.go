@@ -289,7 +289,9 @@ func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, se
 
 // parseServiceImages extracts each service's image from `compose config
 // --format json`. A service with no image, one built rather than pulled, is
-// left out: there is no reference to compare.
+// reported with an empty reference rather than left out: it is still a service
+// the configuration defines, and a name it does not define fails the command
+// instead. Measured with Compose 5.5.1.
 func parseServiceImages(raw string) (map[string]string, error) {
 	var doc struct {
 		Services map[string]struct {
@@ -301,9 +303,7 @@ func parseServiceImages(raw string) (map[string]string, error) {
 	}
 	out := make(map[string]string, len(doc.Services))
 	for name, svc := range doc.Services {
-		if svc.Image != "" {
-			out[name] = svc.Image
-		}
+		out[name] = svc.Image
 	}
 	return out, nil
 }
@@ -492,6 +492,8 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 		Stderr:   res.Stderr,
 		Output:   tail.String(),
 		Duration: res.Duration,
+
+		Truncated: res.Truncated,
 	}
 
 	if err != nil {
@@ -517,6 +519,8 @@ func (r *Runtime) Exec(ctx context.Context, cfg ports.RuntimeConfig, service str
 		Stderr:   res.Stderr,
 		Output:   tail.String(),
 		Duration: res.Duration,
+
+		Truncated: res.Truncated,
 	}
 	if err != nil {
 		var exitErr *exec.ExitError

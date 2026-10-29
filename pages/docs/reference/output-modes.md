@@ -98,7 +98,8 @@ reason: `morzer logs` relays what a container wrote, and `morzer exec` relays
 what the command inside it printed. An operator piping `morzer exec db --
 pg_dump` into a file must get the dump, not a report about it — so nothing wraps,
 colours or frames either one. The rule the build enforces knows both by name;
-nothing else may join them.
+nothing else may join them. `exec` keeps the first 256 KiB of each stream, so a
+larger dump is cut, and a warning on stderr says so.
 
 ## The one streaming exception
 

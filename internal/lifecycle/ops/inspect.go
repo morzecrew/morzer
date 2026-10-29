@@ -332,6 +332,9 @@ type ExecResult struct {
 	Stdout   string        `json:"stdout,omitempty"`
 	Stderr   string        `json:"stderr,omitempty"`
 	Duration time.Duration `json:"duration_ms"`
+
+	// Truncated says the runtime kept only the start of the output.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // ExecInService runs a command inside a running service.
@@ -389,6 +392,8 @@ func ExecInService(ctx context.Context, d *Deps, opts ExecOptions) (ExecResult, 
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
 		Duration: res.Duration,
+
+		Truncated: res.Truncated,
 	}
 
 	// Asked again when the command failed, because the pre-check and the exec
