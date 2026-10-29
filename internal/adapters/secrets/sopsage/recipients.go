@@ -242,6 +242,13 @@ func (s *Store) ReencryptFor(ctx context.Context, recipients []ports.Recipient) 
 		return domain.SecretsError(nil, "refusing to re-encrypt for an empty recipient set").
 			WithHint("the secret state would become permanently undecryptable")
 	}
+	// Before the timestamp below, so a write that waited records when the
+	// recipients were installed rather than when it began waiting.
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	keys := make([]string, 0, len(recipients))
 	annotations := recipientAnnotations{Recipients: map[string]recipientAnnotation{}}
@@ -270,11 +277,6 @@ func (s *Store) ReencryptFor(ctx context.Context, recipients []ports.Recipient) 
 		keys = append(keys, key)
 	}
 
-	unlock, err := s.exclusive(ctx)
-	if err != nil {
-		return err
-	}
-	defer unlock()
 	if err := s.reencrypt(ctx, keys); err != nil {
 		return err
 	}
