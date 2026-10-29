@@ -38,7 +38,10 @@ func New(keyPath, product string) *Signer {
 	return &Signer{keyPath: keyPath, product: product}
 }
 
-var _ ports.Signer = (*Signer)(nil)
+var (
+	_ ports.Signer            = (*Signer)(nil)
+	_ ports.SigningKeyRotator = (*Signer)(nil)
+)
 
 // EnsureKey mints the key if there is none, and returns the public half.
 //
@@ -60,55 +63,130 @@ func (s *Signer) EnsureKey(ctx context.Context) (ports.PublicSigningKey, error) 
 		return ports.PublicSigningKey{}, err
 	}
 
+	key, created, err := s.mint(s.keyPath)
+	if err != nil {
+		return ports.PublicSigningKey{}, err
+	}
+	if !created {
+		// Somebody else minted between our read and the create.
+		// Theirs is the identity.
+		return s.PublicKey(ctx)
+	}
+	return key, nil
+}
+
+// mint writes a new key to path, unless a key is already there, and reports
+// whether it was the one that wrote it.
+//
+// Written whole and synced under a temporary name, then hard-linked into place.
+// The link is what makes this both exclusive and atomic, which neither of the
+// obvious primitives is on its own:
+//
+//   - A rename is last-writer-wins, so two callers that both read "no key"
+//     would both mint and the second would replace the first. The loser's
+//     signatures then verify against a key no longer on the machine, with no
+//     error at the time and no symptom until somebody checks an old artifact.
+//   - O_EXCL on the final name is exclusive, but the file exists before its
+//     bytes do. A racing caller that reads it in between fails to parse it, a
+//     write that fails part-way leaves a malformed key every later call refuses
+//     to mint over, and a crash can keep the name and lose the contents.
+//
+// A link to a complete, synced file is created or refused in one step, so the
+// key is never visible half-written, the winner of a race is decided, and the
+// loser reads the winner's key. `init` holds the deployment lock, so the race
+// is defence for the port's contract -- any operation about to sign may call
+// this -- rather than one that exists today.
+func (s *Signer) mint(path string) (ports.PublicSigningKey, bool, error) {
 	pair, err := generate(s.comment())
 	if err != nil {
-		return ports.PublicSigningKey{}, err
+		return ports.PublicSigningKey{}, false, err
+	}
+	dir := filepath.Dir(path)
+	if err := atomicfs.MkdirAll(dir, 0o700); err != nil {
+		return ports.PublicSigningKey{}, false, err
 	}
 
-	if err := atomicfs.MkdirAll(filepath.Dir(s.keyPath), 0o700); err != nil {
-		return ports.PublicSigningKey{}, err
-	}
-
-	// O_EXCL rather than an atomic rename, and this is the one place in the
-	// codebase where a rename is the wrong primitive.
-	//
-	// A rename is last-writer-wins, so two EnsureKey calls that both read
-	// "no key" would both mint and the second would replace the first. The
-	// loser's signatures then verify against a key no longer on the
-	// machine, with no error at the time and no symptom until somebody
-	// checks an old artifact. An exclusive create makes the race decidable:
-	// exactly one creator wins, and the loser reads the winner's key rather
-	// than overwriting it.
-	//
-	// `init` holds the deployment lock, so this is defence for the port's
-	// contract -- any operation about to sign may call this -- rather than
-	// for a race that exists today.
-	f, err := os.OpenFile(s.keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, keyMode)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			// Somebody else minted between our read and this
-			// create. Theirs is the identity.
-			return s.PublicKey(ctx)
-		}
-		return ports.PublicSigningKey{}, domain.SecretsError(err,
-			"cannot write the signing key to %s", s.keyPath)
+		return ports.PublicSigningKey{}, false, domain.SecretsError(err,
+			"cannot write the signing key to %s", path)
 	}
-	if _, err := f.Write(pair.secretFile); err != nil {
-		_ = f.Close()
-		return ports.PublicSigningKey{}, domain.SecretsError(err,
-			"cannot write the signing key to %s", s.keyPath)
+	// The link is what keeps the key; the temporary name always goes.
+	defer func() { _ = os.Remove(tmp.Name()) }()
+
+	writeErr := tmp.Chmod(keyMode)
+	if writeErr == nil {
+		_, writeErr = tmp.Write(pair.secretFile)
 	}
-	if err := f.Close(); err != nil {
-		return ports.PublicSigningKey{}, domain.SecretsError(err,
-			"cannot write the signing key to %s", s.keyPath)
+	if writeErr == nil {
+		writeErr = tmp.Sync()
+	}
+	if err := tmp.Close(); writeErr == nil {
+		writeErr = err
+	}
+	if writeErr != nil {
+		return ports.PublicSigningKey{}, false, domain.SecretsError(writeErr,
+			"cannot write the signing key to %s", path)
 	}
 
-	return ports.PublicSigningKey{Line: pair.publicLine, KeyID: pair.keyID}, nil
+	if err := os.Link(tmp.Name(), path); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return ports.PublicSigningKey{}, false, nil
+		}
+		return ports.PublicSigningKey{}, false, domain.SecretsError(err,
+			"cannot write the signing key to %s", path)
+	}
+	atomicfs.SyncDir(dir)
+	return ports.PublicSigningKey{Line: pair.publicLine, KeyID: pair.keyID}, true, nil
+}
+
+// stagedPath is where a rotation keeps the successor until it is recorded:
+// beside the key, so moving it into place is a rename within one directory.
+func (s *Signer) stagedPath() string { return s.keyPath + ".next" }
+
+// StageKey mints the key a rotation will move into place, or returns the one
+// an interrupted rotation already staged.
+func (s *Signer) StageKey(ctx context.Context) (ports.PublicSigningKey, error) {
+	if key, err := publicKeyAt(s.stagedPath()); !errors.Is(err, domain.ErrNoSigningKey) {
+		return key, err
+	}
+	key, created, err := s.mint(s.stagedPath())
+	if err != nil || created {
+		return key, err
+	}
+	return publicKeyAt(s.stagedPath())
+}
+
+// ActivateStagedKey moves the staged key over the current one. The old private
+// key goes with the rename: its signatures verify against the public half state
+// keeps, and nothing signs with it again.
+func (s *Signer) ActivateStagedKey(ctx context.Context) error {
+	if err := os.Rename(s.stagedPath(), s.keyPath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return domain.SecretsError(err, "cannot move the new signing key into %s", s.keyPath)
+	}
+	atomicfs.SyncDir(filepath.Dir(s.keyPath))
+	return nil
+}
+
+// DiscardStagedKey removes a staged key that was never moved into place.
+func (s *Signer) DiscardStagedKey(ctx context.Context) error {
+	if err := os.Remove(s.stagedPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return domain.SecretsError(err, "cannot remove the staged signing key %s", s.stagedPath())
+	}
+	return nil
 }
 
 // PublicKey reads the key on disk without minting one.
 func (s *Signer) PublicKey(ctx context.Context) (ports.PublicSigningKey, error) {
-	sk, err := s.load()
+	return publicKeyAt(s.keyPath)
+}
+
+// publicKeyAt reads the public half of the key at path.
+func publicKeyAt(path string) (ports.PublicSigningKey, error) {
+	sk, err := loadKey(path)
 	if err != nil {
 		return ports.PublicSigningKey{}, err
 	}
@@ -118,7 +196,7 @@ func (s *Signer) PublicKey(ctx context.Context) (ports.PublicSigningKey, error) 
 
 // Sign produces a detached signature over data, in prehashed mode.
 func (s *Signer) Sign(ctx context.Context, data []byte, trustedComment string) (ports.Signature, error) {
-	sk, err := s.load()
+	sk, err := loadKey(s.keyPath)
 	if err != nil {
 		return ports.Signature{}, err
 	}
@@ -145,26 +223,26 @@ func (s *Signer) Sign(ctx context.Context, data []byte, trustedComment string) (
 	return ports.Signature{Encoded: sig.Encode(), KeyID: keyIDFor(sk)}, nil
 }
 
-// load reads and parses the secret key, translating "no file" into the
-// sentinel that says this machine has never minted one.
-func (s *Signer) load() (gominisign.PrivateKey, error) {
-	sk, err := gominisign.NewPrivateKeyFromFile(s.keyPath)
+// loadKey reads and parses the secret key at path, translating "no file" into
+// the sentinel that says this machine has never minted one.
+func loadKey(path string) (gominisign.PrivateKey, error) {
+	sk, err := gominisign.NewPrivateKeyFromFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return gominisign.PrivateKey{}, domain.NoSigningKey(nil,
-				"no signing key at %s", s.keyPath).
+				"no signing key at %s", path).
 				WithHint("`morzer init` mints one; an installation migrated to " +
 					"schema 6 acquires one the first time it signs")
 		}
 		return gominisign.PrivateKey{}, domain.SecretsError(err,
-			"cannot read the signing key at %s", s.keyPath)
+			"cannot read the signing key at %s", path)
 	}
 	if sk.IsEncrypted() {
 		// This manager writes unencrypted keys (decision 3), so an
 		// encrypted one was put here by hand. Refusing beats prompting
 		// for a passphrase in a systemd timer that has no terminal.
 		return gominisign.PrivateKey{}, domain.SecretsError(nil,
-			"the signing key at %s is passphrase-encrypted", s.keyPath).
+			"the signing key at %s is passphrase-encrypted", path).
 			WithHint("this manager signs unattended and writes unencrypted keys; " +
 				"decrypt it or move it aside and let `init` mint one")
 	}

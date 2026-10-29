@@ -52,6 +52,30 @@ type Signer interface {
 	Sign(ctx context.Context, data []byte, trustedComment string) (Signature, error)
 }
 
+// SigningKeyRotator replaces this installation's signing key (RFC 0028 P2).
+//
+// Optional and type-asserted, like the runtime's capabilities: a build that
+// signs nothing has nothing to rotate. Three calls rather than one, because the
+// key file and the public key installation state records cannot change in one
+// write, and the order between them decides what a crash leaves behind. The
+// successor is staged, the caller records it as current with the old key as a
+// predecessor, and only then is it moved into place -- so the old public key is
+// in state whatever happens to the process.
+type SigningKeyRotator interface {
+	// StageKey mints the successor beside the current key and returns its
+	// public half. A successor already staged, by a rotation that was
+	// interrupted, is returned rather than replaced.
+	StageKey(ctx context.Context) (PublicSigningKey, error)
+
+	// ActivateStagedKey moves the staged key over the current one, which is
+	// then gone. With nothing staged it does nothing, so a resumed rotation
+	// can call it again.
+	ActivateStagedKey(ctx context.Context) error
+
+	// DiscardStagedKey removes a staged key that was never activated.
+	DiscardStagedKey(ctx context.Context) error
+}
+
 // PublicSigningKey is the public half of a machine's signing key.
 type PublicSigningKey struct {
 	// Line is the key as minisign's -P flag accepts it, and as it is

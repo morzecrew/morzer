@@ -1,10 +1,11 @@
 # RFC 0028 — The machine's signing identity
 
-- **Status:** 🚧 In progress — **P1 shipped 2026-08-13**, in the same wave as
+- **Status:** ✅ Complete — **P1 shipped 2026-08-13**, in the same wave as
   its first consumer (0025 P1), as §9 required. The key, the format, schema 6
   and its bump-only migration, succession across a rebuild and the `doctor`
-  check are in. **P2 (rotation) is unscheduled** and wanted the first time
-  somebody believes a host was compromised.
+  check are in. **P2 shipped 2026-10-29** as `installation rotate-signing-key`;
+  the decisions it took that this document does not settle wait in
+  [`logs/rfc-0028-p2-rotation.md`](../logs/rfc-0028-p2-rotation.md).
 - **Scope:** One per-installation Ed25519 key, minted at `init`, that lets a
   machine sign statements about itself — the capability [0024](0024-the-support-bundle.md),
   [0025](0025-attesting-an-installation.md) and [0026](0026-fleet-as-a-read-model.md)

@@ -382,11 +382,12 @@ services:
 // TestComposeRunOneShotOutputEndsWithWhatTheContainerSaid is why a failed
 // migration service is quoted from Output and not from Stderr (#141).
 //
-// `compose run` writes its own progress to stderr before the container starts,
-// so a migration that reports its failure on stdout -- as a twelve-factor
-// application logging there does -- leaves Compose's progress as the last
-// lines of stderr. A scripted runner prints whatever it is told to, so this
-// asks the daemon.
+// A Compose older than 2.36 writes its own progress to stderr before the
+// container starts, whatever the adapter asks, so a migration that reports its
+// failure on stdout -- as a twelve-factor application logging there does --
+// would leave Compose's progress as the last lines of stderr. Output is the
+// tail of both streams in the order they arrived, which holds on any version.
+// A scripted runner prints whatever it is told to, so this asks the daemon.
 func TestComposeRunOneShotOutputEndsWithWhatTheContainerSaid(t *testing.T) {
 	dockerlab.Require(t)
 	dockerlab.Pull(t, dockerlab.ImageBusybox)
@@ -416,9 +417,49 @@ services:
 
 	assert.True(t, strings.HasSuffix(res.Output, "ERROR: relation orders already exists"),
 		"Output does not end with what the container said last:\n%s", res.Output)
-	assert.NotContains(t, domain.LastLines(res.Stderr, 1), "ERROR",
-		"stderr ended with the container's line, so quoting it would have been enough; "+
-			"if Compose stopped writing progress there, this test's premise is gone")
+}
+
+// TestComposeRunOneShotLeavesComposesProgressOut: the services a one-shot
+// starts first are narrated by Compose -- "Container demo-db-1 Healthy" -- on
+// the stderr the caller hands on as the container's. The adapter turns that off
+// through COMPOSE_PROGRESS, which Compose reads from 2.36.
+func TestComposeRunOneShotLeavesComposesProgressOut(t *testing.T) {
+	dockerlab.Require(t)
+	version, err := osexec.Command("docker", "compose", "version", "--short").Output()
+	require.NoError(t, err)
+	if v, err := domain.ParseVersion(strings.TrimPrefix(strings.TrimSpace(string(version)), "v")); err != nil ||
+		v.LessThan(domain.MustParseVersion("2.36.0")) {
+		t.Skipf("Compose %s does not read COMPOSE_PROGRESS", strings.TrimSpace(string(version)))
+	}
+	dockerlab.Pull(t, dockerlab.ImageBusybox)
+
+	cfg := dockerlab.Project(t, fmt.Sprintf(`
+services:
+  db:
+    image: %[1]s
+    command: ["sleep", "300"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 1s
+      retries: 5
+  tools:
+    image: %[1]s
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "echo to-stderr >&2; echo report-line"]
+`, dockerlab.ImageBusybox))
+
+	res, err := compose.New(infraexec.New()).RunOneShot(context.Background(), cfg, "tools",
+		ports.RunOptions{Remove: true, Timeout: 2 * time.Minute})
+	require.NoError(t, err)
+	require.Equal(t, 0, res.ExitCode, "%s%s", res.Stdout, res.Stderr)
+
+	assert.NotContains(t, res.Stdout+res.Stderr+res.Output, "Container ",
+		"Compose's progress reached the output handed on as the container's")
+	assert.Contains(t, res.Stdout, "report-line")
+	assert.Contains(t, res.Stderr, "to-stderr")
 }
 
 // TestComposeRunOneShotOnAMisnamedServiceIsAnExitNotAnError records the edge

@@ -136,12 +136,13 @@ validity. Collapsing the two would make rotation useless.
 
 ### Rotation protects the future and repairs nothing
 
-**There is no rotate command yet** ([RFC 0028](rfcs/0028-the-machines-signing-identity.md)
-P2 is unscheduled). The only path that retires a key today is `installation
-import`, which mints a fresh one and records the old one as a predecessor — and
-rebuilding a machine to retire one key is not a remedy anybody should reach for.
-Read the rest of this section as what a rotation will and will not do, rather
-than as something to run.
+`morzer installation rotate-signing-key` replaces the key
+([RFC 0028](rfcs/0028-the-machines-signing-identity.md) P2). It mints a new
+one, records the old public key under `signing.previous_keys` with
+`reason: rotation`, and then moves the new key into place, so the old private
+key is gone and its signatures still verify — as *signed by a predecessor*,
+never as the current key. The rotation's own statement is signed by the new key.
+A fleet roster that names this machine needs its entry moved to the new key.
 
 The sentence to read before rotating after a suspected compromise:
 
@@ -188,8 +189,6 @@ Stated here rather than discovered during an incident:
   with the password removed. Any other authentication means fetching the bundle
   out of band, or publishing it to an OCI registry, where the ambient Docker
   credentials are used.
-- `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
-  implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
 - An attestation records what the manager did; it does not record that a
   signature was *verified during that operation*, because signatures are checked
   when a release is staged and `apply` runs against one already on disk. The
@@ -248,6 +247,20 @@ be current.
   so as information, shown by `doctor --verbose` and in `--json`, rather than as
   a warning: nothing records whether a machine is air-gapped on purpose, and a
   warning on every one that is would teach its operator to read past `doctor`.
+
+- **There was no way to rotate the machine's signing key** (closed 2026-10-29).
+  Retiring a key meant rebuilding the machine with `installation import`.
+  `morzer installation rotate-signing-key` now does it in place; what a
+  rotation can and cannot do is above, under
+  [Rotation protects the future and repairs nothing](#rotation-protects-the-future-and-repairs-nothing).
+
+- **`secret edit` and the `doctor` check for a `/run` that is not tmpfs were
+  listed as missing after both had shipped** (corrected 2026-10-29). `morzer
+  secret edit` decrypts into a temporary file on tmpfs for an editor and
+  re-encrypts what changed, and `doctor`'s
+  `secrets.ephemeral-storage` check warns when rendered secrets are not on
+  memory-backed storage. See
+  [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
 
 - **A password in a bundle URL reached the journal** (closed 2026-10-29).
   `update` journalled its reference as typed, so `morzer update

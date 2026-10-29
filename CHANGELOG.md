@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`installation rotate-signing-key` replaces the key a machine signs its own statements with.** Retiring a key suspected of being stolen meant rebuilding the machine with `installation import`. The command mints a new key, records the old one under `signing.previous_keys` and moves the new one into place, so everything the old key signed still verifies as a predecessor's signature and never as the current key's; it repairs nothing the old key signed, and a fleet roster naming the machine needs the new key.
+
 ### Changed
 
 - **`doctor` says when a machine's attestations can never leave it.** An installation with no backup target keeps its whole record local, and `doctor` said nothing about it. It now reports how many statements are only on this machine and that nothing will push them, as information shown by `doctor --verbose` and in `--json` rather than as a warning, since nothing records whether a machine is air-gapped on purpose. The check's description now reads "attestations have left this machine", or, with no target, "attestations stay on this machine: no backup target".
+
+### Fixed
+
+- **A task's output no longer carries Compose's progress for the services it starts.** `task run` printed lines such as `Container erp-postgres-1 Healthy` with the task's own stderr, and a failed migration service could quote them, because `docker compose run` writes them to the same stream. One-shot runs now set `COMPOSE_PROGRESS=quiet`, which Compose reads from 2.36; an older Compose ignores it and prints them as before.
 
 ### Security
 
