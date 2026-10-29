@@ -46,7 +46,12 @@ const (
 	// predicateType URI inside it, and it can move independently of the
 	// manifest surface. Coupling its filename to `v1alpha1` would promise a
 	// lockstep that does not exist.
-	AttestationSchemaFile = "morzer-attestation-v1.json"
+	AttestationSchemaFile = "morzer-attestation-v2.json"
+
+	// AttestationV1SchemaFile is the schema statements written before v2
+	// validate against. Published and kept, never regenerated: it describes
+	// documents already on machines and in buckets, and those do not change.
+	AttestationV1SchemaFile = "morzer-attestation-v1.json"
 )
 
 const schemaBase = "https://morzecrew.github.io/morzer/schemas/"
@@ -369,6 +374,11 @@ var scalarSchemas = map[reflect.Type]map[string]any{
 // entry the manager rejects.
 var requiredFields = map[reflect.Type][]string{
 	reflect.TypeOf(domain.VolumeSpec{}): {"consistency"},
+
+	// A signature check in an attestation is its key, its operation and
+	// its time, and the writer never omits one. Without them required, `{}`
+	// validates as a check that names nothing.
+	reflect.TypeOf(domain.SignatureCheck{}): {"key_id", "operation_id", "at"},
 }
 
 // schemaFor renders a Go type as a JSON Schema node.

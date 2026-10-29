@@ -221,6 +221,20 @@ type KeyChecker interface {
 	CheckKey(key string) error
 }
 
+// SignatureReporter is a Verifier that can say which key a bundle's signature
+// verified against.
+//
+// Optional, like KeyChecker: the checksum verifier checks no signature, and a
+// verifier that does not report one is read as having verified none. Verify
+// alone cannot answer it, because a nil error is also what a verifier returns
+// when it had no keys to check against, or a bundle that carried no signature
+// and did not need one.
+type SignatureReporter interface {
+	// VerifySigned is Verify, returning the id of the key a signature
+	// verified against, or "" when no signature was verified.
+	VerifySigned(ctx context.Context, bundle BundlePath, expect Expectation) (keyID string, err error)
+}
+
 // Names a bundle may ship its own integrity evidence under. They are part of
 // the release contract rather than an adapter's private detail: a vendor's
 // publishing pipeline writes them, a third party checks them with `sha256sum

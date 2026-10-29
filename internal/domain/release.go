@@ -123,6 +123,26 @@ type ReleaseRecord struct {
 	// treats unknown as changed exactly once, which costs one fetch and then
 	// records the answer.
 	UpstreamDigest string `json:"upstream_digest,omitempty"`
+
+	// SignatureVerified is the signature an operation verified on this
+	// release's bundle when it staged it: `init` or `update`.
+	//
+	// Kept with the record because every later operation runs against the
+	// release already on disk and verifies nothing, and its statement can
+	// then say the release was verified when staged, and by which
+	// operation, rather than nothing at all. Carried forward by whatever
+	// rewrites the record for the same release. Nil for a release with no
+	// signature checked: unsigned, no keys configured, or staged before
+	// this was recorded.
+	SignatureVerified *SignatureCheck `json:"signature_verified,omitempty"`
+}
+
+// SignatureCheck is one signature the manager verified: the key it verified
+// against, as minisign prints its id, and the operation and time it did so.
+type SignatureCheck struct {
+	KeyID       string `json:"key_id"`
+	OperationID string `json:"operation_id"`
+	At          Time   `json:"at"`
 }
 
 func (r ReleaseRecord) IsZero() bool { return r.Name == "" && r.Version.IsZero() }

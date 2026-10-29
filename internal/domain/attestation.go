@@ -35,7 +35,17 @@ const (
 
 	// PredicateType versions morzer's deployment predicate by URI, which is
 	// how a consumer knows which fields to expect.
-	PredicateType = "https://morzecrew.github.io/morzer/attestation/v1"
+	//
+	// v2 adds verification.signature_verified_when_staged. The v1 schema
+	// refuses any field it does not name, so a v2 document claiming to be
+	// v1 would fail the schema an auditor validates it with (RFC 0025
+	// decision 1).
+	PredicateType = "https://morzecrew.github.io/morzer/attestation/v2"
+
+	// PredicateTypeV1 is what statements written before v2 carry. Still
+	// read: v2 only adds a field, so a v1 document is a v2 document
+	// without it.
+	PredicateTypeV1 = "https://morzecrew.github.io/morzer/attestation/v1"
 
 	// AttestationBound is what a signature over this document proves, and
 	// -- as important -- what it does not.
@@ -50,6 +60,12 @@ const (
 		"signing key asserted these facts. It does not prove the facts, it does not prove " +
 		"the machine was uncompromised when it signed, and it does not identify the operator."
 )
+
+// ReadablePredicateType reports whether this manager reads statements of the
+// given predicate type: the current one, and the v1 it extends.
+func ReadablePredicateType(t string) bool {
+	return t == PredicateType || t == PredicateTypeV1
+}
 
 // Statement is the in-toto envelope.
 type Statement struct {
@@ -148,6 +164,15 @@ type AttestedVerification struct {
 	// only a caller that watched a verification fills it in.
 	SignatureVerified *bool  `json:"signature_verified,omitempty"`
 	KeyID             string `json:"key_id,omitempty"`
+
+	// SignatureVerifiedWhenStaged is a check an *earlier* operation made,
+	// when it staged the release this operation ran against. Never set
+	// together with SignatureVerified, which is this operation's own: the
+	// two are different claims, about different operations, and an
+	// auditor reading one as the other would credit this operation with a
+	// check it did not make. Absent for a release with no signature
+	// verified when it was staged, or staged before this was recorded.
+	SignatureVerifiedWhenStaged *SignatureCheck `json:"signature_verified_when_staged,omitempty"`
 
 	// DigestPinned says the release carries a content digest. That is a
 	// fact about the record and is always knowable.
