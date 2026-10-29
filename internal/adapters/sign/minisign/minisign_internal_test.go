@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -118,4 +119,37 @@ func encryptedForm(t *testing.T, file string) string {
 	payload[2], payload[3] = 'S', 'c'
 
 	return lines[0] + "\n" + base64.StdEncoding.EncodeToString(payload) + "\n"
+}
+
+// Callers racing to mint the first key all get the winner's, and none of them
+// reads a key file before its bytes are there: a loser that read the winner's
+// path between its creation and its write would fail to parse it.
+func TestCallersRacingToMintAllGetTheWinnersKey(t *testing.T) {
+	for range 20 {
+		s := New(filepath.Join(t.TempDir(), "signing", "identity.key"), "demo")
+		const callers = 32
+		keys := make([]string, callers)
+		errs := make([]error, callers)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := range callers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				key, err := s.EnsureKey(context.Background())
+				keys[i], errs[i] = key.Line, err
+			}()
+		}
+		close(start)
+		wg.Wait()
+		for i := range callers {
+			if errs[i] != nil {
+				t.Fatalf("a caller failed while another was minting: %v", errs[i])
+			}
+			if keys[i] != keys[0] {
+				t.Fatalf("callers got different keys: %q and %q", keys[i], keys[0])
+			}
+		}
+	}
 }

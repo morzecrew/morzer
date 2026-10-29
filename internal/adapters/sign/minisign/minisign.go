@@ -78,45 +78,65 @@ func (s *Signer) EnsureKey(ctx context.Context) (ports.PublicSigningKey, error) 
 // mint writes a new key to path, unless a key is already there, and reports
 // whether it was the one that wrote it.
 //
-// O_EXCL rather than an atomic rename, and this is the one place in the
-// codebase where a rename is the wrong primitive.
+// Written whole and synced under a temporary name, then hard-linked into place.
+// The link is what makes this both exclusive and atomic, which neither of the
+// obvious primitives is on its own:
 //
-// A rename is last-writer-wins, so two EnsureKey calls that both read "no key"
-// would both mint and the second would replace the first. The loser's
-// signatures then verify against a key no longer on the machine, with no error
-// at the time and no symptom until somebody checks an old artifact. An
-// exclusive create makes the race decidable: exactly one creator wins, and the
-// loser reads the winner's key rather than overwriting it.
+//   - A rename is last-writer-wins, so two callers that both read "no key"
+//     would both mint and the second would replace the first. The loser's
+//     signatures then verify against a key no longer on the machine, with no
+//     error at the time and no symptom until somebody checks an old artifact.
+//   - O_EXCL on the final name is exclusive, but the file exists before its
+//     bytes do. A racing caller that reads it in between fails to parse it, a
+//     write that fails part-way leaves a malformed key every later call refuses
+//     to mint over, and a crash can keep the name and lose the contents.
 //
-// `init` holds the deployment lock, so this is defence for the port's contract
-// -- any operation about to sign may call this -- rather than for a race that
-// exists today.
+// A link to a complete, synced file is created or refused in one step, so the
+// key is never visible half-written, the winner of a race is decided, and the
+// loser reads the winner's key. `init` holds the deployment lock, so the race
+// is defence for the port's contract -- any operation about to sign may call
+// this -- rather than one that exists today.
 func (s *Signer) mint(path string) (ports.PublicSigningKey, bool, error) {
 	pair, err := generate(s.comment())
 	if err != nil {
 		return ports.PublicSigningKey{}, false, err
 	}
-	if err := atomicfs.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := atomicfs.MkdirAll(dir, 0o700); err != nil {
 		return ports.PublicSigningKey{}, false, err
 	}
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, keyMode)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
+		return ports.PublicSigningKey{}, false, domain.SecretsError(err,
+			"cannot write the signing key to %s", path)
+	}
+	// The link is what keeps the key; the temporary name always goes.
+	defer func() { _ = os.Remove(tmp.Name()) }()
+
+	writeErr := tmp.Chmod(keyMode)
+	if writeErr == nil {
+		_, writeErr = tmp.Write(pair.secretFile)
+	}
+	if writeErr == nil {
+		writeErr = tmp.Sync()
+	}
+	if err := tmp.Close(); writeErr == nil {
+		writeErr = err
+	}
+	if writeErr != nil {
+		return ports.PublicSigningKey{}, false, domain.SecretsError(writeErr,
+			"cannot write the signing key to %s", path)
+	}
+
+	if err := os.Link(tmp.Name(), path); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return ports.PublicSigningKey{}, false, nil
 		}
 		return ports.PublicSigningKey{}, false, domain.SecretsError(err,
 			"cannot write the signing key to %s", path)
 	}
-	if _, err := f.Write(pair.secretFile); err != nil {
-		_ = f.Close()
-		return ports.PublicSigningKey{}, false, domain.SecretsError(err,
-			"cannot write the signing key to %s", path)
-	}
-	if err := f.Close(); err != nil {
-		return ports.PublicSigningKey{}, false, domain.SecretsError(err,
-			"cannot write the signing key to %s", path)
-	}
+	atomicfs.SyncDir(dir)
 	return ports.PublicSigningKey{Line: pair.publicLine, KeyID: pair.keyID}, true, nil
 }
 
