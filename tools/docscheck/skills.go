@@ -146,15 +146,39 @@ func checkSkillCommands(rep *report, tree *cobra.Command, rel, raw string) {
 	}
 }
 
-// resolveInvocation walks the words after `morzer` down the command tree and
-// checks the long flags that follow. It returns what is wrong, or "".
+// resolveInvocation walks the words after `morzer` down the command tree,
+// checking each long flag against the command reached so far: a flag the root
+// takes may come before the subcommand, as in `morzer --json release verify`.
+// It returns what is wrong, or "".
 func resolveInvocation(tree *cobra.Command, words []string) string {
 	cmd := tree
-	i := 0
-	for ; i < len(words); i++ {
+	resolving := true
+	for i := 0; i < len(words); i++ {
 		w := words[i]
-		if strings.HasPrefix(w, "-") || strings.ContainsAny(w, "<[./$") {
+		if w == "--" || slices.Contains([]string{"|", "||", "&&", ";", ">", ">>", "\\"}, w) {
 			break
+		}
+		if strings.HasPrefix(w, "--") {
+			name, _, hasValue := strings.Cut(strings.TrimPrefix(w, "--"), "=")
+			// Cobra adds these two when the binary runs, not when the
+			// tree is built, so the tree this walks does not carry them.
+			if name == "help" || name == "version" {
+				continue
+			}
+			f := cmd.Flag(name)
+			if f == nil {
+				return "`--" + name + "` is not a flag of `" + strings.Join(commandPath(cmd), " ") + "`"
+			}
+			// A flag that takes a value and was not given one with `=`
+			// takes the next word, which is then not a subcommand.
+			if !hasValue && f.NoOptDefVal == "" {
+				i++
+			}
+			continue
+		}
+		if !resolving || strings.HasPrefix(w, "-") || strings.ContainsAny(w, "<[./$") {
+			resolving = false
+			continue
 		}
 		sub := subcommand(cmd, w)
 		if sub == nil {
@@ -163,27 +187,10 @@ func resolveInvocation(tree *cobra.Command, words []string) string {
 			if !cmd.Runnable() {
 				return "`" + strings.Join(append(commandPath(cmd), w), " ") + "` is not a command"
 			}
-			break
+			resolving = false
+			continue
 		}
 		cmd = sub
-	}
-	for ; i < len(words); i++ {
-		w := words[i]
-		if w == "--" || slices.Contains([]string{"|", "||", "&&", ";", ">", ">>", "\\"}, w) {
-			break
-		}
-		if !strings.HasPrefix(w, "--") {
-			continue
-		}
-		name, _, _ := strings.Cut(strings.TrimPrefix(w, "--"), "=")
-		// Cobra adds these two when the binary runs, not when the tree
-		// is built, so the tree this walks does not carry them.
-		if name == "help" || name == "version" {
-			continue
-		}
-		if cmd.Flags().Lookup(name) == nil && cmd.InheritedFlags().Lookup(name) == nil {
-			return "`--" + name + "` is not a flag of `" + strings.Join(commandPath(cmd), " ") + "`"
-		}
 	}
 	return ""
 }

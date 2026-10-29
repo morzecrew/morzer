@@ -21,9 +21,12 @@ func TestAnInvocationResolvesAgainstTheCommandTree(t *testing.T) {
 		"release verify --signing-key=RWQ ./b":       "",
 		"task run seed -- --size s":                  "",
 		"release build ./b | tee log --not-a-flag":   "",
-		"--version":                        "",
-		"release verfy ./my-product":       "`morzer release verfy` is not a command",
-		"release verify ./b --render-chek": "`--render-chek` is not a flag of `morzer release verify`",
+		"--version":                                "",
+		"release verfy ./my-product":               "`morzer release verfy` is not a command",
+		"release verify ./b --render-chek":         "`--render-chek` is not a flag of `morzer release verify`",
+		"--json release verify ./b --render-check": "",
+		"--config /etc/x.yaml release verify ./b":  "",
+		"--jsn release verify ./b":                 "`--jsn` is not a flag of `morzer`",
 	}
 	for line, want := range cases {
 		if got := resolveInvocation(tree, strings.Fields(line)); got != want {
