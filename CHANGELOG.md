@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A GitHub Action that installs morzer: `morzecrew/morzer/actions/setup`.** A
+  workflow that builds or tests a bundle used to copy the download, checksum and
+  signature steps into its own scripts. The action runs `install.sh` with the
+  version it is given and `--require-signature`, installs `minisign` first when
+  the runner has none, and puts `morzer` on `PATH` for the steps after it.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its

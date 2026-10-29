@@ -90,6 +90,35 @@ every release, covered by that release's `SHA256SUMS`. So the script that
 verifies the archive is itself verifiable against the file it teaches you to
 check.
 
+## In GitHub Actions
+
+A workflow that builds or tests a bundle installs morzer with the action in this
+repository:
+
+```yaml
+- uses: morzecrew/morzer/actions/setup@<tag or commit>
+  with:
+    version: 0.9.0
+```
+
+It runs the script above, at the ref you call the action at, as
+`--version <version> --require-signature --no-modify-path --no-completions`
+into `$RUNNER_TEMP/morzer`, and puts that directory on `PATH` for the steps
+after it. A hosted runner has no `minisign`, so the action installs it first
+from its release archive, checked against a digest the action pins, and the
+signature is always checked. It then fails unless `morzer version` reports the
+version you asked for.
+
+| Input | |
+| --- | --- |
+| `version` | The release to install, as `X.Y.Z`. Required: a job that installs whatever is newest is one nobody can reproduce. |
+| `dir` | Where to install instead of `$RUNNER_TEMP/morzer`. |
+
+Its outputs are `path`, the directory, and `version`, what the binary reports.
+It runs on Linux runners only, and needs `curl`, `tar` and `zstd`, which
+GitHub's Ubuntu runners have; a job container such as `ubuntu:24.04` has none
+of them until the job installs them.
+
 ## By hand
 
 The script is doing this. It stays documented because an operator who wants to

@@ -55,3 +55,38 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: .github/scripts/installer-drift.sh
+
+  setup-action:
+    name: The setup action against the real release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Find the newest release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)
+          echo "version=${tag#v}" >>"${GITHUB_OUTPUT}"
+
+      # The runner has no minisign, so this also runs the action's own install
+      # of it.
+      - id: setup
+        uses: ./actions/setup
+        with:
+          version: ${{ steps.release.outputs.version }}
+
+      - name: Check that later steps find it
+        env:
+          WANT: ${{ steps.release.outputs.version }}
+          GOT: ${{ steps.setup.outputs.version }}
+        run: |
+          set -euo pipefail
+          [ "${GOT}" = "${WANT}" ] || { echo "::error::the action reports ${GOT}, not ${WANT}"; exit 1; }
+          morzer version
+          minisign -v

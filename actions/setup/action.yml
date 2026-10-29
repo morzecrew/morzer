@@ -1,0 +1,40 @@
+# Install a published morzer release in a GitHub Actions job.
+#
+#   - uses: morzecrew/morzer/actions/setup@<tag or commit>
+#     with:
+#       version: 0.9.0
+#
+# It runs this repository's install.sh, at the ref the action is called at,
+# with a pinned version and a signature that must verify. setup.sh says why
+# each flag is there.
+name: Set up morzer
+description: Install a published morzer release on a Linux runner, verified against its SHA256SUMS and their minisign signature.
+author: morzecrew
+
+inputs:
+  version:
+    description: The morzer release to install, as X.Y.Z.
+    required: true
+  dir:
+    description: Where morzer is installed, and minisign when the runner has none; it is put on PATH for later steps. Defaults to $RUNNER_TEMP/morzer.
+    required: false
+    default: ""
+
+outputs:
+  path:
+    description: The directory morzer was installed in.
+    value: ${{ steps.install.outputs.path }}
+  version:
+    description: The version the installed binary reports.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: sh
+      env:
+        VERSION: ${{ inputs.version }}
+        DIR: ${{ inputs.dir }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: sh "${ACTION_PATH}/setup.sh"

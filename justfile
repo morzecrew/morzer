@@ -220,6 +220,8 @@ shellcheck:
         exit 1
     fi
     shellcheck --shell=sh install.sh
+    # The setup action's script: a job container's /bin/sh may be dash too.
+    shellcheck --shell=sh actions/*/*.sh
     shellcheck .github/scripts/*.sh
     # Spikes are committed so their measurements can be re-run, which
     # makes them scripts this repository ships rather than scratch.
