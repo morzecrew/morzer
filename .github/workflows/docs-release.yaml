@@ -1,9 +1,15 @@
 # Publish a released minor's documentation.
 #
-# A tag publishes `<major>.<minor>` and, when it is the newest released minor,
-# moves the `latest` alias and the root redirect onto it. `dev` is main's
-# in-progress docs and is handled by docs-dev.yaml; it never carries an alias
-# and is never the default.
+# A published release publishes `<major>.<minor>` and, when it is the newest
+# released minor, moves the `latest` alias and the root redirect onto it. `dev`
+# is main's in-progress docs and is handled by docs-dev.yaml; it never carries
+# an alias and is never the default.
+#
+# Published rather than tagged. The tag starts release.yaml, which runs the full
+# CI and leaves a draft for a maintainer to publish; docs deployed at the tag
+# named downloads that did not exist yet, and moved the root's install.sh ahead
+# of the release the nightly job compares it with (RFC 0006 decision 20). The
+# release event carries its tag in GITHUB_REF_NAME, as the push did.
 #
 # Versioned because the manifest schema, the state schema and the manager are
 # each versioned independently. A tool whose entire job is careful version
@@ -11,8 +17,8 @@
 name: Deploy released documentation
 
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
 
 # Shared with docs-dev.yaml: every deploy rewrites the gh-pages branch, and two
