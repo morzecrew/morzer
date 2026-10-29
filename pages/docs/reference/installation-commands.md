@@ -389,6 +389,57 @@ A product with nothing of it on the machine is refused, so a typo in
     `installation import --from-backup` with your recovery key brings it back
     on any machine.
 
+## Rotating the signing key
+
+### installation rotate-signing-key
+
+```sh
+morzer installation rotate-signing-key
+```
+
+Replaces the key this machine signs its own statements with: the
+[attestations](attestations.md) it files and the [fleet](fleet.md) row it
+publishes. It mints a new key, records the current one as the newest entry of
+`signing.previous_keys` with `reason: rotation` and the time it was retired, and
+moves the new key into place. The old private key is gone afterwards; its public
+half stays in installation state.
+
+Everything the old key signed still verifies, as **signed by a predecessor** and
+never as the current key: provenance, not validity, the same outcome a rebuilt
+machine's predecessor gets. The rotation files its own statement, signed by the
+new key, naming the old one through `previous_keys`. It is not countersigned by
+the old key, because a key retired for a suspected compromise vouching for its
+successor proves nothing.
+
+!!! warning "Rotation protects the future and repairs nothing"
+
+    After a suspected compromise, everything the old key signed stays suspect,
+    including what looks old: whoever holds it can back-date a statement as
+    easily as write a current one. `retired_at` is history for you, not a check
+    any verifier makes. Re-sign what you still vouch for; treat the rest as
+    unverified. See the [security policy](https://github.com/morzecrew/morzer/blob/main/SECURITY.md#rotation-protects-the-future-and-repairs-nothing).
+
+It runs as the operation `rotate-signing-key`: under the deployment lock,
+journaled with the public key it retires, attested, and planned by `--dry-run`
+without minting anything. It asks for no confirmation beyond its name, as
+`secret rotate` does.
+
+The order is chosen so a crash cannot lose the old public key. The new key is
+staged beside the current one, the old public key is recorded as retired, and
+only then is the new key moved into place. A rotation that fails before the
+move puts state back and removes the staged key. One that was interrupted is
+finished by `morzer installation rotate-signing-key --resume`, which retires
+the key the interrupted run named and mints no second one.
+
+It refuses a machine with no signing key, which has nothing to rotate, and one
+whose key file is not the key installation state records, because it is not
+clear which key to retire; `morzer init --repair` records the key on disk.
+
+A [fleet roster](fleet.md#the-roster) binds each installation to a public key,
+so after a rotation `fleet ls --expect` reports this machine's row as
+`signed-by-another-key` until its entry names the new key.
+`morzer fleet publish --dry-run --json` prints it.
+
 ## Related
 
 - [`secret recipients`](secret-commands.md#secret-recipients) — who can decrypt

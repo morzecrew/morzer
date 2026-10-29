@@ -80,7 +80,8 @@ func newInstallationCommand(app *App) *cobra.Command {
 			"`describe` is the other export: plaintext, readable, and safe to commit,\n" +
 			"because it holds the names of secrets rather than their values.\n\n" +
 			"`remove` takes one installation off the machine and keeps its data unless\n" +
-			"told to --purge it.",
+			"told to --purge it. `rotate-signing-key` replaces the key the machine signs\n" +
+			"its own statements with.",
 	}
 
 	cmd.AddCommand(
@@ -92,8 +93,33 @@ func newInstallationCommand(app *App) *cobra.Command {
 		installationScope(newInstallationDescribeCommand(app)),
 		machineScope(newInstallationImportCommand(app)),
 		installationScope(newInstallationRemoveCommand(app)),
+		installationScope(newInstallationRotateSigningKeyCommand(app)),
 	)
 	return cmd
+}
+
+func newInstallationRotateSigningKeyCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rotate-signing-key",
+		Short: "Replace the key this machine signs its own statements with",
+		Long: "Mints a new signing key and retires the current one into\n" +
+			"signing.previous_keys, so everything it signed still verifies -- as\n" +
+			"signed by a predecessor, never as the current key.\n\n" +
+			"Rotation protects the future and repairs nothing. After a suspected\n" +
+			"compromise, everything the old key signed stays suspect, including what\n" +
+			"looks old: whoever holds it can back-date a statement. The retirement time\n" +
+			"is history for you, not a check any verifier makes.\n\n" +
+			"An operation like any other: journaled, attested with the new key, and\n" +
+			"planned by --dry-run. --resume finishes one that was interrupted.",
+		Example: "  morzer installation rotate-signing-key --dry-run\n" +
+			"  morzer installation rotate-signing-key",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				return ops.RotateSigningKey(ctx, app.Deps, app.operationOptions())
+			})
+		},
+	}
 }
 
 func newInstallationRemoveCommand(app *App) *cobra.Command {
@@ -167,7 +193,7 @@ func printRemovalKept(app *App, report ops.RemoveReport) {
 func newInstallationExportCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "export <path>",
-		Short: "Write the installation identity and encrypted secrets to a file",
+		Short: "Write the installation identity and secret state to a file",
 		Long: "The export contains the installation record, the encrypted secret state\n" +
 			"and the list of who can decrypt it. It contains no plaintext secret and\n" +
 			"no application data.\n\n" +
@@ -197,7 +223,7 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "import [<path> | --from-backup [<id>]]",
-		Short: "Rebuild this machine from an export and an offline recovery key",
+		Short: "Rebuild this machine from an export and a recovery key",
 		Long: "Restores the installation with its ORIGINAL id, so backups taken by the\n" +
 			"machine that was lost remain restorable. Generates a new machine key for\n" +
 			"this host and revokes the old one, and installs the systemd units as\n" +

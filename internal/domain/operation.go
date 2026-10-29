@@ -41,6 +41,12 @@ const (
 	// record is the last one the installation's journal holds, and the
 	// journal is renamed after it so a later `init` starts with none.
 	OpTypeRemove OperationType = "remove"
+
+	// OpTypeRotateSigningKey replaces the machine's signing key (RFC 0028
+	// P2). Its own type because an auditor reading the journal after a
+	// suspected compromise needs to see when the key changed, and why
+	// signatures before that point now verify as a predecessor's.
+	OpTypeRotateSigningKey OperationType = "rotate-signing-key"
 )
 
 // OperationStatus is the lifecycle of one operation.
