@@ -2868,11 +2868,11 @@ same way <code>verify</code> does.</p>
 </tr>
 <tr>
 <td><code>--version-from-git</code></td>
-<td>Derive it from <code>git describe</code>: <code>&lt;next-patch&gt;-dev.&lt;distance&gt;.g&lt;sha&gt;</code>. Mutually exclusive with <code>--version</code>.</td>
+<td>Derive it from the last commit that changed the bundle directory, counted from the nearest tag: <code>&lt;next-patch&gt;-dev.&lt;distance&gt;.g&lt;sha&gt;</code>, or the tag itself when the tag already holds the bundle. Mutually exclusive with <code>--version</code>.</td>
 </tr>
 <tr>
 <td><code>--allow-dirty</code></td>
-<td>With <code>--version-from-git</code>, permit a work tree with uncommitted changes; the version gains a <code>.dirty</code> identifier.</td>
+<td>With <code>--version-from-git</code>, permit uncommitted changes in the bundle directory; the version gains a <code>.dirty</code> identifier.</td>
 </tr>
 <tr>
 <td><code>--force</code></td>

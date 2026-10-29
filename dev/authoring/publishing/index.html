@@ -2512,8 +2512,12 @@ release gets its own version, so nothing ever collides:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>build<span class="w"> </span>./my-product<span class="w"> </span>--version-from-git
 <span class="c1"># 1.4.1-dev.7.g3be286c</span>
 </code></pre></div>
-<p><code>--version-from-git</code> runs <code>git describe --tags --long --dirty</code> and renders it as
-<code>&lt;next-patch&gt;-dev.&lt;distance&gt;.g&lt;sha&gt;</code>. Three properties, each load-bearing:</p>
+<p><code>--version-from-git</code> finds the last commit that changed the bundle directory,
+counts how many commits it holds past the nearest tag, and renders that as
+<code>&lt;next-patch&gt;-dev.&lt;distance&gt;.g&lt;sha&gt;</code>. In a repository that holds more than the
+bundle, a commit to anything else leaves the version alone. A commit that changes
+the bundle always moves it, even one that restores earlier content. Three
+properties, each load-bearing:</p>
 <ul>
 <li><strong>The patch is bumped.</strong> <code>1.4.0-dev.7</code> sorts <em>below</em> <code>1.4.0</code>, so a development
   build named after the tag it follows would sort behind the release it comes
@@ -2529,12 +2533,17 @@ release gets its own version, so nothing ever collides:</p>
   apart. Constraints such as <code>upgrade_from: "&gt;=1.0.0+build.7"</code> are unaffected:
   a range is not an identity.</li>
 </ul>
-<p>Exactly on a tag with a clean tree, the version is the tag verbatim — <code>1.4.0</code>,
-no suffix. That is the release build, and the only shape that produces a
-non-prerelease version.</p>
-<p>A dirty tree is refused. <code>--allow-dirty</code> stamps
+<p>When the tag already holds the bundle as it is — a build on the tag, or past it
+with only other files changed — and the bundle directory is clean, the version
+is the tag verbatim: <code>1.4.0</code>, no suffix. That is the release build, and the
+only shape that produces a non-prerelease version.</p>
+<p>Uncommitted changes in the bundle directory are refused; changes elsewhere in
+the repository are not the bundle's. <code>--allow-dirty</code> stamps
 <code>1.4.1-dev.7.g3be286c.dirty</code>, which sorts after the clean build at the same
-commit — the correct reading, since it has content the commit does not.</p>
+commit — the correct reading, since it has content the commit does not. A
+pipeline that writes into the bundle before building, such as pinning image
+digests into <code>manifest.yaml</code>, leaves it dirty: commit that change before you
+tag, or pass <code>--version</code>. <code>--allow-dirty</code> never produces a release version.</p>
 <div class="admonition warning">
 <p class="admonition-title">Shallow checkouts fetch no tags</p>
 <p><code>actions/checkout</code> defaults to <code>fetch-depth: 1</code> and fetches no tags, so
