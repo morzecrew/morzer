@@ -394,9 +394,13 @@ func stepPointToPrevious(d *Deps, current, previous domain.ReleaseRecord, previo
 			}
 			// The check made when the release was first staged travels
 			// with it, so the statements after a rollback can still say
-			// it was verified, and by which operation.
+			// it was verified, and by which operation. So does where it
+			// came from: the converge records the source it finds on the
+			// current record, which is this one, and `update --check`
+			// asks that source.
 			if previous.Digest == previousRel.Digest {
 				record.SignatureVerified = previous.SignatureVerified
+				record.SourceRef = previous.SourceRef
 			}
 			if err := d.State.SetCurrentRelease(ctx, record); err != nil {
 				return err

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A rollback keeps where the release it returns to came from.** The release record a rollback writes left out its source, so `update --check` on that machine afterwards had no reference to ask and needed one typed. The source the release was installed from is now carried back with it.
 - **A task's output no longer carries Compose's progress for the services it starts.** `task run` printed lines such as `Container erp-postgres-1 Healthy` with the task's own stderr, and a failed migration service could quote them, because `docker compose run` writes them to the same stream. One-shot runs now set `COMPOSE_PROGRESS=quiet`, which Compose reads from 2.36; an older Compose ignores it and prints them as before.
 
 ### Security
