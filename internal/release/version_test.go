@@ -234,9 +234,9 @@ func TestDescribeAgainstARealRepository(t *testing.T) {
 		t.Errorf("version = %s, want %s", version, want)
 	}
 
-	// And a dirty tree is refused, through the real `--dirty` flag rather
-	// than a hand-written string -- which is the half that would break if
-	// git's spelling ever changed.
+	// And a dirty tree is refused, through real git output rather than a
+	// hand-written string -- which is the half that would break if git's
+	// spelling ever changed.
 	if err := os.WriteFile(filepath.Join(dir, "first"), []byte("edited"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -310,6 +310,146 @@ func TestAnUntrackedFileMakesTheTreeDirty(t *testing.T) {
 	if ignored.Dirty {
 		t.Error("an ignored file was treated as uncommitted work")
 	}
+}
+
+// TestTheVersionDescribesTheBundleNotTheRepository.
+//
+// A bundle that sits beside workflows, scripts and docs used to get a new dev
+// version from every commit to any of them, so a pipeline publishing on every
+// push published the same bundle under a new version each time. Reproduced
+// before the fix: a README commit moved 1.4.1-dev.3 to 1.4.1-dev.4.
+func TestTheVersionDescribesTheBundleNotTheRepository(t *testing.T) {
+	repo := newRepository(t)
+	bundle := filepath.Join(repo, "bundle")
+	writeAndCommit(t, repo, "bundle/manifest.yaml", "the bundle")
+
+	version := func() string {
+		t.Helper()
+		described, err := release.DescribeRepository(bundle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, err := described.Version(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v.String()
+	}
+
+	before := version()
+	writeAndCommit(t, repo, "README", "docs")
+	if after := version(); after != before {
+		t.Errorf("a commit outside the bundle moved its version from %s to %s", before, after)
+	}
+
+	// An edit outside the bundle is not the bundle's: `git describe --dirty`
+	// would have called this tree dirty and refused the build.
+	if err := os.WriteFile(filepath.Join(repo, "README"), []byte("edited"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := version(); got != before {
+		t.Errorf("an edit outside the bundle changed its version to %s", got)
+	}
+	gitIn(t, repo, "checkout", "--", "README")
+
+	// A release tagged on a commit that did not touch the bundle is still
+	// that release: the bundle at the tag is the bundle being built.
+	gitIn(t, repo, "tag", "v1.5.0")
+	if got := version(); got != "1.5.0" {
+		t.Errorf("version at a tag = %s, want 1.5.0", got)
+	}
+	writeAndCommit(t, repo, "README", "more docs")
+	if got := version(); got != "1.5.0" {
+		t.Errorf("version past a tag with the bundle unchanged = %s, want 1.5.0", got)
+	}
+}
+
+// TestAChangeMergedPastATagSortsAfterIt.
+//
+// Describing the last change on its own would name the tag nearest to *it*, and
+// a change made on a branch cut before the newest tag would get a version that
+// sorts below that tag, though it is newer than everything the tag holds.
+func TestAChangeMergedPastATagSortsAfterIt(t *testing.T) {
+	repo := newRepository(t)
+	bundle := filepath.Join(repo, "bundle")
+	writeAndCommit(t, repo, "README", "docs")
+	gitIn(t, repo, "tag", "v1.5.0")
+
+	gitIn(t, repo, "checkout", "-q", "-b", "feature", "v1.4.0")
+	writeAndCommit(t, repo, "bundle/manifest.yaml", "the bundle, from a branch")
+	gitIn(t, repo, "checkout", "-q", "-")
+	gitIn(t, repo, "merge", "-q", "--no-ff", "-m", "merge", "feature")
+
+	described, err := release.DescribeRepository(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := described.Version(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Compare(domain.MustParseVersion("1.5.0")) <= 0 {
+		t.Errorf("version = %s, which does not sort after the 1.5.0 it is newer than", v)
+	}
+}
+
+// TestASignedCommitUnderShowSignatureIsStillRead.
+//
+// With `log.showSignature` set, `git log` prints the signature check on stdout
+// ahead of the formatted line, which the parse then rejected: the version could
+// not be derived, and the archive's timestamp quietly fell back to the epoch.
+func TestASignedCommitUnderShowSignatureIsStillRead(t *testing.T) {
+	keygen, err := exec.LookPath("ssh-keygen")
+	if err != nil {
+		t.Skip("ssh-keygen is not installed")
+	}
+	repo := newRepository(t)
+	key := filepath.Join(t.TempDir(), "key")
+	if out, err := exec.Command(keygen, "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
+		t.Fatalf("ssh-keygen: %v\n%s", err, out)
+	}
+	// The repository's own allowed signers, so the check prints the same
+	// thing whatever the machine's global configuration holds.
+	pub, err := os.ReadFile(key + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := filepath.Join(t.TempDir(), "allowed_signers")
+	if err := os.WriteFile(allowed, append([]byte("audit@example "), pub...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "config", "gpg.ssh.allowedSignersFile", allowed)
+	gitIn(t, repo, "config", "log.showSignature", "true")
+	if err := os.WriteFile(filepath.Join(repo, "signed"), []byte("signed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", "signed")
+	gitIn(t, repo, "-c", "gpg.format=ssh", "-c", "user.signingkey="+key+".pub",
+		"commit", "-q", "-S", "-m", "signed")
+
+	described, err := release.DescribeRepository(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if described.Distance != 3 {
+		t.Errorf("distance = %d, want 3", described.Distance)
+	}
+	if release.CommitTime(repo).IsZero() {
+		t.Error("the archive timestamp fell back to the epoch")
+	}
+}
+
+func writeAndCommit(t *testing.T, repo, name, content string) {
+	t.Helper()
+	path := filepath.Join(repo, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-q", "-m", name)
 }
 
 // newRepository builds a repository two commits past the tag v1.4.0.

@@ -267,8 +267,12 @@ morzer release build ./my-product --version-from-git
 # 1.4.1-dev.7.g3be286c
 ```
 
-`--version-from-git` runs `git describe --tags --long --dirty` and renders it as
-`<next-patch>-dev.<distance>.g<sha>`. Three properties, each load-bearing:
+`--version-from-git` finds the last commit that changed the bundle directory,
+counts how many commits it holds past the nearest tag, and renders that as
+`<next-patch>-dev.<distance>.g<sha>`. In a repository that holds more than the
+bundle, a commit to anything else leaves the version alone. A commit that changes
+the bundle always moves it, even one that restores earlier content. Three
+properties, each load-bearing:
 
 - **The patch is bumped.** `1.4.0-dev.7` sorts *below* `1.4.0`, so a development
   build named after the tag it follows would sort behind the release it comes
@@ -284,13 +288,18 @@ morzer release build ./my-product --version-from-git
   apart. Constraints such as `upgrade_from: ">=1.0.0+build.7"` are unaffected:
   a range is not an identity.
 
-Exactly on a tag with a clean tree, the version is the tag verbatim — `1.4.0`,
-no suffix. That is the release build, and the only shape that produces a
-non-prerelease version.
+When the tag already holds the bundle as it is — a build on the tag, or past it
+with only other files changed — and the bundle directory is clean, the version
+is the tag verbatim: `1.4.0`, no suffix. That is the release build, and the
+only shape that produces a non-prerelease version.
 
-A dirty tree is refused. `--allow-dirty` stamps
+Uncommitted changes in the bundle directory are refused; changes elsewhere in
+the repository are not the bundle's. `--allow-dirty` stamps
 `1.4.1-dev.7.g3be286c.dirty`, which sorts after the clean build at the same
-commit — the correct reading, since it has content the commit does not.
+commit — the correct reading, since it has content the commit does not. A
+pipeline that writes into the bundle before building, such as pinning image
+digests into `manifest.yaml`, leaves it dirty: commit that change before you
+tag, or pass `--version`. `--allow-dirty` never produces a release version.
 
 !!! warning "Shallow checkouts fetch no tags"
 

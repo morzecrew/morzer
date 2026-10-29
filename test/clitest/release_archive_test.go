@@ -248,7 +248,14 @@ func TestReleaseBuildDerivesAVersionFromTheRepository(t *testing.T) {
 	git("add", ".")
 	git("commit", "-q", "-m", "the bundle")
 	git("tag", "v1.4.0")
-	git("commit", "-q", "--allow-empty", "-m", "one more")
+	// A change to the bundle, not an empty commit: the version describes
+	// the last commit that changed the bundle, and an empty one changes
+	// nothing.
+	if err := os.WriteFile(filepath.Join(r.Bundle, "NOTES"), []byte("one more"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "NOTES")
+	git("commit", "-q", "-m", "one more")
 
 	out := r.Run("release", "build", r.Bundle, "--version-from-git")
 	// The next patch, not the tag: a prerelease sorts below its own

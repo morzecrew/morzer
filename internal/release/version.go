@@ -19,80 +19,130 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 )
 
-// GitDescription is `git describe --tags --long --dirty`, parsed.
+// GitDescription is where a bundle directory's last change sits relative to
+// the nearest tag, in the shape `git describe --tags --long` prints.
 type GitDescription struct {
-	// Tag is the nearest reachable tag, as a version.
+	// Tag is the nearest tag reachable from HEAD, as a version.
 	Tag domain.Version
 
-	// Distance is how many commits separate HEAD from that tag.
+	// Distance is how many commits the bundle's last change holds that the
+	// tag does not. Zero when the tag already holds the bundle as it is.
 	Distance int
 
 	// SHA is the abbreviated commit, without the "g" git prefixes it with.
 	SHA string
 
-	// Dirty reports uncommitted changes in the work tree.
+	// Dirty reports uncommitted changes in the bundle directory.
 	Dirty bool
 
-	// CommitTime is HEAD's commit date, which becomes the archive's
-	// timestamp when nothing else supplies one.
+	// CommitTime is the date of the bundle's last change, which becomes the
+	// archive's timestamp when nothing else supplies one.
 	CommitTime time.Time
 }
 
-// DescribeRepository asks git where HEAD sits relative to the nearest tag.
+// DescribeRepository describes the last commit that changed dir, against the
+// nearest tag reachable from HEAD.
+//
+// The last change to dir rather than HEAD, because dir is what gets packed: in
+// a repository that holds more than the bundle, every commit elsewhere would
+// otherwise mint a new version for the same bundle, and a pipeline's "this
+// version is already published" check could never fire. The dirty check below
+// was already scoped the same way.
 func DescribeRepository(dir string) (GitDescription, error) {
-	raw, err := runGit(dir, "describe", "--tags", "--long", "--dirty")
+	raw, err := runGit(dir, "describe", "--tags", "--long")
+	if err != nil {
+		return GitDescription{}, err
+	}
+	head, err := ParseDescribe(raw)
+	if err != nil {
+		return GitDescription{}, err
+	}
+	tag := strings.TrimSuffix(strings.TrimSpace(raw),
+		fmt.Sprintf("-%d-g%s", head.Distance, head.SHA))
+
+	change, err := lastChange(dir)
 	if err != nil {
 		return GitDescription{}, err
 	}
 
-	d, err := ParseDescribe(raw)
+	// Counted from HEAD's tag, not from the tag nearest the change: a change
+	// merged from a branch cut before that tag is still newer than it, and
+	// must sort after it. A change the tag already holds counts zero, which
+	// renders as the tag itself -- a release tagged on a commit that did not
+	// touch the bundle is that release.
+	count, err := runGit(dir, "rev-list", "--count", "refs/tags/"+tag+".."+change.full)
 	if err != nil {
 		return GitDescription{}, err
 	}
+	distance, err := strconv.Atoi(strings.TrimSpace(count))
+	if err != nil {
+		return GitDescription{}, domain.Internal(err,
+			"git counted %q commits past %s", strings.TrimSpace(count), tag)
+	}
 
-	// `git describe --dirty` reports only *tracked* modifications, and a
-	// bundle is archived from the filesystem rather than from the index --
-	// so a new untracked file is packed, summed and signed while the
-	// version still names the commit as though it described the tree. The
-	// status check is what closes that: anything git would report, tracked
-	// or not, makes this build dirty.
+	// `git describe --dirty` is not used: it reports tracked modifications
+	// anywhere in the repository, and none of the untracked files a bundle
+	// archived from the filesystem would carry. The status check sees both,
+	// in the bundle directory only.
 	dirty, err := workTreeDirty(dir)
 	if err != nil {
 		return GitDescription{}, err
 	}
-	d.Dirty = d.Dirty || dirty
 
-	// A second call rather than a --format on the first: `git describe`
-	// has no format that carries the commit date.
-	stamp, err := runGit(dir, "log", "-1", "--format=%ct")
-	if err != nil {
-		return GitDescription{}, err
-	}
-	seconds, err := strconv.ParseInt(strings.TrimSpace(stamp), 10, 64)
-	if err != nil {
-		return GitDescription{}, domain.Internal(err,
-			"git reported a commit date of %q", strings.TrimSpace(stamp))
-	}
-	d.CommitTime = time.Unix(seconds, 0).UTC()
-	return d, nil
+	return GitDescription{
+		Tag:        head.Tag,
+		Distance:   distance,
+		SHA:        change.short,
+		Dirty:      dirty,
+		CommitTime: change.at,
+	}, nil
 }
 
-// CommitTime is HEAD's commit date, or the zero time when git cannot answer --
-// no repository, no git, no commits, an unreadable object store.
+// CommitTime is the date of the last commit that changed dir, or the zero time
+// when git cannot answer -- no repository, no git, no commits, an unreadable
+// object store.
 //
 // Quiet about all of them, not only the first: it feeds the archive's timestamp
 // fallback, where every one of those is an ordinary answer that resolves to the
 // epoch rather than a problem worth failing an archive over.
 func CommitTime(dir string) time.Time {
-	stamp, err := runGit(dir, "log", "-1", "--format=%ct")
+	change, err := lastChange(dir)
 	if err != nil {
 		return time.Time{}
 	}
-	seconds, err := strconv.ParseInt(strings.TrimSpace(stamp), 10, 64)
-	if err != nil {
-		return time.Time{}
+	return change.at
+}
+
+type commit struct {
+	full, short string
+	at          time.Time
+}
+
+// lastChange names the last commit that changed dir. A directory no commit has
+// touched yet falls back to HEAD; everything in it is untracked, so the dirty
+// check refuses the build anyway.
+//
+// `--no-show-signature` because `log.showSignature` prints the signature check
+// on stdout, ahead of the line this parses.
+func lastChange(dir string) (commit, error) {
+	log := []string{"log", "-1", "--no-show-signature", "--format=%H %h %ct"}
+	out, err := runGit(dir, append(log, "--", ".")...)
+	if err == nil && strings.TrimSpace(out) == "" {
+		out, err = runGit(dir, log...)
 	}
-	return time.Unix(seconds, 0).UTC()
+	if err != nil {
+		return commit{}, err
+	}
+
+	fields := strings.Fields(out)
+	if len(fields) != 3 {
+		return commit{}, domain.Internal(nil, "git reported the last commit as %q", strings.TrimSpace(out))
+	}
+	seconds, err := strconv.ParseInt(fields[2], 10, 64)
+	if err != nil {
+		return commit{}, domain.Internal(err, "git reported a commit date of %q", fields[2])
+	}
+	return commit{full: fields[0], short: fields[1], at: time.Unix(seconds, 0).UTC()}, nil
 }
 
 // workTreeDirty reports whether git sees anything uncommitted in dir.

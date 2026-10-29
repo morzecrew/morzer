@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version it is given and `--require-signature`, installs `minisign` first when
   the runner has none, and puts `morzer` on `PATH` for the steps after it.
 
+### Changed
+
+- **`release build --version-from-git` names the bundle, not the repository.**
+  It used to describe HEAD, so in a repository holding more than the bundle
+  every commit to a workflow, script or README gave the same bundle a new dev
+  version. It now describes the last commit that changed the bundle directory.
+  A tag on a commit that did not touch the bundle builds as that tag, and only
+  uncommitted changes inside the bundle directory make a build dirty. Even in a
+  repository that holds only the bundle, a commit that changes no file, such as
+  a merge whose result matches one side, no longer moves the version.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its
