@@ -188,8 +188,8 @@ It sits at the bundle root rather than under `templates/`, because it is not a
 template: the manager reads it, nothing renders it. Like the suffix above this
 is a convention — `secrets.schema` in the manifest names wherever you put it.
 
-Declaring a `generator` means the manager can create the value itself at `init`
-and rotate it on request. Declaring `services` means a rotation restarts only
+Declaring a `generator` means the manager can create the value itself at `init`,
+and at the update that first ships the secret, and rotate it on request. Declaring `services` means a rotation restarts only
 those, rather than the whole product. Declaring `rotation_period` means `doctor`
 reminds an operator — advisory, and never a failure.
 

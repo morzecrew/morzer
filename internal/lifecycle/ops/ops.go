@@ -209,6 +209,11 @@ type Options struct {
 	// step and the smoke test receive as PREVIOUS_VERSION. Set by `update`
 	// and `rollback`; `apply` replaces nothing, a first install included.
 	PreviousVersion domain.Version
+
+	// NoGenerateSecrets stops `update` generating the secrets the release
+	// it installs adds, as `init --generate-secrets=false` does at init.
+	// Journaled. Nothing else generates (RFC 0036).
+	NoGenerateSecrets bool
 }
 
 // NewOperationID returns a ULID: lexicographically sortable and

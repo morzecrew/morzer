@@ -207,9 +207,17 @@ morzer update --to 1.3.0
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
 | `--profile` | Override the installation's deployment profile. |
 | `--skip-backup` | Skip the pre-update backup. Requires `--force` and is recorded in the journal. |
+| `--generate-secrets` | Generate the secrets the new release adds with a `generator`. Default `true`; `false` is recorded in the journal. |
 | `--check` | Report whether a newer release exists, without installing anything. |
 | `--stage` | Follow the configured channel: fetch and verify what it points at, without installing it. |
 | `--unattended` | One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see [unattended updates](../operating/unattended-updates.md). |
+
+Before it converges, an update generates each secret the new release declares
+with a generator, has no value here, and the release being replaced did not
+declare. The step names them, and a plan names what it would generate; no value
+is printed or journaled. A secret both releases declare and nobody set is left
+unset, and `apply` and `rollback` generate nothing. See
+[updating](../operating/updating.md#what-happens-in-order).
 
 `--check` and `--stage` are alternatives, and both stop short of installing.
 See [following a channel](../operating/updating.md#following-a-channel) for what

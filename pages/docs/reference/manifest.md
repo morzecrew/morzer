@@ -666,7 +666,7 @@ Each declaration:
 | `name` | string | Secret name, as `morzer secret` refers to it. |
 | `description` | string | Shown by `secret list`. |
 | `required` | bool | Whether `doctor` reports its absence as a failure. |
-| `generator` | table | How the manager may produce it: `kind`, `length`, `alphabet`. |
+| `generator` | table | How the manager may produce it: `kind`, `length`, `alphabet`. It does at `init`, and at the `update` whose release first declares the secret. |
 | `file` | string | Filename under the render directory. Defaults to `name`. |
 | `services` | list | Compose services that consume it. A rotation restarts exactly these. |
 | `rotation_period` | duration | Advisory; `doctor` warns when a secret is older. |
