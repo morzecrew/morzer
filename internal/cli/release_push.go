@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -53,7 +54,7 @@ func newReleasePushCommand(app *App) *cobra.Command {
 					WithHint("pass a reference like oci://registry.example/demo/bundle")
 			}
 
-			rel, cleanup, err := openArchive(cmd.Context(), args[0])
+			rel, archive, cleanup, err := openArchive(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
@@ -78,7 +79,7 @@ func newReleasePushCommand(app *App) *cobra.Command {
 			defer func() { _ = source.Close() }()
 
 			res, pushErr := source.Push(cmd.Context(), oci.PushRequest{
-				Archive:       args[0],
+				Archive:       archive,
 				Reference:     ref.Location,
 				Version:       rel.Version(),
 				Product:       rel.Name(),
@@ -125,35 +126,66 @@ func newReleasePushCommand(app *App) *cobra.Command {
 
 // openArchive extracts an archive the way an installation would -- through the
 // local source, under its limits and refusals -- and loads it under its own
-// name. The caller removes the extraction with the returned function.
+// name. It returns the archive to push and a function that removes everything
+// it made.
+//
+// The archive to push is a private copy, and the extraction reads the same
+// copy. Reading the vendor's path once to check and again to upload would let
+// a file replaced in between be published under the checked content digest.
 //
 // Only an archive: pushing a directory would mean archiving it here, and the
 // refusals between a tree and an archive belong to `release archive`.
-func openArchive(ctx context.Context, path string) (domain.Release, func(), error) {
+func openArchive(ctx context.Context, path string) (domain.Release, string, func(), error) {
 	if !atomicfs.IsTarZst(path) {
 		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			return domain.Release{}, nil, domain.Usage("%s is a directory; release push takes an archive", path).
+			return domain.Release{}, "", nil, domain.Usage("%s is a directory; release push takes an archive", path).
 				WithHint("run `morzer release archive %s` and push the file it writes", path)
 		}
-		return domain.Release{}, nil, domain.Usage("%s is not a tar.zst archive", path).
+		return domain.Release{}, "", nil, domain.Usage("%s is not a tar.zst archive", path).
 			WithHint("push the file `morzer release archive` writes")
 	}
 
 	tmp, err := os.MkdirTemp("", "morzer-push-")
 	if err != nil {
-		return domain.Release{}, nil, domain.Internal(err, "cannot create a directory to check the archive in")
+		return domain.Release{}, "", nil, domain.Internal(err, "cannot create a directory to check the archive in")
 	}
 	cleanup := func() { _ = os.RemoveAll(tmp) }
+	fail := func(err error) (domain.Release, string, func(), error) {
+		cleanup()
+		return domain.Release{}, "", nil, err
+	}
+
+	// Under its own name, which becomes the layer's title.
+	archive := filepath.Join(tmp, filepath.Base(path))
+	if err := copyFile(path, archive); err != nil {
+		return fail(domain.ValidationError(err, "cannot read %s", path))
+	}
 
 	dest := filepath.Join(tmp, "bundle")
-	if _, err := local.New().Fetch(ctx, ports.Ref{Scheme: local.Scheme, Location: path}, dest); err != nil {
-		cleanup()
-		return domain.Release{}, nil, err
+	if _, err := local.New().Fetch(ctx, ports.Ref{Scheme: local.Scheme, Location: archive}, dest); err != nil {
+		return fail(err)
 	}
 	rel, err := release.LoadAs(dest, path)
 	if err != nil {
-		cleanup()
-		return domain.Release{}, nil, err
+		return fail(err)
 	}
-	return rel, cleanup, nil
+	return rel, archive, cleanup, nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
