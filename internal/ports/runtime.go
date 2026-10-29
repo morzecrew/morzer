@@ -576,7 +576,9 @@ type ServiceImager interface {
 	// ServiceImages maps each named service to its image reference. With
 	// no names it covers the services the configuration starts. A named
 	// service is covered even when the configuration starts it only on
-	// demand, because that is the case the caller is asking about.
+	// demand, because that is the case the caller is asking about. A
+	// service built rather than pulled maps to an empty reference, so a
+	// caller asking whether a service exists is not told it does not.
 	ServiceImages(ctx context.Context, cfg RuntimeConfig, services ...string) (map[string]string, error)
 }
 

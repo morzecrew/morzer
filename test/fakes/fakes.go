@@ -649,6 +649,8 @@ func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
 // ServiceImages answers from Images. With no names it covers the services Up
 // starts, which are ValidateResult's, so a service a test leaves out of those
 // is one the configuration runs only on demand -- a one-shot behind a profile.
+// An empty image is a service built rather than pulled, reported with no
+// reference as the real runtime reports it.
 func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, services ...string) (map[string]string, error) {
 	if err := r.record("ServiceImages"); err != nil {
 		return nil, err
@@ -660,7 +662,7 @@ func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, se
 	}
 	out := make(map[string]string, len(services))
 	for _, name := range services {
-		if img := r.Images[name]; img != "" {
+		if img, ok := r.Images[name]; ok {
 			out[name] = img
 		}
 	}

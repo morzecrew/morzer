@@ -443,6 +443,31 @@ func TestComposeRunOneShotOnAMisnamedServiceIsAnExitNotAnError(t *testing.T) {
 			"must not be able to masquerade as a no-op migration")
 }
 
+// TestComposeServiceImagesTellsABuiltServiceFromAnUndefinedOne: a task's
+// service is asked about by name, and the answer has to separate a service
+// with no image to report from a name the configuration does not define.
+func TestComposeServiceImagesTellsABuiltServiceFromAnUndefinedOne(t *testing.T) {
+	dockerlab.Require(t)
+	cfg := dockerlab.Project(t, fmt.Sprintf(`
+services:
+  web:
+    image: %s
+  tool:
+    build: .
+    profiles: ["tools"]
+`, dockerlab.ImageBusybox))
+	rt := compose.New(infraexec.New())
+
+	images, err := rt.ServiceImages(context.Background(), cfg, "tool")
+	require.NoError(t, err)
+	img, ok := images["tool"]
+	assert.True(t, ok, "a built service behind a profile was not reported")
+	assert.Empty(t, img, "a built service reported an image it does not pull")
+
+	_, err = rt.ServiceImages(context.Background(), cfg, "no-such-service")
+	assert.Error(t, err, "a name the configuration does not define was answered")
+}
+
 // TestComposeExecReportsWhatRanInside covers both halves of Exec: a command
 // that succeeds, and one whose non-zero exit is data.
 func TestComposeExecReportsWhatRanInside(t *testing.T) {

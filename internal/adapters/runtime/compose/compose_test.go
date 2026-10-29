@@ -307,6 +307,26 @@ func TestRunOneShotReturnsANonZeroExitAsData(t *testing.T) {
 	}
 }
 
+// A service named to `compose config` that is built rather than pulled comes
+// back with no image, where a name the configuration does not define fails the
+// command. Measured with Compose 5.5.1. The first is a service a task can run,
+// so it is reported, with no reference.
+func TestServiceImagesReportsABuiltServiceWithNoImage(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("config", `{"services":{"pulled":{"image":"busybox:1.36"},"tool":{"build":{"context":"."}}}}`)
+
+	images, err := r.ServiceImages(context.Background(), cfg(), "pulled", "tool")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := images["tool"]; !ok || got != "" {
+		t.Errorf("the built service is %q (reported: %v), want it reported with no image", got, ok)
+	}
+	if images["pulled"] != "busybox:1.36" {
+		t.Errorf("the pulled service's image is %q", images["pulled"])
+	}
+}
+
 func TestDownRemovesVolumesOnlyWhenAsked(t *testing.T) {
 	r, runner := newRuntime()
 	if err := r.Down(context.Background(), cfg(), ports.DownOptions{}); err != nil {
