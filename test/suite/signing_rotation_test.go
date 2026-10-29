@@ -11,8 +11,10 @@ import (
 
 	signer "github.com/morzecrew/morzer/internal/adapters/sign/minisign"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // RFC 0028 P2: `installation rotate-signing-key`.
@@ -229,4 +231,123 @@ func TestARetiredKeySigningAfterTheRotationIsStillOnlyAPredecessor(t *testing.T)
 	assert.Equal(t, 1, outcomes[domain.SignedByPredecessor],
 		"the retired key's later signature was not reported as a predecessor's: %v", outcomes)
 	assert.Equal(t, 1, outcomes[domain.SignedByCurrentKey], "%v", outcomes)
+}
+
+// rotatingWhileWaiting is the deployment lock as a second invocation meets it:
+// queued behind a first rotation, which finishes before it gets the lock.
+type rotatingWhileWaiting struct {
+	ports.Locker
+	first func()
+	done  bool
+}
+
+func (l *rotatingWhileWaiting) Acquire(ctx context.Context, name string, opts ports.LockOptions) (func() error, error) {
+	if !l.done {
+		l.done = true
+		l.first()
+	}
+	return l.Locker.Acquire(ctx, name, opts)
+}
+
+// Two rotations queued on the lock each retire the key in place when they get
+// it: the second retires what the first minted, rather than finding the key it
+// read before waiting already gone and reporting a rotation it did not make.
+func TestASecondRotationQueuedBehindAFirstRotatesAgain(t *testing.T) {
+	h := verifyHarness(t)
+	inst := signingInstallation(t, h)
+	ctx := context.Background()
+	locker := &rotatingWhileWaiting{Locker: h.Deps.Locker}
+	locker.first = func() {
+		_, err := ops.RotateSigningKey(ctx, h.Deps, ops.Options{})
+		require.NoError(t, err)
+	}
+	h.Deps.Locker = locker
+
+	_, err := ops.RotateSigningKey(ctx, h.Deps, ops.Options{Wait: true})
+	require.NoError(t, err)
+
+	after, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	require.Len(t, after.Signing.PreviousKeys, 2, "the second rotation retired nothing")
+	assert.Equal(t, inst.Signing.PublicKey, after.Signing.PreviousKeys[1].Key)
+	assert.Equal(t, keyOnDisk(t, h), after.Signing.PublicKey)
+}
+
+// A rotation killed part-way leaves a record that is still running. A fresh
+// rotation is refused rather than run over it, and the refusal says how to
+// finish the one that was interrupted.
+func TestAFreshRotationIsRefusedOverAnUnfinishedOne(t *testing.T) {
+	h := verifyHarness(t)
+	signingInstallation(t, h)
+	ctx := context.Background()
+
+	done, err := ops.RotateSigningKey(ctx, h.Deps, ops.Options{DryRun: true})
+	require.NoError(t, err)
+	killed := done.Record
+	killed.ID = "op-killed-after-staging"
+	killed.DryRun = false
+	killed.Status = domain.StatusRunning
+	killed.StartedAt = domain.NewTime(time.Now().Add(time.Second))
+	killed.Flags = map[string]string{"retiring_key": keyOnDisk(t, h)}
+	killed.Steps = append([]domain.StepRecord(nil), done.Record.Steps...)
+	for i := range killed.Steps {
+		killed.Steps[i].Status = domain.StepPending
+	}
+	killed.Steps[0].Status = domain.StepSucceeded
+	killed.Steps[1].Status = domain.StepRunning
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, killed))
+
+	_, err = ops.RotateSigningKey(ctx, h.Deps, ops.Options{})
+	require.Error(t, err, "a fresh rotation ran over an unfinished one")
+	assert.Contains(t, err.Error()+domain.AsError(err).Hint, "--resume")
+}
+
+// The completion a resumed rotation announces names the operation the journal
+// and the statement name: the record it continued, not an id minted for this
+// invocation that nothing else carries.
+func TestAResumedRotationAnnouncesTheRecordItContinued(t *testing.T) {
+	h := verifyHarness(t)
+	signingInstallation(t, h)
+	notifier := &recordingNotifier{}
+	h.Deps.Notifier = notifier
+	real := signer.New(h.Paths.SigningKeyFile(), "demo")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.Deps.Signer = interruptedActivation{Signer: real, cancel: cancel}
+	_, err := ops.RotateSigningKey(ctx, h.Deps, ops.Options{})
+	require.Error(t, err)
+
+	h.Deps.Signer = real
+	resumed, err := ops.RotateSigningKey(context.Background(), h.Deps, ops.Options{Resume: true})
+	require.NoError(t, err)
+	var finished []string
+	for _, ev := range notifier.events {
+		if ev.Kind == events.KindOperationFinished {
+			finished = append(finished, ev.OpID)
+		}
+	}
+	require.NotEmpty(t, finished)
+	assert.Equal(t, resumed.Record.ID, finished[len(finished)-1],
+		"the completion names an operation the journal does not")
+}
+
+// A machine migrated to schema 6 that minted a key before anything recorded it
+// has a key file and an empty signing.public_key (RFC 0028 §5.6). That is
+// absence of a record, not disagreement, and the key it signed with is retired
+// like a recorded one, so its signatures stay attributable.
+func TestARotationRetiresAKeyStateNeverRecorded(t *testing.T) {
+	h := verifyHarness(t)
+	h.install()
+	key, err := h.Deps.Signer.EnsureKey(context.Background())
+	require.NoError(t, err)
+
+	_, err = ops.RotateSigningKey(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	after, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	require.Len(t, after.Signing.PreviousKeys, 1)
+	assert.Equal(t, key.Line, after.Signing.PreviousKeys[0].Key)
+	assert.Equal(t, keyOnDisk(t, h), after.Signing.PublicKey)
 }

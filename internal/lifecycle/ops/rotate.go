@@ -53,58 +53,62 @@ func RotateSigningKey(ctx context.Context, d *Deps, opts Options) (Result, error
 		return Result{}, domain.Usage("this build cannot rotate a signing key")
 	}
 
-	old, err := d.Signer.PublicKey(ctx)
-	if errors.Is(err, domain.ErrNoSigningKey) {
-		return Result{}, domain.Usage("this machine has never minted a signing key, so there is nothing to rotate").
-			WithHint("one is minted the first time the machine signs something, or by `morzer init`")
-	}
-	if err != nil {
-		return Result{}, err
-	}
-
 	var prior *domain.OperationRecord
 	if opts.Resume {
 		if prior, err = d.findResumable(ctx, domain.OpTypeRotateSigningKey); err != nil {
 			return Result{}, err
 		}
-		// The key the interrupted run set out to retire, not the one on
-		// disk now: a run killed after its move left the new key there,
-		// and retiring that would be a second rotation.
-		if line := prior.Flags[flagRetiringKey]; line != "" {
-			old = ports.PublicSigningKey{Line: line, KeyID: prior.Flags[flagRetiringKeyID]}
-		}
-	} else if inst.Signing.HasKey() && inst.Signing.PublicKey != old.Line {
-		// Retiring a key state never recorded would put a stranger in
-		// previous_keys and drop the one state knows. A resumed rotation
-		// is exempt by design: it recorded the new key before moving it.
-		return Result{}, domain.SecretsError(nil,
-			"the signing key on disk is not the one installation state records, so it is not clear which key to retire").
-			WithHint("run `morzer init --repair` to record the key on disk, then rotate")
+	}
+	// Refused before anything is journaled, and asked again under the lock.
+	if _, err := d.keyToRetire(ctx, prior); err != nil {
+		return Result{}, err
+	}
+	// A rotation killed part-way is finished with --resume, never run
+	// over: a fresh one would leave the old record unfinished, blocking
+	// every later operation with nothing left to resume.
+	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
+		return Result{}, err
 	}
 
 	opID := d.newOpID()
-	op := engine.Operation{
-		ID:          opID,
-		Type:        domain.OpTypeRotateSigningKey,
-		Description: "rotate the signing key " + old.KeyID,
-		Steps:       rotationSteps(d, rotator, old),
-		// Public halves only. Journaled so a resume retires the key this
-		// run named rather than whatever is on disk by then.
-		Flags: map[string]string{flagRetiringKey: old.Line, flagRetiringKeyID: old.KeyID},
-	}
-
-	var result engine.Result
+	var (
+		old    ports.PublicSigningKey
+		result engine.Result
+	)
 	runErr := d.withLock(ctx, opID, domain.OpTypeRotateSigningKey, opts, func(ctx context.Context) error {
+		var err error
 		if opts.Resume {
-			var err error
 			if prior, err = d.refreshResumable(ctx, domain.OpTypeRotateSigningKey, prior); err != nil {
 				return err
 			}
 		}
-		var err error
+		if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
+			return err
+		}
+		// Under the lock, so a rotation queued behind another retires the
+		// key the other one minted rather than the one it read before
+		// waiting -- which would be gone, and the steps would then find
+		// nothing to do and report a rotation that did not happen.
+		if old, err = d.keyToRetire(ctx, prior); err != nil {
+			return err
+		}
+		op := engine.Operation{
+			ID:          opID,
+			Type:        domain.OpTypeRotateSigningKey,
+			Description: "rotate the signing key " + old.KeyID,
+			Steps:       rotationSteps(d, rotator, old),
+			// Public halves only. Journaled so a resume retires the key
+			// this run named rather than whatever is on disk by then.
+			Flags: map[string]string{flagRetiringKey: old.Line, flagRetiringKeyID: old.KeyID},
+		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts, inst.ID, prior))
 		return err
 	})
+	if result.Record.ID == "" {
+		// Refused under the lock before a step ran: nothing to announce
+		// and nothing to attest.
+		return Result{}, runErr
+	}
 
 	report := RotationReport{Retired: old.Line, RetiredID: old.KeyID, DryRun: opts.DryRun}
 	out := Result{Record: result.Record, Data: report}
@@ -113,7 +117,9 @@ func RotateSigningKey(ctx context.Context, d *Deps, opts Options) (Result, error
 		return out, runErr
 	}
 
-	d.notifyFinished(ctx, opID, domain.OpTypeRotateSigningKey, result.Record, runErr)
+	// The record's id rather than opID: a resume continues the record it
+	// found, and the journal and the statement both carry that id.
+	d.notifyFinished(ctx, result.Record.ID, domain.OpTypeRotateSigningKey, result.Record, runErr)
 
 	// Read back rather than assumed, so a statement filed after a failed
 	// rotation describes the installation as it stands. Signed by whatever
@@ -141,6 +147,41 @@ func RotateSigningKey(ctx context.Context, d *Deps, opts Options) (Result, error
 	out.Summary = "rotated the signing key: " + old.KeyID + " is retired, " +
 		report.CurrentID + " signs from now on"
 	return out, nil
+}
+
+// keyToRetire is the key a rotation retires, or why there is none to.
+//
+// On a resume it is the key the interrupted run journaled, not the one on disk
+// now: a run killed after its move left the new key there, and retiring that
+// would be a second rotation. Otherwise it is the key on disk, which state must
+// either record or not record at all. A key state has never recorded -- a
+// machine migrated to schema 6 that minted one before anything recorded it
+// (RFC 0028 §5.6) -- is absence of a record, and is retired like a recorded
+// one. A key state records differently is disagreement (§5.4), and retiring it
+// would put a stranger in previous_keys and drop the key state knows.
+func (d *Deps) keyToRetire(ctx context.Context, prior *domain.OperationRecord) (ports.PublicSigningKey, error) {
+	if prior != nil && prior.Flags[flagRetiringKey] != "" {
+		return ports.PublicSigningKey{Line: prior.Flags[flagRetiringKey], KeyID: prior.Flags[flagRetiringKeyID]}, nil
+	}
+	key, err := d.Signer.PublicKey(ctx)
+	if errors.Is(err, domain.ErrNoSigningKey) {
+		return key, domain.Usage("this machine has never minted a signing key, so there is nothing to rotate").
+			WithHint("one is minted the first time the machine signs something, or by `morzer init`")
+	}
+	if err != nil {
+		return key, err
+	}
+	inst, err := d.State.LoadInstallation(ctx)
+	if err != nil {
+		return key, err
+	}
+	if inst.Signing.HasKey() && inst.Signing.PublicKey != key.Line {
+		return key, domain.SecretsError(nil,
+			"the signing key on disk is not the one installation state records, so it is not clear which key to retire").
+			WithHint("if a rotation was interrupted, `morzer installation rotate-signing-key --resume` " +
+				"finishes it; otherwise run `morzer init --repair` to record the key on disk, then rotate")
+	}
+	return key, nil
 }
 
 // rotationSteps stage the new key, record the old one as retired, and only then
