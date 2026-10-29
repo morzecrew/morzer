@@ -2380,6 +2380,11 @@ second and third lines of defence.</p>
 /run/secrets/*                       inside the container
 </code></pre></div>
 <p>Rendered configuration in <code>/etc</code> contains <em>paths</em> to secrets, never values.</p>
+<p>Every write rewrites the whole file, so writes take turns. The commands below
+that change a value or a recipient, <code>init</code>, <code>installation import</code>, and an update
+generating a secret its release adds each hold the <code>secrets</code> lock for the length
+of one write, and a second writer waits for it. Two writers at the same moment
+both land, and neither drops the other's value. Reading takes no lock.</p>
 <h2 id="secret-list">secret list<a class="headerlink" href="#secret-list" title="Permanent link">&para;</a></h2>
 <p>Lists secret names, fingerprints and metadata — never values.</p>
 <p>The fingerprint is what lets an operator confirm two machines hold the same

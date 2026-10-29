@@ -3821,7 +3821,7 @@ by convention — declares what secrets exist, so <code>init</code> can provisio
 <tr>
 <td><code>generator</code></td>
 <td>table</td>
-<td>How the manager may produce it: <code>kind</code>, <code>length</code>, <code>alphabet</code>.</td>
+<td>How the manager may produce it: <code>kind</code>, <code>length</code>, <code>alphabet</code>. It does at <code>init</code>, and at the <code>update</code> whose release first declares the secret.</td>
 </tr>
 <tr>
 <td><code>file</code></td>

@@ -3054,6 +3054,10 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 <td>Skip the pre-update backup. Requires <code>--force</code> and is recorded in the journal.</td>
 </tr>
 <tr>
+<td><code>--generate-secrets</code></td>
+<td>Generate the secrets the new release adds with a <code>generator</code>. Default <code>true</code>; <code>false</code> is recorded in the journal, and <code>--resume</code> keeps it.</td>
+</tr>
+<tr>
 <td><code>--check</code></td>
 <td>Report whether a newer release exists, without installing anything.</td>
 </tr>
@@ -3067,6 +3071,12 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 </tr>
 </tbody>
 </table>
+<p>Before it converges, an update generates each secret the new release declares
+with a generator, has no value here, and the release being replaced did not
+declare. The step names them, and a plan names what it would generate; no value
+is printed or journaled. A secret both releases declare and nobody set is left
+unset, and <code>apply</code> and <code>rollback</code> generate nothing. See
+<a href="../../operating/updating/#what-happens-in-order">updating</a>.</p>
 <p><code>--check</code> and <code>--stage</code> are alternatives, and both stop short of installing.
 See <a href="../../operating/updating/#following-a-channel">following a channel</a> for what
 staging leaves behind and what a poll costs.</p>
