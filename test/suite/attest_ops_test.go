@@ -367,3 +367,22 @@ func TestAttestLogOrdersTwoOperationsFromTheSameSecond(t *testing.T) {
 			"says newest first is backwards inside every second")
 	assert.Equal(t, string(domain.OpTypeApply), entries[1].Kind)
 }
+
+// An installation whose attestation directory does not exist yet -- one that has
+// run nothing since upgrading -- has recorded nothing, which a listing reports
+// as an empty list. A path the operator named that is not there is a mistake,
+// and is still refused.
+func TestAttestLogOfNothingIsEmptyAndOfAMissingPathIsRefused(t *testing.T) {
+	h := verifyHarness(t)
+	require.NoError(t, os.RemoveAll(h.Paths.AttestationsDir()))
+
+	entries, err := ops.AttestLog(context.Background(), h.Deps, ops.VerifyOptions{})
+	require.NoError(t, err)
+	assert.Empty(t, entries)
+
+	_, err = ops.AttestLog(context.Background(), h.Deps, ops.VerifyOptions{
+		Path: filepath.Join(t.TempDir(), "absent"),
+	})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitInstallation, domain.ExitCode(err))
+}

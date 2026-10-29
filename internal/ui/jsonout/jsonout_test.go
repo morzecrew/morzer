@@ -137,3 +137,24 @@ func TestTheOperationRecordTravelsInTheEnvelope(t *testing.T) {
 		t.Errorf("operation.id = %v", op["id"])
 	}
 }
+
+// An empty listing is `[]`, never `null`. Lists come back from a dozen ports as
+// nil when there is nothing in them, and a consumer iterating `.data` should
+// not need a second branch for the case where nothing exists yet.
+func TestAnEmptyListingIsAnEmptyArray(t *testing.T) {
+	var out bytes.Buffer
+	p := jsonout.New(jsonout.Options{Out: &out})
+
+	var none []string
+	if err := p.Write("backup list", none, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	var env map[string]json.RawMessage
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("not one JSON object: %v\n%s", err, out.String())
+	}
+	if got := string(env["data"]); got != "[]" {
+		t.Errorf("data is %s, want []", got)
+	}
+}

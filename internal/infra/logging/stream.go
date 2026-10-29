@@ -2,8 +2,11 @@ package logging
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+
+	"github.com/morzecrew/morzer/internal/domain"
 )
 
 // MaxRedactedLine bounds how much of an unterminated line the stream filter
@@ -60,7 +63,8 @@ type redactingStream struct {
 	dropping bool
 
 	// err is the source's terminal error, delivered only once everything
-	// held back has been handed over.
+	// held back has been handed over. Scrubbed too: a runtime that failed
+	// quotes its own stderr there, which no line of the stream carried.
 	err error
 
 	chunk [32 << 10]byte
@@ -73,7 +77,7 @@ func (s *redactingStream) Read(p []byte) (int, error) {
 			s.consume(s.chunk[:n])
 		}
 		if err != nil {
-			s.err = err
+			s.err = s.redactor.scrubError(err)
 			s.flush()
 		}
 	}
@@ -140,3 +144,16 @@ func (s *redactingStream) emitLine(terminated bool) {
 func (s *redactingStream) flush() { s.emitLine(false) }
 
 func (s *redactingStream) Close() error { return s.src.Close() }
+
+// scrubError redacts the text an operator reads from a structured error: its
+// message and hint, which are all the CLI prints and all the envelope carries.
+// The copy keeps the code and the cause, so the exit status is unchanged.
+func (r *Redactor) scrubError(err error) error {
+	var structured *domain.Error
+	if !errors.As(err, &structured) {
+		return err
+	}
+	clean := *structured
+	clean.Message, clean.Hint = r.Apply(clean.Message), r.Apply(clean.Hint)
+	return &clean
+}

@@ -186,6 +186,12 @@ func endOfStream(ctx context.Context, err error) error {
 	if err == nil || errors.Is(err, io.EOF) {
 		return nil
 	}
+	// Already the runtime's own account of what failed. Wrapping it would
+	// replace that message with this one, which is all an operator reads.
+	var structured *domain.Error
+	if errors.As(err, &structured) {
+		return err
+	}
 	return domain.RuntimeError(err, "the log stream ended early")
 }
 

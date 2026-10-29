@@ -1,7 +1,11 @@
 package clitest_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/test/clitest"
@@ -135,4 +139,26 @@ func TestPsAndStatsAppearInTheOperatingGroup(t *testing.T) {
 	// commands that change the deployment, since these are what they run
 	// when the answer was not there.
 	r.Run("--help").ExitCode(0).OutputContains("logs", "ps", "stats", "exec")
+}
+
+// Nothing to list is an empty list: exit 0 and `[]` under --json, never `null`.
+// `backup list` pins the same after the first release.
+func TestAnEmptyListingIsAnEmptyArray(t *testing.T) {
+	withoutARelease(t).Run("--json", "release", "list").ExitCode(0).FieldLen("data", 0)
+}
+
+// A runtime that cannot produce the stream is a failed `logs`, in both
+// renderings: a daemon that is down printed nothing and exited 0, and `--json`
+// said `"ok": true` about logs it never read. A `docker` on PATH that fails the
+// way a dead daemon does stands in for one.
+func TestLogsFailsWhenTheRuntimeCannotStream(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	bin := t.TempDir()
+	script := "#!/bin/sh\necho 'Cannot connect to the Docker daemon. Is the docker daemon running?' >&2\nexit 1\n"
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	r.Run("logs").ExitCode(domain.ExitRuntime).StderrContains("Cannot connect to the Docker daemon")
+	r.Run("--json", "logs").ExitCode(domain.ExitRuntime).FieldEquals("ok", false)
 }

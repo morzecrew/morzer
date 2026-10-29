@@ -42,6 +42,10 @@ func newRedactor(values []string) *redactor {
 	return &redactor{values: kept}
 }
 
+// Redact scrubs values from s by the runner's own rules, for output that
+// reaches an error without passing through Run.
+func Redact(values []string, s string) string { return newRedactor(values).string(s) }
+
 func (r *redactor) string(s string) string {
 	if len(r.values) == 0 || s == "" {
 		return s

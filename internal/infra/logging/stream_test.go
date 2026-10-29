@@ -136,3 +136,31 @@ type closeWitness struct{ closed bool }
 
 func (c *closeWitness) Read([]byte) (int, error) { return 0, io.EOF }
 func (c *closeWitness) Close() error             { c.closed = true; return nil }
+
+// failing ends a stream with an error rather than EOF.
+type failing struct{ err error }
+
+func (f failing) Read([]byte) (int, error) { return 0, f.err }
+func (f failing) Close() error             { return nil }
+
+// The error a stream ends with is part of what the operator reads. A runtime
+// that failed quotes its own stderr in it, which the line filter never saw, so
+// a value registered after the runtime was built would reach the terminal
+// through the error rather than through the lines.
+func TestStreamRedactsTheErrorItEndsWith(t *testing.T) {
+	const secret = "hunter2-correct-horse"
+	r := logging.NewRedactor()
+	r.Register(secret)
+
+	cause := domain.RuntimeError(nil, "the runtime could not stream the logs: bad url postgres://u:%s@db", secret).
+		WithHint("check %s", secret)
+	_, err := io.ReadAll(r.Stream(failing{err: cause}))
+
+	e := domain.AsError(err)
+	if strings.Contains(e.Message, secret) || strings.Contains(e.Hint, secret) {
+		t.Errorf("the error carried the secret: %q / %q", e.Message, e.Hint)
+	}
+	if code := domain.ExitCode(err); code != domain.ExitRuntime {
+		t.Errorf("exit %d, want %d: scrubbing changed what the error is", code, domain.ExitRuntime)
+	}
+}

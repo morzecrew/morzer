@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"sort"
 
@@ -50,14 +51,14 @@ func AttestLog(ctx context.Context, d *Deps, opts VerifyOptions) ([]LogEntry, er
 		path = d.Paths.AttestationsDir()
 	}
 
+	// A listing checks nothing, so an empty one is an answer rather than a
+	// failure: an installation that has not run an operation since upgrading
+	// has recorded none, and its own directory may not exist yet. A path the
+	// operator named that is not there is still refused. `attest verify`
+	// refuses an empty set, because there "nothing" would read as "checked".
 	files, err := statementFiles(path)
-	if err != nil {
+	if err != nil && (opts.Path != "" || !errors.Is(err, domain.ErrNotFound)) {
 		return nil, err
-	}
-	if len(files) == 0 {
-		return nil, domain.InstallationError(domain.ErrNotFound, "no attestations at %s", path).
-			WithHint("statements are written after each operation; " +
-				"an installation that has not run one since upgrading has none")
 	}
 
 	out := make([]LogEntry, 0, len(files))

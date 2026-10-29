@@ -405,3 +405,27 @@ func TestFollowingTakesTheWholeBacklogUnlessToldOtherwise(t *testing.T) {
 		t.Errorf("--tail defaults to %s, want 100", got)
 	}
 }
+
+// TestARuntimeFailureKeepsItsOwnReason: the operator sees only the outermost
+// message, so a stream that ended with the runtime's own error must not have it
+// replaced by "the log stream ended early" -- which says nothing about a daemon
+// that is down or a service that does not exist. Both renderings.
+func TestARuntimeFailureKeepsItsOwnReason(t *testing.T) {
+	reason := domain.RuntimeError(nil, "the runtime could not stream the logs: no such service: nosuch")
+
+	for _, structured := range []bool{false, true} {
+		var out, errOut bytes.Buffer
+		app := &App{Stream: ui.Streams{Out: &out, Err: &errOut}}
+		if structured {
+			app.json = jsonout.New(jsonout.Options{Out: &out})
+		}
+
+		err := app.copyLogs(context.Background(), &ops.LogStream{ReadCloser: deadStream{err: reason}})
+		if got := domain.AsError(err).Message; got != reason.Message {
+			t.Errorf("json=%v: the operator reads %q, want %q", structured, got, reason.Message)
+		}
+		if code := domain.ExitCode(err); code != domain.ExitRuntime {
+			t.Errorf("json=%v: exit %d, want %d", structured, code, domain.ExitRuntime)
+		}
+	}
+}
