@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`exec` says when it cut a command's output.** The runtime keeps the first 256 KiB of each of a command's streams, and `exec` printed that much as if it were all of it, so `morzer exec db -- pg_dump > dump.sql` could write a dump cut short with nothing on the terminal to say so. A warning on stderr now follows output that was cut, and `--json` carries `truncated: true`; `task run` does the same. The exit code is still the command's own.
+- **A command that printed a line longer than 4 MiB no longer stalls until its timeout.** The manager stopped reading a command's output at such a line, so a hook, migration service, `exec` or task that went on printing blocked on a full pipe and was killed at its timeout. The rest of the output is now read and dropped, and the output is reported as cut.
 
 ## [0.7.0] - 2026-10-26
 
