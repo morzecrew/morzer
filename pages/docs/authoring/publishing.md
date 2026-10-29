@@ -188,8 +188,27 @@ route or an out-of-band download.
 
 **An OCI registry** is the remote transport that lets `morzer update --check`
 find your newer versions, and the only one an installation can follow as a
-channel, because a registry keeps a tag list and a URL does not. Publish the archive as a
-single-layer artifact:
+channel, because a registry keeps a tag list and a URL does not. Publish the
+archive with `release push`:
+
+```sh
+morzer release push demo-1.3.0.tar.zst oci://registry.example/demo/bundle
+```
+
+It checks the archive the way `release verify` checks a bundle — add
+`--signing-key` to check the signature too — and takes the version from the
+manifest. A version already published with different content is refused; with
+the same content it is reported as already published and the command succeeds,
+so a step that failed further on can simply run again. It prints two digests,
+each labelled with its use: the manifest digest pins `oci://…@sha256:`, and the
+content digest is the one to [give your users](#tell-them-the-digest).
+
+The check and the push are separate requests, and a registry has no
+conditional tag write, so two pipelines pushing the same version at the same
+moment can both pass the check. Publish to a repository from one pipeline at a
+time — in GitHub Actions, a `concurrency` group per repository.
+
+`oras` publishes the same artifact by hand, without any of those checks:
 
 ```sh
 oras push registry.example/demo/bundle:1.3.0 \
@@ -197,9 +216,11 @@ oras push registry.example/demo/bundle:1.3.0 \
     demo-1.3.0.tar.zst:application/vnd.morzer.release.bundle.v1.tar+zstd
 ```
 
-Credentials come from your users' ambient Docker configuration, so anyone who
-has run `docker login` for the registry your *images* come from can already
-fetch the bundle that pins them.
+`oras push` overwrites a tag without a word, so look before you push.
+
+Credentials come from the ambient Docker configuration, on your build machine
+and on your users' machines alike, so anyone who has run `docker login` for the
+registry your *images* come from can already fetch the bundle that pins them.
 
 Either remote transport takes at most 512 MiB, compressed. A bundle larger than
 that, usually one [carrying its own images](bundled-images.md#size), is handed
@@ -208,8 +229,20 @@ over as a file.
 ### Moving a channel
 
 A channel is a tag that moves, such as `stable` or `main`, and installations
-that set `update.channel` to it follow wherever it points. Push the version
-first, then point the channel at it:
+that set `update.channel` to it follow wherever it points. `--channel` moves it
+once the version is in place:
+
+```sh
+morzer release push demo-1.3.0.tar.zst oci://registry.example/demo/bundle --channel stable
+```
+
+The channel moves only after the version tag resolves to what was just pushed,
+so machines are never pointed at a half-published release. If a channel move
+fails, the version is already there: run the same command again, and it reports
+the version as already published and moves the channel. A channel can't be
+named like a version — `update --check` would offer it as one.
+
+By hand, push the version first, then point the channel at it:
 
 ```sh
 oras push registry.example/demo/bundle:1.3.0 \
@@ -224,6 +257,7 @@ records the refusal. Moving
 `stable` back to `1.2.0` after a bad `1.3.0` therefore changes nothing on a
 machine that already took `1.3.0`. Publish `1.3.1` with the fix and move the tag
 to it; an operator who needs the old release now runs `morzer rollback`.
+`release push` warns when it moves a channel backwards, and moves it anyway.
 
 ## Tell them the digest
 

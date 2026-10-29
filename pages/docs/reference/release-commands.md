@@ -321,6 +321,88 @@ None of this changes the bundle's identity. The content digest covers contents,
 paths and the executable bit, not timestamps, so normalising them changes the
 archive's bytes and not the release's digest.
 
+## release push
+
+```sh
+morzer release push <archive> oci://<registry>/<repository>[:<version>] \
+    [--channel TAG]... [--signing-key KEY]...
+```
+
+Publishes the archive `archive` wrote to an OCI registry, as the single-layer
+artifact the [OCI source](#from-an-oci-registry) reads, then moves each
+`--channel` tag to it. The version comes from the archive's manifest. A tag on
+the reference is optional, and when given it must equal that version: the
+registry's tags are read back as versions, so a tag naming another one would
+have `update --check` offer a version the bundle does not carry.
+
+| Flag | Meaning |
+| --- | --- |
+| `--channel` | A tag to move to the version once it is in place. Repeat for several; they move in order, and the first failure stops the rest. |
+| `--signing-key` | A minisign public key the bundle's signature must verify against. Repeat for several. Without it, a missing signature is warned about, as `archive` does. |
+| `--dry-run` | Run every check and every registry read, write nothing, and refuse what the push would refuse. |
+
+Before anything is sent, the archive is extracted the way an installation
+extracts it, then checked as `verify` checks a bundle: providers, templates,
+`SHA256SUMS`, and the signature under `--signing-key`. Credentials are the ones
+`docker login` stored; a loopback registry is reached over HTTP, as with
+`fetch`.
+
+### A version already published
+
+| The registry has the version | Result |
+| --- | --- |
+| No | Pushed. |
+| Yes, with the same layer bytes | Already published: nothing pushed, exit 0, channels still move. |
+| Yes, and its `dev.morzer.bundle.digest` annotation names another content digest | Refused, exit 2. Nothing pushed, no channel moved. |
+| Yes, otherwise | The layer is pulled and its content digest computed. The same digest is already published; a different one is refused. |
+
+Exit 0 on the same content is what lets a pipeline converge: if a channel move
+fails after the push, running the same command again moves the channel. The
+annotation is only trusted to refuse — anyone who can push can write it, so it
+never makes push accept different content.
+
+The existence check is not atomic: a registry has no conditional tag write, so
+two pipelines pushing the same version at once can both pass it. Push from one
+pipeline per repository at a time. If the version tag no longer names what this
+push confirmed by the time the channels move, push moves none and exits 2.
+
+### The two digests
+
+```text
+pushed demo 1.3.0 to oci://registry.example/demo/bundle:1.3.0
+  manifest  sha256:5f1c…  pin with oci://registry.example/demo/bundle@sha256:5f1c…
+  content   sha256:bcca…  give customers: morzer update --digest sha256:bcca…
+  channel stable  -> 1.3.0
+```
+
+| Digest | What it is | Use it for |
+| --- | --- | --- |
+| manifest | The registry's identity for the artifact. It carries the time it was pushed, so it is not the bundle's identity. | Pinning: `oci://…@sha256:`. |
+| content | The bundle's [content digest](#verification), the same whichever transport delivers it. | `update --digest`, and your release notes. |
+
+Never compare one with the other. `--json` carries both, as `manifest_digest`
+and `content_digest`, beside `version`, `reference`, `published` (false when
+already published), `dry_run`, and `channels`, each with `name`, `moved` and
+the `error` that stopped it. When a channel move fails, the error and this
+result arrive together.
+
+Moving a channel to a version older than the one it points at warns and moves
+it anyway, when the channel's manifest names its version — a push writes that
+annotation, and an artifact pushed by hand has none. Machines already on the
+newer version do not follow a channel backwards.
+
+### What it refuses
+
+| Situation | Exit |
+| --- | --- |
+| A reference that is not `oci://`, names a digest, or names a tag other than the archive's version | 2 |
+| A channel named like a version, such as `--channel 1.4.0`, or one that is not a valid tag | 2 |
+| A directory, or a file that is not a `.tar.zst` | 2 |
+| An archive `verify` would refuse, or a signature that does not verify under `--signing-key` | 2 |
+| The version already published with different content | 2 |
+| The registry refuses the credentials | 2 |
+| The registry cannot be reached, or fails | 7 |
+
 ## release fetch
 
 ```sh
@@ -392,7 +474,8 @@ morzer release fetch oci://registry.example/demo/bundle@sha256:…
 ```
 
 The bundle is one layer of an OCI artifact, published with the media type
-`application/vnd.morzer.release.bundle.v1.tar+zstd`. An artifact with a single
+`application/vnd.morzer.release.bundle.v1.tar+zstd` — which is how
+[`release push`](#release-push) publishes it. An artifact with a single
 layer is taken whatever its type; with several, the media type is what selects
 the bundle rather than a guess at ordering.
 
