@@ -56,3 +56,14 @@ lines across source, tests, docs, the RFC row and this log.
   only after the slow part. That order predates this branch and applies to a
   template that does not parse as well; `verify`, `build` and `archive` were
   run against a `vault` bundle and refuse it up front.
+
+## Review findings, 2026-10-30
+
+- **Fixed: `build` and `pack` changed the bundle before refusing a provider.**
+  The self-audit note above left `pack`'s order alone as predating this branch.
+  Review showed `build` has the same gap and that the cost is a changed tree,
+  not only time: a refused `build --version 1.4.0` had already stamped the
+  manifest and written `SHA256SUMS`, and `pack --force` had already deleted the
+  signature. The check needs only the manifest, so `checkProviders`
+  (`internal/cli/release.go:352`) now runs before either command writes, and
+  `checkBundleIntegrity` still runs it for `verify` and `archive`.

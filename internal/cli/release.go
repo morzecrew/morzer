@@ -325,12 +325,8 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 // direction they drift in is always the same one -- the producing command grows
 // lenient, because that is the one somebody is fighting at the time.
 func checkBundleIntegrity(rel domain.Release) error {
-	// Refused here, where the vendor can still change the name; `init` and
-	// `update` only warn about it (Manifest.UnknownProviders says why).
-	if problems := rel.Manifest.UnknownProviders(); len(problems) > 0 {
-		return domain.ValidationError(nil, "the manifest names a provider this manager does not have: %s",
-			strings.Join(problems, "; ")).
-			WithHint("leave the name out, or name the provider this manager has")
+	if err := checkProviders(rel.Manifest); err != nil {
+		return err
 	}
 
 	// Every declared template must at least parse. Checking it here rather
@@ -344,6 +340,22 @@ func checkBundleIntegrity(rel domain.Release) error {
 	// A per-file sums list is what a third party can check with sha256sum,
 	// independently of this tool.
 	return checksum.VerifySumsFile(rel.Root)
+}
+
+// checkProviders refuses a provider name this manager does not have, where the
+// vendor can still change it; `init` and `update` only warn about one
+// (Manifest.UnknownProviders says why).
+//
+// Separate from checkBundleIntegrity because it needs only the manifest: `build`
+// and `pack` call it before they write anything, so a refused build does not
+// leave the tree stamped and summed.
+func checkProviders(m domain.Manifest) error {
+	if problems := m.UnknownProviders(); len(problems) > 0 {
+		return domain.ValidationError(nil, "the manifest names a provider this manager does not have: %s",
+			strings.Join(problems, "; ")).
+			WithHint("leave the name out, or name the provider this manager has")
+	}
+	return nil
 }
 
 // checkEveryTemplate runs one check over every declared template and collects
