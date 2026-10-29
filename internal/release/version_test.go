@@ -393,6 +393,52 @@ func TestAChangeMergedPastATagSortsAfterIt(t *testing.T) {
 	}
 }
 
+// TestASignedCommitUnderShowSignatureIsStillRead.
+//
+// With `log.showSignature` set, `git log` prints the signature check on stdout
+// ahead of the formatted line, which the parse then rejected: the version could
+// not be derived, and the archive's timestamp quietly fell back to the epoch.
+func TestASignedCommitUnderShowSignatureIsStillRead(t *testing.T) {
+	keygen, err := exec.LookPath("ssh-keygen")
+	if err != nil {
+		t.Skip("ssh-keygen is not installed")
+	}
+	repo := newRepository(t)
+	key := filepath.Join(t.TempDir(), "key")
+	if out, err := exec.Command(keygen, "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
+		t.Fatalf("ssh-keygen: %v\n%s", err, out)
+	}
+	// The repository's own allowed signers, so the check prints the same
+	// thing whatever the machine's global configuration holds.
+	pub, err := os.ReadFile(key + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := filepath.Join(t.TempDir(), "allowed_signers")
+	if err := os.WriteFile(allowed, append([]byte("audit@example "), pub...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "config", "gpg.ssh.allowedSignersFile", allowed)
+	gitIn(t, repo, "config", "log.showSignature", "true")
+	if err := os.WriteFile(filepath.Join(repo, "signed"), []byte("signed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", "signed")
+	gitIn(t, repo, "-c", "gpg.format=ssh", "-c", "user.signingkey="+key+".pub",
+		"commit", "-q", "-S", "-m", "signed")
+
+	described, err := release.DescribeRepository(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if described.Distance != 3 {
+		t.Errorf("distance = %d, want 3", described.Distance)
+	}
+	if release.CommitTime(repo).IsZero() {
+		t.Error("the archive timestamp fell back to the epoch")
+	}
+}
+
 func writeAndCommit(t *testing.T, repo, name, content string) {
 	t.Helper()
 	path := filepath.Join(repo, name)

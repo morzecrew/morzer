@@ -121,11 +121,14 @@ type commit struct {
 // lastChange names the last commit that changed dir. A directory no commit has
 // touched yet falls back to HEAD; everything in it is untracked, so the dirty
 // check refuses the build anyway.
+//
+// `--no-show-signature` because `log.showSignature` prints the signature check
+// on stdout, ahead of the line this parses.
 func lastChange(dir string) (commit, error) {
-	const format = "--format=%H %h %ct"
-	out, err := runGit(dir, "log", "-1", format, "--", ".")
+	log := []string{"log", "-1", "--no-show-signature", "--format=%H %h %ct"}
+	out, err := runGit(dir, append(log, "--", ".")...)
 	if err == nil && strings.TrimSpace(out) == "" {
-		out, err = runGit(dir, "log", "-1", format)
+		out, err = runGit(dir, log...)
 	}
 	if err != nil {
 		return commit{}, err
