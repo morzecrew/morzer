@@ -65,11 +65,12 @@ checked in preflight and reported by `doctor`.
 
 ## Status
 
-`init`, `apply`, `update`, `rollback`, `status`, `doctor`, `backup`, `restore`,
-`secret`, `release` and `installation` all work against a real bundle, delivered
-as a directory, a `tar.zst`, an HTTPS URL or an OCI artifact, and optionally
-signed. An acceptance run installs, updates and rolls back a real deployment
-against real Docker on every push.
+Every command `morzer --help` lists works against a real bundle, delivered as a
+directory, a `tar.zst`, an HTTPS URL or an OCI artifact, and optionally signed:
+install, update and rollback, backup and restore, secrets, release tasks, logs,
+signed attestations, fleet views and support bundles. An acceptance run
+installs, updates and rolls back a real deployment against real Docker on every
+code change.
 
 Work that has not shipped is designed in [`rfcs/`](rfcs/) before it is built,
 one numbered document per piece with its decisions recorded and its exclusions
