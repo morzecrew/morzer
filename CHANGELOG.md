@@ -84,8 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A refused HTTPS or OCI download names its URL, not a temporary file.** A
   corrupt download, or one whose digest did not match, was refused with the path
-  of an already-deleted temporary file. It now names the reference, with any
-  password removed.
+  of an already-deleted temporary file. It now names the reference without its
+  password or the query a signed URL carries its token in.
 
 - **`config unset` refuses a parameter the release does not declare.**
   `config unset typo` reported success where `config set typo=1` was refused.

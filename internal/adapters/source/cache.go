@@ -65,7 +65,7 @@ func (c *TempCache) Reserve() (string, error) {
 }
 
 // NamedAfter rewrites a refusal about a downloaded archive to name the reference
-// it came from, without its password.
+// it came from, as Shown prints it.
 //
 // The local source checks what a transport downloaded, and its refusals name
 // the path it was handed: a temporary file in this cache, removed by the time
@@ -75,11 +75,21 @@ func NamedAfter(err error, archive string, ref ports.Ref) error {
 	if err == nil || archive == "" {
 		return err
 	}
-	shown := ports.RedactRefCredentials(ref.String())
+	shown := Shown(ref.String())
 	e := *domain.AsError(err)
 	e.Message = strings.ReplaceAll(e.Message, archive, shown)
 	e.Hint = strings.ReplaceAll(e.Hint, archive, shown)
 	return &e
+}
+
+// Shown is a reference as a message may print it: without its password, and
+// without its query, which is where a signed URL carries its token.
+func Shown(raw string) string {
+	s := ports.RedactRefCredentials(raw)
+	if i := strings.IndexAny(s, "?#"); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // Store records a completed download.

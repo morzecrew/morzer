@@ -171,7 +171,7 @@ func (s *Source) download(ctx context.Context, ref ports.Ref) (string, error) {
 	// A reference may carry basic-auth credentials, and every refusal
 	// below is printed, journaled and, from the update timer, written to
 	// the system journal; messages name the URL without its password.
-	shown := ports.RedactRefCredentials(target)
+	shown := source.Shown(target)
 	if err := s.fetchInto(ctx, target, shown, path); err != nil {
 		_ = os.Remove(path)
 		return "", err
@@ -187,7 +187,7 @@ func (s *Source) download(ctx context.Context, ref ports.Ref) (string, error) {
 // reference that reached this source claiming to be https must actually be one.
 func (s *Source) targetURL(ref ports.Ref) (string, error) {
 	raw := Scheme + "://" + ref.Location
-	shown := ports.RedactRefCredentials(raw)
+	shown := source.Shown(raw)
 
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -266,13 +266,23 @@ func certificateProblem(err error, shown string) error {
 }
 
 // retryable marks a failure worth trying again.
-// withoutPassword returns err, or nil when its text carries the reference's
+// withoutCredentials returns err, or nil when its text carries the reference's
 // password. The client strips the password from the URLs it quotes, but it
 // quotes a Location header it cannot parse verbatim, and nothing stops a
 // server from echoing the credentials it was sent.
-func withoutPassword(err error, target string) error {
+//
+// It does quote the query, which is where a signed URL carries its token, so
+// that comes off the quoted URL first.
+func withoutCredentials(err error, target string) error {
 	u, perr := url.Parse(target)
-	if perr != nil || u.User == nil {
+	if perr != nil {
+		return err
+	}
+	var quoted *url.Error
+	if u.RawQuery != "" && errors.As(err, &quoted) {
+		quoted.URL = source.Shown(quoted.URL)
+	}
+	if u.User == nil {
 		return err
 	}
 	password, ok := u.User.Password()
@@ -313,7 +323,7 @@ func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) e
 		}
 		// A refused connection or a reset mid-handshake is what retrying
 		// is for.
-		return retryable{domain.RuntimeError(withoutPassword(err, target), "cannot reach %s", shown)}
+		return retryable{domain.RuntimeError(withoutCredentials(err, target), "cannot reach %s", shown)}
 	}
 	defer func() { _ = resp.Body.Close() }()
 

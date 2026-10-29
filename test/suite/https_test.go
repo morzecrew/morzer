@@ -262,6 +262,33 @@ func TestHTTPSRefusalsNameTheURLNotTheDownload(t *testing.T) {
 			assert.NotContains(t, text, "hunter2")
 		})
 	}
+
+	// A signed URL carries its credential in the query, where userinfo
+	// redaction does not look.
+	signed := map[string]http.HandlerFunc{
+		"not an archive": func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("not zstd")) },
+		"not found":      http.NotFound,
+	}
+	for name, handler := range signed {
+		t.Run("a signed URL, "+name, func(t *testing.T) {
+			source, host := serveBundle(t, handler, https.WithBackoff(time.Millisecond))
+			_, err := source.Resolve(context.Background(), ports.Ref{Scheme: "https",
+				Location: host + "/demo.tar.zst?X-Amz-Signature=hunter3"})
+			require.Error(t, err)
+			text := err.Error() + domain.AsError(err).Hint
+			assert.Contains(t, text, host+"/demo.tar.zst")
+			assert.NotContains(t, text, "hunter3")
+		})
+	}
+	t.Run("a signed URL, unreachable", func(t *testing.T) {
+		source, host := serveBundle(t, http.NotFoundHandler(), https.WithBackoff(time.Millisecond))
+		host = strings.Split(host, ":")[0] + ":1"
+		_, err := source.Resolve(context.Background(), ports.Ref{Scheme: "https",
+			Location: host + "/demo.tar.zst?X-Amz-Signature=hunter3"})
+		require.Error(t, err)
+		assert.NotContains(t, err.Error()+domain.AsError(err).Hint, "hunter3")
+		assert.Contains(t, err.Error(), "connection refused", "the cause no longer says why")
+	})
 }
 
 func TestHTTPSRefusesAnOversizedDeclaration(t *testing.T) {
