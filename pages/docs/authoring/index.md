@@ -92,8 +92,8 @@ takes it from `main` instead. It is in the [Agent Skills](https://agentskills.io
 format, which Claude Code, Codex, Cursor and the other agents the installer
 supports all read; the skill itself is
 [in the repository](https://github.com/morzecrew/morzer/tree/main/skills/morzer-bundle-authoring).
-The documentation build checks every command, flag and link in it, so it cannot
-name a command that no longer exists.
+The documentation build checks every command, long flag and link in it, so it
+cannot name a command or a page that no longer exists.
 
 <div class="grid cards" markdown>
 

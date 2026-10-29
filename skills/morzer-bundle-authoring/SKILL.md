@@ -36,10 +36,16 @@ The manifest's first line, the `# yaml-language-server: $schema=…` modeline th
 skeleton writes, gives an editor completion and validation against the schema.
 Keep it.
 
-When it is ready to ship: `morzer release build` writes `SHA256SUMS` and
-re-verifies, `minisign -Sm ./my-product/SHA256SUMS` signs it, and
-`morzer release archive` packs it. A bundle that carries its own images runs
-`morzer release pack` before `build`.
+When it is ready to ship, build, sign and pack it, in that order:
+
+```sh
+morzer release build ./my-product        # writes SHA256SUMS, then verifies
+minisign -Sm ./my-product/SHA256SUMS
+morzer release archive ./my-product
+```
+
+A bundle that carries its own images runs `morzer release pack ./my-product`
+before `build`.
 
 ## Decisions that are easy to get wrong
 
