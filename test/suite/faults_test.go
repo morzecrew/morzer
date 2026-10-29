@@ -370,7 +370,10 @@ func TestUnsettingAValueAnEarlierReleaseDeclaredStillWorks(t *testing.T) {
 	inst.Parameters = map[string]string{"retired_parameter": "x"}
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 
-	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Unset: []string{"retired_parameter"}})
+	// Named twice: the second is the same request, not a typo.
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{
+		Unset: []string{"retired_parameter", "retired_parameter"},
+	})
 	require.NoError(t, err)
 	inst, err = h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
