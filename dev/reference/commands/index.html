@@ -3383,7 +3383,7 @@ manifest, and verifies the checksums by re-reading what was written.</p>
 <tbody>
 <tr>
 <td><code>--component</code></td>
-<td>Limit the backup to these components: <code>database</code>, <code>files</code>, <code>config</code>, <code>secrets</code>, <code>manifest</code>.</td>
+<td>Limit the backup to these components: <code>database</code>, <code>files</code>, <code>config</code>, <code>export</code>, <code>manifest</code>, <code>volumes</code>.</td>
 </tr>
 <tr>
 <td><code>--reason</code></td>
@@ -3534,7 +3534,7 @@ waiting to destroy a production database.</p>
 </tr>
 <tr>
 <td><code>--component</code></td>
-<td>Limit the restore to these components.</td>
+<td>Limit the restore to these components: <code>database</code>, <code>files</code>, <code>config</code>, <code>manifest</code>, <code>volumes</code>. <code>secrets</code>, a retired component, is still accepted for older backups.</td>
 </tr>
 <tr>
 <td><code>--confirm</code></td>

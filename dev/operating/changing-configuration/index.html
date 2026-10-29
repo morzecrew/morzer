@@ -2246,8 +2246,12 @@ A plan never claims a service was re-created; it says what <em>would</em> happen
 <td><code>config set backup.before_update=false</code></td>
 </tr>
 <tr>
-<td>Domains, whether a signature is required, release and backup retention</td>
+<td>Domains, whether a signature is required</td>
 <td>Not yet changeable after <code>init</code></td>
+</tr>
+<tr>
+<td>How many releases and ordinary backups to keep</td>
+<td>The manifest's <a href="../../reference/manifest/#retention"><code>retention</code></a>; no command overrides it yet</td>
 </tr>
 <tr>
 <td>The service topology</td>

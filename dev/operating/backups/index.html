@@ -2756,8 +2756,9 @@ morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w
 <p>Worth running on a schedule against your oldest retained backup, which is the
 one most likely to have rotted.</p>
 <h2 id="retention">Retention<a class="headerlink" href="#retention" title="Permanent link">&para;</a></h2>
-<p>Governed by <code>retention.backups</code> in the manifest, or <code>policy.retain_backups</code> in
-your installation when you want a different number than the vendor chose. <strong>The
+<p>Governed by <code>retention.backups</code> in the manifest. No command overrides it yet:
+<code>policy.retain_backups</code> in <code>installation.yaml</code> is a report of the recorded
+state, and editing it changes nothing (<code>doctor</code> says so). <strong>The
 most recent backup is never pruned</strong>, whatever the number says.</p>
 <p>Pre-update backups are counted apart. The newest three are kept on top of that
 number, so the update you just ran can still be undone, and older ones are
