@@ -105,6 +105,21 @@ func TestAnAPIVersionDeprecationIsReportedOnItsOwn(t *testing.T) {
 		"the api_version warning must name the version: %v", *seen)
 }
 
+// A provider this manager does not have is refused by `release verify` and only
+// warned about here: the release is already the operator's choice, and one
+// that names it has run on the implementation this manager has all along.
+func TestAnUnknownProviderIsWarnedAboutRatherThanRefused(t *testing.T) {
+	d, seen := warned(t)
+	d.warnDeprecations(domain.Manifest{Providers: domain.Providers{
+		Secrets: domain.Provider{Name: "vault"},
+		Backup:  domain.Provider{Name: "hooks"},
+	}})
+
+	require.Len(t, *seen, 1, "one unknown provider, one warning: %v", *seen)
+	assert.True(t, mentions(*seen, `"vault"`), "the warning must name what was asked for: %v", *seen)
+	assert.True(t, mentions(*seen, "sops-age"), "and what runs instead: %v", *seen)
+}
+
 // A legacy block produces no warning, because it is not deprecated -- it is
 // refused. Pinned so that a reintroduced fold would show up as a warning
 // nobody meant to restore.

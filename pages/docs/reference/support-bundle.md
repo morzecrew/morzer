@@ -117,7 +117,7 @@ $ morzer support bundle
   meta.json          The archive's own account of itself  1.4 KiB  0
 
   written
-/home/op/support-demo-op_01M00V78YRZ392YXZY8001V127-20260814T191545Z.tar.zst.age
+/home/op/support-demo-inst_01M00V78YRZ392YXZY8001V127-20260814T191545Z.tar.zst.age
 
   encrypted to, and readable by, only these recipients
 age1kyh0pf3u8hxepjrgy9k4zuv7tua0frkj6vsnn9jld7mspgx3qqkq6q34cq
@@ -195,10 +195,10 @@ still reports its signature, and says that the contents could not be
 read rather than listing nothing.
 
 ```console
-$ morzer support inspect support-demo-op_01M032R1495VR14NRFX5NFX68T-20260815T160543Z.tar.zst
+$ morzer support inspect support-demo-inst_01M032R1495VR14NRFX5NFX68T-20260815T160543Z.tar.zst
 9 component(s), 14.2 KiB, plus the index (1.9 KiB)
   product       demo
-  installation  op_01M032R1495VR14NRFX5NFX68T
+  installation  inst_01M032R1495VR14NRFX5NFX68T
   written by    0.0.0
   FILE               COMPONENT                    SIZE     REDACTIONS
   manifest.yaml      The resolved manifest        2.8 KiB  0

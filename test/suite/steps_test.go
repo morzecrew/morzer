@@ -164,6 +164,26 @@ func TestInitWithoutASupervisorSaysSoRatherThanFailing(t *testing.T) {
 	assert.Empty(t, h.Supervisor.Installed)
 }
 
+// TestANewInstallationIDIsNotAnOperationID. Both used to be minted by
+// NewOperationID, so an installation id read `op_…` beside the journal's
+// operation ids and could be mistaken for one of them.
+func TestANewInstallationIDIsNotAnOperationID(t *testing.T) {
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+
+	result, err := ops.Init(context.Background(), h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true,
+	})
+	require.NoError(t, err)
+
+	inst, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(inst.ID, "inst_"), "the installation id is %q", inst.ID)
+	assert.Len(t, inst.ID, len("inst_")+26, "the prefix and a ULID")
+	assert.True(t, strings.HasPrefix(result.Record.ID, "op_"), "the operation id is %q", result.Record.ID)
+}
+
 // TestDoctorReportsUnitsAndBackups covers the two checks that need a
 // supervisor and a backup history to say anything at all.
 func TestDoctorReportsUnitsAndBackups(t *testing.T) {

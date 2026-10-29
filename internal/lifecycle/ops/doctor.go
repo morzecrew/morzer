@@ -1186,11 +1186,16 @@ func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) prefl
 		ID:          "runtime.services",
 		Category:    preflight.CategoryRuntime,
 		Description: "all services are running",
-		Fatal:       false,
+		// Fatal for one result only: a runtime that cannot be asked fails
+		// doctor, because nothing the release runs can be up and a monitor
+		// reading the exit code has to see it. Every other finding below
+		// returns a warning itself -- an operator may have stopped a
+		// service on purpose.
+		Fatal: true,
 		Run: func(ctx context.Context) events.CheckResult {
 			cfg, err := d.runtimeConfig(rel, inst, "")
 			if err != nil {
-				return preflight.Fail("", "%s", domain.AsError(err).Message)
+				return preflight.Warn("", "%s", domain.AsError(err).Message)
 			}
 
 			services, err := d.Runtime.Status(ctx, cfg)
@@ -1218,7 +1223,7 @@ func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) prefl
 				}
 			}
 			if len(down) > 0 {
-				return preflight.Fail(
+				return preflight.Warn(
 					"inspect with `docker compose logs`, then `morzer apply` to reconverge",
 					"service(s) not running: %s", strings.Join(down, ", "))
 			}

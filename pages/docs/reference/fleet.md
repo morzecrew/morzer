@@ -203,10 +203,10 @@ with these keys, are the fleet*.
 schema: 1
 installations:
   - product: demo
-    id: op_01K2Z9QW8ERT6YH3VXNBM5CDFG
+    id: inst_01K2Z9QW8ERT6YH3VXNBM5CDFG
     key: RWT7rtLRtKF6w2xzWe+mSOZBhXrz+VxeN1mdnNL2xgQq1jwtbt+ccErb
   - product: web
-    id: op_01K3A7B2C9DEF4GH5IJ6KL7MNO
+    id: inst_01K3A7B2C9DEF4GH5JK6MN7PQR
     key: RWQ+QYtyW1lxQKN6N1DPOpPdi0VlWcoWadP9MjAAv8cpNYDqQ9jDLnpM
 ```
 
@@ -214,7 +214,7 @@ installations:
 | --- | --- |
 | `schema` | the roster's own version, stated rather than inferred |
 | `product` | which product this installation runs |
-| `id` | its installation id — the one in the key it publishes at |
+| `id` | its installation id — the one in the key it publishes at. `inst_` and a ULID; an installation created by an older morzer keeps the `op_` id it was given |
 | `key` | the minisign public key it signs with — the single base64 line, not the whole `.pub` file; optional, see below |
 
 Keep it in version control beside whatever else describes the fleet. It is the

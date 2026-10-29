@@ -54,6 +54,9 @@ func newReleasePackCommand(app *App) *cobra.Command {
 					WithHint("mark the images that should travel in the bundle, " +
 						"or publish them to a registry your customers can reach")
 			}
+			if err := checkProviders(manifest); err != nil {
+				return err
+			}
 
 			if err := clearStaleSignature(app, dir, force); err != nil {
 				return err

@@ -58,6 +58,9 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := checkProviders(loaded.Manifest); err != nil {
+				return err
+			}
 
 			stamp, err := resolveBuildVersion(dir, loaded, version, fromGit, allowDirty)
 			if err != nil {
