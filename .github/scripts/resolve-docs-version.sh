@@ -9,6 +9,10 @@
 # on an older line refreshes that line in place -- pointing `latest` at 1.3.5
 # because it was released after 1.4.0 would send every reader to older docs.
 #
+# Released means published. A tag whose release is still a draft is not one:
+# counting it would keep a published 1.3.5 from moving `latest` while 1.4.0
+# waits to be published, and nothing of 1.4.0 can be downloaded yet.
+#
 # Writes `minor` and `move_latest` to $GITHUB_OUTPUT.
 set -euo pipefail
 
@@ -21,8 +25,13 @@ if [[ ! "${version}" =~ ^([0-9]+)\.([0-9]+)\. ]]; then
 fi
 minor="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 
-# The newest minor across every release tag, this one included.
-newest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' |
+# The newest minor across every published release, this one included. Drafts
+# are left out by asking the releases rather than the tags.
+newest=$({
+	gh api "repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/releases" \
+		--paginate --jq '.[] | select(.draft | not) | .tag_name'
+	echo "${tag}"
+} | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' |
 	sed 's/^v//' |
 	cut -d. -f1,2 |
 	sort -t. -k1,1n -k2,2n |
