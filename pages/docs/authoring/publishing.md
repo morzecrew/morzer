@@ -270,8 +270,9 @@ morzer release build ./my-product --version-from-git
 `--version-from-git` finds the last commit that changed the bundle directory,
 counts how many commits it holds past the nearest tag, and renders that as
 `<next-patch>-dev.<distance>.g<sha>`. In a repository that holds more than the
-bundle, a commit to anything else leaves the version alone, so the same bundle
-never gets a second version. Three properties, each load-bearing:
+bundle, a commit to anything else leaves the version alone. A commit that changes
+the bundle always moves it, even one that restores earlier content. Three
+properties, each load-bearing:
 
 - **The patch is bumped.** `1.4.0-dev.7` sorts *below* `1.4.0`, so a development
   build named after the tag it follows would sort behind the release it comes
