@@ -201,8 +201,10 @@ func TestAStreamWhoseChildHeldStderrEndsCleanly(t *testing.T) {
 	defer func(d time.Duration) { streamWaitDelay = d }(streamWaitDelay)
 	streamWaitDelay = 50 * time.Millisecond
 
-	sc := startShellStream(t, context.Background(), "echo one; sleep 2 >/dev/null & exit 0")
-	t.Cleanup(func() { _ = syscall.Kill(-sc.pgid, syscall.SIGKILL) })
+	// The child outlives the wait delay many times over and then exits by
+	// itself. It is not killed: once the leader is reaped, its group id may
+	// already belong to someone else by the time a cleanup would signal it.
+	sc := startShellStream(t, context.Background(), "echo one; sleep 1 >/dev/null & exit 0")
 
 	out, err := io.ReadAll(sc)
 	if err != nil {
