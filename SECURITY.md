@@ -196,10 +196,8 @@ Stated here rather than discovered during an incident:
   backups go to, and a push that fails does not fail the operation. So a machine
   lost between writing a statement and pushing it takes that statement with it;
   `morzer doctor` reports statements that are still only local, and `morzer
-  attest push` sends them. **An installation with no backup target has nowhere
-  to push**, so its whole record is local and `doctor` says nothing about it —
-  an air-gapped machine has chosen that, and a machine that simply never
-  configured a target has the same exposure without having chosen it.
+  attest push` sends them. An installation with no backup target has nowhere
+  to push, so its whole record is local.
 - Redaction is bounded by what the manager knows. A support bundle reports zero
   replacements in a file when no value this installation *currently* holds
   appeared in it — which is not the same as the file being clean, because a
@@ -237,6 +235,16 @@ cannot make that distinction, so it reports both alike.
 
 Kept here because a security policy that only ever grows is one nobody trusts to
 be current.
+
+- **`doctor` said nothing about a record that could never leave the machine**
+  (closed 2026-10-29). An installation with no backup target keeps every
+  attestation local, and `doctor` checked pushing only where a target existed,
+  so a machine that never configured one had the exposure of an air-gapped one
+  without having chosen it, and no sign of it. `doctor` now reports how many
+  statements are only on the machine and that nothing will push them. It does
+  so as information, shown by `doctor --verbose` and in `--json`, rather than as
+  a warning: nothing records whether a machine is air-gapped on purpose, and a
+  warning on every one that is would teach its operator to read past `doctor`.
 
 - **A reachable XSS advisory in a markdown dependency** (closed 2026-08-12).
   `goldmark` before 1.7.17 carried [GO-2026-5320](https://osv.dev/GO-2026-5320),

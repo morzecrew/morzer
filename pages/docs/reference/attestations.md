@@ -276,13 +276,32 @@ look complete forever.
 `doctor` reports the same gap under `backup.attestations-pushed`:
 
 ```console
-! attestations have reached the configured targets
+! attestations have left this machine
   1 of 1 attestation(s) are only on this machine
 ```
 
 Both count statements, however many targets there are. With more than one,
 `doctor` says how many statements are missing from at least one of them, since
 a statement can be on one target and not another.
+
+An installation with **no backup target** has nowhere to push, so its whole
+record is local and is lost with the machine. `doctor` says so, as information
+rather than a warning, which `doctor --verbose`, plain output and `--json`
+show:
+
+```console
+$ morzer doctor --verbose
+…
+✓ attestations have left this machine
+  4 attestation(s), all only on this machine: no backup target is configured to push them to
+```
+
+Not a warning, because nothing records whether a machine is air-gapped on
+purpose, and a warning on every machine that chose to keep its record local
+would teach its operator to read past `doctor`. The default view folds it into
+the category's tick, like every check that passed. Configuring a
+[backup target](backup-targets.md) gives the record somewhere to go, and
+`morzer attest push` then sends what is already here.
 
 ## What this does not do yet
 

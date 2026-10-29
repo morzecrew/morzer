@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`doctor` says when a machine's attestations can never leave it.** An installation with no backup target keeps its whole record local, and `doctor` said nothing about it. It now reports how many statements are only on this machine and that nothing will push them, as information shown by `doctor --verbose` and in `--json` rather than as a warning, since nothing records whether a machine is air-gapped on purpose. The check's description now reads "attestations have left this machine".
+
 ## [0.8.0] - 2026-10-29
 
 Three things done by hand now have commands. A release can declare tasks an
