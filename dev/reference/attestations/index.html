@@ -2521,6 +2521,9 @@ problem; an unverifiable one, a broken chain and a live mismatch all are.</p>
 <em>there</em>, never that it checks out — an operator reading a timeline during an
 incident should not have it withheld because a key is missing, and one asking
 whether a record can be trusted should not be answered by a listing.</p>
+<p>An installation that has recorded nothing yet lists no statements and exits 0.
+<code>attest verify</code> refuses that same empty set, because there "nothing" would read
+as "checked".</p>
 <h2 id="getting-them-off-the-machine">Getting them off the machine<a class="headerlink" href="#getting-them-off-the-machine" title="Permanent link">&para;</a></h2>
 <p>Statements are pushed as they are written, to the same targets this installation
 keeps its backups on:</p>

@@ -2315,6 +2315,10 @@ reviewed: a test fails the build on a direct print from the command layer.</p>
 <ul>
 <li><strong><code>--json</code> is the value itself</strong>, unreshaped. No view touches it, so a change
   to how something looks is never a change to what a script reads.</li>
+<li><strong>Nothing to list is an empty list.</strong> A listing with no entries exits 0, and
+  under <code>--json</code> its list is <code>[]</code>, never <code>null</code> — whether the list is <code>data</code>
+  itself, as for <code>backup list</code>, or a field inside it, as <code>entries</code> is for
+  <code>attest log</code>.</li>
 <li><strong>Plain is line-oriented and stable in a log.</strong> It is not "rich without
   colour": rich may draw a bordered callout where plain writes a labelled block,
   because a box drawn in a journal is noise that outlives the terminal.</li>
