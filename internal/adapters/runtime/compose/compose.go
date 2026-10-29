@@ -726,7 +726,7 @@ func (r *Runtime) Logs(ctx context.Context, cfg ports.RuntimeConfig, opts ports.
 	}
 	argv = append(argv, opts.Services...)
 
-	return startStream(ctx, argv, cfg)
+	return startStream(ctx, argv, cfg, r.redact)
 }
 
 // wrapExit turns an exec error into a runtime domain error, preserving a

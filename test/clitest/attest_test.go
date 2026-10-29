@@ -68,13 +68,15 @@ func TestAttestVerifyAcceptsWhatThisMachineJustSigned(t *testing.T) {
 	assert.Equal(t, "signed-by-current-key", signature["outcome"])
 }
 
-// An installation that has recorded nothing says so, rather than reporting an
-// empty list as though it had checked something.
+// An installation that has recorded nothing lists nothing and succeeds: a
+// listing checks nothing, so an empty one claims nothing. Verifying is the
+// other way round -- it refuses rather than report an empty set as though it
+// had checked something.
 func TestAttestOnAMachineThatHasRecordedNothing(t *testing.T) {
 	r := clitest.NewInstalled(t)
 
-	r.Run("attest", "log").ExitCode(domain.ExitInstallation).
-		StderrContains("no attestations")
+	r.Run("attest", "log").ExitCode(0).StdoutContains("no statements")
+	r.Run("--json", "attest", "log").ExitCode(0).FieldLen("data.entries", 0)
 	r.Run("attest", "verify").ExitCode(domain.ExitInstallation).
 		StderrContains("no attestations")
 }

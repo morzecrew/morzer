@@ -12,6 +12,7 @@ package jsonout
 import (
 	"encoding/json"
 	"io"
+	"reflect"
 	"sync"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -122,6 +123,13 @@ func (p *Presenter) Handle(e events.Event) {
 func (p *Presenter) Write(command string, data any, record *domain.OperationRecord, err error) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// An empty listing is `[]`, never `null`: ports return nil for "nothing
+	// yet", and a consumer iterating the result should not need a second
+	// branch for it. Only on success, where an empty list is the answer.
+	if v := reflect.ValueOf(data); err == nil && v.Kind() == reflect.Slice && v.IsNil() {
+		data = reflect.MakeSlice(v.Type(), 0, 0).Interface()
+	}
 
 	env := Envelope{
 		OK:             err == nil,

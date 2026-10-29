@@ -253,6 +253,10 @@ Deliberately not `verify` with less output. `signed` says a signature is
 incident should not have it withheld because a key is missing, and one asking
 whether a record can be trusted should not be answered by a listing.
 
+An installation that has recorded nothing yet lists no statements and exits 0.
+`attest verify` refuses that same empty set, because there "nothing" would read
+as "checked".
+
 ## Getting them off the machine
 
 Statements are pushed as they are written, to the same targets this installation

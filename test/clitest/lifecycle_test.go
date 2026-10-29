@@ -23,14 +23,9 @@ func TestBackupListOnAMachineWithNoBackups(t *testing.T) {
 	plain := r.Run("backup", "list").ExitCode(0)
 	plain.OutputContains("no backups")
 
-	// `data` is null rather than an empty list. Recorded rather than
-	// asserted as right: a consumer writing `.data | length` gets an error
-	// instead of 0, which is the kind of thing a JSON contract is supposed
-	// to spare them.
-	empty := r.Run("backup", "list", "--json").ExitCode(0)
-	if got := empty.Field("data"); got != nil {
-		t.Errorf("data = %v; if this is now a list, tighten the assertion", got)
-	}
+	// An empty list, not null: a consumer writing `.data | length` gets 0
+	// rather than an error.
+	r.Run("backup", "list", "--json").ExitCode(0).FieldLen("data", 0)
 }
 
 func TestBackupVerifyNeedsABackupThatExists(t *testing.T) {

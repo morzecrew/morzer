@@ -333,6 +333,10 @@ so a sidecar the vendor's Compose file starts is included.
 Takes no lock: reading logs must never queue behind an update, since during one
 is when they are most wanted. Nothing is stored, rotated or shipped.
 
+A stream the runtime could not produce — the Docker daemon is down, or a named
+service does not exist — exits 7 with the runtime's own reason, rather than 0
+having printed nothing.
+
 Secret values are scrubbed by default, holding bytes to a line boundary so a
 value split across two reads is still caught, and dropping any line over 64 KiB
 rather than passing it through unmatched. It is best effort — a value the
