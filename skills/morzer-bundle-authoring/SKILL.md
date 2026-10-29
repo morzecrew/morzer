@@ -51,8 +51,9 @@ does not say why the rule exists.
   `DEMO_` for the product `demo` the examples below use. Lowercase, starting
   with a letter.
 - **`runtimes.compose.options.project` never changes after a release ships.**
-  Every container, network and volume of a deployment lives under it; a new
-  value orphans the old ones.
+  Every container, network and volume of a deployment lives under it, and the
+  manager refuses a release whose runtime options differ from the ones an
+  installation was made with.
 - **Images are pinned by digest**, and the Compose file reads them from the
   manager: `image: ${DEMO_IMAGE_APP:-…}` for an `images:` key `app`. Writing the
   digest only in Compose leaves the manifest, which the manager verifies,
