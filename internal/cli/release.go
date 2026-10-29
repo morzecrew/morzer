@@ -325,6 +325,14 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 // direction they drift in is always the same one -- the producing command grows
 // lenient, because that is the one somebody is fighting at the time.
 func checkBundleIntegrity(rel domain.Release) error {
+	// Refused here, where the vendor can still change the name; `init` and
+	// `update` only warn about it (Manifest.UnknownProviders says why).
+	if problems := rel.Manifest.UnknownProviders(); len(problems) > 0 {
+		return domain.ValidationError(nil, "the manifest names a provider this manager does not have: %s",
+			strings.Join(problems, "; ")).
+			WithHint("leave the name out, or name the provider this manager has")
+	}
+
 	// Every declared template must at least parse. Checking it here rather
 	// than in Load is deliberate: Load also runs during an operator's
 	// `apply`, and a parse failure there is the failure this moves earlier,

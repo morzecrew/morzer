@@ -144,6 +144,31 @@ func (m Manifest) UndeclaredSchemaWarning() (string, bool) {
 	return "", false
 }
 
+// UnknownProviders reports each provider name this manager has no
+// implementation of, one sentence per field.
+//
+// The names were never read: one implementation of each capability exists, and
+// it ran whatever the manifest said, so `secrets: {name: vault}` ran sops-age.
+// The authoring commands refuse what this reports and `init` and `update` only
+// warn, because a release already installed has run on that implementation all
+// along, and refusing it at load would strand a running installation over a
+// word. The runtime is not here: which runtimes a manager drives is the wired
+// adapter's answer, checked against the installation rather than the bundle.
+func (m Manifest) UnknownProviders() []string {
+	var problems []string
+	for _, p := range []struct{ field, name, have string }{
+		{"secrets", m.Providers.Secrets.Name, "sops-age"},
+		{"backup", m.Providers.Backup.Name, "hooks"},
+		{"health", m.Providers.Health.Name, "http"},
+	} {
+		if p.name != "" && p.name != p.have {
+			problems = append(problems, fmt.Sprintf(
+				"providers.%s.name is %q, and this manager has only %s", p.field, p.name, p.have))
+		}
+	}
+	return problems
+}
+
 const KindApplicationRelease = "application-release"
 
 // Manifest is the typed release contract. Field order follows the spec's

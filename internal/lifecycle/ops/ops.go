@@ -261,6 +261,10 @@ func (d *Deps) newOpID() string {
 // update path alone, so a *first install* of a deprecated bundle said nothing
 // at all -- found while adding the second kind, and fixed rather than
 // reproduced.
+//
+// A provider name this manager does not have is warned about here for the same
+// reason, though it is not a deprecation: `release verify` refuses it, and an
+// operator choosing the bundle is the one other person who can act on it.
 func (d *Deps) warnDeprecations(m domain.Manifest) {
 	if d.Bus == nil {
 		return
@@ -276,6 +280,10 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 		// verify` printed the same message bare all along and read
 		// correctly, which is what located the defect in the join.
 		d.Bus.Publish(events.Message(events.LevelWarn, "%s", f.Message()))
+	}
+	for _, problem := range m.UnknownProviders() {
+		d.Bus.Publish(events.Message(events.LevelWarn,
+			"this bundle names a provider this manager does not have: %s", problem))
 	}
 }
 

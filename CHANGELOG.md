@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   healthy machine. It now exits 3. A stopped service, or a deployment with no
   containers yet, still only warns.
 
+- **Bundle commands refuse a provider name morzer does not have.** The
+  `secrets`, `backup` and `health` provider names were never read, so a manifest
+  asking for `vault` installed and ran sops-age. `release verify`, `build`,
+  `pack` and `archive` now refuse any name but `sops-age`, `hooks` and `http`.
+  `init` and `update` only warn, so a release already installed keeps working.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its
