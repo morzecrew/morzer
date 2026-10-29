@@ -112,3 +112,18 @@ func TestUnattendedRefusesABundleArgument(t *testing.T) {
 	out.OutputContains("takes no bundle")
 	out.OutputContains("--stage")
 }
+
+// TestWhatAnOperatorReadsCitesNoRFC. The design documents live in this
+// repository, not on the machine: "see RFC 0027" in a command's output points
+// an operator at something they do not have.
+func TestWhatAnOperatorReadsCitesNoRFC(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	for _, args := range [][]string{
+		{"config", "settings"},
+		{"installation", "describe"},
+		{"installation", "describe", "--help"},
+	} {
+		r.Run(args...).ExitCode(0).NoOutputContains("RFC 0")
+	}
+}

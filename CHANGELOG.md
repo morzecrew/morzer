@@ -63,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   success, so a mistyped unset looked as if it had worked. It now exits 2 and
   lists the declared parameters. A value left behind by an older release, which
   `config list` marks stale, still clears.
+- **Command output no longer cites design documents an operator does not
+  have.** `config settings`, `installation describe` (its help and the header of
+  the file it writes) and three refusals named an RFC by number, such as "See
+  RFC 0027". The RFCs live in morzer's repository, not on the machine. The text
+  now says what it meant without the citation.
 
 ## [0.9.0] - 2026-10-29
 

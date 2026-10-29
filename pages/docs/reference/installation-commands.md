@@ -231,7 +231,7 @@ Writes what an operator *chose*, as a document:
 
 ```yaml
 # Written by `morzer installation describe`. Nothing reads it back:
-# editing this file changes nothing. See RFC 0027.
+# editing this file changes nothing.
 api_version: selfhost/v1alpha1
 kind: installation-document
 id: 01J9Z5K3QH

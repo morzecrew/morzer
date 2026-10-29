@@ -168,7 +168,7 @@ var settings = map[string]setting{
 		Clear:  func(i *domain.Installation) { i.Policy.RetainPreUpdateBackups = 0 },
 	},
 	"backup.scheduled": {
-		Description: "whether this manager runs backups on a timer at all (RFC 0030 row 4)",
+		Description: "whether this manager runs backups on a timer at all",
 		Read: func(i domain.Installation) string {
 			return strconv.FormatBool(!i.Policy.SkipScheduledBackups)
 		},
