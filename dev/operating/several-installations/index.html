@@ -1010,6 +1010,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#taking-one-off-the-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Taking one off the machine
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-is-deliberately-not-here" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2120,6 +2131,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#taking-one-off-the-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Taking one off the machine
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-is-deliberately-not-here" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2431,6 +2453,17 @@ would report all clear.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--product<span class="w"> </span>sandbox<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">18081</span>
 morzer<span class="w"> </span>--product<span class="w"> </span>sandbox<span class="w"> </span>apply
 </code></pre></div>
+<h2 id="taking-one-off-the-machine">Taking one off the machine<a class="headerlink" href="#taking-one-off-the-machine" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+</code></pre></div>
+<p>This removes one installation and nothing of another. Every path, unit and lock
+it touches is derived from <code>demo</code>. The images it removes are only those that no
+release of <em>any</em> installation names, the same rule <code>release prune</code> follows. A
+glob typed by hand, such as <code>/etc/systemd/system/demo*</code>, also matches
+<code>demo-admin</code>'s units.</p>
+<p>By default the data, and the keys that read it, stay on the machine. See
+<a href="../../reference/installation-commands/#installation-remove"><code>installation remove</code></a>
+for what goes and what stays.</p>
 <h2 id="what-is-deliberately-not-here">What is deliberately not here<a class="headerlink" href="#what-is-deliberately-not-here" title="Permanent link">&para;</a></h2>
 <p><strong>No <code>--all</code>.</strong> There is no <code>morzer update --all</code>, and there will not be. Three
 installations have three releases, three compatibility gates and three windows of
@@ -2453,6 +2486,7 @@ somebody is reading it.</p>
 <ul>
 <li><a href="../../reference/installation-commands/#installation-list"><code>morzer ls</code></a> — the command surface</li>
 <li><a href="../recovering-a-lost-machine/">Recovering a lost machine</a> — rebuilding one installation</li>
+<li><a href="../../reference/installation-commands/#installation-remove"><code>installation remove</code></a> — taking one off the machine</li>
 <li><a href="../changing-configuration/">Changing configuration</a> — <code>config set</code>, which is how a port moves</li>
 </ul>
 

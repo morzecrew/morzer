@@ -1614,6 +1614,73 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#removing-an-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Removing an installation
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Removing an installation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        installation remove
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="installation remove">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-goes-and-what-stays" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What goes and what stays
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-record-it-leaves" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The record it leaves
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-it-fails-or-there-is-no-installation-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        When it fails, or there is no installation record
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2277,6 +2344,73 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#removing-an-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Removing an installation
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Removing an installation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        installation remove
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="installation remove">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-goes-and-what-stays" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What goes and what stays
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-record-it-leaves" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The record it leaves
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-it-fails-or-there-is-no-installation-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        When it fails, or there is no installation record
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2647,6 +2781,151 @@ that should match, and reviewing what changed after somebody ran <code>config se
 with a reason, and that accounting is checked against the struct in both
 directions: a field added and left unclassified fails the build, and so does a
 reason naming a field that no longer exists.</p>
+<h2 id="removing-an-installation">Removing an installation<a class="headerlink" href="#removing-an-installation" title="Permanent link">&para;</a></h2>
+<h3 id="installation-remove">installation remove<a class="headerlink" href="#installation-remove" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--dry-run<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+morzer<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+morzer<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--force<span class="w"> </span>--purge<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+</code></pre></div>
+<p>Takes one installation off this machine, and touches nothing whose path is not
+derived from its product name, so another installation on the same host is
+safe. It runs as an operation: under the deployment lock, journaled step by
+step, and plannable with <code>--dry-run</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--force</code></td>
+<td>Required. Removal is destructive on every machine.</td>
+</tr>
+<tr>
+<td><code>--confirm</code></td>
+<td>The installation id, typed out. Required on a production installation, as it is for <a href="../commands/#restore"><code>restore</code></a>. A dev installation needs <code>--force</code> alone, and a typed id that names another installation is refused on either.</td>
+</tr>
+<tr>
+<td><code>--purge</code></td>
+<td>Also remove the data and what unlocks it — see below.</td>
+</tr>
+</tbody>
+</table>
+<p>A plan is confirmed like the removal itself, because <code>--dry-run</code> refuses
+whatever the operation would refuse. Pass it the same flags.</p>
+<h4 id="what-goes-and-what-stays">What goes and what stays<a class="headerlink" href="#what-goes-and-what-stays" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Default</th>
+<th><code>--purge</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>systemd units</td>
+<td>removed</td>
+<td>removed</td>
+</tr>
+<tr>
+<td>containers and networks</td>
+<td>removed</td>
+<td>removed</td>
+</tr>
+<tr>
+<td>named volumes</td>
+<td><strong>kept</strong></td>
+<td>removed</td>
+</tr>
+<tr>
+<td>images no release left on the machine names</td>
+<td>removed</td>
+<td>removed</td>
+</tr>
+<tr>
+<td><code>/opt/&lt;product&gt;</code>, the releases</td>
+<td>removed</td>
+<td>removed</td>
+</tr>
+<tr>
+<td><code>/run/&lt;product&gt;</code>, the rendered secrets</td>
+<td>removed</td>
+<td>removed</td>
+</tr>
+<tr>
+<td><code>/etc/&lt;product&gt;</code> configuration and signing key</td>
+<td>removed</td>
+<td>removed</td>
+</tr>
+<tr>
+<td><code>/etc/&lt;product&gt;</code> secret state and <code>age/</code>, the machine key</td>
+<td><strong>kept</strong></td>
+<td>removed</td>
+</tr>
+<tr>
+<td><code>/var/lib/&lt;product&gt;/data</code> and <code>backups</code></td>
+<td><strong>kept</strong></td>
+<td>removed</td>
+</tr>
+<tr>
+<td><code>/var/lib/&lt;product&gt;/attestations</code></td>
+<td><strong>kept</strong></td>
+<td>only the removal's own</td>
+</tr>
+<tr>
+<td>the journal</td>
+<td><strong>kept</strong>, renamed</td>
+<td>only the removal's own record, renamed</td>
+</tr>
+</tbody>
+</table>
+<p>The secret state and the machine key stay with the data because they are what
+unlocks it. Backups are encrypted to the machine key, and on an installation
+created with <code>--no-recovery-recipient</code> nothing else can read them. A kept
+database volume was created with the credentials the secret state holds.</p>
+<p><code>init</code> reuses a machine key and secret state it finds, so installing the same
+product again on this machine runs against the kept volumes with the
+credentials they were created with. When you are moving the product off this
+machine for good, pass <code>--purge</code>.</p>
+<p><strong>Nothing on a backup target is removed,</strong> <code>--purge</code> included. Remote backups
+and attestations are the record that outlives the machine, and the removal adds
+its own statement to them.</p>
+<p>The command ends by saying what it kept and where; <code>--json</code> carries the same
+list as <code>data.kept</code>.</p>
+<h4 id="the-record-it-leaves">The record it leaves<a class="headerlink" href="#the-record-it-leaves" title="Permanent link">&para;</a></h4>
+<p>Like other operations, the removal journals its steps and files a signed
+<a href="../attestations/">attestation</a>, which it pushes to the configured targets. The
+signing key is the last thing removed, after the statement is written. A
+statement that cannot be signed is filed unsigned with a warning, as any
+operation's is, and the key is removed all the same.</p>
+<p>The journal is then renamed to
+<code>/var/lib/&lt;product&gt;/manager/operations-removed-&lt;operation-id&gt;.jsonl</code>. A later
+<code>init</code> starts with an empty journal and inherits no unfinished operation from an
+installation that no longer exists. With <code>--purge</code>, the renamed journal holds
+only the removal's record, and <code>attestations/</code> holds only its statement.</p>
+<h4 id="when-it-fails-or-there-is-no-installation-record">When it fails, or there is no installation record<a class="headerlink" href="#when-it-fails-or-there-is-no-installation-record" title="Permanent link">&para;</a></h4>
+<p>Every step can be repeated safely. A removal that fails part way is finished by
+fixing the cause and running it again, or with <code>--resume</code>. The installation
+record is the last thing it forgets, so the second run asks for the same
+confirmation.</p>
+<p>A failed first install leaves directories and a machine key, and no record to
+read an id or a mode from. <code>--product</code> names it, and <code>--force</code> alone is enough:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>--product<span class="w"> </span>demo<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--force<span class="w"> </span>--purge
+</code></pre></div>
+<p>With no record there is no installation to attest to and no target configured,
+so that removal is journaled and files no statement.</p>
+<p>A product with nothing of it on the machine is refused, so a typo in
+<code>--product</code> removes nothing.</p>
+<div class="admonition tip">
+<p class="admonition-title">Take a backup first</p>
+<p>The command takes no backup of its own. <code>morzer backup</code> before
+<code>installation remove --purge</code> keeps a copy on your targets, and
+<code>installation import --from-backup</code> with your recovery key brings it back
+on any machine.</p>
+</div>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../secret-commands/#secret-recipients"><code>secret recipients</code></a> — who can decrypt</li>
