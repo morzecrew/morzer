@@ -266,3 +266,41 @@ func TestAnUpdateNamesWhatItGeneratedBeforeAFailure(t *testing.T) {
 	assert.Contains(t, generationMessages(h), "webhook_key",
 		"a secret generated before the failure was never named")
 }
+
+// setFirst is an operator's `secret set` landing between the step reading the
+// state and generating: the value is set, then Generate is refused over it.
+type setFirst struct {
+	ports.SecretStore
+	name string
+}
+
+func (f setFirst) Generate(ctx context.Context, name string, spec ports.GenSpec) error {
+	if name == f.name {
+		if err := f.Set(ctx, name, domain.NewSecret("set-by-the-operator")); err != nil {
+			return err
+		}
+	}
+	return f.SecretStore.Generate(ctx, name, spec)
+}
+
+// A value somebody set while the update was deciding what to generate has done
+// the step's work. The store refuses to overwrite it, and the update keeps it
+// and carries on rather than failing over a secret that is there.
+func TestAnUpdateKeepsAValueSetWhileItWasGenerating(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	src := stageUpgradeSource(t, h)
+	declareSecret(t, src, webhookKey)
+	h.Deps.Secrets = setFirst{SecretStore: h.Deps.Secrets, name: "webhook_key"}
+
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+	value, ok := secretValue(t, h, "webhook_key")
+	require.True(t, ok)
+	assert.Equal(t, "set-by-the-operator", value, "the operator's value was replaced")
+	assert.NotContains(t, generationMessages(h), "webhook_key",
+		"a value the operator set was reported as generated")
+}

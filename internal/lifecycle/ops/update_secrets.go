@@ -72,6 +72,12 @@ func stepGenerateSecrets(d *Deps, rel domain.Release, replaced *fallbackRelease,
 			for _, decl := range todo {
 				if err := d.Secrets.Generate(ctx, decl.Name,
 					ports.GenSpec{Generator: decl.Generator}); err != nil {
+					// Somebody set it since the state was read, and the
+					// store refused to overwrite their value: the step's
+					// work is done, by them.
+					if set, loadErr := d.Secrets.Load(ctx); loadErr == nil && set.Has(decl.Name) {
+						continue
+					}
 					// What was generated stays, and the retry skips
 					// it, so this run is the only one that can name it.
 					report()
