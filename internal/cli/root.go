@@ -273,6 +273,13 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 			ManagerVersion: app.Build.Version,
 			APIVersions:    apiVersionStrings(),
 		})
+		// Nor did anything name the command. Find resolves it as far as
+		// the arguments go, the way cobra did before failing, whatever
+		// the failure: `morzer` for a mistyped command, the command
+		// itself for a mistyped flag.
+		if found, _, _ := root.Find(args); found != nil && app.command == "" {
+			app.command = found.CommandPath()
+		}
 	}
 
 	if app.json != nil && !app.jsonStreamed {

@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exits 2 with `unknown command` and suggests a subcommand when one is close;
   `morzer release` alone still prints its help.
 
+- **`--json` errors name the command.** A mistyped flag or command reported
+  `"command": ""` in its envelope. It now names the command the arguments
+  resolve to, such as `morzer release verify` for an unknown flag.
+
 - **`morzer doctor -v` works.** Doctor's own `--verbose` hid the global `-v`, so
   `doctor -v` was refused as an unknown flag. Both spellings now expand every
   check.

@@ -80,16 +80,24 @@ func TestAMistypedSubcommandIsAnError(t *testing.T) {
 func TestAJSONRunAlwaysProducesAnEnvelope(t *testing.T) {
 	r := New(t)
 
-	for _, args := range [][]string{
-		{"--json", "--definitely-not-a-flag"},
-		{"--json", "definitely-not-a-command"},
-		{"--json", "--log-format", "banana", "version"},
+	// The command is the one the arguments resolve to, as far as they do:
+	// a failure before any command ran reported an empty one.
+	for _, c := range []struct {
+		args    []string
+		command string
+	}{
+		{[]string{"--json", "--definitely-not-a-flag"}, "morzer"},
+		{[]string{"--json", "definitely-not-a-command"}, "morzer"},
+		{[]string{"--json", "--log-format", "banana", "version"}, "morzer version"},
+		{[]string{"--json", "release", "verfy"}, "morzer release"},
+		{[]string{"release", "verify", "--definitely-not-a-flag", "--json"}, "morzer release verify"},
 	} {
-		res := r.Run(args...).ExitCode(2)
+		res := r.Run(c.args...).ExitCode(2)
 		res.FieldEquals("ok", false)
 		res.FieldEquals("exit_code", float64(2))
+		res.FieldEquals("command", c.command)
 		if msg, _ := res.Field("error.message").(string); msg == "" {
-			t.Errorf("%v: the envelope carries no error message:\n%s", args, res.Stdout)
+			t.Errorf("%v: the envelope carries no error message:\n%s", c.args, res.Stdout)
 		}
 	}
 }
