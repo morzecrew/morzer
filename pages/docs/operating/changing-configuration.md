@@ -91,7 +91,8 @@ A plan never claims a service was re-created; it says what *would* happen.
 | The keys a release must be signed with | [`release trust add` / `remove`](../reference/release-commands.md#release-trust) |
 | How many pre-update backups to keep | `config set retention.pre_update_backups=<n>` |
 | No pre-update backup on a dev-mode machine | `config set backup.before_update=false` |
-| Domains, whether a signature is required, release and backup retention | Not yet changeable after `init` |
+| Domains, whether a signature is required | Not yet changeable after `init` |
+| How many releases and ordinary backups to keep | The manifest's [`retention`](../reference/manifest.md#retention); no command overrides it yet |
 | The service topology | The vendor's, in the release's Compose files |
 
 !!! danger "Parameters are not secrets"

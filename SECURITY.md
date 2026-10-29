@@ -178,8 +178,8 @@ Stated here rather than discovered during an incident:
 
 - Nothing checks a signature's *freshness*. A correctly signed older release can
   be presented in place of a newer one; only `compatibility.upgrade_from` and a
-  pinned `--digest` stand in the way. See
-  [RFC 0004](rfcs/0004-distribution-and-verification.md).
+  pinned `--digest` stand in the way.
+  [RFC 0037](rfcs/0037-freshness-of-a-signed-release.md) proposes closing it.
 - A signature is verified *after* the archive is extracted, because it travels
   inside the bundle. Extraction is confined and bounded, so what an unsigned
   hostile archive can do is refuse to extract — but the ordering is worth

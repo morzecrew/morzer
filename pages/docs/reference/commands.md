@@ -485,7 +485,7 @@ manifest, and verifies the checksums by re-reading what was written.
 
 | Flag | Meaning |
 | --- | --- |
-| `--component` | Limit the backup to these components: `database`, `files`, `config`, `secrets`, `manifest`. |
+| `--component` | Limit the backup to these components: `database`, `files`, `config`, `export`, `manifest`, `volumes`. |
 | `--reason` | Why this backup was taken; recorded in its manifest. Default `manual`. |
 | `--no-verify` | Skip re-reading the backup to check its checksums. |
 | `--no-prune` | Skip applying the retention policy afterwards. |
@@ -573,7 +573,7 @@ waiting to destroy a production database.
 | Flag | Meaning |
 | --- | --- |
 | `--backup` | Backup id. The most recent when omitted. |
-| `--component` | Limit the restore to these components. |
+| `--component` | Limit the restore to these components: `database`, `files`, `config`, `manifest`, `volumes`. `secrets`, a retired component, is still accepted for older backups. |
 | `--confirm` | The installation id, typed to confirm a destructive restore. |
 | `--allow-cross-installation` | Restore a backup that belongs to a different installation. |
 
