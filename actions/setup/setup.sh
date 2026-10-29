@@ -35,6 +35,9 @@ esac
 
 dir=${DIR:-${RUNNER_TEMP:?}/morzer}
 mkdir -p "$dir"
+# Absolute, because it goes into GITHUB_PATH: a relative entry resolves against
+# whatever directory a later step runs in.
+dir=$(cd "$dir" && pwd)
 PATH="${dir}:${PATH}"
 
 if ! command -v minisign >/dev/null 2>&1; then
