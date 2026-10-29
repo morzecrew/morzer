@@ -47,6 +47,27 @@ func TestVerboseAndQuietRefuseToCombine(t *testing.T) {
 	r.Run("-v", "-q", "version").ExitCode(2)
 }
 
+// TestAMistypedSubcommandIsAnError. A group runs nothing itself, and cobra
+// checks the arguments of the root alone: `release verfy` printed the group's
+// help on stdout and exited 0, so a script's typo read as success.
+func TestAMistypedSubcommandIsAnError(t *testing.T) {
+	r := New(t)
+
+	res := r.Run("release", "verfy").ExitCode(2).
+		StderrContains(`unknown command "verfy" for "morzer release"`, "`morzer release verify`")
+	if strings.Contains(res.Stdout, "Usage:") {
+		t.Errorf("help text leaked onto stdout:\n%s", res.Stdout)
+	}
+
+	r.Run("--json", "secret", "lst").ExitCode(2).
+		FieldEquals("ok", false).
+		FieldEquals("error.code", "usage")
+
+	// The group alone, or asked for help, still answers with its help.
+	r.Run("release").ExitCode(0).StdoutContains("Available Commands")
+	r.Run("release", "--help", "verfy").ExitCode(0).StdoutContains("Available Commands")
+}
+
 // TestAJSONRunAlwaysProducesAnEnvelope.
 //
 // The presenter is built in the persistent pre-run, which never runs when the

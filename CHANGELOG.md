@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository that holds only the bundle, a commit that changes no file, such as
   a merge whose result matches one side, no longer moves the version.
 
+### Fixed
+
+- **A mistyped subcommand fails instead of printing help.** `morzer release
+  verfy` or `morzer secret lst` used to print the group's help on stdout and
+  exit 0, even under `--json`, so a script's typo read as success. It now exits
+  2 with `unknown command`, suggests the nearest subcommand, and under `--json`
+  writes an error envelope. `morzer release` alone still prints its help.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its
