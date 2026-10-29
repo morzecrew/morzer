@@ -39,3 +39,20 @@ one function every command that blesses a bundle shares, rather than in
 must keep working. The warning goes through `warnDeprecations`
 (`internal/lifecycle/ops/ops.go:284`), which `init`, `update` and a plan call
 and nothing else, for the reason that function already gives.
+
+## Self-audit findings, 2026-10-29
+
+Scope: the whole branch against `origin/main`, three commits and about 230
+lines across source, tests, docs, the RFC row and this log.
+
+- **Fixed: RFC 0018 decision 19 cited the wrong 0023 row.** It said the
+  runtime's name "is checked against the installation (0023 decision 8)".
+  Decision 8 derives `providers.runtime.name` from `runtimes:`; the refusal of a
+  runtime this manager cannot drive is decision 5. The row now cites both for
+  what each says.
+- **Not changed: `release pack` reaches the provider check last.** It saves the
+  images and rewrites `SHA256SUMS` before `checkBundleIntegrity`
+  (`internal/cli/release_pack.go:87-98`), so a bundle naming `vault` is refused
+  only after the slow part. That order predates this branch and applies to a
+  template that does not parse as well; `verify`, `build` and `archive` were
+  run against a `vault` bundle and refuse it up front.
