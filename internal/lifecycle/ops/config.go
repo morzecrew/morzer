@@ -234,7 +234,7 @@ func mergeParameters(
 
 	var changed []string
 
-	// Whether this command only clears values the release no longer
+	// Whether this command removes only values the release no longer
 	// declares; the check for missing values below depends on it.
 	clearsOnlyStale := len(opts.Set) == 0
 
@@ -249,13 +249,13 @@ func mergeParameters(
 		if _, wasRecorded := inst.Parameters[name]; !declared && !wasRecorded {
 			return nil, nil, undeclaredIn(name, rel)
 		}
-		if declared {
-			clearsOnlyStale = false
-		}
 		if _, recorded := next[name]; !recorded {
 			// Not an error: unsetting something already at its
 			// default is what the operator asked for, and it holds.
 			continue
+		}
+		if declared {
+			clearsOnlyStale = false
 		}
 		delete(next, name)
 		changed = append(changed, name)

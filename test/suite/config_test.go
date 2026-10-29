@@ -73,7 +73,9 @@ func TestConfigClearsAStaleValueWhileAnotherIsMissing(t *testing.T) {
 	inst.Parameters = map[string]string{"gone": "1"}
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 
-	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Unset: []string{"gone"}})
+	// Beside a declared name that has nothing recorded to clear: the command
+	// still takes no value any declared parameter had.
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Unset: []string{"gone", "log_level"}})
 	require.NoError(t, err, "clearing a stale value was refused over a different parameter")
 
 	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{
