@@ -1689,10 +1689,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#signature_verified-is-absent-not-false" class="md-nav__link">
+  <a href="#which-operation-verified-the-signature" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        <code>signature_verified</code> is absent, not false
+        Which operation verified the signature
       </span>
     </span>
   </a>
@@ -2098,10 +2098,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#signature_verified-is-absent-not-false" class="md-nav__link">
+  <a href="#which-operation-verified-the-signature" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        <code>signature_verified</code> is absent, not false
+        Which operation verified the signature
       </span>
     </span>
   </a>
@@ -2356,14 +2356,41 @@ deliberate:</p>
 </ul>
 <p>A machine with no salt — one that reached schema 6 by upgrade and has not run
 <code>init</code> since — emits <strong>no digest</strong> rather than an unsalted one.</p>
-<h3 id="signature_verified-is-absent-not-false"><code>signature_verified</code> is absent, not false<a class="headerlink" href="#signature_verified-is-absent-not-false" title="Permanent link">&para;</a></h3>
-<p><code>predicate.verification.signature_verified</code> is missing from an <code>apply</code>'s
-statement, and that is the honest answer rather than a gap.</p>
-<p>Signatures are checked when a release is <strong>staged</strong>. An <code>apply</code> converges onto a
-release already on disk, so it verifies nothing and the document says nothing.
-Writing <code>false</code> there would read as <em>"checked, and it failed"</em> — a much stronger
-claim, and one an auditor would act on.</p>
-<p>So: absent means no claim. Present and <code>false</code> would mean a check that failed.</p>
+<h3 id="which-operation-verified-the-signature">Which operation verified the signature<a class="headerlink" href="#which-operation-verified-the-signature" title="Permanent link">&para;</a></h3>
+<p>Signatures are checked when a release is <strong>staged</strong>: by <code>init</code> for the release it
+installs, and by <code>update</code> for the one it installs. Every other operation runs
+against a release already on disk and verifies nothing. So
+<code>predicate.verification</code> carries two different claims, and never both:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Claim</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>signature_verified</code>, <code>key_id</code></td>
+<td><strong>This</strong> operation verified the bundle's signature, against the key with this id. Only an <code>update</code> makes it.</td>
+</tr>
+<tr>
+<td><code>signature_verified_when_staged</code></td>
+<td>An <strong>earlier</strong> operation verified it when it staged this release: <code>key_id</code>, the <code>operation_id</code> that verified it, and <code>at</code>. An <code>apply</code>, <code>rollback</code>, <code>config</code>, <code>backup</code>, <code>task</code> or <code>remove</code> statement carries it.</td>
+</tr>
+</tbody>
+</table>
+<p>Neither field is present when no signature was verified: an unsigned release, a
+machine with no signing keys, or a release staged by a version of morzer that
+did not record the check. A release returned to with <code>rollback --to</code> is the
+fourth case, unless it is the previous release: the release store keeps no
+record of how a release was verified, and the previous release is the one
+other than the current that the manager keeps a record for. Absent means no claim. Neither field is ever <code>false</code>,
+which would read as <em>"checked, and it failed"</em> — a much stronger claim, and one
+an auditor would act on.</p>
+<p><code>key_id</code> is the minisign key id, as <code>minisign</code> prints it, so it can be matched to
+<code>policy.signing_keys</code> by eye. <code>when_staged</code> is the manager's own record of a past
+check, written on the machine that signs this statement: it says what that
+machine recorded, not that the bundle on disk still matches.</p>
 <h2 id="steps-carry-durations-not-timestamps">Steps carry durations, not timestamps<a class="headerlink" href="#steps-carry-durations-not-timestamps" title="Permanent link">&para;</a></h2>
 <p><code>predicate.steps[].duration_ms</code> is what the operation journal records. A
 duration plus the operation's own <code>started</code> places a step in time; widening a
@@ -2371,8 +2398,13 @@ persisted record to feed a new artifact would be the tail wagging the dog.</p>
 <h2 id="validating-one">Validating one<a class="headerlink" href="#validating-one" title="Permanent link">&para;</a></h2>
 <p>A <abbr title="JavaScript Object Notation">JSON</abbr> Schema ships with every release, generated from the Go types that produce
 the document rather than written alongside them:</p>
-<div class="highlight"><pre><span></span><code>schemas/morzer-attestation-v1.json
+<div class="highlight"><pre><span></span><code>schemas/morzer-attestation-v2.json
 </code></pre></div>
+<p>The predicate type is <code>https://morzecrew.github.io/morzer/attestation/v2</code>. v2
+adds <code>signature_verified_when_staged</code> and nothing else. Statements written
+before it say <code>…/attestation/v1</code>, validate against
+<code>schemas/morzer-attestation-v1.json</code>, which stays published unchanged, and are
+still read by <code>attest verify</code>.</p>
 <p>It pins <code>_type</code> and <code>predicateType</code> to single values, so a document from another
 contract does not validate against it — notably a <strong>SLSA provenance</strong> document,
 which describes how an artifact was <em>built</em> where this describes how one was
