@@ -554,7 +554,7 @@ func (d *Deps) checkAttestationsPushed(inst domain.Installation) preflight.Check
 	// of this machine: with no target, nothing is expected to leave it.
 	description := "attestations have left this machine"
 	if !inst.Backup.HasTargets() {
-		description = "attestations stay on this machine: no backup target"
+		description = "attestations: no backup target to push them to"
 	}
 	return preflight.Check{
 		ID:          "backup.attestations-pushed",
@@ -570,8 +570,10 @@ func (d *Deps) checkAttestationsPushed(inst domain.Installation) preflight.Check
 				if len(local) == 0 {
 					return preflight.OK("no attestations on this machine yet")
 				}
-				return preflight.OK("%d attestation(s), all only on this machine: "+
-					"no backup target is configured to push them to", len(local))
+				// Not "only on this machine": a target removed after
+				// a push keeps what it was sent.
+				return preflight.OK("%d attestation(s) on this machine, and no "+
+					"backup target is configured to push them to", len(local))
 			}
 
 			report, err := d.attestationPushState(ctx, inst)

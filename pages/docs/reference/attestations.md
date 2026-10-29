@@ -304,16 +304,17 @@ Both count statements, however many targets there are. With more than one,
 `doctor` says how many statements are missing from at least one of them, since
 a statement can be on one target and not another.
 
-An installation with **no backup target** has nowhere to push, so its whole
-record is local and is lost with the machine. `doctor` says so, as information
+An installation with **no backup target** has nowhere to push, so what it
+writes stays on the machine and is lost with it; a target removed earlier keeps
+what it was sent. `doctor` says how many statements are here, as information
 rather than a warning, which `doctor --verbose`, plain output and `--json`
 show:
 
 ```console
 $ morzer doctor --verbose
 …
-✓ attestations stay on this machine: no backup target
-  4 attestation(s), all only on this machine: no backup target is configured to push them to
+✓ attestations: no backup target to push them to
+  4 attestation(s) on this machine, and no backup target is configured to push them to
 ```
 
 Not a warning, because nothing records whether a machine is air-gapped on

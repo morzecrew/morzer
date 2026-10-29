@@ -248,10 +248,11 @@ be current.
   attestation local, and `doctor` checked pushing only where a target existed,
   so a machine that never configured one had the exposure of an air-gapped one
   without having chosen it, and no sign of it. `doctor` now reports how many
-  statements are only on the machine and that nothing will push them. It does
-  so as information, shown by `doctor --verbose` and in `--json`, rather than as
-  a warning: nothing records whether a machine is air-gapped on purpose, and a
-  warning on every one that is would teach its operator to read past `doctor`.
+  statements are on the machine and that no target is configured to push them.
+  It does so as information, shown by `doctor --verbose` and in `--json`,
+  rather than as a warning: nothing records whether a machine is air-gapped on
+  purpose, and a warning on every one that is would teach its operator to read
+  past `doctor`.
 
 - **There was no way to rotate the machine's signing key** (closed 2026-10-29).
   Retiring a key meant rebuilding the machine with `installation import`.

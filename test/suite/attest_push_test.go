@@ -407,12 +407,15 @@ func TestDoctorSaysTheRecordStaysOnAMachineWithNoTarget(t *testing.T) {
 		}
 		found = true
 		assert.Equal(t, events.CheckOK, res.Status, "a machine that chose to stay offline is warned on every doctor run")
-		assert.Contains(t, res.Message, "only on this machine")
+		assert.Contains(t, res.Message, "1 attestation(s) on this machine")
 		assert.Contains(t, res.Message, "no backup target")
-		// The description is shown beside the result, and on this
-		// machine nothing has left it.
-		assert.NotContains(t, res.Description, "left this machine",
-			"the check's title claims what its result denies")
+		// Neither line claims more than the machine knows: a target removed
+		// after a push keeps what was pushed, so "only here" may be false,
+		// and nothing has left this machine since.
+		for _, text := range []string{res.Message, res.Description} {
+			assert.NotContains(t, text, "only on this machine", "a copy a removed target kept is denied")
+			assert.NotContains(t, text, "left this machine", "the check claims what its result denies")
+		}
 	}
 	require.True(t, found, "doctor says nothing about a record that can never leave the machine")
 }
