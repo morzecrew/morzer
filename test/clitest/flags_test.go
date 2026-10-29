@@ -70,6 +70,34 @@ func TestAMistypedSubcommandIsAnError(t *testing.T) {
 	r.Run("release", "verfy", "--help=false").ExitCode(2)
 }
 
+// TestABareGroupUnderJSONIsAUsageError. Without a subcommand a group answers
+// with its help, which is right for a person and wrong for `--json`: help text
+// on stdout, exit 0, and a script parsing the result got prose.
+func TestABareGroupUnderJSONIsAUsageError(t *testing.T) {
+	r := New(t)
+
+	for _, args := range [][]string{
+		{"--json", "release"},
+		{"secret", "recipients", "--json"},
+		{"--json"},
+	} {
+		res := r.Run(args...).ExitCode(2).
+			FieldEquals("ok", false).
+			FieldEquals("error.code", "usage")
+		if msg, _ := res.Field("error.message").(string); !strings.Contains(msg, "requires a subcommand") {
+			t.Errorf("%v: message %q does not say a subcommand is required", args, msg)
+		}
+	}
+	r.Run("--json", "release").FieldEquals("command", "morzer release")
+	if hint, _ := r.Run("--json", "release").Field("error.hint").(string); !strings.Contains(hint, "verify") {
+		t.Errorf("hint %q does not list the subcommands", hint)
+	}
+
+	// Help asked for is still help, under --json or not.
+	r.Run("--json", "release", "--help").ExitCode(0).StdoutContains("Available Commands")
+	r.Run("--json", "help", "release").ExitCode(0).StdoutContains("Available Commands")
+}
+
 // TestAJSONRunAlwaysProducesAnEnvelope.
 //
 // The presenter is built in the persistent pre-run, which never runs when the

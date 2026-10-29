@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exits 2 with `unknown command` and suggests a subcommand when one is close;
   `morzer release` alone still prints its help.
 
+- **A command group with no subcommand fails under `--json`.** `morzer release
+  --json` printed help text and exited 0. It now exits 2 and lists the
+  subcommands; without `--json` it still prints help.
+
 - **`--json` errors name the command.** A mistyped flag or command reported
   `"command": ""` in its envelope. It now names the command the arguments
   resolve to, such as `morzer release verify` for an unknown flag.
