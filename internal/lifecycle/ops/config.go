@@ -238,6 +238,14 @@ func mergeParameters(
 		if _, recorded := next[name]; !recorded {
 			// Not an error: unsetting something already at its
 			// default is what the operator asked for, and it holds.
+			// Unless the release declares no such name -- then it
+			// is a typo, and "unset" would report a change that
+			// never named anything. A recorded name the release
+			// no longer declares is stale, and unsetting it below
+			// is how it is cleared.
+			if _, declared := rel.Manifest.Parameters[name]; !declared {
+				return nil, nil, undeclaredIn(name, rel)
+			}
 			continue
 		}
 		delete(next, name)

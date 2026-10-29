@@ -58,6 +58,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was refused with the path of the temporary file it had been saved to, which
   was already deleted. The refusal now names the reference it came from, with
   any password removed.
+- **`config unset` refuses a parameter the release does not declare.**
+  `config set typo=1` was refused by name, but `config unset typo` reported
+  success, so a mistyped unset looked as if it had worked. It now exits 2 and
+  lists the declared parameters. A value left behind by an older release, which
+  `config list` marks stale, still clears.
 
 ## [0.9.0] - 2026-10-29
 

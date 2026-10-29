@@ -338,15 +338,12 @@ func TestConfigGetOnSomethingTheReleaseDoesNotDeclare(t *testing.T) {
 	assert.Contains(t, err.Error(), "not_a_parameter")
 }
 
-// TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp records an asymmetry
-// rather than asserting it is right.
-//
-// `config set typo=1` is refused by name; `config unset typo` succeeds
-// quietly, because the merge treats "not recorded" as "already at its default"
-// without asking whether the release declares it at all. An operator who
-// mistypes an unset is told it worked. Recorded here so it is a known edge
-// rather than a surprise, and so a future refusal breaks this test on purpose.
-func TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp(t *testing.T) {
+// TestUnsettingSomethingTheReleaseDoesNotDeclareIsRefused. `config set typo=1`
+// was refused by name while `config unset typo` succeeded quietly, because the
+// merge treated "not recorded" as "already at its default" without asking
+// whether the release declares the name at all: an operator who mistyped an
+// unset was told it worked.
+func TestUnsettingSomethingTheReleaseDoesNotDeclareIsRefused(t *testing.T) {
 	h := newHarness(t)
 	h.install()
 	h.setHookEnv()
@@ -354,12 +351,30 @@ func TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp(t *testing.T) {
 	_, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
 		Unset: []string{"not_a_parameter"},
 	})
-	if err == nil {
-		return // the documented behaviour today
-	}
-	assert.Contains(t, err.Error(), "not_a_parameter",
-		"unset became a refusal, which is an improvement -- update the note "+
-			"above and make this test assert it")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not_a_parameter")
+	assert.Equal(t, domain.CodeUsage, domain.AsError(err).Code)
+}
+
+// TestUnsettingAValueAnEarlierReleaseDeclaredStillWorks. A recorded value the
+// current release no longer declares is what `config list` reports as stale,
+// and unsetting it is how an operator clears it: not declared, but recorded.
+func TestUnsettingAValueAnEarlierReleaseDeclaredStillWorks(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{"retired_parameter": "x"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Unset: []string{"retired_parameter"}})
+	require.NoError(t, err)
+	inst, err = h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, inst.Parameters, "retired_parameter")
 }
 
 // TestConfigSetReportsARuntimeThatWillNotRecreate. The value is recorded before
