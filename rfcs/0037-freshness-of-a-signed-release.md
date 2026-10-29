@@ -11,7 +11,8 @@
   with a sequence and an expiry for the freeze case. The minisign verifier, the
   channel follower (`update --check`, `--stage`, `--unattended`) and the update
   candidate record are touched; the bundle format and `SHA256SUMS` signature do
-  not change. Offline installs from a path are out of scope by construction:
+  not change. A machine installing from a path gets the installed floor and
+  nothing else: freeze detection is out of its reach by construction, because
   nothing on such a machine can tell what is current.
 - **Related:** [SECURITY.md](../SECURITY.md) "Known gaps";
   [0004](0004-distribution-and-verification.md) (signature verification, §5.5);
@@ -114,16 +115,18 @@ Verified against `main` at 8b3c37e.
 - A vendor who opts in can let machines detect a replayed or frozen channel, and
   an operator learns from `doctor` and `status` how long a machine has been
   unable to see a current index.
-- Nothing changes for a vendor who does nothing, beyond the refusal in the first
-  goal, and nothing changes for an air-gapped operator installing from a path.
+- Nothing changes for a vendor who does nothing, beyond the refusals in the first
+  goal. An air-gapped operator installing from a path meets only the installed
+  floor, which `--allow-older` overrides.
 
 **Non-goals**
 
 - **A full TUF implementation.** Root rotation, delegations and threshold
   signatures solve problems a single-vendor, single-key channel does not have.
   The index here borrows TUF's timestamp idea and nothing else.
-- **Freshness for offline installs.** A machine that installs from a path has no
-  view of what is current; claiming to check freshness there would be false.
+- **Freeze detection for offline installs.** A machine that installs from a path
+  has no view of what is current; claiming to detect a freeze there would be
+  false. The installed floor still applies to it (§5.1).
 - **Protecting against a compromised vendor key.** Whoever holds it can sign a
   fresh index for an old release. Key compromise is the vendor's to handle by
   rotating `policy.signing_keys`.
@@ -166,6 +169,10 @@ in the manager's state beside the update candidate:
   Switching to another channel starts from that channel's mark, so moving from
   `stable` to `lts` is refused only if `lts` offers something older than the
   release installed.
+- **A path is a source like any other for the installed floor.** `morzer update
+  ./bundle` with a release older than the one running is refused as any other
+  reference is, so an air-gapped machine gets the same downgrade refusal. A path
+  is never a channel, so it has no channel mark.
 - **A channel is named by its reference with credentials removed.** The key in
   `channel-marks.json`, and every refusal or journal entry that names a channel,
   goes through `ports.RedactRefCredentials` first, as `FollowChannel` already
@@ -241,7 +248,8 @@ document signed with the same minisign key that signs their bundles:
 
 - Suite: a channel whose staged 1.4.0 raised its mark, and which then serves
   1.3.0, is refused by staging and by the unattended tick; `update` to a release
-  older than the installed one is refused; `rollback` still works, and
+  older than the installed one is refused, from a registry and from a local path
+  alike; `rollback` still works, and
   `--allow-older` installs and is journalled.
 - Suite: `update --check` and a peek seeing a higher tag raise no mark, so a
   registry advertising `9.9.9` blocks nothing; switching to another channel
@@ -309,6 +317,7 @@ document signed with the same minisign key that signs their bundles:
 | 11 | `ASSUMED` | The installed floor is the current release's version, read from the current-release record, and is source-independent because an installation is one product. Channel marks are kept per channel, so a switch to another channel is judged by that channel's own history. |
 | 12 | `ASSUMED` | Only a bundle that was fetched and verified raises a channel mark. A peek and `update --check` see tags and manifest digests, so they raise nothing: a registry advertising a false high version must not be able to block real releases below it. |
 | 13 | `ASSUMED` | A channel is identified by its reference after `ports.RedactRefCredentials`, in the stored key and in every message and journal entry that names it. |
+| 14 | `ASSUMED` | The installed floor covers every install path, a local bundle path included, since a downgrade is the same act whatever the transport. A path has no channel mark, and freeze detection does not reach it. |
 
 ## 12. Phasing
 
