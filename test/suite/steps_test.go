@@ -585,3 +585,27 @@ func keysOf(m map[string][]byte) []string {
 	out := slices.Collect(maps.Keys(m))
 	return out
 }
+
+// TestInitKeepsTheRecoveryKeyWhenThereIsNoSecretYet: the offline key an
+// operator gives `init` is kept when init has no secret to write, so the state
+// the first secret creates later -- an operator's `secret set`, or an update
+// generating one its release adds -- can still be opened with it.
+func TestInitKeepsTheRecoveryKeyWhenThereIsNoSecretYet(t *testing.T) {
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	ctx := context.Background()
+	_, recoveryPub := generateRecoveryKey(t)
+
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", RecoveryRecipient: recoveryPub})
+	require.NoError(t, err)
+	require.NoError(t, h.Deps.Secrets.Set(ctx, "first", domain.NewSecret("a-first-value")))
+
+	recipients, err := h.Deps.Secrets.Recipients(ctx)
+	require.NoError(t, err)
+	var keys []string
+	for _, r := range recipients {
+		keys = append(keys, r.PublicKey)
+	}
+	assert.Contains(t, keys, recoveryPub, "the recovery key given to init was dropped")
+}

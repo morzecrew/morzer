@@ -151,6 +151,19 @@ func (s *Store) AddRecipient(ctx context.Context, r ports.Recipient) error {
 	if err != nil {
 		return err
 	}
+	// State that does not exist yet has no recipients to keep, and the file
+	// a first write creates is encrypted for the machine. Start from that,
+	// or the state would be created for this key alone and the machine
+	// locked out of it.
+	if len(existing) == 0 {
+		base, err := s.recipientsForEncrypt(ctx)
+		if err != nil {
+			return err
+		}
+		for _, key := range base {
+			existing = append(existing, ports.Recipient{PublicKey: key})
+		}
+	}
 	keys := make([]string, 0, len(existing)+1)
 	for _, e := range existing {
 		if e.PublicKey == r.PublicKey {
