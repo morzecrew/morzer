@@ -1681,6 +1681,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rotating-the-signing-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Rotating the signing key
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Rotating the signing key">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation-rotate-signing-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        installation rotate-signing-key
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2411,6 +2439,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rotating-the-signing-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Rotating the signing key
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Rotating the signing key">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation-rotate-signing-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        installation rotate-signing-key
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2926,6 +2982,52 @@ so that removal is journaled and files no statement.</p>
 <code>installation import --from-backup</code> with your recovery key brings it back
 on any machine.</p>
 </div>
+<h2 id="rotating-the-signing-key">Rotating the signing key<a class="headerlink" href="#rotating-the-signing-key" title="Permanent link">&para;</a></h2>
+<h3 id="installation-rotate-signing-key">installation rotate-signing-key<a class="headerlink" href="#installation-rotate-signing-key" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>rotate-signing-key
+</code></pre></div>
+<p>Replaces the key this machine signs its own statements with: the
+<a href="../attestations/">attestations</a> it files and the <a href="../fleet/">fleet</a> row it
+publishes. It mints a new key, records the current one as the newest entry of
+<code>signing.previous_keys</code> with <code>reason: rotation</code> and the time it was retired, and
+moves the new key into place. The old private key is gone afterwards; its public
+half stays in installation state.</p>
+<p>Everything the old key signed still verifies, as <strong>signed by a predecessor</strong> and
+never as the current key: provenance, not validity, the same outcome a rebuilt
+machine's predecessor gets. The rotation files its own statement, signed by the
+new key, naming the old one through <code>previous_keys</code>. It is not countersigned by
+the old key, because a key retired for a suspected compromise vouching for its
+successor proves nothing.</p>
+<div class="admonition warning">
+<p class="admonition-title">Rotation protects the future and repairs nothing</p>
+<p>After a suspected compromise, everything the old key signed stays suspect,
+including what looks old: whoever holds it can back-date a statement as
+easily as write a current one. <code>retired_at</code> is history for you, not a check
+any verifier makes. Re-sign what you still vouch for; treat the rest as
+unverified. See the <a href="https://github.com/morzecrew/morzer/blob/main/SECURITY.md#rotation-protects-the-future-and-repairs-nothing">security policy</a>.</p>
+</div>
+<p>It runs as the operation <code>rotate-signing-key</code>: under the deployment lock,
+journaled with the public key it retires, attested, and planned by <code>--dry-run</code>
+without minting anything. It asks for no confirmation beyond its name, as
+<code>secret rotate</code> does.</p>
+<p>The order is chosen so a crash cannot lose the old public key. The new key is
+staged beside the current one, the old public key is recorded as retired, and
+only then is the new key moved into place. A rotation that fails before the
+move puts state back and removes the staged key. One that was interrupted is
+finished by <code>morzer installation rotate-signing-key --resume</code>, which retires
+the key the interrupted run named and mints no second one.</p>
+<p>It refuses a machine with no signing key, which has nothing to rotate, and one
+whose key file is not the key installation state records, because it is not
+clear which key to retire; <code>morzer init --repair</code> records the key on disk. A key
+file state records no key for at all, as on a machine migrated to schema 6 that
+minted one before anything recorded it, is not a disagreement: that key is
+retired like a recorded one, so what it signed stays attributable. A rotation
+also refuses to start while another operation is unfinished; a rotation that
+was interrupted is finished with <code>--resume</code>, never run over.</p>
+<p>A <a href="../fleet/#the-roster">fleet roster</a> binds each installation to a public key,
+so after a rotation <code>fleet ls --expect</code> reports this machine's row as
+<code>signed-by-another-key</code> until its entry names the new key.
+<code>morzer fleet publish --dry-run --json</code> prints it.</p>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../secret-commands/#secret-recipients"><code>secret recipients</code></a> — who can decrypt</li>

@@ -2540,9 +2540,11 @@ a statement can be on one target and not another.</p>
   an installation that wants its records somewhere its data is not cannot say
   so yet.</li>
 </ul>
-<p>A rebuilt machine signs with a <strong>new key</strong>, and records its predecessor. A
-signature that checks out against a predecessor is <em>provenance</em> — "signed by an
-earlier incarnation of this installation" — and never plain validity.</p>
+<p>A rebuilt machine signs with a <strong>new key</strong>, and records its predecessor, as does
+one whose key was replaced with
+<a href="../installation-commands/#installation-rotate-signing-key"><code>installation rotate-signing-key</code></a>.
+A signature that checks out against a predecessor is <em>provenance</em> — "signed by
+an earlier key of this installation" — and never plain validity.</p>
 
 
 
