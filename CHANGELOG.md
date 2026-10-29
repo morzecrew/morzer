@@ -31,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A mistyped subcommand fails instead of printing help.** `morzer release
   verfy` or `morzer secret lst` used to print the group's help on stdout and
   exit 0, even under `--json`, so a script's typo read as success. It now exits
-  2 with `unknown command`, suggests the nearest subcommand, and under `--json`
-  writes an error envelope. `morzer release` alone still prints its help.
+  2 with `unknown command`, suggests a subcommand when one is close, and under
+  `--json` writes an error envelope. `morzer release` alone still prints its help.
 - **`morzer doctor -v` works.** Doctor declared its own `--verbose`, which hid
   the global flag's `-v` shorthand, so `doctor -v` was refused as an unknown
   flag. Doctor now reads the global flag, and `-v` and `--verbose` both expand
@@ -40,7 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Flag help no longer shows an example as the flag's value.** A backticked
   word in a flag's help became its value name, so `--help` printed
   `--since 10m`, `--mode dev`, `--component secrets` and
-  `--version-from-git git describe`. Those lines now name the value's type.
+  `--version-from-git git describe`. Those lines now show the value's type, or
+  nothing for a switch.
   `release show --help` no longer points at `release verify --bundle`, a flag
   that does not exist; it names `release verify <path>`.
 - **`release archive -o` refuses a name no source would read.** The archive is
@@ -65,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config list` marks stale, still clears.
 - **Command output no longer cites design documents an operator does not
   have.** `config settings`, `installation describe` (its help and the header of
-  the file it writes) and three refusals named an RFC by number, such as "See
+  the file it writes) and two refusals named an RFC by number, such as "See
   RFC 0027". The RFCs live in morzer's repository, not on the machine. The text
   now says what it meant without the citation.
 

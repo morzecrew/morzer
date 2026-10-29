@@ -115,7 +115,7 @@ var installationFieldsNotDescribed = map[string]string{
 	// this machine *is* rather than what an operator asked for -- which is
 	// the distinction RFC 0027 is built on.
 	"Signing": "machine identity: the public half is derived from the key file, and " +
-		"a rebuilt machine is honestly a different signer",
+		"a rebuilt machine is honestly a different signer (RFC 0028 §5.3)",
 
 	// And this one must stay out for a second, harder reason: publishing
 	// it would undo the thing it exists for. The salt makes the

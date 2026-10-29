@@ -8,6 +8,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // TempCache holds what a network transport downloaded, for the life of one
@@ -64,18 +65,20 @@ func (c *TempCache) Reserve() (string, error) {
 }
 
 // NamedAfter rewrites a refusal about a downloaded archive to name the reference
-// it came from.
+// it came from, without its password.
 //
 // The local source checks what a transport downloaded, and its refusals name
 // the path it was handed: a temporary file in this cache, removed by the time
-// anybody reads the message. ref must already be redacted.
-func NamedAfter(err error, archive, ref string) error {
-	if err == nil {
-		return nil
+// anybody reads the message.
+func NamedAfter(err error, archive string, ref ports.Ref) error {
+	// An empty archive would match between every character of the message.
+	if err == nil || archive == "" {
+		return err
 	}
+	shown := ports.RedactRefCredentials(ref.String())
 	e := *domain.AsError(err)
-	e.Message = strings.ReplaceAll(e.Message, archive, ref)
-	e.Hint = strings.ReplaceAll(e.Hint, archive, ref)
+	e.Message = strings.ReplaceAll(e.Message, archive, shown)
+	e.Hint = strings.ReplaceAll(e.Hint, archive, shown)
 	return &e
 }
 
