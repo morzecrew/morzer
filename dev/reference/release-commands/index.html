@@ -2918,7 +2918,7 @@ checking it the same way <code>verify</code> does. Writes
 <tbody>
 <tr>
 <td><code>--output</code>, <code>-o</code></td>
-<td>Where to write the archive. Defaults to <code>&lt;name&gt;-&lt;version&gt;.tar.zst</code> beside the bundle directory. It must be outside the bundle.</td>
+<td>Where to write the archive. Defaults to <code>&lt;name&gt;-&lt;version&gt;.tar.zst</code> beside the bundle directory. It must be outside the bundle and end in <code>.tar.zst</code> or <code>.tzst</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2960,6 +2960,10 @@ signing keys.</p>
 <tr>
 <td><code>-o</code> points inside the bundle</td>
 <td>Refused. The archive would be a file the bundle contains and its own <code>SHA256SUMS</code> does not list.</td>
+</tr>
+<tr>
+<td><code>-o</code> does not end in <code>.tar.zst</code> or <code>.tzst</code></td>
+<td>Refused. The archive is always zstd, and sources recognise one by that suffix: a <code>.tar.gz</code> would be a file no source reads.</td>
 </tr>
 </tbody>
 </table>

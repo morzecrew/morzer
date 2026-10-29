@@ -3067,12 +3067,6 @@ and pins nothing.</p>
 <li><strong>A parameter's <code>services</code> list is not checked against the topology.</strong> A
   vendor who names one tier for a value two tiers read gets a change that
   reports success and leaves one stale.</li>
-<li><strong><code>config set</code> refuses an undeclared parameter by name; <code>config unset</code> does
-  not.</strong> The merge treats "not recorded" as "already at its default" without
-  asking whether the release declares it, so an operator who mistypes an unset
-  is told it worked. Recorded as
-  <code>TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp</code>, which fails if that
-  ever becomes a refusal.</li>
 <li><strong>Cancelling the <code>init</code> wizard is not honoured in accessible mode.</strong> huh's
   accessible renderer ignores the context and discards each field's error, so
   ctrl-D completes the form with defaults. What is asserted instead is that the
