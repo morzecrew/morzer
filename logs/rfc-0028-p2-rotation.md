@@ -161,3 +161,36 @@ was not run here. The new key comes from the same generator P1's interop tests
 cover in the container lane, and only the file's name changes.
 
 **Drift count: 0.**
+
+## Review, round 1 (2026-10-29)
+
+A rotation is refused while another operation is unfinished, as `update` is,
+and a rotation that was killed part-way is finished with `--resume`, never run
+over. Decision 4's entry above said a rotation asks for nothing beyond its
+name. It did not say what happens beside an unfinished record, and a fresh
+rotation run over a killed one left that record unfinished, blocking every later
+operation, with nothing left to resume.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-10-29T11:05:00Z
+attempt: 3
+claim: a rotation started beside an unfinished rotation ran over it, leaving a record that blocks every later operation and that no resume can finish
+evidence: internal/lifecycle/ops/rotate.go:66-71
+action: decided
+proposal: ASSUMED — a rotation gates on unfinished operations before and under the lock, and the refusal for an unfinished rotation names `installation rotate-signing-key --resume`.
+```
+
+Three more review fixes follow what this log already decided, and need no entry.
+- The key to retire is read under the lock, so a rotation queued behind another
+  retires the key the first one minted.
+- A key is written whole and synced under a temporary name, then linked into
+  place, so it is never visible half-written or lost to a crash.
+- A resumed rotation announces the journal record's id.
+
+The reference now says that a key on disk with no key recorded is retired, as
+decided above; it had said that case was refused.
+
+**Drift count: 0.**

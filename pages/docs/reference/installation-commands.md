@@ -433,7 +433,12 @@ the key the interrupted run named and mints no second one.
 
 It refuses a machine with no signing key, which has nothing to rotate, and one
 whose key file is not the key installation state records, because it is not
-clear which key to retire; `morzer init --repair` records the key on disk.
+clear which key to retire; `morzer init --repair` records the key on disk. A key
+file state records no key for at all, as on a machine migrated to schema 6 that
+minted one before anything recorded it, is not a disagreement: that key is
+retired like a recorded one, so what it signed stays attributable. A rotation
+also refuses to start while another operation is unfinished; a rotation that
+was interrupted is finished with `--resume`, never run over.
 
 A [fleet roster](fleet.md#the-roster) binds each installation to a public key,
 so after a rotation `fleet ls --expect` reports this machine's row as
