@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -466,4 +467,28 @@ func TestTheArchivesOwnIndexIsScrubbed(t *testing.T) {
 	}
 	require.NotZero(t, meta.Redactions,
 		"meta.json reports zero redactions on a run where it carried a secret")
+}
+
+// A bundle URL with a password in it is not a secret this installation holds,
+// so the value scrubber cannot recognise it. An update before the journal
+// redacted references recorded one as typed, and that journal is still on the
+// machine, so the archive strips URL credentials from every record's flags.
+func TestAPasswordInAJournalledURLStaysOutOfTheArchive(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	require.NoError(t, h.Deps.State.AppendOperation(context.Background(), domain.OperationRecord{
+		ID:        "op_01SEEDEDWITHAURLTOKEN",
+		Type:      domain.OpTypeUpdate,
+		Status:    domain.StatusSucceeded,
+		StartedAt: domain.NewTime(h.Deps.Now()),
+		Flags:     map[string]string{"ref": "https://deploy:s3cret-token@bundles.example/demo-1.3.0.tar.zst"},
+	}))
+
+	report, err := ops.SupportBundle(context.Background(), h.Deps, ops.SupportOptions{Dir: t.TempDir()})
+	require.NoError(t, err)
+
+	journal := archiveEntries(t, report.Path)["journal.jsonl"]
+	require.NotEmpty(t, journal, "the journal is not in the archive")
+	assert.NotContains(t, journal, "s3cret-token", "a password in a bundle URL reached the archive")
+	assert.Contains(t, journal, "bundles.example/demo-1.3.0.tar.zst", "the reference itself was dropped")
 }

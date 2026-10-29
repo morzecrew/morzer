@@ -182,9 +182,12 @@ Stated here rather than discovered during an incident:
   inside the bundle. Extraction is confined and bounded, so what an unsigned
   hostile archive can do is refuse to extract — but the ordering is worth
   knowing: the extractor runs on bytes nothing has authenticated yet.
-- The manager sends no credentials over HTTPS. A bundle behind authentication
-  has to be fetched out of band, or published to an OCI registry, where the
-  ambient Docker credentials are used.
+- The manager stores no credentials for HTTPS. A password written into a bundle
+  URL is sent as basic auth to that URL's host, and not to another host a
+  redirect leads to; the journal and the release's recorded source keep the URL
+  with the password removed. Any other authentication means fetching the bundle
+  out of band, or publishing it to an OCI registry, where the ambient Docker
+  credentials are used.
 - `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
   implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
 - An attestation records what the manager did; it does not record that a
@@ -237,6 +240,15 @@ cannot make that distinction, so it reports both alike.
 
 Kept here because a security policy that only ever grows is one nobody trusts to
 be current.
+
+- **A password in a bundle URL reached the journal** (closed 2026-10-29).
+  `update` journalled its reference as typed, so `morzer update
+  https://user:token@host/…` put the token in `operations.jsonl`, and a support
+  bundle, which is built to be sent to a vendor, carried it on: its scrubber
+  removes the values an installation holds, and a URL's password is not one.
+  The reference is now journalled with the password removed, and a support
+  bundle strips URL credentials from every journal record, including those
+  written before the fix. A token used this way should be rotated.
 
 - **A reachable XSS advisory in a markdown dependency** (closed 2026-08-12).
   `goldmark` before 1.7.17 carried [GO-2026-5320](https://osv.dev/GO-2026-5320),

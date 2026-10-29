@@ -983,6 +983,17 @@ func collectJournal(ctx context.Context, d *Deps, _ *supportSource) ([]supportFi
 
 	var b strings.Builder
 	for _, rec := range records {
+		// A password in a URL is not a value this installation holds, so
+		// the archive's scrubber cannot recognise it. Updates journalled
+		// a bundle URL as typed before the journal redacted it, and those
+		// records are still here.
+		if len(rec.Flags) > 0 {
+			flags := make(map[string]string, len(rec.Flags))
+			for k, v := range rec.Flags {
+				flags[k] = domain.RedactURLCredentials(v)
+			}
+			rec.Flags = flags
+		}
 		line, err := json.Marshal(rec)
 		if err != nil {
 			return nil, domain.Internal(err, "cannot render a journal record")

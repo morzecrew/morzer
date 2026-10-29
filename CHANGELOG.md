@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **A password in a bundle URL no longer reaches the journal or a support bundle.** `morzer update https://user:token@host/…` recorded the reference as typed, so the token sat in the operation journal and travelled in any support bundle sent to a vendor. The journal now keeps the URL without its password, and a support bundle strips URL credentials from every journal record, including ones written before this release. Rotate a token that was used this way.
+
 ## [0.8.0] - 2026-10-29
 
 Three things done by hand now have commands. A release can declare tasks an
