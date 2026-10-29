@@ -54,7 +54,7 @@ func TestAReleaseDeclaringSeveralRuntimesIsRefusedRatherThanPickedFrom(t *testin
 	require.ErrorAs(t, err, &domErr)
 	assert.Contains(t, domErr.Hint, "compose")
 	assert.Contains(t, domErr.Hint, "quadlet")
-	assert.Contains(t, domErr.Hint, "P3",
+	assert.Contains(t, domErr.Hint, "the second runtime adapter",
 		"a refusal that expires should say what it is waiting for")
 }
 

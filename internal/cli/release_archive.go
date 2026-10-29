@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -170,6 +171,14 @@ func archiveDestination(rel domain.Release, out string) (string, error) {
 		return "", domain.Usage(
 			"the archive would be written inside the bundle at %s", rel.Root).
 			WithHint("choose a path outside the bundle directory")
+	}
+
+	// The archive is always zstd, and every source recognises one by its
+	// suffix: `demo.tar.gz` would be a file no source reads and `tar xzf`
+	// cannot open.
+	if !atomicfs.IsTarZst(abs) {
+		return "", domain.Usage("the archive is a tar.zst, and %s is not named as one", out).
+			WithHint("end the path in %s", strings.Join(atomicfs.TarZstExtensions, " or "))
 	}
 	return abs, nil
 }

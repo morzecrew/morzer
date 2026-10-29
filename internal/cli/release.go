@@ -175,7 +175,7 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 		Long: "The manifest as the manager reads it: images, profiles, the digest and\n" +
 			"the compatibility declarations that `update` and `rollback` gate on.\n\n" +
 			"Reads what is installed. To inspect a bundle that is not installed yet,\n" +
-			"`release verify --bundle <path>` checks it and names what it is.",
+			"unpack it: `release verify <bundle-dir>` checks it and names what it is.",
 		Example: "  morzer release show\n" +
 			"  morzer release show 1.4.0\n" +
 			"  morzer release show --json | jq .manifest.compatibility",

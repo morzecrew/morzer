@@ -609,7 +609,7 @@ func TestADarwinManagerRefusesEveryOwner(t *testing.T) {
 	require.Error(t, err, "RFC 0032 decision 10: macOS gives no rendered secret away")
 	assert.Equal(t, ExitSecrets, ExitCode(err))
 	assert.Contains(t, err.Error(), `"backend_key"`)
-	assert.Contains(t, AsError(err).Hint, "RFC 0029")
+	assert.Contains(t, AsError(err).Hint, "Apply this release on Linux")
 
 	assert.NoError(t, owned.OwnerRefusal("linux"))
 	assert.NoError(t, SecretSchema{Secrets: owned.Secrets[:1]}.OwnerRefusal("darwin"),

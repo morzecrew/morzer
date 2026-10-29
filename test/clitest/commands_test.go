@@ -114,6 +114,26 @@ func TestDoctorReportsAndSetsTheExitCode(t *testing.T) {
 	r.Run("--json", "doctor").Field("data.summary")
 }
 
+// TestDoctorTakesTheGlobalVerboseFlag. Doctor declared a --verbose of its own,
+// which shadowed the global one and dropped its shorthand: `doctor -v` was
+// refused as an unknown flag.
+func TestDoctorTakesTheGlobalVerboseFlag(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	summary := r.Run("doctor")
+	for _, spelling := range []string{"-v", "--verbose"} {
+		res := r.Run("doctor", spelling)
+		if res.Code != summary.Code {
+			t.Fatalf("doctor %s exited %d, doctor exited %d:\n%s", spelling, res.Code, summary.Code, res.Stderr)
+		}
+		// The expanded view lists every check; the summary folds quiet
+		// categories into one line each.
+		if len(res.Stdout) <= len(summary.Stdout) {
+			t.Errorf("doctor %s printed no more than the summary:\n%s", spelling, res.Stdout)
+		}
+	}
+}
+
 func TestConfigListGetSetAndUnset(t *testing.T) {
 	r := clitest.NewInstalled(t)
 

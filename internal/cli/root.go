@@ -215,6 +215,33 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 			WithHint("run `morzer --help`, or `morzer <command> --help`")
 	})
 
+	// A group runs nothing itself, so cobra answers it with its help before
+	// any argument check -- and checks arguments against subcommands for the
+	// root alone. `release verfy` printed the group's help on stdout and
+	// exited 0, and a script's typo read as success. The help func is the one
+	// place that sees the group with its arguments parsed; it cannot return
+	// an error, so it leaves one here.
+	var unknownSubcommand error
+	help := root.HelpFunc()
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		typed := cmd.Flags().Args()
+		asked, _ := cmd.Flags().GetBool("help")
+		if len(typed) == 0 || cmd.Runnable() || !cmd.HasSubCommands() || asked {
+			help(cmd, args)
+			return
+		}
+		hint := fmt.Sprintf("run `%s --help` for its commands", cmd.CommandPath())
+		// Cobra's own default, which it applies only on the root's path.
+		if cmd.SuggestionsMinimumDistance <= 0 {
+			cmd.SuggestionsMinimumDistance = 2
+		}
+		if s := cmd.SuggestionsFor(typed[0]); len(s) > 0 {
+			hint = fmt.Sprintf("did you mean `%s %s`? %s", cmd.CommandPath(), s[0], hint)
+		}
+		unknownSubcommand = domain.Usage("unknown command %q for %q", typed[0], cmd.CommandPath()).
+			WithHint("%s", hint)
+	})
+
 	root.SetArgs(args)
 	root.SetOut(app.Stream.Out)
 	root.SetErr(app.Stream.Err)
@@ -225,6 +252,9 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	root.SilenceUsage = true
 
 	err := classifyCLIError(root.ExecuteContext(ctx))
+	if err == nil {
+		err = unknownSubcommand
+	}
 
 	// A source that downloaded something holds a temporary copy of it. The
 	// command is over, so it goes -- before the JSON envelope is written,

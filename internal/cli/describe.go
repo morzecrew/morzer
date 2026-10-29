@@ -37,7 +37,7 @@ func newInstallationDescribeCommand(app *App) *cobra.Command {
 			"carries names. That is what makes it safe to commit, which is the point:\n" +
 			"the answer to \"what is this machine\" becomes a file somebody can review\n" +
 			"and diff rather than four commands somebody has to remember to run.\n\n" +
-			"Nothing reads it back. `morzer apply -f` is specified in RFC 0027 and\n" +
+			"Nothing reads it back. Applying a document like this is designed and\n" +
 			"deliberately not built, so this is documentation rather than an\n" +
 			"interface, and changing the file changes nothing.",
 		Example: "  morzer installation describe\n" +
@@ -108,7 +108,7 @@ func renderDocument(doc domain.InstallationDocument) ([]byte, error) {
 	// the first question a reader has is what wrote it and whether editing
 	// it does anything.
 	header := "# Written by `morzer installation describe`. Nothing reads it back:\n" +
-		"# editing this file changes nothing. See RFC 0027.\n"
+		"# editing this file changes nothing.\n"
 	return append([]byte(header), rendered...), nil
 }
 

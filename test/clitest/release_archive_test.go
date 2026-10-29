@@ -44,6 +44,21 @@ func TestReleaseArchiveRefusesWritingIntoTheBundle(t *testing.T) {
 	out.Failed().OutputContains("inside the bundle")
 }
 
+// TestReleaseArchiveRefusesANameNoSourceReads. The archive is always zstd, and
+// the sources recognise one by its suffix: `-o demo.tar.gz` wrote a file named
+// for gzip that `tar xzf` cannot open and no morzer source would read.
+func TestReleaseArchiveRefusesANameNoSourceReads(t *testing.T) {
+	r := clitest.New(t)
+	dest := filepath.Join(t.TempDir(), "demo.tar.gz")
+
+	r.Run("release", "archive", r.Bundle, "-o", dest).
+		ExitCode(2).
+		OutputContains(".tar.zst")
+	if _, err := os.Stat(dest); err == nil {
+		t.Errorf("%s was written anyway", dest)
+	}
+}
+
 // TestBuildThenArchiveProducesAFetchableBundle is the vendor's path end to end,
 // minus the signing step morzer deliberately does not perform.
 //

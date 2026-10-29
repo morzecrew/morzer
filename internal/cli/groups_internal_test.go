@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // The top-level help is the only documentation many operators read, so these
@@ -170,4 +171,26 @@ func TestEveryCommandExplainsItself(t *testing.T) {
 		}
 	}
 	walk(root, "morzer ")
+}
+
+// TestNoFlagHelpQuotesWithBackticks.
+//
+// Pflag reads the first backticked word in a flag's usage as the name of its
+// value, so `a duration (`10m`, `2h`)` printed as `--since 10m  ... (10m,
+// `2h`)`: the example lifted out of its sentence and shown as what the flag
+// takes.
+func TestNoFlagHelpQuotesWithBackticks(t *testing.T) {
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		cmd.NonInheritedFlags().VisitAll(func(f *pflag.Flag) {
+			if strings.Contains(f.Usage, "`") {
+				t.Errorf("`%s --%s` quotes with backticks, which pflag prints as its value name:\n  %s",
+					cmd.CommandPath(), f.Name, f.Usage)
+			}
+		})
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(CommandTree())
 }

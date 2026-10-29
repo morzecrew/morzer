@@ -130,6 +130,66 @@ func TestCheckForUpdateRefusesRatherThanGuessing(t *testing.T) {
 	}
 }
 
+// TestCheckForUpdateSaysWhereToPointIt. A release installed from a file records
+// a file source, and with no channel the refusal read `file cannot list
+// available versions`: true, and nothing an operator could act on.
+func TestCheckForUpdateSaysWhereToPointIt(t *testing.T) {
+	unlistable := listSource{err: domain.ValidationError(domain.ErrUnsupported, "nope")}
+
+	cases := []struct {
+		name      string
+		ref       string
+		channel   string
+		want      string
+		wantHint  string
+		installed string
+	}{
+		{
+			name:      "the recorded source",
+			installed: "/srv/bundles/demo-1.2.0.tar.zst",
+			want:      "the installed release came from a file reference",
+			wantHint:  "update.channel",
+		},
+		{
+			name:      "a ref the operator passed",
+			installed: "oci://r/demo",
+			ref:       "/srv/bundles/demo-1.3.0.tar.zst",
+			want:      "a file reference cannot list available versions",
+			wantHint:  "oci://",
+		},
+		{
+			// Set before the setting checked what it was given, or by hand.
+			name:     "a channel that cannot list",
+			channel:  "https://releases.example/demo.tar.zst",
+			want:     "the update channel is a https reference",
+			wantHint: "update.channel",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := checkDeps(t, true, rec("1.2.0", tc.installed), unlistable)
+			if tc.channel != "" {
+				inst, err := d.loadInstallation(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				inst.Update.Channel = tc.channel
+				if err := d.State.SaveInstallation(context.Background(), inst); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := CheckForUpdate(context.Background(), d, UpdateCheckOptions{Ref: tc.ref})
+			e := domain.AsError(err)
+			if !strings.Contains(e.Message, tc.want) {
+				t.Errorf("want %q in the refusal, got: %s", tc.want, e.Message)
+			}
+			if !strings.Contains(e.Hint, tc.wantHint) {
+				t.Errorf("want %q in the hint, got: %s", tc.wantHint, e.Hint)
+			}
+		})
+	}
+}
+
 // TestCheckForUpdateExplicitBypassesTheSetting: typing the command is the
 // consent. The row above proves the setting holds for unprompted callers; this
 // proves it does not silence a direct instruction.

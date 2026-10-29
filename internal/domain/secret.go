@@ -343,7 +343,7 @@ func (s SecretSchema) OwnerRefusal(goos string) error {
 			return SecretsError(nil, "secret %q declares owner %s, and a manager on macOS "+
 				"does not give a rendered secret away", d.Name, d.Owner).
 				WithHint("Docker Desktop maps file ownership, and what a container sees for a " +
-					"file given to another user is not measured yet (RFC 0029). Apply this release on Linux")
+					"file given to another user is not measured yet. Apply this release on Linux")
 		}
 	}
 	return nil

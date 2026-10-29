@@ -251,7 +251,7 @@ checking it the same way `verify` does. Writes
 
 | Flag | Meaning |
 | --- | --- |
-| `--output`, `-o` | Where to write the archive. Defaults to `<name>-<version>.tar.zst` beside the bundle directory. It must be outside the bundle. |
+| `--output`, `-o` | Where to write the archive. Defaults to `<name>-<version>.tar.zst` beside the bundle directory. It must be outside the bundle and end in `.tar.zst` or `.tzst`. |
 
 This is the last of the three steps that publish a release:
 
@@ -276,6 +276,7 @@ signing keys.
 | `SHA256SUMS.minisig` older than `SHA256SUMS` | Refused. A signature over a tree that has since changed is the exact failure the chain exists to prevent. |
 | No signature at all | **Warned, not refused.** Whether a signature is required is the operator's policy (`policy.require_signature`), and an unsigned bundle is legitimate for a vendor whose customers do not require one. |
 | `-o` points inside the bundle | Refused. The archive would be a file the bundle contains and its own `SHA256SUMS` does not list. |
+| `-o` does not end in `.tar.zst` or `.tzst` | Refused. The archive is always zstd, and sources recognise one by that suffix: a `.tar.gz` would be a file no source reads. |
 
 ### Entry order is part of the format
 

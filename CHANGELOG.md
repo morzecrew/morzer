@@ -55,6 +55,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `attest verify` still refuses. Under `--json`, a listing with no entries, such
   as `backup list` or `release list`, carried `"data": null`; it is now `[]`.
 
+- **A mistyped subcommand fails instead of printing help.** `morzer release
+  verfy` printed the group's help and exited 0, even under `--json`. It now
+  exits 2 with `unknown command` and suggests a subcommand when one is close;
+  `morzer release` alone still prints its help.
+
+- **`morzer doctor -v` works.** Doctor's own `--verbose` hid the global `-v`, so
+  `doctor -v` was refused as an unknown flag. Both spellings now expand every
+  check.
+
+- **Flag help no longer shows an example as the flag's value.** A backticked
+  word in a flag's help became its value name, so `--help` printed
+  `--since 10m` and `--mode dev`. Those lines now show the value's type, or
+  nothing for a switch.
+
+- **`release show --help` names a flag that exists.** It pointed at
+  `release verify --bundle`; it now names `release verify <bundle-dir>`.
+
+- **`release archive -o` refuses a name no source would read.** The archive is
+  always zstd, and morzer recognises one only by a `.tar.zst` or `.tzst`
+  suffix, so `-o demo.tar.gz` wrote a file nothing could install. It now exits 2
+  before writing.
+
+- **`update --check` says what to set when it cannot list versions.** A release
+  installed from a file or an HTTPS URL, with no channel, was refused with
+  `file cannot list available versions`. The refusal now says where the
+  reference came from, and the hint names `config set update.channel=oci://…`.
+
+- **A refused HTTPS or OCI download names its URL, not a temporary file.** A
+  corrupt download, or one whose digest did not match, was refused with the path
+  of an already-deleted temporary file. It now names the reference without its
+  password or the query a signed URL carries its token in.
+
+- **`config unset` refuses a parameter the release does not declare.**
+  `config unset typo` reported success where `config set typo=1` was refused.
+  It now exits 2 and lists the declared parameters; a stale value left by an
+  older release still clears.
+
+- **Command output no longer cites RFCs an operator does not have.**
+  `config settings`, `installation describe` and two refusals named an RFC by
+  number, such as "See RFC 0027". The text now stands without the citation.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its

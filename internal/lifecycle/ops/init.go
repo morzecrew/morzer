@@ -928,7 +928,7 @@ func runtimeForRelease(r domain.Release) (string, error) {
 			"this release declares %d runtimes and the manager cannot yet choose between them",
 			len(names)).
 			WithHint("it declares: %s — installing a release that declares more than one "+
-				"arrives with the second runtime adapter (RFC 0023 P3)",
+				"arrives with the second runtime adapter",
 				strings.Join(names, ", "))
 	}
 }

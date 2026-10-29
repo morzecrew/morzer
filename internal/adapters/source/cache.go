@@ -3,10 +3,12 @@ package source
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // TempCache holds what a network transport downloaded, for the life of one
@@ -60,6 +62,34 @@ func (c *TempCache) Reserve() (string, error) {
 		c.dir = dir
 	}
 	return filepath.Join(c.dir, "bundle-"+itoa(len(c.paths))+".tar.zst"), nil
+}
+
+// NamedAfter rewrites a refusal about a downloaded archive to name the reference
+// it came from, as Shown prints it.
+//
+// The local source checks what a transport downloaded, and its refusals name
+// the path it was handed: a temporary file in this cache, removed by the time
+// anybody reads the message.
+func NamedAfter(err error, archive string, ref ports.Ref) error {
+	// An empty archive would match between every character of the message.
+	if err == nil || archive == "" {
+		return err
+	}
+	shown := Shown(ref.String())
+	e := *domain.AsError(err)
+	e.Message = strings.ReplaceAll(e.Message, archive, shown)
+	e.Hint = strings.ReplaceAll(e.Hint, archive, shown)
+	return &e
+}
+
+// Shown is a reference as a message may print it: without its password, and
+// without its query, which is where a signed URL carries its token.
+func Shown(raw string) string {
+	s := ports.RedactRefCredentials(raw)
+	if i := strings.IndexAny(s, "?#"); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // Store records a completed download.

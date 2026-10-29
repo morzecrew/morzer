@@ -261,12 +261,6 @@ Being explicit about the edges is part of the point.
 - **A parameter's `services` list is not checked against the topology.** A
   vendor who names one tier for a value two tiers read gets a change that
   reports success and leaves one stale.
-- **`config set` refuses an undeclared parameter by name; `config unset` does
-  not.** The merge treats "not recorded" as "already at its default" without
-  asking whether the release declares it, so an operator who mistypes an unset
-  is told it worked. Recorded as
-  `TestUnsettingSomethingTheReleaseDoesNotDeclareIsANoOp`, which fails if that
-  ever becomes a refusal.
 - **Cancelling the `init` wizard is not honoured in accessible mode.** huh's
   accessible renderer ignores the context and discards each field's error, so
   ctrl-D completes the form with defaults. What is asserted instead is that the

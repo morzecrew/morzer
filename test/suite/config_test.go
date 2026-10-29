@@ -113,6 +113,18 @@ func TestConfigUnsetReturnsToTheReleaseDefault(t *testing.T) {
 		"unsetting must return the value to the release's, not record the default")
 }
 
+// TestConfigUnsetOfAValueAlreadyAtItsDefaultHolds. Nothing is recorded, so
+// nothing changes, and that is what the operator asked for.
+func TestConfigUnsetOfAValueAlreadyAtItsDefaultHolds(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	res, err := ops.ConfigSet(context.Background(), h.Deps,
+		ops.ConfigSetOptions{Unset: []string{"http_port"}})
+	require.NoError(t, err)
+	assert.Contains(t, res.Summary, "no change")
+}
+
 func TestConfigSetIsANoOpWhenTheValueAlreadyMatches(t *testing.T) {
 	h := newHarness(t)
 	h.install()

@@ -355,7 +355,7 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&credentialsFile, "credentials-file", "",
 		"credentials for --target, when the secret store that held them is gone")
 	cmd.Flags().StringVar(&mode, "mode", "",
-		"rebuild as a sandbox with `dev`, which also drops the export's backup "+
+		"dev rebuilds as a sandbox, which also drops the export's backup "+
 			"targets. Omitted keeps whatever the export was; a sandbox can never "+
 			"be imported as production")
 	cmd.Flags().BoolVar(&installUnits, "install-units", true,

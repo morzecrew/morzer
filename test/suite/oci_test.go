@@ -322,6 +322,20 @@ func TestOCIAppliesArchiveRulesToWhatItPulls(t *testing.T) {
 	assert.True(t, errors.Is(err, domain.ErrPathEscape), "got: %v", err)
 }
 
+// TestOCIRefusalsNameTheReferenceNotThePull. What a pull downloads is checked
+// as a local archive, and those refusals named the temporary file it landed in.
+func TestOCIRefusalsNameTheReferenceNotThePull(t *testing.T) {
+	srv := newFakeRegistry(t, bundleArchive(t), oci.MediaType, 0)
+	source := newTestSource(t, srv)
+	ref := ociRef(srv, "demo/bundle", "1.2.0")
+	ref.Digest = "sha256:" + strings.Repeat("0", 64)
+
+	_, err := source.Resolve(context.Background(), ref)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "demo/bundle:1.2.0")
+	assert.NotContains(t, err.Error(), "bundle-0.tar.zst", "the refusal names the temporary download")
+}
+
 // TestPeekReadsAManifestAndResolveReadsTheBundle is the measurement the whole
 // of channel following rests on.
 //

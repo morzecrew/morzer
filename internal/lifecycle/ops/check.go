@@ -119,11 +119,29 @@ func CheckForUpdate(ctx context.Context, d *Deps, opts UpdateCheckOptions) (Upda
 		// Reported rather than swallowed. "This transport cannot
 		// enumerate versions" is a true answer; "up to date" would be a
 		// false one, and it is the false one an operator would act on.
+		//
+		// Said in terms of where the ref came from, because that is what
+		// the operator changes: "file cannot list available versions" was
+		// true and told them nothing to do.
 		if errors.Is(err, domain.ErrUnsupported) {
-			return UpdateCheckResult{}, domain.ValidationError(domain.ErrUnsupported,
-				"%s cannot list available versions", parsed.Scheme).
-				WithHint("only an OCI registry keeps a tag list; check by hand, " +
-					"or publish releases to one")
+			const channel = "`morzer config set update.channel=oci://<registry>/<repository>:<tag>`"
+			switch {
+			case opts.Ref != "":
+				return UpdateCheckResult{}, domain.ValidationError(domain.ErrUnsupported,
+					"a %s reference cannot list available versions", parsed.Scheme).
+					WithHint("pass an oci:// reference; only an OCI registry keeps a tag list")
+			case ref == inst.Update.Channel:
+				return UpdateCheckResult{}, domain.ValidationError(domain.ErrUnsupported,
+					"the update channel is a %s reference, which cannot list available versions",
+					parsed.Scheme).
+					WithHint("only an OCI registry keeps a tag list: %s", channel)
+			default:
+				return UpdateCheckResult{}, domain.ValidationError(domain.ErrUnsupported,
+					"the installed release came from a %s reference, which cannot list "+
+						"available versions", parsed.Scheme).
+					WithHint("set the channel releases are published to, %s, or pass "+
+						"one: `morzer update --check <ref>`", channel)
+			}
 		}
 		return UpdateCheckResult{}, err
 	}

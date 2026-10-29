@@ -197,7 +197,7 @@ func newInitCommand(app *App) *cobra.Command {
 		"refuse any release that is not signed by a configured signing key")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
 	f.StringVar(&mode, "mode", "",
-		"what this machine is for: `dev` for a sandbox, or production (the default). "+
+		"what this machine is for: dev for a sandbox, or production (the default). "+
 			"Fixed at creation and never changeable afterwards")
 
 	return cmd
@@ -630,8 +630,6 @@ func newStatusCommand(app *App) *cobra.Command {
 }
 
 func newDoctorCommand(app *App) *cobra.Command {
-	var verbose bool
-
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run read-only diagnostics",
@@ -659,9 +657,10 @@ func newDoctorCommand(app *App) *cobra.Command {
 			// ran; this is the summary. --verbose selects a second
 			// view of the same report rather than a flag inside it:
 			// a presentation choice has no business travelling
-			// through the lifecycle layer and into --json.
+			// through the lifecycle layer and into --json. It is the
+			// global flag: a local one shadowed it and dropped its -v.
 			var rendered error
-			if verbose {
+			if app.Flags.verbose {
 				rendered = app.render(views.Verbose{DoctorReport: report})
 			} else {
 				rendered = app.render(report)
@@ -679,9 +678,6 @@ func newDoctorCommand(app *App) *cobra.Command {
 			return nil
 		},
 	}
-
-	cmd.Flags().BoolVar(&verbose, "verbose", false,
-		"show every check, including the categories with nothing to report")
 	return cmd
 }
 
@@ -966,7 +962,7 @@ func newRestoreCommand(app *App) *cobra.Command {
 	f.StringVar(&confirm, "confirm", "", "the installation id, typed to confirm a destructive restore")
 	f.StringSliceVar(&components, "component", nil,
 		"limit the restore to these components: database, files, config, manifest, volumes "+
-			"(`secrets` names a retired component, still accepted for older backups)")
+			"(secrets names a retired component, still accepted for older backups)")
 	f.StringVar(&identity, "identity", "",
 		"age identity that can decrypt the backup; defaults to this machine's own key")
 	f.BoolVar(&crossInst, "allow-cross-installation", false,

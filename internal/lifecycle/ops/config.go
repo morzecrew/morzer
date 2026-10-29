@@ -235,6 +235,16 @@ func mergeParameters(
 	var changed []string
 
 	for _, name := range opts.Unset {
+		// A name the release does not declare and nothing recorded is a
+		// typo, and "unset" would report a change that never named
+		// anything. A recorded name the release no longer declares is
+		// stale, and unsetting it below is how it is cleared. Asked of
+		// the record as it was, so naming a stale value twice is not a
+		// typo the second time.
+		_, declared := rel.Manifest.Parameters[name]
+		if _, wasRecorded := inst.Parameters[name]; !declared && !wasRecorded {
+			return nil, nil, undeclaredIn(name, rel)
+		}
 		if _, recorded := next[name]; !recorded {
 			// Not an error: unsetting something already at its
 			// default is what the operator asked for, and it holds.
