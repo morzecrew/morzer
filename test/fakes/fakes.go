@@ -85,6 +85,10 @@ type Runtime struct {
 	// which release a project was brought up from.
 	UpConfigs []ports.RuntimeConfig
 
+	// DownConfigs is what each Down was handed, so a test can tell a project
+	// taken down with its release's files from one taken down by name.
+	DownConfigs []ports.RuntimeConfig
+
 	// ValidateResult is what Validate returns.
 	ValidateResult ports.Rendered
 
@@ -317,6 +321,7 @@ func (r *Runtime) Down(ctx context.Context, cfg ports.RuntimeConfig, opts ports.
 	if opts.Volumes {
 		r.Calls = append(r.Calls, "Down(volumes)")
 	}
+	r.DownConfigs = append(r.DownConfigs, cfg)
 	for name := range r.Services {
 		r.Services[name] = ports.ServiceState{Name: name, State: "exited"}
 	}

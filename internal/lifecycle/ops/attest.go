@@ -43,6 +43,24 @@ import (
 // above. The one thing it must never do is claim to have written a statement it
 // did not.
 func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, in domain.AttestationInputs) {
+	if path, ok := fileAttestation(ctx, d, rec, in); ok {
+		// Off the machine last, after whatever was going to be written
+		// locally is written: a push before that would copy bytes this
+		// machine does not have, and a record that dies with the disk is
+		// the gap RFC 0025 §1 is about.
+		pushStatement(ctx, d, in.Installation, path)
+	}
+}
+
+// fileAttestation writes and signs the statement on this machine, and reports
+// where, or false when there is nothing on disk to push.
+//
+// Apart from the push because `installation remove` resolves its targets before
+// it deletes the secret state their credentials are read from, and pushes with
+// those (RFC 0034 §5.4).
+func fileAttestation(
+	ctx context.Context, d *Deps, rec domain.OperationRecord, in domain.AttestationInputs,
+) (string, bool) {
 	// A record with no id is an operation that never ran: the deployment
 	// lock was held by somebody else, or the unfinished-operation gate
 	// refused it before the engine started. There is nothing to attest.
@@ -55,7 +73,7 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 	// one; `attest verify` then read it back as a statement, because it is
 	// one. A guard must not journal its own refusals.
 	if rec.ID == "" {
-		return
+		return "", false
 	}
 
 	// No early return on a missing bus. Writing the record is the job;
@@ -71,14 +89,14 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 	body, err := json.MarshalIndent(stmt, "", "  ")
 	if err != nil {
 		d.warnf("cannot serialise the attestation for %s: %s", rec.ID, err)
-		return
+		return "", false
 	}
 	body = append(body, '\n')
 
 	dir := d.Paths.AttestationsDir()
 	if err := atomicfs.MkdirAll(dir, 0o755); err != nil {
 		d.warnf("cannot create %s: %s", dir, domain.AsError(err).Message)
-		return
+		return "", false
 	}
 
 	path := filepath.Join(dir, rec.ID+".json")
@@ -86,7 +104,7 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 	// an auditor cannot read is one they will not read.
 	if err := atomicfs.WriteFile(path, body, 0o644); err != nil {
 		d.warnf("cannot write the attestation to %s: %s", path, domain.AsError(err).Message)
-		return
+		return "", false
 	}
 
 	// Signed if this machine can, and pushed either way.
@@ -99,12 +117,7 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 	// keeping it local because it lacked a signature would withhold
 	// evidence from the installations with the least of it.
 	sign(ctx, d, rec, in, path, body)
-
-	// Off the machine last, after whatever was going to be written locally
-	// is written: a push before that would copy bytes this machine does not
-	// have, and a record that dies with the disk is the gap RFC 0025 §1 is
-	// about.
-	pushStatement(ctx, d, in.Installation, path)
+	return path, true
 }
 
 // signingKeyForDocument resolves the key that will actually sign, so a document

@@ -85,11 +85,12 @@ here. The reference column points at the section that documents it; the
 | `morzer release trust remove` | Stop trusting release signatures made with a key | [release-commands](release-commands.md#release-trust) |
 | `morzer release trust list` | List the trusted release signing keys | [release-commands](release-commands.md#release-trust) |
 | `morzer ls` | List the installations on this machine | [installation-commands](installation-commands.md#installation-list) |
-| `morzer installation` | List, export and rebuild the installations on this machine | [installation-commands](installation-commands.md#morzer-installation) |
+| `morzer installation` | List, export, rebuild and remove installations on this machine | [installation-commands](installation-commands.md#morzer-installation) |
 | `morzer installation list` | List the installations on this machine | [installation-commands](installation-commands.md#installation-list) |
 | `morzer installation export` | Write the installation identity and encrypted secrets to a file | [installation-commands](installation-commands.md#installation-export) |
 | `morzer installation describe` | Write this installation as a file that documents it | [installation-commands](installation-commands.md#installation-describe) |
 | `morzer installation import` | Rebuild this machine from an export and an offline recovery key | [installation-commands](installation-commands.md#installation-import) |
+| `morzer installation remove` | Take an installation off this machine | [installation-commands](installation-commands.md#installation-remove) |
 | `morzer fleet` | See several machines without running a control plane | [fleet](fleet.md#the-fleet-view) |
 | `morzer fleet publish` | Write this installation's row to the targets it already uses | [fleet](fleet.md#the-fleet-view) |
 | `morzer fleet ls` (also `list`) | Read every installation's row off a target | [fleet](fleet.md#the-fleet-view) |

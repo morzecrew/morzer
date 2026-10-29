@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -69,7 +70,7 @@ func newListCommand(app *App, use string) *cobra.Command {
 func newInstallationCommand(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "installation",
-		Short: "List, export and rebuild the installations on this machine",
+		Short: "List, export, rebuild and remove installations on this machine",
 		Long: "A machine may hold several installations, keyed by product name. `list`\n" +
 			"says which — `morzer ls` is the same command, at the top level where\n" +
 			"somebody on an unfamiliar host will look for it.\n\n" +
@@ -77,7 +78,9 @@ func newInstallationCommand(app *App) *cobra.Command {
 			"encrypted secret state, so a lost machine can be rebuilt from an offline\n" +
 			"recovery key. It carries no application data: `morzer backup` owns that.\n\n" +
 			"`describe` is the other export: plaintext, readable, and safe to commit,\n" +
-			"because it holds the names of secrets rather than their values.",
+			"because it holds the names of secrets rather than their values.\n\n" +
+			"`remove` takes one installation off the machine and keeps its data unless\n" +
+			"told to --purge it.",
 	}
 
 	cmd.AddCommand(
@@ -88,8 +91,77 @@ func newInstallationCommand(app *App) *cobra.Command {
 		installationScope(newInstallationExportCommand(app)),
 		installationScope(newInstallationDescribeCommand(app)),
 		machineScope(newInstallationImportCommand(app)),
+		installationScope(newInstallationRemoveCommand(app)),
 	)
 	return cmd
+}
+
+func newInstallationRemoveCommand(app *App) *cobra.Command {
+	var (
+		purge   bool
+		confirm string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "remove",
+		Short: "Take an installation off this machine",
+		Long: "Removes the systemd units, the containers, the releases and the images\n" +
+			"only they named, the rendered secrets, the configuration, the signing key\n" +
+			"and the manager's record of the installation.\n\n" +
+			"Keeps the data and what unlocks it: the named volumes, the data and\n" +
+			"backup directories, the attestations, the journal, the secret state and\n" +
+			"the machine key. --purge removes those too. Nothing on a backup target\n" +
+			"is removed either way; the removal's own attestation is pushed there.\n\n" +
+			"Destructive: requires --force, and on a production installation\n" +
+			"--confirm <installation-id> as well. A machine left by a failed first\n" +
+			"install, with no installation record, is cleaned with --product. A plan\n" +
+			"is confirmed like the removal, so --dry-run takes the same flags.",
+		Example: "  morzer installation remove --dry-run --force --confirm inst_01K2Z9X7QK\n" +
+			"  morzer installation remove --force --confirm inst_01K2Z9X7QK\n" +
+			"  morzer installation remove --product demo --force --purge",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var report ops.RemoveReport
+			err := app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				res, err := ops.Remove(ctx, app.Deps, ops.RemoveOptions{
+					Options:                 app.operationOptions(),
+					Purge:                   purge,
+					ConfirmedInstallationID: confirm,
+				})
+				report, _ = res.Data.(ops.RemoveReport)
+				return res, err
+			})
+			if err != nil {
+				return err
+			}
+			printRemovalKept(app, report)
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&purge, "purge", false,
+		"also remove the named volumes, data, backups, attestations, secret state "+
+			"and machine key")
+	cmd.Flags().StringVar(&confirm, "confirm", "",
+		"the installation id, typed to confirm removing a production installation")
+	return cmd
+}
+
+// printRemovalKept says what a removal left and where, because the operator
+// who asked for one cannot be expected to know the layout (#158).
+func printRemovalKept(app *App, report ops.RemoveReport) {
+	body := slices.Clone(report.Kept)
+	if report.VolumesKept {
+		body = append(body, "the named volumes of the runtime's project")
+	}
+	if len(body) == 0 {
+		return
+	}
+	title := "kept"
+	if report.DryRun {
+		title = "would keep"
+	}
+	app.notice(ui.Callout{Title: title, Body: body})
 }
 
 func newInstallationExportCommand(app *App) *cobra.Command {

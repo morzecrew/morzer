@@ -217,28 +217,41 @@ func PruneReleases(ctx context.Context, d *Deps, keep int, dryRun bool) (PruneRe
 		out.Removed = append(out.Removed, e.Version.String())
 	}
 
-	out.Images.Skipped = plan.skipped
-	out.Images.Kept = append(out.Images.Kept, plan.kept...)
+	out.Images = removePlannedImages(ctx, plan, dryRun)
+	return out, nil
+}
+
+// removePlannedImages removes the names a plan allows, and reports what became
+// of every name the plan considered.
+//
+// Shared by `release prune` and `installation remove`, which differ only in
+// which releases go: one image rule, applied once (RFC 0034 decision 6).
+func removePlannedImages(ctx context.Context, plan imagePlan, dryRun bool) ImagesPrune {
+	out := ImagesPrune{
+		Removed: []string{},
+		Kept:    append([]KeptImage{}, plan.kept...),
+		Skipped: plan.skipped,
+	}
 	for i, ref := range plan.remove {
 		if dryRun {
-			out.Images.Removed = append(out.Images.Removed, ref)
+			out.Removed = append(out.Removed, ref)
 			continue
 		}
 		// Out of time, every further call fails at once, and reporting
 		// each as the runtime's refusal would name a reason that is not one.
 		if err := ctx.Err(); err != nil {
 			for _, rest := range plan.remove[i:] {
-				out.Images.Kept = append(out.Images.Kept, KeptImage{Ref: rest, Why: "not tried: " + err.Error()})
+				out.Kept = append(out.Kept, KeptImage{Ref: rest, Why: "not tried: " + err.Error()})
 			}
 			break
 		}
 		if err := plan.remover.RemoveImage(ctx, ref); err != nil {
-			out.Images.Kept = append(out.Images.Kept, KeptImage{Ref: ref, Why: keptBecause(err)})
+			out.Kept = append(out.Kept, KeptImage{Ref: ref, Why: keptBecause(err)})
 			continue
 		}
-		out.Images.Removed = append(out.Images.Removed, ref)
+		out.Removed = append(out.Removed, ref)
 	}
-	return out, nil
+	return out
 }
 
 // imagePlan is the names a prune may remove, or why it may remove none.
