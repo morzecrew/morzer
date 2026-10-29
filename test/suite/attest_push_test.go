@@ -388,3 +388,34 @@ func TestAttestationCountsAreOfStatementsAcrossTargets(t *testing.T) {
 	}
 	require.True(t, found, "doctor no longer reports whether attestations reached the targets")
 }
+
+// A machine with no backup target has nowhere to push its record, and doctor
+// says so. As information rather than a warning: nothing records whether the
+// machine is air-gapped by choice, and a warning on every such machine is how
+// an operator learns to read past doctor (SECURITY.md, known gaps).
+func TestDoctorSaysTheRecordStaysOnAMachineWithNoTarget(t *testing.T) {
+	h := verifyHarness(t)
+	attested(t, h)
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	var found bool
+	for _, res := range report.Results {
+		if res.ID != "backup.attestations-pushed" {
+			continue
+		}
+		found = true
+		assert.Equal(t, events.CheckOK, res.Status, "a machine that chose to stay offline is warned on every doctor run")
+		assert.Contains(t, res.Message, "1 attestation(s) on this machine")
+		assert.Contains(t, res.Message, "no backup target")
+		// Neither line claims more than the machine knows: a target removed
+		// after a push keeps what was pushed, so "only here" may be false,
+		// and nothing has left this machine since.
+		for _, text := range []string{res.Message, res.Description} {
+			assert.NotContains(t, text, "only on this machine", "a copy a removed target kept is denied")
+			assert.NotContains(t, text, "left this machine", "the check claims what its result denies")
+		}
+	}
+	require.True(t, found, "doctor says nothing about a record that can never leave the machine")
+}

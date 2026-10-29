@@ -208,7 +208,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			checks = append(checks, d.checkBackupTargetFreshness(inst))
 		}
 	}
-	if d.Objects != nil && inst.Backup.HasTargets() {
+	if d.Objects != nil || !inst.Backup.HasTargets() {
 		checks = append(checks, d.checkAttestationsPushed(inst))
 	}
 	if inst.Notify.HasTargets() {
@@ -539,21 +539,43 @@ func (d *Deps) checkSigningIdentity() preflight.Check {
 // not to notice. A warning at the moment it happens scrolls past; this is what
 // is still saying it tomorrow.
 //
-// Registered only when the installation configures targets. An installation
-// with none has made a choice -- an air-gapped one has made it deliberately --
-// and a permanent finding on every such machine is how an operator learns to
-// read past `doctor`.
+// On an installation with no targets it reports, as information, how many
+// statements will only ever be on this machine. Not as a warning: an air-gapped
+// one has chosen that, nothing records whether a machine chose it, and a
+// permanent finding on every such machine is how an operator learns to read
+// past `doctor`. Saying nothing at all left the machine that simply never
+// configured a target with the same exposure and no sign of it.
 //
 // Never fatal, and reachability failures are reported as what they are: this
 // asks whether a *record* left the machine, and no answer to that question is a
 // reason to stop a deployment.
 func (d *Deps) checkAttestationsPushed(inst domain.Installation) preflight.Check {
+	// The title is shown beside the result, so it says what is being asked
+	// of this machine: with no target, nothing is expected to leave it.
+	description := "attestations have left this machine"
+	if !inst.Backup.HasTargets() {
+		description = "attestations: no backup target to push them to"
+	}
 	return preflight.Check{
 		ID:          "backup.attestations-pushed",
 		Category:    preflight.CategoryBackup,
-		Description: "attestations have reached the configured targets",
+		Description: description,
 		Fatal:       false,
 		Run: func(ctx context.Context) events.CheckResult {
+			if !inst.Backup.HasTargets() {
+				local, err := localStatements(d.Paths.AttestationsDir())
+				if err != nil {
+					return preflight.Fail("", "%s", domain.AsError(err).Message)
+				}
+				if len(local) == 0 {
+					return preflight.OK("no attestations on this machine yet")
+				}
+				// Not "only on this machine": a target removed after
+				// a push keeps what it was sent.
+				return preflight.OK("%d attestation(s) on this machine, and no "+
+					"backup target is configured to push them to", len(local))
+			}
+
 			report, err := d.attestationPushState(ctx, inst)
 			if err != nil {
 				return preflight.Fail("", "%s", domain.AsError(err).Message)
