@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exit 0, even under `--json`, so a script's typo read as success. It now exits
   2 with `unknown command`, suggests the nearest subcommand, and under `--json`
   writes an error envelope. `morzer release` alone still prints its help.
+- **`morzer doctor -v` works.** Doctor declared its own `--verbose`, which hid
+  the global flag's `-v` shorthand, so `doctor -v` was refused as an unknown
+  flag. Doctor now reads the global flag, and `-v` and `--verbose` both expand
+  every check.
 
 ## [0.9.0] - 2026-10-29
 
