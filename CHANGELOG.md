@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A task's output no longer carries Compose's progress for the services it starts.** `task run` printed lines such as `Container erp-postgres-1 Healthy` with the task's own stderr, and a failed migration service could quote them, because `docker compose run` writes them to the same stream. One-shot runs now set `COMPOSE_PROGRESS=quiet`, which Compose reads from 2.36; an older Compose ignores it and prints them as before.
+
 ### Security
 
 - **A password in a bundle URL no longer reaches the journal or a support bundle.** `morzer update https://user:token@host/…` recorded the reference as typed, so the token sat in the operation journal and travelled in any support bundle sent to a vendor. The journal now keeps the URL without its password, and a support bundle strips URL credentials from every journal record, including ones written before this release. Rotate a token that was used this way.

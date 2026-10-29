@@ -457,8 +457,9 @@ The task's output is printed when it finishes: its stdout on stdout, so a report
 can be piped to a file, and its stderr on stderr. It is kept line by line and
 printed ending in a newline. As with `exec`, the first 256 KiB of each is kept,
 so a longer report is cut, and a warning on stderr after it says so; with
-`--json`, `truncated` is true. The live view tails it while
-it runs, and `--verbose` prints it as it arrives. The invocation exits with the
+`--json`, `truncated` is true. From Compose 2.36 on, Compose's own progress for
+the services the task starts first is not part of it. The live view tails it
+while it runs, and `--verbose` prints it as it arrives. The invocation exits with the
 task's own exit code. A non-zero exit fails the operation: it is `failed`, with
 nothing rolled back and nothing flagged, since the task's effects are the
 vendor's. Its error names the exit code and quotes none of the output, which the

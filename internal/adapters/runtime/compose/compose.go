@@ -485,6 +485,13 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 	argv = append(argv, opts.Argv...)
 
 	cmd, tail := withOutputTail(r.command(cfg, opts.Timeout, argv...))
+	// Compose's own progress for the services it starts first -- "Container
+	// demo-db-1 Healthy" -- goes to stderr with the container's, and the
+	// caller hands that output on as the container's and quotes it in errors.
+	// The variable rather than `--progress quiet`: Compose reads it from
+	// 2.36, and an older one ignores it, where an unknown flag value would
+	// fail the run. Measured with Compose 5.5.1.
+	cmd.Env = append(cmd.Env, "COMPOSE_PROGRESS=quiet")
 	res, err := r.runner.Run(ctx, cmd)
 	out := ports.ExitResult{
 		ExitCode: res.ExitCode,
@@ -540,10 +547,11 @@ const outputTailLines = 10
 // outputTail keeps the last lines of a run's two streams, in the order they
 // arrived.
 //
-// Stderr alone is not the tail of what a one-shot said. `compose run` writes
-// its own progress there -- "Container demo-migrate-run-1 Created" -- before the
-// container starts, so a migration that reports its failure on stdout left
-// Compose's progress as the last lines of stderr. Measured with Compose 5.5.1.
+// Stderr alone is not the tail of what a one-shot said. A Compose older than
+// 2.36 writes its own progress there -- "Container demo-migrate-run-1 Created"
+// -- before the container starts, whatever RunOneShot asks, so a migration that
+// reports its failure on stdout would leave Compose's progress as the last lines
+// of stderr. Measured with Compose 5.5.1, before RunOneShot turned it off.
 // Blank lines are dropped: one is never the reason a run failed.
 type outputTail struct {
 	mu    sync.Mutex
