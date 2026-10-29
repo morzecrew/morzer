@@ -225,3 +225,31 @@ func TestARepairKeepsTheCheckRecordedForTheSameRelease(t *testing.T) {
 	require.NotNil(t, current.SignatureVerified, "the repair erased the check the first init recorded")
 	assert.Equal(t, first.Record.ID, current.SignatureVerified.OperationID)
 }
+
+// `rollback --to` naming the previous release finds the record the manager
+// keeps for it, so the check made when it was staged comes back with it.
+func TestARollbackToThePreviousReleaseByNameKeepsItsCheck(t *testing.T) {
+	ctx := context.Background()
+	h := verifyHarness(t)
+	signingInstallation(t, h)
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	check := domain.SignatureCheck{KeyID: "E7620F1842B4E81F", OperationID: "op-init", At: domain.NewTime(time.Now().UTC())}
+	current.SignatureVerified = &check
+	require.NoError(t, h.Deps.State.SetCurrentRelease(ctx, current))
+	applyBaseline(t, h)
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.NoError(t, err)
+	rolledBack, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{
+		Options: ops.Options{Force: true}, To: current.Version.String(),
+	})
+	require.NoError(t, err)
+
+	staged, ok := verificationOf(t, h, rolledBack.Record.ID)["signature_verified_when_staged"].(map[string]any)
+	require.True(t, ok, "rollback --to dropped the check recorded for the release it returned to")
+	assert.Equal(t, "op-init", staged["operation_id"])
+}

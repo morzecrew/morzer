@@ -235,14 +235,21 @@ func (d *Deps) rollbackEndpoints(ctx context.Context, to string) (current, previ
 				WithHint("run `morzer apply` to reconverge to it, " +
 					"or `morzer release list` to see what else is installed")
 		}
-		return current, domain.ReleaseRecord{
+		record := domain.ReleaseRecord{
 			SchemaVersion:   domain.InstallationSchemaVersion,
 			Name:            target.Name(),
 			Version:         target.Version(),
 			Digest:          target.Digest,
 			Root:            target.Root,
 			SchemaAtInstall: current.SchemaAtInstall,
-		}, nil
+		}
+		// The release store keeps no record of how a release was
+		// verified, but the previous-release record does for the one
+		// release it names, and naming that release is a common --to.
+		if prev, err := d.State.PreviousRelease(ctx); err == nil && prev.Digest == target.Digest {
+			record.SignatureVerified = prev.SignatureVerified
+		}
+		return current, record, nil
 	}
 
 	if previous, err = d.State.PreviousRelease(ctx); err != nil {

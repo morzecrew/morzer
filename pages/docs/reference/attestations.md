@@ -102,8 +102,9 @@ against a release already on disk and verifies nothing. So
 Neither field is present when no signature was verified: an unsigned release, a
 machine with no signing keys, or a release staged by a version of morzer that
 did not record the check. A release returned to with `rollback --to` is the
-fourth case: it is taken from the release store, which keeps no record of how
-it was verified. Absent means no claim. Neither field is ever `false`,
+fourth case, unless it is the previous release: the release store keeps no
+record of how a release was verified, and the previous release is the one
+other than the current that the manager keeps a record for. Absent means no claim. Neither field is ever `false`,
 which would read as *"checked, and it failed"* — a much stronger claim, and one
 an auditor would act on.
 
