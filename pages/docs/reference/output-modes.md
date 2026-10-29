@@ -75,6 +75,8 @@ What this guarantees, per report:
 
 - **`--json` is the value itself**, unreshaped. No view touches it, so a change
   to how something looks is never a change to what a script reads.
+- **Nothing to list is an empty list.** A listing with no entries exits 0, and
+  under `--json` its `data` is `[]`, never `null`.
 - **Plain is line-oriented and stable in a log.** It is not "rich without
   colour": rich may draw a bordered callout where plain writes a labelled block,
   because a box drawn in a journal is noise that outlives the terminal.

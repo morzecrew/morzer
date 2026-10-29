@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Docker daemon down, or a service name that does not exist, it printed nothing
   and exited 0, and `--json` reported `"ok": true`. It now exits 7 with the
   runtime's own reason.
+- **Nothing to list is an empty list.** `attest log` on an installation that
+  has recorded nothing exited 5; it now lists no statements and exits 0, while
+  `attest verify` still refuses. Under `--json`, a listing with no entries, such
+  as `backup list` or `release list`, carried `"data": null`; it is now `[]`.
 
 ## [0.9.0] - 2026-10-29
 

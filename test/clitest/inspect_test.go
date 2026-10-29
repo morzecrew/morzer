@@ -141,6 +141,12 @@ func TestPsAndStatsAppearInTheOperatingGroup(t *testing.T) {
 	r.Run("--help").ExitCode(0).OutputContains("logs", "ps", "stats", "exec")
 }
 
+// Nothing to list is an empty list: exit 0 and `[]` under --json, never `null`.
+// `backup list` pins the same after the first release.
+func TestAnEmptyListingIsAnEmptyArray(t *testing.T) {
+	withoutARelease(t).Run("--json", "release", "list").ExitCode(0).FieldLen("data", 0)
+}
+
 // A runtime that cannot produce the stream is a failed `logs`, in both
 // renderings: a daemon that is down printed nothing and exited 0, and `--json`
 // said `"ok": true` about logs it never read. A `docker` on PATH that fails the
