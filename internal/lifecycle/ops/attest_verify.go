@@ -128,14 +128,14 @@ func AttestVerify(ctx context.Context, d *Deps, opts VerifyOptions) (VerifyRepor
 			report.Statements = append(report.Statements, item)
 			continue
 		}
-		if stmt.PredicateType != domain.PredicateType {
+		if !domain.ReadablePredicateType(stmt.PredicateType) {
 			// Refused by name rather than verified anyway. A
 			// document of another predicate type may be a perfectly
 			// good attestation of something else, and reporting on
 			// it as though it described this deployment is the
 			// confusion the predicate type exists to prevent.
-			item.Unreadable = fmt.Sprintf("predicate type %q is not %s",
-				stmt.PredicateType, domain.PredicateType)
+			item.Unreadable = fmt.Sprintf("predicate type %q is not %s or %s",
+				stmt.PredicateType, domain.PredicateType, domain.PredicateTypeV1)
 			report.Statements = append(report.Statements, item)
 			continue
 		}

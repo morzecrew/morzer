@@ -98,7 +98,13 @@ import (
 // manager's `config set` would drop both: a production machine set to no delay
 // would go back to half an hour, and one keeping three pre-update backups would
 // go back to keeping every one, which is the disk filling up again.
-const InstallationSchemaVersion = 12
+// Bumped to 13 for the release record's `signature_verified`, for the write
+// path, and for the reason schema 6 was: the record of a past check is
+// provenance nothing regenerates. Release records carry no version check of
+// their own, so this is what stops an older manager: without the bump its next
+// `apply` would rewrite current-release.json without the field, and every later
+// attestation would say nothing of a signature the machine did verify.
+const InstallationSchemaVersion = 13
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.

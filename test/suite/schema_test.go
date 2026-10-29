@@ -419,6 +419,9 @@ func TestEverySchemaIsCheckedIn(t *testing.T) {
 		schema.SecretSchemaFile,
 		schema.InstallationDocumentSchemaFile,
 		schema.AttestationSchemaFile,
+		// Kept, never regenerated: statements written before v2
+		// validate against it.
+		schema.AttestationV1SchemaFile,
 	}, found,
 		"schemas/ must hold exactly what the generator produces")
 }
@@ -487,4 +490,20 @@ func TestTheAttestationSchemaConstrainsWhatTheWriterProduces(t *testing.T) {
 	require.True(t, ok)
 	assert.NotContains(t, verification, "signature_verified",
 		"an unestablished check was rendered as a finding")
+}
+
+// A check made at staging is three facts, and the writer always emits all
+// three. Without them required, `{}` validates as one -- a provenance record
+// naming no key, no operation and no time.
+func TestAStagedSignatureCheckNamesItsKeyOperationAndTime(t *testing.T) {
+	var node map[string]any
+	raw, err := os.ReadFile(schemaPath(t, schema.AttestationSchemaFile))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &node))
+
+	verification := object(t, object(t, object(t, object(t, node, "properties"), "predicate"), "properties"), "verification")
+	staged := object(t, object(t, verification, "properties"), "signature_verified_when_staged")
+	required, _ := staged["required"].([]any)
+	assert.ElementsMatch(t, []any{"key_id", "operation_id", "at"}, required,
+		"an empty staged check validates")
 }

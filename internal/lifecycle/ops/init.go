@@ -710,14 +710,19 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 
 			// Verified before it is trusted for anything: hooks run
 			// only from a verified release.
+			var signed *domain.SignatureCheck
 			if d.Verifier != nil {
 				expect := ports.Expectation{
 					Digest:     resolved.Digest,
 					Required:   opts.RequireSignature,
 					PublicKeys: opts.SigningKeys,
 				}
-				if err := d.Verifier.Verify(ctx, ports.BundlePath(dest), expect); err != nil {
+				key, err := d.verifyBundle(ctx, ports.BundlePath(dest), expect)
+				if err != nil {
 					return err
+				}
+				if key != "" {
+					signed = &domain.SignatureCheck{KeyID: key, OperationID: st.OpID, At: domain.NewTime(d.now())}
 				}
 			}
 
@@ -755,6 +760,14 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			if err := atomicfs.ReplaceSymlink(dest, d.Paths.CurrentLink()); err != nil {
 				return err
 			}
+			// A repair that re-stages the installed release and verified
+			// nothing -- no keys passed to it -- keeps the check the
+			// release was installed with, rather than erasing it.
+			if signed == nil {
+				if current, err := d.State.CurrentRelease(ctx); err == nil && current.Digest == rel.Digest {
+					signed = current.SignatureVerified
+				}
+			}
 			// The ref is recorded here, as `update` records its own, because
 			// this is where the release becomes current (RFC 0016 decisions
 			// 15 and 21). Without it a machine installed from a registry
@@ -769,6 +782,8 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 				InstalledAt:   domain.NewTime(d.now()),
 				OperationID:   st.OpID,
 				SourceRef:     ports.RedactRefCredentials(opts.ReleasePath),
+
+				SignatureVerified: signed,
 			})
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {

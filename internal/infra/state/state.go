@@ -353,6 +353,15 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// RFC 0001 decision 21 asks for. The bump is for the write
 			// path, as 10 -> 11 was.
 			i.SchemaVersion = 12
+		case 12:
+			// 12 -> 13 added the release record's
+			// `signature_verified`. Nothing to convert, and nothing
+			// in this file at all: the field lives in the release
+			// record, absent there means no check was recorded, and a
+			// record written before it truthfully recorded none. The
+			// bump is for the write path, so an older manager refuses
+			// this state rather than rewriting the record without it.
+			i.SchemaVersion = 13
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

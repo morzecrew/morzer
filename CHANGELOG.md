@@ -7,13 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **A task's output no longer carries Compose's progress for the services it starts.** `task run` printed lines such as `Container erp-postgres-1 Healthy` with the task's own stderr, and a failed migration service could quote them, because `docker compose run` writes them to the same stream. One-shot runs now set `COMPOSE_PROGRESS=quiet`, which Compose reads from 2.36; an older Compose ignores it and prints them as before.
-
 ### Added
 
 - **`installation rotate-signing-key` replaces the key a machine signs its own statements with.** Retiring a key suspected of being stolen meant rebuilding the machine with `installation import`. The command mints a new key, records the old one under `signing.previous_keys` and moves the new one into place, so everything the old key signed still verifies as a predecessor's signature and never as the current key's; it repairs nothing the old key signed, and a fleet roster naming the machine needs the new key.
+
+### Changed
+
+- **An attestation says where a release's signature was verified.** Signatures are checked when a release is staged, and no statement said so, not even the `update` that did the checking. An `update`'s statement now sets `signature_verified` and `key_id`, and every later statement about that release carries `signature_verified_when_staged`, naming the operation that verified it. The predicate type is now `…/attestation/v2`, validated by `schemas/morzer-attestation-v2.json`; v1 statements are still read. The installation schema moves to 13, so an older manager refuses the installation rather than rewriting the release record without the check.
+
+### Fixed
+
+- **A task's output no longer carries Compose's progress for the services it starts.** `task run` printed lines such as `Container erp-postgres-1 Healthy` with the task's own stderr, and a failed migration service could quote them, because `docker compose run` writes them to the same stream. One-shot runs now set `COMPOSE_PROGRESS=quiet`, which Compose reads from 2.36; an older Compose ignores it and prints them as before.
 
 ### Security
 
