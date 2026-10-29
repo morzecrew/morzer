@@ -76,8 +76,10 @@ owns both media types.
   registries are reached over HTTP. `OpenRepository` (`oci.go:486`) is exported
   for `release pack` and returns a repository that can also push.
 - **Archive checks.** The local source opens an archive with extraction limits
-  and computes the content digest (`release.LoadAs`); `release fetch <ref>`
-  (`release.go:439`) is the pull side of what this RFC adds.
+  and loads it with `release.LoadAs`, which computes the content digest but does
+  not check `SHA256SUMS`. `release verify` adds that with `checkBundleIntegrity`
+  (`release.go:254`), and checks the signature when given `--signing-key`.
+  `release fetch <ref>` (`release.go:439`) is the pull side of what this RFC adds.
 - **0014 §8** scoped publishing out ([`0014:454`](0014-building-a-release-bundle.md)),
   noting that the `oras-go` push side was already imported.
 
@@ -103,20 +105,23 @@ owns both media types.
 
 ```sh
 morzer release push <archive> oci://<registry>/<repository>[:<version>] \
-    [--channel <tag>]... [--dry-run] [--json]
+    [--channel <tag>]... [--signing-key <key>] [--dry-run] [--json]
 ```
 
-1. Open the archive through the local source: extraction limits, the sums
-   completeness check and the content digest, as `release verify` checks a
-   directory. A missing `SHA256SUMS.minisig` warns, as `release archive` does
-   (0014 decision 12).
+1. Extract the archive through the local source (extraction limits, content
+   digest), then run on the extracted directory what `release verify` runs: the
+   sums check and template parsing, and the signature check when
+   `--signing-key` is given. Without it, a missing `SHA256SUMS.minisig` warns,
+   as `release archive` does (0014 decision 12).
 2. Take the version from the archive's manifest. A tag in the reference must
    equal it; omitted, it is derived (decision 2).
 3. Look up `:<version>` in the repository (decision 3).
 4. Push the layer, the empty config and the manifest, then tag the manifest
    with the version.
-5. Resolve the version tag back. Only if it returns the pushed digest, move
-   each `--channel` tag to that digest, one at a time.
+5. Resolve the version tag. Move each `--channel` tag, one at a time, to the
+   digest it resolves to: the manifest just pushed, or on the
+   `already-published` path the existing one whose content §5.3 confirmed. If
+   the tag resolves to anything else, no channel moves.
 6. Print the result (§5.4).
 
 ### 5.2 What is pushed
@@ -132,18 +137,20 @@ The shape `oras push --artifact-type` produces: an OCI image manifest with
 | annotation `org.opencontainers.image.version` | the version |
 | annotation `dev.morzer.bundle.digest` | the content digest |
 
-The content-digest annotation is what decision 3's comparison reads, so a
-later push answers "same content?" from one manifest request rather than by
-downloading the layer.
+The content-digest annotation is a hint, never proof: anyone who can push to
+the repository can write it. A later push trusts it only to refuse (§5.3).
 
 ### 5.3 A version that already exists
 
 | Registry has `:<version>` | Result |
 | --- | --- |
 | No | Push. |
-| Yes, annotation equals this archive's content digest | Nothing pushed; reported as `already-published`; exit 0; channels still move. |
-| Yes, annotation differs | Refused; nothing pushed, no channel moved. |
-| Yes, no annotation (pushed by `oras`) | The layer is pulled and its content digest computed, then as above. |
+| Yes, and its layer digest equals this archive's | `already-published`: nothing pushed, exit 0, channels still move. The registry checked the blob against that digest. |
+| Yes, and its annotation names another content digest | Refused; nothing pushed, no channel moved. |
+| Yes, otherwise (annotation equal or absent, layer bytes differ) | The layer is pulled and its content digest computed: equal is `already-published`, different is refused. |
+
+The annotation decides only in the refusing direction. A manifest that lies
+about it can make push refuse, never make it accept different content.
 
 Exit 0 on identical content is what makes a re-run converge: a pipeline whose
 channel move failed after the push can run the same step again.
@@ -174,9 +181,11 @@ pushed demo 1.3.0 to oci://registry.example/demo/bundle:1.3.0
 
 ## 6. Tests
 
+- An archive whose sums do not match is refused before any registry request.
 - A table test against the in-process registry in `test/suite/oci_test.go`,
   which today answers only the three requests a pull makes; it gains blob upload,
-  manifest `PUT` and tag listing. The test covers: a fresh push; identical content (exit
+  manifest `PUT` and tag listing. The test covers a manifest whose annotation
+  matches while its layer differs (refused), and also: a fresh push; identical content (exit
   0, nothing pushed); different content (refused, no channel moved); an
   annotation-less artifact pushed by hand; a channel move after a push.
 - Round trip: `release push` then `release fetch` gives the same content digest,
@@ -200,10 +209,6 @@ pushed demo 1.3.0 to oci://registry.example/demo/bundle:1.3.0
   Images live in other repositories, often under other credentials, and push
   would need write access to all of them. Decision 8 asks whether it should
   come later.
-- **Verifying the signature against a vendor key before pushing.** Push warns
-  when the signature is absent; a wrong key is still caught on the first
-  install. Escape hatch: a `--key` flag, if a vendor ships a wrongly signed
-  bundle.
 - **HTTPS uploads.** See Non-goals.
 
 ## 9. Risks
@@ -232,12 +237,12 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 | 3 | `OPEN` | **A version already published: always refuse (as #181 proposes), or exit 0 when the content digest matches?** Recommended: exit 0 as `already-published` when it matches, and refuse when it differs. Exit 0 lets a re-run converge after a failed channel move. The refusal uses exit 2 (`usage`) with a distinct error message, so no new exit code is needed. |
 | 4 | `OPEN` | **Moving a channel to a version older than the one it points at: allow, warn or refuse?** Recommended warn. Machines already refuse to follow a channel backwards, and a new installation taking the older version may be what the vendor wants. |
 | 5 | `ASSUMED` | The artifact is the shape `oras push --artifact-type` makes (§5.2), with `ArtifactType` as a constant beside `MediaType`, so the OCI source reads bundles published either way. |
-| 6 | `ASSUMED` | The manifest carries the content digest as the annotation `dev.morzer.bundle.digest`. Push compares that; it pulls the layer only for an artifact without it. |
-| 7 | `ASSUMED` | Channel tags move only after the version tag resolves to the pushed digest, one at a time. A failure stops the rest and is reported per channel, and a re-run converges under decision 3's recommendation. |
+| 6 | `ASSUMED` | The manifest carries the content digest as the annotation `dev.morzer.bundle.digest`, trusted only to refuse. "Same content" needs an identical layer digest, or a pulled layer whose content digest matches. |
+| 7 | `ASSUMED` | Channel tags move only after the version tag resolves to the manifest just pushed, or to the existing one decision 6 confirmed, one at a time. A failure stops the rest and is reported per channel, and a re-run converges under decision 3's recommendation. |
 | 8 | `OPEN` | **`--tag-images`, from #181: later, or never?** Recommended: not in P1, and built only when a vendor's registry retention deletes a pinned image. Push would need write access to every image repository. |
 | 9 | `ASSUMED` | Credentials are the ambient Docker configuration through `OpenRepository`, with the pull side's loopback-HTTP rule. Push adds no credential flags. |
 | 10 | `ASSUMED` | Output names both digests, each with its use (§5.4); `--json` carries both under distinct keys. |
-| 11 | `ASSUMED` | The archive is checked through the local source before anything is sent: extraction limits, sums and content digest. A missing signature warns, as `release archive` does. |
+| 11 | `ASSUMED` | Before anything is sent, the archive is extracted through the local source and checked as `release verify` checks a directory: sums, templates, and the signature under `--signing-key`. Without that flag a missing signature warns, as `release archive` does. |
 
 ## 12. Phasing
 
