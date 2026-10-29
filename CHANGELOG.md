@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **An attestation says where a release's signature was verified.** Signatures are checked when a release is staged, and no statement said so, not even the `update` that did the checking. An `update`'s statement now sets `signature_verified` and `key_id`, and every later statement about that release carries `signature_verified_when_staged`, naming the operation that verified it. The predicate type is now `…/attestation/v2`, validated by `schemas/morzer-attestation-v2.json`; v1 statements are still read. The installation schema moves to 13, so an older manager refuses the installation rather than rewriting the release record without the check.
 
+### Security
+
+- **A password in a bundle URL no longer reaches the journal or a support bundle.** `morzer update https://user:token@host/…` recorded the reference as typed, so the token sat in the operation journal and travelled in any support bundle sent to a vendor. The journal now keeps the URL without its password, and a support bundle strips URL credentials from every journal record, including ones written before this release. Rotate a token that was used this way.
+
 ## [0.8.0] - 2026-10-29
 
 Three things done by hand now have commands. A release can declare tasks an

@@ -335,7 +335,10 @@ func (d *Deps) resolveUpdateTarget(
 }
 
 func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string {
-	flags := map[string]string{"ref": opts.Ref}
+	// Redacted as the stored source reference is: the flags go into the
+	// journal and into every notification, and a bundle URL may carry a
+	// password.
+	flags := map[string]string{"ref": ports.RedactRefCredentials(opts.Ref)}
 	if inst.Policy.SkipBackupBeforeUpdate {
 		// A durable choice rather than a per-run one, and just as
 		// consequential: the journal is where an incident review looks
