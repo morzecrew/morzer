@@ -148,6 +148,14 @@ func TestAStreamThatTheRuntimeFailedEndsWithItsError(t *testing.T) {
 	if !strings.Contains(domain.AsError(err).Message, "no such service: nosuch") {
 		t.Errorf("the error %q lost compose's own reason", domain.AsError(err).Message)
 	}
+
+	// Nothing on stderr still names a reason: the exit status.
+	silent := startShellStream(t, context.Background(), "exit 3")
+	defer func() { _ = silent.Close() }()
+	if _, err := io.ReadAll(silent); err == nil ||
+		!strings.Contains(domain.AsError(err).Message, "exit status 3") {
+		t.Errorf("a silent failure reported %v, want its exit status", err)
+	}
 }
 
 // The other half: a stream that ran to its end, or that morzer stopped, is

@@ -70,7 +70,10 @@ func (s *streamCloser) Read(p []byte) (int, error) {
 	if !errors.Is(err, io.EOF) || s.cmd == nil {
 		return n, err
 	}
-	if waitErr := s.wait(); waitErr != nil && s.ctx.Err() == nil {
+	// An exit status only. Wait also reports ErrWaitDelay for a compose that
+	// exited 0 while a child held stderr open, and that stream did end.
+	var exit *osexec.ExitError
+	if waitErr := s.wait(); errors.As(waitErr, &exit) && s.ctx.Err() == nil {
 		reason := exec.Redact(s.redact, domain.LastLines(string(s.stderr.buf), 3))
 		if reason == "" {
 			reason = waitErr.Error()
