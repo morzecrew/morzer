@@ -10,8 +10,10 @@ package contract
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -142,6 +144,49 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 
 		require.Error(t, store.Rotate(ctx, "never-existed", spec),
 			"rotating a secret that does not exist must fail rather than create one")
+	})
+
+	t.Run("concurrent writers lose nothing", func(t *testing.T) {
+		// Each write changes the state as a whole. Two at once -- an
+		// operator's `secret set` while an update generates the secret its
+		// release adds -- must both land, rather than the later save
+		// dropping what the earlier one wrote.
+		store := newStore(t)
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "seed", domain.NewSecret("seed-value")))
+		spec := ports.GenSpec{Generator: domain.Generator{Kind: domain.GeneratorPassword, Length: 24}}
+
+		const writers = 6
+		names := make([]string, writers)
+		errs := make([]error, writers)
+		// Released together, so the writes overlap rather than each
+		// finishing before the next goroutine is scheduled.
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := range writers {
+			names[i] = fmt.Sprintf("writer_%d", i)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				if i%2 == 0 {
+					errs[i] = store.Set(ctx, names[i], domain.NewSecret("set-"+names[i]))
+				} else {
+					errs[i] = store.Generate(ctx, names[i], spec)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+		for i, err := range errs {
+			require.NoError(t, err, names[i])
+		}
+
+		set, err := store.Load(ctx)
+		require.NoError(t, err)
+		for _, name := range append(names, "seed") {
+			assert.True(t, set.Has(name), "%s was written and then lost to a concurrent write", name)
+		}
 	})
 
 	t.Run("render writes 0400 files inside a 0700 directory", func(t *testing.T) {

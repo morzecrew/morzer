@@ -1,4 +1,5 @@
-// Package lock implements the deployment lock.
+// Package lock implements the manager's named locks: the deployment lock, and
+// the lock every write to the secret state takes.
 //
 // Two concurrent mutating operations on one installation is the race the whole
 // design assumes away, so acquiring this is the first step of every mutating
@@ -71,7 +72,7 @@ func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOption
 		return nil, err
 	}
 
-	fl, locked, err := l.tryAcquire(ctx, l.path(name), opts)
+	fl, locked, err := l.tryAcquire(ctx, name, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +147,8 @@ func (l *fileLock) Unlock() error {
 // Waiting polls rather than blocking in the kernel, which is what makes ctrl-c
 // work at the prompt: a descriptor parked in a blocking flock(2) is not woken
 // by a cancelled context.
-func (l *Locker) tryAcquire(ctx context.Context, path string, opts ports.LockOptions) (*fileLock, bool, error) {
+func (l *Locker) tryAcquire(ctx context.Context, name string, opts ports.LockOptions) (*fileLock, bool, error) {
+	path := l.path(name)
 	// Cancellation is checked before the first attempt, not only in the poll
 	// below.
 	//
@@ -160,12 +162,12 @@ func (l *Locker) tryAcquire(ctx context.Context, path string, opts ports.LockOpt
 	// context: it is one syscall that either succeeds or names the holder,
 	// and there is nothing to interrupt.
 	if opts.Wait && ctx.Err() != nil {
-		return nil, false, domain.Interrupted("gave up waiting for the deployment lock")
+		return nil, false, domain.Interrupted("gave up waiting for the %s lock", name)
 	}
 
 	fl, locked, err := tryFlock(path)
 	if err != nil {
-		return nil, false, domain.Internal(err, "cannot acquire the deployment lock")
+		return nil, false, domain.Internal(err, "cannot acquire the %s lock", name)
 	}
 	if locked || !opts.Wait {
 		return fl, locked, nil
@@ -181,11 +183,11 @@ func (l *Locker) tryAcquire(ctx context.Context, path string, opts ports.LockOpt
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, false, domain.Interrupted("gave up waiting for the deployment lock")
+			return nil, false, domain.Interrupted("gave up waiting for the %s lock", name)
 		case <-ticker.C:
 			fl, locked, err := tryFlock(path)
 			if err != nil {
-				return nil, false, domain.Internal(err, "cannot acquire the deployment lock")
+				return nil, false, domain.Internal(err, "cannot acquire the %s lock", name)
 			}
 			if locked {
 				return fl, true, nil
