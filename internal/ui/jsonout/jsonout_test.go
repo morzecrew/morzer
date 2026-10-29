@@ -158,3 +158,78 @@ func TestAnEmptyListingIsAnEmptyArray(t *testing.T) {
 		t.Errorf("data is %s, want []", got)
 	}
 }
+
+// TestAnEmptyListAnywhereInTheDataIsAnEmptyArray. Only `data` itself was
+// covered, so a report holding a list -- `release prune`'s `removed` -- still
+// said `null` for nothing removed. Every depth a report can put a list at,
+// and the values that must come through untouched beside them.
+func TestAnEmptyListAnywhereInTheDataIsAnEmptyArray(t *testing.T) {
+	type inner struct {
+		Names []string `json:"names"`
+	}
+	type report struct {
+		Removed  []string            `json:"removed"`
+		Nested   inner               `json:"nested"`
+		Pointer  *inner              `json:"pointer"`
+		Absent   *inner              `json:"absent"`
+		ByName   map[string][]string `json:"by_name"`
+		NoMap    map[string]string   `json:"no_map"`
+		Rows     []inner             `json:"rows"`
+		Any      any                 `json:"any"`
+		Raw      []byte              `json:"raw"`
+		Message  json.RawMessage     `json:"message"`
+		Omitted  []string            `json:"omitted,omitempty"`
+		Kept     []string            `json:"kept"`
+		internal []string
+	}
+	in := &report{
+		Pointer:  &inner{},
+		ByName:   map[string][]string{"a": nil},
+		Rows:     []inner{{}},
+		Any:      inner{},
+		Kept:     []string{"x"},
+		internal: []string{"private"},
+	}
+
+	var out bytes.Buffer
+	p := jsonout.New(jsonout.Options{Out: &out})
+	if err := p.Write("release prune", in, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	var env struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("not one JSON object: %v\n%s", err, out.String())
+	}
+	for field, want := range map[string]string{
+		"removed": `[]`,
+		"nested":  `{"names":[]}`,
+		"pointer": `{"names":[]}`,
+		"absent":  `null`,
+		"by_name": `{"a":[]}`,
+		"no_map":  `null`,
+		"rows":    `[{"names":[]}]`,
+		"any":     `{"names":[]}`,
+		"raw":     `null`,
+		"message": `null`,
+		"kept":    `["x"]`,
+	} {
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, env.Data[field]); err != nil {
+			t.Fatalf("%s: %v", field, err)
+		}
+		if got := compact.String(); got != want {
+			t.Errorf("%s is %s, want %s", field, got, want)
+		}
+	}
+	if _, ok := env.Data["omitted"]; ok {
+		t.Error("an omitempty list was written; it should still be left out")
+	}
+
+	// The caller's value is read, never rewritten.
+	if in.Removed != nil || in.Pointer.Names != nil || in.ByName["a"] != nil || len(in.internal) != 1 {
+		t.Error("the data passed in was modified")
+	}
+}

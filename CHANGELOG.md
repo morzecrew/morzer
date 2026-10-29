@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `attest verify` still refuses. Under `--json`, a listing with no entries, such
   as `backup list` or `release list`, carried `"data": null`; it is now `[]`.
 
+- **An empty list inside a `--json` report is `[]`.** `release prune` with
+  nothing to remove reported `"removed": null`. Every list in every report is
+  now `[]` when empty.
+
 - **A mistyped subcommand fails instead of printing help.** `morzer release
   verfy` printed the group's help and exited 0, even under `--json`. It now
   exits 2 with `unknown command` and suggests a subcommand when one is close;

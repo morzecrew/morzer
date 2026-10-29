@@ -10,6 +10,7 @@
 package jsonout
 
 import (
+	"encoding"
 	"encoding/json"
 	"io"
 	"reflect"
@@ -126,9 +127,10 @@ func (p *Presenter) Write(command string, data any, record *domain.OperationReco
 
 	// An empty listing is `[]`, never `null`: ports return nil for "nothing
 	// yet", and a consumer iterating the result should not need a second
-	// branch for it. Only on success, where an empty list is the answer.
-	if v := reflect.ValueOf(data); err == nil && v.Kind() == reflect.Slice && v.IsNil() {
-		data = reflect.MakeSlice(v.Type(), 0, 0).Interface()
+	// branch for it. A failure's own nil listing stays null -- there is no
+	// answer to be empty -- but a list inside a report is a list either way.
+	if v := reflect.ValueOf(data); v.IsValid() && (err == nil || v.Kind() != reflect.Slice || !v.IsNil()) {
+		data = emptyLists(v).Interface()
 	}
 
 	env := Envelope{
@@ -150,4 +152,75 @@ func (p *Presenter) Write(command string, data any, record *domain.OperationReco
 	enc := json.NewEncoder(p.out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(env)
+}
+
+var (
+	jsonMarshaler = reflect.TypeFor[json.Marshaler]()
+	textMarshaler = reflect.TypeFor[encoding.TextMarshaler]()
+)
+
+// emptyLists returns a copy of v in which every nil slice, at any depth, is an
+// empty one, so it encodes as `[]`.
+//
+// Once, here, rather than per report: a report type is added far more often
+// than this file changes, and initialising every list field by hand is the
+// rule the next one forgets. A copy, because the value belongs to the command.
+// A type with its own encoding is left alone, and so is []byte, which encodes
+// as a string. Report values are trees; a cycle would not terminate.
+func emptyLists(v reflect.Value) reflect.Value {
+	t := v.Type()
+	if t.Implements(jsonMarshaler) || t.Implements(textMarshaler) ||
+		reflect.PointerTo(t).Implements(jsonMarshaler) || reflect.PointerTo(t).Implements(textMarshaler) {
+		return v
+	}
+	switch v.Kind() {
+	case reflect.Pointer:
+		if v.IsNil() {
+			return v
+		}
+		out := reflect.New(t.Elem())
+		out.Elem().Set(emptyLists(v.Elem()))
+		return out
+	case reflect.Interface:
+		if v.IsNil() {
+			return v
+		}
+		out := reflect.New(t).Elem()
+		out.Set(emptyLists(v.Elem()))
+		return out
+	case reflect.Struct:
+		out := reflect.New(t).Elem()
+		out.Set(v)
+		for i := range v.NumField() {
+			if f := out.Field(i); f.CanSet() {
+				f.Set(emptyLists(v.Field(i)))
+			}
+		}
+		return out
+	case reflect.Map:
+		if v.IsNil() {
+			return v
+		}
+		out := reflect.MakeMapWithSize(t, v.Len())
+		for it := v.MapRange(); it.Next(); {
+			out.SetMapIndex(it.Key(), emptyLists(it.Value()))
+		}
+		return out
+	case reflect.Slice:
+		if t.Elem().Kind() == reflect.Uint8 {
+			return v
+		}
+		out := reflect.MakeSlice(t, v.Len(), v.Len())
+		for i := range v.Len() {
+			out.Index(i).Set(emptyLists(v.Index(i)))
+		}
+		return out
+	case reflect.Array:
+		out := reflect.New(t).Elem()
+		for i := range v.Len() {
+			out.Index(i).Set(emptyLists(v.Index(i)))
+		}
+		return out
+	}
+	return v
 }
