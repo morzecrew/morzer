@@ -225,7 +225,8 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	help := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		typed := cmd.Flags().Args()
-		if len(typed) == 0 || cmd.Runnable() || !cmd.HasSubCommands() || cmd.Flags().Changed("help") {
+		asked, _ := cmd.Flags().GetBool("help")
+		if len(typed) == 0 || cmd.Runnable() || !cmd.HasSubCommands() || asked {
 			help(cmd, args)
 			return
 		}

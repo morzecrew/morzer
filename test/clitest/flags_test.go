@@ -66,6 +66,8 @@ func TestAMistypedSubcommandIsAnError(t *testing.T) {
 	// The group alone, or asked for help, still answers with its help.
 	r.Run("release").ExitCode(0).StdoutContains("Available Commands")
 	r.Run("release", "--help", "verfy").ExitCode(0).StdoutContains("Available Commands")
+	// Help said no to is not help asked for.
+	r.Run("release", "verfy", "--help=false").ExitCode(2)
 }
 
 // TestAJSONRunAlwaysProducesAnEnvelope.
