@@ -2334,7 +2334,8 @@ reason: <code>morzer logs</code> relays what a container wrote, and <code>morzer
 what the command inside it printed. An operator piping <code>morzer exec db --
 pg_dump</code> into a file must get the dump, not a report about it — so nothing wraps,
 colours or frames either one. The rule the build enforces knows both by name;
-nothing else may join them.</p>
+nothing else may join them. <code>exec</code> keeps the first 256 KiB of each stream, so a
+larger dump is cut, and a warning on stderr says so.</p>
 <h2 id="the-one-streaming-exception">The one streaming exception<a class="headerlink" href="#the-one-streaming-exception" title="Permanent link">&para;</a></h2>
 <p>Every command emits exactly one <abbr title="JavaScript Object Notation">JSON</abbr> object under <code>--json</code> — except
 <a href="../commands/#logs"><code>morzer logs</code></a>, which emits one per line and no envelope:</p>

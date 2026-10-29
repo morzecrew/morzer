@@ -3283,6 +3283,11 @@ indistinguishable from an idle deployment.</p>
 <p>Runs one command inside a running container of the named service and propagates
 its exit code, so a failed command fails the invocation. Everything after <code>--</code>
 is the container's command line and nothing else; the terminator is required.</p>
+<p>The command's output is printed when it ends, its stdout on stdout and its
+stderr on stderr, unchanged. The first 256 KiB of each is kept, so a longer
+output is cut; a warning on stderr after it says so, and with <code>--json</code>
+<code>truncated</code> is true. The exit code is still the command's own, so <code>exec</code>
+cannot carry a dump larger than that.</p>
 <p>Not an interactive shell: there is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin, so a command that
 prompts waits for an answer nobody can give. There is no <code>--user</code> and no
 shortcut for running as root.</p>
@@ -3337,7 +3342,8 @@ for the task's own.</p>
 <p>The task's output is printed when it finishes: its stdout on stdout, so a report
 can be piped to a file, and its stderr on stderr. It is kept line by line and
 printed ending in a newline. As with <code>exec</code>, the first 256 KiB of each is kept,
-so a longer report is cut. The live view tails it while
+so a longer report is cut, and a warning on stderr after it says so; with
+<code>--json</code>, <code>truncated</code> is true. The live view tails it while
 it runs, and <code>--verbose</code> prints it as it arrives. The invocation exits with the
 task's own exit code. A non-zero exit fails the operation: it is <code>failed</code>, with
 nothing rolled back and nothing flagged, since the task's effects are the
