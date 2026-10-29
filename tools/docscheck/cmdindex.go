@@ -234,15 +234,19 @@ func pageTitleAnchor(pages []page, rel string) string {
 	return ""
 }
 
-var slugDrop = regexp.MustCompile(`[^a-z0-9 -]`)
+var (
+	slugDrop = regexp.MustCompile(`[^a-z0-9_\s-]`)
+	slugJoin = regexp.MustCompile(`[-\s]+`)
+)
 
-// slug turns a heading into the anchor a Markdown renderer gives it:
-// lowercased, punctuation dropped, spaces to hyphens.
+// slug turns a heading into the anchor the site generator gives it:
+// lowercased, everything but letters, digits, underscores, spaces and hyphens
+// dropped, and each run of spaces and hyphens joined into one hyphen -- so
+// "What `--render-check` checks" is `what-render-check-checks`, and an
+// underscore in a field name survives.
 func slug(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	s = strings.ReplaceAll(s, "`", "")
-	s = slugDrop.ReplaceAllString(s, "")
-	return strings.ReplaceAll(strings.Join(strings.Fields(s), " "), " ", "-")
+	s = strings.TrimSpace(slugDrop.ReplaceAllString(strings.ToLower(s), ""))
+	return slugJoin.ReplaceAllString(s, "-")
 }
 
 // renderIndex writes the page.

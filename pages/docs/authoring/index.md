@@ -74,6 +74,27 @@ nothing here can drift from something that demonstrably works. The same is true
 of the [three-tier example](a-three-tier-bundle.md), which the acceptance run
 installs, reconfigures and probes on every change.
 
+## With a coding agent
+
+If an AI coding agent writes or changes your bundle, install the skill this
+repository ships for it. It gives the agent the loop above (scaffold, verify,
+render-check), the decisions a passing `verify` cannot catch, and a pointer to
+the page that covers each part of the bundle, so the agent reads these pages
+instead of guessing at fields.
+
+```sh
+npx skills add https://github.com/morzecrew/morzer/tree/v0.8.0/skills/morzer-bundle-authoring
+```
+
+The path pins the skill to a release, so it describes the manifest that release's
+manager reads. `npx skills add morzecrew/morzer --skill morzer-bundle-authoring`
+takes it from `main` instead. It is in the [Agent Skills](https://agentskills.io/)
+format, which Claude Code, Codex, Cursor and the other agents the installer
+supports all read; the skill itself is
+[in the repository](https://github.com/morzecrew/morzer/tree/main/skills/morzer-bundle-authoring).
+The documentation build checks every command, long flag and link in it, so it
+cannot name a command or a page that no longer exists.
+
 <div class="grid cards" markdown>
 
 -   :lucide-file-code:{ .lg .middle } **Build your first bundle**

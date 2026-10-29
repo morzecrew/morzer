@@ -29,6 +29,10 @@
 //     cannot cover these: they are external URLs, and resolving them would make
 //     the build depend on GitHub being up and on a release existing.
 //
+//  6. Agent skills. Every `morzer` command and long flag a skill under
+//     `skills/` shows as code exists, and every link it makes into the
+//     published documentation reaches a page and a heading on it.
+//
 // The contracts are read from the source -- consts by AST, schema fields by
 // reflection, the CLI surface by walking the real command tree -- so this cannot
 // drift the way a hand-maintained checklist would.
@@ -112,6 +116,7 @@ func main() {
 	checkSupportInventory(&rep, root)
 	checkDescribeExclusions(&rep, root)
 	checkReleaseAssets(&rep, root, pages)
+	checkSkills(&rep, root)
 
 	if rep.failed() {
 		rep.print(os.Stderr)
