@@ -337,6 +337,37 @@ func TestReleaseBuildRefusesABrokenBundleBeforeWritingAnything(t *testing.T) {
 	}
 }
 
+// TestReleaseBuildRefusesAnUnknownProviderBeforeWritingAnything. The provider
+// check is cheap and needs only the manifest, so a refusal that came after the
+// stamp and the checksum list left the vendor's tree changed by a build that
+// failed.
+func TestReleaseBuildRefusesAnUnknownProviderBeforeWritingAnything(t *testing.T) {
+	r := clitest.New(t)
+
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vault := strings.Replace(string(data), "secrets: {name: sops-age}", "secrets: {name: vault}", 1)
+	if vault == string(data) {
+		t.Fatal("the fixture no longer names its secrets provider")
+	}
+	if err := os.WriteFile(manifest, []byte(vault), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Run("release", "build", r.Bundle, "--version", "1.4.0").ExitCode(2).
+		OutputContains(`"vault"`)
+
+	if _, err := os.Stat(filepath.Join(r.Bundle, "SHA256SUMS")); err == nil {
+		t.Error("a refused build wrote a checksum list anyway")
+	}
+	if after, _ := os.ReadFile(manifest); string(after) != vault {
+		t.Error("a refused build stamped the manifest anyway")
+	}
+}
+
 // TestAnArchiveInstallsWithoutBeingToldTheProduct is D-054, end to end.
 //
 // `--release` names a directory or a `.tar.zst`, and the product name comes

@@ -235,6 +235,28 @@ func TestReleaseVerifyRefusesATemplateThatCannotParse(t *testing.T) {
 		OutputContains("bundle is valid")
 }
 
+// TestReleaseVerifyRefusesAProviderThisManagerDoesNotHave: the provider names
+// were never read, so a manifest asking for `vault` verified, installed and ran
+// on sops-age without a word. Refused where the vendor can still change it; the
+// commands that install a release only warn, and the half that the operator
+// sees is pinned in ops.
+func TestReleaseVerifyRefusesAProviderThisManagerDoesNotHave(t *testing.T) {
+	r := clitest.New(t)
+
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	original, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	vault := strings.Replace(string(original), "secrets: {name: sops-age}", "secrets: {name: vault}", 1)
+	require.NotEqual(t, string(original), vault, "the fixture no longer names its secrets provider")
+	require.NoError(t, os.WriteFile(manifest, []byte(vault), 0o600))
+
+	r.Run("release", "verify", r.Bundle).ExitCode(2).
+		StderrContains("providers.secrets.name", `"vault"`, "sops-age")
+
+	require.NoError(t, os.WriteFile(manifest, original, 0o600))
+	r.Run("release", "verify", r.Bundle).ExitCode(0)
+}
+
 // TestPruneNeverRemovesAStagedCandidate.
 //
 // Staging ahead of the operator's decision is most of what makes channel

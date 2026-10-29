@@ -55,12 +55,12 @@ $ morzer support bundle
   logs/          the deployment produced no log output to capture
 
   written
-/home/ops/support-demo-op_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst
+/home/ops/support-demo-inst_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst
 
   this archive is not encrypted: anyone who receives it can read all of it
 
   signed, with the signature beside it
-/home/ops/support-demo-op_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst.minisig
+/home/ops/support-demo-inst_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst.minisig
 ```
 
 The path is printed unindented and unwrapped on purpose: it is there to be
@@ -150,7 +150,7 @@ already exists — yours, or one somebody sent you — and says what the signatu
 beside it established.
 
 ```console
-$ morzer support inspect support-demo-op_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst
+$ morzer support inspect support-demo-inst_01M03BW5G7SMMHKDFMTC932W5T-20260815T184516Z.tar.zst
   signature verified against this installation's recorded keys
 RWSbkfcEJXP0Nt8GsDcJYJaaWlZGC4PFT0OETCB222gEu34G9+PwMepB
 ```

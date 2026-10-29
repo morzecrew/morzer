@@ -345,8 +345,9 @@ one most likely to have rotted.
 
 ## Retention
 
-Governed by `retention.backups` in the manifest, or `policy.retain_backups` in
-your installation when you want a different number than the vendor chose. **The
+Governed by `retention.backups` in the manifest. No command overrides it yet:
+`policy.retain_backups` in `installation.yaml` is a report of the recorded
+state, and editing it changes nothing (`doctor` says so). **The
 most recent backup is never pruned**, whatever the number says.
 
 Pre-update backups are counted apart. The newest three are kept on top of that
