@@ -3189,7 +3189,7 @@ the secret state, service and health status, disk headroom, and the journal.</p>
 <p>The rotation remedy names the command that will actually work: <code>secret rotate</code>
 for a secret the release declares a generator for, and <code>secret set</code> for one it
 does not — pointing at <code>rotate</code> there would point at a command that fails.</p>
-<p>One check about images does <strong>fail</strong> rather than warn:</p>
+<p>These checks <strong>fail</strong> rather than warn:</p>
 <table>
 <thead>
 <tr>
@@ -3205,6 +3205,10 @@ does not — pointing at <code>rotate</code> there would point at a command that
 <tr>
 <td><code>runtime.declared</code></td>
 <td>The runtime this installation is fixed to, and whether this manager drives it. Ok reports the name. It fails when they differ — a state file that arrived from a machine running something else, by import or by hand — and that failure is the one with no fix on this machine: the runtime is chosen when the installation is created and never transitions, so the way out is a manager built for it, or a fresh <code>init</code> and a <code>restore</code>. On a machine with no installation yet, <code>doctor</code> instead checks the tools that runtime needs, which is what <code>init</code> will want next.</td>
+</tr>
+<tr>
+<td><code>runtime.services</code></td>
+<td>Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose.</td>
 </tr>
 </tbody>
 </table>

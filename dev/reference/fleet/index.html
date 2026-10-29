@@ -2628,10 +2628,10 @@ with these keys, are the fleet</em>.</p>
 <div class="highlight"><span class="filename">roster.yaml</span><pre><span></span><code><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="nt">installations</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">product</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
-<span class="w">    </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">op_01K2Z9QW8ERT6YH3VXNBM5CDFG</span>
+<span class="w">    </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">inst_01K2Z9QW8ERT6YH3VXNBM5CDFG</span>
 <span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RWT7rtLRtKF6w2xzWe+mSOZBhXrz+VxeN1mdnNL2xgQq1jwtbt+ccErb</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">product</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">web</span>
-<span class="w">    </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">op_01K3A7B2C9DEF4GH5IJ6KL7MNO</span>
+<span class="w">    </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">inst_01K3A7B2C9DEF4GH5JK6MN7PQR</span>
 <span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RWQ+QYtyW1lxQKN6N1DPOpPdi0VlWcoWadP9MjAAv8cpNYDqQ9jDLnpM</span>
 </code></pre></div>
 <table>
@@ -2652,7 +2652,7 @@ with these keys, are the fleet</em>.</p>
 </tr>
 <tr>
 <td><code>id</code></td>
-<td>its installation id — the one in the key it publishes at</td>
+<td>its installation id — the one in the key it publishes at. <code>inst_</code> and a <abbr title="Universally Unique Lexicographically Sortable Identifier">ULID</abbr>; an installation created by an older morzer keeps the <code>op_</code> id it was given</td>
 </tr>
 <tr>
 <td><code>key</code></td>
