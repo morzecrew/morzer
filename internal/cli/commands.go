@@ -197,7 +197,7 @@ func newInitCommand(app *App) *cobra.Command {
 		"refuse any release that is not signed by a configured signing key")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
 	f.StringVar(&mode, "mode", "",
-		"what this machine is for: `dev` for a sandbox, or production (the default). "+
+		"what this machine is for: dev for a sandbox, or production (the default). "+
 			"Fixed at creation and never changeable afterwards")
 
 	return cmd
@@ -962,7 +962,7 @@ func newRestoreCommand(app *App) *cobra.Command {
 	f.StringVar(&confirm, "confirm", "", "the installation id, typed to confirm a destructive restore")
 	f.StringSliceVar(&components, "component", nil,
 		"limit the restore to these components: database, files, config, manifest, volumes "+
-			"(`secrets` names a retired component, still accepted for older backups)")
+			"(secrets names a retired component, still accepted for older backups)")
 	f.StringVar(&identity, "identity", "",
 		"age identity that can decrypt the backup; defaults to this machine's own key")
 	f.BoolVar(&crossInst, "allow-cross-installation", false,

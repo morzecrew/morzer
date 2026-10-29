@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the global flag's `-v` shorthand, so `doctor -v` was refused as an unknown
   flag. Doctor now reads the global flag, and `-v` and `--verbose` both expand
   every check.
+- **Flag help no longer shows an example as the flag's value.** A backticked
+  word in a flag's help became its value name, so `--help` printed
+  `--since 10m`, `--mode dev`, `--component secrets` and
+  `--version-from-git git describe`. Those lines now name the value's type.
+  `release show --help` no longer points at `release verify --bundle`, a flag
+  that does not exist; it names `release verify <path>`.
 
 ## [0.9.0] - 2026-10-29
 

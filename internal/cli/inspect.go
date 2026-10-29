@@ -112,7 +112,7 @@ func newLogsCommand(app *App) *cobra.Command {
 	f.IntVar(&tail, "tail", defaultLogTail,
 		"lines of history to show before following; 0 for the whole retained backlog")
 	f.StringVar(&since, "since", "",
-		"only lines after this: a duration (`10m`, `2h`) or an RFC 3339 timestamp with a zone")
+		"only lines after this: a duration (10m, 2h) or an RFC 3339 timestamp with a zone")
 	f.BoolVar(&noRedact, "no-redact", false,
 		"do not scrub this installation's secret values from the stream")
 

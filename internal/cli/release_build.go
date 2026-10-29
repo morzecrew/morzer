@@ -116,7 +116,7 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 	cmd.Flags().StringVar(&version, "version", "",
 		"version to stamp into manifest.yaml and VERSION")
 	cmd.Flags().BoolVar(&fromGit, "version-from-git", false,
-		"derive the version from `git describe`: <next-patch>-dev.<distance>.g<sha>")
+		"derive the version from git describe: <next-patch>-dev.<distance>.g<sha>")
 	cmd.Flags().BoolVar(&allowDirty, "allow-dirty", false,
 		"with --version-from-git, allow a work tree with uncommitted changes")
 	cmd.MarkFlagsMutuallyExclusive("version", "version-from-git")
