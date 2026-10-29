@@ -222,8 +222,18 @@ document signed with the same minisign key that signs their bundles:
 - **What the machine checks.** The signature, against `policy.signing_keys`.
   That `sequence` is not lower than the highest it has accepted, so a replayed
   older index is refused. That `expires_at` is in the future. That
-  `release.digest` matches what the channel tag resolves to, so the index and
-  the tag cannot be mixed from different moments.
+  `release.digest` matches the bundle the channel tag resolves to, so the index
+  and the tag cannot be mixed from different moments.
+- **Which digest it binds.** `release.digest` is the bundle's *content* digest:
+  the transport-independent value `release build` and `release verify` report
+  and `update --digest` pins ([0004](0004-distribution-and-verification.md)
+  decision 4). It is not the OCI manifest digest a peek returns
+  (`ChannelState.UpstreamDigest`). That one is the registry's, and it changes
+  when identical content is pushed again, which `stageCandidate` already treats
+  as no change. So the checks split by cost. The index's signature, sequence and
+  expiry are checked at the peek, since they need no download. The content
+  digest is compared once the candidate is fetched and its digest computed,
+  before it is staged, and a mismatch refuses the candidate.
 - **What an expired index does.** It is the freeze signal. Whether it refuses
   to stage, or stages and warns, is the decision in §11 row 3. Either way
   `status` and `doctor` report "the channel's index expired N days ago", which
@@ -329,7 +339,7 @@ document signed with the same minisign key that signs their bundles:
 | 7 | `ASSUMED` | `rollback` is exempt from both floors, and moves the installed floor down with the release; it has its own schema checks, and going back is its purpose. |
 | 8 | `ASSUMED` | The index is signed with the vendor's bundle key from `policy.signing_keys`, not a separate key, so a vendor has one key to protect and an installation one list to configure. |
 | 9 | `ASSUMED` | On OCI the index is an artifact under `<channel>.index`, fetched in the same poll as the channel's peek. A channel without an index is followed as today. |
-| 10 | `ASSUMED` | The index pins the release by digest, and a disagreement between the index and the tag is a refusal: a tag and an index read at different moments must not combine into a release neither named. |
+| 10 | `ASSUMED` | The index pins the release by its bundle content digest, never the registry's manifest digest, and the comparison happens after the fetch that computes it. A disagreement between the index and the fetched bundle is a refusal: a tag and an index read at different moments must not combine into a release neither named. |
 | 11 | `ASSUMED` | The installed floor is the current release's version, read from the current-release record, and is source-independent because an installation is one product. Channel marks are kept per channel, so a switch to another channel is judged by that channel's own history. |
 | 12 | `ASSUMED` | Only a bundle that was fetched and verified raises a channel mark. A peek and `update --check` see tags and manifest digests, so they raise nothing: a registry advertising a false high version must not be able to block real releases below it. |
 | 13 | `ASSUMED` | A channel is identified by its reference after `ports.RedactRefCredentials`, in the stored key and in every message and journal entry that names it. |
