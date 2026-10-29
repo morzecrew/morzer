@@ -550,10 +550,16 @@ func (d *Deps) checkSigningIdentity() preflight.Check {
 // asks whether a *record* left the machine, and no answer to that question is a
 // reason to stop a deployment.
 func (d *Deps) checkAttestationsPushed(inst domain.Installation) preflight.Check {
+	// The title is shown beside the result, so it says what is being asked
+	// of this machine: with no target, nothing is expected to leave it.
+	description := "attestations have left this machine"
+	if !inst.Backup.HasTargets() {
+		description = "attestations stay on this machine: no backup target"
+	}
 	return preflight.Check{
 		ID:          "backup.attestations-pushed",
 		Category:    preflight.CategoryBackup,
-		Description: "attestations have left this machine",
+		Description: description,
 		Fatal:       false,
 		Run: func(ctx context.Context) events.CheckResult {
 			if !inst.Backup.HasTargets() {

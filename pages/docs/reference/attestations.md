@@ -292,7 +292,7 @@ show:
 ```console
 $ morzer doctor --verbose
 …
-✓ attestations have left this machine
+✓ attestations stay on this machine: no backup target
   4 attestation(s), all only on this machine: no backup target is configured to push them to
 ```
 

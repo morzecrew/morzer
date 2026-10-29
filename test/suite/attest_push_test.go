@@ -409,6 +409,10 @@ func TestDoctorSaysTheRecordStaysOnAMachineWithNoTarget(t *testing.T) {
 		assert.Equal(t, events.CheckOK, res.Status, "a machine that chose to stay offline is warned on every doctor run")
 		assert.Contains(t, res.Message, "only on this machine")
 		assert.Contains(t, res.Message, "no backup target")
+		// The description is shown beside the result, and on this
+		// machine nothing has left it.
+		assert.NotContains(t, res.Description, "left this machine",
+			"the check's title claims what its result denies")
 	}
 	require.True(t, found, "doctor says nothing about a record that can never leave the machine")
 }
