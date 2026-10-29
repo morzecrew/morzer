@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-29
+
+Three things done by hand now have commands. A release can declare tasks an
+operator runs by name, `installation remove` takes an installation off the
+machine, and `update` generates a secret the new release adds. A bundle author
+working with an AI coding agent can give it a skill for writing bundles. Two
+writes to the secret state at once no longer lose one of them, `init` keeps the
+recovery key when it has no secret to write, and `exec` says when it cut a
+command's output.
+
+Upgrading changes no schema: the installation stays at 12, and a bundle built
+for 0.7.0 installs unchanged. A manifest that declares `tasks:` needs
+`compatibility.min_manager_version: "0.8.0"`. Six things behave differently:
+
+- `update` generates each secret the new release declares with a generator
+  and has no value for, before it converges, and an unattended update does the
+  same. Such an update used to stop at `load-secrets` until somebody ran
+  `morzer secret generate`; `update --generate-secrets=false` keeps that, for
+  one run.
+- Writes to the secret state take turns under a new lock,
+  `/var/lib/<product>/manager/locks/secrets.lock`. A `secret` command run while
+  another write is under way waits for it, a second or two, instead of racing
+  it.
+- `init` with `--recovery-recipient` on a release that declares no secrets
+  creates an empty secret state for the machine's key and the recovery key,
+  where it used to create none and drop the recovery key. A machine initialised
+  that way by an earlier version, that has written a secret since, has no
+  recovery recipient: `morzer doctor` warns, and
+  `morzer secret recipients add <age-public-key> --kind recovery` adds one.
+- `exec` and `task run` print a warning on stderr after output the runtime
+  cut at 256 KiB a stream. Stdout and exit codes are unchanged.
+- A command that prints a line longer than 4 MiB runs to completion. It used to
+  block on a full pipe and be killed at its timeout.
+- The journal, notifications and attestations can carry two new operation
+  types, `task` and `remove`, and a task's container sees `PHASE=task`.
+
+`exec --json` carries `truncated` when the output was cut, and `task list`,
+`task run` and `installation remove` have payloads of their own. No existing
+JSON field changed.
+
 ### Added
 
 - **A release can declare tasks an operator runs by name.** Filling a sandbox with demo data, unlocking a user or rebuilding an index meant `docker exec` by hand: knowing the Compose project's labels, naming the entrypoint wrapper that loads `*_FILE` secrets, and having the container running, with nothing journalled and nothing stopping a sandbox's seed on production. A manifest's new `tasks:` names a service, a command, whether an operator may append arguments, and the machine modes it may run on. `morzer task list` shows them and whether this machine may run each; `morzer task run <task> [-- args...]` runs one as a one-shot container of the service, through its entrypoint, starting its dependencies, as the operation `task`: under the deployment lock, journalled with its arguments scrubbed of known secret values, attested and notified. A task whose `modes` leave out this machine's is refused by name before anything runs, and `--force` does not override it. The task's output is printed when it finishes, its stdout on stdout, and the invocation exits with the task's own exit code. A manifest with tasks needs `compatibility.min_manager_version: "0.8.0"`, so an older manager says it is too old.
@@ -473,7 +513,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.7.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/morzecrew/morzer/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/morzecrew/morzer/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/morzecrew/morzer/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/morzecrew/morzer/compare/v0.4.0...v0.5.0
