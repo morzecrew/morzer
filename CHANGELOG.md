@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository that holds only the bundle, a commit that changes no file, such as
   a merge whose result matches one side, no longer moves the version.
 
+- **`doctor` fails when the container runtime cannot be reached.** With the
+  Docker daemon stopped or unreachable, the service check was downgraded to a
+  warning, so `doctor` exited 0 and monitoring that watches its exit code saw a
+  healthy machine. It now exits 3. A stopped service, or a deployment with no
+  containers yet, still only warns.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its
