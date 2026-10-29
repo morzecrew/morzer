@@ -355,3 +355,35 @@ func TestRollbackToTheRunningReleaseIsRefused(t *testing.T) {
 	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
 	assert.Contains(t, domain.AsError(err).Hint, "apply")
 }
+
+// A rollback returns to a release together with where it came from. Without
+// the recorded source, `update --check` on the machine afterwards has no
+// reference to ask about, and says so instead of checking.
+func TestRollbackKeepsWhereTheReleaseCameFrom(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	const source = "https://bundles.example/demo-1.2.0.tar.zst"
+	installed, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	installed.SourceRef = source
+	require.NoError(t, h.Deps.State.SetCurrentRelease(ctx, installed))
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.NoError(t, err)
+	previous, err := h.Deps.State.PreviousRelease(ctx)
+	require.NoError(t, err)
+	require.Equal(t, source, previous.SourceRef, "the update did not keep 1.2.0's source, so this proves nothing")
+
+	setSchema(t, h, 12)
+	_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String())
+	assert.Equal(t, source, current.SourceRef, "the rollback forgot where 1.2.0 came from")
+}
