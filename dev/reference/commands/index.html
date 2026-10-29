@@ -3353,8 +3353,9 @@ for the task's own.</p>
 can be piped to a file, and its stderr on stderr. It is kept line by line and
 printed ending in a newline. As with <code>exec</code>, the first 256 KiB of each is kept,
 so a longer report is cut, and a warning on stderr after it says so; with
-<code>--json</code>, <code>truncated</code> is true. The live view tails it while
-it runs, and <code>--verbose</code> prints it as it arrives. The invocation exits with the
+<code>--json</code>, <code>truncated</code> is true. From Compose 2.36 on, Compose's own progress for
+the services the task starts first is not part of it. The live view tails it
+while it runs, and <code>--verbose</code> prints it as it arrives. The invocation exits with the
 task's own exit code. A non-zero exit fails the operation: it is <code>failed</code>, with
 nothing rolled back and nothing flagged, since the task's effects are the
 vendor's. Its error names the exit code and quotes none of the output, which the
