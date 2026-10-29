@@ -88,6 +88,7 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`ps`](#ps) | List the deployment's containers. |
 | [`stats`](#stats) | Show CPU, memory and I/O per container. |
 | [`exec`](#exec) | Run a command inside a running service. |
+| [`task`](#task) | List and run the commands the release declares. |
 | [`backup`](#backup) | Back up the database, files, configuration and secret state. |
 | [`restore`](#restore) | Restore from a backup. |
 | [`notify`](#notify) | Manage where operation outcomes are reported. |
@@ -399,6 +400,67 @@ rather than writing down a command line it could not scrub. A credential the
 manager has never
 been told about is beyond that; see
 [Looking inside](../operating/looking-inside.md#it-is-written-down).
+
+## task
+
+```sh
+morzer task list
+morzer task run <task> [-- args...]
+```
+
+Runs a command the release declares under
+[`tasks`](manifest.md#tasks): a one-shot container of a release service, with the
+task's command, through the image's entrypoint. Where [`exec`](#exec) runs a
+command the operator writes, a task is one the vendor wrote and named, and says
+which machines it may run on.
+
+`task list` shows each task's service, the machine modes it allows, whether this
+machine is one of them, whether it takes arguments, and its description.
+
+`task run` is an operation, `task`. It takes the deployment lock, is refused
+while an earlier operation needs attention, and is journalled, attested and
+reported to the notify targets like a converge:
+
+1. secrets and configuration are rendered as `apply` renders them, so a task
+   after a reboot finds the files its service mounts;
+2. the task's container runs to completion. The services it depends on are
+   started first, so a task runs whether or not the deployment is up.
+
+Refused before anything runs, and journalled as nothing:
+
+- a task the release does not declare, naming the ones it does;
+- arguments to a task whose release does not declare `args: true` for it;
+- a task whose `modes` do not include this machine's. `--force` does not override
+  it;
+- `--resume`. Running a task's command again is not the same as running it once,
+  and whether that is safe is the vendor's to say.
+
+A service the release's runtime configuration does not define is refused before
+the container starts, rather than reported through an exit code that would pass
+for the task's own.
+
+The task's output is printed when it finishes: its stdout on stdout, so a report
+can be piped to a file, and its stderr on stderr. It is kept line by line and
+printed ending in a newline. As with `exec`, the first 256 KiB of each is kept,
+so a longer report is cut. The live view tails it while
+it runs, and `--verbose` prints it as it arrives. The invocation exits with the
+task's own exit code. A non-zero exit fails the operation: it is `failed`, with
+nothing rolled back and nothing flagged, since the task's effects are the
+vendor's. Its error names the exit code and quotes none of the output, which the
+journal does not keep.
+
+Not an interactive session: there is no TTY and no stdin. `--dry-run` lists the
+steps and the command the task would run. The arguments in that command are
+scrubbed, as they are in the journal, and left out when they cannot be.
+
+The journal keeps the task's name, its service and the arguments, with this
+installation's known secret values scrubbed first, and never the output. When
+those values cannot be loaded the record carries `args_omitted` saying why, as
+[`exec`](#exec)'s does.
+
+The arguments are passed on the `docker compose run` command line, which other
+users on the machine can read while the task runs, so they are not the place for
+a credential.
 
 ## backup
 

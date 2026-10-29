@@ -557,6 +557,58 @@
         }
       },
       "type": "object"
+    },
+    "tasks": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "type": "boolean"
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "modes": {
+            "items": {
+              "enum": [
+                "production",
+                "dev"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "service": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "timeout": {
+            "description": "A duration, e.g. 30s or 10m.",
+            "examples": [
+              "30s",
+              "10m"
+            ],
+            "pattern": "^\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h)(?:\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h))*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "command"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,62}$"
+      },
+      "type": "object"
     }
   },
   "required": [

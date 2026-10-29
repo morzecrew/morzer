@@ -121,7 +121,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0035**. Before creating an RFC, glance at the table
+The next free number is **0036**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -166,6 +166,7 @@ number in the filename in sync.
 | [0032](0032-secrets-a-non-root-container-can-read.md) | Secrets a non-root container can read | ✅ Complete | Letting a bundle name the numeric owner of a rendered secret file, so a container that does not run as root can read the Compose file secret the manager renders for it. |
 | [0033](0033-the-schema-a-migration-service-leaves.md) | The schema a migration service leaves | ✅ Complete | Where the schema recorded after a converge comes from when its migrations run in a one-shot container, which has no descriptor to report on |
 | [0034](0034-removing-an-installation.md) | Removing an installation | ✅ Complete | Taking one installation off a machine with `installation remove`: what goes, what stays with the data by default, how it is confirmed, and the record it leaves. |
+| [0035](0035-tasks-an-operator-runs-on-demand.md) | Tasks an operator runs on demand | ✅ Complete | Letting a release declare named commands an operator runs on a deployed machine, as a one-shot container of a release service, under the lock and refused on machines the vendor ruled out. |
 
 ## Status legend
 

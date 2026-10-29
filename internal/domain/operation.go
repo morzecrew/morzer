@@ -31,6 +31,12 @@ const (
 	// rather than created.
 	OpTypeImport OperationType = "import"
 
+	// OpTypeTask is a command the release declares and an operator ran by
+	// name (RFC 0035). Its own type rather than exec, because it runs under
+	// the deployment lock as the vendor's statement of what the command is,
+	// where exec is an operator's command the manager knows nothing about.
+	OpTypeTask OperationType = "task"
+
 	// OpTypeRemove takes an installation off the machine (RFC 0034). Its
 	// record is the last one the installation's journal holds, and the
 	// journal is renamed after it so a later `init` starts with none.

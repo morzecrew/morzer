@@ -546,6 +546,10 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupOperate, installationScope(newPsCommand(app))),
 		grouped(groupOperate, installationScope(newStatsCommand(app))),
 		grouped(groupOperate, installationScope(newExecCommand(app))),
+		// Beside exec, which runs an operator's command: this runs one the
+		// release declares, and an operator reaching for one should find
+		// the other.
+		grouped(groupOperate, installationScope(newTaskCommand(app))),
 
 		// And the one that packages all of the above for somebody who is
 		// not at this terminal, which is where an operator looks after

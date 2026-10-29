@@ -187,6 +187,12 @@ type Manifest struct {
 	Secrets       SecretsSpec               `yaml:"secrets" json:"secrets"`
 	Operations    map[string]OperationSteps `yaml:"operations" json:"operations"`
 
+	// Tasks are commands an operator runs by name, as distinct from the
+	// operations above, which the manager runs at points in the lifecycle
+	// (RFC 0035). omitempty, so a release without any announces nothing in
+	// `release show --json`.
+	Tasks map[string]TaskSpec `yaml:"tasks" json:"tasks,omitempty"`
+
 	// omitzero rather than omitempty: omitempty does not omit an empty
 	// struct, so every release -- including the ones written before this
 	// section existed -- grew a `"backup": {}` in `release show --json`,
@@ -605,6 +611,65 @@ const (
 // name would load and never run, so Validate refuses it.
 var OperationNames = []string{OpMigrate, OpSmokeTest, OpBackup, OpRestore}
 
+// TaskSpec is one command a release ships for an operator to run by name: a
+// one-shot container of a release service (RFC 0035).
+//
+// Only a service, never a hook. A host-side command is the release's lifecycle,
+// not an operator's menu, and a `kind` added later defaults to this one so a
+// bundle written now keeps its meaning.
+type TaskSpec struct {
+	Description string `yaml:"description" json:"description,omitempty"`
+	Service     string `yaml:"service" json:"service"`
+
+	// Command replaces the service's own command. The image's entrypoint
+	// still runs, which is the point: a wrapper that loads `*_FILE`
+	// secrets is what `docker exec` skips and an operator has to know to
+	// name.
+	Command []string `yaml:"command" json:"command"`
+
+	// Args lets an operator append arguments after `--`. Off by default,
+	// because whatever is typed reaches the vendor's command verbatim and
+	// only the vendor knows whether that is safe.
+	Args bool `yaml:"args" json:"args,omitempty"`
+
+	// Modes are the machine modes the task may run on, spelled as an
+	// operator types them: `dev`, `production`. Absent means every mode.
+	Modes []string `yaml:"modes" json:"modes,omitempty"`
+
+	Timeout Duration `yaml:"timeout" json:"timeout,omitempty"`
+}
+
+// AllowedOn reports whether the task may run on a machine of this mode.
+//
+// Asked through Mode.Describe, so production -- stored as the absent value --
+// is matched by the word a vendor writes for it.
+func (t TaskSpec) AllowedOn(mode Mode) bool {
+	return len(t.Modes) == 0 || slices.Contains(t.Modes, mode.Describe())
+}
+
+// TaskNames returns the declared task names in order, so a listing and a
+// refusal naming them do not shuffle between runs.
+func (m *Manifest) TaskNames() []string {
+	return slices.Sorted(maps.Keys(m.Tasks))
+}
+
+// TasksMinManagerVersion is the manager release that reads `tasks:`. A bundle
+// declaring tasks declares it as its `compatibility.min_manager_version`:
+// strict decoding makes the field fatal to an older manager, which would
+// otherwise report a typo instead of an upgrade requirement (RFC 0018
+// decision 1).
+const TasksMinManagerVersion = "0.8.0"
+
+// TaskNamePattern is a task's name: what an operator types after `task run`,
+// so nothing on a command line needs quoting. Exported for the JSON Schema.
+const TaskNamePattern = `^[a-z][a-z0-9-]{0,62}$`
+
+var taskName = regexp.MustCompile(TaskNamePattern)
+
+// maxTaskDescriptionLen bounds a task's description, which `task list` prints
+// as one table cell.
+const maxTaskDescriptionLen = 200
+
 // BackupSpec is what the release says about backing up storage the manager can
 // reach without a client for whatever wrote it.
 //
@@ -810,6 +875,12 @@ func (m *Manifest) ApplyDefaults() {
 			if steps[i].Timeout == 0 {
 				steps[i].Timeout = Duration(DefaultOperationTimeout)
 			}
+		}
+	}
+	for name, task := range m.Tasks {
+		if task.Timeout == 0 {
+			task.Timeout = Duration(DefaultOperationTimeout)
+			m.Tasks[name] = task
 		}
 	}
 	for i := range m.Health.Checks {
@@ -1198,6 +1269,17 @@ func (m *Manifest) Validate() error {
 				"manager cannot read them", minimum, OpMigrate)
 	}
 
+	// tasks
+	for _, name := range m.TaskNames() {
+		v.checkTask("tasks."+name, name, m.Tasks[name])
+	}
+	if minimum := MustParseVersion(TasksMinManagerVersion); len(m.Tasks) > 0 &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because the release declares tasks and an older "+
+				"manager cannot read them", minimum)
+	}
+
 	// backup.volumes
 	//
 	// A misspelled consistency is refused here rather than defaulted. The
@@ -1415,6 +1497,46 @@ func (v *validationErrors) checkOperation(field string, op OperationSpec) {
 			OperationKindRuntimeService, OperationKindHook, op.Kind)
 	}
 	if op.Timeout < 0 {
+		v.add(field+".timeout", "must be positive")
+	}
+}
+
+// checkTask validates one declared task.
+func (v *validationErrors) checkTask(field, name string, t TaskSpec) {
+	if !taskName.MatchString(name) {
+		v.add(field, "is not a valid task name; names are lowercase alphanumeric "+
+			"with dashes, 1-63 characters, starting with a letter")
+	}
+	if t.Service == "" {
+		v.add(field+".service", "is required")
+	}
+	// Required, unlike a migration service's: the service's own command is
+	// the deployment's long-running process, and a task that started it
+	// again would be a second copy of the product rather than a job.
+	switch {
+	case len(t.Command) == 0:
+		v.add(field+".command", "is required")
+	case strings.TrimSpace(t.Command[0]) == "":
+		// Compose would be asked to run an executable with no name, and
+		// the task would fail only when an operator ran it.
+		v.add(field+".command", "must name a program first")
+	}
+	// One line with no control characters, because `task list` prints it
+	// to the operator's terminal as a table cell, and a bundle's signature
+	// is optional.
+	if err := ValidateSingleLine(t.Description, maxTaskDescriptionLen); err != nil {
+		v.add(field+".description", "%s", AsError(err).Message)
+	}
+	// Compared back to its own spelling, so an empty entry -- which
+	// ParseMode reads as production -- and " dev " are refused rather than
+	// matched by accident.
+	for _, mode := range t.Modes {
+		if parsed, err := ParseMode(mode); err != nil || parsed.Describe() != mode {
+			v.add(field+".modes", "must list modes as %s or production, got %q",
+				joinModes(), mode)
+		}
+	}
+	if t.Timeout < 0 {
 		v.add(field+".timeout", "must be positive")
 	}
 }

@@ -62,6 +62,7 @@ var referencePage = map[string]string{
 	"ps":           "reference/commands.md",
 	"stats":        "reference/commands.md",
 	"exec":         "reference/commands.md",
+	"task":         "reference/commands.md",
 	"backup":       "reference/commands.md",
 	"restore":      "reference/commands.md",
 	"notify":       "reference/commands.md",

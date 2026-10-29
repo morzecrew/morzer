@@ -150,6 +150,7 @@ func manifestSchema() map[string]any {
 	// underline every manifest written the ordinary way.
 	props["images"] = imagesSchema(props["images"])
 	props["operations"] = operationsSchema(props["operations"])
+	props["tasks"] = tasksSchema(props["tasks"])
 
 	// `runtime:` is still a field so the loader can refuse it by name
 	// (RFC 0023 decision 23), and a refused field is not one to offer. Kept
@@ -277,6 +278,33 @@ func operationsSchema(generated any) any {
 		},
 	}
 	mapping["propertyNames"] = map[string]any{"enum": domain.OperationNames}
+	return mapping
+}
+
+// tasksSchema closes what Validate closes about a task and reflection cannot
+// see: the name's shape, the two fields every task needs, and the modes a
+// machine can be in, production spelled as a vendor writes it.
+func tasksSchema(generated any) any {
+	mapping, ok := generated.(map[string]any)
+	if !ok {
+		panic(fmt.Sprintf("tasksSchema: %T is not a schema object", generated))
+	}
+	task, ok := mapping["additionalProperties"].(map[string]any)
+	if !ok {
+		panic("tasksSchema: a task is not a schema object")
+	}
+	fields, _ := task["properties"].(map[string]any)
+	modes := []string{domain.Mode("").Describe()}
+	for _, m := range domain.Modes {
+		modes = append(modes, m.Describe())
+	}
+	if list, ok := fields["modes"].(map[string]any); ok {
+		list["items"] = withEnum(list["items"], modes)
+	}
+	atLeastOne(fields["command"], "minItems")
+	atLeastOne(fields["service"], "minLength")
+	task["required"] = []string{"service", "command"}
+	mapping["propertyNames"] = map[string]any{"pattern": domain.TaskNamePattern}
 	return mapping
 }
 
