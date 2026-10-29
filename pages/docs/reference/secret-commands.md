@@ -24,6 +24,12 @@ second and third lines of defence.
 
 Rendered configuration in `/etc` contains *paths* to secrets, never values.
 
+Every write rewrites the whole file, so writes take turns. The commands below
+that change a value or a recipient, `init`, `installation import`, and an update
+generating a secret its release adds each hold the `secrets` lock for the length
+of one write, and a second writer waits for it. Two writers at the same moment
+both land, and neither drops the other's value. Reading takes no lock.
+
 ## secret list
 
 Lists secret names, fingerprints and metadata — never values.

@@ -47,6 +47,9 @@ type Store struct {
 
 	sopsBinary string
 
+	// locker serialises writes to file; nil takes no lock. See exclusive.
+	locker ports.Locker
+
 	// now is injectable so metadata timestamps are deterministic in tests.
 	now func() time.Time
 }
@@ -59,6 +62,46 @@ func withSOPSBinary(path string) Option {
 
 func withClock(now func() time.Time) Option {
 	return func(s *Store) { s.now = now }
+}
+
+// WithLocker serialises every write to the state through locker. Every process
+// that writes one installation's state has to share it, or the lock excludes
+// nothing.
+func WithLocker(l ports.Locker) Option {
+	return func(s *Store) { s.locker = l }
+}
+
+// lockName is the lock a write to the state holds. Not the deployment lock:
+// `secret set` does not take that one, and an update holds it for minutes
+// while it generates the secrets its release adds.
+const lockName = "secrets"
+
+// exclusive holds the state's lock for one write.
+//
+// Every write loads the whole document, changes it and saves it whole, so two
+// at once would each save what they loaded, and the later save would drop the
+// earlier one's change. Reads take no lock: a save replaces the file
+// atomically, so a reader sees one version or the other.
+func (s *Store) exclusive(ctx context.Context) (func(), error) {
+	if s.locker == nil {
+		return func() {}, nil
+	}
+	release, err := s.locker.Acquire(ctx, lockName, ports.LockOptions{
+		// A write takes a second or two, so waiting is always the
+		// answer; a cancelled context still ends the wait.
+		Wait: true,
+		Owner: ports.LockOwner{
+			PID:       os.Getpid(),
+			Type:      lockName,
+			StartedAt: domain.NewTime(s.now()),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Unlocking closes the descriptor whatever flock(2) answers, and a
+	// closed descriptor holds no lock, so its error leaves nothing held.
+	return func() { _ = release() }, nil
 }
 
 // New returns a secret store backed by file, decrypting with identityFile.
@@ -279,6 +322,11 @@ func (s *Store) Set(ctx context.Context, name string, value domain.Secret) error
 		return domain.SecretsError(nil, "refusing to store an empty value for secret %q", name).
 			WithHint("use `morzer secret remove %s` to delete it", name)
 	}
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	doc, err := s.load(ctx)
 	if err != nil {
@@ -294,7 +342,16 @@ func (s *Store) Generate(ctx context.Context, name string, spec ports.GenSpec) e
 	if err := validateName(name); err != nil {
 		return err
 	}
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return s.generate(ctx, name, spec)
+}
 
+// generate is Generate under a lock the caller holds.
+func (s *Store) generate(ctx context.Context, name string, spec ports.GenSpec) error {
 	doc, err := s.load(ctx)
 	if err != nil {
 		return err
@@ -317,6 +374,12 @@ func (s *Store) Generate(ctx context.Context, name string, spec ports.GenSpec) e
 }
 
 func (s *Store) Rotate(ctx context.Context, name string, spec ports.GenSpec) error {
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	doc, err := s.load(ctx)
 	if err != nil {
 		return err
@@ -326,10 +389,16 @@ func (s *Store) Rotate(ctx context.Context, name string, spec ports.GenSpec) err
 			WithHint("run `morzer secret list` to see what is defined")
 	}
 	spec.Overwrite = true
-	return s.Generate(ctx, name, spec)
+	return s.generate(ctx, name, spec)
 }
 
 func (s *Store) Remove(ctx context.Context, name string) error {
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	doc, err := s.load(ctx)
 	if err != nil {
 		return err

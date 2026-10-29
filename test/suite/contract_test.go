@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,6 +24,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
 	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/internal/infra/lock"
 	"github.com/morzecrew/morzer/internal/infra/state"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/contract"
@@ -51,7 +53,9 @@ func TestSecretStoreContract_SOPSAge(t *testing.T) {
 		_, err := sopsage.GenerateIdentity(identity)
 		require.NoError(t, err)
 
-		return sopsage.New(infraexec.New(), filepath.Join(dir, "secrets.sops.yaml"), identity)
+		locker := lock.New(filepath.Join(dir, "locks")).WithPollInterval(10 * time.Millisecond)
+		return sopsage.New(infraexec.New(), filepath.Join(dir, "secrets.sops.yaml"), identity,
+			sopsage.WithLocker(locker))
 	})
 }
 

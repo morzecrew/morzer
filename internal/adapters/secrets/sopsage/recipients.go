@@ -141,6 +141,11 @@ func (s *Store) AddRecipient(ctx context.Context, r ports.Recipient) error {
 	if err := ValidateRecipient(r.PublicKey); err != nil {
 		return err
 	}
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	existing, err := s.Recipients(ctx)
 	if err != nil {
@@ -178,6 +183,12 @@ func (s *Store) AddRecipient(ctx context.Context, r ports.Recipient) error {
 // responsible for, and the operator would not discover it until the next
 // `apply` -- possibly after a reboot, with the product down.
 func (s *Store) RemoveRecipient(ctx context.Context, r ports.Recipient) error {
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	existing, err := s.Recipients(ctx)
 	if err != nil {
 		return err
@@ -259,6 +270,11 @@ func (s *Store) ReencryptFor(ctx context.Context, recipients []ports.Recipient) 
 		keys = append(keys, key)
 	}
 
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := s.reencrypt(ctx, keys); err != nil {
 		return err
 	}
@@ -316,6 +332,11 @@ func (s *Store) ImportState(ctx context.Context, state []byte) error {
 			WithHint("nothing would be able to decrypt it; the export is unusable")
 	}
 
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	// 0600, the same mode saveWithRecipients writes. Encryption is not a
 	// licence to widen filesystem permissions.
 	return atomicfs.WriteFile(s.file, state, 0o600)

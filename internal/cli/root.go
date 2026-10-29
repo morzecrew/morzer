@@ -888,7 +888,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// that without regenerating a unit or migrating any state.
 		compose.WithHelperImage(os.Getenv(VolumeHelperImageEnv)),
 	)
-	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile())
+	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile(), sopsage.WithLocker(locker))
 	hookRunner := hooks.NewRunner(runner,
 		hooks.WithOutputSink(outputSink),
 		hooks.WithRedaction(redactor.Values()),
