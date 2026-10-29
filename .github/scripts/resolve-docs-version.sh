@@ -25,12 +25,16 @@ if [[ ! "${version}" =~ ^([0-9]+)\.([0-9]+)\. ]]; then
 fi
 minor="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 
-# The newest minor across every published release, this one included. Drafts
-# are left out by asking the releases rather than the tags.
+# The newest minor across every published release. Drafts are left out by
+# asking the releases rather than the tags. The release a `published` event
+# deploys is published by that event, so it is counted even if the API has not
+# caught up; a manual run counts its tag only if its release is published.
 newest=$({
 	gh api "repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/releases" \
 		--paginate --jq '.[] | select(.draft | not) | .tag_name'
-	echo "${tag}"
+	if [ "${GITHUB_EVENT_NAME:-}" = "release" ]; then
+		echo "${tag}"
+	fi
 } | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' |
 	sed 's/^v//' |
 	cut -d. -f1,2 |

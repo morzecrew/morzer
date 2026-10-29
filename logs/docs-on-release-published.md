@@ -70,3 +70,14 @@ is a draft moves `latest`; 0.10.0 published moves it; a 0.8.5 backport with
 0.9.0 published does not.
 
 **Drift count: 0.**
+
+A manual run (`workflow_dispatch`) from a tag whose release is still a draft
+also counted that tag, so it could move `latest` ahead of the release. The
+deployed tag is now counted only when a `published` event runs the workflow, in
+case the API has not caught up with the release that event just published; a
+manual run counts it only if its release is published. Checked with the
+stand-in `gh`: a manual run from a draft v0.10.0 leaves `latest`, one from the
+published v0.9.0 moves it, and a `published` event moves it even when the API
+does not list the release yet.
+
+**Drift count: 0.**
