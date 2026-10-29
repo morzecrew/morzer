@@ -6,8 +6,8 @@
   installed, or from being the newest thing a machine ever learns of. Covers
   two threats SECURITY.md lists as one known gap: a rollback to an older signed
   release, and a freeze, where a channel keeps serving an old release so the
-  machine never hears of a newer one. Proposes a refusal that needs nothing from
-  a vendor (a version high-water mark), and a vendor opt-in signed channel index
+  machine never hears of a newer one. Proposes refusals that need nothing from
+  a vendor (version floors per installation and per channel), and a vendor opt-in signed channel index
   with a sequence and an expiry for the freeze case. The minisign verifier, the
   channel follower (`update --check`, `--stage`, `--unattended`) and the update
   candidate record are touched; the bundle format and `SHA256SUMS` signature do
@@ -35,9 +35,10 @@ old one, as long as it is newer than what is installed. Or they can keep a
 channel pointing where it was, and the machine never learns of the fix it is
 missing.
 
-This RFC proposes two layers. The first needs nothing from a vendor: the
-machine records the highest version it has been offered or has installed, and
-refuses anything older outside `rollback`. The second is opt-in for a vendor: a
+This RFC proposes two layers. The first needs nothing from a vendor: outside
+`rollback`, the machine refuses a release older than the one installed, and
+refuses a channel anything older than the newest release it has already fetched
+and verified from that channel. The second is opt-in for a vendor: a
 small signed channel index carrying a sequence number and an expiry, which lets
 a machine refuse a stale or replayed index and say how long it has been unable
 to see a current one. The recommendation is to build the first now and the
@@ -107,8 +108,9 @@ Verified against `main` at 8b3c37e.
 
 **Goals**
 
-- A machine refuses to install a signed release older than one it has already
-  been offered or installed, outside `rollback`.
+- Outside `rollback`, a machine refuses a release older than the one installed,
+  and refuses a channel a release older than one it already fetched and verified
+  from that channel.
 - A vendor who opts in can let machines detect a replayed or frozen channel, and
   an operator learns from `doctor` and `status` how long a machine has been
   unable to see a current index.
@@ -128,35 +130,50 @@ Verified against `main` at 8b3c37e.
 
 ## 5. Design
 
-### 5.1 Layer 1: a version high-water mark (no vendor change)
+### 5.1 Layer 1: two version floors (no vendor change)
 
-The machine records the highest release version it has **installed or been
-offered** by any channel poll or `update --check`, in the manager's state beside
-the update candidate:
+Two floors, each with a different identity, and neither raised by anything the
+machine has not fetched and verified.
+
+**The installed floor is the current release.** An installation is one product,
+fixed at `init`, so its versions are comparable whichever source they came from.
+The floor is the version in the current-release record, not a second copy of it:
+`update` refuses a release older than the one running, where today it only warns
+(`domain.CheckUpgrade`). `rollback` moves the floor down with the release, since
+going back is a deliberate act.
+
+**A channel mark is per channel.** For each channel the installation has
+followed, the highest version whose bundle was **fetched and verified** from it,
+in the manager's state beside the update candidate:
 
 ```json
-// /var/lib/<product>/manager/version-high-water.json
+// /var/lib/<product>/manager/channel-marks.json
 {
-  "version": "1.4.0",
-  "seen_at": "2026-10-29T08:00:00Z",
-  "source": "oci://registry.example/demo/bundle:stable"
+  "oci://registry.example/demo/bundle:stable": {"version": "1.4.0", "at": "2026-10-29T08:00:00Z"},
+  "oci://registry.example/demo/bundle:lts":    {"version": "1.3.5", "at": "2026-10-20T08:00:00Z"}
 }
 ```
 
-- A channel poll, `update --check` and a successful install raise it, never
-  lower it. A prerelease raises it only on a dev installation, matching the
-  existing rule that a production machine does not stage prereleases.
-- `update` (an explicit reference or a staged candidate), staging and the
-  unattended tick **refuse** a release older than the mark, with a message naming both versions and the
-  source that set the mark. `rollback` is exempt: going back is its job, and it
-  already has its own schema checks.
-- `update --allow-older` (name `ASSUMED`) installs one anyway, and is journalled.
-  It is the escape hatch for a vendor who withdrew 1.4.0 and told customers to
-  go back to 1.3.x.
+- **What raises a channel mark: a verified fetch, nothing less.** A candidate the
+  channel follower staged, which means fetched, checksummed and signature-checked,
+  raises that channel's mark. A channel peek and `update --check` do not: they
+  see a tag and a manifest digest, never a verified bundle, and a registry that
+  advertises a false `9.9.9` tag must not be able to block every real release
+  below it. A prerelease raises a mark only on a dev installation, matching the
+  rule that a production machine does not stage one.
+- **What a channel mark refuses.** A candidate from that channel older than the
+  channel's own mark: the channel delivered 1.4.0, and is now serving 1.3.0.
+  Switching to another channel starts from that channel's mark, so moving from
+  `stable` to `lts` is refused only if `lts` offers something older than the
+  release installed.
+- `update --allow-older` (name `ASSUMED`) installs a release below either floor,
+  and is journalled. It is the escape hatch for a vendor who withdrew 1.4.0 and
+  told customers to go back to 1.3.x.
 
-This closes the rollback attack for any machine that has *seen* the newer
-release, and turns the existing downgrade warning into a refusal. It does
-nothing for a machine that has never seen it, which is the freeze.
+This closes the rollback attack within a channel for any machine that has
+fetched the newer release from it, and turns the existing downgrade warning into
+a refusal. It does nothing for a machine that never fetched the newer release,
+which is the freeze.
 
 ### 5.2 Layer 2: a signed channel index (vendor opt-in)
 
@@ -193,11 +210,11 @@ document signed with the same minisign key that signs their bundles:
 
 ### 5.3 What each option covers
 
-| | Rollback below installed | Rollback below newest seen | Freeze | Vendor cost | Air-gapped cost |
+| | Rollback below installed | Rollback below what a channel delivered | Freeze | Vendor cost | Air-gapped cost |
 | --- | --- | --- | --- | --- | --- |
 | Today | channel path only; `update` warns | no | no | none | none |
-| Refuse older than installed | yes | no | no | none | none |
-| High-water mark (5.1) | yes | yes | no | none | none |
+| Installed floor (5.1) | yes | no | no | none | none |
+| Installed floor and channel marks (5.1) | yes | yes, once the newer bundle was fetched | no | none | none |
 | Signed index (5.2) | yes | yes | yes, within the expiry | periodic re-signing | none: no channel |
 
 ### 5.4 Alternatives considered
@@ -217,11 +234,15 @@ document signed with the same minisign key that signs their bundles:
 
 ## 6. Tests
 
-- Suite: a channel offering 1.4.0 raises the mark; a later offer of 1.3.0 is
-  refused by `update`, by staging and by the unattended tick, and `rollback` to
-  1.3.0 still works. `--allow-older` installs it and is journalled.
-- Suite: the mark survives a manager restart and an `installation export`/import
-  (whether import carries it is §11 row 5).
+- Suite: a channel whose staged 1.4.0 raised its mark, and which then serves
+  1.3.0, is refused by staging and by the unattended tick; `update` to a release
+  older than the installed one is refused; `rollback` still works, and
+  `--allow-older` installs and is journalled.
+- Suite: `update --check` and a peek seeing a higher tag raise no mark, so a
+  registry advertising `9.9.9` blocks nothing; switching to another channel
+  starts from that channel's mark.
+- Suite: the channel marks survive a manager restart and an `installation
+  export`/import (whether import carries them is §11 row 5).
 - Index (if built): a fixture registry serving a valid index; a replayed index
   with a lower sequence; an expired one; one whose digest disagrees with the
   tag; a bad signature. Each is refused or warned per the decisions, against the
@@ -232,7 +253,7 @@ document signed with the same minisign key that signs their bundles:
 - SECURITY.md: the known-gap entry shrinks to what remains (a freeze on a
   channel without an index, and any machine that never saw the newer release),
   or moves to Closed gaps if both layers ship.
-- The update reference: the high-water refusal, its message, `--allow-older`.
+- The update reference: the two refusals, their messages, `--allow-older`.
 - The publishing guide (vendor side): how to publish and re-sign an index, and
   what an expiry costs and buys.
 
@@ -247,14 +268,15 @@ document signed with the same minisign key that signs their bundles:
 
 ## 9. Risks
 
-- **A vendor withdraws a release and customers must go back.** The high-water
-  mark refuses that. `--allow-older` and `rollback` are the answers, and the
+- **A vendor withdraws a release and customers must go back.** The channel mark
+  refuses that on every machine that fetched the withdrawn release, because it
+  cannot be told from a rollback attack. `--allow-older` and `rollback` are the answers, and the
   message has to name them, or an operator in an incident will be stuck.
 - **Expiry turns a vendor's outage into customers' warnings.** A vendor who stops
   re-signing makes every machine report a stale index. That is the signal
   working, but it lands on customers. A generous default expiry, and warning
   rather than refusing (row 3), limit the damage.
-- **The mark is local state an attacker with root could lower.** Root is out of
+- **A channel mark is local state an attacker with root could lower.** Root is out of
   the threat model (SECURITY.md "What is not").
 
 ## 10. Unresolved questions
@@ -269,21 +291,23 @@ document signed with the same minisign key that signs their bundles:
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **Build layer 1 (the high-water mark) now?** Recommended yes: it needs nothing from a vendor, turns the existing downgrade warning into a refusal, and closes the rollback attack for every machine that has seen the newer release. |
+| 1 | `OPEN` | **Build layer 1 (the installed floor and channel marks) now?** Recommended yes: it needs nothing from a vendor, turns the existing downgrade warning into a refusal, and closes the rollback attack within a channel for every machine that has fetched the newer release from it. |
 | 2 | `OPEN` | **Build layer 2 (the signed index) now, or gate it on a vendor asking?** Recommended: gate it. It costs a vendor periodic re-signing, and no vendor has asked; the design here is enough to build from when one does. |
 | 3 | `OPEN` | **An expired index: refuse to stage, or stage and warn?** Recommended: warn, in `status`, `doctor` and the tick's notification, and refuse only under unattended `auto_apply`. A freeze is a reason to look, and refusing manual updates would block the operator from installing the fix they went to get by hand. |
 | 4 | `OPEN` | **Name and shape of the override.** Recommended `update --allow-older`, journalled, with no persistent setting: going back past what a machine has seen should be a decision made each time. |
-| 5 | `OPEN` | **Does an export carry the mark?** Recommended yes: a rebuilt machine that forgot it has seen 1.4.0 can be offered 1.3.0 again. |
-| 6 | `ASSUMED` | The mark is the highest release *version*, not a time: versions already order releases, and a timestamp would be a second ordering that can disagree with the first. |
-| 7 | `ASSUMED` | `rollback` is exempt from the mark; it has its own schema checks, and going back is its purpose. |
+| 5 | `OPEN` | **Does an export carry the channel marks?** Recommended yes: a rebuilt machine that forgot its channel delivered 1.4.0 can be offered 1.3.0 again. |
+| 6 | `ASSUMED` | A floor is a release *version*, not a time: versions already order releases, and a timestamp would be a second ordering that can disagree with the first. |
+| 7 | `ASSUMED` | `rollback` is exempt from both floors, and moves the installed floor down with the release; it has its own schema checks, and going back is its purpose. |
 | 8 | `ASSUMED` | The index is signed with the vendor's bundle key from `policy.signing_keys`, not a separate key, so a vendor has one key to protect and an installation one list to configure. |
 | 9 | `ASSUMED` | On OCI the index is an artifact under `<channel>.index`, fetched in the same poll as the channel's peek. A channel without an index is followed as today. |
 | 10 | `ASSUMED` | The index pins the release by digest, and a disagreement between the index and the tag is a refusal: a tag and an index read at different moments must not combine into a release neither named. |
+| 11 | `ASSUMED` | The installed floor is the current release's version, read from the current-release record, and is source-independent because an installation is one product. Channel marks are kept per channel, so a switch to another channel is judged by that channel's own history. |
+| 12 | `ASSUMED` | Only a bundle that was fetched and verified raises a channel mark. A peek and `update --check` see tags and manifest digests, so they raise nothing: a registry advertising a false high version must not be able to block real releases below it. |
 
 ## 12. Phasing
 
-- **P1 — the high-water mark** (§5.1), if row 1 is ruled yes. One PR: the state
-  file, the refusal in `update`, staging and the tick, `--allow-older`, the
+- **P1 — the installed floor and channel marks** (§5.1), if row 1 is ruled
+  yes. One PR: the channel-marks file, the refusal in `update`, staging and the tick, `--allow-older`, the
   export field, docs, and the SECURITY.md entry rewritten to what remains.
 - **P2 — the signed index** (§5.2), gated on a vendor asking (row 2). The
   verifier side, the `status`/`doctor` lines, and the vendor's publishing guide.
