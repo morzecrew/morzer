@@ -166,6 +166,11 @@ in the manager's state beside the update candidate:
   Switching to another channel starts from that channel's mark, so moving from
   `stable` to `lts` is refused only if `lts` offers something older than the
   release installed.
+- **A channel is named by its reference with credentials removed.** The key in
+  `channel-marks.json`, and every refusal or journal entry that names a channel,
+  goes through `ports.RedactRefCredentials` first, as `FollowChannel` already
+  does with the reference it reports. A channel reference may carry a password
+  in its userinfo, and this file must not become a copy of it.
 - `update --allow-older` (name `ASSUMED`) installs a release below either floor,
   and is journalled. It is the escape hatch for a vendor who withdrew 1.4.0 and
   told customers to go back to 1.3.x.
@@ -303,6 +308,7 @@ document signed with the same minisign key that signs their bundles:
 | 10 | `ASSUMED` | The index pins the release by digest, and a disagreement between the index and the tag is a refusal: a tag and an index read at different moments must not combine into a release neither named. |
 | 11 | `ASSUMED` | The installed floor is the current release's version, read from the current-release record, and is source-independent because an installation is one product. Channel marks are kept per channel, so a switch to another channel is judged by that channel's own history. |
 | 12 | `ASSUMED` | Only a bundle that was fetched and verified raises a channel mark. A peek and `update --check` see tags and manifest digests, so they raise nothing: a registry advertising a false high version must not be able to block real releases below it. |
+| 13 | `ASSUMED` | A channel is identified by its reference after `ports.RedactRefCredentials`, in the stored key and in every message and journal entry that names it. |
 
 ## 12. Phasing
 
