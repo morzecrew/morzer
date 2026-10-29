@@ -62,3 +62,25 @@ Not run: anything against the real sops-age adapter. The fake store's
 that only as a second guard behind its own check for an existing value.
 
 **Drift count: 0.**
+
+## Review, round 1 (2026-10-29)
+
+A resumed update keeps the interrupted run's `--generate-secrets=false`.
+Decision 5 makes the opt-out a per-run flag and says nothing of `--resume`. The
+engine re-runs a completed idempotent step on resume, and `generate-secrets` is
+one, so a resume typed without the flag generated what the interrupted run was
+told to leave alone.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-10-29T07:48:00Z
+attempt: 2
+claim: decision 5 does not say whether --resume keeps the interrupted run's --generate-secrets=false, and the step re-runs on resume with the new command's options
+evidence: internal/lifecycle/engine/engine.go:155-159
+action: decided
+proposal: ASSUMED — a resumed update whose interrupted record carries generate_secrets=false runs with generation off, whatever the resuming command says.
+```
+
+**Drift count: 0.**

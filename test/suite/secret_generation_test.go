@@ -196,3 +196,38 @@ func TestAFailedUpdateKeepsTheSecretItGenerated(t *testing.T) {
 	again, _ := secretValue(t, h, "webhook_key")
 	assert.Equal(t, first, again, "the retry generated a second value")
 }
+
+// A resumed update keeps the choice the interrupted one journaled. The
+// generate-secrets step re-runs on resume, as every idempotent step does, and
+// with the resuming command's options it would generate a secret the operator
+// said to leave alone.
+func TestAResumedUpdateKeepsTheChoiceNotToGenerate(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	src := stageUpgradeSource(t, h)
+	declareSecret(t, src, strings.Replace(webhookKey, "required: true", "required: false", 1))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.Runtime.OnCall = func(method string) {
+		if method == "Up" {
+			cancel()
+		}
+	}
+	first, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{
+		Ref: src, Options: ops.Options{NoGenerateSecrets: true},
+	})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusInterrupted, first.Record.Status, "%v", err)
+	h.Runtime.OnCall = nil
+
+	_, err = ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
+		Ref: src, Options: ops.Options{Resume: true},
+	})
+	require.NoError(t, err)
+	_, ok := secretValue(t, h, "webhook_key")
+	assert.False(t, ok, "the resumed update generated a secret the interrupted one was told to leave alone")
+}
