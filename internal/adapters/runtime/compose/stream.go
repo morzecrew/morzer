@@ -33,8 +33,59 @@ type streamCloser struct {
 	cmd  *osexec.Cmd
 	pgid int
 
+	// ctx is what tells a stream morzer stopped from one the runtime ended:
+	// both reach EOF, and only the second is a failure worth reporting.
+	ctx    context.Context
+	stderr stderrTail
+	redact []string
+
+	waitOnce sync.Once
+	waitErr  error
+
 	mu        sync.Mutex
 	killTimer *time.Timer
+}
+
+// maxStderrTail bounds what is kept of compose's stderr. A follow can run for
+// days, and the reason a stream failed is the last thing compose said.
+const maxStderrTail = 4 << 10
+
+// stderrTail keeps the end of what was written to it. Read only after Wait,
+// which waits for os/exec's copy into it, so it needs no lock.
+type stderrTail struct{ buf []byte }
+
+func (t *stderrTail) Write(p []byte) (int, error) {
+	t.buf = append(t.buf, p...)
+	if over := len(t.buf) - maxStderrTail; over > 0 {
+		t.buf = t.buf[over:]
+	}
+	return len(p), nil
+}
+
+// Read ends the stream with the runtime's failure, rather than EOF, when
+// compose exited non-zero on its own: a daemon that is down and a service
+// that does not exist both close stdout with nothing on it.
+func (s *streamCloser) Read(p []byte) (int, error) {
+	n, err := s.ReadCloser.Read(p)
+	if !errors.Is(err, io.EOF) || s.cmd == nil {
+		return n, err
+	}
+	if waitErr := s.wait(); waitErr != nil && s.ctx.Err() == nil {
+		reason := exec.Redact(s.redact, domain.LastLines(string(s.stderr.buf), 3))
+		if reason == "" {
+			reason = waitErr.Error()
+		}
+		return n, domain.RuntimeError(waitErr, "the runtime could not stream the logs: %s", reason).
+			WithHint("`docker info` checks the daemon; `morzer ps` lists the services")
+	}
+	return n, err
+}
+
+// wait reaps the process once, for whichever of Read and Close gets there
+// first.
+func (s *streamCloser) wait() error {
+	s.waitOnce.Do(func() { s.waitErr = s.cmd.Wait() })
+	return s.waitErr
 }
 
 // armKill schedules a group-wide SIGKILL one grace period after cancellation.
@@ -79,13 +130,13 @@ func (s *streamCloser) Close() error {
 		_ = syscall.Kill(-s.pgid, syscall.SIGTERM)
 	}
 	if s.cmd != nil {
-		_ = s.cmd.Wait()
+		_ = s.wait()
 	}
 	s.disarmKill()
 	return closeErr
 }
 
-func startStream(ctx context.Context, argv []string, cfg ports.RuntimeConfig) (io.ReadCloser, error) {
+func startStream(ctx context.Context, argv []string, cfg ports.RuntimeConfig, redact []string) (io.ReadCloser, error) {
 	if len(argv) == 0 {
 		return nil, domain.Internal(nil, "compose: empty argv for log stream")
 	}
@@ -101,7 +152,7 @@ func startStream(ctx context.Context, argv []string, cfg ports.RuntimeConfig) (i
 	// and the KILL is armed on a timer because WaitDelay's own escalation
 	// is os.Process.Kill -- the leader alone -- which a compose child that
 	// ignores TERM would survive. CommandContext's default did neither.
-	sc := &streamCloser{}
+	sc := &streamCloser{ctx: ctx, redact: redact}
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return nil
@@ -118,9 +169,10 @@ func startStream(ctx context.Context, argv []string, cfg ports.RuntimeConfig) (i
 	if err != nil {
 		return nil, domain.RuntimeError(err, "cannot open a log stream")
 	}
-	// Compose writes its own progress to stderr; discarding it keeps the
-	// caller's stream to log lines only.
-	cmd.Stderr = io.Discard
+	// Compose writes its own progress to stderr; keeping it off stdout keeps
+	// the caller's stream to log lines only. Its tail is kept for Read, which
+	// quotes it when compose fails.
+	cmd.Stderr = &sc.stderr
 
 	if err := cmd.Start(); err != nil {
 		return nil, domain.RuntimeError(err, "cannot start the log stream")

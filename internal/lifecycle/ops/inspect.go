@@ -231,6 +231,11 @@ func (s *LogStream) Lines(yield func(ports.LogLine) error) error {
 				maxStructuredLine).
 				WithHint("`morzer logs` without --json streams it unchanged")
 		}
+		// The runtime's own account of what failed, kept as it is.
+		var structured *domain.Error
+		if errors.As(err, &structured) {
+			return err
+		}
 		return domain.RuntimeError(err, "the log stream ended early")
 	}
 	return nil

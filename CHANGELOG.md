@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository that holds only the bundle, a commit that changes no file, such as
   a merge whose result matches one side, no longer moves the version.
 
+### Fixed
+
+- **`morzer logs` fails when the runtime cannot produce the stream.** With the
+  Docker daemon down, or a service name that does not exist, it printed nothing
+  and exited 0, and `--json` reported `"ok": true`. It now exits 7 with the
+  runtime's own reason.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its
