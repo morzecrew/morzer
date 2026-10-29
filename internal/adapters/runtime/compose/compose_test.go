@@ -573,3 +573,29 @@ func TestResolveOptionsDoesNotEditTheCallersMap(t *testing.T) {
 		r.ResolveOptions(ports.RuntimeConfig{Product: "demo"})
 	})
 }
+
+// A one-shot's output is handed to the operator and quoted in its errors as the
+// container's, so Compose's own progress for the services it starts first --
+// "Container demo-db-1 Healthy" -- is turned off for it, and only for it: `up`
+// and `pull` narrate the live view with theirs.
+func TestOnlyAOneShotRunsWithComposeProgressOff(t *testing.T) {
+	r, runner := newRuntime()
+	if _, err := r.RunOneShot(context.Background(), cfg(), "tools", ports.RunOptions{Remove: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Up(context.Background(), cfg(), ports.UpOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range runner.Calls() {
+		quiet := false
+		for _, kv := range c.Env {
+			if kv == "COMPOSE_PROGRESS=quiet" {
+				quiet = true
+			}
+		}
+		isRun := strings.Contains(strings.Join(c.Argv, " "), " run ")
+		if quiet != isRun {
+			t.Errorf("COMPOSE_PROGRESS=quiet is %v for %q", quiet, strings.Join(c.Argv, " "))
+		}
+	}
+}

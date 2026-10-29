@@ -319,6 +319,8 @@ Stated here rather than discovered:
   an installation that wants its records somewhere its data is not cannot say
   so yet.
 
-A rebuilt machine signs with a **new key**, and records its predecessor. A
-signature that checks out against a predecessor is *provenance* — "signed by an
-earlier incarnation of this installation" — and never plain validity.
+A rebuilt machine signs with a **new key**, and records its predecessor, as does
+one whose key was replaced with
+[`installation rotate-signing-key`](installation-commands.md#installation-rotate-signing-key).
+A signature that checks out against a predecessor is *provenance* — "signed by
+an earlier key of this installation" — and never plain validity.

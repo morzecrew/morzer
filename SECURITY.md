@@ -136,12 +136,13 @@ validity. Collapsing the two would make rotation useless.
 
 ### Rotation protects the future and repairs nothing
 
-**There is no rotate command yet** ([RFC 0028](rfcs/0028-the-machines-signing-identity.md)
-P2 is unscheduled). The only path that retires a key today is `installation
-import`, which mints a fresh one and records the old one as a predecessor — and
-rebuilding a machine to retire one key is not a remedy anybody should reach for.
-Read the rest of this section as what a rotation will and will not do, rather
-than as something to run.
+`morzer installation rotate-signing-key` replaces the key
+([RFC 0028](rfcs/0028-the-machines-signing-identity.md) P2). It mints a new
+one, records the old public key under `signing.previous_keys` with
+`reason: rotation`, and then moves the new key into place, so the old private
+key is gone and its signatures still verify — as *signed by a predecessor*,
+never as the current key. The rotation's own statement is signed by the new key.
+A fleet roster that names this machine needs its entry moved to the new key.
 
 The sentence to read before rotating after a suspected compromise:
 
@@ -188,8 +189,6 @@ Stated here rather than discovered during an incident:
   with the password removed. Any other authentication means fetching the bundle
   out of band, or publishing it to an OCI registry, where the ambient Docker
   credentials are used.
-- `secret edit` and the `doctor` check for a `/run` that is not tmpfs are not
-  implemented. See [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
 - An attestation leaves the machine as it is written, to the same targets the
   backups go to, and a push that fails does not fail the operation. So a machine
   lost between writing a statement and pushing it takes that statement with it;
@@ -245,6 +244,20 @@ be current.
   naming the operation that made it, never as a check of its own. The
   predicate moved to `…/attestation/v2` to carry the new field; v1 statements
   are still read. See [Attestations](https://morzecrew.github.io/morzer/latest/reference/attestations/#which-operation-verified-the-signature).
+
+- **There was no way to rotate the machine's signing key** (closed 2026-10-29).
+  Retiring a key meant rebuilding the machine with `installation import`.
+  `morzer installation rotate-signing-key` now does it in place; what a
+  rotation can and cannot do is above, under
+  [Rotation protects the future and repairs nothing](#rotation-protects-the-future-and-repairs-nothing).
+
+- **`secret edit` and the `doctor` check for a `/run` that is not tmpfs were
+  listed as missing after both had shipped** (corrected 2026-10-29). `morzer
+  secret edit` decrypts into a temporary file on tmpfs for an editor and
+  re-encrypts what changed, and `doctor`'s
+  `secrets.ephemeral-storage` check warns when rendered secrets are not on
+  memory-backed storage. See
+  [RFC 0003](rfcs/0003-secrets-recovery-and-onboarding.md).
 
 - **A password in a bundle URL reached the journal** (closed 2026-10-29).
   `update` journalled its reference as typed, so `morzer update

@@ -18,12 +18,12 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** has work anybody can pick up: 0027, 0028, 0029 and 0031 have each shipped
+only **0023** has work anybody can pick up: 0027, 0029 and 0031 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
-a user who is not the author asking, a host somebody believes was compromised,
-demand for a darwin tier. Those are not stalls, and 0027's own text says that if
-the condition never arrives, never building P2 is the correct outcome. 0037 and
-0038 are proposals waiting on the author's rulings, and are not work yet. Each
+a user who is not the author asking, demand for a darwin tier. Those are not
+stalls, and 0027's own text says that if the condition never arrives, never
+building P2 is the correct outcome. 0037 and 0038 are proposals waiting on the
+author's rulings, and are not work yet. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
 phase shipped, and a reader deciding what to work on needs the other half.
 
@@ -76,10 +76,6 @@ phase shipped, and a reader deciding what to work on needs the other half.
   P1 shipped as `installation describe`. **P2 is gated on a user who is not the
   author asking for it**, and if that never happens the correct outcome is that
   P2 is never built.
-- **[0028 — The machine's signing identity](0028-the-machines-signing-identity.md).**
-  P1 shipped: the key exists and signs an artifact, which is why it shipped
-  beside its consumer rather than ahead of it. P2 is rotation, wanted the first
-  time somebody believes a host was compromised.
 - **[0029 — macOS as a development host](0029-macos-as-a-development-host.md).**
   P1 shipped: the tree compiles and vets for darwin on both architectures, gated
   in CI, and `install.sh`'s "build from source" advice is true. P2 — a published
@@ -168,7 +164,7 @@ number in the filename in sync.
 | [0025](0025-attesting-an-installation.md) | Attesting an installation | ✅ Complete | Making the manager's evidence leave the machine as a signed statement, and binding the feature to a verifier that can fail for a reason other than corruption. |
 | [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | ✅ Complete | Seeing many machines without a control plane: each publishes one signed row to a bucket, the reader can never act, and a roster names who is expected and which key each signs with. |
 | [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 🚧 In progress | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |
-| [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | 🚧 In progress | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |
+| [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | ✅ Complete | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |
 | [0029](0029-macos-as-a-development-host.md) | macOS as a development host | 🚧 In progress | Making `GOOS=darwin` compile, and then bounding what that means: a tier for authoring and evaluating bundles on a Mac, never for running a production installation. |
 | [0030](0030-unit-enablement-is-the-operators.md) | Unit enablement is the operator's | ✅ Complete | Where the manager's authority over its own units ends: `systemctl disable` sticks until `init --repair`, an installation can declare no backup timer, and the units stay in `/etc/systemd/system`. |
 | [0031](0031-images-of-pruned-releases.md) | Images of pruned releases | 🚧 In progress | Removing the images a pruned release leaves in the runtime's store, without touching any that a release of another installation on the same machine still names. |
