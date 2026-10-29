@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always zstd, and morzer recognises one by its `.tar.zst` or `.tzst` suffix, so
   `-o demo.tar.gz` wrote a file that `tar xzf` could not open and no install
   would accept. It now exits 2 before writing anything.
+- **`update --check` says what to set when it cannot list versions.** A release
+  installed from a file or an HTTPS URL, with no channel set, was refused with
+  `file cannot list available versions` and no way forward. The refusal now
+  names where the reference came from, and the hint gives the
+  `morzer config set update.channel=oci://…` command or, for a reference passed
+  on the command line, asks for an `oci://` one.
 
 ## [0.9.0] - 2026-10-29
 
