@@ -207,8 +207,8 @@ same way `verify` does.
 | Flag | Meaning |
 | --- | --- |
 | `--version` | Version to stamp into `manifest.yaml` **and** `VERSION`. |
-| `--version-from-git` | Derive it from `git describe`: `<next-patch>-dev.<distance>.g<sha>`. Mutually exclusive with `--version`. |
-| `--allow-dirty` | With `--version-from-git`, permit a work tree with uncommitted changes; the version gains a `.dirty` identifier. |
+| `--version-from-git` | Derive it from the last commit that changed the bundle directory, counted from the nearest tag: `<next-patch>-dev.<distance>.g<sha>`, or the tag itself when the tag already holds the bundle. Mutually exclusive with `--version`. |
+| `--allow-dirty` | With `--version-from-git`, permit uncommitted changes in the bundle directory; the version gains a `.dirty` identifier. |
 | `--force` | Discard an existing `SHA256SUMS.minisig`, which regenerating the list invalidates. |
 
 With neither version flag, the manifest's own version is used and nothing is
