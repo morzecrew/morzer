@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **An attestation says where a release's signature was verified.** Signatures are checked when a release is staged, and no statement said so, not even the `update` that did the checking. An `update`'s statement now sets `signature_verified` and `key_id`, and every later statement about that release carries `signature_verified_when_staged`, naming the operation that verified it. The predicate type is now `…/attestation/v2`, validated by `schemas/morzer-attestation-v2.json`; v1 statements are still read.
+- **An attestation says where a release's signature was verified.** Signatures are checked when a release is staged, and no statement said so, not even the `update` that did the checking. An `update`'s statement now sets `signature_verified` and `key_id`, and every later statement about that release carries `signature_verified_when_staged`, naming the operation that verified it. The predicate type is now `…/attestation/v2`, validated by `schemas/morzer-attestation-v2.json`; v1 statements are still read. The installation schema moves to 13, so an older manager refuses the installation rather than rewriting the release record without the check.
 
 ## [0.8.0] - 2026-10-29
 

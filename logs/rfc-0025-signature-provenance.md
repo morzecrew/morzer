@@ -69,3 +69,27 @@ proposal: ASSUMED — attest verify reads v1 and v2 statements, since v2 only ad
 ```
 
 **Drift count: 0.**
+
+## Review, round 1 (2026-10-29)
+
+The release record's new field takes an installation schema bump. Release
+records carry no version check of their own; every operation loads the
+installation first, and `Validate` refuses a schema from the future, so the
+bump is what stops an older manager's next `apply` from rewriting
+current-release.json without the check. The rule written beside the constant
+bumps for exactly this write path, and schema 6 bumped for provenance that
+nothing regenerates.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-10-29T12:10:00Z
+attempt: 2
+claim: the release record gained a field an older manager of the same schema would drop when it rewrites the record, and nothing in the record itself refuses that manager
+evidence: internal/domain/installation.go:107
+action: decided
+proposal: ASSUMED — the installation schema moves to 13 with a bump-only migration, so an older manager refuses the installation rather than erasing signature_verified from the release record.
+```
+
+**Drift count: 0.**
