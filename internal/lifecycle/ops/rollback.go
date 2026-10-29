@@ -244,10 +244,12 @@ func (d *Deps) rollbackEndpoints(ctx context.Context, to string) (current, previ
 			SchemaAtInstall: current.SchemaAtInstall,
 		}
 		// The release store keeps no record of how a release was
-		// verified, but the previous-release record does for the one
-		// release it names, and naming that release is a common --to.
+		// verified or where it came from, but the previous-release record
+		// does for the one release it names, and naming that release is
+		// a common --to. Any other target has neither on record.
 		if prev, err := d.State.PreviousRelease(ctx); err == nil && prev.Digest == target.Digest {
 			record.SignatureVerified = prev.SignatureVerified
+			record.SourceRef = prev.SourceRef
 		}
 		return current, record, nil
 	}

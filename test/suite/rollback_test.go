@@ -387,3 +387,31 @@ func TestRollbackKeepsWhereTheReleaseCameFrom(t *testing.T) {
 	assert.Equal(t, "1.2.0", current.Version.String())
 	assert.Equal(t, source, current.SourceRef, "the rollback forgot where 1.2.0 came from")
 }
+
+// `--to` naming the previous release is the same return by another route, and
+// keeps the same record of where it came from.
+func TestRollbackToThePreviousReleaseKeepsWhereItCameFrom(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	const source = "https://bundles.example/demo-1.2.0.tar.zst"
+	installed, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	installed.SourceRef = source
+	require.NoError(t, h.Deps.State.SetCurrentRelease(ctx, installed))
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+	require.NoError(t, err)
+
+	setSchema(t, h, 12)
+	_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{To: "1.2.0"})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", current.Version.String())
+	assert.Equal(t, source, current.SourceRef, "rollback --to forgot where 1.2.0 came from")
+}
