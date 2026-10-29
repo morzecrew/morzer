@@ -193,3 +193,35 @@ func TestVerifyReadsAV1StatementAndRefusesAForeignOne(t *testing.T) {
 		}
 	}
 }
+
+// `init --repair` that stages the release already installed, with no signing
+// keys to check it against, verified nothing -- and must not erase the check
+// the original init recorded for that same release.
+func TestARepairKeepsTheCheckRecordedForTheSameRelease(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	h.Deps.Verifier = verify.NewChain(checksum.New(), minisign.New())
+
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	key := signBundle(t, src)
+
+	first, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: src,
+		RequireSignature: true, SigningKeys: []string{key},
+	})
+	require.NoError(t, err)
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: src, Repair: true,
+	})
+	require.NoError(t, err)
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, current.SignatureVerified, "the repair erased the check the first init recorded")
+	assert.Equal(t, first.Record.ID, current.SignatureVerified.OperationID)
+}

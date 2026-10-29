@@ -760,6 +760,14 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			if err := atomicfs.ReplaceSymlink(dest, d.Paths.CurrentLink()); err != nil {
 				return err
 			}
+			// A repair that re-stages the installed release and verified
+			// nothing -- no keys passed to it -- keeps the check the
+			// release was installed with, rather than erasing it.
+			if signed == nil {
+				if current, err := d.State.CurrentRelease(ctx); err == nil && current.Digest == rel.Digest {
+					signed = current.SignatureVerified
+				}
+			}
 			// The ref is recorded here, as `update` records its own, because
 			// this is where the release becomes current (RFC 0016 decisions
 			// 15 and 21). Without it a machine installed from a registry
