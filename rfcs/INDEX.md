@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** and **0039** have work anybody can pick up: 0027, 0029 and 0031 have each shipped
+only **0023** has work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
@@ -96,8 +96,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   defect that records a reference's password, stands apart and can be fixed
   now; stored credentials are gated on a vendor asking for them.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
-  📝 Ruled. P1, the command itself, is one PR and ready to build; tagging the
-  pinned images is gated on a vendor asking.
+  🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
+  a vendor asking.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -178,7 +178,7 @@ number in the filename in sync.
 | [0036](0036-generating-a-secret-a-new-release-declares.md) | Generating a secret a new release declares | ✅ Complete | What `update` does with a secret the release it installs adds: which it generates, where, how it is turned off, and why `apply` and `rollback` do not. |
 | [0037](0037-freshness-of-a-signed-release.md) | Freshness of a signed release | 📝 Draft | Stopping a correctly signed but stale release from being installed, or from being the newest a machine ever learns of: rollback to an older release, and a frozen channel. |
 | [0038](0038-credentials-for-https-bundle-sources.md) | Credentials for HTTPS bundle sources | 📝 Draft | Fetching a bundle from an HTTPS server that requires a login, without the credential reaching argv, the journal or another host. |
-| [0039](0039-publishing-a-bundle-to-an-oci-registry.md) | Publishing a bundle to an OCI registry | 📝 Draft | Publishing a bundle archive to an OCI registry with morzer's own command: an existence check, morzer's media types, channel tags moved after the push, and both digests reported. |
+| [0039](0039-publishing-a-bundle-to-an-oci-registry.md) | Publishing a bundle to an OCI registry | 🚧 In progress | Publishing a bundle archive to an OCI registry with morzer's own command: an existence check, morzer's media types, channel tags moved after the push, and both digests reported. |
 
 ## Status legend
 
