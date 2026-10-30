@@ -2,7 +2,7 @@
 #
 #   - uses: morzecrew/morzer/actions/setup@<tag or commit>
 #     with:
-#       version: 0.9.0
+#       version: 0.10.0
 #
 # It runs this repository's install.sh, at the ref the action is called at,
 # with a pinned version and a signature that must verify. setup.sh says why

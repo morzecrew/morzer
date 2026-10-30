@@ -83,7 +83,7 @@ the page that covers each part of the bundle, so the agent reads these pages
 instead of guessing at fields.
 
 ```sh
-npx skills add https://github.com/morzecrew/morzer/tree/v0.9.0/skills/morzer-bundle-authoring
+npx skills add https://github.com/morzecrew/morzer/tree/v0.10.0/skills/morzer-bundle-authoring
 ```
 
 The path pins the skill to a release, so it describes the manifest that release's
