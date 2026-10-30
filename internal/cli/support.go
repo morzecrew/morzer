@@ -28,7 +28,8 @@ func newSupportCommand(app *App) *cobra.Command {
 			"`bundle` is that export — one archive, safe to hand to a stranger,\n" +
 			"whether that stranger is your vendor or a forum. What it never\n" +
 			"contains is enumerated in the reference documentation and enforced by\n" +
-			"the build, not promised in prose.",
+			"the build, not promised in prose.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/reference/support-bundle/",
 	}
 	cmd.AddCommand(
 		installationScope(newSupportBundleCommand(app)),

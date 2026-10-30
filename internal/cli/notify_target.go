@@ -18,7 +18,8 @@ func newNotifyCommand(app *App) *cobra.Command {
 		Short: "Manage where operation outcomes are reported",
 		Long: "Where this deployment reports what happened with nobody watching: the\n" +
 			"outcome of every operation, a release staged by the update timer, and\n" +
-			"doctor's findings. Off until a target is added.",
+			"doctor's findings. Off until a target is added.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/operating/notifications/",
 	}
 	target := &cobra.Command{
 		Use:   "target",

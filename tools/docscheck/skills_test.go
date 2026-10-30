@@ -60,8 +60,13 @@ func TestASkillLinkResolvesToAPageAndAHeading(t *testing.T) {
 	if err := os.WriteFile(page, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A file beside the docs directory, which no page of the site is built from.
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("# readme\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := map[string]bool{
+		docsSite + "../../README":                          false,
 		docsSite + "reference/manifest/":                   true,
 		docsSite + "reference/manifest/#the-secret-schema": true,
 		docsSite + "reference/manifest/#not-a-heading":     false,
@@ -70,7 +75,7 @@ func TestASkillLinkResolvesToAPageAndAHeading(t *testing.T) {
 	}
 	for link, ok := range cases {
 		var rep report
-		checkSkillLinks(&rep, root, "SKILL.md", "[x]("+link+")")
+		checkSiteLinks(&rep, "skills", root, "SKILL.md", "[x]("+link+")")
 		if got := len(rep.problems["skills"]) == 0; got != ok {
 			t.Errorf("%s: resolved %v, want %v (%v)", link, got, ok, rep.problems["skills"])
 		}

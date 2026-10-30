@@ -26,7 +26,8 @@ func newSecretCommand(app *App) *cobra.Command {
 		Short: "Manage the encrypted secret state",
 		Long: "Secrets live encrypted in secrets.sops.yaml and are rendered to tmpfs\n" +
 			"for the product to read. Values are never printed, never passed in argv,\n" +
-			"and never written to the journal.",
+			"and never written to the journal.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/reference/secret-commands/",
 	}
 
 	cmd.AddCommand(

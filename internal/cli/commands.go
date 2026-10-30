@@ -46,6 +46,9 @@ func newInitCommand(app *App) *cobra.Command {
 			"the systemd units.\n\n" +
 			"It never overwrites an existing installation, and it does not start the\n" +
 			"product: run `morzer apply` afterwards.",
+		Example: "  morzer init --release ./bundle --profile embedded --domain example.com \\\n" +
+			"      --recovery-recipient age1…\n" +
+			"  morzer init --release ./demo-1.2.0.tar.zst --mode dev --no-recovery-recipient",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The root's --product is persistent, so `morzer
@@ -277,6 +280,10 @@ func newUpdateCommand(app *App) *cobra.Command {
 			"release says so, and the answer is a restore from the backup taken here.\n\n" +
 			"Takes a bundle path, or --to <version> for a release already fetched into\n" +
 			"the release store.",
+		Example: "  morzer update ./demo-1.3.0.tar.zst\n" +
+			"  morzer update oci://registry.example/demo/bundle:1.3.0 --digest sha256:…\n" +
+			"  morzer update --check\n" +
+			"  morzer update --to 1.2.0",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := app.operationOptions()
@@ -554,6 +561,8 @@ func newRollbackCommand(app *App) *cobra.Command {
 			"Returns to the immediate previous release by default. Use --to to reach\n" +
 			"an older one: each rollback promotes the release it displaced, so a\n" +
 			"second rollback without --to returns to where the first started.",
+		Example: "  morzer rollback --dry-run\n" +
+			"  morzer rollback --to 1.1.0",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Wired so a refusal can name the most recent backup. Its
@@ -721,7 +730,8 @@ func newBackupCommand(app *App) *cobra.Command {
 			"the backup's manifest as uncaptured, so nothing is lost silently.\n\n" +
 			"This does not replace the backup hook for anything with a\n" +
 			"transaction log. A volume copy of a running database is not a\n" +
-			"database backup.",
+			"database backup.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/operating/backups/",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := app.attachBackupEngine(cmd.Context(), withDowntime(!noDowntime)); err != nil {
@@ -949,6 +959,9 @@ func newRestoreCommand(app *App) *cobra.Command {
 			"earlier moment. Writing into a volume is refused while a service that\n" +
 			"mounts it is running, which is why the services are stopped first.\n\n" +
 			"Destructive: requires --force and --confirm <installation-id>.",
+		Example: "  morzer backup list\n" +
+			"  morzer restore --backup 20261030T065625Z --force --confirm inst_01…\n" +
+			"  morzer restore --component database --force --confirm inst_01…",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := app.attachBackupEngine(cmd.Context()); err != nil {

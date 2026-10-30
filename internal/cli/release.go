@@ -26,7 +26,8 @@ func newReleaseCommand(app *App) *cobra.Command {
 			"files, the templates, and optionally the container images themselves.\n" +
 			"These commands inspect the ones installed on this machine, fetch new\n" +
 			"ones, and build and publish bundles.\n\n" +
-			"None of them changes what is deployed. `morzer update` does that.",
+			"None of them changes what is deployed. `morzer update` does that.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/reference/release-commands/",
 	}
 	// The one subtree that is split down the middle. `list`, `fetch`,
 	// `ingest` and `prune` read or write *this* installation's release
@@ -222,6 +223,8 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			"so a template that branches on them exercises only the branch they\n" +
 			"choose. What it does catch is a template referring to a field or a\n" +
 			"secret that nothing declares.",
+		Example: "  morzer release verify ./bundle\n" +
+			"  morzer release verify ./bundle --signing-key RWQ… --render-check",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]

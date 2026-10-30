@@ -20,7 +20,8 @@ func newTaskCommand(app *App) *cobra.Command {
 			"It runs in a one-shot container of a release service, through the\n" +
 			"image's entrypoint, under the deployment lock, and is journalled.\n\n" +
 			"The release says which machines a task may run on, and a task meant\n" +
-			"for a sandbox is refused on production by name.",
+			"for a sandbox is refused on production by name.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/reference/commands/#task",
 	}
 	cmd.AddCommand(newTaskListCommand(app), newTaskRunCommand(app))
 	return cmd

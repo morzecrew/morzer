@@ -199,21 +199,19 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 
 	root := newRootCommand(app)
 
-	// Flag errors are the one case where printing usage helps: the operator
-	// mistyped something and the valid options are the answer. It goes to
-	// stderr explicitly -- cobra's Usage() writes to the out-writer, and
-	// stdout belongs to results: a piped consumer (`--json | jq`) must
-	// never receive help text in its data stream because of a typo.
+	// A flag error names the help rather than printing it. The whole usage
+	// used to follow, some thirty lines that buried the one flag that was
+	// wrong, and under --json it was prose on stderr beside the envelope.
 	//
 	// It is also where a flag error is *typed*. Deciding that from the
 	// message text afterwards means matching substrings against every error
 	// the program can produce, and "invalid argument" is what a kernel says
 	// about EINVAL as readily as what cobra says about --timeout=soon.
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, ferr error) error {
-		fmt.Fprint(cmd.ErrOrStderr(), cmd.UsageString())
 		return domain.Usage("%s", ferr.Error()).
-			WithHint("run `morzer --help`, or `morzer <command> --help`")
+			WithHint("run `%s --help` for its flags", cmd.CommandPath())
 	})
+	nameArguments(root)
 
 	// A group runs nothing itself, so cobra answers it with its help before
 	// any argument check -- and checks arguments against subcommands for the
@@ -420,6 +418,37 @@ func (a *App) closeSources() {
 		if err := closer.Close(); err != nil && a.log != nil {
 			a.log.Debug("cannot clean up "+what, "error", err)
 		}
+	}
+}
+
+// nameArguments rewords every command's argument-count refusal as a sentence
+// naming what the command takes, read off its usage line. Cobra says "accepts 1
+// arg(s), received 0", a count an operator then has to map back to `<path>`.
+// A validator that already returns a typed error keeps its own words.
+func nameArguments(cmd *cobra.Command) {
+	for _, sub := range cmd.Commands() {
+		nameArguments(sub)
+	}
+	check := cmd.Args
+	if check == nil {
+		return
+	}
+	cmd.Args = func(c *cobra.Command, args []string) error {
+		err := check(c, args)
+		var typed *domain.Error
+		if err == nil || errors.As(err, &typed) {
+			return err
+		}
+		hint := fmt.Sprintf("run `%s --help` for what each one is", c.CommandPath())
+		takes := strings.TrimSpace(strings.TrimPrefix(c.Use, c.Name()))
+		// Counted, never quoted: a stray argument may be a secret typed in the
+		// wrong place.
+		if takes == "" {
+			return domain.Usage("%s takes no arguments, and was given %d",
+				c.CommandPath(), len(args)).WithHint("%s", hint)
+		}
+		return domain.Usage("%s takes %s, and was given %d argument(s)",
+			c.CommandPath(), takes, len(args)).WithHint("%s", hint)
 	}
 }
 
