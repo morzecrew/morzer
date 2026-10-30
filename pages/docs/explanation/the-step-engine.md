@@ -113,7 +113,10 @@ flowchart LR
 
 Duplicating those eleven would mean two lists to keep in agreement, and the
 second one would be the one nobody tests. `rollback` does the same thing from
-the other direction: swap the pointer, then converge with the same pipeline.
+the other direction: run the previous release's preflight, swap the pointer,
+then converge with the rest of the same pipeline. Preflight comes first because
+it aborts rather than compensates: it is the check that runs before anything
+moves.
 
 ## Dry runs
 

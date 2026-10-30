@@ -96,6 +96,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config settings`, `installation describe` and two refusals named an RFC by
   number, such as "See RFC 0027". The text now stands without the citation.
 
+- **A rollback refused by preflight leaves the installation where it was.** The
+  release pointer moved to the previous release before its preflight ran, so a
+  refusal there left it moved while the newer release kept running. Preflight
+  now runs before anything moves, and the refusal exits 3.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its

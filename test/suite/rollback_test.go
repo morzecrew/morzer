@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -437,4 +438,35 @@ func TestRollbackToPastAnUnreadablePreviousRecordWarns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1.2.0", current.Version.String())
 	assert.Contains(t, logs.String(), "previous-release record", "nothing said what was not carried")
+}
+
+// A rollback the previous release's preflight refuses must refuse before it
+// moves anything. Preflight aborts rather than compensates, because it is
+// meant to run before anything mutates; a pointer moved ahead of it stayed
+// moved, on the older release, while the newer one's containers kept running.
+func TestARollbackPreflightRefusesLeavesThePointerAlone(t *testing.T) {
+	h := updatedHarness(t)
+	ctx := context.Background()
+	setSchema(t, h, 12)
+
+	// The previous release can no longer run here: a fatal preflight check.
+	manifest := filepath.Join(h.Paths.ReleasesDir(), "1.2.0", "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), "architectures: [amd64, arm64]", "architectures: [s390x]", 1)
+	require.NotEqual(t, string(raw), patched)
+	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
+
+	_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitPreflight, domain.ExitCode(err))
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String(),
+		"a rollback refused at preflight moved the release pointer")
+
+	link, err := os.Readlink(h.Paths.CurrentLink())
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(h.Paths.ReleasesDir(), "1.3.0"), link)
 }

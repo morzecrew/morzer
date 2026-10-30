@@ -367,12 +367,16 @@ func rollbackSteps(
 	previousRel domain.Release,
 	opts RollbackOptions,
 ) []engine.Step {
-	steps := []engine.Step{
-		stepPointToPrevious(d, current, previous, previousRel),
-	}
 	converge := opts.Options
 	converge.PreviousVersion = current.Version
-	return append(steps, applySteps(d, inst, previousRel, converge)...)
+	apply := applySteps(d, inst, previousRel, converge)
+
+	// Preflight, apply's first step, runs before the pointer moves. It aborts
+	// rather than compensates, because it is meant to run before anything
+	// mutates; behind the move, a refusal left the pointer on the previous
+	// release while the current one's containers kept running.
+	steps := []engine.Step{apply[0], stepPointToPrevious(d, current, previous, previousRel)}
+	return append(steps, apply[1:]...)
 }
 
 // stepPointToPrevious swaps the release pointer and the current symlink.
