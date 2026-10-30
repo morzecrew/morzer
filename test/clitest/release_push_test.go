@@ -100,6 +100,10 @@ func TestReleasePushRefusesWhatItCannotPublish(t *testing.T) {
 		{"another scheme", []string{archive, "https://example.com/demo.tar.zst"}, "OCI registry"},
 		{"a key and an unsigned archive", []string{archive, repo, "--signing-key",
 			"RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"}, "not signed"},
+		// The key before the signature, as `release verify` reports them: a
+		// malformed key is the problem, not the signature it could not check.
+		{"a malformed key and an unsigned archive", []string{archive, repo, "--signing-key", "not-a-key"},
+			"not a valid minisign public key"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

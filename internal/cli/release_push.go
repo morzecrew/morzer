@@ -65,6 +65,15 @@ func newReleasePushCommand(app *App) *cobra.Command {
 			if err := checkBundleIntegrity(rel); err != nil {
 				return err
 			}
+			// The keys before the signature, in the verifier's order: a malformed
+			// key is the problem to report, not the signature it could not check.
+			if kc, ok := app.Deps.Verifier.(ports.KeyChecker); ok {
+				for _, key := range signingKeys {
+					if err := kc.CheckKey(key); err != nil {
+						return err
+					}
+				}
+			}
 			_, statErr := os.Stat(filepath.Join(rel.Root, ports.SignatureFileName))
 			unsigned := errors.Is(statErr, fs.ErrNotExist)
 			switch {
