@@ -17,15 +17,15 @@ func TestVersionFlagPrintsTheVersion(t *testing.T) {
 		StdoutContains("morzer test")
 }
 
-func TestAFlagTypoPrintsUsageOnStderrOnly(t *testing.T) {
+func TestAFlagTypoNamesTheHelpOnStderrOnly(t *testing.T) {
 	r := New(t)
 
 	res := r.Run("--definitely-not-a-flag").ExitCode(2).
-		StderrContains("Usage:")
+		StderrContains("unknown flag", "morzer --help")
 	// stdout belongs to results. A piped consumer must never receive
 	// help text because of a typo.
-	if strings.Contains(res.Stdout, "Usage:") {
-		t.Errorf("usage text leaked onto stdout:\n%s", res.Stdout)
+	if strings.TrimSpace(res.Stdout) != "" {
+		t.Errorf("a flag typo wrote to stdout:\n%s", res.Stdout)
 	}
 }
 
