@@ -1,7 +1,9 @@
 # RFC 0041 — Files an operator passes to a task
 
-- **Status:** 📝 Draft — proposed, **awaiting the author's rulings** on the
-  `OPEN` decisions in §11; not scheduled
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-30: §11's
+  `OPEN` rows as recommended, except that a task finds its input through both
+  the placeholder and an environment variable (decision 2). **P1 is ready to
+  build**
 - **Scope:** Named file inputs for a release's tasks. A task declares `inputs`
   in the manifest, and `morzer task run <task> --input <name>=<path>` copies
   each file into a per-operation directory, mounts it read-only into the
@@ -273,18 +275,18 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **Build named file inputs now?** Recommended yes: #215 is a vendor need with no supported workaround, and the design adds one port field and one step. It refines RFC 0035 decisions 1 (a task gains `inputs`), 4 (still no typed parameters: inputs are files), 5 (still no stdin), 8 (the attestation lists inputs, if decision 12 rules so) and 13 (the journal records them). |
-| 2 | `OPEN` | **How the task finds the file.** Recommended: `{inputs.<name>}` in the declared `command`, replaced by a fixed in-container path, and never in the operator's `--` arguments. Alternative: an env var per input (`MORZER_INPUT_<NAME>`), or both. |
+| 1 | `LOCKED` | **Build named file inputs now?** Recommended yes: #215 is a vendor need with no supported workaround, and the design adds one port field and one step. It refines RFC 0035 decisions 1 (a task gains `inputs`), 4 (still no typed parameters: inputs are files), 5 (still no stdin), 8 (the attestation lists inputs, if decision 12 rules so) and 13 (the journal records them). Was `OPEN`; ruled by the author 2026-10-30: build it. |
+| 2 | `LOCKED` | **How the task finds the file.** Recommended: `{inputs.<name>}` in the declared `command`, replaced by a fixed in-container path, and never in the operator's `--` arguments. Alternative: an env var per input (`MORZER_INPUT_<NAME>`), or both. Was `OPEN`; ruled by the author 2026-10-30: both. `{inputs.<name>}` in the declared `command` is replaced by the in-container path, and the one-off container also gets `MORZER_INPUT_<NAME>`, the name upper-cased, set to the same path. The variable reaches an input that no placeholder names, so §5's refusal of such an input no longer applies. |
 | 3 | `ASSUMED` | A manifest whose tasks declare `inputs` declares `min_manager_version` at least the release that ships this, as `TasksMinManagerVersion` does for `tasks:` (RFC 0018 decision 1). |
 | 4 | `ASSUMED` | Every declared input is required in P1. An optional input would need its placeholder to vanish when absent, which turns one argv element into a conditional. |
-| 5 | `OPEN` | **Who can read the file in the container.** Recommended: `0444` in a read-only mount, so any image user reads it, with a `0700` root parent on the host. Alternative: an optional numeric `owner` per input, as RFC 0032 gives secrets, with `0400`. |
+| 5 | `ASSUMED` | **Who can read the file in the container.** Recommended: `0444` in a read-only mount, so any image user reads it, with a `0700` root parent on the host. Alternative: an optional numeric `owner` per input, as RFC 0032 gives secrets, with `0400`. Was `OPEN`; ruled by the author 2026-10-30: as recommended. |
 | 6 | `ASSUMED` | The file is copied, not bind-mounted in place, into `<var>/manager/inputs/<operation-id>/`, hashed as it is copied, after a free-space check, and removed when the operation ends. A run killed mid-task leaves it for the next `task run` to sweep and `doctor` to report. |
-| 7 | `OPEN` | **Stdin as a single unnamed input.** Recommended no: RFC 0035 decision 5 stays, the live view owns the terminal, and a named input gets a declared path, a size check and a digest stdin cannot give before it is read. |
-| 8 | `OPEN` | **A directory as an input.** Recommended no in P1: the operator archives it and the task unpacks it. A directory needs a symlink policy inside it, a total size and a tree digest. |
-| 9 | `OPEN` | **Streaming an input from another machine.** Recommended: out of scope. morzer runs on the machine it manages and has no remote client; `scp` then `--input` is two commands. |
+| 7 | `ASSUMED` | **Stdin as a single unnamed input.** Recommended no: RFC 0035 decision 5 stays, the live view owns the terminal, and a named input gets a declared path, a size check and a digest stdin cannot give before it is read. Was `OPEN`; ruled by the author 2026-10-30: as recommended, no. |
+| 8 | `ASSUMED` | **A directory as an input.** Recommended no in P1: the operator archives it and the task unpacks it. A directory needs a symlink policy inside it, a total size and a tree digest. Was `OPEN`; ruled by the author 2026-10-30: as recommended, not in P1. |
+| 9 | `ASSUMED` | **Streaming an input from another machine.** Recommended: out of scope. morzer runs on the machine it manages and has no remote client; `scp` then `--input` is two commands. Was `OPEN`; ruled by the author 2026-10-30: as recommended, out of scope. |
 | 10 | `ASSUMED` | The journal records each input as one `input.<name>` flag, `<size> sha256:<hex>`, in the existing string map; never content and never the host path. |
 | 11 | `ASSUMED` | `--input` paths are resolved, must be regular files, and are checked and copied through one open descriptor. Symlinks are followed: the operator is already root. |
-| 12 | `OPEN` | **Whether the attestation lists inputs.** The v2 predicate is closed (`additionalProperties: false`), so listing them is a predicate v3 and `schemas/morzer-attestation-v3.json`. Recommended: v3 with an `inputs` list of name, size and sha256, because an input changes the deployment's data and the statement is what an auditor reads; `attest verify` keeps reading v1 and v2. Alternative: the journal only in P1, and v3 when something else needs it. |
+| 12 | `LOCKED` | **Whether the attestation lists inputs.** The v2 predicate is closed (`additionalProperties: false`), so listing them is a predicate v3 and `schemas/morzer-attestation-v3.json`. Recommended: v3 with an `inputs` list of name, size and sha256, because an input changes the deployment's data and the statement is what an auditor reads; `attest verify` keeps reading v1 and v2. Alternative: the journal only in P1, and v3 when something else needs it. Was `OPEN`; ruled by the author 2026-10-30: as recommended, predicate v3 with an `inputs` list. |
 | 13 | `ASSUMED` | The copy is bounded by the input's `max_size` and by the free-space budget, not by the size seen at the check. A file that grows past the bound while it is copied is refused, and the size and digest recorded are those of the bytes copied. |
 
 ## 12. Phasing
