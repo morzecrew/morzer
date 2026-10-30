@@ -65,15 +65,36 @@ func newReleasePushCommand(app *App) *cobra.Command {
 			if err := checkBundleIntegrity(rel); err != nil {
 				return err
 			}
-			if len(signingKeys) > 0 {
+			// The keys before the signature, in the verifier's order: a malformed
+			// key is the problem to report, not the signature it could not check.
+			if kc, ok := app.Deps.Verifier.(ports.KeyChecker); ok {
+				for _, key := range signingKeys {
+					if err := kc.CheckKey(key); err != nil {
+						return err
+					}
+				}
+			}
+			_, statErr := os.Stat(filepath.Join(rel.Root, ports.SignatureFileName))
+			unsigned := errors.Is(statErr, fs.ErrNotExist)
+			switch {
+			case len(signingKeys) > 0 && unsigned:
+				// Refused here rather than by the verifier, whose hint names the
+				// directory to sign -- a temporary extraction, gone once push exits.
+				return domain.ValidationError(nil,
+					"--signing-key was given, but %s is not signed: it has no %s",
+					args[0], ports.SignatureFileName).
+					WithHint("sign the bundle's %s with minisign, run `morzer release archive` again, "+
+						"or leave out --signing-key", ports.SumsFileName)
+			case len(signingKeys) > 0:
 				if err := app.Deps.Verifier.Verify(cmd.Context(),
 					ports.BundlePath(rel.Root), ports.Expectation{
 						PublicKeys: signingKeys,
 						Required:   true,
+						Authoring:  true,
 					}); err != nil {
 					return err
 				}
-			} else if _, err := os.Stat(filepath.Join(rel.Root, ports.SignatureFileName)); errors.Is(err, fs.ErrNotExist) {
+			case unsigned:
 				warnUnsigned(app)
 			}
 
