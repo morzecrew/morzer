@@ -55,3 +55,14 @@ claim: touched the governed area; no port, event kind, exit code or state-schema
 evidence: test/fakes/support.go:429-450
 action: decided
 ```
+
+## Review, 2026-10-30
+
+The first paragraph above says the planned set "names them in the step's
+description for a dry run". Review showed that leaves a plan able to disagree
+with itself: a dry run takes no lock, `Check` reads the installation again, and
+a value recorded in between made the step run under a description that did not
+name it. The description is now fixed text, and the names a plan shows come
+from `PlanDetail`, which reports what `Check` found in the same read
+(`TestARetirePlanNamesWhatItsCheckRead`). The planned set now only shapes the
+converge's in-memory view. That entry is left as it was written.

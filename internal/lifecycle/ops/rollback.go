@@ -386,7 +386,7 @@ func rollbackSteps(
 	// release while the current one's containers kept running.
 	steps := []engine.Step{apply[0], stepPointToPrevious(d, current, previous, previousRel)}
 	steps = append(steps, apply[1:]...)
-	return append(steps, stepRetireParameters(d, previousRel, retired))
+	return append(steps, stepRetireParameters(d, previousRel))
 }
 
 // stepPointToPrevious swaps the release pointer and the current symlink.
