@@ -35,4 +35,8 @@ func TestAWrongArgumentCountNamesWhatTheCommandTakes(t *testing.T) {
 		NoOutputContains("arg(s)")
 	r.Run("status", "extra").ExitCode(2).
 		OutputContains("morzer status takes no arguments")
+
+	// A stray argument may be a secret typed in the wrong place; the refusal
+	// counts it rather than repeating it.
+	r.Run("status", "hunter2", "--json").ExitCode(2).NoOutputContains("hunter2")
 }

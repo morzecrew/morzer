@@ -441,9 +441,11 @@ func nameArguments(cmd *cobra.Command) {
 		}
 		hint := fmt.Sprintf("run `%s --help` for what each one is", c.CommandPath())
 		takes := strings.TrimSpace(strings.TrimPrefix(c.Use, c.Name()))
+		// Counted, never quoted: a stray argument may be a secret typed in the
+		// wrong place.
 		if takes == "" {
-			return domain.Usage("%s takes no arguments, and was given %q",
-				c.CommandPath(), strings.Join(args, " ")).WithHint("%s", hint)
+			return domain.Usage("%s takes no arguments, and was given %d",
+				c.CommandPath(), len(args)).WithHint("%s", hint)
 		}
 		return domain.Usage("%s takes %s, and was given %d argument(s)",
 			c.CommandPath(), takes, len(args)).WithHint("%s", hint)

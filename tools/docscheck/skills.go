@@ -134,9 +134,16 @@ func checkHelpLinks(rep *report, root string) {
 // `authoring/hooks/` is `authoring/hooks.md`, and a directory is its index.
 func sitePage(root, path string) (string, bool) {
 	path = strings.Trim(path, "/")
-	candidates := []string{filepath.Join(root, docsDir, "index.md")}
+	docs := filepath.Join(root, docsDir)
+	candidates := []string{filepath.Join(docs, "index.md")}
 	if path != "" {
-		base := filepath.Join(root, docsDir, filepath.FromSlash(path))
+		base := filepath.Join(docs, filepath.FromSlash(path))
+		// `..` can climb out of the docs directory to a file the site never
+		// builds a page from.
+		if rel, err := filepath.Rel(docs, base); err != nil || rel == ".." ||
+			strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "", false
+		}
 		candidates = []string{base + ".md", filepath.Join(base, "index.md")}
 	}
 	for _, c := range candidates {
