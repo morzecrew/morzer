@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -77,8 +78,9 @@ func describeForCompletion(e ops.InstallationEntry) string {
 // unitProducts names the products whose service unit the manager wrote in dir.
 //
 // Recognised by the ExecStart the manager writes, not by the file name alone:
-// `/etc/systemd/system` holds every service on the host, and only one of the
-// manager's starts with `apply --startup`.
+// `/etc/systemd/system` holds every service on the host. The whole argument
+// shape of serviceTemplate is matched rather than a substring of it, so another
+// tool that happens to take `apply --startup` is not mistaken for this one.
 func unitProducts(dir string) []string {
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -106,7 +108,9 @@ func startsTheManager(path string) bool {
 	lines := bufio.NewScanner(f)
 	for lines.Scan() {
 		if exec, ok := strings.CutPrefix(lines.Text(), "ExecStart="); ok {
-			return strings.Contains(exec, " apply --startup ")
+			args := strings.Fields(exec)
+			return len(args) >= 6 && slices.Equal(args[1:6],
+				[]string{"apply", "--startup", "--plain", "--log-format", "json"})
 		}
 	}
 	return false
