@@ -17,6 +17,7 @@ import (
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
+	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/views"
 )
 
@@ -488,6 +489,17 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	// services would come back holding the old value.
 	if _, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema); err != nil {
 		return nil, err
+	}
+
+	// Rendered, and nothing restarted: a restart starts a stopped container,
+	// and an operator who ran `morzer stop` asked for the product to stay
+	// down until `morzer start`, which brings it back with the new value.
+	if inst.Stopped != nil {
+		a.notice(ui.Callout{Title: "not restarted", Body: []string{
+			fmt.Sprintf("%s is %s.", inst.Product, inst.Stopped.Describe()),
+			"`morzer start` brings " + strings.Join(services, ", ") + " back with the new value.",
+		}})
+		return nil, nil
 	}
 
 	if err := a.Deps.Runtime.Restart(ctx, cfg, services); err != nil {

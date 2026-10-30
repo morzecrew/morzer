@@ -47,6 +47,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if err := refuseWhileStopped(inst, "`morzer update`"); err != nil {
+		return Result{}, err
+	}
 
 	// The release that is current when the operation begins. Zero on a
 	// machine that has never had one, in which case `update` is a first
@@ -142,6 +145,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeUpdate, opts.Options, func(ctx context.Context) error {
+		if err := d.refuseIfStoppedNow(ctx, "`morzer update`"); err != nil {
+			return err
+		}
 		// Under the lock, because it is a read-modify-write of a record
 		// `config set` and `init --repair` also write.
 		if !opts.DryRun {

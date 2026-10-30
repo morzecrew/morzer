@@ -111,6 +111,12 @@ func RunTask(ctx context.Context, d *Deps, opts TaskOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	// A one-off starts the services it depends on and leaves them running
+	// (RFC 0035 decision 6), which would bring part of a stopped product
+	// back up (RFC 0040 decision 5).
+	if err := refuseWhileStopped(inst, "`morzer task run`"); err != nil {
+		return Result{}, err
+	}
 
 	task, ok := rel.Manifest.Tasks[opts.Name]
 	if !ok {
@@ -164,6 +170,9 @@ func RunTask(ctx context.Context, d *Deps, opts TaskOptions) (Result, error) {
 		// Again under the lock, as apply asks: with --wait, the holder
 		// we queued behind may have left a wreck a task must not run on.
 		if err := d.gateUnfinished(ctx, ""); err != nil {
+			return err
+		}
+		if err := d.refuseIfStoppedNow(ctx, "`morzer task run`"); err != nil {
 			return err
 		}
 		if err := d.refuseMovedRelease(ctx, current); err != nil {

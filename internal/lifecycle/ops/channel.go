@@ -493,6 +493,21 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 		return out, nil
 	}
 
+	// Staged and never installed while stopped, whatever auto_apply says,
+	// and reported as the line above is (RFC 0040 decision 9): installing
+	// would start the product the operator took down. Read again rather
+	// than from inst, because following the channel took time a `stop` may
+	// have landed in.
+	if now, err := d.State.LoadInstallation(ctx); err != nil {
+		return out, err
+	} else if now.Stopped != nil {
+		out.Assessment = domain.UnattendedAssessment{
+			Reasons: []string{now.Stopped.Describe() + ", so the release is staged and not installed; " +
+				"the first tick after `morzer start` installs it"},
+		}
+		return out, nil
+	}
+
 	if candidate.Failed != "" {
 		out.Skipped = fmt.Sprintf("%s did not install (%s) and is not retried "+
 			"until the channel moves; `morzer update --to %s` tries again",

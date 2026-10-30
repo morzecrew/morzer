@@ -622,6 +622,8 @@ func newRootCommand(app *App) *cobra.Command {
 
 		grouped(groupOperate, installationScope(newUpdateCommand(app))),
 		grouped(groupOperate, installationScope(newRollbackCommand(app))),
+		grouped(groupOperate, installationScope(newStopCommand(app))),
+		grouped(groupOperate, installationScope(newStartCommand(app))),
 		grouped(groupOperate, installationScope(newConfigCommand(app))),
 		grouped(groupOperate, installationScope(newSecretCommand(app))),
 		grouped(groupOperate, installationScope(newNotifyCommand(app))),

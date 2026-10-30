@@ -77,8 +77,13 @@ type Status struct {
 	// themselves failures of this command.
 	Problems []string `json:"problems,omitempty"`
 
-	// Next is the command to run when nothing has been applied yet: the one
-	// state where the most useful thing status can say is what comes next.
+	// Stopped is the operator's `morzer stop` (RFC 0040), shown above the
+	// services so a product that is down on purpose does not read as broken.
+	Stopped *domain.Stop `json:"stopped,omitempty"`
+
+	// Next is the command to run when nothing has been applied yet, or when
+	// an operator has the product stopped: the states where the most useful
+	// thing status can say is what comes next.
 	Next string `json:"next,omitempty"`
 }
 
@@ -144,6 +149,7 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		Mode:           string(inst.Mode),
 		Profile:        inst.Profile,
 		PublicURL:      inst.PublicURL(),
+		Stopped:        inst.Stopped,
 	}
 	if inst.Update.FollowsChannel() {
 		out.Following = &Following{
@@ -244,6 +250,9 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		out.Next = fmt.Sprintf("`morzer --product %s update <bundle>` installs a release and starts it",
 			inst.Product)
 	}
+	if inst.Stopped != nil {
+		out.Next = fmt.Sprintf("`morzer --product %s start` brings it back", inst.Product)
+	}
 	// An operation holding the lock may be the very one named: the first
 	// apply, running.
 	if out.LockHeldBy != nil {
@@ -268,7 +277,8 @@ func (d *Deps) neverApplied(ctx context.Context) bool {
 	}
 	for _, rec := range recs {
 		switch rec.Type {
-		case domain.OpTypeApply, domain.OpTypeUpdate, domain.OpTypeRollback, domain.OpTypeRestore:
+		case domain.OpTypeApply, domain.OpTypeUpdate, domain.OpTypeRollback, domain.OpTypeRestore,
+			domain.OpTypeStart:
 			return false
 		}
 	}
@@ -295,7 +305,7 @@ func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.I
 	// Health probes are only meaningful once something is running.
 	// Probing a stopped deployment would report a wall of connection
 	// refusals that say nothing the service list has not already said.
-	if len(rel.Manifest.Health.Checks) == 0 || !anyRunning(services) {
+	if len(rel.Manifest.Health.Checks) == 0 || !anyRunning(services) || inst.Stopped != nil {
 		return
 	}
 

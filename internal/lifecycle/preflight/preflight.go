@@ -600,7 +600,7 @@ func NoUnfinishedOperation(records []domain.OperationRecord) Check {
 			remedy := "investigate with `morzer doctor`, then acknowledge the record " +
 				"with `morzer status --clear-intervention`"
 			switch rec.Type {
-			case domain.OpTypeApply, domain.OpTypeUpdate:
+			case domain.OpTypeApply, domain.OpTypeUpdate, domain.OpTypeStop, domain.OpTypeStart:
 				remedy = fmt.Sprintf("resume it with `morzer %s --resume`, "+
 					"or investigate with `morzer doctor`", rec.Type)
 			case domain.OpTypeRotateSigningKey:

@@ -620,6 +620,9 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		if existing.AttestationSalt != "" {
 			inst.AttestationSalt = existing.AttestationSalt
 		}
+		// A repair is not a start: an operator repairing a machine they
+		// stopped still wants it down until `morzer start` (RFC 0040).
+		inst.Stopped = existing.Stopped
 		if opts.Profile == "" {
 			inst.Profile = existing.Profile
 		}

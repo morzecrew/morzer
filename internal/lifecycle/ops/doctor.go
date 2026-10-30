@@ -1207,6 +1207,12 @@ func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) prefl
 					"check that the Docker daemon is running: `docker info`",
 					"%s", domain.AsError(err).Message)
 			}
+			// Information whatever its age (RFC 0040 decisions 7 and
+			// 10): the services are down because an operator said so.
+			// The daemon is still asked above, since `start` needs it.
+			if inst.Stopped != nil {
+				return preflight.OK("%s; `morzer start` brings it back", inst.Stopped.Describe())
+			}
 			if len(services) == 0 {
 				return preflight.Warn(
 					"run `morzer apply` to start the product",
@@ -1241,6 +1247,9 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 		Run: func(ctx context.Context) events.CheckResult {
 			if len(rel.Manifest.Health.Checks) == 0 {
 				return preflight.OK("the release declares no health checks")
+			}
+			if inst.Stopped != nil {
+				return preflight.OK("not probed: %s", inst.Stopped.Describe())
 			}
 
 			// Probing a project that is not running would report a

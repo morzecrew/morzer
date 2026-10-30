@@ -116,6 +116,11 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"AttestationSalt": keep("preserved deliberately (RFC 0025 decision 10): re-minting " +
 			"breaks configuration-digest continuity on the machine that " +
 			"most needs its history to line up"),
+
+		// Not on the drop list for the same reason as Signing: `installation
+		// import` clears it for every machine, sandbox or not, because it
+		// describes the old machine's runtime (RFC 0040).
+		"Stopped": keep("cleared by import, not dropped: the old machine's stop"),
 	}
 }
 

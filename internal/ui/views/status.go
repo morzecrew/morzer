@@ -50,6 +50,11 @@ func StatusDoc(d *ui.Doc, s ops.Status) *ui.Doc {
 				Label: "previous", Value: t.Dim(s.PreviousRelease.Version.String())})
 		}
 	}
+	// Above the services, so the stopped services below it read as the
+	// operator's decision rather than an outage (RFC 0040 §5.3).
+	if s.Stopped != nil {
+		fields = append(fields, ui.Field{Label: "state", Value: t.Warn(s.Stopped.Describe())})
+	}
 	// Beside the release rather than in a section of its own: it is the
 	// answer to "what is deployed", and an operator who reads that line and
 	// stops reading has still seen that a decision is waiting.
@@ -121,7 +126,12 @@ func statusServices(d *ui.Doc, s ops.Status) {
 			state += ", " + string(svc.Health)
 		}
 		symbol, style := t.Symbols.OK, t.OK
-		if !svc.Running() {
+		switch {
+		case svc.Running():
+		case s.Stopped != nil:
+			// Down on purpose: not a failure, and not drawn as one.
+			symbol, style = t.Symbols.Skipped, t.Dim
+		default:
 			symbol, style = t.Symbols.Fail, t.Fail
 		}
 		// The marker joins the name rather than taking a column of its

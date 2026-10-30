@@ -387,6 +387,7 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 
 		"Signing":         "carried, except when this run minted a key -- see buildInstallation",
 		"AttestationSalt": "carried: re-minting breaks the configuration-digest chain",
+		"Stopped":         "carried: a repair is not a start, and only `morzer start` clears a stop",
 	}
 
 	// The same twelve-line walk as the sandbox table's, deliberately

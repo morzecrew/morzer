@@ -42,6 +42,12 @@ const (
 	// journal is renamed after it so a later `init` starts with none.
 	OpTypeRemove OperationType = "remove"
 
+	// OpTypeStop and OpTypeStart take the product down on purpose and bring
+	// it back (RFC 0040). Their own types, because "down since the operator
+	// said so" is what an incident review needs to tell from a crash.
+	OpTypeStop  OperationType = "stop"
+	OpTypeStart OperationType = "start"
+
 	// OpTypeRotateSigningKey replaces the machine's signing key (RFC 0028
 	// P2). Its own type because an auditor reading the journal after a
 	// suspected compromise needs to see when the key changed, and why

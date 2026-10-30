@@ -519,7 +519,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart={{.ManagerPath}} backup --yes --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{.ManagerPath}} backup --unattended --yes --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
 TimeoutStartSec=7200
 StandardOutput=journal
 StandardError=journal

@@ -47,6 +47,12 @@ type BackupOptions struct {
 	// default, because a target nothing prunes fills up, and the first sign
 	// of that is a failed push during an incident.
 	PruneRemote bool
+
+	// Unattended is the backup timer's run, `backup --unattended`. It is
+	// skipped while the product is stopped (RFC 0040 decision 4): a hook
+	// that runs inside a stopped service would fail every night of a long
+	// window. An operator's `morzer backup` runs whatever the hooks can do.
+	Unattended bool
 }
 
 // Backup coordinates a backup of the database, files, configuration, the
@@ -55,6 +61,13 @@ func Backup(ctx context.Context, d *Deps, opts BackupOptions) (Result, error) {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return Result{}, err
+	}
+	// Exit 0 and a line in the unit's journal, as the update timer's staged
+	// outcome is: a timer that failed every night of a maintenance window
+	// would train an operator to ignore it.
+	if opts.Unattended && inst.Stopped != nil {
+		return Result{Summary: fmt.Sprintf("scheduled backup skipped: %s is %s; `morzer backup` takes one by hand",
+			inst.Product, inst.Stopped.Describe())}, nil
 	}
 	current, err := d.State.CurrentRelease(ctx)
 	if err != nil {
@@ -640,7 +653,15 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 		if err := d.refuseMovedRelease(ctx, current); err != nil {
 			return err
 		}
-		var err error
+		// The steps again from the record as it stands under the lock: a
+		// `stop` that landed while this waited decides whether the
+		// restore brings the product back up.
+		now, err := d.State.LoadInstallation(ctx)
+		if err != nil {
+			return err
+		}
+		inst.Stopped = now.Stopped
+		op.Steps = restoreSteps(d, inst, rel, ref, opts)
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
 		return err
 	})
@@ -662,9 +683,12 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 	}
 
 	if runErr != nil {
-		return out, restoreLeftBehind(result.Record, runErr)
+		return out, restoreLeftBehind(result.Record, runErr, inst.Stopped != nil)
 	}
 	out.Summary = fmt.Sprintf("restored %s from backup %s", inst.Product, ref.ID)
+	if inst.Stopped != nil {
+		out.Summary += "; it stays stopped, and `morzer start` brings it back"
+	}
 	return out, nil
 }
 
@@ -680,12 +704,18 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 // resumable: its middle step overwrites a database, no automatic action can
 // tell how far a hook got, and guessing a repair is the failure mode the design
 // forbids. The two roads forward are the operator's to choose.
-func restoreLeftBehind(rec domain.OperationRecord, err error) error {
+func restoreLeftBehind(rec domain.OperationRecord, err error, stopped bool) error {
 	if rec.Status != domain.StatusInterrupted || !servicesLeftStopped(rec) {
 		return err
 	}
+	// `start` rather than `apply` when an operator had it stopped: `apply`
+	// is refused then, and `start` is what clears the stop.
+	command := "`morzer apply`"
+	if stopped {
+		command = "`morzer start`"
+	}
 	recovery := "the services were stopped before the restore began, and an interrupted " +
-		"operation is not brought back up automatically. Run `morzer apply` to " +
+		"operation is not brought back up automatically. Run " + command + " to " +
 		"start the current release again, or re-run the restore to try once more. " +
 		"`morzer status` shows which."
 
@@ -724,14 +754,19 @@ func servicesLeftStopped(rec domain.OperationRecord) bool {
 }
 
 func restoreSteps(d *Deps, inst domain.Installation, rel domain.Release, ref ports.BackupRef, opts RestoreOptions) []engine.Step {
-	return []engine.Step{
+	steps := []engine.Step{
 		stepVerifyBackupBeforeRestore(d, ref),
 		stepCheckRestoreCompatibility(d, rel, ref),
 		stepStopServices(d, inst, rel),
 		stepRunRestore(d, inst, ref, opts),
-		stepReapply(d, inst, rel),
-		stepRestoreSmokeTest(d, inst, rel),
 	}
+	// Restoring during a maintenance window is the natural use, and the
+	// product stays down until `start` applies over the restored data
+	// (RFC 0040 decision 3).
+	if inst.Stopped != nil {
+		return steps
+	}
+	return append(steps, stepReapply(d, inst, rel), stepRestoreSmokeTest(d, inst, rel))
 }
 
 // stepVerifyBackupBeforeRestore checks the backup before anything is stopped.
@@ -814,11 +849,12 @@ func stepStopServices(d *Deps, inst domain.Installation, rel domain.Release) eng
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
-			if err != nil {
+			if err != nil || inst.Stopped != nil {
 				return nil
 			}
 			// Bring the product back up: an aborted restore should
-			// leave it serving, not stopped.
+			// leave it serving, not stopped -- unless an operator
+			// stopped it, when serving is what they asked it not to do.
 			return d.Runtime.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 5 * time.Minute})
 		},
 	}

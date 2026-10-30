@@ -50,6 +50,10 @@ type InstallationEntry struct {
 	// would be worse than being told nothing.
 	Skipped bool `json:"skipped,omitempty"`
 
+	// Stopped is the operator's `morzer stop`, read from state like the
+	// rest of the row, so it needs no Docker call (RFC 0040 decision 12).
+	Stopped *domain.Stop `json:"stopped,omitempty"`
+
 	// Services is what --status found, and nil when it was not asked for.
 	// ServicesProblem is per row rather than per command: one wedged
 	// daemon must not blank the column for every other installation.
@@ -167,6 +171,7 @@ func (d *Deps) installationEntry(ctx context.Context, product string, opts ListO
 	}
 	entry.SchemaVersion = inst.SchemaVersion
 	entry.Mode = inst.Mode
+	entry.Stopped = inst.Stopped
 
 	current, err := scoped.State.CurrentRelease(ctx)
 	switch {
