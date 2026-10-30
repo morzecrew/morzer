@@ -238,6 +238,14 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 				d.fillRuntimeStatus(ctx, &out, inst, rel)
 			}
 		}
+	} else {
+		// `apply` refuses with nothing installed; this is what installs one.
+		out.Next = "`morzer update <bundle>` installs a release and starts it"
+	}
+	// An operation holding the lock may be the very one named: the first
+	// apply, running.
+	if out.LockHeldBy != nil {
+		out.Next = ""
 	}
 
 	if d.Backup != nil {

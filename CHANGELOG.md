@@ -9,10 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`init` and `status` say what to run next.** `init` starts nothing, and it
-  now ends by naming `morzer apply --dry-run` and `morzer apply`. Before the
-  first `apply`, `status` shows a `next` line, also in `--json`, instead of
-  `cannot read service status` from a project nothing has rendered yet.
+- **`init` and `status` say what to run next.** `init` starts nothing, and now
+  ends by naming `morzer apply`, or `morzer update <bundle>` without a release.
+  Before the first `apply`, `status` shows that as `next`, also in `--json`,
+  instead of `cannot read service status`.
 
 ## [0.10.0] - 2026-10-30
 

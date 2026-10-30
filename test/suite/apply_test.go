@@ -23,6 +23,7 @@ import (
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -522,6 +523,17 @@ func TestStatusBeforeTheFirstApplySaysToApply(t *testing.T) {
 	assert.Contains(t, status.Next, "morzer apply")
 	assert.Empty(t, status.Problems, "a project that was never applied is not a runtime problem")
 
+	// While an operation holds the lock -- the first apply, running -- telling
+	// the operator to run it would be wrong.
+	release, err := h.Locker.Acquire(ctx, "deployment", ports.LockOptions{
+		Owner: ports.LockOwner{PID: 4321, Type: "apply"},
+	})
+	require.NoError(t, err)
+	status, err = ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Empty(t, status.Next, "status named the command that is already running")
+	require.NoError(t, release())
+
 	// Once something has converged, the runtime is asked and its answer stands.
 	delete(h.Runtime.Fail, "Status")
 	h.setHookEnv()
@@ -550,6 +562,8 @@ func TestStatusWorksWithoutARelease(t *testing.T) {
 	require.NoError(t, err, "status must work on a fresh installation")
 	assert.Nil(t, status.CurrentRelease, "no release installed must be null, not a zero-filled object")
 	assert.Empty(t, status.Services)
+	// `apply` refuses with nothing installed; `update <bundle>` is what does it.
+	assert.Contains(t, status.Next, "morzer update <bundle>")
 }
 
 func TestBackupCreatesVerifiesAndPrunes(t *testing.T) {

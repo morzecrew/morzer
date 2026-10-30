@@ -177,10 +177,15 @@ func newInitCommand(app *App) *cobra.Command {
 			})
 			// Init starts nothing, which the help says and a first-time
 			// operator at a fresh prompt has not read. A plan and a repair
-			// created nothing to start.
+			// created nothing to start. Without a release `apply` refuses, so
+			// the next step is the command that installs one.
 			if err == nil && !opts.DryRun && !opts.Repair && app.json == nil && !app.Flags.quiet {
-				fmt.Fprintln(app.Stream.Err, "nothing runs yet: `morzer apply --dry-run` shows what "+
-					"would happen, `morzer apply` starts it")
+				next := "nothing runs yet: `morzer apply --dry-run` shows what would happen, " +
+					"`morzer apply` starts it"
+				if opts.ReleasePath == "" {
+					next = "nothing is installed yet: `morzer update <bundle>` installs a release and starts it"
+				}
+				fmt.Fprintln(app.Stream.Err, next)
 			}
 			return err
 		},
