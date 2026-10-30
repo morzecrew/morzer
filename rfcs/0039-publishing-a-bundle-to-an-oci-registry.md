@@ -2,8 +2,8 @@
 
 - **Status:** 🚧 In progress — ruled by the author 2026-10-29: §11's `OPEN`
   rows as recommended. **P1, the command, built 2026-10-30**; the decisions the
-  build had to make wait in [logs/release-push.md](../logs/release-push.md) as
-  proposed rows 12–19. P2 is gated on a vendor asking
+  build had to make are rows 12–19, accepted by the author 2026-10-30 from
+  [logs/release-push.md](../logs/release-push.md). P2 is gated on a vendor asking
 - **Scope:** A `morzer release push` command that publishes a bundle archive to
   an OCI registry: it checks the archive, refuses to overwrite a published
   version with different content, pushes with morzer's own artifact and layer
@@ -245,6 +245,14 @@ None. The author ruled §11's `OPEN` rows on 2026-10-29.
 | 9 | `ASSUMED` | Credentials are the ambient Docker configuration through `OpenRepository`, with the pull side's loopback-HTTP rule. Push adds no credential flags. |
 | 10 | `ASSUMED` | Output names both digests, each with its use (§5.4); `--json` carries both under distinct keys. |
 | 11 | `ASSUMED` | Before anything is sent, the archive is extracted through the local source and checked as `release verify` checks a directory: sums, templates, and the signature under `--signing-key`. Without that flag a missing signature warns, as `release archive` does. |
+| 12 | `ASSUMED` | **The backwards-channel warning (decision 4) reads the version annotation of the manifest the channel points at, and is skipped when there is none.** One manifest request; pulling the layer would download a bundle to print a warning, and machines refuse to follow a channel backwards anyway. Accepted by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U1). |
+| 13 | `LOCKED` | **A `--channel` that parses as a semantic version is refused, exit 2.** `List` reads such a tag as a version, so it would carry decision 2's mismatch in through the channel. Ruled by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U2). |
+| 14 | `ASSUMED` | **Push takes only a `tar.zst`.** A directory is refused with a hint to run `release archive`, which owns the refusals between a tree and an archive. Accepted by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U3). |
+| 15 | `ASSUMED` | **The layer's title annotation is the archive's file name**, as `oras push` writes it and `oras pull` needs it; the manifest carries title (product), version and the content digest. Accepted by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U4). |
+| 16 | `ASSUMED` | **When the version tag resolves to a manifest other than the one this push wrote, no channel moves**, and push refuses with exit 2, naming both. Accepted by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U5). |
+| 17 | `LOCKED` | **`--dry-run` runs every check and every registry read, writes nothing, and refuses what push would refuse**; it reports `dry_run: true`, with `published` and each channel's `moved` saying what the run would do. Ruled by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U6). |
+| 18 | `LOCKED` | **A failed channel move exits with that step's error, and `--json` carries the result beside the error**, each channel with `moved` or its `error`. Ruled by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U7). |
+| 19 | `ASSUMED` | **The manifest's `created` annotation is left to oras**, so two pushes of one archive differ in manifest digest; identity never compares manifest digests (decision 6). Accepted by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U9). |
 
 ## 12. Phasing
 
