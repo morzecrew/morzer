@@ -619,3 +619,18 @@ func TestOnlyAOneShotRunsWithComposeProgressOff(t *testing.T) {
 		}
 	}
 }
+
+// Compose's --volume splits on ':', so a path holding one would mount the wrong
+// thing or fail obscurely; it is refused by name instead.
+func TestRunOneShotRefusesAMountPathWithAColon(t *testing.T) {
+	r, runner := newRuntime()
+	_, err := r.RunOneShot(context.Background(), cfg(), "worker", ports.RunOptions{
+		Mounts: []ports.Mount{{Source: "/srv/a:b/manager/inputs/op_1/snapshot", Target: "/morzer/inputs/snapshot", ReadOnly: true}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "':'") {
+		t.Fatalf("a path with a colon was not refused by name: %v", err)
+	}
+	if len(runner.Calls()) != 0 {
+		t.Error("compose was run with a mount it cannot express")
+	}
+}

@@ -177,3 +177,56 @@ action: decided
 ```
 
 **Drift count: 0.**
+
+## Found in review
+
+Three, each from a reviewer's finding on #225.
+
+The sweep proposed above ran inside `stage-inputs`, so only a task that takes
+inputs swept. A killed task's copy then waited for the next task that happened
+to declare one, while `doctor` told the operator the next `task run` would
+remove it. This supersedes the earlier entry's "the sweep runs inside
+`stage-inputs`".
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-10-30T21:54:00Z
+attempt: 2
+claim: a sweep inside stage-inputs runs only for a task that takes inputs, so leftovers outlived every other task
+evidence: internal/lifecycle/ops/task.go:226
+action: decided
+proposal: ASSUMED — every `task run` sweeps leftover staging directories under the deployment lock before its steps, and a sweep that fails warns rather than failing the task.
+```
+
+`doctor` takes no lock, so the operation holding it may be staging its inputs
+while `doctor` reads the directory.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-10-30T21:55:00Z
+attempt: 2
+claim: doctor named the running task's staging directory as a leftover and told the operator to remove it
+evidence: internal/lifecycle/ops/task_inputs.go:335
+action: decided
+proposal: ASSUMED — `tasks.staged-inputs` leaves out the directory of the operation holding the deployment lock.
+```
+
+`docker compose run` has only the short `--volume` syntax, which splits on `:`.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-10-30T21:56:00Z
+attempt: 2
+claim: a host path containing ':' cannot be expressed to `compose run --volume`
+evidence: internal/adapters/runtime/compose/compose.go:488
+action: decided
+proposal: ASSUMED — the Compose runtime refuses a mount whose path contains ':', by name, before running anything; the default layout has none.
+```
+
+**Drift count: 0.**

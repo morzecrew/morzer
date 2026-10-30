@@ -273,6 +273,25 @@ func tasksDoc(d *ui.Doc, tasks []ops.TaskEntry) *ui.Doc {
 		Rows:    rows,
 		Empty:   "the installed release declares no tasks",
 	})
+
+	// What each input is, under the table rather than in a cell: a
+	// description is a sentence, and the --input it belongs to is what an
+	// operator copies.
+	if inputs {
+		d.Blank()
+		for _, t := range tasks {
+			for _, in := range t.Inputs {
+				line := fmt.Sprintf("%s --input %s=<path>", t.Name, in.Name)
+				if in.Description != "" {
+					line += ": " + in.Description
+				}
+				if in.MaxSize > 0 {
+					line += fmt.Sprintf(" (at most %s)", in.MaxSize)
+				}
+				d.Text(0, "%s", line)
+			}
+		}
+	}
 	return d
 }
 

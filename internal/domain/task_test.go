@@ -150,3 +150,12 @@ func TestThePlaceholderAndTheVariableNameTheSamePath(t *testing.T) {
 	assert.Equal(t, "MORZER_INPUT_META_FILE", TaskInputEnv("meta_file"))
 	assert.Equal(t, []string{"restore"}, TaskSpec{Command: []string{"restore"}}.CommandWithInputs())
 }
+
+// `inputs: {}` is a field an older manager's strict decoding refuses as
+// unknown, so it needs the floor as much as a populated map does.
+func TestAnEmptyInputsMapStillNeedsTheManagerThatReadsIt(t *testing.T) {
+	m := manifestWithTask(TaskSpec{Service: "w", Command: []string{"x"}, Inputs: map[string]TaskInput{}})
+	err := m.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "because a task declares inputs")
+}

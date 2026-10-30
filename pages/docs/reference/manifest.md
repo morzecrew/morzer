@@ -531,7 +531,7 @@ tasks:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `description` | string | One line of at most 200 characters, shown by `morzer task list` and in the refusal when the input is missing. |
-| `max_size` | size | The largest file accepted, such as `2GiB`. Absent means only the free disk space bounds it. |
+| `max_size` | size | The largest file accepted, such as `2GiB`. Absent, or `0`, means only the free disk space bounds it. |
 
 Input names are lowercase letters, digits and underscores, starting with a
 letter. Every declared input is required.

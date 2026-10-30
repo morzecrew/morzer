@@ -1657,9 +1657,11 @@ func (v *validationErrors) checkTask(field, name string, t TaskSpec) {
 	}
 }
 
+// taskInputsDeclared is any task carrying the `inputs` key, empty included:
+// strict decoding refuses the key, not its contents.
 func (m *Manifest) taskInputsDeclared() bool {
 	for _, t := range m.Tasks {
-		if len(t.Inputs) > 0 {
+		if t.Inputs != nil {
 			return true
 		}
 	}

@@ -164,9 +164,7 @@ func (d *Deps) inputBudget(inputs []openInput) (int64, error) {
 }
 
 // stepStageInputs copies each input into this operation's directory, hashing
-// what it copies (§5.3). First of the task's steps, under the lock: where no
-// other operation can be running, so every other directory there is one a
-// killed task left behind, and it is swept first.
+// what it copies (§5.3). First of the task's steps.
 func stepStageInputs(d *Deps, inputs []openInput, budget int64) engine.Step {
 	return engine.Step{
 		ID:          "stage-inputs",
@@ -183,9 +181,6 @@ func stepStageInputs(d *Deps, inputs []openInput, budget int64) engine.Step {
 			return "copy " + strings.Join(parts, ", "), ""
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			if err := d.sweepInputs(st.OpID); err != nil {
-				return err
-			}
 			dir := filepath.Join(d.Paths.InputsDir(), st.OpID)
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				return domain.Internal(err, "cannot create %s", dir)
@@ -249,6 +244,11 @@ func copyInput(ctx context.Context, in openInput, dst string, bound int64) (int6
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return 0, "", ctxErr
 		}
+		// The space checked before the lock went to something else since.
+		if errors.Is(err, syscall.ENOSPC) {
+			return 0, "", domain.Preflight(err, "the disk filled while the input %s was copied", in.Name).
+				WithHint("free some space under the manager's directory and run the task again")
+		}
 		return 0, "", domain.Internal(err, "cannot copy the input %s", in.Name)
 	case n > bound:
 		_ = os.Remove(dst)
@@ -282,7 +282,8 @@ func (c contextReader) Read(p []byte) (int, error) {
 }
 
 // sweepInputs removes what killed tasks left behind: every directory under
-// InputsDir but this operation's. Safe only under the deployment lock.
+// InputsDir but this operation's. Every task runs it, under the deployment
+// lock, where no other operation can be running.
 func (d *Deps) sweepInputs(keep string) error {
 	entries, err := os.ReadDir(d.Paths.InputsDir())
 	if errors.Is(err, os.ErrNotExist) {
@@ -318,7 +319,10 @@ func removeInputs(dir string) error {
 }
 
 // leftoverInputs names the staging directories a killed task left, for doctor.
-func (d *Deps) leftoverInputs() ([]string, error) {
+//
+// Doctor takes no lock, so the operation holding it may be copying its inputs
+// now: its directory is live, not left behind, and is not named.
+func (d *Deps) leftoverInputs(ctx context.Context) ([]string, error) {
 	entries, err := os.ReadDir(d.Paths.InputsDir())
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -326,9 +330,15 @@ func (d *Deps) leftoverInputs() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	live := ""
+	if owner, held, err := d.Locker.Owner(ctx, "deployment"); err == nil && held {
+		live = owner.OperationID
+	}
 	var out []string
 	for _, e := range entries {
-		out = append(out, filepath.Join(d.Paths.InputsDir(), e.Name()))
+		if e.Name() != live {
+			out = append(out, filepath.Join(d.Paths.InputsDir(), e.Name()))
+		}
 	}
 	return out, nil
 }

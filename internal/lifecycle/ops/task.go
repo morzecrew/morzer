@@ -219,6 +219,14 @@ func RunTask(ctx context.Context, d *Deps, opts TaskOptions) (Result, error) {
 		if err := d.refuseMovedRelease(ctx, current); err != nil {
 			return err
 		}
+		// What killed tasks left, swept by every task rather than only one
+		// that takes inputs. Not this task's failure if it cannot be:
+		// doctor keeps naming what is left.
+		if !opts.DryRun {
+			if err := d.sweepInputs(opID); err != nil {
+				d.warnf("%s", domain.AsError(err).Message)
+			}
+		}
 		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
 		return err

@@ -555,7 +555,11 @@ The journal records each input as `input.<name>`, its size and sha256, and never
 its content or your path. The operation's [attestation](attestations.md) lists
 the same. `--dry-run` checks the inputs and copies nothing. A task killed
 mid-run leaves its copy behind: `doctor` reports it as `tasks.staged-inputs`,
-and the next `task run` removes it.
+and the next `task run`, with inputs or without, removes it.
+
+An installation under a root whose path contains `:` cannot be given inputs:
+Compose's `--volume` splits on it, so the run is refused rather than mounting
+the wrong path.
 
 ## backup
 

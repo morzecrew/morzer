@@ -31,3 +31,21 @@ func TestTheTaskListSaysWhatMayRunHere(t *testing.T) {
 			"a dev-only task on this machine read as allowed")
 	}
 }
+
+// A task's inputs are named in the table and described under it, with the
+// --input an operator types.
+func TestTheTaskListDescribesEachInput(t *testing.T) {
+	tasks := []ops.TaskEntry{
+		{Name: "reindex", Service: "app", Allowed: true},
+		{Name: "restore", Service: "worker", Allowed: true, Inputs: []ops.TaskInputEntry{
+			{Name: "snapshot", Description: "Catalogue snapshot (JSONL)", MaxSize: 2 << 30},
+		}},
+	}
+	t.Setenv("COLUMNS", "200")
+	var b bytes.Buffer
+	require.NoError(t, ui.Render(&b, ui.ModePlain, theme.New(false, true), tasks))
+	got := flatten(b.String())
+
+	assert.Contains(t, got, "restore worker any yes no snapshot")
+	assert.Contains(t, got, "restore --input snapshot=<path>: Catalogue snapshot (JSONL) (at most 2GiB)")
+}

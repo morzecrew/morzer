@@ -1991,8 +1991,8 @@ func (d *Deps) checkStagedInputs() preflight.Check {
 		ID:          "tasks.staged-inputs",
 		Category:    preflight.CategoryStorage,
 		Description: "no task left its inputs behind",
-		Run: func(context.Context) events.CheckResult {
-			left, err := d.leftoverInputs()
+		Run: func(ctx context.Context) events.CheckResult {
+			left, err := d.leftoverInputs(ctx)
 			if err != nil {
 				return preflight.Warn("", "cannot read %s: %v", d.Paths.InputsDir(), err)
 			}

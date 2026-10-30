@@ -235,3 +235,40 @@ func TestALeftoverCopyIsReportedAndSwept(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, stagingLeft(t, h), "the leftover was not swept")
 }
+
+// The sweep is every task's, not only one that takes inputs: a killed task's
+// copy must not wait for the next task that happens to declare one.
+func TestATaskWithoutInputsSweepsALeftoverToo(t *testing.T) {
+	h := inputsHarness(t, restoreTask, reindexTask)
+	left := filepath.Join(h.Paths.InputsDir(), "op_killed")
+	require.NoError(t, os.MkdirAll(left, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(left, "snapshot"), []byte("old"), 0o444))
+	require.NoError(t, os.Chmod(left, 0o555))
+
+	_, err := ops.RunTask(context.Background(), h.Deps, ops.TaskOptions{Name: "reindex"})
+	require.NoError(t, err)
+	assert.Empty(t, stagingLeft(t, h), "a task without inputs left a leftover in place")
+}
+
+// Doctor takes no lock, so the operation holding it may be copying its inputs
+// right now. Its directory is not a leftover, and doctor must not tell an
+// operator to remove it.
+func TestDoctorDoesNotNameTheRunningTasksInputs(t *testing.T) {
+	h := inputsHarness(t, restoreTask)
+	for _, op := range []string{"op_live", "op_dead"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(h.Paths.InputsDir(), op), 0o700))
+	}
+	release, err := h.Locker.Acquire(context.Background(), "deployment",
+		ports.LockOptions{Owner: ports.LockOwner{OperationID: "op_live", Type: string(domain.OpTypeTask)}})
+	require.NoError(t, err)
+	defer func() { _ = release() }()
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+	for _, res := range report.Results {
+		if res.ID == "tasks.staged-inputs" {
+			assert.Contains(t, res.Message, "op_dead")
+			assert.NotContains(t, res.Message, "op_live", "doctor named the running task's inputs")
+		}
+	}
+}

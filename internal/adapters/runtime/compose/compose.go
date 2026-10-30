@@ -482,6 +482,14 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 		argv = append(argv, "--env", k+"="+v)
 	}
 	for _, m := range opts.Mounts {
+		// `run` has only the short --volume syntax, which splits on ':'.
+		// A path holding one would mount something else or fail obscurely,
+		// so it is refused by name; the default layout has none.
+		if strings.Contains(m.Source, ":") || strings.Contains(m.Target, ":") {
+			return ports.ExitResult{}, domain.RuntimeError(nil,
+				"cannot mount %s into the container: Compose's --volume cannot express a path with ':' in it", m.Source).
+				WithHint("install under a root whose path has no ':'")
+		}
 		volume := m.Source + ":" + m.Target
 		if m.ReadOnly {
 			volume += ":ro"
