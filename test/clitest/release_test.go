@@ -121,6 +121,19 @@ func TestReleaseVerify(t *testing.T) {
 	bad.Failed().OutputContains("digest")
 }
 
+// The vendor asked for the signature check, so the refusal is about their key
+// and their unsigned bundle. A build machine has no installation, and pointing
+// it at `require_signature` sends the vendor looking for a setting that does
+// not exist there.
+func TestReleaseVerifyWithAKeyRefusesAnUnsignedBundleInTheVendorsTerms(t *testing.T) {
+	r := clitest.New(t)
+	_, key := minisignKeypair(t)
+
+	r.Run("release", "verify", r.Bundle, "--signing-key", key).Failed().
+		OutputContains("--signing-key", "not signed", "minisign -Sm").
+		NoOutputContains("installation policy", "require_signature")
+}
+
 func TestReleaseVerifyOfSomethingThatIsNotABundle(t *testing.T) {
 	r := clitest.New(t)
 

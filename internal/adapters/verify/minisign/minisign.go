@@ -86,6 +86,13 @@ func (v *Verifier) VerifySigned(ctx context.Context, bundle ports.BundlePath, ex
 		return "", err
 	}
 	if sigPath == "" {
+		if expect.Required && expect.Authoring {
+			return "", domain.ValidationError(nil,
+				"--signing-key was given, but this bundle is not signed: it has no %s",
+				ports.SignatureFileName).
+				WithHint("sign it with `minisign -Sm %s`, or leave out --signing-key "+
+					"to check the checksums only", sumsPath)
+		}
 		if expect.Required {
 			return "", domain.ValidationError(nil,
 				"installation policy requires a signature, but this bundle has none").
