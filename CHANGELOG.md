@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   journal's operations. An installation created before this keeps its `op_` id:
   backups, fleet keys and `--confirm` go on accepting it.
 
+- **`task run` prints the task's output only when asked.** Pass `--output` to
+  get its stdout and stderr when it finishes, as before:
+  `morzer task run report --output > report.txt`. `--verbose` still shows them
+  as they arrive, and a task that fails shows the last 10 lines of its stderr.
+  `--json` still carries both.
+
 ### Fixed
 
 - **`morzer logs` fails when the runtime cannot produce the stream.** With the
