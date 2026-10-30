@@ -118,11 +118,18 @@ func checkSiteLinks(rep *report, group, root, rel, raw string) {
 
 // checkHelpLinks resolves the documentation links in every command's help, so
 // a page that moves fails the build instead of a link printed by the binary.
+//
+// A top-level group must carry one (RFC 0019 decision 27): resolving only the
+// links that exist would pass a new group that has none.
 func checkHelpLinks(rep *report, root string) {
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {
 		rep.checks++
 		checkSiteLinks(rep, "help", root, "`"+cmd.CommandPath()+"` help", cmd.Long)
+		topGroup := cmd.HasParent() && !cmd.Parent().HasParent() && cmd.HasSubCommands()
+		if topGroup && !cmd.Hidden && !cli.IsGenerated(cmd) && !strings.Contains(cmd.Long, docsSite) {
+			rep.add("help", "`%s` help links no page under %s; a command group ends with a `Docs:` link", cmd.CommandPath(), docsSite)
+		}
 		for _, sub := range cmd.Commands() {
 			walk(sub)
 		}
