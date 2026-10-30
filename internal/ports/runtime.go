@@ -207,6 +207,18 @@ type RunOptions struct {
 	// Remove deletes the container after it exits. Off when the caller
 	// wants to inspect a failed job.
 	Remove bool
+
+	// Mounts are host files put into the container, for a task's inputs
+	// (RFC 0041). A runtime that cannot mount one must refuse the run, not
+	// start the container without it.
+	Mounts []Mount
+}
+
+// Mount is one host path in a one-off container.
+type Mount struct {
+	Source   string
+	Target   string
+	ReadOnly bool
 }
 
 type LogOptions struct {

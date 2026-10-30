@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -231,6 +232,9 @@ func init() {
 // tasksDoc lists the release's tasks with whether this machine may run each,
 // so the refusal `task run` would give is visible before anybody types it.
 func tasksDoc(d *ui.Doc, tasks []ops.TaskEntry) *ui.Doc {
+	// Only when some task takes a file: a column of nothing on every other
+	// release is width spent on a question nobody asked.
+	inputs := slices.ContainsFunc(tasks, func(t ops.TaskEntry) bool { return len(t.Inputs) > 0 })
 	rows := make([][]string, 0, len(tasks))
 	for _, t := range tasks {
 		modes := "any"
@@ -244,19 +248,30 @@ func tasksDoc(d *ui.Doc, tasks []ops.TaskEntry) *ui.Doc {
 		if t.Args {
 			args = "yes"
 		}
-		rows = append(rows, []string{t.Name, t.Service, modes, here, args, t.Description})
+		row := []string{t.Name, t.Service, modes, here, args}
+		if inputs {
+			names := make([]string, 0, len(t.Inputs))
+			for _, in := range t.Inputs {
+				names = append(names, in.Name)
+			}
+			row = append(row, strings.Join(names, ", "))
+		}
+		rows = append(rows, append(row, t.Description))
+	}
+	columns := []ui.Column{
+		{Header: "task", Essential: true},
+		{Header: "service"},
+		{Header: "modes"},
+		{Header: "allowed here", Essential: true},
+		{Header: "args"},
+	}
+	if inputs {
+		columns = append(columns, ui.Column{Header: "inputs", Essential: true})
 	}
 	d.Table(0, ui.Table{
-		Columns: []ui.Column{
-			{Header: "task", Essential: true},
-			{Header: "service"},
-			{Header: "modes"},
-			{Header: "allowed here", Essential: true},
-			{Header: "args"},
-			{Header: "description"},
-		},
-		Rows:  rows,
-		Empty: "the installed release declares no tasks",
+		Columns: append(columns, ui.Column{Header: "description"}),
+		Rows:    rows,
+		Empty:   "the installed release declares no tasks",
 	})
 	return d
 }

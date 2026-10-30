@@ -575,6 +575,29 @@
           "description": {
             "type": "string"
           },
+          "inputs": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "max_size": {
+                  "description": "A byte size, e.g. 2GiB.",
+                  "examples": [
+                    "2GiB",
+                    "512MiB"
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "type": "object"
+          },
           "modes": {
             "items": {
               "enum": [

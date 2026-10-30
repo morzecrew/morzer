@@ -3,6 +3,8 @@ package ops
 import (
 	"context"
 	"fmt"
+	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -30,6 +32,10 @@ type TaskOptions struct {
 	// Args follow the task's own command. Only a task declaring `args:
 	// true` accepts any.
 	Args []string
+
+	// Inputs are the files the operator passed, by input name, as typed
+	// (RFC 0041). Every input the task declares is required.
+	Inputs map[string]string
 }
 
 // TaskRun is what a task's container did: the `--json` payload of `task run`,
@@ -59,6 +65,16 @@ type TaskEntry struct {
 	// Allowed says whether this machine's mode is one the task lists, so
 	// the refusal `task run` would give is visible before anybody types it.
 	Allowed bool `json:"allowed"`
+
+	// Inputs are the files the task needs, each passed with `--input`.
+	Inputs []TaskInputEntry `json:"inputs,omitempty"`
+}
+
+// TaskInputEntry is one input `task list` describes.
+type TaskInputEntry struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	MaxSize     domain.ByteSize `json:"max_size,omitempty"`
 }
 
 // keyRuntimeServices is the service list validate-runtime got from the
@@ -84,9 +100,19 @@ func ListTasks(ctx context.Context, d *Deps) ([]TaskEntry, error) {
 			Args:        task.Args,
 			Modes:       task.Modes,
 			Allowed:     task.AllowedOn(inst.Mode),
+			Inputs:      taskInputEntries(task),
 		})
 	}
 	return out, nil
+}
+
+func taskInputEntries(task domain.TaskSpec) []TaskInputEntry {
+	var out []TaskInputEntry
+	for _, name := range task.InputNames() {
+		in := task.Inputs[name]
+		out = append(out, TaskInputEntry{Name: name, Description: in.Description, MaxSize: in.MaxSize})
+	}
+	return out
 }
 
 // RunTask runs a declared task as the operation `task`.
@@ -146,6 +172,21 @@ func RunTask(ctx context.Context, d *Deps, opts TaskOptions) (Result, error) {
 			WithHint("the release restricts it with `modes`; a machine's mode is fixed when it is created")
 	}
 
+	// Opened and checked before the lock like every other refusal of the
+	// request, and the space they need with them: a task that cannot be
+	// given its files takes nothing and journals nothing.
+	inputs, err := openTaskInputs(opts.Name, task, opts.Inputs)
+	if err != nil {
+		return Result{}, err
+	}
+	defer closeInputs(inputs)
+	var budget int64
+	if len(inputs) > 0 {
+		if budget, err = d.inputBudget(inputs); err != nil {
+			return Result{}, err
+		}
+	}
+
 	if err := d.gateUnfinished(ctx, ""); err != nil {
 		return Result{}, err
 	}
@@ -161,7 +202,7 @@ func RunTask(ctx context.Context, d *Deps, opts TaskOptions) (Result, error) {
 		Type:        domain.OpTypeTask,
 		Description: "run task " + opts.Name,
 		To:          rel.Version(),
-		Steps:       taskSteps(d, inst, rel, opts, task, armed),
+		Steps:       taskSteps(d, inst, rel, opts, task, armed, inputs, budget),
 		Flags:       d.taskFlags(opts, task, armed),
 	}
 
@@ -183,12 +224,25 @@ func RunTask(ctx context.Context, d *Deps, opts TaskOptions) (Result, error) {
 		return err
 	})
 
+	// The copies go when the operation ends, however it ended. A failure
+	// here leaves them for the next task's sweep, and doctor names them.
+	if len(inputs) > 0 && !opts.DryRun {
+		if err := removeInputs(filepath.Join(d.Paths.InputsDir(), opID)); err != nil {
+			d.warnf("%s", domain.AsError(err).Message)
+		}
+	}
+
 	d.notifyFinished(ctx, opID, domain.OpTypeTask, result.Record, runErr)
 	if !opts.DryRun {
 		// A record of a task that failed as well as one that succeeded,
 		// for the reason Apply gives.
-		emitAttestation(ctx, d, result.Record,
-			attestationInputs(inst, rel, current, domain.Version{}, renderedConfigFor(result.State)))
+		in := attestationInputs(inst, rel, current, domain.Version{}, renderedConfigFor(result.State))
+		if result.State != nil {
+			if staged, err := engine.GetTyped[stagedInputs](result.State, keyStagedInputs); err == nil {
+				in.Inputs = staged.Inputs
+			}
+		}
+		emitAttestation(ctx, d, result.Record, in)
 	}
 
 	out := Result{Record: result.Record}
@@ -252,21 +306,28 @@ func (d *Deps) taskFlags(opts TaskOptions, task domain.TaskSpec, armed bool) map
 // migration: the release was applied, and a task is not a converge.
 func taskSteps(
 	d *Deps, inst domain.Installation, rel domain.Release, opts TaskOptions, task domain.TaskSpec, armed bool,
+	inputs []openInput, budget int64,
 ) []engine.Step {
-	return []engine.Step{
+	var steps []engine.Step
+	if len(inputs) > 0 {
+		steps = append(steps, stepStageInputs(d, inputs, budget))
+	}
+	return append(steps,
 		stepLoadSecrets(d, inst, rel),
 		stepRenderSecrets(d, inst, rel, opts.Options),
 		stepRenderConfiguration(d, inst, rel, opts.Options),
 		stepValidateRuntime(d, inst, rel, opts.Options),
 		stepRunTask(d, inst, rel, opts, task, armed),
-	}
+	)
 }
 
 // stepRunTask runs the task's container to completion.
 func stepRunTask(
 	d *Deps, inst domain.Installation, rel domain.Release, opts TaskOptions, task domain.TaskSpec, armed bool,
 ) engine.Step {
-	argv := append(slices.Clone(task.Command), opts.Args...)
+	// The release's own command with its input placeholders filled; the
+	// operator's arguments follow and are never templated.
+	argv := append(task.CommandWithInputs(), opts.Args...)
 	timeout := task.Timeout.Or(domain.DefaultOperationTimeout)
 
 	return engine.Step{
@@ -290,7 +351,7 @@ func stepRunTask(
 			}
 			return fmt.Sprintf("%s, and %d argument(s) not shown: this installation's "+
 				"secret values could not be loaded to scrub them",
-				d.redactArgv(task.Command), len(opts.Args)), ""
+				d.redactArgv(task.CommandWithInputs()), len(opts.Args)), ""
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
@@ -301,12 +362,19 @@ func stepRunTask(
 				return err
 			}
 
-			env := d.hookEnv(inst, rel, domain.Version{}, st.OpID, st.OpType, ports.PhaseTask, st.DryRun)
+			env := ports.ServiceEnvVars(d.hookEnv(inst, rel, domain.Version{}, st.OpID, st.OpType, ports.PhaseTask, st.DryRun))
+			var mounts []ports.Mount
+			if staged, err := engine.GetTyped[stagedInputs](st, keyStagedInputs); err == nil {
+				var inputEnv map[string]string
+				mounts, inputEnv = inputMounts(staged)
+				maps.Copy(env, inputEnv)
+			}
 			res, err := d.Runtime.RunOneShot(ctx, cfg, task.Service, ports.RunOptions{
 				Argv:    argv,
-				Env:     ports.ServiceEnvVars(env),
+				Env:     env,
 				Timeout: timeout,
 				Remove:  true,
+				Mounts:  mounts,
 			})
 			if err != nil {
 				return err

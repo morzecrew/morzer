@@ -149,6 +149,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		d.checkSigningIdentity(),
 		d.checkInstallationFileMatchesState(),
 		d.checkDiskSpace(),
+		d.checkStagedInputs(),
 	)
 
 	current, _ := d.State.CurrentRelease(ctx)
@@ -1978,6 +1979,30 @@ func (d *Deps) checkBackupGrowth(inst domain.Installation, rel domain.Release) p
 				return preflight.OK("%d backups of up to %s fit in the %s free",
 					keep, domain.ByteSize(largest), domain.ByteSize(free))
 			}
+		},
+	}
+}
+
+// checkStagedInputs names the copies of task inputs a killed task left behind
+// (RFC 0041 §5.3). A warning, not a failure: they sit under a root-only
+// directory, and the next `task run` removes them.
+func (d *Deps) checkStagedInputs() preflight.Check {
+	return preflight.Check{
+		ID:          "tasks.staged-inputs",
+		Category:    preflight.CategoryStorage,
+		Description: "no task left its inputs behind",
+		Run: func(context.Context) events.CheckResult {
+			left, err := d.leftoverInputs()
+			if err != nil {
+				return preflight.Warn("", "cannot read %s: %v", d.Paths.InputsDir(), err)
+			}
+			if len(left) == 0 {
+				return preflight.OK("no task inputs are left behind")
+			}
+			return preflight.Warn(
+				"the next `morzer task run` removes them; `rm -rf` on each removes them now",
+				"inputs left behind by %d task(s) that did not finish: %s",
+				len(left), strings.Join(left, ", "))
 		},
 	}
 }

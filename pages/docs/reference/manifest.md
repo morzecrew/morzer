@@ -485,6 +485,7 @@ tasks:
 | `args` | bool | | Whether an operator may append arguments after `--`. Default `false`, and arguments to a task without it are refused. |
 | `modes` | list | | The machine modes the task may run on: `dev`, `production`. Absent means every mode. |
 | `timeout` | duration | | Time budget. Default `10m`. |
+| `inputs` | map | | Files an operator passes with `task run --input <name>=<path>`. See [Inputs](#inputs). |
 
 Names are lowercase letters, digits and dashes, starting with a letter, so a
 name is typed on a command line without quoting.
@@ -507,6 +508,50 @@ the point, a report, should say so in its `description`.
 tasks with less is refused. A manager older than 0.8.0 cannot read `tasks:`, and
 the declaration makes it refuse the bundle as needing a newer manager instead of
 reporting an unknown field.
+
+### Inputs
+
+A task that needs a file from the operator, a data snapshot to load or a CSV to
+import, declares it under `inputs`:
+
+```yaml
+compatibility:
+  min_manager_version: "0.11.0"
+
+tasks:
+  restore:
+    service: worker
+    command: [restore, "{inputs.snapshot}"]
+    inputs:
+      snapshot:
+        description: Catalogue snapshot (JSONL)
+        max_size: 2GiB
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `description` | string | One line of at most 200 characters, shown by `morzer task list` and in the refusal when the input is missing. |
+| `max_size` | size | The largest file accepted, such as `2GiB`. Absent means only the free disk space bounds it. |
+
+Input names are lowercase letters, digits and underscores, starting with a
+letter. Every declared input is required.
+
+The operator's file is copied for the run and mounted read-only at
+`/morzer/inputs/<name>`, readable by any user in the image. The task finds it in
+two ways:
+
+- `{inputs.<name>}` anywhere in an element of `command` is replaced by that
+  path, so `[restore, "{inputs.snapshot}"]` and `["--file={inputs.snapshot}"]`
+  both work. Only the release's own `command` is substituted, never the
+  operator's arguments after `--`.
+- The variable `MORZER_INPUT_<NAME>`, the name upper-cased, holds the same path,
+  for a command that reads its environment: `MORZER_INPUT_SNAPSHOT`.
+
+A `{inputs.<name>}` that names no declared input, or one left unterminated, is
+refused by `release verify`.
+
+**Inputs need `min_manager_version: "0.11.0"` or later**, for the same reason
+tasks need 0.8.0.
 
 ## backup
 

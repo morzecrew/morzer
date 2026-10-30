@@ -465,7 +465,7 @@ been told about is beyond that; see
 
 ```sh
 morzer task list
-morzer task run <task> [-- args...]
+morzer task run <task> [--input <name>=<path>]... [-- args...]
 ```
 
 Runs a command the release declares under
@@ -475,15 +475,18 @@ command the operator writes, a task is one the vendor wrote and named, and says
 which machines it may run on.
 
 `task list` shows each task's service, the machine modes it allows, whether this
-machine is one of them, whether it takes arguments, and its description.
+machine is one of them, whether it takes arguments, the inputs it needs, and its
+description.
 
 `task run` is an operation, `task`. It takes the deployment lock, is refused
 while an earlier operation needs attention, and is journalled, attested and
 reported to the notify targets like a converge:
 
-1. secrets and configuration are rendered as `apply` renders them, so a task
+1. the task's [inputs](manifest.md#inputs), when it declares any, are copied
+   for the run;
+2. secrets and configuration are rendered as `apply` renders them, so a task
    after a reboot finds the files its service mounts;
-2. the task's container runs to completion. The services it depends on are
+3. the task's container runs to completion. The services it depends on are
    started first, so a task runs whether or not the deployment is up.
 
 Refused before anything runs, and journalled as nothing:
@@ -493,7 +496,13 @@ Refused before anything runs, and journalled as nothing:
 - a task whose `modes` do not include this machine's. `--force` does not override
   it;
 - `--resume`. Running a task's command again is not the same as running it once,
-  and whether that is safe is the vendor's to say.
+  and whether that is safe is the vendor's to say;
+- an `--input` the task does not declare, a declared input not given, a name
+  given twice, a path that is not a regular file once symlinks are followed (a
+  directory, a named pipe, a device), and a file larger than the input's
+  `max_size`, all with exit 2;
+- inputs that do not fit in the free space under the manager's directory, with
+  64 MiB kept back.
 
 A service the release's runtime configuration does not define is refused before
 the container starts, rather than reported through an exit code that would pass
@@ -527,6 +536,26 @@ those values cannot be loaded the record carries `args_omitted` saying why, as
 The arguments are passed on the `docker compose run` command line, which other
 users on the machine can read while the task runs, so they are not the place for
 a credential.
+
+### Passing a file
+
+```sh
+morzer task run restore --input snapshot=./catalog-snapshot.jsonl
+```
+
+Each `--input` is copied into `/var/lib/<product>/manager/inputs/<operation-id>/`
+before the task runs. That directory is readable only by root, and the copy is
+removed when the operation ends, whether the task succeeded or not. The copy is
+hashed as it is made, and it stops at the input's `max_size` and at the free
+space, so a file that grows after it was checked is refused. The task reads the
+copy read-only at `/morzer/inputs/<name>`: exactly the bytes whose digest is
+recorded, whatever happens to your file meanwhile.
+
+The journal records each input as `input.<name>`, its size and sha256, and never
+its content or your path. The operation's [attestation](attestations.md) lists
+the same. `--dry-run` checks the inputs and copies nothing. A task killed
+mid-run leaves its copy behind: `doctor` reports it as `tasks.staged-inputs`,
+and the next `task run` removes it.
 
 ## backup
 

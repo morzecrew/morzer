@@ -481,6 +481,13 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 		// store: argv is world-readable through /proc.
 		argv = append(argv, "--env", k+"="+v)
 	}
+	for _, m := range opts.Mounts {
+		volume := m.Source + ":" + m.Target
+		if m.ReadOnly {
+			volume += ":ro"
+		}
+		argv = append(argv, "--volume", volume)
+	}
 	argv = append(argv, service)
 	argv = append(argv, opts.Argv...)
 
