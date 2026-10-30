@@ -173,6 +173,43 @@ func TestEveryCommandExplainsItself(t *testing.T) {
 	walk(root, "morzer ")
 }
 
+// An example is copied before it is read. One that names a command or a flag
+// that does not exist fails here rather than at the operator's prompt. Only the
+// `morzer …` part of a line is checked: what is piped into it or out of it is
+// the shell's.
+func TestEveryExampleParses(t *testing.T) {
+	root := CommandTree()
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		lines := strings.ReplaceAll(cmd.Example, "\\\n", " ")
+		for _, line := range strings.Split(lines, "\n") {
+			line = strings.TrimSpace(line)
+			if _, after, ok := strings.Cut(line, "| morzer "); ok {
+				line = "morzer " + after
+			}
+			if !strings.HasPrefix(line, "morzer ") {
+				continue
+			}
+			for _, end := range []string{" | ", " > ", " # ", " && "} {
+				line, _, _ = strings.Cut(line, end)
+			}
+			args := strings.Fields(strings.TrimPrefix(line, "morzer "))
+			found, rest, err := root.Find(args)
+			if err != nil || found == root {
+				t.Errorf("`%s` example %q names no command: %v", cmd.CommandPath(), line, err)
+				continue
+			}
+			if err := found.ParseFlags(rest); err != nil {
+				t.Errorf("`%s` example %q does not parse: %v", cmd.CommandPath(), line, err)
+			}
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(root)
+}
+
 // TestNoFlagHelpQuotesWithBackticks.
 //
 // Pflag reads the first backticked word in a flag's usage as the name of its

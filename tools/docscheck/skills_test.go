@@ -70,7 +70,7 @@ func TestASkillLinkResolvesToAPageAndAHeading(t *testing.T) {
 	}
 	for link, ok := range cases {
 		var rep report
-		checkSkillLinks(&rep, root, "SKILL.md", "[x]("+link+")")
+		checkSiteLinks(&rep, "skills", root, "SKILL.md", "[x]("+link+")")
 		if got := len(rep.problems["skills"]) == 0; got != ok {
 			t.Errorf("%s: resolved %v, want %v (%v)", link, got, ok, rep.problems["skills"])
 		}

@@ -73,7 +73,7 @@ func checkSkills(rep *report, root string) {
 			if filepath.Base(path) == "SKILL.md" {
 				checkSkillName(rep, rel, d.Name(), string(raw))
 			}
-			checkSkillLinks(rep, root, rel, string(raw))
+			checkSiteLinks(rep, "skills", root, rel, string(raw))
 			checkSkillCommands(rep, tree, rel, string(raw))
 			return nil
 		})
@@ -96,13 +96,14 @@ func checkSkillName(rep *report, rel, dir, raw string) {
 	}
 }
 
-// checkSkillLinks resolves every link into the published documentation to the
-// page it is built from, and its fragment to a heading on that page.
-func checkSkillLinks(rep *report, root, rel, raw string) {
+// checkSiteLinks resolves every link into the published documentation to the
+// page it is built from, and its fragment to a heading on that page. Group names
+// where the link was found: a skill, or a command's help.
+func checkSiteLinks(rep *report, group, root, rel, raw string) {
 	for _, m := range siteLinkRe.FindAllStringSubmatch(raw, -1) {
 		page, ok := sitePage(root, m[1])
 		if !ok {
-			rep.add("skills", "%s links %s%s, which no page under %s builds", rel, docsSite, m[1], docsDir)
+			rep.add(group, "%s links %s%s, which no page under %s builds", rel, docsSite, m[1], docsDir)
 			continue
 		}
 		if m[2] == "" {
@@ -110,9 +111,23 @@ func checkSkillLinks(rep *report, root, rel, raw string) {
 		}
 		body, err := os.ReadFile(page)
 		if err != nil || !anchorsIn(fenceRe.ReplaceAllString(string(body), ""))[m[2]] {
-			rep.add("skills", "%s links %s%s#%s, and that page has no such heading", rel, docsSite, m[1], m[2])
+			rep.add(group, "%s links %s%s#%s, and that page has no such heading", rel, docsSite, m[1], m[2])
 		}
 	}
+}
+
+// checkHelpLinks resolves the documentation links in every command's help, so
+// a page that moves fails the build instead of a link printed by the binary.
+func checkHelpLinks(rep *report, root string) {
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		rep.checks++
+		checkSiteLinks(rep, "help", root, "`"+cmd.CommandPath()+"` help", cmd.Long)
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(cli.CommandTree())
 }
 
 // sitePage maps a path under the site to the page file it is built from:

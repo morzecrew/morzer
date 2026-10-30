@@ -20,7 +20,8 @@ func newAttestCommand(app *App) *cobra.Command {
 			"What a signature proves is deliberately narrow, and every document says\n" +
 			"so in its own text: that a process holding this installation's key\n" +
 			"produced those bytes. Not that the bytes are true, and not that the\n" +
-			"machine was uncompromised when it signed.",
+			"machine was uncompromised when it signed.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/reference/attestations/",
 	}
 	cmd.AddCommand(
 		installationScope(newAttestLogCommand(app)),

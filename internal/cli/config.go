@@ -19,7 +19,8 @@ func newConfigCommand(app *App) *cobra.Command {
 			"installation.\n\n" +
 			"Parameters are not secrets: their values are visible in `docker inspect`,\n" +
 			"in `status --json` and in the journal. Use `morzer secret` for anything\n" +
-			"that must not be.",
+			"that must not be.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/operating/changing-configuration/",
 	}
 	cmd.AddCommand(
 		newConfigListCommand(app),

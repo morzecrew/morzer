@@ -31,7 +31,8 @@ func newFleetCommand(app *App) *cobra.Command {
 			"The read is the valuable half, and it is the only half. There is no\n" +
 			"command here that acts on a remote machine, and there will not be:\n" +
 			"a console that can act needs to know who may act, and that is the\n" +
-			"authorisation model this project exists without.",
+			"authorisation model this project exists without.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/reference/fleet/",
 	}
 	cmd.AddCommand(
 		installationScope(newFleetPublishCommand(app)),

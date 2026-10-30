@@ -81,7 +81,8 @@ func newInstallationCommand(app *App) *cobra.Command {
 			"because it holds the names of secrets rather than their values.\n\n" +
 			"`remove` takes one installation off the machine and keeps its data unless\n" +
 			"told to --purge it. `rotate-signing-key` replaces the key the machine signs\n" +
-			"its own statements with.",
+			"its own statements with.\n\n" +
+			"Docs: https://morzecrew.github.io/morzer/latest/reference/installation-commands/",
 	}
 
 	cmd.AddCommand(

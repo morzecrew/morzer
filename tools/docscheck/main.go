@@ -117,6 +117,7 @@ func main() {
 	checkDescribeExclusions(&rep, root)
 	checkReleaseAssets(&rep, root, pages)
 	checkSkills(&rep, root)
+	checkHelpLinks(&rep, root)
 
 	if rep.failed() {
 		rep.print(os.Stderr)
