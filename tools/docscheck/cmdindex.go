@@ -71,6 +71,7 @@ var referencePage = map[string]string{
 	"secret":       "reference/secret-commands.md",
 	"release":      "reference/release-commands.md",
 	"installation": "reference/installation-commands.md",
+	"shell":        "reference/installation-commands.md#shell",
 	// The attestations page documents the artifact and the command that
 	// reads it back, because the two are unusable apart: the command's
 	// whole output is verdicts about that document's fields.

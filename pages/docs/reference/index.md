@@ -86,6 +86,7 @@ here. The reference column points at the section that documents it; the
 | `morzer release trust remove` | Stop trusting release signatures made with a key | [release-commands](release-commands.md#release-trust) |
 | `morzer release trust list` | List the trusted release signing keys | [release-commands](release-commands.md#release-trust) |
 | `morzer ls` | List the installations on this machine | [installation-commands](installation-commands.md#installation-list) |
+| `morzer shell` | Start a shell pinned to one installation | [installation-commands](installation-commands.md#shell) |
 | `morzer installation` | List, export, rebuild and remove installations on this machine | [installation-commands](installation-commands.md#morzer-installation) |
 | `morzer installation list` | List the installations on this machine | [installation-commands](installation-commands.md#installation-list) |
 | `morzer installation export` | Write the installation identity and secret state to a file | [installation-commands](installation-commands.md#installation-export) |
