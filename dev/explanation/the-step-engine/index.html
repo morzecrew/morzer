@@ -2275,7 +2275,10 @@ order.</p>
     S --&gt; A["apply's pipeline&lt;br/&gt;&lt;small&gt;preflight → … → smoke test&lt;/small&gt;"]</code></pre>
 <p>Duplicating those eleven would mean two lists to keep in agreement, and the
 second one would be the one nobody tests. <code>rollback</code> does the same thing from
-the other direction: swap the pointer, then converge with the same pipeline.</p>
+the other direction: run the previous release's preflight, swap the pointer,
+then converge with the rest of the same pipeline. Preflight comes first because
+it aborts rather than compensates: it is the check that runs before anything
+moves.</p>
 <h2 id="dry-runs">Dry runs<a class="headerlink" href="#dry-runs" title="Permanent link">&para;</a></h2>
 <p><code>--dry-run</code> runs the plan without any <code>Execute</code>. It reports the step list, marks
 what <code>Check</code> says is already done, and renders a configuration diff.</p>

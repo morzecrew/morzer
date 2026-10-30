@@ -733,6 +733,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#parameters-the-older-release-does-not-declare" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Parameters the older release does not declare
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-rollback-is-not-the-answer" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2019,6 +2030,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#parameters-the-older-release-does-not-declare" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Parameters the older release does not declare
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-rollback-is-not-the-answer" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2172,6 +2194,12 @@ morzer<span class="w"> </span>rollback<span class="w"> </span>--to<span class="w
 <p><code>--to</code> refuses a version newer than what is installed — that is an update, and
 they differ in what they check — and refuses the version already running, which
 would be a stop and start for nothing.</p>
+<h2 id="parameters-the-older-release-does-not-declare">Parameters the older release does not declare<a class="headerlink" href="#parameters-the-older-release-does-not-declare" title="Permanent link">&para;</a></h2>
+<p>A value you set for a parameter that only the newer release declares is retired
+on the way back, the way an update retires one a new release dropped: the
+rollback's last step removes it and says so. A parameter the older release
+requires and you have no value for is reported by its preflight, before
+anything moves.</p>
 <h2 id="when-rollback-is-not-the-answer">When rollback is not the answer<a class="headerlink" href="#when-rollback-is-not-the-answer" title="Permanent link">&para;</a></h2>
 <p>If the rollback is refused, the sequence is a restore:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>list
