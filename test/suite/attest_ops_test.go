@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -385,4 +386,68 @@ func TestAttestLogOfNothingIsEmptyAndOfAMissingPathIsRefused(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, domain.ExitInstallation, domain.ExitCode(err))
+}
+
+// parameterNamesOf returns the parameter names the statement an operation
+// filed records.
+func parameterNamesOf(t *testing.T, h *harness, opID string) []string {
+	t.Helper()
+	for _, f := range statementsOnDisk(t, h) {
+		body, err := os.ReadFile(f)
+		require.NoError(t, err)
+		var stmt domain.Statement
+		require.NoError(t, json.Unmarshal(body, &stmt))
+		if stmt.Predicate.Operation.ID == opID {
+			return stmt.Predicate.Config.ParameterNames
+		}
+	}
+	t.Fatalf("operation %s filed no statement", opID)
+	return nil
+}
+
+// An update that retires a value states the parameters left recorded. The
+// config digest beside the names is of a configuration rendered without the
+// retired value, so naming it would pair a parameter with a digest it is not in.
+func TestAnUpdateStatementLeavesOutTheParametersItRetired(t *testing.T) {
+	ctx := context.Background()
+	h := verifyHarness(t)
+	signingInstallation(t, h)
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	_, err := ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "debug"}})
+	require.NoError(t, err)
+
+	// 1.3.0 without log_level, which its compose file defaults on its own.
+	src := stageUpgradeSource(t, h)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), "  log_level:\n    type: enum\n    values: [debug, info, warn, error]\n"+
+		"    default: info\n    description: Application log verbosity\n    services: [app]\n", "", 1)
+	require.NotEqual(t, string(raw), patched, "the fixture no longer declares log_level as this expects")
+	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
+
+	updated, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+	assert.NotContains(t, parameterNamesOf(t, h, updated.Record.ID), "log_level")
+}
+
+// The same for a rollback, retiring a value only the newer release declared.
+func TestARollbackStatementLeavesOutTheParametersItRetired(t *testing.T) {
+	ctx := context.Background()
+	h := verifyHarness(t)
+	signingInstallation(t, h)
+	h.setHookEnv()
+	applyBaseline(t, h)
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: upgradeDeclaringAPIKey(t, h)})
+	require.NoError(t, err)
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"api_key": "k-123"}})
+	require.NoError(t, err)
+
+	setSchema(t, h, 12)
+	rolled, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err)
+	assert.NotContains(t, parameterNamesOf(t, h, rolled.Record.ID), "api_key")
 }

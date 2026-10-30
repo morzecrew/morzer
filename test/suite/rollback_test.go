@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -437,4 +438,79 @@ func TestRollbackToPastAnUnreadablePreviousRecordWarns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1.2.0", current.Version.String())
 	assert.Contains(t, logs.String(), "previous-release record", "nothing said what was not carried")
+}
+
+// A rollback the previous release's preflight refuses must refuse before it
+// moves anything. Preflight aborts rather than compensates, because it is
+// meant to run before anything mutates; a pointer moved ahead of it stayed
+// moved, on the older release, while the newer one's containers kept running.
+func TestARollbackPreflightRefusesLeavesThePointerAlone(t *testing.T) {
+	h := updatedHarness(t)
+	ctx := context.Background()
+	setSchema(t, h, 12)
+
+	// The previous release can no longer run here: a fatal preflight check.
+	manifest := filepath.Join(h.Paths.ReleasesDir(), "1.2.0", "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), "architectures: [amd64, arm64]", "architectures: [s390x]", 1)
+	require.NotEqual(t, string(raw), patched)
+	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
+
+	_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitPreflight, domain.ExitCode(err))
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String(),
+		"a rollback refused at preflight moved the release pointer")
+
+	link, err := os.Readlink(h.Paths.CurrentLink())
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(h.Paths.ReleasesDir(), "1.3.0"), link)
+}
+
+// A value recorded for a parameter only the newer release declares is retired
+// on the way back, as `update` retires one the new release stopped declaring.
+// Otherwise every resolve against the older release refuses it, and the
+// rollback with it.
+func TestARollbackRetiresAParameterOnlyTheNewerReleaseDeclares(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: upgradeDeclaringAPIKey(t, h)})
+	require.NoError(t, err)
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"api_key": "k-123"}})
+	require.NoError(t, err)
+
+	setSchema(t, h, 12)
+	result, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err, "a value only 1.3.0 declares held up the rollback to 1.2.0")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, inst.Parameters, "api_key")
+
+	_, err = ops.ConfigList(ctx, h.Deps)
+	require.NoError(t, err, "config refuses after the rollback")
+}
+
+// upgradeDeclaringAPIKey is the 1.3.0 fixture with one more parameter,
+// `api_key`, that 1.2.0 does not declare.
+func upgradeDeclaringAPIKey(t *testing.T, h *harness) string {
+	t.Helper()
+	src := stageUpgradeSource(t, h)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), "parameters:\n",
+		"parameters:\n  api_key:\n    type: string\n    default: none\n    description: Key for the upstream API\n    services: [app]\n", 1)
+	require.NotEqual(t, string(raw), patched)
+	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
+	return src
 }

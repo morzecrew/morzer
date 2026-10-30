@@ -118,6 +118,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config settings`, `installation describe` and two refusals named an RFC by
   number, such as "See RFC 0027". The text now stands without the citation.
 
+- **A rollback refused by preflight leaves the installation where it was.** The
+  release pointer moved to the previous release before its preflight ran, so a
+  refusal there left it moved while the newer release kept running. Preflight
+  now runs before anything moves, and the refusal exits 3.
+
+- **A rollback no longer refuses over a parameter only the newer release
+  declares.** A value set for it made every resolve against the older release
+  fail with `the release declares no parameter`. The rollback now retires that
+  value, as an update retires one a new release dropped.
+
+- **A statement no longer names a parameter its operation retired.** After an
+  update or a rollback that retired a value, the signed statement still listed
+  that parameter beside a configuration digest rendered without it. It now
+  names only the parameters left recorded.
 - **`release verify --signing-key` explains an unsigned bundle to a vendor.**
   It refused with the installation's message, telling a build machine to clear
   `require_signature`, a setting it does not have. It now says the key was

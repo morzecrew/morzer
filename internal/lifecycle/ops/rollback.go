@@ -181,7 +181,7 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	// most: a rollback is what happened when something went wrong.
 	if !opts.DryRun {
 		emitAttestation(ctx, d, result.Record,
-			attestationInputs(inst, previousRel, previous, current.Version,
+			attestationInputs(attestedInstallation(inst, previousRel, result.Record), previousRel, previous, current.Version,
 				renderedConfigFor(result.State)))
 	}
 
@@ -367,12 +367,26 @@ func rollbackSteps(
 	previousRel domain.Release,
 	opts RollbackOptions,
 ) []engine.Step {
-	steps := []engine.Step{
-		stepPointToPrevious(d, current, previous, previousRel),
+	// A value recorded for a parameter only the release being left declares
+	// is retired as update retires one a new release dropped: out of the
+	// resolution now, durably by the last step. Every consumer validates the
+	// whole recorded map, so one such name refused the return.
+	retired := domain.Parameters(inst.Parameters).ValidateAgainst(previousRel.Manifest.Parameters)
+	if len(retired) > 0 {
+		inst = withoutParameters(inst, retired)
 	}
+
 	converge := opts.Options
 	converge.PreviousVersion = current.Version
-	return append(steps, applySteps(d, inst, previousRel, converge)...)
+	apply := applySteps(d, inst, previousRel, converge)
+
+	// Preflight, apply's first step, runs before the pointer moves. It aborts
+	// rather than compensates, because it is meant to run before anything
+	// mutates; behind the move, a refusal left the pointer on the previous
+	// release while the current one's containers kept running.
+	steps := []engine.Step{apply[0], stepPointToPrevious(d, current, previous, previousRel)}
+	steps = append(steps, apply[1:]...)
+	return append(steps, stepRetireParameters(d, previousRel, retired))
 }
 
 // stepPointToPrevious swaps the release pointer and the current symlink.
