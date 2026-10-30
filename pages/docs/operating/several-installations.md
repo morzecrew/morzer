@@ -173,6 +173,24 @@ morzer --product demo status        # demo, just this once
     operator who exports `MORZER_PRODUCT` globally has not redirected their
     backup or update timers, and should not expect to have.
 
+Most commands need root, and `sudo` resets the environment, so an exported
+`MORZER_PRODUCT` does not reach `sudo morzer status`. `morzer shell` sets it
+after `sudo` instead:
+
+```sh
+sudo morzer shell demo              # a root shell pinned to demo
+morzer status                       # demo
+exit                                # the pin ends with the shell
+```
+
+A shell's rc files overwrite a prompt set from outside, so to see the pin in
+the prompt, add a line to your own rc file:
+
+```sh
+PS1='${MORZER_PRODUCT:+[$MORZER_PRODUCT] }'"$PS1"                     # bash
+setopt PROMPT_SUBST; PROMPT='${MORZER_PRODUCT:+[$MORZER_PRODUCT] }'$PROMPT  # zsh
+```
+
 There is deliberately no `morzer use <product>` that writes a selection to disk.
 That is kubectl's context, and its failure mode is why people wrap kubectl in
 scripts that print the context in the prompt: a mutable global that decides which

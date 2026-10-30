@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Before the first `apply`, `status` shows that as `next`, also in `--json`,
   instead of `cannot read service status`.
 
+- **`morzer shell <product>` starts a shell pinned to one installation.** It
+  sets `MORZER_PRODUCT` after `sudo`, which drops an exported one, so
+  `sudo morzer shell demo` gives a root shell where commands need no
+  `--product`. Nothing is written to disk; the pin ends with the shell.
+
 ### Changed
 
 - **A usage error is two lines, not the command's whole usage.** A mistyped flag

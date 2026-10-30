@@ -62,6 +62,26 @@ produced by `init --install-units=false`.
 Selecting *which* installation every other command means is described in
 [Several installations](../operating/several-installations.md).
 
+## shell
+
+```sh
+sudo morzer shell <product>
+```
+
+Starts `$SHELL`, or `/bin/sh` when it is unset, with `MORZER_PRODUCT=<product>`,
+so every `morzer` command inside it acts on that installation without
+`--product`. `sudo` drops an exported `MORZER_PRODUCT`; this sets it after
+`sudo`, inside the process `sudo` started. `--product` and `--config` still
+override it for one command. Leaving the shell ends the selection, and nothing
+is written to disk.
+
+- The name is checked against what `morzer ls` lists before the shell starts,
+  so a typo is refused with exit `2` and the names this machine has.
+- Inside a shell already pinned to an installation it is refused with exit `2`:
+  exit that shell first.
+- It says so on stderr when the shell starts and when it ends, and exits with
+  the shell's own status.
+
 ## Exporting and importing an identity
 
 An **installation export** carries the identity of a deployment and its

@@ -650,6 +650,9 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupBundles, perCommandScope(newReleaseCommand(app))),
 
 		grouped(groupMachine, newListCommand(app, "ls")),
+		// Beside `ls`, whose names it checks: the session-wide answer to
+		// "which installation" that `--product` gives one command.
+		grouped(groupMachine, newShellCommand(app)),
 		grouped(groupMachine, perCommandScope(newInstallationCommand(app))),
 		// Beside `ls`, which is the same question one scope out: `ls`
 		// answers "what is on this machine", `fleet` answers "what is on
