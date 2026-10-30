@@ -112,6 +112,19 @@ func TestReleasePushRefusesWhatItCannotPublish(t *testing.T) {
 	}
 }
 
+// A reference refused for its scheme may carry a password; the refusal names
+// the reference without it.
+func TestReleasePushRefusalDoesNotRepeatAPassword(t *testing.T) {
+	r, _, archive, _ := pushFixture(t)
+
+	res := r.Run("release", "push", archive, "https://vendor:s3cret@example.com/demo.tar.zst").
+		ExitCode(2).OutputContains("OCI registry", "example.com")
+	if strings.Contains(res.Stdout+res.Stderr, "s3cret") {
+		t.Errorf("the refusal repeats the password:\n--- stdout ---\n%s--- stderr ---\n%s",
+			res.Stdout, res.Stderr)
+	}
+}
+
 func TestReleasePushDryRunWritesNothing(t *testing.T) {
 	r, reg, archive, repo := pushFixture(t)
 

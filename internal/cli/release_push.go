@@ -50,7 +50,9 @@ func newReleasePushCommand(app *App) *cobra.Command {
 				return err
 			}
 			if ref.Scheme != oci.Scheme {
-				return domain.Usage("release push publishes to an OCI registry, not to %s", ref).
+				// Redacted: an https reference keeps its userinfo, and Ref.String does not drop it.
+				return domain.Usage("release push publishes to an OCI registry, not to %s",
+					ports.RedactRefCredentials(ref.String())).
 					WithHint("pass a reference like oci://registry.example/demo/bundle")
 			}
 
