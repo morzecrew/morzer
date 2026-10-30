@@ -2279,16 +2279,19 @@ naming the fields that disagree:</p>
 <p>The file is rewritten from the recorded state by the next <code>config set</code>, or by
 <code>morzer init --repair</code>.</p>
 <h2 id="after-a-release-changes-what-it-declares">After a release changes what it declares<a class="headerlink" href="#after-a-release-changes-what-it-declares" title="Permanent link">&para;</a></h2>
-<p>An update can add a parameter — it simply takes its default — or drop one. A
-dropped parameter leaves your recorded value bound to nothing, which
-<code>config list</code> reports as <strong>stale</strong>:</p>
+<p>An update can add a parameter — it takes its default, and one with no default
+waits for <code>config set</code> — or drop one. The update retires a value you recorded
+for a dropped parameter, and says so. An operation that stops before it gets
+there can leave the value bound to nothing, which <code>config list</code> reports as
+<strong>stale</strong>:</p>
 <div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span>list
 <span class="go">…</span>
 <span class="go">stale (recorded, but 2.0.0 declares no such parameter): legacy_flag</span>
 <span class="go">clear with: morzer config unset legacy_flag</span>
 </code></pre></div>
 <p>Nothing is blocked over it. Dropping a parameter is the vendor's decision, and
-refusing every command until you tidy up would help nobody.</p>
+refusing every command until you tidy up would help nobody. <code>config unset</code>
+clears it even while another parameter is still waiting for a value.</p>
 
 
 
