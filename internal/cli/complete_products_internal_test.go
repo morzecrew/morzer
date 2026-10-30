@@ -16,18 +16,21 @@ import (
 // argument shape, and a change to the template that this did not follow would
 // leave sudo completion offering nothing, silently (#210).
 func TestTheFallbackRecognisesTheUnitsTheManagerWrites(t *testing.T) {
-	units, err := systemd.BuildUnits(systemd.UnitParams{
-		Product:     "demo",
-		ManagerPath: "/usr/local/bin/morzer",
-		ConfigPath:  "/etc/demo/installation.yaml",
-	})
-	require.NoError(t, err)
+	// With and without --config: the template writes it only when given one.
+	for _, config := range []string{"/etc/demo/installation.yaml", ""} {
+		units, err := systemd.BuildUnits(systemd.UnitParams{
+			Product:     "demo",
+			ManagerPath: "/usr/local/bin/morzer",
+			ConfigPath:  config,
+		})
+		require.NoError(t, err)
 
-	dir := t.TempDir()
-	for _, u := range units {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, u.Name), u.Contents, 0o644))
+		dir := t.TempDir()
+		for _, u := range units {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, u.Name), u.Contents, 0o644))
+		}
+
+		assert.Equal(t, []string{"demo"}, unitProducts(dir),
+			"config %q: the service unit names the product once; its backup and update units name nothing", config)
 	}
-
-	assert.Equal(t, []string{"demo"}, unitProducts(dir),
-		"the service unit names the product once; its backup and update units name nothing")
 }

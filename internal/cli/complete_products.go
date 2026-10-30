@@ -78,9 +78,11 @@ func describeForCompletion(e ops.InstallationEntry) string {
 // unitProducts names the products whose service unit the manager wrote in dir.
 //
 // Recognised by the ExecStart the manager writes, not by the file name alone:
-// `/etc/systemd/system` holds every service on the host. The whole argument
-// shape of serviceTemplate is matched rather than a substring of it, so another
-// tool that happens to take `apply --startup` is not mistaken for this one.
+// `/etc/systemd/system` holds every service on the host. The whole of
+// serviceTemplate's command line is matched -- the morzer executable, the exact
+// arguments, and a --config naming this product when there is one -- so
+// another tool's service, or the manager's unit for one installation filed
+// under another's name, is not offered.
 func unitProducts(dir string) []string {
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -92,14 +94,14 @@ func unitProducts(dir string) []string {
 		if !ok || f.IsDir() || domain.ValidateProductName(product) != nil {
 			continue
 		}
-		if startsTheManager(filepath.Join(dir, f.Name())) {
+		if startsTheManager(filepath.Join(dir, f.Name()), product) {
 			products = append(products, product)
 		}
 	}
 	return products
 }
 
-func startsTheManager(path string) bool {
+func startsTheManager(path, product string) bool {
 	f, err := os.Open(path) //nolint:gosec // a unit file in the directory named above
 	if err != nil {
 		return false
@@ -109,8 +111,18 @@ func startsTheManager(path string) bool {
 	for lines.Scan() {
 		if exec, ok := strings.CutPrefix(lines.Text(), "ExecStart="); ok {
 			args := strings.Fields(exec)
-			return len(args) >= 6 && slices.Equal(args[1:6],
-				[]string{"apply", "--startup", "--plain", "--log-format", "json"})
+			if len(args) < 6 || filepath.Base(args[0]) != "morzer" ||
+				!slices.Equal(args[1:6], []string{"apply", "--startup", "--plain", "--log-format", "json"}) {
+				return false
+			}
+			switch rest := args[6:]; {
+			case len(rest) == 0:
+				return true
+			case len(rest) == 2 && rest[0] == "--config":
+				return filepath.Base(filepath.Dir(rest[1])) == product
+			default:
+				return false
+			}
 		}
 	}
 	return false

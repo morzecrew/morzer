@@ -58,10 +58,14 @@ func TestProductFallsBackToUnitFilesItCannotOpen(t *testing.T) {
 	}
 	write("sandbox.service", "/usr/local/bin/morzer apply --startup --plain --log-format json --config /etc/sandbox/installation.yaml")
 	write("nginx.service", "/usr/sbin/nginx -g 'daemon off;'")
-	// Another tool's words in the same order are not the manager's unit.
+	// Another tool's words in the same order are not the manager's unit, nor
+	// is the manager's command line under another executable, nor the
+	// manager's unit for one installation filed under another's name.
 	write("other.service", "/usr/bin/other apply --startup now")
+	write("impostor.service", "/usr/bin/other apply --startup --plain --log-format json")
+	write("misfiled.service", "/usr/local/bin/morzer apply --startup --plain --log-format json --config /etc/sandbox/installation.yaml")
 
 	r.Run("__complete", "--product", "").ExitCode(0).
 		OutputContains("demo\t", "sandbox\tnot readable as this user", ":4").
-		NoOutputContains("nginx", "other")
+		NoOutputContains("nginx", "other", "impostor", "misfiled")
 }
