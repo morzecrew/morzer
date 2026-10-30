@@ -160,8 +160,9 @@ func TestInstallationRemoveIsConfirmedTheWayRestoreIs(t *testing.T) {
 	r.Run("installation", "remove", "--force").ExitCode(2).OutputContains("--confirm " + id)
 
 	plan := r.Run("installation", "remove", "--dry-run", "--force", "--confirm", id).ExitCode(0)
-	plan.OutputContains("would remove demo and keep its data", "/etc/demo/age",
-		"forget the installation", "the signing key last")
+	plan.OutputContains("would remove demo and keep its data",
+		"forget the installation", "the signing key last").
+		ShowsPath("/etc/demo/age")
 
 	// Nothing was removed by any of that.
 	r.Run("status").ExitCode(0)

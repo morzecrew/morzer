@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -162,7 +163,7 @@ func (r Result) OutputContains(want ...string) Result {
 //
 // OutputContains is the right assertion for an identifier, a flag or a
 // single-word marker: those never wrap, and matching them literally is what
-// makes the assertion precise. A sentence is the opposite case -- since views
+// makes the assertion precise. A path is the exception; see ShowsPath. A sentence is the opposite case -- since views
 // wrap to the measure, where "decommission that machine" breaks is the
 // terminal's width rather than anything the test means to pin, and a literal
 // match on it asserts the width by accident.
@@ -176,6 +177,27 @@ func (r Result) SaysAll(want ...string) Result {
 		if !strings.Contains(out, w) && !strings.Contains(errOut, w) {
 			r.t.Errorf("neither stream says %q:\n--- stdout ---\n%s--- stderr ---\n%s",
 				w, r.Stdout, r.Stderr)
+		}
+	}
+	return r
+}
+
+// ShowsPath asserts a path appears on either stream, wherever the view broke
+// it.
+//
+// Views wrap to the measure: a path longer than the line is broken mid-word,
+// and the wrapper always breaks at a hyphen, so the length of the temporary
+// directory decides whether `demo-recovery.key` arrives in one piece. Matched
+// with every space and line break removed, so the wrap cannot decide the result.
+func (r Result) ShowsPath(paths ...string) Result {
+	r.t.Helper()
+	squash := func(s string) string { return strings.Join(strings.Fields(s), "") }
+	out, errOut := squash(r.Stdout), squash(r.Stderr)
+
+	for _, p := range paths {
+		if p := squash(p); !strings.Contains(out, p) && !strings.Contains(errOut, p) {
+			r.t.Errorf("neither stream shows the path %q:\n--- stdout ---\n%s--- stderr ---\n%s",
+				p, r.Stdout, r.Stderr)
 		}
 	}
 	return r
@@ -256,6 +278,14 @@ func (r Result) Field(path string) any {
 
 	var cur any = r.JSON()
 	for _, part := range strings.Split(path, ".") {
+		if list, ok := cur.([]any); ok {
+			i, err := strconv.Atoi(part)
+			if err != nil || i < 0 || i >= len(list) {
+				r.t.Fatalf("%s: %q is not an index into a list of %d:\n%s", path, part, len(list), r.Stdout)
+			}
+			cur = list[i]
+			continue
+		}
 		obj, ok := cur.(map[string]any)
 		if !ok {
 			r.t.Fatalf("%s: %q is not an object", path, part)

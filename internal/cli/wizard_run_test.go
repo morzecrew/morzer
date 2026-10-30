@@ -205,7 +205,10 @@ func TestTheWizardGeneratesARecoveryKey(t *testing.T) {
 	assert.Contains(t, flat, "Move the private half off this machine")
 	assert.Contains(t, out, got.RecoveryRecipient,
 		"the public half is not shown, so the operator cannot record it")
-	assert.Contains(t, out, path)
+	// The path too, with its line breaks removed: the wrapper breaks at the
+	// hyphen in demo-recovery.key whenever the temporary directory is long
+	// enough to push it past the measure.
+	assert.Contains(t, strings.Join(strings.Fields(out), ""), path)
 }
 
 // TestGeneratingIntoSomewhereUnwritableIsReported. An operator who typed a
