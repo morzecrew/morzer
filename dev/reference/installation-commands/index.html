@@ -1463,6 +1463,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#shell" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        shell
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#exporting-and-importing-an-identity" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2221,6 +2232,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#shell" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        shell
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#exporting-and-importing-an-identity" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2591,6 +2613,27 @@ and is <code>null</code> when the supervisor could not be read — <code>0</code
 produced by <code>init --install-units=false</code>.</p>
 <p>Selecting <em>which</em> installation every other command means is described in
 <a href="../../operating/several-installations/">Several installations</a>.</p>
+<h2 id="shell">shell<a class="headerlink" href="#shell" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>morzer<span class="w"> </span>shell<span class="w"> </span>&lt;product&gt;
+</code></pre></div>
+<p>Starts <code>$SHELL</code>, or <code>/bin/sh</code> when it is unset, with <code>MORZER_PRODUCT=&lt;product&gt;</code>,
+so every <code>morzer</code> command inside it acts on that installation without
+<code>--product</code>. <code>sudo</code> drops an exported <code>MORZER_PRODUCT</code>; this sets it after
+<code>sudo</code>, inside the process <code>sudo</code> started. <code>--product</code> and <code>--config</code> still
+override it for one command. Leaving the shell ends the selection, and nothing
+is written to disk.</p>
+<ul>
+<li>The name is checked against what <code>morzer ls</code> lists before the shell starts,
+  so a typo is refused with exit <code>2</code> and the names this machine has.</li>
+<li>Inside a shell already pinned to an installation it is refused with exit <code>2</code>:
+  exit that shell first.</li>
+<li>A directory <code>ls</code> cannot open as this user is not taken as an installation:
+  naming one is refused with a hint to run the command with <code>sudo</code>.</li>
+<li>It says so on stderr when the shell starts and when it ends, and exits with
+  the shell's own status, or <code>128</code> plus the signal when the shell was killed
+  by one.</li>
+<li><code>--json</code> is refused: the shell owns stdout until it exits.</li>
+</ul>
 <h2 id="exporting-and-importing-an-identity">Exporting and importing an identity<a class="headerlink" href="#exporting-and-importing-an-identity" title="Permanent link">&para;</a></h2>
 <p>An <strong>installation export</strong> carries the identity of a deployment and its
 encrypted secret state, so a machine that is gone can be rebuilt. It carries no

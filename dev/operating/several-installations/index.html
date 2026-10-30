@@ -2407,6 +2407,18 @@ morzer<span class="w"> </span>--product<span class="w"> </span>demo<span class="
 operator who exports <code>MORZER_PRODUCT</code> globally has not redirected their
 backup or update timers, and should not expect to have.</p>
 </div>
+<p>Most commands need root, and <code>sudo</code> resets the environment, so an exported
+<code>MORZER_PRODUCT</code> does not reach <code>sudo morzer status</code>. <code>morzer shell</code> sets it
+after <code>sudo</code> instead:</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>morzer<span class="w"> </span>shell<span class="w"> </span>demo<span class="w">              </span><span class="c1"># a root shell pinned to demo</span>
+morzer<span class="w"> </span>status<span class="w">                       </span><span class="c1"># demo</span>
+<span class="nb">exit</span><span class="w">                                </span><span class="c1"># the pin ends with the shell</span>
+</code></pre></div>
+<p>A shell's rc files overwrite a prompt set from outside, so to see the pin in
+the prompt, add a line to your own rc file:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">PS1</span><span class="o">=</span><span class="s1">'${MORZER_PRODUCT:+[$MORZER_PRODUCT] }'</span><span class="s2">"</span><span class="nv">$PS1</span><span class="s2">"</span><span class="w">                     </span><span class="c1"># bash</span>
+setopt<span class="w"> </span>PROMPT_SUBST<span class="p">;</span><span class="w"> </span><span class="nv">PROMPT</span><span class="o">=</span><span class="s1">'${MORZER_PRODUCT:+[$MORZER_PRODUCT] }'</span><span class="nv">$PROMPT</span><span class="w">  </span><span class="c1"># zsh</span>
+</code></pre></div>
 <p>There is deliberately no <code>morzer use &lt;product&gt;</code> that writes a selection to disk.
 That is kubectl's context, and its failure mode is why people wrap kubectl in
 scripts that print the context in the prompt: a mutable global that decides which
