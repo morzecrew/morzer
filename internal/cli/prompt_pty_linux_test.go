@@ -187,3 +187,76 @@ func TestTheLiveViewReadsFromARealTerminal(t *testing.T) {
 		t.Errorf("terminalInput = %v, want the injected terminal", got)
 	}
 }
+
+// waitForEchoOn polls until the prompt has restored the terminal, which is
+// when the question after it is asked.
+func waitForEchoOn(t *testing.T, f *os.File) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if terminalMode(t, f).Lflag&unix.ECHO != 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("the prompt never restored echo")
+}
+
+// TestATerminalValueIsConfirmedBeforeItIsUsed drives secret set's reader the
+// way a person does: the hidden value, then the answer to the count (#212).
+func TestATerminalValueIsConfirmedBeforeItIsUsed(t *testing.T) {
+	cases := map[string]struct {
+		yes    bool
+		typed  string
+		answer string
+		want   string
+		asked  string
+	}{
+		"confirmed with Enter": {typed: "hunter2", answer: "\n", want: "hunter2", asked: "read 7 characters"},
+		"declined":             {typed: "hunter2", answer: "n\n", asked: "read 7 characters"},
+		"--yes asks nothing":   {yes: true, typed: "hunter2", want: "hunter2"},
+		// Counted in characters, not bytes: twelve bytes, six letters.
+		"a UTF-8 value": {typed: "пароль", answer: "\n", want: "пароль", asked: "read 6 characters"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			master, slave := openPTY(t)
+			var out strings.Builder
+			app := &App{Stream: ui.Streams{Out: &out, Err: &out, In: slave}}
+			app.Flags.yes = tc.yes
+
+			type result struct {
+				value domain.Secret
+				err   error
+			}
+			done := make(chan result, 1)
+			go func() {
+				v, err := app.readSecretValue(context.Background(), "value for x: ")
+				done <- result{v, err}
+			}()
+
+			waitForEchoOff(t, slave)
+			_, err := master.WriteString(tc.typed + "\n")
+			require.NoError(t, err)
+			if !tc.yes {
+				waitForEchoOn(t, slave)
+				_, err = master.WriteString(tc.answer)
+				require.NoError(t, err)
+			}
+
+			r := <-done
+			if tc.asked != "" {
+				assert.Contains(t, out.String(), tc.asked+"; store it? [Y/n]")
+			} else {
+				assert.NotContains(t, out.String(), "store it?")
+			}
+			if tc.want == "" {
+				require.Error(t, r.err, "a declined value was returned to be stored")
+				assert.True(t, errors.Is(r.err, domain.ErrInterrupted))
+				return
+			}
+			require.NoError(t, r.err)
+			assert.Equal(t, tc.want, r.value.Reveal())
+		})
+	}
+}

@@ -35,6 +35,10 @@ There is deliberately no flag for the value: process arguments are readable
 through `/proc` by any local user, so a credential passed that way is a
 credential published.
 
+At the prompt nothing echoes, so `secret set` then tells you how many
+characters arrived and asks before storing them. A doubled paste shows up as
+twice the length you expected; answer `n` and nothing is stored or restarted.
+
 ## Rotating one
 
 ```sh

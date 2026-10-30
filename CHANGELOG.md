@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   argument count now says what the command takes, such as `morzer release
   verify takes <path>`, instead of `accepts 1 arg(s), received 0`.
 
+- **`secret set` at a terminal asks before storing what it read.** It prints
+  `read 41 characters; store it? [Y/n]`, so a paste that landed twice or not at
+  all is caught before any service restarts. `--yes` skips it; piped values are
+  unchanged.
+
 ## [0.10.0] - 2026-10-30
 
 `morzer release push` publishes a bundle archive to an OCI registry and moves

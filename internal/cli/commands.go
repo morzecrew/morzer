@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -1074,6 +1075,15 @@ func (a *App) readSecretValue(ctx context.Context, prompt string) (domain.Secret
 	value, err := readPassword(ctx, a.Stream.In, a.Stream.Err, prompt)
 	if err != nil {
 		return domain.Secret{}, err
+	}
+	// Echo is off, so a paste that landed twice, from the wrong clipboard or
+	// not at all looks the same as one that worked. The count is the one sign
+	// of which, and it is asked about before anything is stored or restarted.
+	// An empty value is refused by the caller, so there is nothing to confirm.
+	if value != "" && !a.Flags.yes {
+		if err := confirmLength(ctx, a.Stream.In, a.Stream.Err, utf8.RuneCountInString(value)); err != nil {
+			return domain.Secret{}, err
+		}
 	}
 	return domain.NewSecret(value), nil
 }

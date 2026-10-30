@@ -70,7 +70,10 @@ func newSecretSetCommand(app *App) *cobra.Command {
 		Short: "Set a secret, reading the value from the terminal or stdin",
 		Long: "The value is read without echo from the terminal, or from stdin when it\n" +
 			"is piped. There is no flag for the value: argv is world-readable through\n" +
-			"/proc, so a credential passed that way is a credential published.",
+			"/proc, so a credential passed that way is a credential published.\n\n" +
+			"At a terminal it then says how many characters it read and asks before\n" +
+			"storing them, so a paste that landed twice or not at all is caught before\n" +
+			"any service restarts. --yes stores without asking.",
 		Example: "  morzer secret set db_password                  # prompts, without echo\n" +
 			"  printf %s \"$PASSWORD\" | morzer secret set db_password",
 		Args: cobra.ExactArgs(1),
@@ -596,4 +599,75 @@ func readPassword(ctx context.Context, in io.Reader, out io.Writer, prompt strin
 		}
 		return strings.TrimSpace(string(r.line)), nil
 	}
+}
+
+// confirmLength says how many characters the hidden prompt read and asks
+// before the value is used.
+//
+// The count rather than masked echo: stars need the terminal out of canonical
+// mode and a hand-written line editor, the place sudo's pwfeedback overflowed
+// (CVE-2019-18634), and they show the length to the same screen, recording or
+// scrollback this does. Asking here, before the store and the restart, is
+// what makes the count worth printing.
+//
+// Enter, y or yes stores it. Anything else, an empty read included, leaves
+// nothing stored, the same as a Ctrl-C at the prompt. A read that fails rather
+// than ends is not an answer at all, whatever arrived before it.
+func confirmLength(ctx context.Context, in io.Reader, out io.Writer, chars int) error {
+	unit := "characters"
+	if chars == 1 {
+		unit = "character"
+	}
+	fmt.Fprintf(out, "read %d %s; store it? [Y/n] ", chars, unit)
+
+	type outcome struct {
+		line     string
+		answered bool // a newline arrived, rather than EOF or an error
+		err      error
+	}
+	read := make(chan outcome, 1)
+	go func() {
+		// A byte at a time, up to the newline: in canonical mode the kernel
+		// delivers the line whole, and anything past it is not this answer's.
+		var line []byte
+		b := make([]byte, 1)
+		for {
+			n, err := in.Read(b)
+			if n > 0 && b[0] == '\n' {
+				read <- outcome{string(line), true, nil}
+				return
+			}
+			if n > 0 {
+				line = append(line, b[0])
+			}
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					err = nil
+				}
+				read <- outcome{string(line), false, err}
+				return
+			}
+		}
+	}()
+
+	var r outcome
+	select {
+	case <-ctx.Done():
+		fmt.Fprintln(out)
+		return domain.Interrupted("cancelled at the prompt")
+	case r = <-read:
+	}
+	if r.err != nil {
+		fmt.Fprintln(out)
+		return domain.Internal(r.err, "cannot read the answer, so the value was not stored")
+	}
+
+	// Enter alone is yes only when it was pressed: an empty read that ended
+	// in EOF is nobody answering.
+	switch a := strings.ToLower(strings.TrimSpace(r.line)); {
+	case a == "y" || a == "yes", a == "" && r.answered:
+		return nil
+	}
+	return domain.Interrupted("the value was not stored").
+		WithHint("run the command again to type or paste it again")
 }
