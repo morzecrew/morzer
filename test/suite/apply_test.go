@@ -520,7 +520,8 @@ func TestStatusBeforeTheFirstApplySaysToApply(t *testing.T) {
 
 	status, err := ops.GetStatus(ctx, h.Deps)
 	require.NoError(t, err)
-	assert.Contains(t, status.Next, "morzer apply")
+	assert.Contains(t, status.Next, "morzer --product demo apply",
+		"on a machine with two installations a bare `morzer apply` is refused")
 	assert.Empty(t, status.Problems, "a project that was never applied is not a runtime problem")
 
 	// While an operation holds the lock -- the first apply, running -- telling
@@ -533,6 +534,18 @@ func TestStatusBeforeTheFirstApplySaysToApply(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, status.Next, "status named the command that is already running")
 	require.NoError(t, release())
+
+	// A first apply that failed may have left containers behind, and they are
+	// what the operator needs to see: the runtime is asked again.
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, domain.OperationRecord{
+		SchemaVersion: domain.InstallationSchemaVersion,
+		ID:            "op_apply", Type: domain.OpTypeApply, Status: domain.StatusFailed,
+		StartedAt: domain.NewTime(h.Deps.Now()),
+	}))
+	status, err = ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Empty(t, status.Next)
+	assert.Contains(t, strings.Join(status.Problems, " "), "cannot read service status")
 
 	// Once something has converged, the runtime is asked and its answer stands.
 	delete(h.Runtime.Fail, "Status")
@@ -563,7 +576,7 @@ func TestStatusWorksWithoutARelease(t *testing.T) {
 	assert.Nil(t, status.CurrentRelease, "no release installed must be null, not a zero-filled object")
 	assert.Empty(t, status.Services)
 	// `apply` refuses with nothing installed; `update <bundle>` is what does it.
-	assert.Contains(t, status.Next, "morzer update <bundle>")
+	assert.Contains(t, status.Next, "morzer --product demo update <bundle>")
 }
 
 func TestBackupCreatesVerifiesAndPrunes(t *testing.T) {

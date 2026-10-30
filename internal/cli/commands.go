@@ -180,10 +180,13 @@ func newInitCommand(app *App) *cobra.Command {
 			// created nothing to start. Without a release `apply` refuses, so
 			// the next step is the command that installs one.
 			if err == nil && !opts.DryRun && !opts.Repair && app.json == nil && !app.Flags.quiet {
-				next := "nothing runs yet: `morzer apply --dry-run` shows what would happen, " +
-					"`morzer apply` starts it"
+				// Named, because a machine with a second installation refuses a
+				// command that does not say which.
+				next := fmt.Sprintf("nothing runs yet: `morzer --product %[1]s apply --dry-run` shows "+
+					"what would happen, `morzer --product %[1]s apply` starts it", opts.Product)
 				if opts.ReleasePath == "" {
-					next = "nothing is installed yet: `morzer update <bundle>` installs a release and starts it"
+					next = fmt.Sprintf("nothing is installed yet: `morzer --product %s update <bundle>` "+
+						"installs a release and starts it", opts.Product)
 				}
 				fmt.Fprintln(app.Stream.Err, next)
 			}

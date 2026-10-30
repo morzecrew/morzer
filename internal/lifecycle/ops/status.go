@@ -233,14 +233,16 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 			// project to describe, and "cannot read service status" was all an
 			// operator who had just run `init` got back.
 			if d.neverApplied(ctx) {
-				out.Next = "`morzer apply --dry-run` shows what would happen, `morzer apply` starts " + inst.Product
+				out.Next = fmt.Sprintf("`morzer --product %[1]s apply --dry-run` shows what would happen, "+
+					"`morzer --product %[1]s apply` starts it", inst.Product)
 			} else {
 				d.fillRuntimeStatus(ctx, &out, inst, rel)
 			}
 		}
 	} else {
 		// `apply` refuses with nothing installed; this is what installs one.
-		out.Next = "`morzer update <bundle>` installs a release and starts it"
+		out.Next = fmt.Sprintf("`morzer --product %s update <bundle>` installs a release and starts it",
+			inst.Product)
 	}
 	// An operation holding the lock may be the very one named: the first
 	// apply, running.
@@ -256,10 +258,11 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 }
 
 // neverApplied reports a journal that holds operations, none of them one that
-// converged the deployment. An empty or unreadable journal is not that answer,
-// so the runtime is asked as before.
+// converges the deployment, in any outcome: a first apply that failed may have
+// left containers behind, and they are what the operator needs to see. An empty
+// or unreadable journal is not that answer, so the runtime is asked as before.
 func (d *Deps) neverApplied(ctx context.Context) bool {
-	recs, err := d.State.Operations(ctx, ports.Filter{Status: domain.StatusSucceeded})
+	recs, err := d.State.Operations(ctx, ports.Filter{})
 	if err != nil || len(recs) == 0 {
 		return false
 	}
