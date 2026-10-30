@@ -39,6 +39,13 @@ func newShellCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			product := args[0]
 
+			// The shell owns stdout until it exits, so there is no single
+			// JSON object this command could promise.
+			if app.Flags.json {
+				return domain.Usage("shell is interactive, and --json has nothing to report").
+					WithHint("drop --json; the shell's own commands take it")
+			}
+
 			// One answer to "which installation is this shell on": a
 			// second pin inside the first would leave two.
 			if current := os.Getenv(ProductEnv); current != "" {
@@ -46,14 +53,23 @@ func newShellCommand(app *App) *cobra.Command {
 					WithHint("exit it first, then run `morzer shell %s`", product)
 			}
 
-			// The names `ls` lists, broken installations included: the
-			// operator may be about to run `doctor` on one.
+			// The installations `ls` counts, broken ones included: the
+			// operator may be about to run `doctor` on one. A directory it
+			// could not open is not counted, and pinning to one would be a
+			// guess -- but when it is the one named, sudo is the way in.
 			entries, err := ops.ListInstallations(cmd.Context(), app.Deps, ops.ListOptions{})
 			if err != nil {
 				return err
 			}
 			var names []string
 			for _, e := range entries {
+				if e.Skipped {
+					if e.Product == product {
+						return domain.Usage("%s cannot be read by this process, so it is not known to be an installation", e.Path).
+							WithHint("run `sudo morzer shell %s`", product)
+					}
+					continue
+				}
 				names = append(names, e.Product)
 			}
 			if !slices.Contains(names, product) {
@@ -82,7 +98,7 @@ func newShellCommand(app *App) *cobra.Command {
 			// the operator's to leave.
 			keys := make(chan os.Signal, 8)
 			signal.Notify(keys, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTSTP)
-			defer signal.Stop(keys)
+			defer func() { signal.Stop(keys); close(keys) }()
 			go func() {
 				for range keys { //nolint:revive // drained, deliberately
 				}
@@ -98,8 +114,10 @@ func newShellCommand(app *App) *cobra.Command {
 				return nil
 			case errors.As(runErr, &exit):
 				code := exit.ExitCode()
-				if code < 0 {
-					code = 1 // killed by a signal; the status says nothing more
+				// Killed by a signal: report it as a shell does, 128 plus
+				// the signal, so `$?` after the shell still says which.
+				if ws, ok := exit.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+					code = 128 + int(ws.Signal())
 				}
 				return exitStatus{code: code,
 					cause: domain.Usage("the shell exited with status %d", code)}

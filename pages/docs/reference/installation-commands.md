@@ -79,8 +79,12 @@ is written to disk.
   so a typo is refused with exit `2` and the names this machine has.
 - Inside a shell already pinned to an installation it is refused with exit `2`:
   exit that shell first.
+- A directory `ls` cannot open as this user is not taken as an installation:
+  naming one is refused with a hint to run the command with `sudo`.
 - It says so on stderr when the shell starts and when it ends, and exits with
-  the shell's own status.
+  the shell's own status, or `128` plus the signal when the shell was killed
+  by one.
+- `--json` is refused: the shell owns stdout until it exits.
 
 ## Exporting and importing an identity
 
