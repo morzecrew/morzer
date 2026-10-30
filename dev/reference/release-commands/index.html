@@ -1584,6 +1584,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release push
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release push">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-version-already-published" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A version already published
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-two-digests" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The two digests
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-fetch" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1679,7 +1729,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-refuses_2" class="md-nav__link">
+  <a href="#what-it-refuses_3" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         What it refuses
@@ -2419,6 +2469,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release push
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release push">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-version-already-published" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A version already published
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-two-digests" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The two digests
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-fetch" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2514,7 +2614,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-refuses_2" class="md-nav__link">
+  <a href="#what-it-refuses_3" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         What it refuses
@@ -3028,6 +3128,157 @@ records — and every entry carries one timestamp, resolved in this order:</p>
 <p>None of this changes the bundle's identity. The content digest covers contents,
 paths and the executable bit, not timestamps, so normalising them changes the
 archive's bytes and not the release's digest.</p>
+<h2 id="release-push">release push<a class="headerlink" href="#release-push" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>push<span class="w"> </span>&lt;archive&gt;<span class="w"> </span>oci://&lt;registry&gt;/&lt;repository&gt;<span class="o">[</span>:&lt;version&gt;<span class="o">]</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">[</span>--channel<span class="w"> </span>TAG<span class="o">]</span>...<span class="w"> </span><span class="o">[</span>--signing-key<span class="w"> </span>KEY<span class="o">]</span>...
+</code></pre></div>
+<p>Publishes the archive <code>archive</code> wrote to an <abbr title="Open Container Initiative">OCI</abbr> registry, as the single-layer
+artifact the <a href="#from-an-oci-registry"><abbr title="Open Container Initiative">OCI</abbr> source</a> reads, then moves each
+<code>--channel</code> tag to it. The version comes from the archive's manifest. A tag on
+the reference is optional, and when given it must equal that version: the
+registry's tags are read back as versions, so a tag naming another one would
+have <code>update --check</code> offer a version the bundle does not carry.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--channel</code></td>
+<td>A tag to move to the version once it is in place. Repeat for several; they move in order, and the first failure stops the rest.</td>
+</tr>
+<tr>
+<td><code>--signing-key</code></td>
+<td>A minisign public key the bundle's signature must verify against. Repeat for several. Without it, a missing signature is warned about, as <code>archive</code> does.</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Run every check and every registry read, write nothing, and refuse what the push would refuse.</td>
+</tr>
+</tbody>
+</table>
+<p>Before anything is sent, the archive is extracted the way an installation
+extracts it, then checked as <code>verify</code> checks a bundle: providers, templates,
+<code>SHA256SUMS</code>, and the signature under <code>--signing-key</code>. Credentials are the ones
+<code>docker login</code> stored; a loopback registry is reached over HTTP, as with
+<code>fetch</code>.</p>
+<h3 id="a-version-already-published">A version already published<a class="headerlink" href="#a-version-already-published" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>The registry has the version</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No</td>
+<td>Pushed.</td>
+</tr>
+<tr>
+<td>Yes, with the same layer bytes</td>
+<td>Already published: nothing pushed, exit 0, channels still move.</td>
+</tr>
+<tr>
+<td>Yes, and its <code>dev.morzer.bundle.digest</code> annotation names another content digest</td>
+<td>Refused, exit 2. Nothing pushed, no channel moved.</td>
+</tr>
+<tr>
+<td>Yes, otherwise</td>
+<td>The layer is pulled and its content digest computed. The same digest is already published; a different one is refused.</td>
+</tr>
+</tbody>
+</table>
+<p>Exit 0 on the same content is what lets a pipeline converge: if a channel move
+fails after the push, running the same command again moves the channel. The
+annotation is only trusted to refuse — anyone who can push can write it, so it
+never makes push accept different content.</p>
+<p>The existence check is not atomic: a registry has no conditional tag write, so
+two pipelines pushing the same version at once can both pass it. Push from one
+pipeline per repository at a time. If the version tag no longer names what this
+push confirmed by the time the channels move, push moves none and exits 2.</p>
+<h3 id="the-two-digests">The two digests<a class="headerlink" href="#the-two-digests" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>pushed demo 1.3.0 to oci://registry.example/demo/bundle:1.3.0
+  manifest  sha256:5f1c…  pin with oci://registry.example/demo/bundle@sha256:5f1c…
+  content   sha256:bcca…  give customers: morzer update --digest sha256:bcca…
+  channel stable  -&gt; 1.3.0
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Digest</th>
+<th>What it is</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>manifest</td>
+<td>The registry's identity for the artifact. It carries the time it was pushed, so it is not the bundle's identity.</td>
+<td>Pinning: <code>oci://…@sha256:</code>.</td>
+</tr>
+<tr>
+<td>content</td>
+<td>The bundle's <a href="#verification">content digest</a>, the same whichever transport delivers it.</td>
+<td><code>update --digest</code>, and your release notes.</td>
+</tr>
+</tbody>
+</table>
+<p>Never compare one with the other. <code>--json</code> carries both, as <code>manifest_digest</code>
+and <code>content_digest</code>, beside <code>version</code>, <code>reference</code>, <code>published</code> (false when
+already published), <code>dry_run</code>, and <code>channels</code>, each with <code>name</code>, <code>moved</code> and
+the <code>error</code> that stopped it. When a channel move fails, the error and this
+result arrive together.</p>
+<p>Moving a channel to a version older than the one it points at warns and moves
+it anyway, when the channel's manifest names its version — a push writes that
+annotation, and an artifact pushed by hand has none. Machines already on the
+newer version do not follow a channel backwards.</p>
+<h3 id="what-it-refuses_2">What it refuses<a class="headerlink" href="#what-it-refuses_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Exit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A reference that is not <code>oci://</code>, names a digest, or names a tag other than the archive's version</td>
+<td>2</td>
+</tr>
+<tr>
+<td>A channel named like a version, such as <code>--channel 1.4.0</code>, or one that is not a valid tag</td>
+<td>2</td>
+</tr>
+<tr>
+<td>A directory, or a file that is not a <code>.tar.zst</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td>An archive over 512 MiB, more than an installation pulls from a registry</td>
+<td>2</td>
+</tr>
+<tr>
+<td>An archive <code>verify</code> would refuse, or a signature that does not verify under <code>--signing-key</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td>The version already published with different content</td>
+<td>2</td>
+</tr>
+<tr>
+<td>The registry refuses the credentials</td>
+<td>2</td>
+</tr>
+<tr>
+<td>The registry cannot be reached, or fails</td>
+<td>7</td>
+</tr>
+</tbody>
+</table>
 <h2 id="release-fetch">release fetch<a class="headerlink" href="#release-fetch" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>&lt;ref&gt;
 morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>./demo-1.3.0.tar.zst
@@ -3102,7 +3353,8 @@ or published to a registry.</p>
 morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>oci://registry.example/demo/bundle@sha256:…
 </code></pre></div>
 <p>The bundle is one layer of an <abbr title="Open Container Initiative">OCI</abbr> artifact, published with the media type
-<code>application/vnd.morzer.release.bundle.v1.tar+zstd</code>. An artifact with a single
+<code>application/vnd.morzer.release.bundle.v1.tar+zstd</code> — which is how
+<a href="#release-push"><code>release push</code></a> publishes it. An artifact with a single
 layer is taken whatever its type; with several, the media type is what selects
 the bundle rather than a guess at ordering.</p>
 <p><strong>A reference with no tag or digest is refused.</strong> A bare repository resolves to
@@ -3263,7 +3515,7 @@ that was reinstalled, a converge that refuses with</p>
 </code></pre></div>
 <p><strong>Idempotent.</strong> An image already present is not read again, so re-running after
 a partial failure costs nothing for the images that succeeded.</p>
-<h3 id="what-it-refuses_2">What it refuses<a class="headerlink" href="#what-it-refuses_2" title="Permanent link">&para;</a></h3>
+<h3 id="what-it-refuses_3">What it refuses<a class="headerlink" href="#what-it-refuses_3" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
