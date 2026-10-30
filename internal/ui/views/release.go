@@ -168,3 +168,73 @@ func builtDoc(d *ui.Doc, b Built) *ui.Doc {
 	})
 	return d
 }
+
+// Pushed is what `release push` answers (RFC 0039 §5.4).
+//
+// Two digests, and neither is ever printed bare. A registry reports the
+// manifest's, which pins `oci://…@sha256:`; customers pass the content digest to
+// `update --digest`. Pipelines confuse the two, so each carries its use.
+type Pushed struct {
+	Name           string          `json:"-"`
+	VersionInfo    domain.Version  `json:"version"`
+	Reference      string          `json:"reference"`
+	ManifestDigest string          `json:"manifest_digest,omitempty"`
+	ContentDigest  string          `json:"content_digest"`
+	Published      bool            `json:"published"`
+	DryRun         bool            `json:"dry_run"`
+	Channels       []PushedChannel `json:"channels"`
+}
+
+// PushedChannel is one channel the push was asked to move. Neither moved nor an
+// error means an earlier channel failed and this one was not tried.
+type PushedChannel struct {
+	Name  string `json:"name"`
+	Moved bool   `json:"moved"`
+	Error string `json:"error,omitempty"`
+}
+
+func init() {
+	ui.Register(ui.View[Pushed]{
+		Rich:  func(w io.Writer, t *theme.Theme, p Pushed) { emit(w, pushedDoc(doc(w, t), p)) },
+		Plain: func(w io.Writer, p Pushed) { emit(w, pushedDoc(plainDoc(w), p)) },
+	})
+}
+
+func pushedDoc(d *ui.Doc, p Pushed) *ui.Doc {
+	verb := "pushed"
+	switch {
+	case !p.Published:
+		verb = "already published"
+	case p.DryRun:
+		verb = "would push"
+	}
+	d.Title(fmt.Sprintf("%s %s %s to oci://%s", verb, p.Name, p.VersionInfo, p.Reference))
+
+	// Verbatim, past the measure if they must: each line ends in something
+	// to copy, and a reference wrapped mid-digest is one nobody can paste.
+	if p.ManifestDigest != "" {
+		repository := p.Reference[:strings.LastIndex(p.Reference, ":")]
+		d.Verbatim(fmt.Sprintf("  manifest  %s  pin with oci://%s@%s",
+			p.ManifestDigest, repository, p.ManifestDigest))
+	}
+	d.Verbatim(fmt.Sprintf("  content   %s  give customers: morzer update --digest %s",
+		p.ContentDigest, p.ContentDigest))
+
+	fields := make([]ui.Field, 0, len(p.Channels))
+	for _, c := range p.Channels {
+		value := "not tried"
+		switch {
+		case c.Moved && p.DryRun:
+			value = "would move to " + p.VersionInfo.String()
+		case c.Moved:
+			value = "-> " + p.VersionInfo.String()
+		case c.Error != "":
+			value = "not moved: " + c.Error
+		}
+		fields = append(fields, ui.Field{Label: "channel " + c.Name, Value: value})
+	}
+	if len(fields) > 0 {
+		d.Fields(2, fields)
+	}
+	return d
+}

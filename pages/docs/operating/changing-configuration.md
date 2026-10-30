@@ -121,9 +121,11 @@ The file is rewritten from the recorded state by the next `config set`, or by
 
 ## After a release changes what it declares
 
-An update can add a parameter — it simply takes its default — or drop one. A
-dropped parameter leaves your recorded value bound to nothing, which
-`config list` reports as **stale**:
+An update can add a parameter — it takes its default, and one with no default
+waits for `config set` — or drop one. The update retires a value you recorded
+for a dropped parameter, and says so. An operation that stops before it gets
+there can leave the value bound to nothing, which `config list` reports as
+**stale**:
 
 ```console
 $ morzer config list
@@ -133,4 +135,5 @@ clear with: morzer config unset legacy_flag
 ```
 
 Nothing is blocked over it. Dropping a parameter is the vendor's decision, and
-refusing every command until you tidy up would help nobody.
+refusing every command until you tidy up would help nobody. `config unset`
+clears it even while another parameter is still waiting for a value.

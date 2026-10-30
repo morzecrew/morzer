@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version it is given and `--require-signature`, installs `minisign` first when
   the runner has none, and puts `morzer` on `PATH` for the steps after it.
 
+- **`morzer release push` publishes an archive to an OCI registry.** It checks
+  the archive as `release verify` does, refuses to overwrite a version with
+  different content, moves `--channel` tags only after the push, and prints both
+  digests. Re-pushing the same content succeeds, so a failed pipeline can re-run.
+
 ### Changed
 
 - **`release build --version-from-git` names the bundle, not the repository.**
@@ -55,10 +60,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `attest verify` still refuses. Under `--json`, a listing with no entries, such
   as `backup list` or `release list`, carried `"data": null`; it is now `[]`.
 
+- **An empty list inside a `--json` report is `[]`.** `release prune` with
+  nothing to remove reported `"removed": null`. Every list in every report is
+  now `[]` when empty.
+
 - **A mistyped subcommand fails instead of printing help.** `morzer release
   verfy` printed the group's help and exited 0, even under `--json`. It now
   exits 2 with `unknown command` and suggests a subcommand when one is close;
   `morzer release` alone still prints its help.
+
+- **A command group with no subcommand fails under `--json`.** `morzer release
+  --json` printed help text and exited 0. It now exits 2 and lists the
+  subcommands; without `--json` it still prints help.
+
+- **`--json` errors name the command.** A mistyped flag or command reported
+  `"command": ""` in its envelope. It now names the command the arguments
+  resolve to, such as `morzer release verify` for an unknown flag.
 
 - **`morzer doctor -v` works.** Doctor's own `--verbose` hid the global `-v`, so
   `doctor -v` was refused as an unknown flag. Both spellings now expand every
@@ -92,6 +109,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It now exits 2 and lists the declared parameters; a stale value left by an
   older release still clears.
 
+- **`config unset` clears a stale value while another parameter has none.** A
+  recorded value the release no longer declares, beside a parameter with no
+  default and no value, refused every `config` change. Clearing the stale value
+  no longer waits on the other.
+
 - **Command output no longer cites RFCs an operator does not have.**
   `config settings`, `installation describe` and two refusals named an RFC by
   number, such as "See RFC 0027". The text now stands without the citation.
@@ -110,6 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   update or a rollback that retired a value, the signed statement still listed
   that parameter beside a configuration digest rendered without it. It now
   names only the parameters left recorded.
+- **`release verify --signing-key` explains an unsigned bundle to a vendor.**
+  It refused with the installation's message, telling a build machine to clear
+  `require_signature`, a setting it does not have. It now says the key was
+  given and the bundle is not signed, and shows the `minisign -Sm` command.
 
 ## [0.9.0] - 2026-10-29
 

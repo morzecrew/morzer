@@ -57,6 +57,12 @@ const Scheme = "oci"
 // guessing from a filename.
 const MediaType = "application/vnd.morzer.release.bundle.v1.tar+zstd"
 
+// ArtifactType is the manifest's `artifactType` for a bundle, the value the
+// docs tell vendors to pass to `oras push --artifact-type`. Nothing reads it on
+// the way in: a bundle is found by its layer, so one pushed without it installs
+// all the same.
+const ArtifactType = "application/vnd.morzer.release.bundle.v1"
+
 // MaxBlobSize bounds a layer before it is written. The archive limits apply
 // afterwards; this one stops a registry handing over a terabyte.
 const MaxBlobSize = 512 << 20

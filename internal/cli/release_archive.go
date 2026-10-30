@@ -134,9 +134,7 @@ func checkArchivable(app *App, rel domain.Release) error {
 		// a vendor whose customers do not require one is not doing
 		// anything wrong. The cost is that "the vendor forgot to sign"
 		// is caught on the operator's machine rather than the vendor's.
-		fmt.Fprintf(app.Stream.Err,
-			"warning: the bundle carries no %s, so operators requiring a signature "+
-				"will refuse it\n", ports.SignatureFileName)
+		warnUnsigned(app)
 		return nil
 	case sigErr != nil:
 		// Not the warning: a signature that cannot be read is not a
@@ -152,6 +150,14 @@ func checkArchivable(app *App, rel domain.Release) error {
 			WithHint("sign again: `minisign -Sm %s`", sums)
 	}
 	return nil
+}
+
+// warnUnsigned is what `archive` and `push` say about a bundle with no
+// signature, in one place so the two cannot come to say it differently.
+func warnUnsigned(app *App) {
+	fmt.Fprintf(app.Stream.Err,
+		"warning: the bundle carries no %s, so operators requiring a signature "+
+			"will refuse it\n", ports.SignatureFileName)
 }
 
 // archiveDestination resolves where the archive is written.

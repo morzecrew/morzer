@@ -25,12 +25,12 @@ func newReleaseCommand(app *App) *cobra.Command {
 		Long: "A release is a signed, digest-pinned bundle: a manifest, the Compose\n" +
 			"files, the templates, and optionally the container images themselves.\n" +
 			"These commands inspect the ones installed on this machine, fetch new\n" +
-			"ones, and build bundles for publication.\n\n" +
+			"ones, and build and publish bundles.\n\n" +
 			"None of them changes what is deployed. `morzer update` does that.",
 	}
 	// The one subtree that is split down the middle. `list`, `fetch`,
 	// `ingest` and `prune` read or write *this* installation's release
-	// store, so they need to know which installation that is; the five
+	// store, so they need to know which installation that is; the six
 	// authoring commands act on a directory or an archive named on the
 	// command line and would work on a laptop with no installation at all.
 	//
@@ -52,6 +52,7 @@ func newReleaseCommand(app *App) *cobra.Command {
 		machineScope(newReleasePackCommand(app)),
 		machineScope(newReleaseBuildCommand(app)),
 		machineScope(newReleaseArchiveCommand(app)),
+		machineScope(newReleasePushCommand(app)),
 		installationScope(newReleaseFetchCommand(app)),
 		installationScope(newReleaseIngestCommand(app)),
 		installationScope(newReleasePruneCommand(app)),
@@ -274,6 +275,7 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 					ports.BundlePath(rel.Root), ports.Expectation{
 						PublicKeys: signingKeys,
 						Required:   true,
+						Authoring:  true,
 					}); err != nil {
 					return err
 				}

@@ -221,13 +221,34 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	// exited 0, and a script's typo read as success. The help func is the one
 	// place that sees the group with its arguments parsed; it cannot return
 	// an error, so it leaves one here.
-	var unknownSubcommand error
+	var groupErr error
 	help := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		typed := cmd.Flags().Args()
 		asked, _ := cmd.Flags().GetBool("help")
-		if len(typed) == 0 || cmd.Runnable() || !cmd.HasSubCommands() || asked {
+		if cmd.Runnable() || !cmd.HasSubCommands() || asked {
 			help(cmd, args)
+			return
+		}
+		if len(typed) == 0 {
+			// The group alone is a person asking what is in it, unless the
+			// output is for a program: help text on stdout under --json, at
+			// exit 0, was prose where a script expected an object. Parsed
+			// flags tell this run apart from `morzer help <group>`, which
+			// reaches here without parsing the group's.
+			if !app.Flags.json || !cmd.Flags().Parsed() {
+				help(cmd, args)
+				return
+			}
+			var names []string
+			for _, sub := range cmd.Commands() {
+				if sub.IsAvailableCommand() {
+					names = append(names, sub.Name())
+				}
+			}
+			groupErr = domain.Usage("%q requires a subcommand", cmd.CommandPath()).
+				WithHint("one of: %s; run `%s --help` for what each does",
+					strings.Join(names, ", "), cmd.CommandPath())
 			return
 		}
 		hint := fmt.Sprintf("run `%s --help` for its commands", cmd.CommandPath())
@@ -238,7 +259,7 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 		if s := cmd.SuggestionsFor(typed[0]); len(s) > 0 {
 			hint = fmt.Sprintf("did you mean `%s %s`? %s", cmd.CommandPath(), s[0], hint)
 		}
-		unknownSubcommand = domain.Usage("unknown command %q for %q", typed[0], cmd.CommandPath()).
+		groupErr = domain.Usage("unknown command %q for %q", typed[0], cmd.CommandPath()).
 			WithHint("%s", hint)
 	})
 
@@ -253,7 +274,7 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 
 	err := classifyCLIError(root.ExecuteContext(ctx))
 	if err == nil {
-		err = unknownSubcommand
+		err = groupErr
 	}
 
 	// A source that downloaded something holds a temporary copy of it. The
@@ -273,6 +294,13 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 			ManagerVersion: app.Build.Version,
 			APIVersions:    apiVersionStrings(),
 		})
+		// Nor did anything name the command. Find resolves it as far as
+		// the arguments go, the way cobra did before failing, whatever
+		// the failure: `morzer` for a mistyped command, the command
+		// itself for a mistyped flag.
+		if found, _, _ := root.Find(args); found != nil && app.command == "" {
+			app.command = found.CommandPath()
+		}
 	}
 
 	if app.json != nil && !app.jsonStreamed {

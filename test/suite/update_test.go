@@ -377,6 +377,50 @@ func TestAFailedUpdateKeepsTheParametersItWouldHaveRetired(t *testing.T) {
 	require.NoError(t, err, "the value the update left recorded no longer resolves")
 }
 
+// TestAnUpdateThatSwapsAParameterLeavesConfigUsable is the update half of #190:
+// a release that drops one parameter and adds another with no default. The
+// update retires the dropped value, so nothing stale is left for `config` to
+// refuse over, and the new parameter can be given its value.
+func TestAnUpdateThatSwapsAParameterLeavesConfigUsable(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{"log_level": "debug"}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	src := stageUpgradeSource(t, h)
+	dropParameter(t, src, "log_level")
+	declareParameter(t, src, "api_key")
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err, "a parameter with no default is the operator's to set after the update")
+
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"api_key": "k"},
+	})
+	require.NoError(t, err, "the update left a recorded set `config` cannot change")
+}
+
+// declareParameter adds a string parameter with no default to a bundle's
+// manifest: one the operator has to choose, and the release cannot.
+func declareParameter(t *testing.T, bundle, name string) {
+	t.Helper()
+	path := filepath.Join(bundle, "manifest.yaml")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	block := "  " + name + ":\n    type: string\n    description: chosen by the operator\n" +
+		"    services: [app]\n"
+	out := strings.Replace(string(data), "parameters:\n", "parameters:\n"+block, 1)
+	require.NotEqual(t, string(data), out, "manifest has no parameters block")
+	require.NoError(t, os.WriteFile(path, []byte(out), 0o644))
+}
+
 // dropParameter removes a parameter block from a bundle's manifest, which is
 // what a vendor does when a knob stops existing.
 func dropParameter(t *testing.T, bundle, name string) {

@@ -195,3 +195,35 @@ func marshal(t *testing.T, v any) map[string]any {
 	require.NoError(t, json.Unmarshal(b, &got))
 	return got
 }
+
+// TestPushedKeepsTheKeysRFC0039Publishes. New rather than converted, so the
+// literal is the RFC's list (§5.4) plus `dry_run` (logs/release-push.md, U6),
+// and a channel that moved carries no `error` key at all.
+func TestPushedKeepsTheKeysRFC0039Publishes(t *testing.T) {
+	version, err := domain.ParseVersion("1.3.0")
+	require.NoError(t, err)
+
+	got := marshal(t, views.Pushed{
+		Name: "demo", VersionInfo: version,
+		Reference:      "registry.example/demo/bundle:1.3.0",
+		ManifestDigest: "sha256:5f1c", ContentDigest: "sha256:bcca",
+		Published: true,
+		Channels: []views.PushedChannel{
+			{Name: "stable", Moved: true},
+			{Name: "edge", Error: "cannot reach registry.example/demo/bundle:edge"},
+		},
+	})
+
+	require.Equal(t, map[string]any{
+		"version":         "1.3.0",
+		"reference":       "registry.example/demo/bundle:1.3.0",
+		"manifest_digest": "sha256:5f1c",
+		"content_digest":  "sha256:bcca",
+		"published":       true,
+		"dry_run":         false,
+		"channels": []any{
+			map[string]any{"name": "stable", "moved": true},
+			map[string]any{"name": "edge", "moved": false, "error": "cannot reach registry.example/demo/bundle:edge"},
+		},
+	}, got)
+}
