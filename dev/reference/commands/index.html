@@ -661,6 +661,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/taking-a-product-down/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-pause-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 15V9M14 15V9"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Taking a product down for a while
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/secrets/" class="md-nav__link">
         
   
@@ -1429,6 +1458,28 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         rollback
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        stop
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        start
       </span>
     </span>
   </a>
@@ -2386,6 +2437,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        stop
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        start
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#status" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2854,6 +2927,14 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <td>Return to the previous release.</td>
 </tr>
 <tr>
+<td><a href="#stop"><code>stop</code></a></td>
+<td>Take the product down and keep it down until it is started.</td>
+</tr>
+<tr>
+<td><a href="#start"><code>start</code></a></td>
+<td>Bring a stopped product back.</td>
+</tr>
+<tr>
 <td><a href="#status"><code>status</code></a></td>
 <td>Show what is deployed and whether it is working.</td>
 </tr>
@@ -3148,6 +3229,38 @@ two steps back means naming it.</p>
 <p><code>--force</code> does not override a refusal. Force authorises destructive actions, not
 incorrect ones, and the failure mode here is quiet data corruption rather than a
 visible break.</p>
+<h2 id="stop">stop<a class="headerlink" href="#stop" title="Permanent link">&para;</a></h2>
+<p>Stops every service and records the stop, so the product stays down across a
+reboot and an unattended update until <code>morzer start</code>. Containers, networks and
+volumes are kept: no flag of <code>stop</code> or <code>start</code> can remove a volume.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--reason</code></td>
+<td>Why, in one line of at most 200 characters; shown by <code>status</code>, <code>doctor</code> and <code>ls</code> until <code>start</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>While stopped, <code>apply</code>, <code>update</code>, <code>rollback</code> and <code>task run</code> are refused with
+<a href="../exit-codes/">exit 2</a>, the update timer stages without installing, and the
+scheduled backup is skipped. <code>restore</code> and an explicit <code>backup</code> still run.
+<a href="../../operating/taking-a-product-down/">Taking a product down for a while</a> has
+the full table.</p>
+<p>Refused, with exit 2, before the first <code>apply</code>: there is nothing to stop. A stop
+killed between recording and stopping is finished with <code>--resume</code>.</p>
+<h2 id="start">start<a class="headerlink" href="#start" title="Permanent link">&para;</a></h2>
+<p>Applies the current release, then clears the stop. Cleared only once the release
+has converged, so a <code>start</code> that fails keeps boot and the update timer away until
+it succeeds.</p>
+<p>It does not install a release staged while the product was stopped; the next
+tick of the update timer, or <code>morzer update</code>, does. On a product that is not
+stopped, <code>start</code> is <code>apply</code>, and says nothing was stopped.</p>
 <h2 id="status">status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h2>
 <p>Shows what is deployed, which services are up, the last backup, the last
 operation, and anything needing attention.</p>
@@ -3177,6 +3290,10 @@ operation, and anything needing attention.</p>
 runtime. It shows <code>next</code> instead, with the command that starts the product, or
 <code>morzer update &lt;bundle&gt;</code> when no release is installed yet. <code>--json</code> carries the
 same sentence as <code>next</code>. While an operation holds the lock there is no <code>next</code>.</p>
+<p>While the product is <a href="#stop">stopped</a>, <code>status</code> shows <code>stopped by the operator
+since &lt;time&gt;: &lt;reason&gt;</code> above the services, its stopped services are not drawn
+as failures, and <code>next</code> names <code>morzer start</code>. <code>--json</code> carries the stop as a
+<code>stopped</code> object with <code>at</code>, <code>reason</code>, <code>operation_id</code> and <code>release</code>.</p>
 <p>An operation that ended in <a href="../exit-codes/">exit 12</a> keeps surfacing in <code>status</code>
 and <code>doctor</code> until it is cleared explicitly. That is deliberate: the flag exists
 to stop an operator proceeding as though nothing happened.</p>
@@ -3246,7 +3363,7 @@ does not — pointing at <code>rotate</code> there would point at a command that
 </tr>
 <tr>
 <td><code>runtime.services</code></td>
-<td>Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose.</td>
+<td>Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. While the product is <a href="#stop">stopped</a> with <code>morzer stop</code>, it reports the stop as information, however old, and <code>runtime.health</code> does not probe.</td>
 </tr>
 </tbody>
 </table>
@@ -3453,6 +3570,10 @@ manifest, and verifies the checksums by re-reading what was written.</p>
 <tr>
 <td><code>--no-prune-remote</code></td>
 <td>Skip applying the retention policy on the targets.</td>
+</tr>
+<tr>
+<td><code>--unattended</code></td>
+<td>The backup timer's run, which the timer's unit passes. Skipped, exit 0, while the product is <a href="#stop">stopped</a>.</td>
 </tr>
 </tbody>
 </table>

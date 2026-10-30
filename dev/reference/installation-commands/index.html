@@ -661,6 +661,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/taking-a-product-down/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-pause-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 15V9M14 15V9"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Taking a product down for a while
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/secrets/" class="md-nav__link">
         
   
@@ -2873,6 +2902,10 @@ that should match, and reviewing what changed after somebody ran <code>config se
 <tr>
 <td><code>attestation_salt</code></td>
 <td>Minted, not chosen — and publishing it in a file meant for a git repository would make the digest it salts brute-forceable again.</td>
+</tr>
+<tr>
+<td><code>stopped</code></td>
+<td>An operation's record, not a choice: <code>morzer stop</code> writes it and <code>morzer start</code> clears it, and a document applied on another machine must not stop that one.</td>
 </tr>
 </tbody>
 </table>
