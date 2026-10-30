@@ -470,3 +470,41 @@ func TestARollbackPreflightRefusesLeavesThePointerAlone(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(h.Paths.ReleasesDir(), "1.3.0"), link)
 }
+
+// A value recorded for a parameter only the newer release declares is retired
+// on the way back, as `update` retires one the new release stopped declaring.
+// Otherwise every resolve against the older release refuses it, and the
+// rollback with it.
+func TestARollbackRetiresAParameterOnlyTheNewerReleaseDeclares(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	src := stageUpgradeSource(t, h)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), "parameters:\n",
+		"parameters:\n  api_key:\n    type: string\n    default: none\n    description: Key for the upstream API\n    services: [app]\n", 1)
+	require.NotEqual(t, string(raw), patched)
+	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"api_key": "k-123"}})
+	require.NoError(t, err)
+
+	setSchema(t, h, 12)
+	result, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err, "a value only 1.3.0 declares held up the rollback to 1.2.0")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, inst.Parameters, "api_key")
+
+	_, err = ops.ConfigList(ctx, h.Deps)
+	require.NoError(t, err, "config refuses after the rollback")
+}

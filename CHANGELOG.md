@@ -101,6 +101,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refusal there left it moved while the newer release kept running. Preflight
   now runs before anything moves, and the refusal exits 3.
 
+- **A rollback no longer refuses over a parameter only the newer release
+  declares.** A value set for it made every resolve against the older release
+  fail with `the release declares no parameter`. The rollback now retires that
+  value, as an update retires one a new release dropped.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its

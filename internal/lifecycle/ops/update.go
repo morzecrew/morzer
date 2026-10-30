@@ -485,7 +485,8 @@ func withoutParameters(inst domain.Installation, names []string) domain.Installa
 }
 
 // stepRetireParameters drops recorded values the new release no longer
-// declares, and is the last step of the update on purpose.
+// declares, and is the last step of the update on purpose. A rollback ends with
+// it too, for the values only the release it leaves declared.
 //
 // A vendor may stop declaring a parameter; that is their decision and not a
 // failure, which is why the operator is told rather than refused. But the
@@ -507,7 +508,7 @@ func withoutParameters(inst domain.Installation, names []string) domain.Installa
 // with a working deployment and a state file one parameter stale, which the
 // next command reports.
 func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engine.Step {
-	description := "retire parameters the new release no longer declares"
+	description := "retire parameters the release does not declare"
 	if len(retired) > 0 {
 		// Named in the description, because a dry run is where an
 		// operator gets to see a state change before it happens, and
@@ -539,7 +540,7 @@ func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engi
 			// record it would have been told something untrue about
 			// their own configuration.
 			d.Bus.Publish(events.Message(events.LevelWarn,
-				"release %s no longer declares %s; the recorded value(s) are retired",
+				"release %s does not declare %s; the recorded value(s) are retired",
 				staged.Version(), strings.Join(retired, ", ")))
 			st.Detail("retired %s", strings.Join(retired, ", "))
 			return nil

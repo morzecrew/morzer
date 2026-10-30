@@ -79,6 +79,14 @@ morzer rollback --to 1.1.0
 they differ in what they check — and refuses the version already running, which
 would be a stop and start for nothing.
 
+## Parameters the older release does not declare
+
+A value you set for a parameter that only the newer release declares is retired
+on the way back, the way an update retires one a new release dropped: the
+rollback's last step removes it and says so. A parameter the older release
+requires and you have no value for is reported by its preflight, before
+anything moves.
+
 ## When rollback is not the answer
 
 If the rollback is refused, the sequence is a restore:

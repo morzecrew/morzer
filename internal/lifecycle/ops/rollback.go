@@ -367,6 +367,15 @@ func rollbackSteps(
 	previousRel domain.Release,
 	opts RollbackOptions,
 ) []engine.Step {
+	// A value recorded for a parameter only the release being left declares
+	// is retired as update retires one a new release dropped: out of the
+	// resolution now, durably by the last step. Every consumer validates the
+	// whole recorded map, so one such name refused the return.
+	retired := domain.Parameters(inst.Parameters).ValidateAgainst(previousRel.Manifest.Parameters)
+	if len(retired) > 0 {
+		inst = withoutParameters(inst, retired)
+	}
+
 	converge := opts.Options
 	converge.PreviousVersion = current.Version
 	apply := applySteps(d, inst, previousRel, converge)
@@ -376,7 +385,8 @@ func rollbackSteps(
 	// mutates; behind the move, a refusal left the pointer on the previous
 	// release while the current one's containers kept running.
 	steps := []engine.Step{apply[0], stepPointToPrevious(d, current, previous, previousRel)}
-	return append(steps, apply[1:]...)
+	steps = append(steps, apply[1:]...)
+	return append(steps, stepRetireParameters(d, previousRel, retired))
 }
 
 // stepPointToPrevious swaps the release pointer and the current symlink.
