@@ -217,3 +217,14 @@ func TestACancelledConfirmationStoresNothing(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, domain.CodeInterrupted, domain.AsError(err).Code)
 }
+
+// TestAnAnswerCutOffByAReadErrorStoresNothing. A `y` that arrived before the
+// read failed is not a yes: the line never finished, and the error is what
+// the operator needs to see, not a silent store or a silent decline.
+func TestAnAnswerCutOffByAReadErrorStoresNothing(t *testing.T) {
+	var out strings.Builder
+	err := confirmLength(context.Background(), &failingReader{after: []byte("y")}, &out, 7)
+
+	require.Error(t, err, "a cut-off answer stored the value")
+	assert.Contains(t, err.Error(), "cannot read the answer")
+}

@@ -610,8 +610,9 @@ func readPassword(ctx context.Context, in io.Reader, out io.Writer, prompt strin
 // scrollback this does. Asking here, before the store and the restart, is
 // what makes the count worth printing.
 //
-// Enter or y stores it. Anything else, an empty read included, leaves nothing
-// stored, the same as a Ctrl-C at the prompt.
+// Enter, y or yes stores it. Anything else, an empty read included, leaves
+// nothing stored, the same as a Ctrl-C at the prompt. A read that fails rather
+// than ends is not an answer at all, whatever arrived before it.
 func confirmLength(ctx context.Context, in io.Reader, out io.Writer, chars int) error {
 	unit := "characters"
 	if chars == 1 {
@@ -622,6 +623,7 @@ func confirmLength(ctx context.Context, in io.Reader, out io.Writer, chars int) 
 	type outcome struct {
 		line     string
 		answered bool // a newline arrived, rather than EOF or an error
+		err      error
 	}
 	read := make(chan outcome, 1)
 	go func() {
@@ -632,14 +634,17 @@ func confirmLength(ctx context.Context, in io.Reader, out io.Writer, chars int) 
 		for {
 			n, err := in.Read(b)
 			if n > 0 && b[0] == '\n' {
-				read <- outcome{string(line), true}
+				read <- outcome{string(line), true, nil}
 				return
 			}
 			if n > 0 {
 				line = append(line, b[0])
 			}
 			if err != nil {
-				read <- outcome{string(line), false}
+				if errors.Is(err, io.EOF) {
+					err = nil
+				}
+				read <- outcome{string(line), false, err}
 				return
 			}
 		}
@@ -651,6 +656,10 @@ func confirmLength(ctx context.Context, in io.Reader, out io.Writer, chars int) 
 		fmt.Fprintln(out)
 		return domain.Interrupted("cancelled at the prompt")
 	case r = <-read:
+	}
+	if r.err != nil {
+		fmt.Fprintln(out)
+		return domain.Internal(r.err, "cannot read the answer, so the value was not stored")
 	}
 
 	// Enter alone is yes only when it was pressed: an empty read that ended
