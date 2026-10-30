@@ -3139,6 +3139,10 @@ operation, and anything needing attention.</p>
 </tr>
 </tbody>
 </table>
+<p>Before the first <code>apply</code>, nothing is running, so <code>status</code> does not ask the
+runtime. It shows <code>next</code> instead, with the command that starts the product, or
+<code>morzer update &lt;bundle&gt;</code> when no release is installed yet. <code>--json</code> carries the
+same sentence as <code>next</code>. While an operation holds the lock there is no <code>next</code>.</p>
 <p>An operation that ended in <a href="../exit-codes/">exit 12</a> keeps surfacing in <code>status</code>
 and <code>doctor</code> until it is cleared explicitly. That is deliberate: the flag exists
 to stop an operator proceeding as though nothing happened.</p>
