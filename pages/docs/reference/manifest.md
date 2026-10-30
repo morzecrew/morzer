@@ -499,6 +499,10 @@ services it `depends_on` first, as a migration service does. It gets the same
 `PHASE` set to `task`. Any non-zero exit fails it, `2` included; "nothing to
 do" belongs to migrations.
 
+The operator sees a task's output only when they ask, with `task run --output`,
+`--verbose` or `--json`, or the end of its stderr when it fails. A task whose output is
+the point, a report, should say so in its `description`.
+
 **Tasks need `min_manager_version: "0.8.0"` or later**, and a manifest declaring
 tasks with less is refused. A manager older than 0.8.0 cannot read `tasks:`, and
 the declaration makes it refuse the bundle as needing a newer manager instead of

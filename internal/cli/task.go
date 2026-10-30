@@ -45,7 +45,8 @@ func newTaskListCommand(app *App) *cobra.Command {
 }
 
 func newTaskRunCommand(app *App) *cobra.Command {
-	return &cobra.Command{
+	var output bool
+	cmd := &cobra.Command{
 		Use:   "run <task> [-- args...]",
 		Short: "Run a task the installed release declares",
 		Long: "Runs the task as an operation: secrets and configuration are rendered\n" +
@@ -54,13 +55,15 @@ func newTaskRunCommand(app *App) *cobra.Command {
 			"task runs whether or not the deployment is up.\n\n" +
 			"Arguments go after `--`, and only to a task whose release declares\n" +
 			"`args: true` for it.\n\n" +
-			"The task's output is printed when it finishes, its own stdout on\n" +
-			"stdout, and the invocation exits with the task's exit code. --verbose\n" +
-			"shows the output as it arrives.\n\n" +
+			"The task's output is printed only when asked: --output prints it when\n" +
+			"the task finishes, its own stdout on stdout, and --verbose shows it as\n" +
+			"it arrives. A task that fails shows the last lines of its stderr. The\n" +
+			"invocation exits with the task's exit code.\n\n" +
 			"Not an interactive session: there is no TTY and no stdin.",
 		Example: "  morzer task list\n" +
 			"  morzer task run reindex\n" +
-			"  morzer task run seed -- --size s",
+			"  morzer task run seed -- --size s\n" +
+			"  morzer task run report --output > report.txt",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The task's arguments only after the terminator, for the
@@ -83,30 +86,57 @@ func newTaskRunCommand(app *App) *cobra.Command {
 				run, _ = res.Data.(ops.TaskRun)
 				return res, err
 			})
-			return app.finishTask(run, err)
+			return app.finishTask(run, err, output)
 		},
 	}
+	cmd.Flags().BoolVar(&output, "output", false,
+		"print the task's stdout and stderr when it finishes")
+	return cmd
 }
 
-// finishTask passes on what the task printed and decides the exit.
+// taskFailureTailLines is how much of a failed task's stderr is shown unasked:
+// the runtime's own bound on what an operator watching the run read last.
+const taskFailureTailLines = 10
+
+// finishTask passes on what the task printed, when asked, and decides the exit.
 //
 // After the operation and never during it: the live view owns the terminal
-// while one runs, and plain mode's stderr is the step narration (RFC 0035
-// decision 11). With --json the output is already in the envelope.
-func (a *App) finishTask(run ops.TaskRun, err error) error {
-	if a.json == nil {
+// while one runs, and plain mode's stderr is the step narration. Unasked, only
+// a failure's last stderr lines, and not under --verbose, which printed them as
+// they arrived (RFC 0035 decision 21). With --json the output is already in
+// the envelope.
+func (a *App) finishTask(run ops.TaskRun, err error, output bool) error {
+	failed := err != nil && run.ExitCode != 0
+	switch {
+	case a.json != nil:
+	case output:
 		fmt.Fprint(a.Stream.Err, endLine(run.Stderr))
 		a.passThrough(endLine(run.Stdout))
+		if run.Truncated {
+			a.warnOutputCut("the task's", "")
+		}
+	case failed && !a.Flags.verbose:
+		fmt.Fprint(a.Stream.Err, endLine(lastLinesOf(run.Stderr, taskFailureTailLines)))
 		if run.Truncated {
 			a.warnOutputCut("the task's", "")
 		}
 	}
 	// The task's own status, as exec's (decision 12). The step's error
 	// is already on the screen, and the task's own words follow it.
-	if err != nil && run.ExitCode != 0 {
+	if failed {
 		return exitStatus{code: run.ExitCode, cause: domain.AsError(err)}
 	}
 	return err
+}
+
+// lastLinesOf is the last n lines of s as they were printed, unlike
+// domain.LastLines, which joins them onto one line for an error to quote.
+func lastLinesOf(s string, n int) string {
+	lines := strings.SplitAfter(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "")
 }
 
 // endLine ends text with a newline, so a task's last line is not followed on
