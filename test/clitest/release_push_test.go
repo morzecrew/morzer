@@ -98,8 +98,8 @@ func TestReleasePushRefusesWhatItCannotPublish(t *testing.T) {
 		{"a channel named like a version", []string{archive, repo, "--channel", "1.4.0"}, "1.4.0"},
 		{"a directory", []string{r.Bundle, repo}, "release archive"},
 		{"another scheme", []string{archive, "https://example.com/demo.tar.zst"}, "OCI registry"},
-		{"a signature that does not verify", []string{archive, repo, "--signing-key",
-			"RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"}, "signature"},
+		{"a key and an unsigned archive", []string{archive, repo, "--signing-key",
+			"RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"}, "not signed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -109,6 +109,22 @@ func TestReleasePushRefusesWhatItCannotPublish(t *testing.T) {
 	}
 	if n := reg.Requests(); n != 0 {
 		t.Errorf("the registry received %d requests for pushes that were refused", n)
+	}
+}
+
+// The vendor asked for the signature check, so the refusal is about their key
+// and their archive. The directory push checked is a temporary extraction, so
+// the hint names the archive and sends them back through `release archive`
+// rather than pointing minisign at a path that is gone once push exits.
+func TestReleasePushWithAKeyRefusesAnUnsignedArchiveInTheVendorsTerms(t *testing.T) {
+	r, reg, archive, repo := pushFixture(t)
+	_, key := minisignKeypair(t)
+
+	r.Run("release", "push", archive, repo, "--signing-key", key).ExitCode(2).
+		OutputContains("--signing-key", "not signed", archive, "release archive").
+		NoOutputContains("installation policy", "require_signature")
+	if n := reg.Requests(); n != 0 {
+		t.Errorf("the registry received %d requests for a push that was refused", n)
 	}
 }
 
