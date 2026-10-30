@@ -76,6 +76,10 @@ type Status struct {
 	// Problems are conditions worth an operator's notice that are not
 	// themselves failures of this command.
 	Problems []string `json:"problems,omitempty"`
+
+	// Next is the command to run when nothing has been applied yet: the one
+	// state where the most useful thing status can say is what comes next.
+	Next string `json:"next,omitempty"`
 }
 
 // Following is what the update timer does: when it looks at the channel, and
@@ -225,8 +229,25 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 			out.Problems = append(out.Problems, domain.AsError(relErr).Message)
 		} else {
 			out.SupportURL = rel.Manifest.Metadata.SupportURL
-			d.fillRuntimeStatus(ctx, &out, inst, rel)
+			// Not asked before the first apply: the runtime has no rendered
+			// project to describe, and "cannot read service status" was all an
+			// operator who had just run `init` got back.
+			if d.neverApplied(ctx) {
+				out.Next = fmt.Sprintf("`morzer --product %[1]s apply --dry-run` shows what would happen, "+
+					"`morzer --product %[1]s apply` starts it", inst.Product)
+			} else {
+				d.fillRuntimeStatus(ctx, &out, inst, rel)
+			}
 		}
+	} else {
+		// `apply` refuses with nothing installed; this is what installs one.
+		out.Next = fmt.Sprintf("`morzer --product %s update <bundle>` installs a release and starts it",
+			inst.Product)
+	}
+	// An operation holding the lock may be the very one named: the first
+	// apply, running.
+	if out.LockHeldBy != nil {
+		out.Next = ""
 	}
 
 	if d.Backup != nil {
@@ -234,6 +255,24 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 	}
 
 	return out, nil
+}
+
+// neverApplied reports a journal that holds operations, none of them one that
+// converges the deployment, in any outcome: a first apply that failed may have
+// left containers behind, and they are what the operator needs to see. An empty
+// or unreadable journal is not that answer, so the runtime is asked as before.
+func (d *Deps) neverApplied(ctx context.Context) bool {
+	recs, err := d.State.Operations(ctx, ports.Filter{})
+	if err != nil || len(recs) == 0 {
+		return false
+	}
+	for _, rec := range recs {
+		switch rec.Type {
+		case domain.OpTypeApply, domain.OpTypeUpdate, domain.OpTypeRollback, domain.OpTypeRestore:
+			return false
+		}
+	}
+	return true
 }
 
 func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.Installation, rel domain.Release) {

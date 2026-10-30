@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   printed some thirty lines of usage, on stderr even under `--json`. A wrong
   argument count now says what the command takes, such as `morzer release
   verify takes <path>`, instead of `accepts 1 arg(s), received 0`.
+- **`init` and `status` say what to run next.** `init` starts nothing, and now
+  ends by naming `morzer apply`, or `morzer update <bundle>` without a release.
+  Before the first `apply`, `status` shows that as `next`, also in `--json`,
+  instead of `cannot read service status`.
 
 ## [0.10.0] - 2026-10-30
 
