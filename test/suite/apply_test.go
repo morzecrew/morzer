@@ -23,6 +23,7 @@ import (
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -503,6 +504,61 @@ func TestStatusReportsDeployedState(t *testing.T) {
 	assert.Empty(t, status.NeedsAttention)
 }
 
+// Between `init` and the first `apply` nothing runs, and asking the runtime about
+// a project it has never rendered only produced "cannot read service status".
+// The answer an operator needs there is what to run next.
+func TestStatusBeforeTheFirstApplySaysToApply(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	ctx := context.Background()
+	h.Runtime.Fail["Status"] = domain.RuntimeError(nil, "cannot read service status")
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, domain.OperationRecord{
+		SchemaVersion: domain.InstallationSchemaVersion,
+		ID:            "op_init", Type: domain.OpTypeInit, Status: domain.StatusSucceeded,
+		StartedAt: domain.NewTime(h.Deps.Now()),
+	}))
+
+	status, err := ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Contains(t, status.Next, "morzer --product demo apply",
+		"on a machine with two installations a bare `morzer apply` is refused")
+	assert.Empty(t, status.Problems, "a project that was never applied is not a runtime problem")
+
+	// While an operation holds the lock -- the first apply, running -- telling
+	// the operator to run it would be wrong.
+	release, err := h.Locker.Acquire(ctx, "deployment", ports.LockOptions{
+		Owner: ports.LockOwner{PID: 4321, Type: "apply"},
+	})
+	require.NoError(t, err)
+	status, err = ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Empty(t, status.Next, "status named the command that is already running")
+	require.NoError(t, release())
+
+	// A first apply that failed may have left containers behind, and they are
+	// what the operator needs to see: the runtime is asked again.
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, domain.OperationRecord{
+		SchemaVersion: domain.InstallationSchemaVersion,
+		ID:            "op_apply", Type: domain.OpTypeApply, Status: domain.StatusFailed,
+		StartedAt: domain.NewTime(h.Deps.Now()),
+	}))
+	status, err = ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Empty(t, status.Next)
+	assert.Contains(t, strings.Join(status.Problems, " "), "cannot read service status")
+
+	// Once something has converged, the runtime is asked and its answer stands.
+	delete(h.Runtime.Fail, "Status")
+	h.setHookEnv()
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	status, err = ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Empty(t, status.Next)
+	assert.NotEmpty(t, status.Services)
+}
+
 func TestStatusWorksWithoutARelease(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -519,6 +575,8 @@ func TestStatusWorksWithoutARelease(t *testing.T) {
 	require.NoError(t, err, "status must work on a fresh installation")
 	assert.Nil(t, status.CurrentRelease, "no release installed must be null, not a zero-filled object")
 	assert.Empty(t, status.Services)
+	// `apply` refuses with nothing installed; `update <bundle>` is what does it.
+	assert.Contains(t, status.Next, "morzer --product demo update <bundle>")
 }
 
 func TestBackupCreatesVerifiesAndPrunes(t *testing.T) {

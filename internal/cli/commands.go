@@ -172,9 +172,25 @@ func newInitCommand(app *App) *cobra.Command {
 				}
 			}
 
-			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+			err = app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				return ops.Init(ctx, app.Deps, opts)
 			})
+			// Init starts nothing, which the help says and a first-time
+			// operator at a fresh prompt has not read. A plan and a repair
+			// created nothing to start. Without a release `apply` refuses, so
+			// the next step is the command that installs one.
+			if err == nil && !opts.DryRun && !opts.Repair && app.json == nil && !app.Flags.quiet {
+				// Named, because a machine with a second installation refuses a
+				// command that does not say which.
+				next := fmt.Sprintf("nothing runs yet: `morzer --product %[1]s apply --dry-run` shows "+
+					"what would happen, `morzer --product %[1]s apply` starts it", opts.Product)
+				if opts.ReleasePath == "" {
+					next = fmt.Sprintf("nothing is installed yet: `morzer --product %s update <bundle>` "+
+						"installs a release and starts it", opts.Product)
+				}
+				fmt.Fprintln(app.Stream.Err, next)
+			}
+			return err
 		},
 	}
 
