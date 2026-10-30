@@ -183,6 +183,9 @@ func statusFooter(d *ui.Doc, s ops.Status) {
 			Label: "lock",
 			Value: fmt.Sprintf("held by %s operation %s (pid %d)", l.Type, l.OperationID, l.PID)})
 	}
+	if s.Next != "" {
+		fields = append(fields, ui.Field{Label: "next", Value: s.Next})
+	}
 
 	d.Blank()
 	d.Fields(2, fields)

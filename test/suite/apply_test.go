@@ -503,6 +503,37 @@ func TestStatusReportsDeployedState(t *testing.T) {
 	assert.Empty(t, status.NeedsAttention)
 }
 
+// Between `init` and the first `apply` nothing runs, and asking the runtime about
+// a project it has never rendered only produced "cannot read service status".
+// The answer an operator needs there is what to run next.
+func TestStatusBeforeTheFirstApplySaysToApply(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	ctx := context.Background()
+	h.Runtime.Fail["Status"] = domain.RuntimeError(nil, "cannot read service status")
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, domain.OperationRecord{
+		SchemaVersion: domain.InstallationSchemaVersion,
+		ID:            "op_init", Type: domain.OpTypeInit, Status: domain.StatusSucceeded,
+		StartedAt: domain.NewTime(h.Deps.Now()),
+	}))
+
+	status, err := ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Contains(t, status.Next, "morzer apply")
+	assert.Empty(t, status.Problems, "a project that was never applied is not a runtime problem")
+
+	// Once something has converged, the runtime is asked and its answer stands.
+	delete(h.Runtime.Fail, "Status")
+	h.setHookEnv()
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	status, err = ops.GetStatus(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Empty(t, status.Next)
+	assert.NotEmpty(t, status.Services)
+}
+
 func TestStatusWorksWithoutARelease(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

@@ -172,9 +172,17 @@ func newInitCommand(app *App) *cobra.Command {
 				}
 			}
 
-			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+			err = app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				return ops.Init(ctx, app.Deps, opts)
 			})
+			// Init starts nothing, which the help says and a first-time
+			// operator at a fresh prompt has not read. A plan and a repair
+			// created nothing to start.
+			if err == nil && !opts.DryRun && !opts.Repair && app.json == nil && !app.Flags.quiet {
+				fmt.Fprintln(app.Stream.Err, "nothing runs yet: `morzer apply --dry-run` shows what "+
+					"would happen, `morzer apply` starts it")
+			}
+			return err
 		},
 	}
 

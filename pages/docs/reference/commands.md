@@ -264,6 +264,10 @@ operation, and anything needing attention.
 | `--watch` | Refresh until interrupted. Needs a terminal. |
 | `--interval` | How often `--watch` refreshes. Default `2s`. |
 
+Before the first `apply`, nothing is running, so `status` does not ask the
+runtime. It shows `next` instead, with the command that starts the product, and
+`--json` carries the same sentence as `next`.
+
 An operation that ended in [exit 12](exit-codes.md) keeps surfacing in `status`
 and `doctor` until it is cleared explicitly. That is deliberate: the flag exists
 to stop an operator proceeding as though nothing happened.

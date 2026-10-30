@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`init` and `status` say what to run next.** `init` starts nothing, and it
+  now ends by naming `morzer apply --dry-run` and `morzer apply`. Before the
+  first `apply`, `status` shows a `next` line, also in `--json`, instead of
+  `cannot read service status` from a project nothing has rendered yet.
+
 ## [0.10.0] - 2026-10-30
 
 `morzer release push` publishes a bundle archive to an OCI registry and moves

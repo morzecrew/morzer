@@ -76,6 +76,10 @@ type Status struct {
 	// Problems are conditions worth an operator's notice that are not
 	// themselves failures of this command.
 	Problems []string `json:"problems,omitempty"`
+
+	// Next is the command to run when nothing has been applied yet: the one
+	// state where the most useful thing status can say is what comes next.
+	Next string `json:"next,omitempty"`
 }
 
 // Following is what the update timer does: when it looks at the channel, and
@@ -225,7 +229,14 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 			out.Problems = append(out.Problems, domain.AsError(relErr).Message)
 		} else {
 			out.SupportURL = rel.Manifest.Metadata.SupportURL
-			d.fillRuntimeStatus(ctx, &out, inst, rel)
+			// Not asked before the first apply: the runtime has no rendered
+			// project to describe, and "cannot read service status" was all an
+			// operator who had just run `init` got back.
+			if d.neverApplied(ctx) {
+				out.Next = "`morzer apply --dry-run` shows what would happen, `morzer apply` starts " + inst.Product
+			} else {
+				d.fillRuntimeStatus(ctx, &out, inst, rel)
+			}
 		}
 	}
 
@@ -234,6 +245,23 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 	}
 
 	return out, nil
+}
+
+// neverApplied reports a journal that holds operations, none of them one that
+// converged the deployment. An empty or unreadable journal is not that answer,
+// so the runtime is asked as before.
+func (d *Deps) neverApplied(ctx context.Context) bool {
+	recs, err := d.State.Operations(ctx, ports.Filter{Status: domain.StatusSucceeded})
+	if err != nil || len(recs) == 0 {
+		return false
+	}
+	for _, rec := range recs {
+		switch rec.Type {
+		case domain.OpTypeApply, domain.OpTypeUpdate, domain.OpTypeRollback, domain.OpTypeRestore:
+			return false
+		}
+	}
+	return true
 }
 
 func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.Installation, rel domain.Release) {
