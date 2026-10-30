@@ -60,6 +60,9 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	if err != nil {
 		return Result{}, err
 	}
+	if err := refuseWhileStopped(inst, "`morzer rollback`"); err != nil {
+		return Result{}, err
+	}
 
 	current, previous, err := d.rollbackEndpoints(ctx, opts.To)
 	if err != nil {
@@ -139,6 +142,9 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeRollback, opts.Options, func(ctx context.Context) error {
+		if err := d.refuseIfStoppedNow(ctx, "`morzer rollback`"); err != nil {
+			return err
+		}
 		// Under the lock, because it is a read-modify-write of a record
 		// `config set` and `init --repair` also write.
 		if !opts.DryRun {

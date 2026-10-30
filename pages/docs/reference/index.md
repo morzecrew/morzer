@@ -19,6 +19,8 @@ here. The reference column points at the section that documents it; the
 | `morzer status` | Show what is deployed and whether it is working | [commands](commands.md#status) |
 | `morzer update` | Install a new release over the current one | [commands](commands.md#update) |
 | `morzer rollback` | Return to the previous release | [commands](commands.md#rollback) |
+| `morzer stop` | Take the product down and keep it down until it is started | [commands](commands.md#stop) |
+| `morzer start` | Bring a stopped product back | [commands](commands.md#start) |
 | `morzer config` | Read and change the release parameters | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config list` (also `ls`) | Show every parameter the release declares | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config get` | Print one parameter's effective value | [parameters](parameters.md#changing-one-after-install) |

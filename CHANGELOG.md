@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sudo morzer shell demo` gives a root shell where commands need no
   `--product`. Nothing is written to disk; the pin ends with the shell.
 
+- **`morzer stop` keeps a product down until `morzer start`.** The stop is
+  recorded, so a reboot leaves the product down and the update timer stages
+  without installing. `apply`, `update`, `rollback` and `task run` are refused
+  meanwhile, and `start` applies the release before it clears the stop.
+
 ### Changed
 
 - **A usage error is two lines, not the command's whole usage.** A mistyped flag

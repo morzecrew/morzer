@@ -140,6 +140,10 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 	// A runtime that cannot answer counts as not running: nothing is
 	// recreated.
 	running, _ := d.projectRunning(ctx, inst, rel, opts.Options)
+	// A stop killed between its two steps leaves services running under a
+	// stop record; re-creating them would still be starting a product the
+	// operator asked to keep down.
+	running = running && inst.Stopped == nil
 
 	opID := d.newOpID()
 	op := engine.Operation{
@@ -159,7 +163,7 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 	out := Result{
 		Record: result.Record,
 		Summary: configSummary(changed, affectedServices(rel, changed),
-			opts.DryRun, running),
+			opts.DryRun, running, inst.Stopped != nil),
 		Data: next,
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, runErr)
@@ -418,8 +422,16 @@ func affectedServices(rel domain.Release, changed []string) []string {
 // A plan that reports "re-created app" has told the operator something untrue
 // about their deployment, and a change to a stopped deployment that reports the
 // same has told them the containers are already running the new value.
-func configSummary(changed, services []string, dryRun, running bool) string {
+func configSummary(changed, services []string, dryRun, running, stopped bool) string {
 	names := strings.Join(changed, ", ")
+	// `apply` is refused while an operator has the product stopped, so the
+	// command that applies the change is the one that ends the stop.
+	if stopped {
+		if dryRun {
+			return "would set " + names + "; it would take effect on `morzer start`"
+		}
+		return "set " + names + "; the product is stopped, so it takes effect on `morzer start`"
+	}
 
 	switch {
 	case dryRun && len(services) > 0 && running:

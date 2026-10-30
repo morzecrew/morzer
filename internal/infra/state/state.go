@@ -362,6 +362,14 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// bump is for the write path, so an older manager refuses
 			// this state rather than rewriting the record without it.
 			i.SchemaVersion = 13
+		case 13:
+			// 13 -> 14 added `stopped` (RFC 0040). Nothing to
+			// convert: an installation written before the field
+			// existed was never stopped by morzer. The bump is for
+			// the write path, so an older manager refuses a stopped
+			// machine's state instead of dropping the record and
+			// starting the product at boot.
+			i.SchemaVersion = 14
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

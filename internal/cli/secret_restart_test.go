@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -113,4 +114,27 @@ func TestRestartDependentsRendersForAnyContainerThatExists(t *testing.T) {
 			"and kept the old credentials", svc.State, svc.Health)
 		assert.Contains(t, domain.AsError(err).Message, "session_key")
 	}
+}
+
+// While an operator has the product stopped, the change is rendered for the
+// containers that exist and nothing is restarted: a restart starts a stopped
+// container, and `morzer start` is what brings it back (RFC 0040).
+func TestRestartDependentsRestartsNothingWhileStopped(t *testing.T) {
+	ctx := context.Background()
+	app, rt := restartApp(t, ports.ServiceState{Name: "app", State: "exited"})
+	store, ok := app.Deps.Secrets.(*fakes.SecretStore)
+	require.True(t, ok)
+	store.Seed(map[string]string{
+		"db_password": "a-stored-password", "session_key": "a-stored-session-key",
+	})
+	inst, err := app.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Stopped = &domain.Stop{At: domain.NewTime(time.Now()), OperationID: "op_stop"}
+	require.NoError(t, app.Deps.State.SaveInstallation(ctx, inst))
+
+	restarted, err := app.restartDependents(ctx, []string{"db_password"})
+	require.NoError(t, err)
+	assert.Empty(t, restarted)
+	assert.NotContains(t, rt.Calls, "Restart")
+	assert.DirExists(t, app.Deps.Paths.SecretsRenderDir(), "the change was not rendered for start to pick up")
 }

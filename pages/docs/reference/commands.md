@@ -82,6 +82,8 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`apply`](#apply) | Converge the system to the installed release. |
 | [`update`](#update) | Install a new release over the current one. |
 | [`rollback`](#rollback) | Return to the previous release. |
+| [`stop`](#stop) | Take the product down and keep it down until it is started. |
+| [`start`](#start) | Bring a stopped product back. |
 | [`status`](#status) | Show what is deployed and whether it is working. |
 | [`doctor`](#doctor) | Run read-only diagnostics. |
 | [`logs`](#logs) | Read the deployment's logs. |
@@ -253,6 +255,35 @@ two steps back means naming it.
 incorrect ones, and the failure mode here is quiet data corruption rather than a
 visible break.
 
+## stop
+
+Stops every service and records the stop, so the product stays down across a
+reboot and an unattended update until `morzer start`. Containers, networks and
+volumes are kept: no flag of `stop` or `start` can remove a volume.
+
+| Flag | Meaning |
+| --- | --- |
+| `--reason` | Why, in one line of at most 200 characters; shown by `status`, `doctor` and `ls` until `start`. |
+
+While stopped, `apply`, `update`, `rollback` and `task run` are refused with
+[exit 2](exit-codes.md), the update timer stages without installing, and the
+scheduled backup is skipped. `restore` and an explicit `backup` still run.
+[Taking a product down for a while](../operating/taking-a-product-down.md) has
+the full table.
+
+Refused, with exit 2, before the first `apply`: there is nothing to stop. A stop
+killed between recording and stopping is finished with `--resume`.
+
+## start
+
+Applies the current release, then clears the stop. Cleared only once the release
+has converged, so a `start` that fails keeps boot and the update timer away until
+it succeeds.
+
+It does not install a release staged while the product was stopped; the next
+tick of the update timer, or `morzer update`, does. On a product that is not
+stopped, `start` is `apply`, and says nothing was stopped.
+
 ## status
 
 Shows what is deployed, which services are up, the last backup, the last
@@ -268,6 +299,11 @@ Before the first `apply`, nothing is running, so `status` does not ask the
 runtime. It shows `next` instead, with the command that starts the product, or
 `morzer update <bundle>` when no release is installed yet. `--json` carries the
 same sentence as `next`. While an operation holds the lock there is no `next`.
+
+While the product is [stopped](#stop), `status` shows `stopped by the operator
+since <time>: <reason>` above the services, its stopped services are not drawn
+as failures, and `next` names `morzer start`. `--json` carries the stop as a
+`stopped` object with `at`, `reason`, `operation_id` and `release`.
 
 An operation that ended in [exit 12](exit-codes.md) keeps surfacing in `status`
 and `doctor` until it is cleared explicitly. That is deliberate: the flag exists
@@ -320,7 +356,7 @@ These checks **fail** rather than warn:
 | --- | --- |
 | `images.bundled` | An image the release marks `from: bundle` is not in the local image store. Fatal, and `apply` refuses on it: a bundled image is deployed under a tag the manager creates, and letting a converge proceed without it would send the deployment to the vendor's registry for whatever that tag pointed at. `morzer release ingest` loads it out of the bundle, with no network. |
 | `runtime.declared` | The runtime this installation is fixed to, and whether this manager drives it. Ok reports the name. It fails when they differ — a state file that arrived from a machine running something else, by import or by hand — and that failure is the one with no fix on this machine: the runtime is chosen when the installation is created and never transitions, so the way out is a manager built for it, or a fresh `init` and a `restore`. On a machine with no installation yet, `doctor` instead checks the tools that runtime needs, which is what `init` will want next. |
-| `runtime.services` | Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. |
+| `runtime.services` | Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. While the product is [stopped](#stop) with `morzer stop`, it reports the stop as information, however old, and `runtime.health` does not probe. |
 
 ## logs
 
@@ -505,6 +541,7 @@ manifest, and verifies the checksums by re-reading what was written.
 | `--no-prune` | Skip applying the retention policy afterwards. |
 | `--no-push` | Do not copy the backup to the configured targets; it stays only on this machine. |
 | `--no-prune-remote` | Skip applying the retention policy on the targets. |
+| `--unattended` | The backup timer's run, which the timer's unit passes. Skipped, exit 0, while the product is [stopped](#stop). |
 
 ### backup list
 

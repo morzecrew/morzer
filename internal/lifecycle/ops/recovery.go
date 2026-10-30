@@ -384,6 +384,12 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	// its history to line up.
 	imported = imported.SucceedSigning(domain.NewTime(d.now()), domain.RetiredByRebuild)
 
+	// The old machine's stop, not this one's: nothing runs here yet, and the
+	// `apply` an operator runs after the import is what starts the product.
+	// Carried over, it would refuse that `apply` on a machine where nothing
+	// was ever stopped.
+	imported.Stopped = nil
+
 	export.Installation = imported
 
 	store, err := d.recoverableSecrets()

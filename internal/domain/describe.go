@@ -124,6 +124,9 @@ var installationFieldsNotDescribed = map[string]string{
 	// document is written to be committed to a repository.
 	"AttestationSalt": "minted, not chosen -- and publishing it in a document meant for " +
 		"a git repository would make the digest it salts brute-forceable again",
+
+	"Stopped": "an operation's record, not desired state: `morzer stop` writes it and " +
+		"`morzer start` clears it, and a document applied elsewhere must not stop that machine (RFC 0040)",
 }
 
 // Describe assembles the document from an installation, the release it is

@@ -716,6 +716,7 @@ func newBackupCommand(app *App) *cobra.Command {
 		noPush        bool
 		noPruneRemote bool
 		noDowntime    bool
+		unattended    bool
 	)
 
 	cmd := &cobra.Command{
@@ -753,6 +754,7 @@ func newBackupCommand(app *App) *cobra.Command {
 					Prune:       !noPrune,
 					Push:        !noPush,
 					PruneRemote: !noPruneRemote,
+					Unattended:  unattended,
 				})
 			})
 		},
@@ -777,6 +779,8 @@ func newBackupCommand(app *App) *cobra.Command {
 		"do not copy the backup to the configured targets; it stays only on this machine")
 	f.BoolVar(&noPruneRemote, "no-prune-remote", false,
 		"skip applying the retention policy on the targets")
+	f.BoolVar(&unattended, "unattended", false,
+		"the backup timer's run: skipped while the product is stopped by morzer stop")
 
 	cmd.AddCommand(
 		newBackupListCommand(app),

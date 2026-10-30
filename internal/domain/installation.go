@@ -104,7 +104,10 @@ import (
 // their own, so this is what stops an older manager: without the bump its next
 // `apply` would rewrite current-release.json without the field, and every later
 // attestation would say nothing of a signature the machine did verify.
-const InstallationSchemaVersion = 13
+// Bumped to 14 for `stopped` (RFC 0040 decision 6). An older manager would drop
+// the record on its next write, and the boot-time `apply` would then start a
+// product an operator had taken down on purpose.
+const InstallationSchemaVersion = 14
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -397,6 +400,31 @@ type Installation struct {
 	// digest would be comparable and would also be brute-forceable, since
 	// the input is a handful of ports and booleans.
 	AttestationSalt string `yaml:"attestation_salt" json:"attestation_salt,omitempty"`
+
+	// Stopped is the operator's `morzer stop`, and nil while the product is
+	// meant to run (RFC 0040). State rather than a file in /run, because a
+	// reboot is the one event it has to survive: boot and the update timer
+	// read it and leave the product down until `morzer start` clears it.
+	Stopped *Stop `yaml:"stopped,omitempty" json:"stopped,omitempty"`
+}
+
+// Stop is when and why an operator took the product down, and which release
+// was current then.
+type Stop struct {
+	At          Time    `yaml:"at" json:"at"`
+	Reason      string  `yaml:"reason,omitempty" json:"reason,omitempty"`
+	OperationID string  `yaml:"operation_id" json:"operation_id"`
+	Release     Version `yaml:"release" json:"release"`
+}
+
+// Describe is the line every reader of a stop prints:
+// "stopped by the operator since <time>: <reason>".
+func (s Stop) Describe() string {
+	line := "stopped by the operator since " + s.At.UTC().Format(time.RFC3339)
+	if s.Reason != "" {
+		line += ": " + s.Reason
+	}
+	return line
 }
 
 // UpdateConfig is the operator's arrangement for learning about releases.

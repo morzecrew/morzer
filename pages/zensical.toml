@@ -43,6 +43,7 @@ nav = [
         "operating/updating.md",
         "operating/unattended-updates.md",
         "operating/rolling-back.md",
+        "operating/taking-a-product-down.md",
         "operating/secrets.md",
         "operating/backups.md",
         "operating/changing-configuration.md",

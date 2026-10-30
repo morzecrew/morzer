@@ -3,6 +3,8 @@ package views
 import (
 	"fmt"
 	"io"
+	"slices"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui"
@@ -46,12 +48,19 @@ type WithServices []ops.InstallationEntry
 // it matters on one day in a hundred and the table's width is the scarce thing,
 // so it is carried in `--json` alone.
 func installationsDoc(d *ui.Doc, entries []ops.InstallationEntry, status bool) *ui.Doc {
+	// Only on a machine where something is stopped: an empty column on
+	// every other machine is width spent on a question nobody asked.
+	stopped := slices.ContainsFunc(entries, func(e ops.InstallationEntry) bool { return e.Stopped != nil })
+
 	columns := []ui.Column{
 		{Header: "product", Essential: true},
 		{Header: "release", Essential: true},
 		{Header: "mode"},
-		{Header: "units", Right: true},
 	}
+	if stopped {
+		columns = append(columns, ui.Column{Header: "stopped", Essential: true})
+	}
+	columns = append(columns, ui.Column{Header: "units", Right: true})
 	if status {
 		columns = append(columns, ui.Column{Header: "services", Essential: true})
 	}
@@ -93,7 +102,15 @@ func installationsDoc(d *ui.Doc, entries []ops.InstallationEntry, status bool) *
 			release, mode = t.Fail("unreadable"), ""
 		}
 
-		row := []string{e.Product, release, mode, unitsCell(t, e)}
+		row := []string{e.Product, release, mode}
+		if stopped {
+			since := ""
+			if e.Stopped != nil {
+				since = t.Warn(e.Stopped.At.UTC().Format(time.RFC3339))
+			}
+			row = append(row, since)
+		}
+		row = append(row, unitsCell(t, e))
 		if status {
 			row = append(row, serviceCell(t, e))
 		}

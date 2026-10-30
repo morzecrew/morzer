@@ -232,3 +232,12 @@ func TestAnUnmigratableSchemaRefuses(t *testing.T) {
 	require.Error(t, err, "schema 1 has no migration path and must say so")
 	assert.Contains(t, err.Error(), "no migration path")
 }
+
+// 13 -> 14 added `stopped` (RFC 0040). A machine written before the field was
+// never stopped by morzer, and the migration must not say it was.
+func TestASchemaThirteenInstallationIsNotStopped(t *testing.T) {
+	got, err := migrateInstallation(domain.Installation{SchemaVersion: 13})
+	require.NoError(t, err)
+	assert.Equal(t, 14, got.SchemaVersion)
+	assert.Nil(t, got.Stopped)
+}

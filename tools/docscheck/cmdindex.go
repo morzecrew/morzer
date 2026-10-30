@@ -57,6 +57,8 @@ var referencePage = map[string]string{
 	"status":       "reference/commands.md",
 	"update":       "reference/commands.md",
 	"rollback":     "reference/commands.md",
+	"stop":         "reference/commands.md",
+	"start":        "reference/commands.md",
 	"doctor":       "reference/commands.md",
 	"logs":         "reference/commands.md",
 	"ps":           "reference/commands.md",

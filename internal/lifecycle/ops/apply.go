@@ -29,9 +29,24 @@ import (
 // nothing and says so. That property is what lets systemd call it at every
 // boot without it being a deployment.
 func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
+	return apply(ctx, d, opts, domain.OpTypeApply)
+}
+
+// apply is `apply` and `start`, which is `apply` and then clears the stop
+// record (RFC 0040 §5.2).
+func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationType) (Result, error) {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return Result{}, err
+	}
+	// Boot leaves a stopped product down and says so, with no runtime call
+	// and nothing journalled; an operator's `apply` is refused rather than
+	// undoing their stop (decisions 2 and 3). `start` is the way back.
+	if opType == domain.OpTypeApply && inst.Stopped != nil {
+		if opts.Startup {
+			return leftDown(inst.Product, *inst.Stopped), nil
+		}
+		return Result{}, refuseWhileStopped(inst, "`morzer apply`")
 	}
 
 	current, err := d.State.CurrentRelease(ctx)
@@ -58,7 +73,7 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
 	if opts.Resume {
-		if prior, err = d.findResumable(ctx, domain.OpTypeApply); err != nil {
+		if prior, err = d.findResumable(ctx, opType); err != nil {
 			return Result{}, err
 		}
 	}
@@ -66,17 +81,38 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
+	steps := applySteps(d, inst, rel, opts)
+	if opType == domain.OpTypeStart {
+		steps = append(steps, stepClearStop(d))
+	}
 	op := engine.Operation{
 		ID:          opID,
-		Type:        domain.OpTypeApply,
-		Description: describe(domain.OpTypeApply, domain.Version{}, rel.Version()),
+		Type:        opType,
+		Description: describe(opType, domain.Version{}, rel.Version()),
 		To:          rel.Version(),
-		Steps:       applySteps(d, inst, rel, opts),
+		Steps:       steps,
 		Flags:       applyFlags(opts),
 	}
 
-	var result engine.Result
-	runErr := d.withLock(ctx, opID, domain.OpTypeApply, opts, func(ctx context.Context) error {
+	var (
+		result  engine.Result
+		stopped *domain.Stop
+	)
+	runErr := d.withLock(ctx, opID, opType, opts, func(ctx context.Context) error {
+		// Again under the lock: a `stop` can land while this waits for it.
+		if opType == domain.OpTypeApply {
+			now, err := d.State.LoadInstallation(ctx)
+			if err != nil {
+				return err
+			}
+			if now.Stopped != nil && opts.Startup {
+				stopped = now.Stopped
+				return nil
+			}
+			if err := refuseWhileStopped(now, "`morzer apply`"); err != nil {
+				return err
+			}
+		}
 		// Under the lock, because it is a read-modify-write of a record
 		// `config set` and `init --repair` also write.
 		if !opts.DryRun {
@@ -91,7 +127,7 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		// the lock holder we waited behind may have been resuming the
 		// same operation, and finishing it.
 		if opts.Resume {
-			if prior, err = d.refreshResumable(ctx, domain.OpTypeApply, prior); err != nil {
+			if prior, err = d.refreshResumable(ctx, opType, prior); err != nil {
 				return err
 			}
 		}
@@ -105,8 +141,14 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 		return err
 	})
 
+	if stopped != nil {
+		return leftDown(inst.Product, *stopped), nil
+	}
 	out := Result{Record: result.Record, Summary: applySummary(result.Record, rel, opts.DryRun)}
-	d.notifyFinished(ctx, opID, domain.OpTypeApply, result.Record, runErr)
+	if opType == domain.OpTypeStart {
+		out.Summary = startSummary(result.Record, inst, rel, opts.DryRun)
+	}
+	d.notifyFinished(ctx, opID, opType, result.Record, runErr)
 
 	// After the operation, never inside it. A statement is a record *of*
 	// what happened, so it cannot be a step whose own failure changes what
