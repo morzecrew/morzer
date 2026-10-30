@@ -3537,6 +3537,9 @@ services it <code>depends_on</code> first, as a migration service does. It gets 
 <a href="../hooks/#a-migration-service">hook <abbr title="Application Binary Interface">ABI</abbr> variables</a>, with <code>OPERATION_TYPE</code> and
 <code>PHASE</code> set to <code>task</code>. Any non-zero exit fails it, <code>2</code> included; "nothing to
 do" belongs to migrations.</p>
+<p>The operator sees a task's output only when they ask, with <code>task run --output</code>,
+<code>--verbose</code> or <code>--json</code>, or the end of its stderr when it fails. A task whose output is
+the point, a report, should say so in its <code>description</code>.</p>
 <p><strong>Tasks need <code>min_manager_version: "0.8.0"</code> or later</strong>, and a manifest declaring
 tasks with less is refused. A manager older than 0.8.0 cannot read <code>tasks:</code>, and
 the declaration makes it refuse the bundle as needing a newer manager instead of
