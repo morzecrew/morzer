@@ -129,11 +129,12 @@ func TestAConfigChangeIsAttestedEvenWhenTheReleaseRecordCannotBeRead(t *testing.
 	before := len(statementsOnDisk(t, h))
 
 	// The read fails only for the attestation's own lookup, which is the
-	// last one the operation makes. Failing every read would refuse the
+	// last one the operation makes: `config set` reads the record before
+	// the lock and again under it. Failing every read would refuse the
 	// operation at its first step and prove nothing about what happens
 	// afterwards; deleting state does not fail the read at all, which is
 	// how an earlier version of this test passed while asserting nothing.
-	failing := &releaseReadFailsLate{StateStore: h.Deps.State, after: 1}
+	failing := &releaseReadFailsLate{StateStore: h.Deps.State, after: 2}
 	h.Deps.State = failing
 
 	_, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{

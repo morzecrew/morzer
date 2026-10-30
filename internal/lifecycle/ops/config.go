@@ -134,31 +134,51 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 		return Result{Summary: "no change: every value already matches"}, nil
 	}
 
-	// Asked once, before anything changes, because it decides both which
-	// steps run and what the summary may claim. Asking again afterwards
-	// would report on a deployment the operation had already altered.
-	// A runtime that cannot answer counts as not running: nothing is
-	// recreated.
-	running, _ := d.projectRunning(ctx, inst, rel, opts.Options)
-	// A stop killed between its two steps leaves services running under a
-	// stop record; re-creating them would still be starting a product the
-	// operator asked to keep down.
-	running = running && inst.Stopped == nil
-
 	opID := d.newOpID()
 	op := engine.Operation{
 		ID:          opID,
 		Type:        domain.OpTypeConfig,
 		Description: "set " + strings.Join(changed, ", "),
-		Steps:       configSteps(d, inst, rel, next, changed, running),
 	}
 
-	var result engine.Result
+	var (
+		result   engine.Result
+		running  bool
+		noChange bool
+	)
 	runErr := d.withLock(ctx, opID, domain.OpTypeConfig, opts.Options, func(ctx context.Context) error {
+		// Everything again from the installation as it stands under the
+		// lock. The steps save a whole installation, so building them from
+		// the copy read above would write away whatever landed while this
+		// waited -- another `config set`, a `notify target add`, or a
+		// `morzer stop`, whose record would then be gone and the next boot
+		// would start the product.
 		var err error
+		if inst, rel, err = d.currentInstallationAndRelease(ctx); err != nil {
+			return err
+		}
+		if next, changed, err = mergeParameters(inst, rel, opts); err != nil {
+			return err
+		}
+		if len(changed) == 0 {
+			noChange = true
+			return nil
+		}
+		// Asked once, before anything changes, because it decides both
+		// which steps run and what the summary may claim. Asking again
+		// afterwards would report on a deployment the operation had
+		// already altered. A runtime that cannot answer counts as not
+		// running: nothing is recreated. Nor is a product under a stop
+		// record, even one whose services a killed `stop` left running.
+		running, _ = d.projectRunning(ctx, inst, rel, opts.Options)
+		running = running && inst.Stopped == nil
+		op.Steps = configSteps(d, inst, rel, next, changed, running)
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
 		return err
 	})
+	if noChange {
+		return Result{Summary: "no change: every value already matches"}, nil
+	}
 
 	out := Result{
 		Record: result.Record,

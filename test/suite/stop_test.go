@@ -414,3 +414,37 @@ func TestAnImportDoesNotCarryTheStop(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got.Stopped, "the import carried the old machine's stop")
 }
+
+// A `stop` that commits while `config set` waits for the lock survives it.
+// `config set` saves a whole installation, so steps built from the copy it read
+// before the lock would write the stop record away, and the next boot would
+// start the product.
+func TestAStopThatLandsWhileConfigSetWaitsIsKept(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	landed := false
+	h.Locker.BeforeAcquire = func() {
+		if landed {
+			return
+		}
+		landed = true
+		inst, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		inst.Stopped = &domain.Stop{At: domain.NewTime(h.Deps.Now()), OperationID: "op_stop"}
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	}
+	ups := h.Runtime.UpCount
+
+	_, err := ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "debug"}})
+	require.NoError(t, err)
+	require.NotNil(t, h.stopRecord(), "config set wrote away a stop that landed while it waited")
+	assert.Equal(t, ups, h.Runtime.UpCount, "config set re-created services under a stop that landed while it waited")
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "debug", inst.Parameters["log_level"], "the change itself was lost")
+}
