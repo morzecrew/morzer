@@ -16,7 +16,7 @@ type cannot quietly acquire a new exit code by being handled somewhere else.
 | ---: | --- | --- |
 | 0 | — | Success. |
 | 1 | `internal` | Internal or unexpected error. The manager itself is at fault. |
-| 2 | `usage` | Usage or input validation. A mistyped flag, an unknown subcommand, an invalid manifest. |
+| 2 | `usage` | Usage or input validation. A mistyped flag, an unknown subcommand, a command group with no subcommand under `--json`, an invalid manifest. |
 | 3 | `preflight` | A precondition failed: a missing tool, a version below what the release requires, not enough disk. |
 | 4 | `locked` | The deployment lock is held by another operation. Retry, or pass `--wait`. |
 | 5 | `installation` | The installation is missing or corrupted. |

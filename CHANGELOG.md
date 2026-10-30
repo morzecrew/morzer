@@ -55,10 +55,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `attest verify` still refuses. Under `--json`, a listing with no entries, such
   as `backup list` or `release list`, carried `"data": null`; it is now `[]`.
 
+- **An empty list inside a `--json` report is `[]`.** `release prune` with
+  nothing to remove reported `"removed": null`. Every list in every report is
+  now `[]` when empty.
+
 - **A mistyped subcommand fails instead of printing help.** `morzer release
   verfy` printed the group's help and exited 0, even under `--json`. It now
   exits 2 with `unknown command` and suggests a subcommand when one is close;
   `morzer release` alone still prints its help.
+
+- **A command group with no subcommand fails under `--json`.** `morzer release
+  --json` printed help text and exited 0. It now exits 2 and lists the
+  subcommands; without `--json` it still prints help.
+
+- **`--json` errors name the command.** A mistyped flag or command reported
+  `"command": ""` in its envelope. It now names the command the arguments
+  resolve to, such as `morzer release verify` for an unknown flag.
 
 - **`morzer doctor -v` works.** Doctor's own `--verbose` hid the global `-v`, so
   `doctor -v` was refused as an unknown flag. Both spellings now expand every
