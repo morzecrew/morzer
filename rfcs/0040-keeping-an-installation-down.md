@@ -35,7 +35,7 @@
 
 `morzer stop [--reason TEXT]` halts the whole project with `Runtime.Stop` and
 records the stop (when, why, which release) in installation state.
-`morzer start` clears the record and runs `apply`. While the record is there,
+`morzer start` runs `apply` and clears the record once it has converged. While the record is there,
 boot leaves the product down, the update timer stages but never installs, and
 `status` and `doctor` say the product is down on purpose instead of reporting
 broken services. The units stay enabled and the volumes are never in reach.
@@ -113,7 +113,9 @@ stopping.
 
 - One command takes the product down, and it stays down across a reboot and an
   unattended update until an operator starts it.
-- No path can reach the volumes.
+- Neither `stop` nor `start` can delete the volumes: no flag of either reaches
+  `Down`. Backup, restore and a task's dependencies still use volumes as they
+  do today, and §5.3 says which of them run while stopped.
 - Every reader (`status`, `doctor`, the timers) tells "stopped on purpose" from
   "broken".
 
@@ -151,11 +153,22 @@ first `apply`, is refused: there is nothing to stop.
 
 ### 5.2 `morzer start`
 
-An operation, `start`: clears the record, then runs `apply`'s steps. Not
-`Runtime.Start`: a stop can outlast a `config set`, a secret rotation or a
-staged release, and `apply` is what makes the running stack match them and
-waits for health. `start` on an installation that is not stopped runs `apply`
-and says nothing was stopped, so a script can call it twice.
+An operation, `start`: runs `apply`'s steps for the current release, then
+clears the record as its last step. Not `Runtime.Start`: a stop can outlast a
+`config set` or a secret rotation, and `apply` is what makes the running stack
+match them and waits for health.
+
+The record is cleared only once `apply` has converged. A `start` that fails
+leaves it in place, so boot and the update timer still leave the installation
+alone, and `status` shows the stop beside the failed `start`'s operation. The
+operator fixes the cause and runs `start` again. Clearing it first would hand a
+half-converged machine back to the automatic paths the stop was keeping out.
+
+`start` does not install a release staged during the stop: it applies the
+release that was current. The next `update`, or the next tick of the update
+timer once the record is gone, installs the staged one as it would have without
+the stop. `start` on an installation that is not stopped runs `apply` and says
+nothing was stopped, so a script can call it twice.
 
 ### 5.3 While stopped
 
@@ -196,7 +209,10 @@ is why the version moves.
 ## 6. Tests
 
 - Suite: `stop` records and stops; a reboot (`apply --startup`) leaves it down
-  and exits 0; `start` clears and converges; `start` twice succeeds.
+  and exits 0; `start` converges and then clears; `start` twice succeeds; a
+  `start` whose `apply` fails keeps the record, and the next boot leaves the
+  installation alone.
+- Suite: a release staged during the stop is still staged after `start`.
 - Suite: the update timer with `auto_apply` stages and does not install while
   stopped, and installs after `start`.
 - Suite: each row of §5.3 as ruled, including the refusals' exit code and hint.
@@ -240,7 +256,7 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 | # | Grade | Decision |
 | --- | --- | --- |
 | 1 | `LOCKED` | `stop` calls `Runtime.Stop` on the whole project and never `Down`; no flag of `stop` or `start` reaches `DownOptions.Volumes`. The point of the command over a hand-typed `docker compose` is that the volumes are out of reach. |
-| 2 | `ASSUMED` | The stop is a record in installation state, written before the runtime call; boot (`apply --startup`) and the update timer read it. Units stay enabled (RFC 0030 decision 1), and `/run` is not used because a reboot clears it. `start` clears the record and runs `apply`, not `Runtime.Start`. |
+| 2 | `ASSUMED` | The stop is a record in installation state, written before the runtime call; boot (`apply --startup`) and the update timer read it. Units stay enabled (RFC 0030 decision 1), and `/run` is not used because a reboot clears it. `start` runs `apply` for the current release, not `Runtime.Start`, and clears the record only once that has converged, so a failed `start` keeps the automatic paths out. It does not install a release staged during the stop. |
 | 3 | `OPEN` | **Plain `apply`, `update`, `rollback` and `restore` while stopped.** Recommended: `apply`, `update` and `rollback` are refused with exit 2 and a hint to `start` (each converges and waits for health, which a stopped product cannot pass); `restore` runs and leaves the product stopped, ending with a hint to `start`, because restoring during a maintenance window is the natural use. Alternative: all four refused, which keeps restore simple and makes the operator `start` a product whose data is about to be replaced. |
 | 4 | `OPEN` | **The scheduled backup while stopped.** Recommended: the timer's run is skipped with a journalled notice naming the stop, and an explicit `morzer backup` runs whatever the hooks can do. A hook that runs inside a stopped service would fail every night of a long window, and a scheduled run that reported success with half its components would be worse. Alternative: run it, and let cold volume capture (the most consistent copy) succeed while hook-based components fail and notify. |
 | 5 | `OPEN` | **`task run` while stopped.** `RunOneShot` starts the task's dependencies and leaves them running (`compose.go:464-473`), so a task would bring part of the stack up. Recommended: refused with a hint to `start`, in P1. Alternatives: run it and stop the dependencies it started afterwards; or run it and leave them up. |
