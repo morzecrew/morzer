@@ -3,7 +3,9 @@ package compose
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
+	osexec "os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -189,5 +191,33 @@ func TestAStreamThatEndedOrWasStoppedEndsCleanly(t *testing.T) {
 	}
 	if err := stopped.Close(); err != nil {
 		t.Errorf("closing a stream morzer stopped: %v", err)
+	}
+}
+
+// Compose can exit 0 while a child it started still holds stderr open. Wait
+// then reports ErrWaitDelay rather than an exit status, and the stream did
+// end: it must read as a clean EOF, not as the runtime failing.
+func TestAStreamWhoseChildHeldStderrEndsCleanly(t *testing.T) {
+	defer func(d time.Duration) { streamWaitDelay = d }(streamWaitDelay)
+	streamWaitDelay = 50 * time.Millisecond
+
+	// The child outlives the wait delay many times over and then exits by
+	// itself. It is not killed: once the leader is reaped, its group id may
+	// already belong to someone else by the time a cleanup would signal it.
+	sc := startShellStream(t, context.Background(), "echo one; sleep 1 >/dev/null & exit 0")
+
+	out, err := io.ReadAll(sc)
+	if err != nil {
+		t.Errorf("a stream whose child held stderr reported %v", err)
+	}
+	if string(out) != "one\n" {
+		t.Errorf("read %q, want %q", out, "one\n")
+	}
+	// Otherwise this passes without reaching the case it is about.
+	if !errors.Is(sc.waitErr, osexec.ErrWaitDelay) {
+		t.Errorf("Wait reported %v, want ErrWaitDelay", sc.waitErr)
+	}
+	if err := sc.Close(); err != nil {
+		t.Errorf("closing it: %v", err)
 	}
 }

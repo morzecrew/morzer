@@ -52,6 +52,10 @@ type streamCloser struct {
 // days, and the reason a stream failed is the last thing compose said.
 const maxStderrTail = 4 << 10
 
+// streamWaitDelay is how long Wait gives compose's pipes to close once it has
+// exited. A variable so a test can reach ErrWaitDelay without waiting it out.
+var streamWaitDelay = exec.DefaultGrace
+
 // stderrTail keeps the end of what was written to it. Read only after Wait,
 // which waits for os/exec's copy into it, so it needs no lock.
 type stderrTail struct{ buf []byte }
@@ -180,7 +184,7 @@ func startStream(ctx context.Context, argv []string, cfg ports.RuntimeConfig, re
 		}
 		return nil
 	}
-	cmd.WaitDelay = exec.DefaultGrace
+	cmd.WaitDelay = streamWaitDelay
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
