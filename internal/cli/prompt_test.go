@@ -164,3 +164,67 @@ func TestParseComponents(t *testing.T) {
 	// Sorted, so two runs of the same mistake read the same.
 	assert.Less(t, strings.Index(de.Hint, "config"), strings.Index(de.Hint, "secrets"))
 }
+
+// TestATypedValueIsCountedAndConfirmed. Echo is off at the prompt, so a paste
+// that landed twice or not at all looks the same as one that worked; the count
+// is the one sign of which, and only a yes lets the value through (#212).
+func TestATypedValueIsCountedAndConfirmed(t *testing.T) {
+	cases := map[string]struct {
+		answer string
+		stored bool
+	}{
+		"Enter":                    {"\n", true},
+		"y":                        {"y\n", true},
+		"YES":                      {" YES \n", true},
+		"y and Ctrl-D":             {"y", true},
+		"n":                        {"n\n", false},
+		"anything else":            {"maybe\n", false},
+		"nothing at all (Ctrl-D)":  {"", false},
+		"only what the line holds": {"n\ny\n", false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var out strings.Builder
+			err := confirmLength(context.Background(), strings.NewReader(tc.answer), &out, 7)
+
+			assert.Contains(t, out.String(), "read 7 characters; store it? [Y/n]")
+			if tc.stored {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err, "the value would be stored on %q", tc.answer)
+			assert.Equal(t, domain.CodeInterrupted, domain.AsError(err).Code)
+		})
+	}
+}
+
+func TestOneCharacterIsCountedInTheSingular(t *testing.T) {
+	var out strings.Builder
+	require.NoError(t, confirmLength(context.Background(), strings.NewReader("\n"), &out, 1))
+	assert.Contains(t, out.String(), "read 1 character;")
+}
+
+// TestACancelledConfirmationStoresNothing. A Ctrl-C at the question raises
+// the SIGINT that cancels the context, and the reader may never return.
+func TestACancelledConfirmationStoresNothing(t *testing.T) {
+	r, w := io.Pipe()
+	defer func() { _ = w.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var out strings.Builder
+	err := confirmLength(ctx, r, &out, 7)
+	require.Error(t, err)
+	assert.Equal(t, domain.CodeInterrupted, domain.AsError(err).Code)
+}
+
+// TestAnAnswerCutOffByAReadErrorStoresNothing. A `y` that arrived before the
+// read failed is not a yes: the line never finished, and the error is what
+// the operator needs to see, not a silent store or a silent decline.
+func TestAnAnswerCutOffByAReadErrorStoresNothing(t *testing.T) {
+	var out strings.Builder
+	err := confirmLength(context.Background(), &failingReader{after: []byte("y")}, &out, 7)
+
+	require.Error(t, err, "a cut-off answer stored the value")
+	assert.Contains(t, err.Error(), "cannot read the answer")
+}

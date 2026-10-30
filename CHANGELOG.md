@@ -23,12 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Before the first `apply`, `status` shows that as `next`, also in `--json`,
   instead of `cannot read service status`.
 
+- **`morzer shell <product>` starts a shell pinned to one installation.** It
+  sets `MORZER_PRODUCT` after `sudo`, which drops an exported one, so
+  `sudo morzer shell demo` gives a root shell where commands need no
+  `--product`. Nothing is written to disk; the pin ends with the shell.
+
 ### Changed
 
 - **A usage error is two lines, not the command's whole usage.** A mistyped flag
   printed some thirty lines of usage, on stderr even under `--json`. A wrong
   argument count now says what the command takes, such as `morzer release
   verify takes <path>`, instead of `accepts 1 arg(s), received 0`.
+
+- **`secret set` at a terminal asks before storing what it read.** It prints
+  `read 41 characters; store it? [Y/n]`, so a paste that landed twice or not at
+  all is caught before any service restarts. `--yes` skips it; piped values are
+  unchanged.
 
 ## [0.10.0] - 2026-10-30
 
