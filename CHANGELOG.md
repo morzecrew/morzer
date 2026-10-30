@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--product` completes the installations on the machine.** Tab offers the
+  names `morzer ls` lists, with each one's release in zsh and fish. Under
+  `sudo`, which runs completion as you, it reads the manager's world-readable
+  service units instead.
+
 - **Help shows examples and links the documentation.** `init`, `update`,
   `rollback`, `restore` and `release verify` gain examples, and each command
   group's help ends with a link to its page on the documentation site.

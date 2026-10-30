@@ -1,0 +1,65 @@
+package clitest_test
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/morzecrew/morzer/test/clitest"
+)
+
+// Shell completion as the shell asks for it: cobra's hidden `__complete`
+// command, one candidate per line, then `:<directive>`. 4 is
+// ShellCompDirectiveNoFileComp -- a machine with nothing to offer must not fall
+// back to the file names in the current directory (#210).
+
+func TestProductCompletesTheInstallationsOnTheMachine(t *testing.T) {
+	r := withTwoInstallations(t)
+
+	r.Run("__complete", "--product", "").ExitCode(0).
+		OutputContains("demo\t", "sandbox\t", ":4")
+}
+
+func TestProductCompletesNothingOnABareMachine(t *testing.T) {
+	r := clitest.New(t)
+
+	out := r.Run("__complete", "--product", "").ExitCode(0)
+	if got := strings.TrimSpace(out.Stdout); !strings.HasPrefix(got, ":4") {
+		t.Errorf("a bare machine offered candidates or allowed file names:\n%s", got)
+	}
+}
+
+// Under sudo the completion runs as the operator, who cannot open an
+// installation's 0750 directory. The manager's world-readable service unit
+// names it instead, and a unit the manager did not write names nothing.
+func TestProductFallsBackToUnitFilesItCannotOpen(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root opens every directory, so nothing is unreadable to fall back from")
+	}
+	r := withTwoInstallations(t)
+
+	sandbox := filepath.Join(r.Root, "etc", "sandbox")
+	if err := os.Chmod(sandbox, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sandbox, 0o750) })
+
+	units := filepath.Join(r.Root, "etc", "systemd", "system")
+	if err := os.MkdirAll(units, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, execStart string) {
+		t.Helper()
+		body := "[Service]\nExecStart=" + execStart + "\n"
+		if err := os.WriteFile(filepath.Join(units, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("sandbox.service", "/usr/local/bin/morzer apply --startup --plain --log-format json --config /etc/sandbox/installation.yaml")
+	write("nginx.service", "/usr/sbin/nginx -g 'daemon off;'")
+
+	r.Run("__complete", "--product", "").ExitCode(0).
+		OutputContains("demo\t", "sandbox\tnot readable as this user", ":4").
+		NoOutputContains("nginx")
+}
