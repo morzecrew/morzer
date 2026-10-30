@@ -31,9 +31,10 @@ func TestProductCompletesNothingOnABareMachine(t *testing.T) {
 }
 
 // Under sudo the completion runs as the operator, who cannot open an
-// installation's 0750 directory. The manager's world-readable service unit
-// names it instead, and a unit the manager did not write names nothing.
-func TestProductFallsBackToUnitFilesItCannotOpen(t *testing.T) {
+// installation's 0750 directory. Only a unit the manager wrote for this root
+// names it then, and the host has none for a test's root: the matching itself
+// is TestTheFallbackRecognisesTheUnitsTheManagerWrites.
+func TestProductOffersNoDirectoryItCannotOpenWithoutAUnit(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root opens every directory, so nothing is unreadable to fall back from")
 	}
@@ -45,27 +46,7 @@ func TestProductFallsBackToUnitFilesItCannotOpen(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(sandbox, 0o750) })
 
-	units := filepath.Join(r.Root, "etc", "systemd", "system")
-	if err := os.MkdirAll(units, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	write := func(name, execStart string) {
-		t.Helper()
-		body := "[Service]\nExecStart=" + execStart + "\n"
-		if err := os.WriteFile(filepath.Join(units, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("sandbox.service", "/usr/local/bin/morzer apply --startup --plain --log-format json --config /etc/sandbox/installation.yaml")
-	write("nginx.service", "/usr/sbin/nginx -g 'daemon off;'")
-	// Another tool's words in the same order are not the manager's unit, nor
-	// is the manager's command line under another executable, nor the
-	// manager's unit for one installation filed under another's name.
-	write("other.service", "/usr/bin/other apply --startup now")
-	write("impostor.service", "/usr/bin/other apply --startup --plain --log-format json")
-	write("misfiled.service", "/usr/local/bin/morzer apply --startup --plain --log-format json --config /etc/sandbox/installation.yaml")
-
 	r.Run("__complete", "--product", "").ExitCode(0).
-		OutputContains("demo\t", "sandbox\tnot readable as this user", ":4").
-		NoOutputContains("nginx", "other", "impostor", "misfiled")
+		OutputContains("demo\t", ":4").
+		NoOutputContains("sandbox")
 }

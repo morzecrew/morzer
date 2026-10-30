@@ -26,8 +26,10 @@ import (
 // installation directories cannot be opened and the listing comes back with
 // every one of them unreadable. The generated units are 0644, so a
 // `<product>.service` the manager wrote names an installation without opening
-// it. An installation made with `--install-units=false` has none and is not
-// offered then; the command still checks whatever name it is given.
+// it. They are in the host's unit directory whatever --root says, and say
+// which root through --config. An installation made with
+// `--install-units=false` has none and is not offered then; the command still
+// checks whatever name it is given.
 func (a *App) completeProducts(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	if a.Deps == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
@@ -50,7 +52,7 @@ func (a *App) completeProducts(cmd *cobra.Command, _ []string, _ string) ([]cobr
 		out = append(out, cobra.CompletionWithDesc(e.Product, describeForCompletion(e)))
 	}
 	if unreadable {
-		for _, product := range unitProducts(filepath.Join(a.Flags.root, systemd.UnitDir)) {
+		for _, product := range unitProducts(systemd.UnitDir, a.Flags.root) {
 			if !offered[product] {
 				offered[product] = true
 				out = append(out, cobra.CompletionWithDesc(product, "not readable as this user"))
@@ -75,15 +77,17 @@ func describeForCompletion(e ops.InstallationEntry) string {
 	}
 }
 
-// unitProducts names the products whose service unit the manager wrote in dir.
+// unitProducts names the products whose service unit the manager wrote in dir
+// for an installation under root.
 //
 // Recognised by the ExecStart the manager writes, not by the file name alone:
 // `/etc/systemd/system` holds every service on the host. The whole of
 // serviceTemplate's command line is matched -- the morzer executable, the exact
-// arguments, and a --config naming this product when there is one -- so
-// another tool's service, or the manager's unit for one installation filed
-// under another's name, is not offered.
-func unitProducts(dir string) []string {
+// arguments, and a --config naming this product's installation file under
+// root -- so another tool's service, the manager's unit for one installation
+// filed under another's name, or one for an installation under another root,
+// is not offered.
+func unitProducts(dir, root string) []string {
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -94,14 +98,14 @@ func unitProducts(dir string) []string {
 		if !ok || f.IsDir() || domain.ValidateProductName(product) != nil {
 			continue
 		}
-		if startsTheManager(filepath.Join(dir, f.Name()), product) {
+		if startsTheManager(filepath.Join(dir, f.Name()), domain.PathsUnder(root, product)) {
 			products = append(products, product)
 		}
 	}
 	return products
 }
 
-func startsTheManager(path, product string) bool {
+func startsTheManager(path string, paths domain.Paths) bool {
 	f, err := os.Open(path) //nolint:gosec // a unit file in the directory named above
 	if err != nil {
 		return false
@@ -111,15 +115,17 @@ func startsTheManager(path, product string) bool {
 	for lines.Scan() {
 		if exec, ok := strings.CutPrefix(lines.Text(), "ExecStart="); ok {
 			args := strings.Fields(exec)
-			if len(args) < 6 || filepath.Base(args[0]) != "morzer" ||
+			// ManagerPath resolves symlinks, so a unit can name the binary a
+			// `morzer` link points at; that is this one, if any.
+			if len(args) < 6 || (filepath.Base(args[0]) != "morzer" && args[0] != systemd.ManagerPath()) ||
 				!slices.Equal(args[1:6], []string{"apply", "--startup", "--plain", "--log-format", "json"}) {
 				return false
 			}
 			switch rest := args[6:]; {
 			case len(rest) == 0:
-				return true
+				return paths.Root() == ""
 			case len(rest) == 2 && rest[0] == "--config":
-				return filepath.Base(filepath.Dir(rest[1])) == product
+				return rest[1] == paths.InstallationFile()
 			default:
 				return false
 			}
