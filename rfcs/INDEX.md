@@ -22,7 +22,7 @@ only **0023** has work anybody can pick up: 0027, 0029, 0031 and 0039 have each 
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
-building P2 is the correct outcome. 0037, 0038 and 0040 are proposals waiting on the
+building P2 is the correct outcome. 0037, 0038, 0040 and 0041 are proposals waiting on the
 author's rulings, and are not work yet. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
 phase shipped, and a reader deciding what to work on needs the other half.
@@ -101,6 +101,9 @@ phase shipped, and a reader deciding what to work on needs the other half.
 - **[0040 — Keeping an installation down](0040-keeping-an-installation-down.md).**
   📝 Proposed, with its user-facing decisions `OPEN` for the author to rule. P1,
   `stop` and `start`, is one PR once ruled.
+- **[0041 — Files an operator passes to a task](0041-files-an-operator-passes-to-a-task.md).**
+  📝 Proposed, with its user-facing decisions `OPEN` for the author to rule. P1,
+  `task run --input`, is one PR once ruled.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -132,7 +135,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0041**. Before creating an RFC, glance at the table
+The next free number is **0042**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -183,6 +186,7 @@ number in the filename in sync.
 | [0038](0038-credentials-for-https-bundle-sources.md) | Credentials for HTTPS bundle sources | 📝 Draft | Fetching a bundle from an HTTPS server that requires a login, without the credential reaching argv, the journal or another host. |
 | [0039](0039-publishing-a-bundle-to-an-oci-registry.md) | Publishing a bundle to an OCI registry | 🚧 In progress | Publishing a bundle archive to an OCI registry with morzer's own command: an existence check, morzer's media types, channel tags moved after the push, and both digests reported. |
 | [0040](0040-keeping-an-installation-down.md) | Keeping an installation down | 📝 Draft | Taking a product down on purpose and keeping it down across a reboot and an unattended update, until an operator starts it again. |
+| [0041](0041-files-an-operator-passes-to-a-task.md) | Files an operator passes to a task | 📝 Draft | Passing a local file to a release's task: declared inputs, staged per operation and mounted read-only into the one-off container. |
 
 ## Status legend
 
