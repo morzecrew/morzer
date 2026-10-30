@@ -106,6 +106,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fail with `the release declares no parameter`. The rollback now retires that
   value, as an update retires one a new release dropped.
 
+- **A statement no longer names a parameter its operation retired.** After an
+  update or a rollback that retired a value, the signed statement still listed
+  that parameter beside a configuration digest rendered without it. It now
+  names only the parameters left recorded.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its

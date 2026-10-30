@@ -183,7 +183,8 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// statement has a chain nothing can follow. Emitted on failure too --
 	// the update that rolled back is what an incident review reads.
 	if !opts.DryRun {
-		in := attestationInputs(inst, staged, from, from.Version, renderedConfigFor(result.State))
+		in := attestationInputs(attestedInstallation(inst, staged, result.Record),
+			staged, from, from.Version, renderedConfigFor(result.State))
 		in.Verification.SignatureVerified, in.Verification.KeyID = verifiedHere(result.State)
 		emitAttestation(ctx, d, result.Record, in)
 	}
@@ -482,6 +483,18 @@ func withoutParameters(inst domain.Installation, names []string) domain.Installa
 	}
 	inst.Parameters = next
 	return inst
+}
+
+// attestedInstallation is the installation a statement describes once an
+// update or a rollback to rel has finished. Its retire-parameters step is the
+// last one that can fail, so the values rel does not declare are gone exactly
+// when the operation succeeded, and the config digest beside the names was
+// rendered without them.
+func attestedInstallation(inst domain.Installation, rel domain.Release, rec domain.OperationRecord) domain.Installation {
+	if rec.Status != domain.StatusSucceeded {
+		return inst
+	}
+	return withoutParameters(inst, domain.Parameters(inst.Parameters).ValidateAgainst(rel.Manifest.Parameters))
 }
 
 // stepRetireParameters drops recorded values the new release no longer

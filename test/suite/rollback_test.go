@@ -482,16 +482,7 @@ func TestARollbackRetiresAParameterOnlyTheNewerReleaseDeclares(t *testing.T) {
 	applyBaseline(t, h)
 	ctx := context.Background()
 
-	src := stageUpgradeSource(t, h)
-	manifest := filepath.Join(src, "manifest.yaml")
-	raw, err := os.ReadFile(manifest)
-	require.NoError(t, err)
-	patched := strings.Replace(string(raw), "parameters:\n",
-		"parameters:\n  api_key:\n    type: string\n    default: none\n    description: Key for the upstream API\n    services: [app]\n", 1)
-	require.NotEqual(t, string(raw), patched)
-	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
-
-	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: upgradeDeclaringAPIKey(t, h)})
 	require.NoError(t, err)
 	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"api_key": "k-123"}})
 	require.NoError(t, err)
@@ -507,4 +498,19 @@ func TestARollbackRetiresAParameterOnlyTheNewerReleaseDeclares(t *testing.T) {
 
 	_, err = ops.ConfigList(ctx, h.Deps)
 	require.NoError(t, err, "config refuses after the rollback")
+}
+
+// upgradeDeclaringAPIKey is the 1.3.0 fixture with one more parameter,
+// `api_key`, that 1.2.0 does not declare.
+func upgradeDeclaringAPIKey(t *testing.T, h *harness) string {
+	t.Helper()
+	src := stageUpgradeSource(t, h)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), "parameters:\n",
+		"parameters:\n  api_key:\n    type: string\n    default: none\n    description: Key for the upstream API\n    services: [app]\n", 1)
+	require.NotEqual(t, string(raw), patched)
+	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
+	return src
 }

@@ -181,7 +181,7 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	// most: a rollback is what happened when something went wrong.
 	if !opts.DryRun {
 		emitAttestation(ctx, d, result.Record,
-			attestationInputs(inst, previousRel, previous, current.Version,
+			attestationInputs(attestedInstallation(inst, previousRel, result.Record), previousRel, previous, current.Version,
 				renderedConfigFor(result.State)))
 	}
 
