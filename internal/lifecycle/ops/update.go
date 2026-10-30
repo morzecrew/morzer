@@ -448,7 +448,7 @@ func updateSteps(
 	convergeOpts.SourceRef = ports.RedactRefCredentials(opts.Ref)
 	convergeOpts.PreviousVersion = from.Version
 	steps = append(steps, applySteps(d, inst, converge, convergeOpts)...)
-	steps = append(steps, stepRetireParameters(d, staged, retired))
+	steps = append(steps, stepRetireParameters(d, staged))
 
 	// Retention runs once a newer backup exists, and the pre-update backup
 	// is one. Last, so a failed update removes nothing.
@@ -520,29 +520,47 @@ func attestedInstallation(inst domain.Installation, rel domain.Release, rec doma
 // bookkeeping write would be the tail wagging the dog. The operator is left
 // with a working deployment and a state file one parameter stale, which the
 // next command reports.
-func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engine.Step {
-	description := "retire parameters the release does not declare"
-	if len(retired) > 0 {
-		// Named in the description, because a dry run is where an
-		// operator gets to see a state change before it happens, and
-		// "some parameters" is not something anybody can review.
-		description = "retire parameters: " + strings.Join(retired, ", ")
+//
+// What it retires is decided when it runs, from the installation as recorded
+// then, not from what the operation read before it took the lock: a `config
+// set` landing in between would otherwise stay recorded. Only a name the
+// release does not declare can arrive that way, and nothing the converge
+// rendered reads one, so the steps before it are no less right.
+func stepRetireParameters(d *Deps, staged domain.Release) engine.Step {
+	undeclared := func(inst domain.Installation) []string {
+		return domain.Parameters(inst.Parameters).ValidateAgainst(staged.Manifest.Parameters)
 	}
 
 	return engine.Step{
 		ID:          "retire-parameters",
-		Description: description,
+		Description: "retire parameters the release does not declare",
 		Idempotent:  true,
 		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
 		Check: func(ctx context.Context, st *engine.State) (bool, error) {
-			return len(retired) == 0, nil
+			current, err := d.State.LoadInstallation(ctx)
+			if err != nil {
+				return false, err
+			}
+			names := undeclared(current)
+			st.Set(keyRetiring, names)
+			return len(names) == 0, nil
+		},
+		// Named in the plan, because a dry run is where an operator gets
+		// to see a state change before it happens, and "some parameters"
+		// is not something anybody can review. From the read Check made,
+		// so the names and whether the step runs come from one answer: a
+		// plan takes no lock, and a second read could disagree with it.
+		PlanDetail: func(_ context.Context, st *engine.State) (string, string) {
+			names, _ := engine.GetTyped[[]string](st, keyRetiring)
+			return strings.Join(names, ", "), ""
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			current, err := d.State.LoadInstallation(ctx)
 			if err != nil {
 				return err
 			}
+			retired := undeclared(current)
 
 			if err := d.saveInstallation(ctx, withoutParameters(current, retired)); err != nil {
 				return err
@@ -560,6 +578,9 @@ func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engi
 		},
 	}
 }
+
+// keyRetiring is what retire-parameters' Check found to retire, for its plan.
+const keyRetiring = "retiring-parameters"
 
 // verifiedHere is the signature this operation's verify-bundle verified, as a
 // statement reports its own check: true and the key, or nothing. The one

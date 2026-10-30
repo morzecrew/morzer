@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -418,17 +417,7 @@ func TestAnUpdateStatementLeavesOutTheParametersItRetired(t *testing.T) {
 	_, err := ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "debug"}})
 	require.NoError(t, err)
 
-	// 1.3.0 without log_level, which its compose file defaults on its own.
-	src := stageUpgradeSource(t, h)
-	manifest := filepath.Join(src, "manifest.yaml")
-	raw, err := os.ReadFile(manifest)
-	require.NoError(t, err)
-	patched := strings.Replace(string(raw), "  log_level:\n    type: enum\n    values: [debug, info, warn, error]\n"+
-		"    default: info\n    description: Application log verbosity\n    services: [app]\n", "", 1)
-	require.NotEqual(t, string(raw), patched, "the fixture no longer declares log_level as this expects")
-	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
-
-	updated, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	updated, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: upgradeDroppingLogLevel(t, h)})
 	require.NoError(t, err)
 	assert.NotContains(t, parameterNamesOf(t, h, updated.Record.ID), "log_level")
 }
