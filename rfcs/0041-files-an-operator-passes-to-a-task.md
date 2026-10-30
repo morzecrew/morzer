@@ -47,8 +47,9 @@ The manager copies `./catalog-snapshot.jsonl` into
 `<var>/manager/inputs/<operation-id>/snapshot`, hashing it as it copies, and
 mounts that file read-only at `/morzer/inputs/snapshot` in the task's one-off
 container. The command runs as `restore /morzer/inputs/snapshot`. When the
-operation ends, the copy is removed. The journal and the attestation record the
-input's name, size and sha256, never its content.
+operation ends, the copy is removed. The journal records the input's name,
+size and sha256, never its content; whether the attestation does too is
+decision 12.
 
 ## 2. Motivation
 
@@ -142,8 +143,10 @@ stays `selfhost/v1alpha1`: the change is additive.
 lock, exit 2: an undeclared name, a declared input not given, a name given
 twice, a path that is not a regular file once resolved (a directory, a FIFO,
 a device), and a file larger than its input's `max_size`. A symlink is followed: the operator is root already, so
-following it reaches nothing they could not read. The file is opened once and
-the checks run on the open descriptor, so what was checked is what is copied.
+following it reaches nothing they could not read. The file is opened once, and
+the type check and the copy both use that descriptor. A descriptor keeps the
+file's identity, not its contents, so the size checked here is only a first
+answer: §5.3 bounds the copy itself.
 
 ### 5.3 Staging
 
@@ -153,7 +156,11 @@ A new first step of the `task` operation, **`stage-inputs`**:
    a margin.
 2. Create `<var>/manager/inputs/<operation-id>/` (the parent `0700`, the
    operation's directory `0555` once filled) and copy each file to
-   `<name>`, mode `0444`, computing sha256 as it copies.
+   `<name>`, mode `0444`, computing sha256 as it copies. The copy reads through
+   a bound: the input's `max_size` when it declares one, and the free-space
+   budget from step 1 in any case. A file that grew past the bound after it was
+   checked is refused and its partial copy removed. The size and digest are
+   those of the bytes copied, which are the bytes the task sees.
 3. Keep `name`, `size` and `sha256` for the journal.
 
 The directory is removed when the operation ends, success or failure, as a
@@ -188,10 +195,18 @@ other users out (decision 5).
 
 ### 5.5 Record
 
-The journal's `task` flags gain `inputs: [{name, size, sha256}]`. The host path
-is not recorded: it names the operator's machine, not the content, and the
-digest is what identifies the content. The task's attestation carries the same
-list (RFC 0035 decision 8). Neither ever holds content.
+The journal's flags are a string map (`OperationRecord.Flags`,
+[`operation.go:146`](../internal/domain/operation.go)), so each input is one
+flag, `input.<name>`, with the value `<size> sha256:<hex>`. Existing readers of
+the journal see one more string key and nothing else. The host path is not
+recorded: it names the operator's machine, not the content, and the digest is
+what identifies the content.
+
+The attestation predicate is closed: v2's schema sets
+`additionalProperties: false` and `Predicate` has no input field
+([`attestation.go:90-100`](../internal/domain/attestation.go)). Listing inputs
+there means a predicate v3 and a new schema, as v1 to v2 did in 0.9.0
+(decision 12). Neither record ever holds content.
 
 ### 5.6 `--dry-run`
 
@@ -221,6 +236,8 @@ have.
   after success and after a failed task.
 - Suite: a `max_size` refusal comes before the lock, and a free-space refusal
   before anything is copied.
+- Suite: a file that grows past its `max_size` while it is copied is refused,
+  and no partial copy is left behind.
 - Suite: `--dry-run` copies nothing.
 - Runtime contract: a read-only mount is readable and not writable in the
   one-off container.
@@ -256,7 +273,7 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **Build named file inputs now?** Recommended yes: #215 is a vendor need with no supported workaround, and the design adds one port field and one step. It refines RFC 0035 decisions 1 (a task gains `inputs`), 4 (still no typed parameters: inputs are files), 5 (still no stdin), 8 (the attestation lists inputs) and 13 (the journal records them). |
+| 1 | `OPEN` | **Build named file inputs now?** Recommended yes: #215 is a vendor need with no supported workaround, and the design adds one port field and one step. It refines RFC 0035 decisions 1 (a task gains `inputs`), 4 (still no typed parameters: inputs are files), 5 (still no stdin), 8 (the attestation lists inputs, if decision 12 rules so) and 13 (the journal records them). |
 | 2 | `OPEN` | **How the task finds the file.** Recommended: `{inputs.<name>}` in the declared `command`, replaced by a fixed in-container path, and never in the operator's `--` arguments. Alternative: an env var per input (`MORZER_INPUT_<NAME>`), or both. |
 | 3 | `ASSUMED` | A manifest whose tasks declare `inputs` declares `min_manager_version` at least the release that ships this, as `TasksMinManagerVersion` does for `tasks:` (RFC 0018 decision 1). |
 | 4 | `ASSUMED` | Every declared input is required in P1. An optional input would need its placeholder to vanish when absent, which turns one argv element into a conditional. |
@@ -265,8 +282,10 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 | 7 | `OPEN` | **Stdin as a single unnamed input.** Recommended no: RFC 0035 decision 5 stays, the live view owns the terminal, and a named input gets a declared path, a size check and a digest stdin cannot give before it is read. |
 | 8 | `OPEN` | **A directory as an input.** Recommended no in P1: the operator archives it and the task unpacks it. A directory needs a symlink policy inside it, a total size and a tree digest. |
 | 9 | `OPEN` | **Streaming an input from another machine.** Recommended: out of scope. morzer runs on the machine it manages and has no remote client; `scp` then `--input` is two commands. |
-| 10 | `ASSUMED` | The journal and the attestation record each input's name, size and sha256; never content and never the host path. |
+| 10 | `ASSUMED` | The journal records each input as one `input.<name>` flag, `<size> sha256:<hex>`, in the existing string map; never content and never the host path. |
 | 11 | `ASSUMED` | `--input` paths are resolved, must be regular files, and are checked and copied through one open descriptor. Symlinks are followed: the operator is already root. |
+| 12 | `OPEN` | **Whether the attestation lists inputs.** The v2 predicate is closed (`additionalProperties: false`), so listing them is a predicate v3 and `schemas/morzer-attestation-v3.json`. Recommended: v3 with an `inputs` list of name, size and sha256, because an input changes the deployment's data and the statement is what an auditor reads; `attest verify` keeps reading v1 and v2. Alternative: the journal only in P1, and v3 when something else needs it. |
+| 13 | `ASSUMED` | The copy is bounded by the input's `max_size` and by the free-space budget, not by the size seen at the check. A file that grows past the bound while it is copied is refused, and the size and digest recorded are those of the bytes copied. |
 
 ## 12. Phasing
 
