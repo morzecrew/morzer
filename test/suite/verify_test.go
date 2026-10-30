@@ -278,7 +278,18 @@ func TestSignatureVerification(t *testing.T) {
 			Required:   true,
 		})
 		require.Error(t, err, "require_signature must refuse a bundle with no signature")
-		assert.Contains(t, err.Error(), "requires a signature")
+		assert.Contains(t, err.Error(), "installation policy requires a signature")
+
+		// A vendor's --signing-key refuses just as hard; only the words
+		// change, because a build machine has no policy to name.
+		err = v.Verify(ctx, ports.BundlePath(dir), ports.Expectation{
+			PublicKeys: []string{key},
+			Required:   true,
+			Authoring:  true,
+		})
+		require.Error(t, err, "--signing-key must refuse a bundle with no signature")
+		assert.Contains(t, err.Error(), "--signing-key was given")
+		assert.NotContains(t, err.Error(), "installation policy")
 	})
 
 	t.Run("a malformed configured key is a configuration error", func(t *testing.T) {

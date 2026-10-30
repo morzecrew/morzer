@@ -268,9 +268,16 @@ type Expectation struct {
 	PublicKeys []string
 
 	// Required makes a missing signature an error. It comes from
-	// installation policy (require_signature), never from the bundle --
-	// a bundle asserting it needs no signature would defeat the check.
+	// installation policy (require_signature), or from a vendor's
+	// --signing-key on a build machine, never from the bundle -- a bundle
+	// asserting it needs no signature would defeat the check.
 	Required bool
+
+	// Authoring marks a check a vendor asked for on a build machine, where
+	// Required comes from their --signing-key rather than from an
+	// installation. It changes only the wording of a refusal: there is no
+	// require_signature there to point at.
+	Authoring bool
 }
 
 // DigestString formats a raw hash as a prefixed digest.

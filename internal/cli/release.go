@@ -275,6 +275,7 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 					ports.BundlePath(rel.Root), ports.Expectation{
 						PublicKeys: signingKeys,
 						Required:   true,
+						Authoring:  true,
 					}); err != nil {
 					return err
 				}

@@ -118,6 +118,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config settings`, `installation describe` and two refusals named an RFC by
   number, such as "See RFC 0027". The text now stands without the citation.
 
+- **`release verify --signing-key` explains an unsigned bundle to a vendor.**
+  It refused with the installation's message, telling a build machine to clear
+  `require_signature`, a setting it does not have. It now says the key was
+  given and the bundle is not signed, and shows the `minisign -Sm` command.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its
