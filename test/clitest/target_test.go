@@ -26,13 +26,15 @@ func TestBackupTargetAddAndList(t *testing.T) {
 
 	r.Run("backup", "target", "list").
 		ExitCode(0).
-		StdoutContains(offsite, "0 backup")
+		StdoutContains("0 backup")
 
 	// The URL is recorded in the installation, where an operator can read
-	// it and `doctor` can print it.
+	// it and `doctor` can print it. Read from the envelope: the table cuts a
+	// cell at the measure, and a temporary directory can be longer than that.
 	r.Run("backup", "target", "list", "--json").
 		ExitCode(0).
-		FieldLen("data", 1)
+		FieldLen("data", 1).
+		FieldEquals("data.0.url", "file://"+offsite)
 }
 
 func TestBackupTargetAddRefusesAMistypedURL(t *testing.T) {
@@ -273,7 +275,7 @@ func TestBackupPushRetriesACopyThatIsAlreadyLocal(t *testing.T) {
 		ExitCode(0).
 		StderrContains("copied to")
 
-	r.Run("backup", "list", "--remote").ExitCode(0).StdoutContains(offsite)
+	r.Run("backup", "list", "--remote", "--json").ExitCode(0).FieldEquals("data.0.target", "file://"+offsite)
 }
 
 // TestNoPushKeepsABackupLocal, for the operator who knows the medium is
@@ -356,9 +358,9 @@ func TestDryRunDoesNotChangeTheTargets(t *testing.T) {
 		ExitCode(0).
 		StderrContains("would remove")
 
-	r.Run("backup", "target", "list").
+	r.Run("backup", "target", "list", "--json").
 		ExitCode(0).
-		StdoutContains(offsite)
+		FieldEquals("data.0.url", "file://"+offsite)
 }
 
 // TestADryRunStillReportsWhetherTheTargetAnswers, because that is the only
