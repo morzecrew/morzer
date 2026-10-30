@@ -47,6 +47,13 @@ The value is read without echo from the terminal, or from stdin when it is
 piped. **There is no flag for the value**: argv is world-readable through
 `/proc`, so a credential passed that way is a credential published.
 
+At a terminal, `set` then says how many characters it read and asks before
+storing them: `read 41 characters; store it? [Y/n]`. Enter or `y` stores the
+value; anything else stores nothing and exits 130. This is how a paste that
+landed twice, came from the wrong clipboard or never arrived is caught before
+any service restarts. `--yes` stores without asking, and a piped value is never
+asked about.
+
 After storing the value, `set`, `generate`, `rotate` and `edit` render the
 secrets again and restart the services that declare a dependency on what
 changed. When the deployment has no containers at all, as before the first
