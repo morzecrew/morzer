@@ -499,8 +499,8 @@ services it `depends_on` first, as a migration service does. It gets the same
 `PHASE` set to `task`. Any non-zero exit fails it, `2` included; "nothing to
 do" belongs to migrations.
 
-The operator sees a task's output only when they ask, with `task run --output`
-or `--verbose`, or the end of its stderr when it fails. A task whose output is
+The operator sees a task's output only when they ask, with `task run --output`,
+`--verbose` or `--json`, or the end of its stderr when it fails. A task whose output is
 the point, a report, should say so in its `description`.
 
 **Tasks need `min_manager_version: "0.8.0"` or later**, and a manifest declaring
