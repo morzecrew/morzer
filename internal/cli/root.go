@@ -564,6 +564,7 @@ func newRootCommand(app *App) *cobra.Command {
 	pf.BoolVar(&f.wait, "wait", false, "wait for the deployment lock instead of failing")
 	pf.StringVar(&f.configDir, "config", "", "path to installation.yaml")
 	pf.StringVar(&f.product, "product", "", "product name (inferred from the installation when omitted)")
+	_ = root.RegisterFlagCompletionFunc("product", app.completeProducts)
 
 	// --root relocates the whole layout. It exists so the test suite and
 	// the acceptance scenario can exercise the real code paths without
@@ -810,7 +811,10 @@ func IsGenerated(cmd *cobra.Command) bool {
 // that select their own installation mid-run -- `init`, `installation import` --
 // are past this point when they do it.
 func (a *App) confirmInstallationChosen(cmd *cobra.Command) error {
-	if scopeOf(cmd) == scopeMachine {
+	// cobra's completion request is answered before any installation is
+	// chosen -- choosing one is what `--product <Tab>` is for. It is
+	// generated, so it carries no scope of its own to say so.
+	if scopeOf(cmd) == scopeMachine || cmd.Name() == cobra.ShellCompRequestCmd {
 		return nil
 	}
 	// The inventory first, because a lookup that could not be taken is not

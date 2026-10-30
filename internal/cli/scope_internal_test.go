@@ -263,3 +263,16 @@ func TestADelegatingParentIsNotItselfAScope(t *testing.T) {
 		t.Error("a delegating parent reads as one of cobra's own")
 	}
 }
+
+// TestACompletionRequestIsNotAskedWhichInstallation. cobra adds `__complete`
+// itself, so it declares no scope and would fall to the refusal above -- on the
+// one machine `--product <Tab>` exists for (#210). The clitest suite cannot
+// show this: the request's flags, `--root` included, are parsed after setup,
+// so setup there reads the host's own /etc rather than the fixture's.
+func TestACompletionRequestIsNotAskedWhichInstallation(t *testing.T) {
+	root := &cobra.Command{Use: "morzer"}
+	complete := &cobra.Command{Use: cobra.ShellCompRequestCmd, Run: func(*cobra.Command, []string) {}}
+	root.AddCommand(complete)
+
+	require.NoError(t, ambiguousApp().confirmInstallationChosen(complete))
+}
