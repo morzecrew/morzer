@@ -129,8 +129,11 @@ func TestReleaseVerifyWithAKeyRefusesAnUnsignedBundleInTheVendorsTerms(t *testin
 	r := clitest.New(t)
 	_, key := minisignKeypair(t)
 
+	// The example bundle carries no SHA256SUMS, which is optional, and
+	// minisign cannot sign a file that is not there: the hint sends the
+	// vendor to `release build` first.
 	r.Run("release", "verify", r.Bundle, "--signing-key", key).Failed().
-		OutputContains("--signing-key", "not signed", "minisign -Sm").
+		OutputContains("--signing-key", "not signed", "release build", "minisign -Sm").
 		NoOutputContains("installation policy", "require_signature")
 }
 

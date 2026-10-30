@@ -87,11 +87,17 @@ func (v *Verifier) VerifySigned(ctx context.Context, bundle ports.BundlePath, ex
 	}
 	if sigPath == "" {
 		if expect.Required && expect.Authoring {
+			sign := fmt.Sprintf("sign it with `minisign -Sm %s`", sumsPath)
+			// SHA256SUMS is optional, and minisign cannot sign a file that
+			// is not there.
+			if _, statErr := os.Stat(sumsPath); statErr != nil {
+				sign = fmt.Sprintf("write %s with `morzer release build %s`, then %s",
+					ports.SumsFileName, string(bundle), sign)
+			}
 			return "", domain.ValidationError(nil,
 				"--signing-key was given, but this bundle is not signed: it has no %s",
 				ports.SignatureFileName).
-				WithHint("sign it with `minisign -Sm %s`, or leave out --signing-key "+
-					"to check the checksums only", sumsPath)
+				WithHint("%s, or leave out --signing-key to check the checksums only", sign)
 		}
 		if expect.Required {
 			return "", domain.ValidationError(nil,
