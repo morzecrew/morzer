@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-30
+
+`morzer release push` publishes a bundle archive to an OCI registry and moves
+its channels, and a GitHub Action installs morzer in CI. Commands report
+failure and success more honestly: `logs` and `doctor` fail when the container
+runtime cannot be reached, a mistyped subcommand fails instead of printing
+help, and an empty listing is an empty list. A rollback refused by preflight no
+longer leaves the release pointer moved, and `task run` prints the task's
+output only when asked.
+
+Upgrading migrates nothing: the installation schema stays at 13. A bundle built
+for 0.9.0 installs unchanged; one that names a `secrets`, `backup` or `health`
+provider morzer does not have now draws a warning on install and a refusal from
+`release verify` and `build`. Scripts may notice:
+
+- `doctor` exits 3, not 0, when the container runtime cannot be reached, and
+  `logs` exits 7, not 0, when the runtime cannot produce the stream.
+
+- `task run` no longer prints the task's stdout and stderr. Pass `--output` to
+  keep them: `morzer task run report --output > report.txt`.
+
+- A mistyped subcommand, `release archive -o` with a name that does not end in
+  `.tar.zst` or `.tzst`, and `config unset` of an undeclared parameter exit 2
+  where they exited 0. `attest log` with nothing recorded exits 0, not 5.
+
+- `release build --version-from-git` versions a bundle by the last commit that
+  changed it, so a repository holding more than the bundle mints fewer dev
+  versions, with different numbers.
+
+- New installations get `inst_` ids; existing `op_` ids keep working.
+
+Under `--json`, an empty list is `[]` at any depth where it was `null`, an error
+raised before a command runs names that command, and a command group run with
+no subcommand exits 2 with an error envelope instead of printing help. No
+existing field changed meaning.
+
 ### Added
 
 - **A GitHub Action that installs morzer: `morzecrew/morzer/actions/setup`.** A
@@ -107,8 +143,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A refused HTTPS or OCI download names its URL, not a temporary file.** A
   corrupt download, or one whose digest did not match, was refused with the path
-  of an already-deleted temporary file. It now names the reference without its
-  password or the query a signed URL carries its token in.
+  of an already-deleted temporary file. It now names the reference.
 
 - **`config unset` refuses a parameter the release does not declare.**
   `config unset typo` reported success where `config set typo=1` was refused.
@@ -138,6 +173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   update or a rollback that retired a value, the signed statement still listed
   that parameter beside a configuration digest rendered without it. It now
   names only the parameters left recorded.
+
 - **`release verify --signing-key` explains an unsigned bundle to a vendor.**
   It refused with the installation's message, telling a build machine to clear
   `require_signature`, a setting it does not have. It now says the key was
@@ -147,6 +183,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A `config set` landing between the operation's first read and its lock, for
   a parameter the target release does not declare, stayed recorded and showed
   as stale. The retire step now decides from what is recorded when it runs.
+
+### Security
+
+- **A signed URL's token no longer appears in a download error.** A 404 or an
+  unreachable host quoted the HTTPS URL with its query, where a signed URL
+  carries its token, into the operation journal and support bundles. Errors now
+  drop the query; rotate a token used this way.
 
 ## [0.9.0] - 2026-10-29
 
@@ -706,7 +749,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.9.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/morzecrew/morzer/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/morzecrew/morzer/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/morzecrew/morzer/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/morzecrew/morzer/compare/v0.6.0...v0.7.0
