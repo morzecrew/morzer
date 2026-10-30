@@ -92,6 +92,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It now exits 2 and lists the declared parameters; a stale value left by an
   older release still clears.
 
+- **`config unset` clears a stale value while another parameter has none.** A
+  recorded value the release no longer declares, beside a parameter with no
+  default and no value, refused every `config` change. Clearing the stale value
+  no longer waits on the other.
+
 - **Command output no longer cites RFCs an operator does not have.**
   `config settings`, `installation describe` and two refusals named an RFC by
   number, such as "See RFC 0027". The text now stands without the citation.
