@@ -435,6 +435,11 @@ type Locker struct {
 	// FailAcquire makes every acquisition report the lock as held, for
 	// testing the exit-code-4 path.
 	FailAcquire bool
+
+	// BeforeAcquire runs at the start of an acquisition, before the lock is
+	// looked at. A test uses it to land another operation in the window
+	// between what an operation read and the lock it then takes.
+	BeforeAcquire func()
 }
 
 func NewLocker() *Locker { return &Locker{} }
@@ -442,6 +447,9 @@ func NewLocker() *Locker { return &Locker{} }
 var _ ports.Locker = (*Locker)(nil)
 
 func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOptions) (func() error, error) {
+	if hook := l.BeforeAcquire; hook != nil {
+		hook()
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

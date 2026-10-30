@@ -514,3 +514,73 @@ func upgradeDeclaringAPIKey(t *testing.T, h *harness) string {
 	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
 	return src
 }
+
+// upgradeDroppingLogLevel is the 1.3.0 fixture without `log_level`, which
+// 1.2.0 declares and 1.3.0's compose file defaults on its own.
+func upgradeDroppingLogLevel(t *testing.T, h *harness) string {
+	t.Helper()
+	src := stageUpgradeSource(t, h)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), "  log_level:\n    type: enum\n    values: [debug, info, warn, error]\n"+
+		"    default: info\n    description: Application log verbosity\n    services: [app]\n", "", 1)
+	require.NotEqual(t, string(raw), patched, "the fixture no longer declares log_level as this expects")
+	require.NoError(t, os.WriteFile(manifest, []byte(patched), 0o644))
+	return src
+}
+
+// configSetBeforeTheLock lands a `config set` in the window between what the
+// next operation read and the deployment lock it then takes, which is where a
+// second operator's command arrives.
+func configSetBeforeTheLock(t *testing.T, h *harness, name, value string) {
+	t.Helper()
+	h.Locker.BeforeAcquire = func() {
+		h.Locker.BeforeAcquire = nil
+		_, err := ops.ConfigSet(context.Background(), h.Deps,
+			ops.ConfigSetOptions{Set: map[string]string{name: value}})
+		require.NoError(t, err)
+	}
+}
+
+// A value set while an update was reading, for a parameter the new release
+// drops, is retired with the rest. The retired set was decided from what the
+// update read before its lock, so the late value stayed recorded.
+func TestAnUpdateRetiresAValueSetBeforeItsLock(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	configSetBeforeTheLock(t, h, "log_level", "debug")
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: upgradeDroppingLogLevel(t, h)})
+	require.NoError(t, err)
+	require.Nil(t, h.Locker.BeforeAcquire, "the config set never ran")
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, inst.Parameters, "log_level", "the update left a value 1.3.0 does not declare")
+}
+
+// The same for a rollback, and a value only the release it leaves declares.
+func TestARollbackRetiresAValueSetBeforeItsLock(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: upgradeDeclaringAPIKey(t, h)})
+	require.NoError(t, err)
+	setSchema(t, h, 12)
+
+	configSetBeforeTheLock(t, h, "api_key", "k-late")
+	_, err = ops.Rollback(ctx, h.Deps, ops.RollbackOptions{})
+	require.NoError(t, err)
+	require.Nil(t, h.Locker.BeforeAcquire, "the config set never ran")
+
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, inst.Parameters, "api_key", "the rollback left a value 1.2.0 does not declare")
+}

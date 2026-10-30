@@ -137,6 +137,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `require_signature`, a setting it does not have. It now says the key was
   given and the bundle is not signed, and shows the `minisign -Sm` command.
 
+- **A value set while an update or rollback starts is retired with the rest.**
+  A `config set` landing between the operation's first read and its lock, for
+  a parameter the target release does not declare, stayed recorded and showed
+  as stale. The retire step now decides from what is recorded when it runs.
+
 ## [0.9.0] - 2026-10-29
 
 A machine can now replace the key it signs its own statements with, and its

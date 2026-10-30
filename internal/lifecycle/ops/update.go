@@ -520,13 +520,22 @@ func attestedInstallation(inst domain.Installation, rel domain.Release, rec doma
 // bookkeeping write would be the tail wagging the dog. The operator is left
 // with a working deployment and a state file one parameter stale, which the
 // next command reports.
-func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engine.Step {
+//
+// What it retires is decided when it runs, from the installation as recorded
+// then, not from planned: planned was read before the operation took the lock,
+// and a `config set` landing in between would otherwise stay recorded. Only a
+// name the release does not declare can arrive that way, and nothing the
+// converge rendered reads one, so the steps before it are no less right.
+func stepRetireParameters(d *Deps, staged domain.Release, planned []string) engine.Step {
 	description := "retire parameters the release does not declare"
-	if len(retired) > 0 {
+	if len(planned) > 0 {
 		// Named in the description, because a dry run is where an
 		// operator gets to see a state change before it happens, and
 		// "some parameters" is not something anybody can review.
-		description = "retire parameters: " + strings.Join(retired, ", ")
+		description = "retire parameters: " + strings.Join(planned, ", ")
+	}
+	undeclared := func(inst domain.Installation) []string {
+		return domain.Parameters(inst.Parameters).ValidateAgainst(staged.Manifest.Parameters)
 	}
 
 	return engine.Step{
@@ -536,13 +545,18 @@ func stepRetireParameters(d *Deps, staged domain.Release, retired []string) engi
 		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
 		Check: func(ctx context.Context, st *engine.State) (bool, error) {
-			return len(retired) == 0, nil
+			current, err := d.State.LoadInstallation(ctx)
+			if err != nil {
+				return false, err
+			}
+			return len(undeclared(current)) == 0, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			current, err := d.State.LoadInstallation(ctx)
 			if err != nil {
 				return err
 			}
+			retired := undeclared(current)
 
 			if err := d.saveInstallation(ctx, withoutParameters(current, retired)); err != nil {
 				return err
