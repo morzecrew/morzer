@@ -107,7 +107,9 @@ rest. The journal remains the record.
 
 **Goals**
 
-- A short outage of a target loses nothing that was sent during it.
+- A short outage of a target loses nothing that was sent during it, up to the
+  outbox's bound of 100 entries per target. Past it the oldest are dropped,
+  and `doctor` reports how many.
 - A run that was killed reaches a person within a day, without anyone typing a
   command.
 - What `doctor` finds on a machine nobody logs into reaches whoever the
@@ -130,16 +132,22 @@ rest. The journal remains the record.
 - **The adapter retries, since only it sees the status.** A connection error,
   a timeout, a 408, a 429 or a 5xx is tried once more after one second, while
   the 15-second aggregate deadline allows it. Nothing else is retried at once:
-  a 401, 403 or 404 will not change in a second. The deadline is unchanged, so
-  an operation never waits longer than today.
+  a 401, 403 or 404 will not change in a second, and neither will a 3xx: the
+  client refuses to follow redirects (`webhook.go:98-99`), so a redirect comes
+  back as the answer. The deadline is unchanged, so an operation never waits
+  longer than today.
 - **The adapter's error says whether a resend could succeed.** It is
-  resendable for the retried cases and for 401, 403 and 404, which a fixed
-  credential or URL can still deliver. It is final for every other 4xx, which
-  refuses the content itself.
+  resendable for the retried cases, for 401, 403 and 404, and for every 3xx,
+  which a fixed credential or URL can still deliver. It is final for every
+  other 4xx, which refuses the content itself.
 - **`Notifiers` returns the targets' errors joined**, each naming its target,
   instead of dropping them. `ops.notify` already logs what it is given, so a
-  failed target is logged for the first time. The outbox (§5.2) is written
-  from the same per-target errors.
+  failed target is logged for the first time.
+- **Each target's error is typed.** The adapter returns a
+  `ports.DeliveryError` carrying the target's name, whether it is resendable,
+  and the cause. `Notifiers` joins them with `errors.Join`. The outbox (§5.2)
+  is written by walking the joined error's `Unwrap() []error` with
+  `errors.As`, and never by reading the message (decision 10).
 
 ### 5.2 The outbox
 
@@ -148,13 +156,20 @@ rest. The journal remains the record.
 ```
 
 - An event whose target's error is resendable is written there, once per
-  target, as the exact JSON the target would have received. A final error is
-  logged and not kept. One
-  target failing does not resend the event to the others.
+  target: the forwarded event, with its `id`, and the target's name. A resend
+  hands that event to the target's adapter, which encodes it as it did the
+  first time. A final error is logged and not kept. One target failing does
+  not resend the event to the others.
 - Nothing sends from it during an operation. It is sent by the scheduled
   `doctor` run (§5.4) and by `morzer notify flush`, oldest first. An entry is
   deleted once its target answers 2xx or a final error, and kept on a
   resendable one.
+- One sender at a time. Sending takes the `notify-outbox` lock, without
+  waiting, and deletes each entry under it once its target has answered. A
+  second sender finds the lock held and sends nothing, so the scheduled
+  `doctor` and `notify flush` cannot both send an entry. A crash between the
+  answer and the delete can still send one twice; the `id` is what lets a
+  receiver tell (decision 11).
 - It is bounded at 100 entries per target, dropping the oldest. `doctor`
   reports what it holds as `notify.outbox`: a warning naming the target and
   the count, and how many were dropped.
@@ -188,7 +203,12 @@ ExecStart=<manager> doctor --unattended --plain --log-format json --product <pro
   notifies nothing.
 - The operation holding the deployment lock is left out of `config.operations`,
   as RFC 0041 decision 19 does for staged inputs, so a backup running at the
-  same time is not reported as unfinished.
+  same time is not reported as unfinished. The check asks
+  `Locker.Owner(ctx, "deployment")`, as `task_inputs.go:334` does, and skips
+  the unfinished record whose id is the holder's `OperationID`. Only a record
+  still `running` is skipped; one that needs attention is reported whoever
+  holds the lock. Every `doctor` run does this, not only the scheduled one
+  (decision 12).
 - It exits as `doctor` does: 3 on a failed check. systemd records the failure.
 
 ### 5.5 Alternatives considered
@@ -213,6 +233,10 @@ ExecStart=<manager> doctor --unattended --plain --log-format json --product <pro
 - A target that is down leaves one outbox entry. `notify flush` delivers it
   once the target answers, with the same `id` and `Idempotency-Key`, and
   deletes it.
+- Two senders at once: the second finds the lock held and sends nothing, and
+  the target receives the entry once.
+- A 302 is not retried at once, is kept, and is delivered once the URL is
+  fixed.
 - A 400 is not retried and not kept. A 401 is not retried at once, is kept,
   and is delivered by `notify flush` once the target accepts.
 - A failing target is logged by name, where today nothing is.
@@ -275,9 +299,13 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 4 | `ASSUMED` | **Whether the doctor timer is on by default.** Recommended: on whenever at least one notify target is configured, and absent otherwise, since a scheduled `doctor` with nobody to tell writes only to the systemd journal. `doctor.scheduled=false` removes it. Alternative: off until an operator sets `doctor.scheduled=true`. That is quieter, and a killed run then reaches nobody by default. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 5 | `ASSUMED` | **How often an unchanged failure notifies.** Recommended: every scheduled run while a check warns or fails, leaving silencing to the receiver as RFC 0015 §4 does. Alternative: only when the set of non-ok checks changes from the last scheduled run, which needs a small state file and can hide a failure nobody saw the first time. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 6 | `ASSUMED` | `doctor --unattended` sends one `doctor.finished` event per run, naming the checks that warn or fail at the level of the worst. It is a new kind, forwarded under RFC 0015 decision 4's allowlist. A run where every check passes sends nothing. It carries the worst level, and the webhook applies `min_level` to it as to `check`. |
-| 7 | `ASSUMED` | The scheduled run leaves the operation holding the deployment lock out of `config.operations`, as RFC 0041 decision 19 does for staged inputs. |
+| 7 | `ASSUMED` | The scheduled run leaves the operation holding the deployment lock out of `config.operations`, as RFC 0041 decision 19 does for staged inputs. *(Superseded by decision 12.)* |
 | 8 | `ASSUMED` | `doctor.schedule` is an `OnCalendar` expression, daily by default with a randomized delay, validated as `backup.schedule` is. The unit follows RFC 0030 decision 1: enabled when first written, and never re-enabled once it exists. |
 | 9 | `ASSUMED` | `Notifiers` returns the targets' errors joined, each naming its target, so `ops.notify` logs a failed target. Today the fan-out drops them and the webhook logs nothing, so a failed delivery is logged nowhere (§3). Part of P1. |
+| 10 | `ASSUMED` | *(2026-10-31, from the review.)* A target's failure is a `ports.DeliveryError` with the target's name, whether a resend could succeed, and the cause. `Notifiers` joins them, and the outbox reads them with `errors.As` over `Unwrap() []error`, never from the message. The outbox stores the forwarded event and the target's name, and a resend encodes it again through that target's adapter. |
+| 11 | `ASSUMED` | *(2026-10-31, from the review.)* One sender at a time: sending the outbox takes the `notify-outbox` lock without waiting, and a sender that finds it held sends nothing. Each entry is deleted under the lock once its target answers. |
+| 12 | `ASSUMED` | *(2026-10-31, from the review.)* `config.operations` skips the unfinished record whose id is the deployment lock holder's `OperationID` (`Locker.Owner`), and only while that record is `running`. Every `doctor` run does this. |
+| 13 | `ASSUMED` | *(2026-10-31, from the review.)* A 3xx is resendable and not retried at once. The client refuses redirects, so a redirect is an answer, and a fixed URL can still deliver it. |
 
 ## 12. Phasing
 
