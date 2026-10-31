@@ -46,6 +46,7 @@ here. The reference column points at the section that documents it; the
 | `morzer notify target remove` | Stop reporting to a webhook | [commands](commands.md#notify-target) |
 | `morzer notify target list` | List the webhooks this deployment reports to | [commands](commands.md#notify-target) |
 | `morzer doctor` | Run read-only diagnostics | [commands](commands.md#doctor) |
+| `morzer history` | List the operations this installation ran, newest first | [commands](commands.md#history) |
 | `morzer logs` | Read the deployment's logs | [commands](commands.md#logs) |
 | `morzer ps` | List the deployment's containers | [commands](commands.md#ps) |
 | `morzer stats` | Show CPU, memory and I/O per container | [commands](commands.md#stats) |

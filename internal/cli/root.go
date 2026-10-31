@@ -628,6 +628,9 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupOperate, installationScope(newSecretCommand(app))),
 		grouped(groupOperate, installationScope(newNotifyCommand(app))),
 		grouped(groupOperate, machineScope(newDoctorCommand(app))),
+		// Beside doctor: both are where an operator looks after
+		// something went wrong, one at the machine and one at the past.
+		grouped(groupOperate, installationScope(newHistoryCommand(app))),
 
 		// The four that reach into what is running, after the ones that
 		// change it: an operator meets `update` and `doctor` first, and
