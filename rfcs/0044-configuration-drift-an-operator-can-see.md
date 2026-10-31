@@ -76,7 +76,10 @@ can only notify what `doctor` checks.
   shows the count in its `DRIFT` column.
 - **`apply --dry-run`** shows the same differences in the render step's plan
   detail (`apply.go`, `PlanDetail` of `stepRenderConfiguration`), computed by a
-  separate loop over the same render.
+  separate loop over the same render. That loop drops the read error
+  (`apply.go:541`), so an unreadable target shows in a plan as a new file,
+  where `configComparison` reports it as not compared. §5.5 removes the
+  difference.
 - **The render step** writes every target whose bytes differ, from `apply`,
   `update`, `rollback` and `config set` (`config.go:342-345`).
 - **The unattended tick** (`channel.go:480-525`) leaves a staged release
@@ -129,7 +132,7 @@ $ sudo morzer config diff
   `no drift: the 4 configuration files match what 1.2.0 renders`.
 - Lists unreadable targets after the diffs, each with its error, and counts
   them apart: "2 could not be read, so they were not compared".
-- `--json` carries `release`, `targets`, `drift` (a list of
+- `--json` carries `release`, `targets`, `redacted`, `drift` (a list of
   `{target, diff}`) and `unreadable` (a list of `{target, error}`).
 - Exits 0 whether or not files differ (decision 6).
 - With no release installed it fails as `config list` does.
@@ -141,7 +144,8 @@ $ sudo morzer config diff
   scrubs `config-diff.txt` (`scrub`, `support.go:1126-1145`). When it cannot
   be armed, because the secret state does not decrypt, no lines are printed:
   each differing target is named, and the summary says redaction was not
-  possible. `--json` then carries `redacted: false` and no diffs (decision 10).
+  possible. `--json` then carries `redacted: false`, and each `drift` entry
+  has its `target` and no `diff` (decision 10).
 
 ### 5.2 `doctor` check `config.drift`
 
@@ -174,9 +178,33 @@ A service whose two hashes differ is one `up`, and so `apply`, would
 re-create. P2 adds those services to `config diff` under their own heading, to
 `doctor` as `runtime.definition`, and to `--json` as `services`.
 
-It needs one more compose call, `config --hash`, which older Compose versions
-lack. A runtime that cannot answer is reported as not compared, and is not
-counted as drift.
+`ports.Runtime.Status` returns neither hash, so P2 adds an optional
+capability, type-asserted as `ports.ImageRemover` is (`prune.go:288`):
+
+```go
+type DefinitionDrifter interface {
+	// DefinitionDrift compares each service's declared definition hash with
+	// the hash its containers carry.
+	DefinitionDrift(ctx context.Context, cfg RuntimeConfig) ([]ServiceDefinition, error)
+}
+
+type ServiceDefinition struct {
+	Service  string
+	Declared string   // from `compose config --hash`
+	Running  []string // one per container, from the config-hash label
+}
+```
+
+- **Several replicas.** A service has drifted when any of its containers
+  carries a hash other than the declared one.
+- **A stopped service.** Its containers keep the label and are compared as
+  running ones are: `up` would re-create them too.
+- **A declared service with no container.** Not drift. Nothing has been
+  created to differ, and `runtime.services` already reports it.
+- **A container of a service the release no longer declares.** Not drift
+  either. It is an orphan, which `up --remove-orphans` handles.
+- **A runtime without the capability, or a Compose without `config --hash`.**
+  Reported as not compared, never as drift (decision 11).
 
 ### 5.5 One comparison
 
@@ -206,14 +234,17 @@ for `update --profile` renders the profile it was asked for.
   counted, in the command, the check and the fleet row.
 - A target with a stored secret's value pasted in prints the redactor's mark
   in its place, in text and in `--json`. With the secret state undecryptable,
-  only the target names print.
+  only the target names print, and `--json` carries `redacted: false` with
+  each `drift` entry naming its target and holding no `diff`.
 - With no release installed, `config diff` fails as `config list` does, and the
   check is skipped.
 - `apply --dry-run`'s plan detail matches `config diff` on the same machine.
 - If decision 4 is yes: an unattended tick with drift leaves the release
   staged and says why, and an interactive `update` proceeds.
-- P2: a service whose definition hash differs is listed; a runtime that cannot
-  answer is reported and not counted.
+- P2: a service whose definition hash differs is listed, including when one of
+  several replicas differs or the service is stopped. A service with no
+  container, an orphan container, and a runtime that cannot answer are not
+  counted.
 
 ## 7. Docs
 
@@ -262,6 +293,7 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 8 | `ASSUMED` | `apply --dry-run`'s plan detail is computed by `configComparison` too, so no second comparison remains. It takes the profile to render with, empty for the installed one. |
 | 9 | `ASSUMED` | Secret values are never compared or shown. The invariant is the support bundle's: the render context holds secret references, not values. *(Superseded by decision 10.)* |
 | 10 | `ASSUMED` | *(2026-10-31, from the review.)* Every diff is scrubbed by the redactor before it is shown, on both sides: the rendered side holds no secret value by the support bundle's invariant, but the on-disk side holds whatever was pasted into it. When redaction cannot be armed, no diff lines are shown, only the target names. |
+| 11 | `ASSUMED` | *(2026-10-31, from the review.)* P2 reads definition hashes through an optional `ports.DefinitionDrifter`, type-asserted as `ImageRemover` is. A service drifts when any container's hash differs from the declared one, stopped containers included. A service with no container and an orphan container are not drift, and a runtime that cannot answer is not compared. |
 
 ## 12. Phasing
 
