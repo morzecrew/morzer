@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023**, 0038's row 1, **0042** and **0043** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
+only **0023**, 0038's row 1, **0042**, **0043** and **0044** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
@@ -105,6 +105,10 @@ phase shipped, and a reader deciding what to work on needs the other half.
   📝 Ruled by the author 2026-10-31. P1, each target's outcome logged, a retry
   and an event id, is one PR and ready to build; P2 adds the outbox and the
   doctor timer.
+- **[0044 — Configuration drift an operator can see](0044-configuration-drift-an-operator-can-see.md).**
+  📝 Ruled by the author 2026-10-31. P1, `config diff`, a `doctor` check and
+  holding an unattended update, is one PR and ready to build; P2 adds services
+  whose definition drifted.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -136,7 +140,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0044**. Before creating an RFC, glance at the table
+The next free number is **0045**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -190,6 +194,7 @@ number in the filename in sync.
 | [0041](0041-files-an-operator-passes-to-a-task.md) | Files an operator passes to a task | ✅ Complete | Passing a local file to a release's task: declared inputs, staged per operation and mounted read-only into the one-off container. |
 | [0042](0042-settings-an-operator-changes-after-init.md) | Settings an operator changes after init | 📝 Draft | Changing on a running installation what `init` fixed and nothing since could change: the signature requirement, the domains and the retention counts. |
 | [0043](0043-notifications-that-survive-a-failed-delivery-and-a-scheduled-doctor.md) | Notifications that survive a failed delivery, and a scheduled doctor | 📝 Draft | Keeping a notification its target did not accept, marking redeliveries, and a timer that runs `doctor` and notifies what it finds on a machine nobody watches. |
+| [0044](0044-configuration-drift-an-operator-can-see.md) | Configuration drift an operator can see | 📝 Draft | Showing on the machine which configuration files differ from what the installed release renders, and warning in `doctor` before an `apply` replaces a hand edit. |
 
 ## Status legend
 
