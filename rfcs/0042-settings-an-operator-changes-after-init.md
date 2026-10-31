@@ -1,8 +1,8 @@
 # RFC 0042 — Settings an operator changes after init
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-31 on
-  decisions 2 and 5, as recommended. Decision 4, what a domain change
-  converges, is still `OPEN`
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-31: §11's
+  `OPEN` rows as recommended, except that a domain change re-creates every
+  running service (decision 4). P1 is ready to build
 - **Scope:** Three values `init` fixes that nothing changes afterwards: whether
   a release signature is required, the installation's domains, and the release
   and backup retention counts. Each becomes changeable on a running
@@ -37,8 +37,7 @@
   needs a trusted key, and it cannot be turned off while `update.auto_apply` is
   on.
 - `installation.domains` replaces the domain list. It renders the
-  configuration again and says that `apply` puts the change into the running
-  services.
+  configuration again and re-creates every running service (decision 4).
 - `retention.releases` sets how many releases the store keeps.
 - `retention.backups` sets how many backups it keeps.
 
@@ -163,11 +162,26 @@ morzer config unset installation.domains
 - A comma-separated list replacing the whole list. Each entry is checked as a
   host name, or as an `https://` URL, which `PublicURL` already accepts. An
   empty entry, a duplicate, or a scheme other than `https` is refused.
-- It renders the configuration again, as a parameter change does, and
-  re-creates nothing. The summary says `morzer apply` puts it into the running
-  services, since `DOMAIN` reaches every service's environment and no release
-  declares which services read it.
-- `--json` carries `apply_needed: true` beside the change.
+- It renders the configuration again and re-creates every running service.
+  No release declares which services read the domain, and `apply` would not
+  reach them all: its `compose up` re-creates only a service whose Compose
+  definition changed, so one that reads the domain from a rendered file keeps
+  the old value (decision 4).
+- It runs as an operation, not inside the setting's `Apply`, which only
+  validates and records in memory and also runs on `--dry-run`
+  (`settings.go:397`). `SetSettings` runs three steps under the lock,
+  journalled as `config`, in the shape `config set` gives a parameter change
+  (`config.go:342-353`):
+  1. record the installation, compensated by writing back the one it replaced;
+  2. `render-configuration`, the step `apply` runs, compensated by restoring
+     the files it replaced;
+  3. re-create every running service with `compose up --force-recreate`.
+     `UpOptions` gains `ForceRecreate`. It is skipped when nothing is running,
+     and when the product is stopped (RFC 0040): `start` runs `apply`, which
+     starts every service with the new value.
+- A render failure compensates step 1, so the recorded domains and the files
+  never disagree. `--dry-run` plans the three steps and runs none, as the
+  engine plans a parameter change (decision 9).
 - `unset` empties the list, which renders as an installation created without a
   domain does.
 - `init --repair --domain` keeps working, and the docs name `config set
@@ -182,6 +196,11 @@ morzer config unset retention.releases
 
 - A whole number of at least 1. `unset` returns to the manifest's retention.
   This is `retention.pre_update_backups`' shape, beside which they sit.
+- They mean what the manifest's counts already mean. `retention.releases=N`
+  keeps N releases beyond the current, previous and staged ones, which are
+  never pruned (`prune.go:183-188`). `retention.backups=N` keeps the newest N
+  backups, and `retention.pre_update_backups` keeps that many pre-update
+  backups on top, whatever N says (`ports/backup.go:395-409`).
 - Nothing is pruned when the value is set. Retention applies where it already
   does: releases after an update and at `release prune`, backups after a
   backup.
@@ -210,9 +229,12 @@ morzer config unset retention.releases
 - `release.require_signature=false` while `update.auto_apply` is on is
   refused. With `auto_apply` off, it is accepted.
 - `installation.domains` renders the template's `.Domain` with the new value
-  and says `apply` is needed. A bad entry is refused before anything is written.
+  and re-creates the running services, which see the new `DOMAIN`. A failed
+  render leaves the old domains recorded and the old files in place. With the
+  product stopped, nothing is re-created. A bad entry is refused before
+  anything is written.
 - `retention.releases=0` is refused. Set to 1, the next update keeps one
-  previous release.
+  release beyond the current, previous and staged ones.
 - Each with `--dry-run` writes nothing.
 
 ## 7. Docs
@@ -237,13 +259,13 @@ morzer config unset retention.releases
 - **Turning off the requirement is a downgrade done by one command.** Refusing
   it while `auto_apply` is on covers the case where it matters most. Decision 5
   covers the record of it.
-- **A domain change looks finished when it is not.** The running services keep
-  the old value until `apply`. The summary says so in the same sentence that
-  reports the change, and `--json` carries `apply_needed`.
+- **A domain change restarts the product.** Every running service is
+  re-created, which is a short outage. The plan says so, and a domain change
+  is rare and deliberate.
 
 ## 10. Unresolved questions
 
-Decision 4 is for the author. Nothing else blocks P1.
+None. The author ruled §11's `OPEN` rows 2026-10-31.
 
 ## 11. Decisions
 
@@ -252,11 +274,12 @@ Decision 4 is for the author. Nothing else blocks P1.
 | 1 | `ASSUMED` | The four values become settings in the existing registry, through `config set` and `config unset`, each under a dotted name so none can shadow a release parameter: `release.require_signature`, `installation.domains`, `retention.releases` and `retention.backups`. No new command, no schema bump: every field exists. |
 | 2 | `LOCKED` | **Where the signature requirement changes.** Recommended: the setting `release.require_signature`, since a boolean has none of the two-step rotation that kept the keys out of `config set` (RFC 0004 decision 24). Alternative: `release trust require [--off]`, next to the keys. Either way, this refines RFC 0004 decision 24's "stays fixed at `init`". Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 3 | `ASSUMED` | Turning the requirement on needs a trusted key, and turning it off is refused while `update.auto_apply` is on. Both rules already hold in `Validate`, and the setting refuses with a hint before the lock. It applies from the next fetch or update and re-checks nothing already stored. |
-| 4 | `OPEN` | **What a domain change converges.** Recommended: it renders the configuration and re-creates nothing; the summary says `apply` is needed, as for a parameter with no declared services (`config.go:346-352`). Alternative: it runs the whole `apply` itself, which reaches the services in one command but makes `config set` the first setting that restarts the product. |
+| 4 | `ASSUMED` | **What a domain change converges.** Recommended: it renders the configuration and re-creates nothing; the summary says `apply` is needed, as for a parameter with no declared services (`config.go:346-352`). Alternative: it runs the whole `apply` itself, which reaches the services in one command but makes `config set` the first setting that restarts the product. Was `OPEN`; ruled by the author 2026-10-31: neither. It renders the configuration and re-creates every running service. No release declares which services read the domain, and `apply`'s `compose up` re-creates only those whose Compose definition changed, so neither option reaches a service that reads it from a rendered file. §5.2. |
 | 5 | `ASSUMED` | **Whether turning off the signature requirement is journalled.** Recommended: yes, as a `config` record with the flag `release.require_signature=false`, so an incident review finds the downgrade. It would be the first setting with a journal record. Alternative: no record, as for every other setting today. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 6 | `ASSUMED` | Domains are validated when set: a host name, or an `https://` URL, with no empty entry and no duplicate. `init` keeps accepting what it accepts today, so an existing installation is not refused at load. |
 | 7 | `ASSUMED` | `retention.releases` and `retention.backups` are whole numbers of at least 1. `unset` returns to the manifest's value, and nothing is pruned when one is set. |
 | 8 | `ASSUMED` | `mode`, the runtime and its options stay immutable. This RFC does not reopen RFC 0016, 0023 decision 3 or 0027 §4.3. |
+| 9 | `ASSUMED` | *(2026-10-31, from the review.)* A domain change runs as a journalled `config` operation of three steps: record the installation, render the configuration, re-create the running services. Each of the first two compensates, so a failed render leaves the recorded domains and the files as they were, and `--dry-run` plans the steps without running them. A setting's `Apply` stays validation and an in-memory record. |
 
 ## 12. Phasing
 
