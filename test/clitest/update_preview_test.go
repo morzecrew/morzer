@@ -52,7 +52,8 @@ func TestAPlannedUpdateShowsWhatItRisks(t *testing.T) {
 	compatible := r.BundleAt("1.2.1")
 	rewrite(t, filepath.Join(compatible, "manifest.yaml"), "rollback_safe: true", "rollback_safe: true\n  database_schema_produces: 12")
 	r.Run("update", compatible, "--dry-run").ExitCode(0).
-		OutputContains("`morzer rollback` returns to 1.2.0 without a restore", "images: unchanged").
+		OutputContains("`morzer rollback` returns to 1.2.0 without a restore, as far as the releases declare",
+			"images: unchanged").
 		NoOutputContains("needs a restore")
 
 	// A release that declares no schema is not said to keep it readable.
