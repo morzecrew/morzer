@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -99,22 +100,23 @@ func TestAnInstallationsOwnValuesComplete(t *testing.T) {
 	r.Run("__complete", "backup", "verify", "").ExitCode(0).OutputContains(backup, ":4")
 }
 
-// Services complete from what the runtime lists, as `ps` shows them. A
-// `docker` on PATH answering `compose ps` stands in for the daemon. A scaled
+// fakeDocker puts a `docker` on PATH that runs ps for `compose ps` and does
+// nothing for anything else, standing in for the daemon.
+func fakeDocker(t *testing.T, ps string) {
+	t.Helper()
+	bin := t.TempDir()
+	script := "#!/bin/sh\ncase \" $* \" in *\" ps \"*)\n" + ps + "\n;;\nesac\n"
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// Services complete from what the runtime lists, as `ps` shows them. A scaled
 // service is listed once per instance and offered once.
 func TestServicesCompleteFromWhatTheProjectRuns(t *testing.T) {
 	r := clitest.NewInstalled(t)
-
-	bin := t.TempDir()
-	script := `#!/bin/sh
-case " $* " in *" ps "*)
-	echo '{"Name":"demo-app-1","Service":"app","State":"running"}'
-	echo '{"Name":"demo-app-2","Service":"app","State":"running"}'
-	echo '{"Name":"demo-db-1","Service":"db","State":"exited"}' ;;
-esac
-`
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755))
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	fakeDocker(t, `echo '{"Name":"demo-app-1","Service":"app","State":"running"}'
+echo '{"Name":"demo-app-2","Service":"app","State":"running"}'
+echo '{"Name":"demo-db-1","Service":"db","State":"exited"}'`)
 
 	out := r.Run("__complete", "logs", "").ExitCode(0).
 		OutputContains("app\trunning", "db\texited", ":4")
@@ -125,6 +127,19 @@ esac
 		OutputContains("db\t").NoOutputContains("app\t")
 	r.Run("__complete", "exec", "").ExitCode(0).OutputContains("app\t", "db\t")
 	r.Run("__complete", "exec", "app", "").ExitCode(0).NoOutputContains("app\t", "db\t")
+}
+
+// A daemon that does not answer gives no candidates within seconds, rather
+// than holding the prompt for as long as `compose ps` is allowed.
+func TestServiceCompletionGivesUpOnAStalledDaemon(t *testing.T) {
+	r := clitest.NewInstalled(t)
+	fakeDocker(t, "exec sleep 120")
+
+	start := time.Now()
+	r.Run("__complete", "logs", "").ExitCode(0).OutputContains(":4")
+	if took := time.Since(start); took > 15*time.Second {
+		t.Errorf("completion waited %s for a stalled daemon", took.Round(time.Second))
+	}
 }
 
 // The values come from the installation the line names, which setup could not

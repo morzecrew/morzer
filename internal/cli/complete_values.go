@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -72,9 +73,16 @@ func unnamed(f cobra.CompletionFunc) cobra.CompletionFunc {
 	}
 }
 
+// serviceCompletionTimeout bounds the one completion that asks the Docker
+// daemon, so a stalled daemon costs the prompt seconds rather than the minute
+// `compose ps` is allowed.
+const serviceCompletionTimeout = 3 * time.Second
+
 // services offers what the project runs, as `ps` lists it. A scaled service is
 // listed once per instance and offered once.
 func services(ctx context.Context, d *ops.Deps) ([]cobra.Completion, error) {
+	ctx, cancel := context.WithTimeout(ctx, serviceCompletionTimeout)
+	defer cancel()
 	states, err := ops.ListServices(ctx, d)
 	if err != nil {
 		return nil, err

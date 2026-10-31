@@ -763,8 +763,9 @@ Arguments that name something inside an installation complete from it:
 
 They read the installation the line names, by `--product`, `--config` or
 `MORZER_PRODUCT`, or the only one on the machine. With several and none named,
-nothing is offered. Services ask the Docker daemon, as `ps` does; the rest read
-the state files.
+nothing is offered. Services ask the Docker daemon, as `ps` does, and offer
+nothing if it has not answered within three seconds; the rest read the state
+files.
 
 Under `sudo` the completion runs as you, not as root, and cannot open an
 installation's directory. It then offers the products whose service unit the
