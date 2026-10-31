@@ -3698,7 +3698,9 @@ morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w
 <li><strong>Unknown manifest fields are an error.</strong> A typo must not silently fall back
   to a default. Vendor keys live under <code>extensions.&lt;namespace&gt;</code>.</li>
 <li><strong>Images are pinned by digest.</strong> A bare tag is rejected: an unpinned image
-  makes a release mutable, and a mutable release makes rollback meaningless.</li>
+  makes a release mutable, and a mutable release makes rollback meaningless.
+  A reference with a control or format character is rejected too: commands
+  print it as written.</li>
 <li><strong>Paths are release-relative</strong> and may not escape the root.</li>
 <li><strong>A declared-but-missing hook is a validation error</strong>, and so is a hook
   without the executable bit. Both are knowable before the lock is taken.</li>

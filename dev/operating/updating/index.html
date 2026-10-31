@@ -2559,6 +2559,28 @@ until you clear it explicitly.</p>
 <p>Resolves and verifies the bundle, runs the compatibility gate, and prints the
 step list with a configuration diff — without taking the deployment lock, so you
 can inspect a plan while something else is running.</p>
+<p>After the step list it says what the update risks:</p>
+<ul>
+<li><strong>rollback</strong>: whether <code>morzer rollback</code> could return to the release installed
+  now, once this one is installed, or whether going back would need a restore.
+  It reads the new release's <code>rollback_safe</code>, and compares the schema its
+  <code>database_schema_produces</code> declares with the installed release's
+  <code>database_schema_max</code>. A release declaring <code>rollback_safe: false</code> needs a
+  restore whatever the schema. One declaring <code>true</code> without both schema values
+  is reported with the schema not checked. The answer rests on what the
+  releases declare; <code>morzer rollback</code> itself checks the schema recorded when
+  the release was installed. It also names each parameter the installed
+  release requires and the new one does not declare: the update drops that
+  value, <code>morzer config set</code> takes only parameters the running release
+  declares, and so <code>morzer rollback</code> would refuse.</li>
+<li><strong>images</strong>: each image whose reference changes, is added or is removed.</li>
+<li>The new release's notes, as <code>update --check</code> prints them.</li>
+</ul>
+<p>The rollback and images lines need a release to compare against, so they
+appear only when the update replaces one this manager can read. A first
+install shows the notes alone.</p>
+<p><code>--json</code> carries the same as <code>data.preview</code>: <code>rollback</code>, <code>image_changes</code> and
+<code>release_notes</code>.</p>
 <p>For a reference that has to be fetched, a dry run does fetch: a plan that
 refused to could tell you nothing about the release you asked about. It goes to
 the staging directory and is removed when the command ends.</p>
