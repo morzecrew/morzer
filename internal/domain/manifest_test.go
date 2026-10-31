@@ -50,6 +50,13 @@ func TestImagesMustBePinnedByDigest(t *testing.T) {
 		"no tag at all":   "registry.example/demo/app",
 		"short digest":    "registry.example/demo/app@sha256:abc",
 		"wrong algorithm": "registry.example/demo/app@sha512:" + strings.Repeat("a", 64),
+
+		// A reference reaches the terminal as the bundle wrote it -- the
+		// update preview prints both sides of a change -- so a control
+		// character in one is a command to the terminal, not a name.
+		"escape sequence": "registry.example/demo/app\x1b]52;c;aGk=\x07@sha256:" + strings.Repeat("a", 64),
+		"C1 control":      "registry.example/demo/app\u009b2J@sha256:" + strings.Repeat("a", 64),
+		"bidi override":   "registry.example/demo/\u202eppa@sha256:" + strings.Repeat("a", 64),
 	}
 
 	for name, ref := range cases {

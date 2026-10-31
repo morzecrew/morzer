@@ -56,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all is caught before any service restarts. `--yes` skips it; piped values are
   unchanged.
 
+### Security
+
+- **An image reference with a control character is refused.** Loading a bundle
+  rejects an image `ref` containing a control or format character, such as a
+  terminal escape sequence. Commands print references as the bundle wrote
+  them, so one could otherwise send commands to the operator's terminal.
+
 ## [0.10.0] - 2026-10-30
 
 `morzer release push` publishes a bundle archive to an OCI registry and moves
