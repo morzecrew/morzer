@@ -275,10 +275,15 @@ After the step list it says what the update risks:
   now, once this one is installed, or whether going back would need a restore.
   It reads the new release's `rollback_safe`, and compares the schema its
   `database_schema_produces` declares with the installed release's
-  `database_schema_max`. When either is missing, it says the schema was not
-  checked.
+  `database_schema_max`. A release declaring `rollback_safe: false` needs a
+  restore whatever the schema. One declaring `true` without both schema values
+  is reported with the schema not checked.
 - **images**: each image whose reference changes, is added or is removed.
 - The new release's notes, as `update --check` prints them.
+
+The rollback and images lines need a release to compare against, so they
+appear only when the update replaces one this manager can read. A first
+install shows the notes alone.
 
 `--json` carries the same as `data.preview`: `rollback`, `image_changes` and
 `release_notes`.
