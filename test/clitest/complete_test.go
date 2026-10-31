@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/morzecrew/morzer/test/clitest"
 )
 
@@ -49,4 +51,107 @@ func TestProductOffersNoDirectoryItCannotOpenWithoutAUnit(t *testing.T) {
 	r.Run("__complete", "--product", "").ExitCode(0).
 		OutputContains("demo\t", ":4").
 		NoOutputContains("sandbox")
+}
+
+// What lives inside an installation completes from it: its releases, the
+// names `config` takes, its tasks and its backups, as `release list`, `config
+// list`, `config settings`, `task list` and `backup list` read them. 0 lets the
+// shell fall back to file names, which `release show` takes too; 6 adds
+// NoSpace, so `config set` leaves the cursor after the `=`.
+func TestAnInstallationsOwnValuesComplete(t *testing.T) {
+	r := clitest.New(t)
+	r.Bundle = r.BundleWithATask()
+	r.Run("init",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--no-recovery-recipient",
+		"--install-units=false",
+	).ExitCode(0)
+	r.FetchReleases("1.1.0", "1.3.0")
+	r.Run("backup").ExitCode(0)
+	backup, _ := r.Run("--json", "backup", "list").Field("data.0.id").(string)
+	if backup == "" {
+		t.Fatal("`backup list --json` names no backup")
+	}
+
+	r.Run("__complete", "release", "show", "").ExitCode(0).
+		OutputContains("1.1.0\n", "1.2.0\tinstalled", "1.3.0\n", ":0")
+	r.Run("__complete", "rollback", "--to", "").ExitCode(0).
+		OutputContains("1.1.0\n", ":4").NoOutputContains("1.2.0", "1.3.0")
+	r.Run("__complete", "update", "--to", "").ExitCode(0).
+		OutputContains("1.3.0\n", ":4").NoOutputContains("1.1.0", "1.2.0")
+
+	r.Run("__complete", "config", "get", "").ExitCode(0).
+		OutputContains("http_port\tPort the application", "update.check\t", ":4")
+	r.Run("__complete", "config", "set", "http_port=8080", "").ExitCode(0).
+		OutputContains("log_level=\t", "update.check=\t", ":6").NoOutputContains("http_port")
+	r.Run("__complete", "config", "set", "log_level=").ExitCode(0).
+		OutputContains(":4").NoOutputContains("log_level")
+	r.Run("__complete", "config", "unset", "log_level", "").ExitCode(0).
+		OutputContains("http_port\t").NoOutputContains("log_level")
+
+	r.Run("__complete", "task", "run", "").ExitCode(0).
+		OutputContains("seed\tFill an empty database", ":4")
+	r.Run("__complete", "task", "run", "seed", "").ExitCode(0).
+		NoOutputContains("seed\t")
+
+	r.Run("__complete", "restore", "--backup", "").ExitCode(0).OutputContains(backup, ":4")
+	r.Run("__complete", "backup", "verify", "").ExitCode(0).OutputContains(backup, ":4")
+}
+
+// Services complete from what the runtime lists, as `ps` shows them. A
+// `docker` on PATH answering `compose ps` stands in for the daemon. A scaled
+// service is listed once per instance and offered once.
+func TestServicesCompleteFromWhatTheProjectRuns(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	bin := t.TempDir()
+	script := `#!/bin/sh
+case " $* " in *" ps "*)
+	echo '{"Name":"demo-app-1","Service":"app","State":"running"}'
+	echo '{"Name":"demo-app-2","Service":"app","State":"running"}'
+	echo '{"Name":"demo-db-1","Service":"db","State":"exited"}' ;;
+esac
+`
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out := r.Run("__complete", "logs", "").ExitCode(0).
+		OutputContains("app\trunning", "db\texited", ":4")
+	if n := strings.Count(out.Stdout, "app\t"); n != 1 {
+		t.Errorf("app offered %d times:\n%s", n, out.Stdout)
+	}
+	r.Run("__complete", "logs", "app", "").ExitCode(0).
+		OutputContains("db\t").NoOutputContains("app\t")
+	r.Run("__complete", "exec", "").ExitCode(0).OutputContains("app\t", "db\t")
+	r.Run("__complete", "exec", "app", "").ExitCode(0).NoOutputContains("app\t", "db\t")
+}
+
+// The values come from the installation the line names, which setup could not
+// know: it ran before cobra parsed the line. With two installations and none
+// named, there is nothing to offer.
+func TestValuesCompleteFromTheInstallationTheLineNames(t *testing.T) {
+	r := withTwoInstallations(t)
+	r.Run("--product", "demo", "backup").ExitCode(0)
+	backup, _ := r.Run("--json", "--product", "demo", "backup", "list").Field("data.0.id").(string)
+	if backup == "" {
+		t.Fatal("`backup list --json` names no backup")
+	}
+
+	r.Run("__complete", "restore", "--product", "demo", "--backup", "").ExitCode(0).
+		OutputContains(backup)
+	r.Run("__complete", "restore", "--product", "sandbox", "--backup", "").ExitCode(0).
+		NoOutputContains(backup)
+	r.Run("__complete", "restore", "--backup", "").ExitCode(0).
+		NoOutputContains(backup)
+
+	t.Setenv("MORZER_PRODUCT", "demo")
+	r.Run("__complete", "restore", "--backup", "").ExitCode(0).OutputContains(backup)
+}
+
+func TestShellCompletesTheInstallationsOnTheMachine(t *testing.T) {
+	r := withTwoInstallations(t)
+
+	r.Run("__complete", "shell", "").ExitCode(0).OutputContains("demo\t", "sandbox\t", ":4")
+	r.Run("__complete", "shell", "demo", "").ExitCode(0).NoOutputContains("sandbox")
 }

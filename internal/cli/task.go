@@ -72,7 +72,8 @@ func newTaskRunCommand(app *App) *cobra.Command {
 			"  morzer task run seed -- --size s\n" +
 			"  morzer task run restore --input snapshot=./catalog.jsonl\n" +
 			"  morzer task run report --output > report.txt",
-		Args: cobra.MinimumNArgs(1),
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: onlyFirst(app.completeValues(tasks)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The task's arguments only after the terminator, for the
 			// reason exec gives: without one, `morzer task run seed

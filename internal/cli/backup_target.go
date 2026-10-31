@@ -126,7 +126,8 @@ func newBackupPushCommand(app *App) *cobra.Command {
 			"this machine, verified and correct -- what failed was the network or the\n" +
 			"medium, and the remedy should not be taking another backup.\n\n" +
 			"The backup is verified again before it is copied.",
-		Args: cobra.MaximumNArgs(1),
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: onlyFirst(app.completeValues(backups)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := app.attachBackupEngine(cmd.Context()); err != nil {
 				return err

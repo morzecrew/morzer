@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`--product` completes the installations on the machine.** Tab offers the
-  names `morzer ls` lists, with each one's release in zsh and fish. Under
-  `sudo`, which runs completion as you, it reads the manager's world-readable
-  service units instead.
+- **Tab completes products, services, tasks, releases, config names and
+  backups.** `--product` and `morzer shell` offer what `morzer ls` lists.
+  `logs`, `exec`, `task run`, `release show`, `--to`, `config` and `restore
+  --backup` offer what the installation holds. Under `sudo`, only products
+  complete.
 
 - **Help shows examples and links the documentation.** `init`, `update`,
   `rollback`, `restore` and `release verify` gain examples, and each command

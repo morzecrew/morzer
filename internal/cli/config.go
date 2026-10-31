@@ -62,7 +62,8 @@ func newConfigGetCommand(app *App) *cobra.Command {
 		Short: "Print one parameter's effective value",
 		Long: "Prints the value alone, so it can be used directly:\n\n" +
 			"    port=$(morzer config get http_port)",
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: onlyFirst(app.completeValues(configNames(""))),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The same dispatch `set` makes, and for the same reason:
 			// a dotted name is never a parameter, so reporting it as
@@ -116,7 +117,8 @@ func newConfigSetCommand(app *App) *cobra.Command {
 		Example: "  morzer config set http_port=8443\n" +
 			"  morzer config set site_name=\"Demo Corp\" locale=en_GB\n" +
 			"  morzer config set update.check=true            # an installation setting",
-		Args: cobra.MinimumNArgs(1),
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: unnamed(app.completeConfigAssignments),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			set, err := domain.ParseAssignments(args)
 			if err != nil {
@@ -163,7 +165,8 @@ func newConfigUnsetCommand(app *App) *cobra.Command {
 			"`config list` reports those as stale.\n\n" +
 			"Unsetting an installation setting returns it to its absent state, which\n" +
 			"is always the conservative one: nothing here defaults to on.",
-		Args: cobra.MinimumNArgs(1),
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: unnamed(app.completeValues(configNames(""))),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var settings, parameters []string
 			for _, name := range args {

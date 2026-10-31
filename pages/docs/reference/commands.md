@@ -745,14 +745,32 @@ this: its location is a profile script this program has no business editing.
 
 ### What completes
 
-Commands and flags complete everywhere. `--product` also completes the names
-`morzer ls` lists, read from the state files alone, with no Docker call, no
-lock and no network. zsh and fish show each one's release beside it, or that
-its state does not load.
+Commands and flags complete everywhere. `--product` and `morzer shell` also
+complete the names `morzer ls` lists, read from the state files alone, with no
+Docker call, no lock and no network. zsh and fish show each one's release beside
+it, or that its state does not load.
+
+Arguments that name something inside an installation complete from it:
+
+| Argument | Offers |
+|---|---|
+| `logs`, `exec` | the services `ps` lists, with their state |
+| `task run` | the tasks `task list` shows |
+| `release show` | the versions in the release store, then file names |
+| `update --to`, `rollback --to` | the stored versions newer, or older, than the installed one |
+| `config get`, `config set`, `config unset` | the parameter and setting names, as `name=` for `set` |
+| `restore --backup`, `backup verify`, `backup target push` | this machine's backups, newest first |
+
+They read the installation the line names, by `--product`, `--config` or
+`MORZER_PRODUCT`, or the only one on the machine. With several and none named,
+nothing is offered. Services ask the Docker daemon, as `ps` does; the rest read
+the state files.
 
 Under `sudo` the completion runs as you, not as root, and cannot open an
 installation's directory. It then offers the products whose service unit the
 manager wrote in `/etc/systemd/system`, which is world-readable, described as
 not readable as this user. An installation created with
 `--install-units=false` has no unit and is not offered then; run the
-completion in a root shell to see it.
+completion in a root shell to see it. The arguments in the table offer nothing
+under `sudo`, since they need the installation itself: `sudo morzer shell
+<product>` gives a root shell where they complete.
