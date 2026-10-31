@@ -10,9 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`update --dry-run` says what the update risks.** After the plan it says
-  whether `morzer rollback` could return to the installed release afterwards
-  or a restore would be needed, which images change, and the release notes.
-  `--json` carries them as `data.preview`.
+  whether `morzer rollback` could return to the installed release afterwards,
+  or a restore or a parameter the update drops would stop it, which images
+  change, and the release notes. `--json` carries them as `data.preview`.
 
 - **Tab completes products, services, tasks, releases, config names and
   backups.** `--product` and `morzer shell` offer what `morzer ls` lists.

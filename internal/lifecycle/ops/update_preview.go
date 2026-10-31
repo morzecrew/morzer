@@ -36,6 +36,12 @@ type UpdateRollback struct {
 	// highest the installed one reads. Without both, SchemaCompatible is
 	// not a finding.
 	SchemaChecked bool `json:"schema_checked"`
+
+	// DroppedParameters are the parameters the installed release requires
+	// and the new one does not declare. The update retires their values,
+	// `config set` takes no name the new release does not declare, and so
+	// rollback's preflight refuses.
+	DroppedParameters []string `json:"dropped_parameters,omitempty"`
 }
 
 // ImageChange is one image the update moves. From is empty for an image the
@@ -48,7 +54,7 @@ type ImageChange struct {
 
 // previewUpdate reads the new release where it is now: a plan stages nothing,
 // so the copy the store would hold is not there to read the notes from.
-func previewUpdate(fallback *fallbackRelease, running, next domain.Release) UpdatePreview {
+func previewUpdate(fallback *fallbackRelease, inst domain.Installation, running, next domain.Release) UpdatePreview {
 	out := UpdatePreview{Notes: release.Notes(next)}
 	if fallback == nil || !fallback.Known {
 		return out
@@ -60,6 +66,9 @@ func previewUpdate(fallback *fallbackRelease, running, next domain.Release) Upda
 		To:                 fallback.Version.String(),
 		SchemaChecked:      target.DatabaseSchemaProduces > 0 && fallback.Compatibility.DatabaseSchemaMax > 0,
 	}
+	// What rollback's preflight will read: the values the update leaves.
+	kept := withoutParameters(inst, domain.Parameters(inst.Parameters).ValidateAgainst(next.Manifest.Parameters))
+	out.Rollback.DroppedParameters = domain.MissingRequired(running.Manifest.Parameters, kept.Parameters)
 
 	before, after := running.Manifest.Images, next.Manifest.Images
 	for name, img := range after {

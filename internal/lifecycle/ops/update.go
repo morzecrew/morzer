@@ -183,7 +183,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		"root":   staged.Root,
 	}
 	if opts.DryRun {
-		data["preview"] = previewUpdate(fallback, running, source)
+		data["preview"] = previewUpdate(fallback, inst, running, source)
 	}
 	out := Result{
 		Record:  result.Record,

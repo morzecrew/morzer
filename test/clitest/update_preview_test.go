@@ -62,6 +62,29 @@ func TestAPlannedUpdateShowsWhatItRisks(t *testing.T) {
 		NoOutputContains("without a restore")
 }
 
+// An update that drops a parameter the installed release requires leaves a
+// rollback the releases' declarations permit and preflight refuses: the update
+// retires the value, and `config set` takes no name the new release does not
+// declare. The preview says so rather than promising the way back.
+func TestAPlannedUpdateSaysWhichDroppedParameterBlocksARollback(t *testing.T) {
+	r := clitest.New(t)
+	const declared = "  admin_email:\n    type: string\n    required: true\n    services: [app]\n"
+	rewrite(t, filepath.Join(r.Bundle, "manifest.yaml"), "parameters:\n", "parameters:\n"+declared)
+	r.Run("init", "--release", r.Bundle, "--profile", "embedded", "--domain", "demo.example",
+		"--no-recovery-recipient", "--install-units=false", "--set", "admin_email=ops@demo.example").ExitCode(0)
+
+	next := r.BundleAt("1.2.1")
+	rewrite(t, filepath.Join(next, "manifest.yaml"), declared, "")
+	rewrite(t, filepath.Join(next, "manifest.yaml"), "rollback_safe: true", "rollback_safe: true\n  database_schema_produces: 12")
+	r.Run("update", next, "--dry-run").ExitCode(0).
+		OutputContains("rollback: once 1.2.1 is installed, `morzer rollback` cannot return to 1.2.0: " +
+			"the update drops admin_email, which 1.2.0 requires and 1.2.1 does not declare").
+		NoOutputContains("without a restore")
+	r.Run("update", next, "--dry-run", "--json").ExitCode(0).
+		FieldLen("data.preview.rollback.dropped_parameters", 1).
+		FieldEquals("data.preview.rollback.dropped_parameters.0", "admin_email")
+}
+
 func rewrite(t *testing.T, path, old, replacement string) {
 	t.Helper()
 	data, err := os.ReadFile(path)

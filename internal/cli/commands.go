@@ -571,6 +571,10 @@ func (a *App) printUpdatePreview(result ops.Result) {
 		switch {
 		case rb.RestoreRequired:
 			fmt.Fprintf(w, "\nrollback: once %s is installed, going back to %s needs a restore: %s\n", to, rb.To, rb.Reason)
+		case len(rb.DroppedParameters) > 0:
+			fmt.Fprintf(w, "\nrollback: once %s is installed, `morzer rollback` cannot return to %s: "+
+				"the update drops %s, which %s requires and %s does not declare\n",
+				to, rb.To, strings.Join(rb.DroppedParameters, ", "), rb.To, to)
 		case rb.SchemaChecked:
 			fmt.Fprintf(w, "\nrollback: once %s is installed, `morzer rollback` returns to %s without a restore, "+
 				"as far as the releases declare\n", to, rb.To)

@@ -279,7 +279,10 @@ After the step list it says what the update risks:
   restore whatever the schema. One declaring `true` without both schema values
   is reported with the schema not checked. The answer rests on what the
   releases declare; `morzer rollback` itself checks the schema recorded when
-  the release was installed.
+  the release was installed. It also names each parameter the installed
+  release requires and the new one does not declare: the update drops that
+  value, `morzer config set` takes only parameters the running release
+  declares, and so `morzer rollback` would refuse.
 - **images**: each image whose reference changes, is added or is removed.
 - The new release's notes, as `update --check` prints them.
 
