@@ -77,9 +77,13 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// baseline is already recorded: it is recorded as unknown, which the
 	// migrate step treats as unable to read anything.
 	baseline := inst.RuntimeOptions
-	var fallback *fallbackRelease
+	var (
+		fallback *fallbackRelease
+		running  domain.Release
+	)
 	if !from.IsZero() {
-		running, relErr := d.resolveCurrentRelease(ctx, from)
+		var relErr error
+		running, relErr = d.resolveCurrentRelease(ctx, from)
 		if relErr != nil && baseline == nil {
 			return Result{}, relErr
 		}
@@ -172,15 +176,19 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		return err
 	})
 
+	data := map[string]any{
+		"from":   from.Version.String(),
+		"to":     staged.Version().String(),
+		"digest": staged.Digest,
+		"root":   staged.Root,
+	}
+	if opts.DryRun {
+		data["preview"] = previewUpdate(fallback, running, source)
+	}
 	out := Result{
 		Record:  result.Record,
 		Summary: updateSummary(result.Record, from, staged, opts.DryRun),
-		Data: map[string]any{
-			"from":   from.Version.String(),
-			"to":     staged.Version().String(),
-			"digest": staged.Digest,
-			"root":   staged.Root,
-		},
+		Data:    data,
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeUpdate, result.Record, runErr)
 
