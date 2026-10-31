@@ -358,6 +358,31 @@ These checks **fail** rather than warn:
 | `runtime.declared` | The runtime this installation is fixed to, and whether this manager drives it. Ok reports the name. It fails when they differ — a state file that arrived from a machine running something else, by import or by hand — and that failure is the one with no fix on this machine: the runtime is chosen when the installation is created and never transitions, so the way out is a manager built for it, or a fresh `init` and a `restore`. On a machine with no installation yet, `doctor` instead checks the tools that runtime needs, which is what `init` will want next. |
 | `runtime.services` | Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. While the product is [stopped](#stop) with `morzer stop`, it reports the stop as information, however old, and `runtime.health` does not probe. |
 
+## history
+
+Lists the operations the installation ran, newest first: every `apply`,
+`update`, `rollback`, `backup`, `restore`, `task run` and the rest, with its
+status, when it started, what it did to the installed release and how long it
+took. A dry run is listed as one. It reads the operation journal and nothing
+else, so it answers when the Docker daemon is down, and it takes no lock.
+
+| Flag | Meaning |
+| --- | --- |
+| `--limit` | List at most this many operations. Default `20`; `0` lists them all. |
+
+`morzer history <operation-id>` shows one operation: its steps with their
+status and duration, the flags it ran with, and its error with the hint. The id
+is the one `status` names as the last operation, and Tab completes it.
+
+`--json` carries the journal's own records, as `operations` with `total`, the
+number of operations in the journal, or as the one record when an id is given:
+
+```bash
+morzer history --limit 0 --json | jq -r '.data.operations[] | select(.status != "succeeded") | .id'
+```
+
+An id the journal does not hold exits [2](exit-codes.md).
+
 ## logs
 
 Streams the deployment's logs, resolving the Compose project, its files and its
@@ -760,6 +785,7 @@ Arguments that name something inside an installation complete from it:
 | `update --to`, `rollback --to` | the stored versions newer, or older, than the installed one |
 | `config get`, `config set`, `config unset` | the parameter and setting names, as `name=` for `set`; `unset` adds the stale values `config list` reports |
 | `restore --backup`, `backup verify`, `backup target push` | this machine's backups, newest first |
+| `history` | the operations in the journal, newest first, with their type and status |
 
 They read the installation the line names, by `--product`, `--config` or
 `MORZER_PRODUCT`, or the only one on the machine. With several and none named,

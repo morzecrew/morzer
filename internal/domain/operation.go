@@ -174,7 +174,9 @@ func (r OperationRecord) DurationAt(now time.Time) time.Duration {
 	if end.IsZero() {
 		end = now
 	}
-	return end.Sub(r.StartedAt.Time)
+	// A clock stepped back mid-operation ends it before it began; that is
+	// no measurement, and a negative one reads as nonsense in every view.
+	return max(end.Sub(r.StartedAt.Time), 0)
 }
 
 // FirstIncompleteStep returns the index of the step --resume should continue

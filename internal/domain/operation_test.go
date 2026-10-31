@@ -61,4 +61,13 @@ func TestDurationIsArithmeticRatherThanAClockRead(t *testing.T) {
 	// A record that never started has no duration rather than one measured
 	// from the zero time, which would read as fifty-five years.
 	assert.Zero(t, OperationRecord{}.DurationAt(start))
+
+	// A clock stepped back mid-operation, by NTP or by hand, finishes it
+	// before it started. That is no duration, not a negative one.
+	skewed := OperationRecord{
+		StartedAt:  NewTime(start),
+		FinishedAt: NewTime(start.Add(-3 * time.Second)),
+	}
+	assert.Zero(t, skewed.DurationAt(start))
+	assert.Zero(t, OperationRecord{StartedAt: NewTime(start)}.DurationAt(start.Add(-time.Second)))
 }
