@@ -196,24 +196,7 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 	// It moves no version, so it carries no from_version and joins no
 	// chain -- exactly like `apply`, and for the same reason.
 	if !opts.DryRun {
-		// The record is read for one field -- the scheme the installed
-		// release came from -- and a failure to read it must not cost
-		// the statement.
-		//
-		// It used to: the error was swallowed and nothing was filed,
-		// which meant a state-read blip turned one of the five
-		// operations RFC 0025 requires a record for into a silent gap.
-		// A statement whose source_scheme is absent is a smaller loss
-		// than no statement at all, and the operator is told which.
-		current, err := d.State.CurrentRelease(ctx)
-		if err != nil {
-			d.warnf("attesting the configuration change without the release record: %s",
-				domain.AsError(err).Message)
-			current = domain.ReleaseRecord{}
-		}
-		emitAttestation(ctx, d, result.Record,
-			attestationInputs(attestedParameters(ctx, d, inst), rel, current,
-				domain.Version{}, renderedConfigFor(result.State)))
+		attestConfig(ctx, d, result.Record, inst, rel, result.State)
 	}
 
 	if runErr != nil {
@@ -221,6 +204,32 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 	}
 
 	return out, nil
+}
+
+// attestConfig files the statement for a `config` operation that rendered the
+// configuration: a parameter change, or a domain change (RFC 0042).
+func attestConfig(
+	ctx context.Context, d *Deps, rec domain.OperationRecord,
+	before domain.Installation, rel domain.Release, st *engine.State,
+) {
+	// The record is read for one field -- the scheme the installed
+	// release came from -- and a failure to read it must not cost
+	// the statement.
+	//
+	// It used to: the error was swallowed and nothing was filed,
+	// which meant a state-read blip turned one of the five
+	// operations RFC 0025 requires a record for into a silent gap.
+	// A statement whose source_scheme is absent is a smaller loss
+	// than no statement at all, and the operator is told which.
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil {
+		d.warnf("attesting the configuration change without the release record: %s",
+			domain.AsError(err).Message)
+		current = domain.ReleaseRecord{}
+	}
+	emitAttestation(ctx, d, rec,
+		attestationInputs(attestedParameters(ctx, d, before), rel, current,
+			domain.Version{}, renderedConfigFor(st)))
 }
 
 // attestedParameters is the parameter set as it actually stands now.
@@ -349,9 +358,17 @@ func configSteps(
 	// declared services needs a full `apply`, which the summary says out
 	// loud rather than guessing at.
 	if services := affectedServices(rel, changed); len(services) > 0 && running {
-		steps = append(steps, stepRecreateServices(d, updated, rel, services))
+		steps = append(steps, stepRecreateServices(d, updated, rel, services, false))
 	}
 	return steps
+}
+
+// stepRecordSettings is stepRecordParameters for a setting change, named for
+// what it records.
+func stepRecordSettings(d *Deps, previous, updated domain.Installation) engine.Step {
+	step := stepRecordParameters(d, previous, updated)
+	step.ID, step.Description = "record-settings", "record settings"
+	return step
 }
 
 // stepRecordParameters writes the new set, and puts the old one back if a
@@ -383,8 +400,11 @@ func stepRecordParameters(d *Deps, previous, updated domain.Installation) engine
 // container as a mounted file and restarting re-reads it. A parameter reaches
 // it as part of the container's definition, so the container has to be
 // replaced.
+//
+// force replaces a container whose definition did not change, for a value a
+// service reads from a rendered file rather than from its definition.
 func stepRecreateServices(
-	d *Deps, inst domain.Installation, rel domain.Release, services []string,
+	d *Deps, inst domain.Installation, rel domain.Release, services []string, force bool,
 ) engine.Step {
 	return engine.Step{
 		ID:          "recreate-services",
@@ -393,7 +413,7 @@ func stepRecreateServices(
 		OnFailure:   engine.Compensate,
 		Timeout:     10 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			return d.recreate(ctx, inst, rel, services)
+			return d.recreate(ctx, inst, rel, services, force)
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			// The previous step has already restored the old
@@ -403,20 +423,20 @@ func stepRecreateServices(
 			if err != nil {
 				return err
 			}
-			return d.recreate(ctx, prior, rel, services)
+			return d.recreate(ctx, prior, rel, services, force)
 		},
 	}
 }
 
 func (d *Deps) recreate(
-	ctx context.Context, inst domain.Installation, rel domain.Release, services []string,
+	ctx context.Context, inst domain.Installation, rel domain.Release, services []string, force bool,
 ) error {
 	cfg, err := d.runtimeConfig(rel, inst, "")
 	if err != nil {
 		return err
 	}
 	return d.Runtime.Up(ctx, cfg, ports.UpOptions{
-		Services: services, Wait: true, WaitTimeout: 5 * time.Minute,
+		Services: services, Wait: true, WaitTimeout: 5 * time.Minute, ForceRecreate: force,
 	})
 }
 
