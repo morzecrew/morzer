@@ -1,7 +1,7 @@
 # RFC 0044 — Configuration drift an operator can see
 
-- **Status:** 📝 Draft — proposed, with its user-facing decisions `OPEN` for the
-  author to rule
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-31: §11's
+  `OPEN` rows as recommended. P1 is ready to build
 - **Scope:** Where the files on disk differ from what the installed release
   renders from the recorded parameters, shown on the machine: a command that
   prints the differences, and a `doctor` check that warns about them. P2 adds
@@ -231,17 +231,17 @@ for `update --profile` renders the profile it was asked for.
 
 ## 10. Unresolved questions
 
-The `OPEN` rows in §11 are for the author. Nothing else blocks P1.
+None. The author ruled §11's `OPEN` rows 2026-10-31.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
 | 1 | `ASSUMED` | Drift is a configuration target whose bytes on disk differ from what the installed release renders from the recorded parameters, and it is computed only by `configComparison`. An absent target is drift; an unreadable one is reported apart and never counted. |
-| 2 | `OPEN` | **Where the view lives.** Recommended: `morzer config diff`, beside the commands that change what is rendered. Alternative: `status --drift`, which puts it next to the question "is it up" but makes `status` render templates when asked. |
-| 3 | `OPEN` | **How `doctor` reports drift.** Recommended: `config.drift` warns, as `secrets.rotation` does, because a hand edit can be deliberate and a failing exit code over one trains people to ignore it. Alternative: it fails, exit 3, so monitoring that watches the exit code pages on it. |
-| 4 | `OPEN` | **Whether drift holds an unattended update.** Recommended: yes, as a stopped product does (RFC 0040 decision 9): the release stays staged with the reason. A hand edit replaced with nobody watching cannot be recovered, and a staged release can be installed later. Alternative: no; the scheduled `doctor` warns, and the update replaces the file as now. |
-| 5 | `OPEN` | **Whether P2 belongs here.** Recommended: yes, as P2: services whose definition hash differs are the same question one layer down, and an operator reading `config diff` before `apply` wants both. Alternative: out of scope until someone asks. |
+| 2 | `ASSUMED` | **Where the view lives.** Recommended: `morzer config diff`, beside the commands that change what is rendered. Alternative: `status --drift`, which puts it next to the question "is it up" but makes `status` render templates when asked. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
+| 3 | `ASSUMED` | **How `doctor` reports drift.** Recommended: `config.drift` warns, as `secrets.rotation` does, because a hand edit can be deliberate and a failing exit code over one trains people to ignore it. Alternative: it fails, exit 3, so monitoring that watches the exit code pages on it. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
+| 4 | `LOCKED` | **Whether drift holds an unattended update.** Recommended: yes, as a stopped product does (RFC 0040 decision 9): the release stays staged with the reason. A hand edit replaced with nobody watching cannot be recovered, and a staged release can be installed later. Alternative: no; the scheduled `doctor` warns, and the update replaces the file as now. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
+| 5 | `ASSUMED` | **Whether P2 belongs here.** Recommended: yes, as P2: services whose definition hash differs are the same question one layer down, and an operator reading `config diff` before `apply` wants both. Alternative: out of scope until someone asks. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 6 | `ASSUMED` | `config diff` exits 0 whether or not files differ. Exit codes in this project mean failure; `doctor` is where a finding becomes one. |
 | 7 | `ASSUMED` | Read-only and lock-free, like `apply --dry-run` and `config list`. |
 | 8 | `ASSUMED` | `apply --dry-run`'s plan detail is computed by `configComparison` too, so no second comparison remains. It takes the profile to render with, empty for the installed one. |
@@ -249,6 +249,6 @@ The `OPEN` rows in §11 are for the author. Nothing else blocks P1.
 
 ## 12. Phasing
 
-- **P1**: §5.1, §5.2, §5.5, and §5.3 if decision 4 is yes. One PR.
-- **P2**: §5.4, if decision 5 is yes. One PR.
+- **P1**: §5.1, §5.2, §5.3 and §5.5. One PR.
+- **P2**: §5.4. One PR.
 - Nothing is demand-gated.
