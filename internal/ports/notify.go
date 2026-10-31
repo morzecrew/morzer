@@ -25,6 +25,22 @@ type Notifier interface {
 	Notify(ctx context.Context, ev events.Event) error
 }
 
+// DeliveryError is one target's failure to take an event (RFC 0043 decision
+// 10).
+//
+// Resendable says whether sending the same event again could succeed: a target
+// that was down, or one whose credential or URL can still be fixed. A target
+// that refused the content itself is final. Read with errors.As, never from the
+// message, which is written for an operator.
+type DeliveryError struct {
+	Target     string
+	Resendable bool
+	Err        error
+}
+
+func (e *DeliveryError) Error() string { return e.Err.Error() }
+func (e *DeliveryError) Unwrap() error { return e.Err }
+
 // Notifiers fans out to several notifiers and joins their failures. It exists
 // so the lifecycle layer holds one Notifier regardless of how many are
 // configured.

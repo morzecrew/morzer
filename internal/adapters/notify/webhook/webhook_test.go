@@ -43,7 +43,7 @@ func TestADownEndpointDoesNotFailTheOperation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	n, err := webhook.New(webhook.Options{URL: srv.URL, Client: srv.Client()})
+	n, err := webhook.New(webhook.Options{URL: srv.URL, Client: srv.Client(), RetryAfter: time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
