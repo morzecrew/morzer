@@ -36,15 +36,17 @@ const (
 	// PredicateType versions morzer's deployment predicate by URI, which is
 	// how a consumer knows which fields to expect.
 	//
-	// v2 adds verification.signature_verified_when_staged. The v1 schema
-	// refuses any field it does not name, so a v2 document claiming to be
-	// v1 would fail the schema an auditor validates it with (RFC 0025
-	// decision 1).
-	PredicateType = "https://morzecrew.github.io/morzer/attestation/v2"
+	// v2 added verification.signature_verified_when_staged, and v3 adds
+	// `inputs`, the files an operator passed to a task (RFC 0041 decision
+	// 12). Each schema refuses any field it does not name, so a v3 document
+	// claiming to be v2 would fail the schema an auditor validates it with
+	// (RFC 0025 decision 1).
+	PredicateType = "https://morzecrew.github.io/morzer/attestation/v3"
 
-	// PredicateTypeV1 is what statements written before v2 carry. Still
-	// read: v2 only adds a field, so a v1 document is a v2 document
-	// without it.
+	// PredicateTypeV2 and PredicateTypeV1 are what statements written before
+	// v3 carry. Still read: each version only adds a field, so an older
+	// document is a v3 document without it.
+	PredicateTypeV2 = "https://morzecrew.github.io/morzer/attestation/v2"
 	PredicateTypeV1 = "https://morzecrew.github.io/morzer/attestation/v1"
 
 	// AttestationBound is what a signature over this document proves, and
@@ -62,9 +64,9 @@ const (
 )
 
 // ReadablePredicateType reports whether this manager reads statements of the
-// given predicate type: the current one, and the v1 it extends.
+// given predicate type: the current one, and the v2 and v1 it extends.
 func ReadablePredicateType(t string) bool {
-	return t == PredicateType || t == PredicateTypeV1
+	return t == PredicateType || t == PredicateTypeV2 || t == PredicateTypeV1
 }
 
 // Statement is the in-toto envelope.
@@ -98,6 +100,18 @@ type Predicate struct {
 	Images       []AttestedImage      `json:"images,omitempty"`
 	Config       AttestedConfig       `json:"config"`
 	Steps        []AttestedStep       `json:"steps,omitempty"`
+
+	// Inputs are the files an operator passed to a task, by name, size and
+	// digest: an input changes the deployment's data, and this is what an
+	// auditor reads. Never content, never the host path.
+	Inputs []AttestedInput `json:"inputs,omitempty"`
+}
+
+// AttestedInput is one file a task was given (RFC 0041).
+type AttestedInput struct {
+	Name   string `json:"name"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
 }
 
 type AttestedOperation struct {
@@ -240,6 +254,7 @@ type AttestationInputs struct {
 	SubjectName  string
 	Verification AttestedVerification
 	Images       []AttestedImage
+	Inputs       []AttestedInput
 
 	// RenderedConfig is the bytes the digest is taken over. Never stored,
 	// never echoed.
@@ -297,7 +312,8 @@ func Attest(rec OperationRecord, in AttestationInputs) Statement {
 				ParameterNames: parameterNames(in.Installation.Parameters),
 				RenderedDigest: SaltedConfigDigest(in.Installation.AttestationSalt, in.RenderedConfig),
 			},
-			Steps: steps,
+			Steps:  steps,
+			Inputs: append([]AttestedInput(nil), in.Inputs...),
 		},
 	}
 }

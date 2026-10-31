@@ -46,7 +46,10 @@ func newTaskListCommand(app *App) *cobra.Command {
 }
 
 func newTaskRunCommand(app *App) *cobra.Command {
-	var output bool
+	var (
+		output bool
+		inputs []string
+	)
 	cmd := &cobra.Command{
 		Use:   "run <task> [-- args...]",
 		Short: "Run a task the installed release declares",
@@ -56,6 +59,9 @@ func newTaskRunCommand(app *App) *cobra.Command {
 			"task runs whether or not the deployment is up.\n\n" +
 			"Arguments go after `--`, and only to a task whose release declares\n" +
 			"`args: true` for it.\n\n" +
+			"A task that declares inputs is given each as --input <name>=<path>.\n" +
+			"The file is copied for the run, mounted read-only into the task's\n" +
+			"container, and removed when the run ends.\n\n" +
 			"The task's output is printed only when asked: --output prints it when\n" +
 			"the task finishes, its own stdout on stdout, and --verbose shows it as\n" +
 			"it arrives. A task that fails shows the last lines of its stderr. The\n" +
@@ -64,6 +70,7 @@ func newTaskRunCommand(app *App) *cobra.Command {
 		Example: "  morzer task list\n" +
 			"  morzer task run reindex\n" +
 			"  morzer task run seed -- --size s\n" +
+			"  morzer task run restore --input snapshot=./catalog.jsonl\n" +
 			"  morzer task run report --output > report.txt",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -80,9 +87,13 @@ func newTaskRunCommand(app *App) *cobra.Command {
 					WithHint("morzer task list names the tasks this release declares")
 			}
 
-			opts := ops.TaskOptions{Options: app.operationOptions(), Name: args[0], Args: args[1:]}
+			given, err := parseTaskInputs(inputs)
+			if err != nil {
+				return err
+			}
+			opts := ops.TaskOptions{Options: app.operationOptions(), Name: args[0], Args: args[1:], Inputs: given}
 			var run ops.TaskRun
-			err := app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+			err = app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				res, err := ops.RunTask(ctx, app.Deps, opts)
 				run, _ = res.Data.(ops.TaskRun)
 				return res, err
@@ -92,7 +103,31 @@ func newTaskRunCommand(app *App) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&output, "output", false,
 		"print the task's stdout and stderr when it finishes")
+	cmd.Flags().StringArrayVar(&inputs, "input", nil,
+		"a file the task declares as an input, as name=path; repeat for each")
 	return cmd
+}
+
+// parseTaskInputs reads each --input as name=path. A name given twice is
+// refused rather than resolved, since an operator who typed it twice meant one
+// of the two.
+func parseTaskInputs(values []string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(values))
+	for _, v := range values {
+		name, path, ok := strings.Cut(v, "=")
+		if !ok || name == "" || path == "" {
+			return nil, domain.Usage("--input %q is not name=path", v).
+				WithHint("morzer task list names each task's inputs")
+		}
+		if _, dup := out[name]; dup {
+			return nil, domain.Usage("--input %s is given twice", name)
+		}
+		out[name] = path
+	}
+	return out, nil
 }
 
 // taskFailureTailLines is how much of a failed task's stderr is shown unasked:

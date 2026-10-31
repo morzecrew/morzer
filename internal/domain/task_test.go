@@ -82,3 +82,80 @@ func TestTaskNamesAreSorted(t *testing.T) {
 	m := Manifest{Tasks: map[string]TaskSpec{"seed": {}, "reindex": {}, "audit": {}}}
 	assert.Equal(t, []string{"audit", "reindex", "seed"}, m.TaskNames())
 }
+
+// A task with inputs, at the manager version that reads them (RFC 0041).
+func manifestWithInputs(task TaskSpec) Manifest {
+	m := manifestWithTask(task)
+	m.Compatibility.MinManagerVersion = MustParseVersion(TaskInputsMinManagerVersion)
+	return m
+}
+
+func TestAWellFormedTaskInputValidates(t *testing.T) {
+	m := manifestWithInputs(TaskSpec{
+		Service: "worker",
+		Command: []string{"restore", "{inputs.snapshot}", "--meta={inputs.meta_file}"},
+		Inputs: map[string]TaskInput{
+			"snapshot":  {Description: "Catalogue snapshot (JSONL)", MaxSize: 2 * GiB},
+			"meta_file": {},
+		},
+	})
+	require.NoError(t, m.Validate())
+}
+
+func TestAMalformedTaskInputIsRefusedByField(t *testing.T) {
+	cases := map[string]struct {
+		task TaskSpec
+		want string
+	}{
+		"upper-case name": {TaskSpec{Service: "w", Command: []string{"x"},
+			Inputs: map[string]TaskInput{"Snap": {}}}, "tasks.seed.inputs.Snap: is not a valid input name"},
+		"dashed name": {TaskSpec{Service: "w", Command: []string{"x"},
+			Inputs: map[string]TaskInput{"snap-shot": {}}}, "tasks.seed.inputs.snap-shot: is not a valid input name"},
+		"multi-line description": {TaskSpec{Service: "w", Command: []string{"x"},
+			Inputs: map[string]TaskInput{"snap": {Description: "a\nb"}}}, "tasks.seed.inputs.snap.description"},
+		"negative size": {TaskSpec{Service: "w", Command: []string{"x"},
+			Inputs: map[string]TaskInput{"snap": {MaxSize: -1}}}, "tasks.seed.inputs.snap.max_size: must be positive"},
+		"undeclared placeholder": {TaskSpec{Service: "w", Command: []string{"x", "{inputs.snap}"}},
+			"names {inputs.snap}, which the task does not declare"},
+		"unterminated placeholder": {TaskSpec{Service: "w", Command: []string{"x", "{inputs.snap"},
+			Inputs: map[string]TaskInput{"snap": {}}}, "has an unterminated {inputs.<name>}"},
+	}
+	for label, tc := range cases {
+		t.Run(label, func(t *testing.T) {
+			m := manifestWithInputs(tc.task)
+			err := m.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestTaskInputsNeedTheManagerThatReadsThem(t *testing.T) {
+	m := manifestWithTask(TaskSpec{Service: "w", Command: []string{"x"},
+		Inputs: map[string]TaskInput{"snap": {}}})
+
+	err := m.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be at least "+TaskInputsMinManagerVersion+
+		", because a task declares inputs")
+}
+
+// The placeholder is replaced inside an argument as well as as one, and the
+// variable names the same path.
+func TestThePlaceholderAndTheVariableNameTheSamePath(t *testing.T) {
+	task := TaskSpec{Command: []string{"restore", "{inputs.snapshot}", "--meta={inputs.meta_file}", "plain"}}
+	assert.Equal(t,
+		[]string{"restore", "/morzer/inputs/snapshot", "--meta=/morzer/inputs/meta_file", "plain"},
+		task.CommandWithInputs())
+	assert.Equal(t, "MORZER_INPUT_META_FILE", TaskInputEnv("meta_file"))
+	assert.Equal(t, []string{"restore"}, TaskSpec{Command: []string{"restore"}}.CommandWithInputs())
+}
+
+// `inputs: {}` is a field an older manager's strict decoding refuses as
+// unknown, so it needs the floor as much as a populated map does.
+func TestAnEmptyInputsMapStillNeedsTheManagerThatReadsIt(t *testing.T) {
+	m := manifestWithTask(TaskSpec{Service: "w", Command: []string{"x"}, Inputs: map[string]TaskInput{}})
+	err := m.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "because a task declares inputs")
+}

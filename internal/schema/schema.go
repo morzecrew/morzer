@@ -46,11 +46,13 @@ const (
 	// predicateType URI inside it, and it can move independently of the
 	// manifest surface. Coupling its filename to `v1alpha1` would promise a
 	// lockstep that does not exist.
-	AttestationSchemaFile = "morzer-attestation-v2.json"
+	AttestationSchemaFile = "morzer-attestation-v3.json"
 
-	// AttestationV1SchemaFile is the schema statements written before v2
-	// validate against. Published and kept, never regenerated: it describes
-	// documents already on machines and in buckets, and those do not change.
+	// AttestationV2SchemaFile and AttestationV1SchemaFile are the schemas
+	// statements written before v3 validate against. Published and kept,
+	// never regenerated: they describe documents already on machines and in
+	// buckets, and those do not change.
+	AttestationV2SchemaFile = "morzer-attestation-v2.json"
 	AttestationV1SchemaFile = "morzer-attestation-v1.json"
 )
 
@@ -308,6 +310,9 @@ func tasksSchema(generated any) any {
 	}
 	atLeastOne(fields["command"], "minItems")
 	atLeastOne(fields["service"], "minLength")
+	if inputs, ok := fields["inputs"].(map[string]any); ok {
+		inputs["propertyNames"] = map[string]any{"pattern": domain.TaskInputNamePattern}
+	}
 	task["required"] = []string{"service", "command"}
 	mapping["propertyNames"] = map[string]any{"pattern": domain.TaskNamePattern}
 	return mapping
@@ -379,6 +384,11 @@ var requiredFields = map[reflect.Type][]string{
 	// its time, and the writer never omits one. Without them required, `{}`
 	// validates as a check that names nothing.
 	reflect.TypeOf(domain.SignatureCheck{}): {"key_id", "operation_id", "at"},
+
+	// An input in an attestation is its name, size and digest, all three
+	// always written: one without the digest says a file was used and not
+	// which.
+	reflect.TypeOf(domain.AttestedInput{}): {"name", "size", "sha256"},
 }
 
 // schemaFor renders a Go type as a JSON Schema node.

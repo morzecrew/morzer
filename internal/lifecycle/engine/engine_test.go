@@ -959,3 +959,28 @@ func TestAPlanIsNotSomethingResumeCanContinue(t *testing.T) {
 		"a plan offered a step to resume from: resuming it would run every "+
 			"step while reporting that it continued something")
 }
+
+// A flag a step learns while it runs reaches the journal with that step's
+// record, even when a later step fails, and never the caller's own map.
+func TestAFlagAStepSetsIsJournalledWithIt(t *testing.T) {
+	eng, store, _ := newEngine()
+	tr := &tracker{}
+
+	learn := Step{
+		ID: "learn", Description: "learn", Idempotent: true, OnFailure: Abort,
+		Execute: func(ctx context.Context, st *State) error {
+			st.SetFlag("input.snapshot", "12 sha256:abc")
+			return nil
+		},
+	}
+	op := operation(learn, step(tr, "fail", true, false))
+	op.Flags = map[string]string{"task": "restore"}
+
+	result, err := eng.Run(context.Background(), op, Options{})
+	require.Error(t, err)
+
+	assert.Equal(t, map[string]string{"task": "restore", "input.snapshot": "12 sha256:abc"}, result.Record.Flags)
+	assert.Equal(t, "12 sha256:abc", store.last().Flags["input.snapshot"],
+		"the flag was not journalled with the operation that failed after it")
+	assert.Equal(t, map[string]string{"task": "restore"}, op.Flags, "the caller's map was written to")
+}

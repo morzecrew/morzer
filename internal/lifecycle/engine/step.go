@@ -116,6 +116,9 @@ type State struct {
 	// once a step has said so. See PassPointOfNoReturn.
 	noReturn string
 
+	// flags are journal flags a step learned while it ran. See SetFlag.
+	flags map[string]string
+
 	bus    *events.Bus
 	stepID string
 }
@@ -169,6 +172,28 @@ func (s *State) Set(key string, value any) {
 		s.values = make(map[string]any)
 	}
 	s.values[key] = value
+}
+
+// SetFlag adds a flag to the operation's journal record, for a fact a step
+// learns only by running -- the digest of a file it copied, say. The engine
+// writes it with the step's own record, so it is journalled even when the
+// operation then fails.
+func (s *State) SetFlag(key, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.flags == nil {
+		s.flags = make(map[string]string)
+	}
+	s.flags[key] = value
+}
+
+// takeFlags hands over the flags set since it was last called.
+func (s *State) takeFlags() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	flags := s.flags
+	s.flags = nil
+	return flags
 }
 
 // PointOfNoReturn is the reason a step gave for closing the way back, or empty

@@ -122,6 +122,7 @@ type Runtime struct {
 	// records what each run was handed.
 	OneShotResults map[string]ports.ExitResult
 	OneShots       []ports.RunOptions
+	OneShotMounts  map[string][]byte
 
 	// Storage is what Volumes reports.
 	Storage ports.ProjectStorage
@@ -505,6 +506,18 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.OneShots = append(r.OneShots, opts)
+	// What the container would read at each mount, taken while the run is
+	// in flight: a task's inputs are removed when the operation ends.
+	for _, m := range opts.Mounts {
+		if r.OneShotMounts == nil {
+			r.OneShotMounts = map[string][]byte{}
+		}
+		data, err := os.ReadFile(m.Source)
+		if err != nil {
+			return ports.ExitResult{}, err
+		}
+		r.OneShotMounts[m.Target] = data
+	}
 	if res, ok := r.OneShotResults[service]; ok {
 		return res, nil
 	}

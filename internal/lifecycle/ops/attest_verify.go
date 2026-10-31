@@ -134,8 +134,8 @@ func AttestVerify(ctx context.Context, d *Deps, opts VerifyOptions) (VerifyRepor
 			// good attestation of something else, and reporting on
 			// it as though it described this deployment is the
 			// confusion the predicate type exists to prevent.
-			item.Unreadable = fmt.Sprintf("predicate type %q is not %s or %s",
-				stmt.PredicateType, domain.PredicateType, domain.PredicateTypeV1)
+			item.Unreadable = fmt.Sprintf("predicate type %q is not %s, %s or %s",
+				stmt.PredicateType, domain.PredicateType, domain.PredicateTypeV2, domain.PredicateTypeV1)
 			report.Statements = append(report.Statements, item)
 			continue
 		}

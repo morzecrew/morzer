@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without installing. `apply`, `update`, `rollback` and `task run` are refused
   meanwhile, and `start` applies the release before it clears the stop.
 
+- **`task run --input <name>=<path>` passes a file to a task.** A task declares
+  `inputs`; the file is copied, hashed, mounted read-only at
+  `/morzer/inputs/<name>` and removed afterwards. The journal and the
+  attestation, now predicate v3, record its size and digest, never its content.
+
 ### Changed
 
 - **A usage error is two lines, not the command's whole usage.** A mistyped flag

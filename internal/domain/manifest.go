@@ -662,6 +662,61 @@ type TaskSpec struct {
 	Modes []string `yaml:"modes" json:"modes,omitempty"`
 
 	Timeout Duration `yaml:"timeout" json:"timeout,omitempty"`
+
+	// Inputs are the files an operator passes with `task run --input
+	// <name>=<path>` (RFC 0041). Each is copied for the operation and
+	// mounted read-only at TaskInputPath(name), where the command finds it
+	// through `{inputs.<name>}` or the variable TaskInputEnv(name). Every
+	// declared input is required.
+	Inputs map[string]TaskInput `yaml:"inputs" json:"inputs,omitempty"`
+}
+
+// TaskInput is one file a task accepts.
+type TaskInput struct {
+	Description string `yaml:"description" json:"description,omitempty"`
+
+	// MaxSize bounds the file, checked before the lock and again while it is
+	// copied. Absent means only the free disk space bounds it.
+	MaxSize ByteSize `yaml:"max_size" json:"max_size,omitempty"`
+}
+
+// TaskInputNamePattern is an input's name, which becomes part of a path in the
+// container and of an environment variable. Exported for the JSON Schema.
+const TaskInputNamePattern = `^[a-z][a-z0-9_]*$`
+
+var taskInputName = regexp.MustCompile(TaskInputNamePattern)
+
+// TaskInputDir is where a task's inputs appear in its container: a path the
+// manager chooses, so the operator's file name never reaches the container.
+const TaskInputDir = "/morzer/inputs"
+
+// TaskInputPath is where the input named name appears in the container.
+func TaskInputPath(name string) string { return TaskInputDir + "/" + name }
+
+// TaskInputEnv is the variable that carries an input's path into the
+// container, for a command that reads its environment (RFC 0041 decision 2).
+func TaskInputEnv(name string) string { return "MORZER_INPUT_" + strings.ToUpper(name) }
+
+// InputNames returns the declared input names in order.
+func (t TaskSpec) InputNames() []string {
+	return slices.Sorted(maps.Keys(t.Inputs))
+}
+
+// inputPlaceholder is `{inputs.<name>}` anywhere inside an argument, so
+// `--file={inputs.snapshot}` works as well as a bare path argument.
+var inputPlaceholder = regexp.MustCompile(`\{inputs\.([^{}]*)\}`)
+
+// CommandWithInputs is the declared command with each `{inputs.<name>}`
+// replaced by the input's path in the container. Only the release's own
+// command: an operator's `--` arguments are never templated.
+func (t TaskSpec) CommandWithInputs() []string {
+	out := make([]string, len(t.Command))
+	for i, arg := range t.Command {
+		out[i] = inputPlaceholder.ReplaceAllStringFunc(arg, func(m string) string {
+			return TaskInputPath(inputPlaceholder.FindStringSubmatch(m)[1])
+		})
+	}
+	return out
 }
 
 // AllowedOn reports whether the task may run on a machine of this mode.
@@ -684,6 +739,10 @@ func (m *Manifest) TaskNames() []string {
 // otherwise report a typo instead of an upgrade requirement (RFC 0018
 // decision 1).
 const TasksMinManagerVersion = "0.8.0"
+
+// TaskInputsMinManagerVersion is the manager release that reads a task's
+// `inputs`, for the same reason (RFC 0041 decision 3).
+const TaskInputsMinManagerVersion = "0.11.0"
 
 // TaskNamePattern is a task's name: what an operator types after `task run`,
 // so nothing on a command line needs quoting. Exported for the JSON Schema.
@@ -1304,6 +1363,12 @@ func (m *Manifest) Validate() error {
 			"must be at least %s, because the release declares tasks and an older "+
 				"manager cannot read them", minimum)
 	}
+	if minimum := MustParseVersion(TaskInputsMinManagerVersion); m.taskInputsDeclared() &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because a task declares inputs and an older "+
+				"manager cannot read them", minimum)
+	}
 
 	// backup.volumes
 	//
@@ -1564,6 +1629,43 @@ func (v *validationErrors) checkTask(field, name string, t TaskSpec) {
 	if t.Timeout < 0 {
 		v.add(field+".timeout", "must be positive")
 	}
+	for _, input := range t.InputNames() {
+		at := field + ".inputs." + input
+		if !taskInputName.MatchString(input) {
+			v.add(at, "is not a valid input name; names are lowercase alphanumeric "+
+				"with underscores, starting with a letter")
+		}
+		if err := ValidateSingleLine(t.Inputs[input].Description, maxTaskDescriptionLen); err != nil {
+			v.add(at+".description", "%s", AsError(err).Message)
+		}
+		if t.Inputs[input].MaxSize < 0 {
+			v.add(at+".max_size", "must be positive")
+		}
+	}
+	// Every placeholder names a declared input, and an unterminated one is
+	// refused rather than reaching the container as literal text.
+	for _, arg := range t.Command {
+		matches := inputPlaceholder.FindAllStringSubmatch(arg, -1)
+		if strings.Count(arg, "{inputs.") != len(matches) {
+			v.add(field+".command", "has an unterminated {inputs.<name>} in %q", arg)
+		}
+		for _, m := range matches {
+			if _, ok := t.Inputs[m[1]]; !ok {
+				v.add(field+".command", "names {inputs.%s}, which the task does not declare", m[1])
+			}
+		}
+	}
+}
+
+// taskInputsDeclared is any task carrying the `inputs` key, empty included:
+// strict decoding refuses the key, not its contents.
+func (m *Manifest) taskInputsDeclared() bool {
+	for _, t := range m.Tasks {
+		if t.Inputs != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (v *validationErrors) checkRelPath(field, p string) {

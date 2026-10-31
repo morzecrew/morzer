@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"time"
 
@@ -172,6 +173,16 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 
 		status, stepErr := e.runStep(ctx, step, st, i, len(op.Steps), &rec)
 		rec.Steps[i].Status = status
+		if flags := st.takeFlags(); len(flags) > 0 {
+			// A copy, never op.Flags itself: the caller still holds
+			// that map.
+			merged := maps.Clone(rec.Flags)
+			if merged == nil {
+				merged = map[string]string{}
+			}
+			maps.Copy(merged, flags)
+			rec.Flags = merged
+		}
 		e.journal(ctx, rec)
 
 		if stepErr == nil {

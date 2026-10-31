@@ -307,6 +307,26 @@ func TestRunOneShotReturnsANonZeroExitAsData(t *testing.T) {
 	}
 }
 
+// A task's input reaches the one-off container as a read-only volume, given
+// before the service name: Compose reads everything after it as the command.
+func TestRunOneShotMountsATaskInputReadOnly(t *testing.T) {
+	r, runner := newRuntime()
+	_, err := r.RunOneShot(context.Background(), cfg(), "worker", ports.RunOptions{
+		Argv: []string{"restore", "/morzer/inputs/snapshot"},
+		Mounts: []ports.Mount{{
+			Source: "/var/lib/demo/manager/inputs/op_1/snapshot", Target: "/morzer/inputs/snapshot", ReadOnly: true,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := strings.Join(runner.Calls()[0].Argv, " ")
+	want := "--volume /var/lib/demo/manager/inputs/op_1/snapshot:/morzer/inputs/snapshot:ro worker restore"
+	if !strings.Contains(line, want) {
+		t.Errorf("the input is not mounted read-only before the service:\n%s", line)
+	}
+}
+
 // The runner keeps the head of each stream, so a caller printing the output of
 // a one-shot or an exec has to be told when that is not all of it.
 func TestAOneShotAndAnExecSayWhenTheirOutputWasCut(t *testing.T) {
@@ -597,5 +617,20 @@ func TestOnlyAOneShotRunsWithComposeProgressOff(t *testing.T) {
 		if quiet != isRun {
 			t.Errorf("COMPOSE_PROGRESS=quiet is %v for %q", quiet, strings.Join(c.Argv, " "))
 		}
+	}
+}
+
+// Compose's --volume splits on ':', so a path holding one would mount the wrong
+// thing or fail obscurely; it is refused by name instead.
+func TestRunOneShotRefusesAMountPathWithAColon(t *testing.T) {
+	r, runner := newRuntime()
+	_, err := r.RunOneShot(context.Background(), cfg(), "worker", ports.RunOptions{
+		Mounts: []ports.Mount{{Source: "/srv/a:b/manager/inputs/op_1/snapshot", Target: "/morzer/inputs/snapshot", ReadOnly: true}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "':'") {
+		t.Fatalf("a path with a colon was not refused by name: %v", err)
+	}
+	if len(runner.Calls()) != 0 {
+		t.Error("compose was run with a mount it cannot express")
 	}
 }

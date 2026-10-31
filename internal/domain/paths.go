@@ -126,6 +126,11 @@ func (p Paths) AttestationsDir() string { return filepath.Join(p.VarDir, "attest
 func (p Paths) DataDir() string    { return filepath.Join(p.VarDir, "data") }
 func (p Paths) BackupsDir() string { return filepath.Join(p.VarDir, "backups") }
 func (p Paths) ManagerDir() string { return filepath.Join(p.VarDir, "manager") }
+
+// InputsDir holds the files operators pass to tasks, one directory per
+// operation, removed when it ends (RFC 0041). On disk rather than under /run:
+// an input can be gigabytes, and /run is memory.
+func (p Paths) InputsDir() string  { return filepath.Join(p.ManagerDir(), "inputs") }
 func (p Paths) StagingDir() string { return filepath.Join(p.VarDir, "manager", "staging") }
 func (p Paths) InstallationState() string {
 	return filepath.Join(p.ManagerDir(), "installation.json")
