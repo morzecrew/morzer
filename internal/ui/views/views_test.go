@@ -57,6 +57,8 @@ func TestEveryReportTypeHasAView(t *testing.T) {
 		ops.RedactCheckReport{},
 		ops.TrustReport{},
 		[]ops.TaskEntry{},
+		ops.History{},
+		domain.OperationRecord{},
 	}
 
 	for _, report := range want {
