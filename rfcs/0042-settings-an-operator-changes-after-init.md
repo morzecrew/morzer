@@ -35,8 +35,9 @@
 - `release.require_signature` turns the signature requirement on or off. It
   needs a trusted key, and it cannot be turned off while `update.auto_apply` is
   on.
-- `domains` replaces the domain list. It renders the configuration again and
-  says that `apply` puts the change into the running services.
+- `installation.domains` replaces the domain list. It renders the
+  configuration again and says that `apply` puts the change into the running
+  services.
 - `retention.releases` sets how many releases the store keeps.
 - `retention.backups` sets how many backups it keeps.
 
@@ -147,13 +148,17 @@ morzer config set release.require_signature=false
   refused, because `verify-bundle` reads the policy at the time of the update.
 - `release trust list` already reports the value.
 
-### 5.2 `domains`
+### 5.2 `installation.domains`
 
 ```text
-morzer config set domains=demo.example,www.demo.example
-morzer config unset domains
+morzer config set installation.domains=demo.example,www.demo.example
+morzer config unset installation.domains
 ```
 
+- Dotted, as every setting is. A parameter name has no dot
+  ([`settings.go:23-25`](../internal/lifecycle/ops/settings.go)), so a bare
+  `domains` would take the name from a release that already declares a
+  parameter called that.
 - A comma-separated list replacing the whole list. Each entry is checked as a
   host name, or as an `https://` URL, which `PublicURL` already accepts. An
   empty entry, a duplicate, or a scheme other than `https` is refused.
@@ -165,7 +170,7 @@ morzer config unset domains
 - `unset` empties the list, which renders as an installation created without a
   domain does.
 - `init --repair --domain` keeps working, and the docs name `config set
-  domains` as the way to change them.
+  installation.domains` as the way to change them.
 
 ### 5.3 `retention.releases` and `retention.backups`
 
@@ -203,8 +208,8 @@ morzer config unset retention.releases
   refused.
 - `release.require_signature=false` while `update.auto_apply` is on is
   refused. With `auto_apply` off, it is accepted.
-- `domains` renders the template's `.Domain` with the new value and says
-  `apply` is needed. A bad entry is refused before anything is written.
+- `installation.domains` renders the template's `.Domain` with the new value
+  and says `apply` is needed. A bad entry is refused before anything is written.
 - `retention.releases=0` is refused. Set to 1, the next update keeps one
   previous release.
 - Each with `--dry-run` writes nothing.
@@ -216,7 +221,7 @@ morzer config unset retention.releases
 - `operating/unattended-updates.md`: turning on `release.require_signature`
   after `init`, which replaces "re-create the installation".
 - `reference/commands.md#init`: `--repair` restores a layout; `config set
-  domains` changes domains.
+  installation.domains` changes domains.
 
 ## 8. Out of scope
 
@@ -243,7 +248,7 @@ The `OPEN` rows in §11 are for the author. Nothing else blocks P1.
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `ASSUMED` | The four values become settings in the existing registry, through `config set` and `config unset`. No new command, no schema bump: every field exists. |
+| 1 | `ASSUMED` | The four values become settings in the existing registry, through `config set` and `config unset`, each under a dotted name so none can shadow a release parameter: `release.require_signature`, `installation.domains`, `retention.releases` and `retention.backups`. No new command, no schema bump: every field exists. |
 | 2 | `OPEN` | **Where the signature requirement changes.** Recommended: the setting `release.require_signature`, since a boolean has none of the two-step rotation that kept the keys out of `config set` (RFC 0004 decision 24). Alternative: `release trust require [--off]`, next to the keys. Either way, this refines RFC 0004 decision 24's "stays fixed at `init`". |
 | 3 | `ASSUMED` | Turning the requirement on needs a trusted key, and turning it off is refused while `update.auto_apply` is on. Both rules already hold in `Validate`, and the setting refuses with a hint before the lock. It applies from the next fetch or update and re-checks nothing already stored. |
 | 4 | `OPEN` | **What a domain change converges.** Recommended: it renders the configuration and re-creates nothing; the summary says `apply` is needed, as for a parameter with no declared services (`config.go:346-352`). Alternative: it runs the whole `apply` itself, which reaches the services in one command but makes `config set` the first setting that restarts the product. |

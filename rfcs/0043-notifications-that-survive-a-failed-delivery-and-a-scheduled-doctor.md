@@ -69,14 +69,24 @@ rest. The journal remains the record.
 - **Delivery** is synchronous under `NotifyDeadline`, 15 seconds
   ([`ops.go:437`](../internal/lifecycle/ops/ops.go)), and not detached from
   the operation's context, so Ctrl-C does not wait on a dead endpoint
-  ([`ops.go:514-541`](../internal/lifecycle/ops/ops.go)). A failure is logged
-  and dropped.
-- **The fan-out is concurrent**, and each target's error is dropped there
-  ([`notify.go:42-59`](../internal/ports/notify.go)). RFC 0015 §5.3 describes
-  a sequential fan-out; the code has changed since.
+  ([`ops.go:514-541`](../internal/lifecycle/ops/ops.go)). `ops.notify` logs
+  an error the notifier returns.
+- **A failed target is logged nowhere.** The fan-out is concurrent and drops
+  each target's error, on the grounds that "the adapter logs its own failures"
+  ([`notify.go:42-59`](../internal/ports/notify.go)). The webhook adapter logs
+  nothing and returns its error
+  ([`webhook.go:146-157`](../internal/adapters/notify/webhook/webhook.go)), and
+  every installation is wired through the fan-out, even with one target
+  ([`notify.go:28`](../internal/cli/notify.go)). So `ops.notify` always sees
+  nil. RFC 0015 §5.3 describes a sequential fan-out; the code has changed
+  since.
 - **The webhook** posts the event as JSON with a 5-second client timeout and
-  refuses redirects. Anything outside 2xx is an error
+  refuses redirects. Anything outside 2xx is an error that carries the status
+  only in its message
   ([`webhook.go:128-158`](../internal/adapters/notify/webhook/webhook.go)).
+- **`min_level` filters `check` events only.** Any other forwarded kind is
+  delivered to every target
+  ([`webhook.go:160-170`](../internal/adapters/notify/webhook/webhook.go)).
 - **An event has no id.** It carries the kind, the time, the operation id and
   type, and the outcome ([`event.go:87-120`](../internal/events/event.go)).
   Two deliveries of one event cannot be told apart from two events of one
@@ -115,13 +125,21 @@ rest. The journal remains the record.
 
 ## 5. Design
 
-### 5.1 One retry inside the deadline
+### 5.1 Each target's outcome, and one retry
 
-A target that refuses with a connection error, a timeout, a 429 or a 5xx is
-tried once more after one second, while the 15-second aggregate deadline
-allows it. A 4xx other than 429 is not retried, because the request itself was
-refused and resending it would be refused again. The deadline is unchanged, so
-an operation never waits longer than today.
+- **The adapter retries, since only it sees the status.** A connection error,
+  a timeout, a 408, a 429 or a 5xx is tried once more after one second, while
+  the 15-second aggregate deadline allows it. Nothing else is retried at once:
+  a 401, 403 or 404 will not change in a second. The deadline is unchanged, so
+  an operation never waits longer than today.
+- **The adapter's error says whether a resend could succeed.** It is
+  resendable for the retried cases and for 401, 403 and 404, which a fixed
+  credential or URL can still deliver. It is final for every other 4xx, which
+  refuses the content itself.
+- **`Notifiers` returns the targets' errors joined**, each naming its target,
+  instead of dropping them. `ops.notify` already logs what it is given, so a
+  failed target is logged for the first time. The outbox (§5.2) is written
+  from the same per-target errors.
 
 ### 5.2 The outbox
 
@@ -129,12 +147,14 @@ an operation never waits longer than today.
 <var>/manager/notify/outbox/<event-id>.<target-name>.json   0600
 ```
 
-- An event a target has still not accepted after its retry is written there,
-  once per target, as the exact JSON the target would have received. One
+- An event whose target's error is resendable is written there, once per
+  target, as the exact JSON the target would have received. A final error is
+  logged and not kept. One
   target failing does not resend the event to the others.
 - Nothing sends from it during an operation. It is sent by the scheduled
   `doctor` run (§5.4) and by `morzer notify flush`, oldest first. An entry is
-  deleted once its target answers 2xx, or a 4xx other than 429.
+  deleted once its target answers 2xx or a final error, and kept on a
+  resendable one.
 - It is bounded at 100 entries per target, dropping the oldest. `doctor`
   reports what it holds as `notify.outbox`: a warning naming the target and
   the count, and how many were dropped.
@@ -162,9 +182,10 @@ ExecStart=<manager> doctor --unattended --plain --log-format json --product <pro
   randomized delay. `doctor.scheduled=false` removes it.
 - `doctor --unattended` sends the outbox, runs every check, and notifies one
   `doctor.finished` event. The event names the checks that warn or fail, with
-  their remedies, at the level of the worst. Each target's `min_level` decides
-  whether it hears about warnings. A run where every check passes notifies
-  nothing.
+  their remedies, and carries the level of the worst. The webhook applies each
+  target's `min_level` to it as it does to `check`, so a target left at the
+  default `error` does not hear about warnings. A run where every check passes
+  notifies nothing.
 - The operation holding the deployment lock is left out of `config.operations`,
   as RFC 0041 decision 19 does for staged inputs, so a backup running at the
   same time is not reported as unfinished.
@@ -192,7 +213,11 @@ ExecStart=<manager> doctor --unattended --plain --log-format json --product <pro
 - A target that is down leaves one outbox entry. `notify flush` delivers it
   once the target answers, with the same `id` and `Idempotency-Key`, and
   deletes it.
-- A 400 is not retried and not kept.
+- A 400 is not retried and not kept. A 401 is not retried at once, is kept,
+  and is delivered by `notify flush` once the target accepts.
+- A failing target is logged by name, where today nothing is.
+- A `doctor.finished` at `warn` does not reach a target whose `min_level` is
+  `error`.
 - With two targets and one down, only that target's entry is written, and the
   other receives the event once.
 - The outbox drops the oldest past 100 entries, and `notify.outbox` reports the
@@ -244,18 +269,20 @@ The `OPEN` rows in §11 are for the author. Nothing else blocks P1.
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `ASSUMED` | **Refines RFC 0015 decision 6.** One retry after one second on a connection error, a timeout, a 429 or a 5xx, inside the unchanged 15-second aggregate deadline. No other 4xx is retried. |
+| 1 | `ASSUMED` | **Refines RFC 0015 decision 6.** The webhook adapter retries once after one second on a connection error, a timeout, a 408, a 429 or a 5xx, inside the unchanged 15-second aggregate deadline. Its error says whether a resend could succeed: yes for those and for 401, 403 and 404, no for any other 4xx.
 | 2 | `OPEN` | **Whether to keep what did not arrive.** Recommended: an outbox per target under `<var>/manager/notify/outbox/`, bounded at 100 entries, sent by the scheduled `doctor` and `notify flush`, never during an operation. Alternative: the retry alone, keeping RFC 0015's "no persistence". That covers a blip and loses everything sent during an outage. |
 | 3 | `ASSUMED` | Every forwarded event carries an `id`, a ULID, in the body and as `Idempotency-Key`, kept across redeliveries. It is an addition to the payload. |
 | 4 | `OPEN` | **Whether the doctor timer is on by default.** Recommended: on whenever at least one notify target is configured, and absent otherwise, since a scheduled `doctor` with nobody to tell writes only to the systemd journal. `doctor.scheduled=false` removes it. Alternative: off until an operator sets `doctor.scheduled=true`. That is quieter, and a killed run then reaches nobody by default. |
 | 5 | `OPEN` | **How often an unchanged failure notifies.** Recommended: every scheduled run while a check warns or fails, leaving silencing to the receiver as RFC 0015 §4 does. Alternative: only when the set of non-ok checks changes from the last scheduled run, which needs a small state file and can hide a failure nobody saw the first time. |
-| 6 | `ASSUMED` | `doctor --unattended` sends one `doctor.finished` event per run, naming the checks that warn or fail at the level of the worst. It is a new kind, forwarded under RFC 0015 decision 4's allowlist. A run where every check passes sends nothing. |
+| 6 | `ASSUMED` | `doctor --unattended` sends one `doctor.finished` event per run, naming the checks that warn or fail at the level of the worst. It is a new kind, forwarded under RFC 0015 decision 4's allowlist. A run where every check passes sends nothing. It carries the worst level, and the webhook applies `min_level` to it as to `check`. |
 | 7 | `ASSUMED` | The scheduled run leaves the operation holding the deployment lock out of `config.operations`, as RFC 0041 decision 19 does for staged inputs. |
 | 8 | `ASSUMED` | `doctor.schedule` is an `OnCalendar` expression, daily by default with a randomized delay, validated as `backup.schedule` is. The unit follows RFC 0030 decision 1: enabled when first written, and never re-enabled once it exists. |
+| 9 | `ASSUMED` | `Notifiers` returns the targets' errors joined, each naming its target, so `ops.notify` logs a failed target. Today the fan-out drops them and the webhook logs nothing, so a failed delivery is logged nowhere (§3). Part of P1. |
 
 ## 12. Phasing
 
-- **P1**: §5.1 and §5.3, the retry and the id. Small, and useful alone.
+- **P1**: §5.1 and §5.3: each target's outcome logged, the retry, and the id.
+  Small, and useful alone.
 - **P2**: §5.2 and §5.4, the outbox and the doctor timer, as ruled. They land
   together, because the timer is what sends the outbox.
 - Nothing is demand-gated.
