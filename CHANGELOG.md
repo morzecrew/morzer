@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whether `morzer rollback` could return to the installed release afterwards
   or a restore would be needed, which images change, and the release notes.
   `--json` carries them as `data.preview`.
+  
+- **`morzer history` lists the operations an installation ran.** Newest
+  first, with each one's status, start time, release change and duration;
+  `history <operation-id>` adds its steps, flags and error. It reads only the
+  journal, so it answers while Docker is down, and `--json` carries the
+  journal's records.
 
 - **Tab completes products, services, tasks, releases, config names and
   backups.** `--product` and `morzer shell` offer what `morzer ls` lists.

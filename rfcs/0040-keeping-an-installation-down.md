@@ -1,8 +1,10 @@
 # RFC 0040 — Keeping an installation down
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-30: §11's
+- **Status:** ✅ Complete — proposed, and ruled by the author 2026-10-30: §11's
   `OPEN` rows as recommended, with `task run` refused like `apply` and the stop
-  shown in `ls` (decision 12). **P1 is ready to build**
+  shown in `ls` (decision 12). **Built 2026-10-30** as P1 in #224. The seven
+  entries the build wrote in [logs/stop-and-start.md](../logs/stop-and-start.md)
+  are decisions 13–19
 - **Scope:** `morzer stop` and `morzer start`: taking a product down for
   maintenance, a host migration or an incident, and keeping it down until an
   operator brings it back. The stop is recorded in installation state, so every
@@ -268,6 +270,13 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 | 10 | `ASSUMED` | `doctor`'s `runtime.services` reports a recorded stop as information and skips the health probe; a runtime that cannot be asked still fails it, as since #186. `status` shows the stop above the services and in `--json`. |
 | 11 | `ASSUMED` | This refines RFC 0021 decision 8 for `stop` and `start` only: they are the mutating commands #214 supplied the evidence for. `restart` stays out. |
 | 12 | `ASSUMED` | **`ls` shows a stopped installation as stopped, with the time it stopped**, in its table and in `--json`. `ls` already reads each installation's state without asking Docker, and the record carries the time (§5). Part of P1. Ruled by the author 2026-10-30, with decision 7. |
+| 13 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* The backup unit runs `backup --unattended`, as the update unit runs `update --unattended`, and only an unattended backup is skipped while stopped, so decision 4 can tell the timer's run from an operator's. A unit written by an older manager has no flag and backs up as before until the next `apply` or `start` rewrites it. See [logs/stop-and-start.md](../logs/stop-and-start.md) (unlisted, attempt 1, 19:01). |
+| 14 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* While stopped, `config set` and the secret commands store the change, and secrets render as they do today, but nothing is re-created or restarted; the output says the change takes effect at `start`, which runs `apply`. §5.3 left them out, and each would otherwise bring a stopped product back up. See [logs/stop-and-start.md](../logs/stop-and-start.md) (unlisted, attempt 1, 19:02). |
+| 15 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* `installation import` drops the stop record. It describes the old machine's runtime, and the new machine starts with the `apply` the operator runs after the import. See [logs/stop-and-start.md](../logs/stop-and-start.md) (unlisted, attempt 1, 19:03). |
+| 16 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* `stop` and `start` resume with `--resume`, as `apply` does, and the unfinished-operation gate names `morzer stop --resume` or `morzer start --resume` for their unfinished records. Without it an interrupted `stop` left a record the gate refused to drive over. See [logs/stop-and-start.md](../logs/stop-and-start.md) (unlisted, attempt 1, 19:20). |
+| 17 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* `init --repair` carries the stop; only `morzer start` clears one. See [logs/stop-and-start.md](../logs/stop-and-start.md) (unlisted, attempt 1, 19:22). |
+| 18 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* `stop` on a stopped product keeps the first stop's record, stops the services again and says it was already stopped, so the time `status` shows is when the product went down. See [logs/stop-and-start.md](../logs/stop-and-start.md) (unlisted, attempt 1, 19:24). |
+| 19 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* **Refines decision 4.** The skipped scheduled backup exits 0 and says so in the unit's journal, as the update timer's staged outcome does; it writes no operation record, which for a run that did nothing would be the only one of its kind. See [logs/stop-and-start.md](../logs/stop-and-start.md) (decision 4, attempt 1). |
 
 ## 12. Phasing
 
