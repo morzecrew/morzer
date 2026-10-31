@@ -2285,7 +2285,8 @@ stop, which leaves an operator's Ctrl-C looking wedged for as long as the
 deadline allows. The journal records the interruption either way.</p>
 <p>A notifier failure never changes an operation's outcome. An <code>update</code> does not
 fail because a webhook was down, and you should not learn about a chat outage by
-way of a rolled-back deployment.</p>
+way of a rolled-back deployment. The failure is logged instead: a target that cannot
+be reached or answers an error is a <code>notifier failed</code> warning naming it.</p>
 
 
 
