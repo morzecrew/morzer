@@ -118,4 +118,5 @@ deadline allows. The journal records the interruption either way.
 
 A notifier failure never changes an operation's outcome. An `update` does not
 fail because a webhook was down, and you should not learn about a chat outage by
-way of a rolled-back deployment.
+way of a rolled-back deployment. The failure is logged instead: a target that cannot
+be reached or answers an error is a `notifier failed` warning naming it.

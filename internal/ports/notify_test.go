@@ -42,16 +42,22 @@ func (s stubNotifier) Notify(ctx context.Context, _ events.Event) error {
 // The contract an operator configures against: two targets means two copies.
 // A fan-out that stopped at the first error would silently make the second
 // target decorative.
+//
+// And each failure comes back, joined. The fan-out used to drop them on the
+// grounds that the adapter logged its own, which the webhook never did -- so a
+// failed delivery was logged nowhere (RFC 0043 decision 9).
 func TestNotifiersDeliversToEveryTargetDespiteFailures(t *testing.T) {
 	var a, b, c atomic.Int32
+	down, alsoDown := errors.New("down"), errors.New("also down")
 	n := ports.Notifiers{
-		stubNotifier{name: "a", calls: &a, err: errors.New("down")},
+		stubNotifier{name: "a", calls: &a, err: down},
 		stubNotifier{name: "b", calls: &b},
-		stubNotifier{name: "c", calls: &c, err: errors.New("also down")},
+		stubNotifier{name: "c", calls: &c, err: alsoDown},
 	}
 
-	if err := n.Notify(context.Background(), events.Event{Kind: events.KindOperationFinished}); err != nil {
-		t.Errorf("the fan-out reported an error to its caller: %v", err)
+	err := n.Notify(context.Background(), events.Event{Kind: events.KindOperationFinished})
+	if !errors.Is(err, down) || !errors.Is(err, alsoDown) {
+		t.Errorf("the fan-out did not return both targets' failures: %v", err)
 	}
 	for name, got := range map[string]int32{"a": a.Load(), "b": b.Load(), "c": c.Load()} {
 		if got != 1 {
