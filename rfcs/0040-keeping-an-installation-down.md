@@ -2,8 +2,8 @@
 
 - **Status:** ✅ Complete — proposed, and ruled by the author 2026-10-30: §11's
   `OPEN` rows as recommended, with `task run` refused like `apply` and the stop
-  shown in `ls` (decision 12). **Built 2026-10-30** as P1 in #224. Seven
-  entries from the build in [logs/stop-and-start.md](../logs/stop-and-start.md)
+  shown in `ls` (decision 12). **Built 2026-10-30** as P1 in #224. The seven
+  entries the build wrote in [logs/stop-and-start.md](../logs/stop-and-start.md)
   are decisions 13–19
 - **Scope:** `morzer stop` and `morzer start`: taking a product down for
   maintenance, a host migration or an incident, and keeping it down until an

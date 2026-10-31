@@ -3,8 +3,9 @@
 - **Status:** ✅ Complete — proposed, and ruled by the author 2026-10-30: §11's
   `OPEN` rows as recommended, except that a task finds its input through both
   the placeholder and an environment variable (decision 2). **Built
-  2026-10-31** as P1 in #225. Ten entries from the build and its review in
-  [logs/task-inputs.md](../logs/task-inputs.md) are decisions 14–22
+  2026-10-31** as P1 in #225. The ten entries the build and its review wrote in
+  [logs/task-inputs.md](../logs/task-inputs.md) are decisions 14–22, the two
+  about the sweep as one row (decision 18)
 - **Scope:** Named file inputs for a release's tasks. A task declares `inputs`
   in the manifest, and `morzer task run <task> --input <name>=<path>` copies
   each file into a per-operation directory, mounts it read-only into the

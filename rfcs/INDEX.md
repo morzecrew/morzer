@@ -18,12 +18,12 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** has work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
+only **0023**, and 0038's row 1, have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
 building P2 is the correct outcome. 0037 and 0038 are proposals waiting on the
-author's rulings, and are not work yet. Each
+author's rulings, and apart from that row of 0038 are not work yet. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
 phase shipped, and a reader deciding what to work on needs the other half.
 
