@@ -133,6 +133,15 @@ $ sudo morzer config diff
   `{target, diff}`) and `unreadable` (a list of `{target, error}`).
 - Exits 0 whether or not files differ (decision 6).
 - With no release installed it fails as `config list` does.
+- **Both sides of each diff are scrubbed before they are printed.** The render
+  side cannot hold a secret value: the render context holds references, not
+  values. The on-disk side can, once an operator pastes one into a file. So
+  every diff passes through the redactor, armed with the values this
+  installation holds (`armRedaction`, `inspect.go:189`), as the support bundle
+  scrubs `config-diff.txt` (`scrub`, `support.go:1126-1145`). When it cannot
+  be armed, because the secret state does not decrypt, no lines are printed:
+  each differing target is named, and the summary says redaction was not
+  possible. `--json` then carries `redacted: false` and no diffs (decision 10).
 
 ### 5.2 `doctor` check `config.drift`
 
@@ -195,6 +204,9 @@ for `update --profile` renders the profile it was asked for.
   drift.
 - An absent target counts as drift. An unreadable one is listed apart and not
   counted, in the command, the check and the fleet row.
+- A target with a stored secret's value pasted in prints the redactor's mark
+  in its place, in text and in `--json`. With the secret state undecryptable,
+  only the target names print.
 - With no release installed, `config diff` fails as `config list` does, and the
   check is skipped.
 - `apply --dry-run`'s plan detail matches `config diff` on the same machine.
@@ -226,6 +238,9 @@ for `update --profile` renders the profile it was asked for.
 - **A warning nobody acts on.** A file edited on purpose and kept that way
   warns on every `doctor` run. That is intended: the next `apply` will replace
   it, and the warning is the notice of that.
+- **A secret this installation does not hold.** A third-party key pasted into
+  a file by hand is not one the redactor was told about, and prints. The
+  support bundle has the same limit today.
 - **Root-only files.** Run without `sudo`, targets readable only by root are
   listed as not compared rather than as drift.
 
@@ -245,7 +260,8 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 6 | `ASSUMED` | `config diff` exits 0 whether or not files differ. Exit codes in this project mean failure; `doctor` is where a finding becomes one. |
 | 7 | `ASSUMED` | Read-only and lock-free, like `apply --dry-run` and `config list`. |
 | 8 | `ASSUMED` | `apply --dry-run`'s plan detail is computed by `configComparison` too, so no second comparison remains. It takes the profile to render with, empty for the installed one. |
-| 9 | `ASSUMED` | Secret values are never compared or shown. The invariant is the support bundle's: the render context holds secret references, not values. |
+| 9 | `ASSUMED` | Secret values are never compared or shown. The invariant is the support bundle's: the render context holds secret references, not values. *(Superseded by decision 10.)* |
+| 10 | `ASSUMED` | *(2026-10-31, from the review.)* Every diff is scrubbed by the redactor before it is shown, on both sides: the rendered side holds no secret value by the support bundle's invariant, but the on-disk side holds whatever was pasted into it. When redaction cannot be armed, no diff lines are shown, only the target names. |
 
 ## 12. Phasing
 
